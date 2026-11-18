@@ -3,7 +3,8 @@
 // start a kit return) open as a drawer in the detail rail beside the request (the redesign's pattern), so the routing
 // trace and the timeline stay in view while the step is recorded. Cancel closes the drawer and writes nothing; each write
 // stays disabled until its own rule is met; one step is open at a time, and a reason typed for one step never follows
-// the responder into another.
+// the responder into another. While a write is in flight the drawer cannot be dismissed and the page beside it is inert;
+// a refused or rejected write is announced in the drawer, which stays dismissible.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -76,8 +77,9 @@ const ok = (data: unknown) => ({
 function mount(
   status: SupplyRequestDetail["status"],
   kind: SupplyRequestDetail["kind"] = "supply",
+  onPost: () => Promise<unknown> = async () => ok({}),
 ): { post: ReturnType<typeof vi.fn> } {
-  const post = vi.fn(async () => ok({}));
+  const post = vi.fn(onPost);
   const client = {
     GET: vi.fn(async () => ok(requestIn(status, kind))),
     POST: post,
@@ -147,7 +149,7 @@ describe("supply request — lifecycle steps", () => {
 
   it("keeps Mark ordered disabled until the vendor's order reference is given", async () => {
     const { post } = mount("vendor_assigned");
-    const drawer = await open("Mark ordered", "Record the vendor's acceptance");
+    const drawer = await open("Mark ordered…", "Record the vendor's acceptance");
     const mark = within(drawer).getByRole("button", { name: "Mark ordered" }) as HTMLButtonElement;
     expect(mark.disabled).toBe(true);
     fireEvent.change(within(drawer).getByLabelText("Vendor order reference"), {
@@ -161,7 +163,7 @@ describe("supply request — lifecycle steps", () => {
 
   it("keeps Mark in transit disabled until a carrier and a tracking number are given", async () => {
     const { post } = mount("ordered");
-    const drawer = await open("Mark in transit", "Record the shipment");
+    const drawer = await open("Mark in transit…", "Record the shipment");
     const mark = within(drawer).getByRole("button", {
       name: "Mark in transit",
     }) as HTMLButtonElement;
@@ -194,17 +196,20 @@ describe("supply request — lifecycle steps", () => {
 
   it("confirms receipt and closes", async () => {
     const { post } = mount("delivered");
-    const drawer = await open("Confirm receipt", "Confirm receipt");
+    const drawer = await open("Confirm receipt…", "Confirm receipt");
     fireEvent.click(within(drawer).getByRole("button", { name: "Confirm receipt" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(posted(post)[0]).toBe(
       "/api/v1/supplies/supply-requests/{supplyRequestId}/confirm-received",
     );
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Confirm receipt" })).toBeNull(),
+    );
   });
 
   it("keeps Cancel request disabled until a reason is given", async () => {
     const { post } = mount("requested");
-    const drawer = await open("Cancel", "Cancel this request");
+    const drawer = await open("Cancel this request…", "Cancel this request");
     const cancel = within(drawer).getByRole("button", {
       name: "Cancel request",
     }) as HTMLButtonElement;
@@ -239,12 +244,134 @@ describe("supply request — lifecycle steps", () => {
     fireEvent.change(within(first).getByLabelText("Override reason"), {
       target: { value: "Vendor of record is closed this week." },
     });
-    // The page's own Cancel action comes first in the document, before the drawer's Cancel button.
-    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0] as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel this request…" }));
     const second = await screen.findByRole("complementary", { name: "Cancel this request" });
     expect(
       screen.queryByRole("complementary", { name: "Assign or override the vendor" }),
     ).toBeNull();
     expect((within(second).getByLabelText("Reason") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("names the page's openers apart from the open drawer's own buttons", async () => {
+    mount("vendor_assigned");
+    const drawer = await open("Mark ordered…", "Record the vendor's acceptance");
+    // One Mark ordered… opener on the page, one Mark ordered save button and one Cancel in the drawer.
+    expect(screen.getAllByRole("button", { name: "Mark ordered" })).toEqual([
+      within(drawer).getByRole("button", { name: "Mark ordered" }),
+    ]);
+    expect(screen.getAllByRole("button", { name: "Cancel" })).toEqual([
+      within(drawer).getByRole("button", { name: "Cancel" }),
+    ]);
+  });
+
+  it("starts the delivery time at the moment the drawer is opened, every time", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(2026, 10, 18, 9, 0));
+      mount("in_transit");
+      const first = await open("Record delivery", "Attest delivery");
+      const field = () => within(first).getByLabelText("Delivered at") as HTMLInputElement;
+      expect(field().value).toBe("2026-11-18T09:00");
+      fireEvent.change(field(), { target: { value: "2026-11-01T01:00" } });
+      fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+      await waitFor(() =>
+        expect(screen.queryByRole("complementary", { name: "Attest delivery" })).toBeNull(),
+      );
+      vi.setSystemTime(new Date(2026, 10, 18, 11, 30));
+      const second = await open("Record delivery", "Attest delivery");
+      expect((within(second).getByLabelText("Delivered at") as HTMLInputElement).value).toBe(
+        "2026-11-18T11:30",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts the receipt time at the moment the drawer is opened, not at page load", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(2026, 10, 18, 9, 0));
+      mount("delivered");
+      await screen.findByRole("button", { name: "Confirm receipt…" });
+      vi.setSystemTime(new Date(2026, 10, 18, 14, 15));
+      const drawer = await open("Confirm receipt…", "Confirm receipt");
+      expect((within(drawer).getByLabelText("Confirmed at") as HTMLInputElement).value).toBe(
+        "2026-11-18T14:15",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("holds the drawer and everything beside it while a write is in flight", async () => {
+    let release: () => void = () => {};
+    const { post } = mount(
+      "requested",
+      "supply",
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(ok({}));
+        }),
+    );
+    const drawer = await open("Assign / override vendor", "Assign or override the vendor");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign vendor" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    // Cancel, the close button and Escape are all refused while the write has not landed.
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (within(drawer).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "Assign or override the vendor" })).toBe(
+      drawer,
+    );
+    // The page's openers cannot swap the drawer under the write.
+    const opener = screen.getByRole("button", { name: "Cancel this request…", hidden: true });
+    expect(opener.closest("[inert]")).not.toBeNull();
+    release();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "Assign or override the vendor" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("announces a rejected request in the drawer, which stays dismissible", async () => {
+    const { post } = mount("requested", "supply", async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const drawer = await open("Assign / override vendor", "Assign or override the vendor");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign vendor" }));
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert.textContent).toBe("The vendor could not be assigned.");
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(
+      (within(drawer).getByRole("button", { name: "Assign vendor" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "Assign or override the vendor" }),
+      ).toBeNull(),
+    );
+    // Nothing is left behind on the page.
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("announces a server refusal in the drawer, not above the page", async () => {
+    mount("requested", "supply", async () => ({
+      data: undefined,
+      error: { error: { code: "CONFLICT", message: "The vendor is not active." } },
+      response: new Response(null, { status: 409 }),
+    }));
+    const drawer = await open("Assign / override vendor", "Assign or override the vendor");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign vendor" }));
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert.textContent).toBe("The vendor is not active.");
   });
 });

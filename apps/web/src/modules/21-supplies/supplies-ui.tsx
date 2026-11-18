@@ -36,7 +36,7 @@ export const pageTitleStyle: CSSProperties = {
   lineHeight: 1.2,
   color: t.onSurface,
 };
-export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
+const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
 export const linkStyle: CSSProperties = {
   fontSize: "0.8rem",
   color: t.primary,
@@ -51,7 +51,7 @@ export const columnStyle: CSSProperties = {
 };
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
-export const selectStyle: CSSProperties = {
+const selectStyle: CSSProperties = {
   minHeight: "2.5rem",
   padding: "0 0.75rem",
   borderRadius: t.radiusMd,

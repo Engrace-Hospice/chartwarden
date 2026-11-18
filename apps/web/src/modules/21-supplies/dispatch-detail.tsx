@@ -57,6 +57,7 @@ import {
   tdQty,
   thNum,
 } from "./supplies-ui";
+import { useWrite } from "./use-write";
 
 type Ceremony = "deploy" | "return" | null;
 
@@ -73,7 +74,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, run: runWrite } = useWrite();
   const [when, setWhen] = useState(nowLocalInput);
   const [returnReason, setReturnReason] = useState("");
 
@@ -112,6 +113,26 @@ export function ComfortKitDispatchDetail(): JSX.Element {
   const close = () => {
     setCeremony(null);
     setActionError(null);
+  };
+
+  /** Open a step. The deployment time is a custody timestamp, so it starts at the moment the drawer is opened,
+   *  never at page load or at a time edited in an earlier open. */
+  const openCeremony = (next: Exclude<Ceremony, null>) => {
+    setWhen(nowLocalInput());
+    setActionError(null);
+    setCeremony(next);
+  };
+
+  /** Run a write, then reload. A refusal (or a rejected request) stays in the drawer, beside Save. */
+  const run = async (fn: () => Promise<{ error: unknown }>, failure: string) => {
+    setActionError(null);
+    const failed = await runWrite(fn, failure);
+    if (failed) {
+      setActionError(failed);
+      return;
+    }
+    close();
+    void load();
   };
 
   const timeline = [
@@ -167,8 +188,6 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             reconcile.
           </Notice>
         ) : null}
-
-        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
         <Panel
           stack
@@ -289,7 +308,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
               disabled={!canDeploy}
               title={canDeploy ? undefined : "Only a kit still marked dispatched can be deployed."}
               aria-disabled={!canDeploy}
-              onClick={canDeploy ? () => setCeremony("deploy") : undefined}
+              onClick={canDeploy ? () => openCeremony("deploy") : undefined}
             >
               Mark deployed at patient
             </Button>
@@ -303,7 +322,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
                   : "A return opens once the kit is at the patient, and only while something is still out."
               }
               aria-disabled={!canReturn}
-              onClick={canReturn ? () => setCeremony("return") : undefined}
+              onClick={canReturn ? () => openCeremony("return") : undefined}
             >
               Initiate return
             </Button>
@@ -319,31 +338,22 @@ export function ComfortKitDispatchDetail(): JSX.Element {
         <FormDrawer
           title="Mark deployed at patient"
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button
               tone="primary"
               type="button"
               disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                setActionError(null);
-                const { error: err } = await deployAtPatient(
-                  client,
-                  dispatchId,
-                  dispatch.updatedAt,
-                  {
-                    deployedAt: toInstant(when),
-                  },
-                );
-                setBusy(false);
-                if (err) {
-                  setActionError(errorMessage(err, "The deployment could not be recorded."));
-                  return;
-                }
-                close();
-                void load();
-              }}
+              onClick={() =>
+                void run(
+                  () =>
+                    deployAtPatient(client, dispatchId, dispatch.updatedAt, {
+                      deployedAt: toInstant(when),
+                    }),
+                  "The deployment could not be recorded.",
+                )
+              }
             >
               Mark deployed
             </Button>
@@ -360,27 +370,19 @@ export function ComfortKitDispatchDetail(): JSX.Element {
         <FormDrawer
           title="Open the return obligation"
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button
               tone="primary"
               type="button"
               disabled={busy || returnReason.trim() === ""}
-              onClick={async () => {
-                setBusy(true);
-                setActionError(null);
-                const { error: err } = await createReturn(client, {
-                  dispatchId,
-                  returnReason: returnReason.trim(),
-                });
-                setBusy(false);
-                if (err) {
-                  setActionError(errorMessage(err, "The return could not be opened."));
-                  return;
-                }
-                close();
-                void load();
-              }}
+              onClick={() =>
+                void run(
+                  () => createReturn(client, { dispatchId, returnReason: returnReason.trim() }),
+                  "The return could not be opened.",
+                )
+              }
             >
               Open return
             </Button>

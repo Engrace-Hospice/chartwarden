@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 // A routing rule is a multi-field form on the rules screen, so it opens as a drawer in the detail rail beside the rules
 // it joins (the redesign's pattern), not as a dialog over them. Cancel closes it and sends nothing; one form is open at
-// a time (New rule and Edit share the drawer).
+// a time (New rule and Edit share the drawer). While a write is in flight the drawer cannot be dismissed and the page
+// beside it is inert; a refused or rejected write is announced in the drawer, which stays dismissible (a refused Retire,
+// which has no drawer, on the page), and a reload (a filter change) leaves an open drawer and its typed text alone.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -34,14 +36,15 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(): { post: ReturnType<typeof vi.fn>; patch: ReturnType<typeof vi.fn> } {
-  const post = vi.fn(async () => ok({}));
-  const patch = vi.fn(async () => ok({}));
-  const client = {
-    GET: vi.fn(async () => ok({ data: [rule], next_cursor: null, has_more: false })),
-    POST: post,
-    PATCH: patch,
-  } as unknown as ApiClient;
+function mount(onWrite: () => Promise<unknown> = async () => ok({})): {
+  post: ReturnType<typeof vi.fn>;
+  del: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+} {
+  const post = vi.fn(onWrite);
+  const del = vi.fn(onWrite);
+  const get = vi.fn(async () => ok({ data: [rule], next_cursor: null, has_more: false }));
+  const client = { GET: get, POST: post, PUT: vi.fn(onWrite), DELETE: del } as unknown as ApiClient;
   render(
     <MemoryRouter>
       <ApiClientProvider client={client}>
@@ -49,7 +52,7 @@ function mount(): { post: ReturnType<typeof vi.fn>; patch: ReturnType<typeof vi.
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { post, patch };
+  return { post, del, get };
 }
 
 const drawerNamed = (name: string) => screen.findByRole("complementary", { name });
@@ -78,7 +81,7 @@ describe("vendor routing — rules", () => {
   });
 
   it("closes from Cancel without sending anything", async () => {
-    const { post, patch } = mount();
+    const { post } = mount();
     fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
     const drawer = await drawerNamed("New routing rule");
     fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
@@ -86,7 +89,6 @@ describe("vendor routing — rules", () => {
       expect(screen.queryByRole("complementary", { name: "New routing rule" })).toBeNull(),
     );
     expect(post).not.toHaveBeenCalled();
-    expect(patch).not.toHaveBeenCalled();
   });
 
   it("saves the rule and closes the drawer", async () => {
@@ -113,5 +115,86 @@ describe("vendor routing — rules", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(await drawerNamed("Edit routing rule")).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "New routing rule" })).toBeNull();
+  });
+
+  it("holds the drawer and everything beside it while a write is in flight", async () => {
+    let release: () => void = () => {};
+    const { post } = mount(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(ok({}));
+        }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
+    const drawer = await drawerNamed("New routing rule");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save rule" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (within(drawer).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "New routing rule" })).toBe(drawer);
+    // A row's Edit cannot swap the drawer under the write.
+    const edit = screen.getByRole("button", { name: "Edit", hidden: true });
+    expect(edit.closest("[inert]")).not.toBeNull();
+    release();
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New routing rule" })).toBeNull(),
+    );
+  });
+
+  it("announces a rejected request in the drawer, which stays dismissible", async () => {
+    mount(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
+    const drawer = await drawerNamed("New routing rule");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save rule" }));
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert.textContent).toBe("The routing rule could not be saved.");
+    const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+    expect(cancel.disabled).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Save rule" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(cancel);
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New routing rule" })).toBeNull(),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows a rejected Retire on the page and frees the row to retry", async () => {
+    const { del } = mount(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const retire = (await screen.findByRole("button", { name: "Retire" })) as HTMLButtonElement;
+    fireEvent.click(retire);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("The rule could not be retired.");
+    expect(del).toHaveBeenCalledTimes(1);
+    expect(retire.disabled).toBe(false);
+  });
+
+  it("keeps the drawer and its typed text while a filter reloads the rules", async () => {
+    const { get } = mount();
+    fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
+    const drawer = await drawerNamed("New routing rule");
+    const vendor = within(drawer).getByLabelText(/^Vendor id/) as HTMLInputElement;
+    fireEvent.change(vendor, { target: { value: "vendor-9" } });
+    const retired = screen.getByLabelText("Include retired rules") as HTMLInputElement;
+    fireEvent.click(retired);
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    // The reload has landed once the page stops announcing itself busy.
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+    // The same drawer and the same filter survive the reload: no unmount, so no lost focus or typed text.
+    expect(screen.getByRole("complementary", { name: "New routing rule" })).toBe(drawer);
+    expect(vendor.isConnected).toBe(true);
+    expect(vendor.value).toBe("vendor-9");
+    expect(retired.isConnected).toBe(true);
+    expect(retired.checked).toBe(true);
   });
 });

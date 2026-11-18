@@ -52,6 +52,7 @@ import {
   tdQty,
   thNum,
 } from "./supplies-ui";
+import { useWrite } from "./use-write";
 
 const PAGE = 200;
 
@@ -77,9 +78,13 @@ export function ParStockAdmin(): JSX.Element {
   const [belowOnly, setBelowOnly] = useState(false);
   const [rows, setRows] = useState<ParStockView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A refusal of the count drawer shows in the drawer; an inline threshold edit has no drawer, so its own refusal
+  // shows on the page.
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const { busy, run: runWrite } = useWrite();
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<ThresholdDraft>({
     reorderPoint: "",
@@ -104,6 +109,7 @@ export function ParStockAdmin(): JSX.Element {
       return;
     }
     setRows(page?.data ?? []);
+    setLoadedOnce(true);
     setLoading(false);
   }, [client, locationId, belowOnly]);
 
@@ -111,7 +117,9 @@ export function ParStockAdmin(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first load only. A reload (a filter keystroke, a save) keeps the page and any open drawer
+  // mounted, with the previous rows showing, so the drawer's typed text, focus and opener survive it.
+  if (loading && !loadedOnce) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
   // The band filter is applied CLIENT-side because §4.1 publishes no `severity` query param — only the
@@ -126,7 +134,7 @@ export function ParStockAdmin(): JSX.Element {
 
   const startEdit = (row: ParStockView) => {
     setEditing(row.parStockId);
-    setActionError(null);
+    setEditError(null);
     setDraft({
       reorderPoint: row.reorderPoint,
       reorderQuantity: row.reorderQuantity,
@@ -135,25 +143,51 @@ export function ParStockAdmin(): JSX.Element {
   };
 
   const saveEdit = async (row: ParStockView) => {
-    setBusy(true);
-    setActionError(null);
-    const { error: err } = await updateParStock(client, row.parStockId, row.updatedAt, {
-      reorderPoint: draft.reorderPoint.trim(),
-      reorderQuantity: draft.reorderQuantity.trim(),
-      minSafetyStock: draft.minSafetyStock.trim(),
-    });
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, "The thresholds could not be saved."));
+    setEditError(null);
+    const failed = await runWrite(
+      () =>
+        updateParStock(client, row.parStockId, row.updatedAt, {
+          reorderPoint: draft.reorderPoint.trim(),
+          reorderQuantity: draft.reorderQuantity.trim(),
+          minSafetyStock: draft.minSafetyStock.trim(),
+        }),
+      "The thresholds could not be saved.",
+    );
+    if (failed) {
+      setEditError(failed);
       return;
     }
     setEditing(null);
     void load();
   };
 
+  const closeObserving = () => {
+    setObserving(null);
+    setActionError(null);
+  };
+
+  const saveObservation = async (row: ParStockView) => {
+    setActionError(null);
+    const failed = await runWrite(
+      () =>
+        observeParStock(client, {
+          parStockId: row.parStockId,
+          observedQuantity: observedQuantity.trim(),
+          ...(observationNote.trim() ? { reorderNotes: observationNote.trim() } : {}),
+        }),
+      "The count could not be recorded.",
+    );
+    if (failed) {
+      setActionError(failed);
+      return;
+    }
+    closeObserving();
+    void load();
+  };
+
   return (
     <div className={`wx-list-drawer${observing ? " has-drawer" : ""}`}>
-      <div className="wx-list-drawer-main wx-kit-column">
+      <div className="wx-list-drawer-main wx-kit-column" aria-busy={loading}>
         <PageHeader
           title={<span style={pageTitleStyle}>Par stock</span>}
           actions={
@@ -169,7 +203,11 @@ export function ParStockAdmin(): JSX.Element {
           and the screen reading it would show a green shelf that is actually empty.
         </Notice>
 
-        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
+        {editError ? (
+          <p className="wx-text-error" role="alert">
+            {editError}
+          </p>
+        ) : null}
 
         <FilterRow>
           <TextField label="Location id" value={locationId} onChange={setLocationId} mono />
@@ -270,7 +308,7 @@ export function ParStockAdmin(): JSX.Element {
                               <Button
                                 tone="primary"
                                 type="button"
-                                disabled={busy}
+                                disabled={busy || loading}
                                 onClick={() => void saveEdit(row)}
                               >
                                 Save
@@ -298,7 +336,8 @@ export function ParStockAdmin(): JSX.Element {
                                   setActionError(null);
                                 }}
                               >
-                                Record count
+                                {/* The ellipsis marks the opener: the open drawer's save button carries the plain name. */}
+                                Record count…
                               </Button>
                             </>
                           )}
@@ -319,30 +358,17 @@ export function ParStockAdmin(): JSX.Element {
 
       {observing ? (
         <FormDrawer
+          key={observing.parStockId}
           title={`Record an on-hand count — ${observing.skuName}`}
           busy={busy}
-          onClose={() => setObserving(null)}
+          error={actionError}
+          onClose={closeObserving}
           save={
             <Button
               tone="primary"
               type="button"
               disabled={busy || observedQuantity.trim() === ""}
-              onClick={async () => {
-                setBusy(true);
-                setActionError(null);
-                const { error: err } = await observeParStock(client, {
-                  parStockId: observing.parStockId,
-                  observedQuantity: observedQuantity.trim(),
-                  ...(observationNote.trim() ? { reorderNotes: observationNote.trim() } : {}),
-                });
-                setBusy(false);
-                if (err) {
-                  setActionError(errorMessage(err, "The count could not be recorded."));
-                  return;
-                }
-                setObserving(null);
-                void load();
-              }}
+              onClick={() => void saveObservation(observing)}
             >
               Record count
             </Button>

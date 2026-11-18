@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 // Marking a comfort kit deployed and opening its return obligation open as a drawer in the detail rail beside the
 // dispatch (the redesign's pattern), so the manifest and the chain of custody stay in view while the act is recorded.
-// Cancel closes the drawer and writes nothing; each write stays disabled until its own rule is met.
+// Cancel closes the drawer and writes nothing; each write stays disabled until its own rule is met. While a write is in
+// flight the drawer cannot be dismissed and the page beside it is inert; a refused or rejected write is announced in the
+// drawer, which stays dismissible.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -47,8 +49,11 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(status: DispatchDetail["dispatchStatus"]): { post: ReturnType<typeof vi.fn> } {
-  const post = vi.fn(async () => ok({}));
+function mount(
+  status: DispatchDetail["dispatchStatus"],
+  onPost: () => Promise<unknown> = async () => ok({}),
+): { post: ReturnType<typeof vi.fn> } {
+  const post = vi.fn(onPost);
   const client = {
     GET: vi.fn(async () => ok(dispatchIn(status))),
     POST: post,
@@ -127,4 +132,86 @@ describe("comfort-kit dispatch — deploy and return", () => {
       ).toBeNull(),
     );
   });
+
+  it("starts the deployment time at the moment the drawer is opened, every time", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(2026, 10, 18, 9, 0));
+      mount("dispatched");
+      const first = await open("Mark deployed at patient", "Mark deployed at patient");
+      const field = () => within(first).getByLabelText("Deployed at") as HTMLInputElement;
+      expect(field().value).toBe("2026-11-18T09:00");
+      fireEvent.change(field(), { target: { value: "2026-11-01T01:00" } });
+      fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("complementary", { name: "Mark deployed at patient" }),
+        ).toBeNull(),
+      );
+      vi.setSystemTime(new Date(2026, 10, 18, 11, 30));
+      const second = await open("Mark deployed at patient", "Mark deployed at patient");
+      expect((within(second).getByLabelText("Deployed at") as HTMLInputElement).value).toBe(
+        "2026-11-18T11:30",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("holds the drawer and everything beside it while a write is in flight", async () => {
+    let release: () => void = () => {};
+    const { post } = mount(
+      "dispatched",
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(ok({}));
+        }),
+    );
+    const drawer = await open("Mark deployed at patient", "Mark deployed at patient");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Mark deployed" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (within(drawer).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "Mark deployed at patient" })).toBe(drawer);
+    // The page's own openers cannot swap the drawer under the write.
+    const opener = screen.getByRole("button", { name: "Initiate return", hidden: true });
+    expect(opener.closest("[inert]")).not.toBeNull();
+    release();
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Mark deployed at patient" })).toBeNull(),
+    );
+  });
+
+  it.each([
+    ["dispatched", "Mark deployed at patient", "Mark deployed at patient", "Mark deployed"],
+    ["deployed_at_patient", "Initiate return", "Open the return obligation", "Open return"],
+  ] as const)(
+    "announces a rejected request in the %s drawer, which stays dismissible",
+    async (status, opener, drawerName, save) => {
+      mount(status, async () => {
+        throw new TypeError("Failed to fetch");
+      });
+      const drawer = await open(opener, drawerName);
+      if (status === "deployed_at_patient") {
+        fireEvent.change(within(drawer).getByLabelText("Return reason"), {
+          target: { value: "Patient discharged; kit no longer needed." },
+        });
+      }
+      fireEvent.click(within(drawer).getByRole("button", { name: save }));
+      const alert = await within(drawer).findByRole("alert");
+      expect(alert.textContent).toMatch(/could not be/);
+      const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+      expect(cancel.disabled).toBe(false);
+      fireEvent.click(cancel);
+      await waitFor(() =>
+        expect(screen.queryByRole("complementary", { name: drawerName })).toBeNull(),
+      );
+      expect(screen.queryByRole("alert")).toBeNull();
+    },
+  );
 });

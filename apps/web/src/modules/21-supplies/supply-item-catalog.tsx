@@ -52,6 +52,7 @@ import {
   ghostButtonStyle,
   pageTitleStyle,
 } from "./supplies-ui";
+import { useWrite } from "./use-write";
 
 const PAGE = 200;
 
@@ -84,9 +85,11 @@ export function SupplyItemCatalog(): JSX.Element {
   const [includeRetired, setIncludeRetired] = useState(false);
   const [items, setItems] = useState<SupplyItemView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Every write on this screen is the drawer's, so its refusal shows in the drawer.
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, run: runWrite } = useWrite();
   const [editing, setEditing] = useState<SupplyItemView | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<TenantItemDraft>(EMPTY_TENANT_ITEM);
@@ -108,6 +111,7 @@ export function SupplyItemCatalog(): JSX.Element {
       return;
     }
     setItems(page?.data ?? []);
+    setLoadedOnce(true);
     setLoading(false);
   }, [client, query, skuClass, includeRetired]);
 
@@ -115,11 +119,18 @@ export function SupplyItemCatalog(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first load only. A reload (a search keystroke, a save) keeps the page and any open drawer
+  // mounted, with the previous rows showing, so the drawer's typed text, focus and opener survive it.
+  if (loading && !loadedOnce) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
+  const closeDrawer = () => {
+    setCreating(false);
+    setEditing(null);
+    setActionError(null);
+  };
+
   const save = async () => {
-    setBusy(true);
     setActionError(null);
     const body = {
       name: draft.name.trim(),
@@ -128,16 +139,18 @@ export function SupplyItemCatalog(): JSX.Element {
       isBillable: draft.isBillable,
       isActive: draft.isActive,
     };
-    const { error: err } = editing
-      ? await updateTenantSupplyItem(client, editing.supplyItemId, body)
-      : await createTenantSupplyItem(client, body);
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, "The tenant item could not be saved."));
+    const failed = await runWrite(
+      () =>
+        editing
+          ? updateTenantSupplyItem(client, editing.supplyItemId, body)
+          : createTenantSupplyItem(client, body),
+      "The tenant item could not be saved.",
+    );
+    if (failed) {
+      setActionError(failed);
       return;
     }
-    setEditing(null);
-    setCreating(false);
+    closeDrawer();
     void load();
   };
 
@@ -148,7 +161,7 @@ export function SupplyItemCatalog(): JSX.Element {
 
   return (
     <div className={`wx-list-drawer${creating || editing ? " has-drawer" : ""}`}>
-      <div className="wx-list-drawer-main wx-kit-column">
+      <div className="wx-list-drawer-main wx-kit-column" aria-busy={loading}>
         <PageHeader
           title={<span style={pageTitleStyle}>Supply catalog</span>}
           actions={
@@ -178,8 +191,6 @@ export function SupplyItemCatalog(): JSX.Element {
           refuses it again. Your agency's own shelf items live in the overlay below, and never carry
           a HCPCS code.
         </Notice>
-
-        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
         <FilterRow>
           <TextField label="Search name or HCPCS" value={query} onChange={setQuery} />
@@ -301,12 +312,11 @@ export function SupplyItemCatalog(): JSX.Element {
 
       {creating || editing ? (
         <FormDrawer
+          key={editing ? editing.supplyItemId : "new"}
           title={editing ? "Edit tenant item" : "New tenant item"}
           busy={busy}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
+          error={actionError}
+          onClose={closeDrawer}
           save={
             <Button
               tone="primary"

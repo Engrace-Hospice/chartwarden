@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 // Adding or editing a tenant item is a multi-field form on the catalog screen, so it opens as a drawer in the detail
 // rail beside the catalog (the redesign's pattern), not as a dialog over it. Cancel closes it and sends nothing; Save
-// stays disabled until the item has a name, a local SKU code and a unit.
+// stays disabled until the item has a name, a local SKU code and a unit. While a write is in flight the drawer cannot be
+// dismissed and the page beside it is inert; a refused or rejected write is announced in the drawer, which stays
+// dismissible, and a reload (a search keystroke) leaves an open drawer and its typed text alone.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -39,14 +41,15 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(): { post: ReturnType<typeof vi.fn>; patch: ReturnType<typeof vi.fn> } {
-  const post = vi.fn(async () => ok({}));
-  const patch = vi.fn(async () => ok({}));
-  const client = {
-    GET: vi.fn(async () => ok({ data: [overlayItem], next_cursor: null, has_more: false })),
-    POST: post,
-    PATCH: patch,
-  } as unknown as ApiClient;
+function mount(onWrite: () => Promise<unknown> = async () => ok({})): {
+  post: ReturnType<typeof vi.fn>;
+  put: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+} {
+  const post = vi.fn(onWrite);
+  const put = vi.fn(onWrite);
+  const get = vi.fn(async () => ok({ data: [overlayItem], next_cursor: null, has_more: false }));
+  const client = { GET: get, POST: post, PUT: put } as unknown as ApiClient;
   render(
     <MemoryRouter>
       <ApiClientProvider client={client}>
@@ -54,7 +57,7 @@ function mount(): { post: ReturnType<typeof vi.fn>; patch: ReturnType<typeof vi.
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { post, patch };
+  return { post, put, get };
 }
 
 const drawerNamed = (name: string) => screen.findByRole("complementary", { name });
@@ -83,7 +86,7 @@ describe("supply catalog — tenant items", () => {
   });
 
   it("closes from Cancel without saving anything", async () => {
-    const { post, patch } = mount();
+    const { post, put } = mount();
     fireEvent.click(await screen.findByRole("button", { name: "New tenant item" }));
     const drawer = await drawerNamed("New tenant item");
     fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
@@ -91,7 +94,7 @@ describe("supply catalog — tenant items", () => {
       expect(screen.queryByRole("complementary", { name: "New tenant item" })).toBeNull(),
     );
     expect(post).not.toHaveBeenCalled();
-    expect(patch).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("keeps Save item disabled until the item is complete, then files it and closes", async () => {
@@ -113,5 +116,80 @@ describe("supply catalog — tenant items", () => {
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "New tenant item" })).toBeNull(),
     );
+  });
+
+  const fillNewItem = async (): Promise<HTMLElement> => {
+    fireEvent.click(await screen.findByRole("button", { name: "New tenant item" }));
+    const drawer = await drawerNamed("New tenant item");
+    fireEvent.change(within(drawer).getByLabelText("Name"), { target: { value: "Bed pads" } });
+    fireEvent.change(within(drawer).getByLabelText("Local SKU code"), {
+      target: { value: "PAD-01" },
+    });
+    return drawer;
+  };
+
+  it("holds the drawer and everything beside it while a write is in flight", async () => {
+    let release: () => void = () => {};
+    const { post } = mount(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(ok({}));
+        }),
+    );
+    const drawer = await fillNewItem();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save item" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (within(drawer).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "New tenant item" })).toBe(drawer);
+    // A row's Edit cannot swap the drawer under the write.
+    const edit = screen.getByRole("button", { name: "Edit", hidden: true });
+    expect(edit.closest("[inert]")).not.toBeNull();
+    release();
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New tenant item" })).toBeNull(),
+    );
+  });
+
+  it("announces a rejected request in the drawer, which stays dismissible", async () => {
+    mount(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const drawer = await fillNewItem();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save item" }));
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert.textContent).toBe("The tenant item could not be saved.");
+    const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+    expect(cancel.disabled).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Save item" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(cancel);
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New tenant item" })).toBeNull(),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the drawer and its typed text while the search reloads the catalog", async () => {
+    const { get } = mount();
+    const drawer = await fillNewItem();
+    const name = within(drawer).getByLabelText("Name") as HTMLInputElement;
+    const search = screen.getByLabelText("Search name or HCPCS") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "pad" } });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    // The reload has landed once the page stops announcing itself busy.
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+    // The same drawer and the same search field survive the reload: no unmount, so no lost focus or typed text.
+    expect(screen.getByRole("complementary", { name: "New tenant item" })).toBe(drawer);
+    expect(name.isConnected).toBe(true);
+    expect(name.value).toBe("Bed pads");
+    expect(search.isConnected).toBe(true);
+    expect(search.value).toBe("pad");
   });
 });

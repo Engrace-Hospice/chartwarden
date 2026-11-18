@@ -82,6 +82,7 @@ import {
   tdQty,
   thNum,
 } from "./supplies-ui";
+import { useWrite } from "./use-write";
 
 type Ceremony = "assign-retriever" | "unreturnable" | null;
 
@@ -99,6 +100,24 @@ interface CountDraft {
   discrepancyExplanation: string;
 }
 
+/** A fresh worksheet row for one dispatched line. */
+function seedCount(c: DispatchedContentView): CountDraft {
+  return {
+    dispatchedContentId: c.dispatchedContentId,
+    drugName: c.drugName,
+    lotNumber: c.lotNumber,
+    isControlledSubstance: c.isControlledSubstance,
+    controlledSubstanceSchedule: c.controlledSubstanceSchedule,
+    dispatchedQuantity: c.dispatchedQuantity,
+    dispatchedUnit: c.dispatchedUnit,
+    // Deliberately BLANK rather than pre-filled with the dispatched amount: a worksheet that opens
+    // pre-balanced invites a reconciler to submit a count they never made.
+    quantityReturned: "",
+    quantityDisposedAtHome: "0",
+    discrepancyExplanation: "",
+  };
+}
+
 export function ComfortKitReturnReconciliation(): JSX.Element {
   const client = useApiClient();
   const { returnId } = useParams<{ returnId: string }>();
@@ -108,8 +127,10 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
   const [counts, setCounts] = useState<CountDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // A refusal of the retriever / write-off drawer shows in that drawer; the worksheet's own refusal has no drawer.
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
+  const { busy, run: runWrite } = useWrite();
   const [ceremony, setCeremony] = useState<Ceremony>(null);
 
   const [disposalMethod, setDisposalMethod] = useState(DEFAULT_DISPOSAL_METHOD);
@@ -147,21 +168,19 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
       return;
     }
     setContents(dispatch.contents);
-    setCounts(
-      dispatch.contents.map((c) => ({
-        dispatchedContentId: c.dispatchedContentId,
-        drugName: c.drugName,
-        lotNumber: c.lotNumber,
-        isControlledSubstance: c.isControlledSubstance,
-        controlledSubstanceSchedule: c.controlledSubstanceSchedule,
-        dispatchedQuantity: c.dispatchedQuantity,
-        dispatchedUnit: c.dispatchedUnit,
-        // Deliberately BLANK rather than pre-filled with the dispatched amount: a worksheet that opens
-        // pre-balanced invites a reconciler to submit a count they never made.
-        quantityReturned: "",
-        quantityDisposedAtHome: "0",
-        discrepancyExplanation: "",
-      })),
+    // Merge, never re-seed: a reload after a step (assigning a retriever leaves the return open) must not wipe the
+    // quantities and explanations already typed in the worksheet.
+    setCounts((prev) =>
+      dispatch.contents.map((c) => {
+        const typed = prev.find((p) => p.dispatchedContentId === c.dispatchedContentId);
+        if (!typed) return seedCount(c);
+        return {
+          ...seedCount(c),
+          quantityReturned: typed.quantityReturned,
+          quantityDisposedAtHome: typed.quantityDisposedAtHome,
+          discrepancyExplanation: typed.discrepancyExplanation,
+        };
+      }),
     );
     setLoading(false);
   }, [client, returnId]);
@@ -170,7 +189,9 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first load only. A reload after a write keeps the page (and any open drawer) mounted, so an
+  // open form is not torn down and remounted under the responder.
+  if (loading && !ret) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!ret || !returnId)
     return (
@@ -196,13 +217,16 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
   const anyFlagged = flagged.some(Boolean);
 
   const open = OPEN_RETURN_STATES.includes(ret.state);
+  // While a reload is in flight the page still shows the previous read; its version stamp is about to change, so no
+  // stamped write is offered from it.
+  const writable = open && !loading;
   const witnessRequired = disposalMethod === WITNESS_REQUIRED_DISPOSAL_METHOD;
   const explanationsPresent = counts.every(
     (c, i) => !flagged[i] || c.discrepancyExplanation.trim() !== "",
   );
   const countsEntered = counts.length > 0 && counts.every((c) => c.quantityReturned.trim() !== "");
   const canReconcile =
-    open &&
+    writable &&
     countsEntered &&
     explanationsPresent &&
     (!witnessRequired || witnessMembershipId.trim() !== "");
@@ -210,6 +234,23 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
   const close = () => {
     setCeremony(null);
     setActionError(null);
+  };
+
+  const openCeremony = (next: Exclude<Ceremony, null>) => {
+    setActionError(null);
+    setCeremony(next);
+  };
+
+  /** Run a drawer's write, then reload. A refusal (or a rejected request) stays in the drawer, beside Save. */
+  const run = async (fn: () => Promise<{ error: unknown }>, failure: string) => {
+    setActionError(null);
+    const failed = await runWrite(fn, failure);
+    if (failed) {
+      setActionError(failed);
+      return;
+    }
+    close();
+    void load();
   };
 
   const timeline = [
@@ -229,28 +270,30 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
   ].filter((e): e is { label: string; at: string; by?: string } => e !== null);
 
   const submitReconcile = async () => {
-    setBusy(true);
-    setActionError(null);
-    const { error: err } = await reconcileReturn(client, returnId, ret.updatedAt, {
-      // `disposalMethod` is always one of DISPOSAL_METHODS — the SelectField below offers no other value.
-      disposalMethod: disposalMethod as ReturnDisposalMethod,
-      ...(witnessMembershipId.trim()
-        ? { disposalWitnessMembershipId: witnessMembershipId.trim() }
-        : {}),
-      perMedicationReconciliation: counts.map((c) => ({
-        dispatchedContentId: c.dispatchedContentId,
-        quantityReturned: c.quantityReturned.trim(),
-        quantityDisposedAtHome: (c.quantityDisposedAtHome || "0").trim(),
-        ...(c.discrepancyExplanation.trim()
-          ? { discrepancyExplanation: c.discrepancyExplanation.trim() }
-          : {}),
-      })),
-      ...(disposalNotes.trim() ? { disposalNotes: disposalNotes.trim() } : {}),
-      ...(discrepancyNotes.trim() ? { discrepancyNotes: discrepancyNotes.trim() } : {}),
-    });
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, "The reconciliation could not be recorded."));
+    setReconcileError(null);
+    const failed = await runWrite(
+      () =>
+        reconcileReturn(client, returnId, ret.updatedAt, {
+          // `disposalMethod` is always one of DISPOSAL_METHODS — the SelectField below offers no other value.
+          disposalMethod: disposalMethod as ReturnDisposalMethod,
+          ...(witnessMembershipId.trim()
+            ? { disposalWitnessMembershipId: witnessMembershipId.trim() }
+            : {}),
+          perMedicationReconciliation: counts.map((c) => ({
+            dispatchedContentId: c.dispatchedContentId,
+            quantityReturned: c.quantityReturned.trim(),
+            quantityDisposedAtHome: (c.quantityDisposedAtHome || "0").trim(),
+            ...(c.discrepancyExplanation.trim()
+              ? { discrepancyExplanation: c.discrepancyExplanation.trim() }
+              : {}),
+          })),
+          ...(disposalNotes.trim() ? { disposalNotes: disposalNotes.trim() } : {}),
+          ...(discrepancyNotes.trim() ? { discrepancyNotes: discrepancyNotes.trim() } : {}),
+        }),
+      "The reconciliation could not be recorded.",
+    );
+    if (failed) {
+      setReconcileError(failed);
       return;
     }
     void load();
@@ -303,7 +346,6 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
         ) : null}
 
         {manifestError ? <Notice tone="error">{manifestError}</Notice> : null}
-        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
         <Panel
           stack
@@ -556,6 +598,11 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
               rows={3}
             />
 
+            {reconcileError ? (
+              <p className="wx-text-error" role="alert">
+                {reconcileError}
+              </p>
+            ) : null}
             <div style={{ display: "flex", gap: t.space2, justifyContent: "flex-end" }}>
               <Button
                 tone="primary"
@@ -579,22 +626,23 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
             <Button
               tone="secondary"
               type="button"
-              disabled={!open}
+              disabled={!writable}
               title={open ? undefined : "This return has reached a terminal state."}
-              aria-disabled={!open}
-              onClick={open ? () => setCeremony("assign-retriever") : undefined}
+              aria-disabled={!writable}
+              onClick={writable ? () => openCeremony("assign-retriever") : undefined}
             >
               Assign retriever
             </Button>
             <Button
               tone="secondary"
               type="button"
-              disabled={!open}
+              disabled={!writable}
               title={open ? undefined : "This return has reached a terminal state."}
-              aria-disabled={!open}
-              onClick={open ? () => setCeremony("unreturnable") : undefined}
+              aria-disabled={!writable}
+              onClick={writable ? () => openCeremony("unreturnable") : undefined}
             >
-              Declare unreturnable
+              {/* The ellipsis marks the opener: the open drawer's save button carries the plain name. */}
+              Declare unreturnable…
             </Button>
           </div>
           <span className="wx-text-muted">
@@ -609,26 +657,22 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
         <FormDrawer
           title="Assign the retrieving staff member"
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button
               tone="primary"
               type="button"
-              disabled={busy || retrieverMembershipId.trim() === ""}
-              onClick={async () => {
-                setBusy(true);
-                setActionError(null);
-                const { error: err } = await assignRetriever(client, returnId, ret.updatedAt, {
-                  retrievingMembershipId: retrieverMembershipId.trim(),
-                });
-                setBusy(false);
-                if (err) {
-                  setActionError(errorMessage(err, "The retriever could not be assigned."));
-                  return;
-                }
-                close();
-                void load();
-              }}
+              disabled={busy || loading || retrieverMembershipId.trim() === ""}
+              onClick={() =>
+                void run(
+                  () =>
+                    assignRetriever(client, returnId, ret.updatedAt, {
+                      retrievingMembershipId: retrieverMembershipId.trim(),
+                    }),
+                  "The retriever could not be assigned.",
+                )
+              }
             >
               Assign
             </Button>
@@ -650,26 +694,22 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
         <FormDrawer
           title="Declare this kit unreturnable"
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button
               tone="primary"
               type="button"
-              disabled={busy || unreturnableReason.trim() === ""}
-              onClick={async () => {
-                setBusy(true);
-                setActionError(null);
-                const { error: err } = await declareUnreturnable(client, returnId, ret.updatedAt, {
-                  reason: unreturnableReason.trim(),
-                });
-                setBusy(false);
-                if (err) {
-                  setActionError(errorMessage(err, "The write-off could not be recorded."));
-                  return;
-                }
-                close();
-                void load();
-              }}
+              disabled={busy || loading || unreturnableReason.trim() === ""}
+              onClick={() =>
+                void run(
+                  () =>
+                    declareUnreturnable(client, returnId, ret.updatedAt, {
+                      reason: unreturnableReason.trim(),
+                    }),
+                  "The write-off could not be recorded.",
+                )
+              }
             >
               Declare unreturnable
             </Button>

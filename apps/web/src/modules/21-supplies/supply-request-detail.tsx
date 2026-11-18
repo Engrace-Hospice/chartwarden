@@ -67,7 +67,6 @@ import {
   dateTime,
   humanize,
   requestKindLabel,
-  shortDate,
   shortId,
   toneOf,
 } from "./supplies-status";
@@ -83,6 +82,7 @@ import {
   ghostButtonStyle,
   pageTitleStyle,
 } from "./supplies-ui";
+import { useWrite } from "./use-write";
 
 type Ceremony =
   | "assign-vendor"
@@ -108,7 +108,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, run: runWrite } = useWrite();
 
   // ceremony fields
   const [vendorId, setVendorId] = useState("");
@@ -159,23 +159,25 @@ export function SupplyRequestDetailScreen(): JSX.Element {
     setActionError(null);
   };
 
-  /** Open one step. The drawers share a few fields (the reason), so a reason typed for one step must not follow the
-   *  responder into another when they switch with the drawer already open. */
+  /** Open one step. The drawers share a few fields (the reason, the time), so a reason typed for one step must not
+   *  follow the responder into another when they switch with the drawer already open, and the delivery / receipt
+   *  time — custody timestamps — starts at the moment the step is opened, never at page load or at a time edited
+   *  in the other step. */
   const openCeremony = (next: Exclude<Ceremony, null>) => {
     setReason("");
+    setWhen(nowLocalInput());
     setActionError(null);
     setCeremony(next);
   };
 
   /** Run a transition, then reload — the response carries the new row, but a reload also refreshes the
-   *  derived `dispatchId` the kit path needs, and costs one read on a screen nobody opens in a loop. */
+   *  derived `dispatchId` the kit path needs, and costs one read on a screen nobody opens in a loop. A refusal
+   *  (or a rejected request) stays in the drawer, beside Save. */
   const run = async (fn: () => Promise<{ error: unknown }>, failure: string) => {
-    setBusy(true);
     setActionError(null);
-    const { error: err } = await fn();
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, failure));
+    const failed = await runWrite(fn, failure);
+    if (failed) {
+      setActionError(failed);
       return;
     }
     close();
@@ -263,8 +265,6 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             `m11.order.discontinued`.
           </Notice>
         ) : null}
-
-        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
         <Panel
           stack
@@ -479,14 +479,16 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               precondition="Only a request still in `requested` can have its vendor assigned."
               onClick={() => openCeremony("assign-vendor")}
             />
+            {/* The ellipsis marks these as openers: the open drawer's own Cancel / save buttons carry the plain
+                names, and two buttons with one accessible name cannot be told apart by voice control. */}
             <ActionButton
-              label="Mark ordered"
+              label="Mark ordered…"
               enabled={can.markOrdered}
               precondition="A vendor must be assigned before an order can be placed."
               onClick={() => openCeremony("mark-ordered")}
             />
             <ActionButton
-              label="Mark in transit"
+              label="Mark in transit…"
               enabled={can.markInTransit}
               precondition="The vendor must have accepted the order first."
               onClick={() => openCeremony("mark-in-transit")}
@@ -498,7 +500,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               onClick={() => openCeremony("mark-delivered")}
             />
             <ActionButton
-              label="Confirm receipt"
+              label="Confirm receipt…"
               enabled={can.confirmReceived}
               precondition="Receipt is confirmed after delivery is attested."
               onClick={() => openCeremony("confirm-received")}
@@ -514,7 +516,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               onClick={() => openCeremony("return")}
             />
             <ActionButton
-              label="Cancel"
+              label="Cancel this request…"
               enabled={can.cancel}
               precondition="This request has already reached a state cancellation cannot touch."
               onClick={() => openCeremony("cancel")}
@@ -527,6 +529,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         <FormDrawer
           title="Assign or override the vendor"
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button
@@ -593,6 +596,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         <FormDrawer
           title="Record the vendor's acceptance"
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button
@@ -629,6 +633,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         <FormDrawer
           title="Record the shipment"
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button
@@ -658,6 +663,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         <FormDrawer
           title="Attest delivery"
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button
@@ -708,6 +714,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         <FormDrawer
           title="Confirm receipt"
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button
@@ -745,9 +752,12 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         </FormDrawer>
       ) : null}
       {ceremony === "cancel" || ceremony === "return" ? (
+        // One element serves both steps; the key resets its focus and Escape "edited" latch when one replaces the other.
         <FormDrawer
+          key={ceremony}
           title={ceremony === "cancel" ? "Cancel this request" : "Initiate the kit return"}
           busy={busy}
+          error={actionError}
           onClose={close}
           save={
             <Button

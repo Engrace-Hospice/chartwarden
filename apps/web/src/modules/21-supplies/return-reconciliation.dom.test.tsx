@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 // Assigning a retriever and declaring a kit unreturnable open as a drawer in the detail rail beside the return (the
 // redesign's pattern), so the custody trail and the count worksheet stay in view. Cancel closes the drawer and writes
-// nothing; each write stays disabled until its own rule is met; one of the two is open at a time.
+// nothing; each write stays disabled until its own rule is met; one of the two is open at a time. While a write is in
+// flight the drawer cannot be dismissed and the page beside it is inert; a refused or rejected write is announced in the
+// drawer, which stays dismissible. A reload after a step keeps the count worksheet's typed quantities and any open drawer.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComfortKitReturnReconciliation } from "./return-reconciliation";
-import type { ReturnDetail } from "./supplies-api";
+import type { DispatchedContentView, ReturnDetail } from "./supplies-api";
 
 afterEach(cleanup);
 
@@ -50,16 +52,36 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(): { post: ReturnType<typeof vi.fn> } {
-  const post = vi.fn(async () => ok({}));
-  const client = {
-    GET: vi.fn(async (path: string) =>
-      path === "/api/v1/supplies/comfort-kit-returns/{returnId}"
-        ? ok(returnRow)
-        : ok({ contents: [] }),
-    ),
-    POST: post,
-  } as unknown as ApiClient;
+const line: DispatchedContentView = {
+  dispatchedContentId: "44444444-4444-4444-8444-444444444444",
+  comfortKitTemplateMedicationId: "55555555-5555-4555-8555-555555555555",
+  medicationOrderId: null,
+  rxnorm: "0000001",
+  ndc: null,
+  drugName: "Morphine oral solution",
+  strength: "20 mg/mL",
+  dosageForm: "solution",
+  routeOfAdministration: "oral",
+  isControlledSubstance: true,
+  controlledSubstanceSchedule: "CII",
+  dispatchedQuantity: "30",
+  dispatchedUnit: "mL",
+  lotNumber: "LOT-1",
+  expirationDate: null,
+  manufacturerNdc: null,
+  replenishmentThresholdPct: 20,
+};
+
+function mount(
+  options: { onPost?: () => Promise<unknown>; contents?: DispatchedContentView[] } = {},
+): { post: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> } {
+  const post = vi.fn(options.onPost ?? (async () => ok({})));
+  const get = vi.fn(async (path: string) =>
+    path === "/api/v1/supplies/comfort-kit-returns/{returnId}"
+      ? ok(returnRow)
+      : ok({ contents: options.contents ?? [] }),
+  );
+  const client = { GET: get, POST: post } as unknown as ApiClient;
   render(
     <MemoryRouter initialEntries={["/supplies/returns/r-1"]}>
       <ApiClientProvider client={client}>
@@ -69,7 +91,7 @@ function mount(): { post: ReturnType<typeof vi.fn> } {
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { post };
+  return { post, get };
 }
 
 const open = async (button: string, drawerName: string): Promise<HTMLElement> => {
@@ -126,7 +148,7 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
 
   it("keeps the write-off disabled until a reason is attested", async () => {
     const { post } = mount();
-    const drawer = await open("Declare unreturnable", "Declare this kit unreturnable");
+    const drawer = await open("Declare unreturnable…", "Declare this kit unreturnable");
     const declare = within(drawer).getByRole("button", {
       name: "Declare unreturnable",
     }) as HTMLButtonElement;
@@ -145,12 +167,169 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
   it("keeps one form open at a time", async () => {
     mount();
     await open("Assign retriever", "Assign the retrieving staff member");
-    fireEvent.click(screen.getByRole("button", { name: "Declare unreturnable" }));
+    fireEvent.click(screen.getByRole("button", { name: "Declare unreturnable…" }));
     expect(
       await screen.findByRole("complementary", { name: "Declare this kit unreturnable" }),
     ).toBeTruthy();
     expect(
       screen.queryByRole("complementary", { name: "Assign the retrieving staff member" }),
     ).toBeNull();
+  });
+
+  it("names the page's openers apart from the open drawer's own buttons", async () => {
+    mount();
+    const drawer = await open("Declare unreturnable…", "Declare this kit unreturnable");
+    expect(screen.getAllByRole("button", { name: "Declare unreturnable" })).toEqual([
+      within(drawer).getByRole("button", { name: "Declare unreturnable" }),
+    ]);
+  });
+
+  it("holds the drawer and everything beside it while a write is in flight", async () => {
+    let release: () => void = () => {};
+    const { post } = mount({
+      onPost: () =>
+        new Promise((resolve) => {
+          release = () => resolve(ok({}));
+        }),
+    });
+    const drawer = await open("Assign retriever", "Assign the retrieving staff member");
+    fireEvent.change(within(drawer).getByLabelText("Retrieving membership id"), {
+      target: { value: "m-okafor" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (within(drawer).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "Assign the retrieving staff member" })).toBe(
+      drawer,
+    );
+    // The page's other opener cannot swap the drawer under the write.
+    const opener = screen.getByRole("button", { name: "Declare unreturnable…", hidden: true });
+    expect(opener.closest("[inert]")).not.toBeNull();
+    release();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "Assign the retrieving staff member" }),
+      ).toBeNull(),
+    );
+  });
+
+  it.each([
+    [
+      "Assign retriever",
+      "Assign the retrieving staff member",
+      "Retrieving membership id",
+      "Assign",
+    ],
+    [
+      "Declare unreturnable…",
+      "Declare this kit unreturnable",
+      "Attested reason",
+      "Declare unreturnable",
+    ],
+  ] as const)(
+    "announces a rejected %s request in the drawer, which stays dismissible",
+    async (opener, drawerName, field, save) => {
+      mount({
+        onPost: async () => {
+          throw new TypeError("Failed to fetch");
+        },
+      });
+      const drawer = await open(opener, drawerName);
+      fireEvent.change(within(drawer).getByLabelText(field), { target: { value: "text" } });
+      fireEvent.click(within(drawer).getByRole("button", { name: save }));
+      const alert = await within(drawer).findByRole("alert");
+      expect(alert.textContent).toMatch(/could not be/);
+      const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+      expect(cancel.disabled).toBe(false);
+      fireEvent.click(cancel);
+      await waitFor(() =>
+        expect(screen.queryByRole("complementary", { name: drawerName })).toBeNull(),
+      );
+      expect(screen.queryByRole("alert")).toBeNull();
+    },
+  );
+
+  it("keeps the typed counts when a step reloads the return", async () => {
+    const { get } = mount({ contents: [line] });
+    const returned = (await screen.findByLabelText(
+      "Quantity returned for Morphine oral solution",
+    )) as HTMLInputElement;
+    fireEvent.change(returned, { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Discrepancy explanation for Morphine oral solution"), {
+      target: { value: "Spilled during transport." },
+    });
+    const drawer = await open("Assign retriever", "Assign the retrieving staff member");
+    fireEvent.change(within(drawer).getByLabelText("Retrieving membership id"), {
+      target: { value: "m-okafor" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign" }));
+    // The return stays open after the assignment, so the reload re-reads it (and the manifest) a second time.
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(4));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Assign retriever" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect(
+      (screen.getByLabelText("Quantity returned for Morphine oral solution") as HTMLInputElement)
+        .value,
+    ).toBe("20");
+    expect(
+      (
+        screen.getByLabelText(
+          "Discrepancy explanation for Morphine oral solution",
+        ) as HTMLInputElement
+      ).value,
+    ).toBe("Spilled during transport.");
+  });
+
+  it("keeps an open drawer and its typed text through a reload", async () => {
+    const { post, get } = mount({ contents: [line] });
+    fireEvent.change(await screen.findByLabelText("Quantity returned for Morphine oral solution"), {
+      target: { value: "30" },
+    });
+    const drawer = await open("Assign retriever", "Assign the retrieving staff member");
+    const membership = within(drawer).getByLabelText(
+      "Retrieving membership id",
+    ) as HTMLInputElement;
+    fireEvent.change(membership, { target: { value: "m-okafor" } });
+    // Reconciling reloads the page with the drawer still open.
+    fireEvent.click(screen.getByRole("button", { name: "Reconcile" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(4));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Declare unreturnable…" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    expect(screen.getByRole("complementary", { name: "Assign the retrieving staff member" })).toBe(
+      drawer,
+    );
+    expect(membership.isConnected).toBe(true);
+    expect(membership.value).toBe("m-okafor");
+  });
+
+  it("shows a rejected reconcile on the page and frees the worksheet to retry", async () => {
+    mount({
+      contents: [line],
+      onPost: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    fireEvent.change(await screen.findByLabelText("Quantity returned for Morphine oral solution"), {
+      target: { value: "30" },
+    });
+    const reconcile = screen.getByRole("button", { name: "Reconcile" }) as HTMLButtonElement;
+    fireEvent.click(reconcile);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("The reconciliation could not be recorded.");
+    expect(reconcile.disabled).toBe(false);
   });
 });

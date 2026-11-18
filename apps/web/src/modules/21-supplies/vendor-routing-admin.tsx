@@ -62,6 +62,7 @@ import {
   pageTitleStyle,
   thNum,
 } from "./supplies-ui";
+import { useWrite } from "./use-write";
 
 const PAGE = 200;
 
@@ -93,9 +94,13 @@ export function VendorRoutingAdmin(): JSX.Element {
   const [includeRetired, setIncludeRetired] = useState(false);
   const [rules, setRules] = useState<VendorRoutingRuleView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A refusal of the rule drawer shows in the drawer; retiring a rule from its row has no drawer, so its own refusal
+  // shows on the page.
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [retireError, setRetireError] = useState<string | null>(null);
+  const { busy, run: runWrite } = useWrite();
   const [editing, setEditing] = useState<VendorRoutingRuleView | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<RuleDraft>(EMPTY_DRAFT);
@@ -115,6 +120,7 @@ export function VendorRoutingAdmin(): JSX.Element {
       return;
     }
     setRules(page?.data ?? []);
+    setLoadedOnce(true);
     setLoading(false);
   }, [client, scopeFilter, includeRetired]);
 
@@ -122,7 +128,9 @@ export function VendorRoutingAdmin(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first load only. A reload (a filter change, a save) keeps the page and any open drawer
+  // mounted, with the previous rules showing, so the drawer's typed text, focus and opener survive it.
+  if (loading && !loadedOnce) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
   // `draft.scopeKind`/`assignedFulfillmentMode`/`defaultPharmacyDispatchMode` are always one of the
@@ -144,29 +152,37 @@ export function VendorRoutingAdmin(): JSX.Element {
       : {}),
   });
 
-  const save = async () => {
-    setBusy(true);
+  const closeDrawer = () => {
+    setCreating(false);
+    setEditing(null);
     setActionError(null);
-    const { error: err } = editing
-      ? await updateVendorRoutingRule(client, editing.ruleId, body())
-      : await createVendorRoutingRule(client, body());
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, "The routing rule could not be saved."));
+  };
+
+  const save = async () => {
+    setActionError(null);
+    const failed = await runWrite(
+      () =>
+        editing
+          ? updateVendorRoutingRule(client, editing.ruleId, body())
+          : createVendorRoutingRule(client, body()),
+      "The routing rule could not be saved.",
+    );
+    if (failed) {
+      setActionError(failed);
       return;
     }
-    setEditing(null);
-    setCreating(false);
+    closeDrawer();
     void load();
   };
 
   const retire = async (rule: VendorRoutingRuleView) => {
-    setBusy(true);
-    setActionError(null);
-    const { error: err } = await retireVendorRoutingRule(client, rule.ruleId);
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, "The rule could not be retired."));
+    setRetireError(null);
+    const failed = await runWrite(
+      () => retireVendorRoutingRule(client, rule.ruleId),
+      "The rule could not be retired.",
+    );
+    if (failed) {
+      setRetireError(failed);
       return;
     }
     void load();
@@ -183,7 +199,7 @@ export function VendorRoutingAdmin(): JSX.Element {
 
   return (
     <div className={`wx-list-drawer${creating || editing ? " has-drawer" : ""}`}>
-      <div className="wx-list-drawer-main wx-kit-column">
+      <div className="wx-list-drawer-main wx-kit-column" aria-busy={loading}>
         <PageHeader
           title={<span style={pageTitleStyle}>Vendor routing</span>}
           actions={
@@ -214,7 +230,11 @@ export function VendorRoutingAdmin(): JSX.Element {
           exactly one answer.
         </Notice>
 
-        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
+        {retireError ? (
+          <p className="wx-text-error" role="alert">
+            {retireError}
+          </p>
+        ) : null}
 
         <FilterRow>
           <SelectField
@@ -347,12 +367,11 @@ export function VendorRoutingAdmin(): JSX.Element {
 
       {creating || editing ? (
         <FormDrawer
+          key={editing ? editing.ruleId : "new"}
           title={editing ? "Edit routing rule" : "New routing rule"}
           busy={busy}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
+          error={actionError}
+          onClose={closeDrawer}
           save={
             <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
               Save rule
