@@ -63,6 +63,11 @@ export interface RemittanceCursorStore {
     remittanceId: string,
     fileSha256: string,
   ): Promise<boolean>;
+  /**
+   * Quarantined files of this key, by reason code (`UNSUPPORTED_ROUTING`, `RECEIVE_REFUSED`). Durable: a quarantined file is
+   * never re-offered once the cursor has moved past it, so this is the only standing signal that money is waiting on an operator.
+   */
+  quarantineBacklog(key: RemittanceCursorKey): Promise<Readonly<Record<string, number>>>;
   /** The file was accepted: zero its not-yet-quarantined refusal count so the cap means CONSECUTIVE refusals. */
   clearRefusals(key: RemittanceCursorKey, remittanceId: string, fileSha256: string): Promise<void>;
   /** Count one more refusal of this file (durable); `quarantined` once `count >= cap`. Code only: no vendor text. */
@@ -156,6 +161,12 @@ export interface RemittancePullResult {
    * `review_required`: a staged Claim.MD ERA matches): `<label>: remittance <id> <CODE>`. Ids and a code only. These are not in `duplicates`.
    */
   readonly held: readonly string[];
+  /**
+   * Standing quarantine per provider entity (`<label>: <n> quarantined remittance(s) awaiting operator release (<REASON>=<n>, ...)`),
+   * reported every tick until an operator releases the files. A quarantined file is never re-offered once the cursor has moved
+   * past it, so `quarantined` alone is a one-tick signal. Counts and codes only.
+   */
+  readonly backlog: readonly string[];
   /** PHI-free: ids and codes only, never file content. */
   readonly failures: readonly string[];
 }
@@ -177,6 +188,7 @@ export async function pullRemittances(
   const failures: string[] = [];
   const quarantined: string[] = [];
   const held: string[] = [];
+  const backlog: string[] = [];
   let binding: PullBinding | null;
   try {
     const resolved = await bindingOf(deps, organizationId);
@@ -198,13 +210,15 @@ export async function pullRemittances(
       unsupported,
       quarantined,
       held,
+      backlog,
       failures: [
         `org ${organizationId}: clearinghouse binding could not be resolved (${errorClassOf(err)})`,
       ],
     };
   }
   // No clearinghouse of its own (billing outside ChartWarden, or none chosen yet): nothing to pull, nothing failed.
-  if (binding === null) return { queued, duplicates, unsupported, quarantined, held, failures };
+  if (binding === null)
+    return { queued, duplicates, unsupported, quarantined, held, backlog, failures };
   let providerEntityIds: readonly string[];
   try {
     providerEntityIds = await deps.contexts.providerEntitiesFor(organizationId);
@@ -215,6 +229,7 @@ export async function pullRemittances(
       unsupported,
       quarantined,
       held,
+      backlog,
       failures: [`org ${organizationId}: provider entities could not be listed`],
     };
   }
@@ -229,6 +244,7 @@ export async function pullRemittances(
         label,
         quarantined,
         held,
+        backlog,
       );
       if (counts === "unsupported") unsupported += 1;
       else {
@@ -239,7 +255,7 @@ export async function pullRemittances(
       failures.push(`${label}: ${err instanceof Error ? err.message : "failed"}`);
     }
   }
-  return { queued, duplicates, unsupported, quarantined, held, failures };
+  return { queued, duplicates, unsupported, quarantined, held, backlog, failures };
 }
 
 async function pullOne(
@@ -250,6 +266,7 @@ async function pullOne(
   label: string,
   quarantined: string[],
   held: string[],
+  backlog: string[],
 ): Promise<{ queued: number; duplicates: number } | "unsupported"> {
   const ctx = await deps.contexts.contextFor(organizationId, providerEntityId, {
     payerRoute: "skip",
@@ -323,9 +340,26 @@ async function pullOne(
       if (received.outcome === "queued") queued += 1;
       else if (received.outcome === "duplicate") duplicates += 1;
       else held.push(`${label}: remittance ${file.remittanceId} ${received.reason}`);
+      // A multi-set file answers with one outcome: its held sets ride along so none hides behind a queued/duplicate one.
+      if (received.outcome === "queued" || received.outcome === "duplicate")
+        for (const reason of received.heldSets ?? [])
+          held.push(`${label}: remittance ${file.remittanceId} ${reason}`);
     }
     if (result.data.nextCursor !== cursor) await deps.cursors.set(key, result.data.nextCursor);
-    if (!result.data.hasMore) return { queued, duplicates };
+    if (!result.data.hasMore) {
+      const standing = await deps.cursors.quarantineBacklog(key);
+      const total = Object.values(standing).reduce((sum, n) => sum + n, 0);
+      if (total > 0) {
+        const byReason = Object.entries(standing)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([reason, n]) => `${reason}=${n}`)
+          .join(", ");
+        backlog.push(
+          `${label}: ${total} quarantined remittance(s) awaiting operator release (${byReason})`,
+        );
+      }
+      return { queued, duplicates };
+    }
     cursor = result.data.nextCursor;
   }
   // Page bound reached with more waiting: the next tick resumes from the stored cursor.

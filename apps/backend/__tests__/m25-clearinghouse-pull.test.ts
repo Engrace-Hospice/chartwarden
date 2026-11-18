@@ -18,6 +18,7 @@ import type {
   ReceiveAdviceResult,
 } from "../src/modules/25-remittance/ingest/service";
 import { buildDrizzleM25IngestService } from "../src/modules/25-remittance/ingest/service-drizzle";
+import { runRemittancePullCron } from "../src/modules/25-remittance/jobs/cron-workers";
 import { buildRawEdi } from "./_edi835-fixture";
 
 const ORG = DEFAULT_SCOPE.organizationId;
@@ -39,7 +40,7 @@ function cursorStore(initial: string | null = null) {
       keyOf({ organizationId: ORG, providerEntityId: PE, vendor: "in_memory", usage: "test" }),
       initial,
     );
-  const refusals = new Map<string, { count: number; quarantined: boolean }>();
+  const refusals = new Map<string, { count: number; quarantined: boolean; code: string }>();
   const reasonCodes: string[] = [];
   const store: RemittanceCursorStore = {
     get: async (k) => saved.get(keyOf(k)) ?? null,
@@ -48,18 +49,25 @@ function cursorStore(initial: string | null = null) {
     },
     isQuarantined: async (k, id, sha) =>
       refusals.get(`${keyOf(k)}|${id}|${sha}`)?.quarantined ?? false,
+    quarantineBacklog: async (k) => {
+      const byCode: Record<string, number> = {};
+      for (const [ref, r] of refusals)
+        if (r.quarantined && ref.startsWith(`${keyOf(k)}|`))
+          byCode[r.code] = (byCode[r.code] ?? 0) + 1;
+      return byCode;
+    },
     clearRefusals: async (k, id, sha) => {
       const ref = `${keyOf(k)}|${id}|${sha}`;
       const cur = refusals.get(ref);
-      if (cur && !cur.quarantined) refusals.set(ref, { count: 0, quarantined: false });
+      if (cur && !cur.quarantined) refusals.set(ref, { ...cur, count: 0 });
     },
     recordRefusal: async (k, id, sha, code, cap) => {
       reasonCodes.push(code);
       const ref = `${keyOf(k)}|${id}|${sha}`;
       const count = (refusals.get(ref)?.count ?? 0) + 1;
-      const next = { count, quarantined: count >= cap };
+      const next = { count, quarantined: count >= cap, code };
       refusals.set(ref, next);
-      return next;
+      return { count, quarantined: next.quarantined };
     },
   };
   return { store, reasonCodes, current: () => [...saved.values()][0] ?? null };
@@ -255,10 +263,16 @@ describe("pullRemittances", () => {
       `org ${ORG} provider ${PE}: remittance ERA-3 REMITTANCE_QUARANTINED`,
     ]);
     expect(cursors.current()).toBe("4");
+    const standing = [
+      `org ${ORG} provider ${PE}: 1 quarantined remittance(s) awaiting operator release (RECEIVE_REFUSED=1)`,
+    ];
+    expect(final.backlog).toEqual(standing);
     const offered = ingest.received.length;
     const after = await pullRemittances(deps, ORG);
     expect(after).toMatchObject({ queued: 0, failures: [], quarantined: [] });
     expect(ingest.received.length).toBe(offered); // nothing re-offered
+    // ...but the file is still waiting on an operator, and the tick says so (it is never re-offered, so `quarantined` is silent)
+    expect(after.backlog).toEqual(standing);
   });
 
   it("counts only CONSECUTIVE refusals: an accepted file zeroes its count", async () => {
@@ -342,6 +356,10 @@ describe("pullRemittances", () => {
     expect(final.queued).toBe(1); // ERA-3 is skipped, ERA-4 behind it is received
     expect(cursors.current()).toBe("4"); // the chain moved past the unroutable file
     expect(new Set(cursors.reasonCodes)).toEqual(new Set(["UNSUPPORTED_ROUTING"]));
+    // an operator can tell a routing quarantine from a content one without querying the table
+    expect(final.backlog).toEqual([
+      `org ${ORG} provider ${PE}: 1 quarantined remittance(s) awaiting operator release (UNSUPPORTED_ROUTING=1)`,
+    ]);
   });
 
   it("reports a held file (legacy identity, Claim.MD stage match) apart from duplicates, with an id and a code only", async () => {
@@ -377,6 +395,30 @@ describe("pullRemittances", () => {
       expect(JSON.stringify(result)).not.toContain("ISA*"); // no file content
     }
   });
+
+  it.each([
+    ["queued", { outcome: "queued", adviceId: "adv-1" }],
+    ["duplicate", { outcome: "duplicate", existingAdviceId: "adv-0" }],
+  ] as const)(
+    "reports a held set that shares a file with a %s set (one outcome per file must not hide it)",
+    async (_name, base) => {
+      const result: ReceiveAdviceResult = {
+        ...base,
+        heldSets: ["LEGACY_IDENTITY_AMBIGUOUS", "CLAIMMD_ERA_STAGE_MATCH"],
+      };
+      const { far, deps } = setup({ heldFor: { suffix: "ERA-1", result } });
+      await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+
+      const pulled = await pullRemittances(deps, ORG);
+
+      expect(pulled.held).toEqual([
+        `org ${ORG} provider ${PE}: remittance ERA-1 LEGACY_IDENTITY_AMBIGUOUS`,
+        `org ${ORG} provider ${PE}: remittance ERA-1 CLAIMMD_ERA_STAGE_MATCH`,
+      ]);
+      expect(pulled.failures).toEqual([]);
+      expect(pulled.backlog).toEqual([]); // nothing quarantined: no standing signal
+    },
+  );
 
   it("retries a re-offered file whose content changed (new hash) instead of treating it as quarantined", async () => {
     const { deps, cursors, ingest } = setup({ malformedFor: "ERA-1" });
@@ -543,11 +585,6 @@ describe("pullRemittances through the real receive: payee refusals and the quara
     ["an invalid payee NPI", { idQualifier: "XX", id: INVALID_NPI }, tenantConfig],
     ["a payee with no NPI (N103 XX)", { idQualifier: "FI", id: "123456789" }, tenantConfig],
     [
-      "a REF*TJ that is not the tenant's",
-      { idQualifier: "XX", id: TENANT_NPI, taxId: "111111111" },
-      tenantConfig,
-    ],
-    [
       "a REF*TJ that is not a 9-digit TIN",
       { idQualifier: "XX", id: TENANT_NPI, taxId: "12-34" },
       tenantConfig,
@@ -599,6 +636,11 @@ describe("pullRemittances through the real receive: payee refusals and the quara
     [
       "the payee NPI is valid but not the tenant's",
       { idQualifier: "XX", id: OTHER_NPI },
+      tenantConfig,
+    ],
+    [
+      "the payee REF*TJ is well-formed but not the tenant's (a stale EIN on file looks the same)",
+      { idQualifier: "XX", id: TENANT_NPI, taxId: "111111111" },
       tenantConfig,
     ],
     [
@@ -795,6 +837,7 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
       unsupported: 0,
       quarantined: [],
       held: [],
+      backlog: [],
       failures: [],
     });
     expect(touched).toBe(0);
@@ -833,5 +876,50 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
       `org ${ORG}: clearinghouse binding could not be resolved (CLEARINGHOUSE_CREDENTIAL_UNREADABLE)`,
     ]);
     expect(JSON.stringify(result)).not.toContain("sk_live");
+  });
+});
+
+describe("runRemittancePullCron (the tick BullMQ retries and ops sees fail)", () => {
+  // Only the pull + org enumerator are read; the cron touches neither the connection nor the db on this path.
+  const cronDeps = (remittancePull: ReturnType<typeof setup>["deps"]) =>
+    ({
+      remittancePull,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
+    }) as unknown as Parameters<typeof runRemittancePullCron>[0];
+
+  it("completes when everything was received", async () => {
+    const { far, deps } = setup();
+    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+    await expect(runRemittancePullCron(cronDeps(deps))).resolves.toBeUndefined();
+  });
+
+  it("fails the tick for a held file, naming its id and code only", async () => {
+    const heldResult = {
+      outcome: "review_required",
+      stageId: "stage-1",
+      reason: "CLAIMMD_ERA_STAGE_MATCH",
+    } as const;
+    const { far, deps } = setup({ heldFor: { suffix: "ERA-1", result: heldResult } });
+    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+
+    await expect(runRemittancePullCron(cronDeps(deps))).rejects.toThrow(
+      `org ${ORG} provider ${PE}: remittance ERA-1 CLAIMMD_ERA_STAGE_MATCH`,
+    );
+  });
+
+  it("keeps failing every tick while a quarantined file awaits an operator, though it is no longer offered", async () => {
+    const { far, deps } = setup({ unsupportedFor: "ERA-1" });
+    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+    // the cap is consecutive refusals: each failing tick is one, the last one quarantines
+    for (let i = 1; i < MAX_REFUSALS_PER_REMITTANCE; i++)
+      await expect(runRemittancePullCron(cronDeps(deps))).rejects.toThrow(
+        "unsupported X12 group routing",
+      );
+    await expect(runRemittancePullCron(cronDeps(deps))).rejects.toThrow("REMITTANCE_QUARANTINED");
+
+    // the vendor offers nothing new; the standing backlog is the only thing left to say it
+    await expect(runRemittancePullCron(cronDeps(deps))).rejects.toThrow(
+      "1 quarantined remittance(s) awaiting operator release (UNSUPPORTED_ROUTING=1)",
+    );
   });
 });

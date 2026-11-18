@@ -225,10 +225,11 @@ type PayeeIdentityCheck = {
   readonly reason: string | null;
   /**
    * Why the check refused. "content": a property of the 835 itself (no NPI, an invalid NPI, a payee tax id that
-   * is not a 9-digit TIN or is not the tenant's), which no retry changes, so the pull may quarantine it.
-   * "environment": tenant configuration or an unreadable lookup (and an NPI that is not the tenant's, which a
-   * wrong NPI on file produces just as a mis-addressed file does): transient and never counted toward the
-   * quarantine cap. Null when the check passed.
+   * is not a 9-digit TIN), which no retry changes, so the pull may quarantine it.
+   * "environment": tenant configuration or an unreadable lookup, and an NPI or tax id that is well-formed but is not
+   * the tenant's: a wrong NPI or EIN on file produces that just as a mis-addressed file does, and quarantining it would
+   * skip a tenant's whole payment stream. Transient and never counted toward the quarantine cap (the cursor stays pinned,
+   * loudly, until the configuration is fixed). Null when the check passed.
    */
   readonly cause: "content" | "environment" | null;
   readonly evidence: PayeeIdentityEvidence | null;
@@ -384,12 +385,11 @@ export function buildDrizzleM25IngestService(
         reason: "payee check: the 835 payee tax id is not a 9-digit TIN",
         cause: "content",
       };
+    // The NPI already matched, so a different well-formed tax id is far more likely a stale or mis-keyed EIN on file than a
+    // mis-addressed file: environment, never quarantined.
     return got === want
       ? null
-      : {
-          reason: "payee check: the 835 payee tax id is not this provider entity's",
-          cause: "content",
-        };
+      : environment("payee check: the 835 payee tax id is not this provider entity's");
   }
 
   /** #659/#671 — null reason when the payee is this tenant's, else a PHI-free refusal and its cause (fail closed). */
@@ -1622,7 +1622,14 @@ export function buildDrizzleM25IngestService(
           return out;
         },
       );
-      return results.find((r) => r.outcome === "queued") ?? (results[0] as ReceiveAdviceResult);
+      const primary =
+        results.find((r) => r.outcome === "queued") ?? (results[0] as ReceiveAdviceResult);
+      // One outcome per file: a held set beside a queued or duplicate one must not vanish behind it.
+      if (primary.outcome !== "queued" && primary.outcome !== "duplicate") return primary;
+      const heldSets = results.flatMap((r) =>
+        r.outcome === "held_duplicate" || r.outcome === "review_required" ? [r.reason] : [],
+      );
+      return heldSets.length > 0 ? { ...primary, heldSets } : primary;
     },
 
     async postAdvice(actor: M25IngestActor, adviceId: string): Promise<PostAdviceResult> {

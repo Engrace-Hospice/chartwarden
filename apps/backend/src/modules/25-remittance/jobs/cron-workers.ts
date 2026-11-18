@@ -118,8 +118,10 @@ export async function runRemittancePullCron(deps: M25WorkerDeps): Promise<void> 
   const failures: string[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
     const result = await pullRemittances(pull, organizationId);
-    // A held file (an operator must review it) is as visible to ops as a quarantined one; ids and a code only.
-    failures.push(...result.failures, ...result.quarantined, ...result.held);
+    // A held file (an operator must review it) is as visible to ops as a quarantined one; ids and a code only. The standing
+    // backlog repeats every tick until an operator releases the files: a quarantined file is never re-offered, so without it
+    // the only signal would be the tick that quarantined it.
+    failures.push(...result.failures, ...result.quarantined, ...result.held, ...result.backlog);
   }
   if (failures.length > 0) throw new Error(`remittance pull failed: ${failures.join("; ")}`);
 }

@@ -75,6 +75,17 @@ describe("835 payee TIN (#671)", () => {
     expect(r).toMatchObject({
       outcome: "malformed",
       reason: expect.stringContaining("tax id is not"),
+      // The NPI matched, so a different well-formed TIN is a stale/mis-keyed EIN on file far more often than a
+      // mis-addressed file: transient (never quarantined), exactly like an NPI that is not the tenant's.
+      cause: "environment",
+    });
+  });
+  it("keeps a payee tax id that is not a 9-digit TIN as the file's own content (quarantinable)", async () => {
+    const r = await receive({ ...npiPayee, taxId: "12-34" }, async () => "12-3456789");
+    expect(r).toMatchObject({
+      outcome: "malformed",
+      reason: expect.stringContaining("not a 9-digit TIN"),
+      cause: "content",
     });
   });
   it("fails closed, without echoing the TIN, when the sealed TIN cannot be opened", async () => {
