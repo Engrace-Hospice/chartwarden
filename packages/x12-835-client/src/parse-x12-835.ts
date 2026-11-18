@@ -710,7 +710,9 @@ function build(
         set.group.gs06 === functionalGroupControlNumber),
   );
   if (candidates.length > 1)
-    fail("transaction-set selection is ambiguous across functional groups; select by ST02 and GS06");
+    fail(
+      "transaction-set selection is ambiguous across functional groups; select by ST02 and GS06",
+    );
   const chosen = candidates[0];
   if (!chosen) return fail("no transaction set with that ST02/GS06 scope in the file");
   const isa = doc.segments[0] as X12Segment;

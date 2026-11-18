@@ -2,10 +2,10 @@
 // transport (page size 2) is the far side. The ingest service is a double that dedups on ISA13/ST02 like the real
 // `ux_remittance_envelope_dedupe` index (that index is proved live in m25-835-ingestion.live.test.ts).
 import { createHash } from "node:crypto";
+import type { ParsedRemittanceAdvice, X12835WorkerClient } from "@chartwarden/x12-835-client";
 import { CH, DEFAULT_SCOPE } from "@chartwarden/x12-837-client";
 import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
-import type { ParsedRemittanceAdvice, X12835WorkerClient } from "@chartwarden/x12-835-client";
 import { describe, expect, it } from "vitest";
 import {
   MAX_REFUSALS_PER_REMITTANCE,
@@ -552,27 +552,30 @@ describe("pullRemittances through the real receive: payee refusals and the quara
       { idQualifier: "XX", id: TENANT_NPI, taxId: "12-34" },
       tenantConfig,
     ],
-  ])("quarantines %s after the cap (the file's own content) and moves on", async (_name, payee, config) => {
-    const { far, deps, cursors } = realReceive(
-      { name: "Synthetic Hospice", ...payee } as ParsedRemittanceAdvice["payee"],
-      config,
-    );
-    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+  ])(
+    "quarantines %s after the cap (the file's own content) and moves on",
+    async (_name, payee, config) => {
+      const { far, deps, cursors } = realReceive(
+        { name: "Synthetic Hospice", ...payee } as ParsedRemittanceAdvice["payee"],
+        config,
+      );
+      await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
 
-    for (let i = 1; i < MAX_REFUSALS_PER_REMITTANCE; i++) {
-      const transient = await pullRemittances(deps, ORG);
-      expect(transient.failures[0]).toContain("ERA-1 refused at receive");
-      expect(transient.quarantined).toEqual([]);
-      expect(cursors.current()).toBeNull();
-    }
-    const final = await pullRemittances(deps, ORG);
+      for (let i = 1; i < MAX_REFUSALS_PER_REMITTANCE; i++) {
+        const transient = await pullRemittances(deps, ORG);
+        expect(transient.failures[0]).toContain("ERA-1 refused at receive");
+        expect(transient.quarantined).toEqual([]);
+        expect(cursors.current()).toBeNull();
+      }
+      const final = await pullRemittances(deps, ORG);
 
-    expect(final.failures).toEqual([]);
-    expect(final.quarantined).toEqual([
-      `org ${ORG} provider ${PE}: remittance ERA-1 REMITTANCE_QUARANTINED`,
-    ]);
-    expect(cursors.current()).toBe("1");
-  });
+      expect(final.failures).toEqual([]);
+      expect(final.quarantined).toEqual([
+        `org ${ORG} provider ${PE}: remittance ERA-1 REMITTANCE_QUARANTINED`,
+      ]);
+      expect(cursors.current()).toBe("1");
+    },
+  );
 
   it.each([
     [
@@ -585,10 +588,14 @@ describe("pullRemittances through the real receive: payee refusals and the quara
         tin: tenantConfig.tin,
       },
     ],
-    ["the tenant has no NPI on file", { idQualifier: "XX", id: TENANT_NPI }, {
-      npi: async (): Promise<string | null> => null,
-      tin: tenantConfig.tin,
-    }],
+    [
+      "the tenant has no NPI on file",
+      { idQualifier: "XX", id: TENANT_NPI },
+      {
+        npi: async (): Promise<string | null> => null,
+        tin: tenantConfig.tin,
+      },
+    ],
     [
       "the payee NPI is valid but not the tenant's",
       { idQualifier: "XX", id: OTHER_NPI },
@@ -604,20 +611,23 @@ describe("pullRemittances through the real receive: payee refusals and the quara
         },
       },
     ],
-  ])("never counts a refusal toward the cap when %s (tenant configuration, transient)", async (_name, payee, config) => {
-    const { far, deps, cursors } = realReceive(
-      { name: "Synthetic Hospice", ...payee } as ParsedRemittanceAdvice["payee"],
-      config,
-    );
-    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+  ])(
+    "never counts a refusal toward the cap when %s (tenant configuration, transient)",
+    async (_name, payee, config) => {
+      const { far, deps, cursors } = realReceive(
+        { name: "Synthetic Hospice", ...payee } as ParsedRemittanceAdvice["payee"],
+        config,
+      );
+      await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
 
-    for (let i = 0; i < MAX_REFUSALS_PER_REMITTANCE + 3; i++) {
-      const result = await pullRemittances(deps, ORG);
-      expect(result.failures[0]).toContain("ERA-1 refused at receive");
-      expect(result.quarantined).toEqual([]);
-    }
-    expect(cursors.current()).toBeNull(); // never advanced past it
-  });
+      for (let i = 0; i < MAX_REFUSALS_PER_REMITTANCE + 3; i++) {
+        const result = await pullRemittances(deps, ORG);
+        expect(result.failures[0]).toContain("ERA-1 refused at receive");
+        expect(result.quarantined).toEqual([]);
+      }
+      expect(cursors.current()).toBeNull(); // never advanced past it
+    },
+  );
 });
 
 describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendment 2026-11-06)", () => {

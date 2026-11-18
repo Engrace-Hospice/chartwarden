@@ -3,10 +3,12 @@ import { stagedPaymentDate } from "../claimmd-era-payment-date";
 
 describe("staged Claim.MD payment date", () => {
   it("uses BPR16 when the sealed transaction set carries it", () => {
-    expect(stagedPaymentDate({ paymentEffectiveDate: "2026-06-15", productionDate: null })).toEqual({
-      day: "2026-06-15",
-      source: "payment_effective_date",
-    });
+    expect(stagedPaymentDate({ paymentEffectiveDate: "2026-06-15", productionDate: null })).toEqual(
+      {
+        day: "2026-06-15",
+        source: "payment_effective_date",
+      },
+    );
   });
 
   it("keeps the strict rule for a stage that has the field: a null or invalid BPR16 is refused even with a production day", () => {

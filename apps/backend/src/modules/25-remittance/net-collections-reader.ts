@@ -36,7 +36,9 @@ const CENTS = sql<string>`coalesce(sum(round(${RA.totalPaymentAmount} * 100)) FI
 const POSTED_COUNT = sql<string>`count(*) FILTER (WHERE ${POSTED})`;
 const PENDING_COUNT = sql<string>`count(*) FILTER (WHERE NOT (${POSTED}))`;
 /** The UTC calendar month of the payment date, `YYYY-MM`. */
-const PAYMENT_DATE = sql<string | null>`coalesce(${RA.paymentEffectiveDate}::date, (${RA.productionDate} AT TIME ZONE 'UTC')::date)`;
+const PAYMENT_DATE = sql<
+  string | null
+>`coalesce(${RA.paymentEffectiveDate}::date, (${RA.productionDate} AT TIME ZONE 'UTC')::date)`;
 const PAYMENT_MONTH = sql<string>`to_char(${PAYMENT_DATE}, 'YYYY-MM')`;
 
 interface Period {

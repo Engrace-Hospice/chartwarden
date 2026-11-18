@@ -300,8 +300,11 @@ describe("BIL-1.4.1B safe M25 delivery", () => {
 
     expect(x.stageComponent).toHaveBeenCalledTimes(1); // group 77 staged; group 78 is held
     expect(
-      (x.stageComponent.mock.calls[0]?.[0] as unknown as { source: { functionalGroupControlNumber: string } })
-        .source.functionalGroupControlNumber,
+      (
+        x.stageComponent.mock.calls[0]?.[0] as unknown as {
+          source: { functionalGroupControlNumber: string };
+        }
+      ).source.functionalGroupControlNumber,
     ).toBe("77");
   });
 

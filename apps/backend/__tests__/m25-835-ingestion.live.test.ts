@@ -1606,8 +1606,12 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           createHash("sha256").update(`legacy-hold-file:${suffix}`).digest("hex"),
         ],
       );
-      const fileDigest = createHash("sha256").update(`legacy-hold-new-file:${suffix}`).digest("hex");
-      const sourceDigest = createHash("sha256").update(`legacy-hold-source:${suffix}`).digest("hex");
+      const fileDigest = createHash("sha256")
+        .update(`legacy-hold-new-file:${suffix}`)
+        .digest("hex");
+      const sourceDigest = createHash("sha256")
+        .update(`legacy-hold-source:${suffix}`)
+        .digest("hex");
       const inboxId = crypto.randomUUID();
       const source = {
         inboxId,
@@ -1791,7 +1795,8 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         productionDate: "2026-03-01",
       });
 
-      const planFor = async (stageId: string) => (await review.postingPlan(reviewer, stageId)).blockers;
+      const planFor = async (stageId: string) =>
+        (await review.postingPlan(reviewer, stageId)).blockers;
       expect(await planFor(preField)).not.toContain("UNSUPPORTED_OR_INCOMPLETE_835");
       expect(await planFor(dated)).not.toContain("UNSUPPORTED_OR_INCOMPLETE_835");
       expect(await planFor(strictNull)).toContain("UNSUPPORTED_OR_INCOMPLETE_835");
@@ -3139,7 +3144,16 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
              transaction_set_control_number, check_or_eft_trace_number, payment_method,
              total_payment_amount, minio_object_key, file_sha256, parse_status)
            VALUES ($1,$2,$3,'medicare',$4,$5,$6,'eft',12.00,$7,$8,'posted') RETURNING id`,
-          [ORG_A, PE_A, PAYER, isa13, st02, `SYNTHETIC-TRACE-${isa13}`, `manual/legacy-${isa13}.835`, fileSha256],
+          [
+            ORG_A,
+            PE_A,
+            PAYER,
+            isa13,
+            st02,
+            `SYNTHETIC-TRACE-${isa13}`,
+            `manual/legacy-${isa13}.835`,
+            fileSha256,
+          ],
         );
         return res.rows[0]!.id;
       };
@@ -3147,10 +3161,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         buildDrizzleM25IngestService(handle.db, {
           client: fakeClient(new Map([[`minio/legacy-${isa13}.835`, legacyParsed(isa13, st02)]])),
           payeeNpi: PAYEE_UNCHECKED,
-        }).receiveAdvice(
-          { organizationId: ORG_A },
-          input(`minio/legacy-${isa13}.835`, raw),
-        );
+        }).receiveAdvice({ organizationId: ORG_A }, input(`minio/legacy-${isa13}.835`, raw));
 
       it("holds a different file as LEGACY_IDENTITY_AMBIGUOUS (kept for history), and a redelivery is a duplicate", async () => {
         const raw = buildRawEdi("000000704", "0704");

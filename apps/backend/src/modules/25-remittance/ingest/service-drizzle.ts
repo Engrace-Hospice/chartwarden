@@ -409,10 +409,11 @@ export function buildDrizzleM25IngestService(
       tinVerified,
       verifiedAt: new Date().toISOString(),
     });
-    const refuse = (
-      reason: string,
-      cause: "content" | "environment",
-    ): PayeeIdentityCheck => ({ reason, cause, evidence: null });
+    const refuse = (reason: string, cause: "content" | "environment"): PayeeIdentityCheck => ({
+      reason,
+      cause,
+      evidence: null,
+    });
     let expected: string | null;
     try {
       expected = (await deps.payeeNpi(organizationId, providerEntityId))?.trim() ?? null;

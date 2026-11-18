@@ -27,12 +27,12 @@ import {
   isIdempotentMatchDecisionRetry,
 } from "../domain/era-match-review";
 import { providerEntityScopeCondition } from "../routes/scope";
-import { stagedPaymentDate } from "./claimmd-era-payment-date";
 import {
   adviceEnvelopeIdentityColumns,
   claimMdStagePayeeIdentityEvidence,
   stageEvidenceCodes,
 } from "./advice-envelope-identity";
+import { stagedPaymentDate } from "./claimmd-era-payment-date";
 import type { M25IngestService } from "./service";
 import { getM25TransactionPostingPort, m25ContentDigestOf } from "./service-drizzle";
 import type {

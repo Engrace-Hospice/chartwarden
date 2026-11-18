@@ -77,7 +77,8 @@ function stage(tx: unknown) {
   });
 }
 
-const isLegacyQuery = (whereSql: string) => /functional_group_control_number" is null/i.test(whereSql);
+const isLegacyQuery = (whereSql: string) =>
+  /functional_group_control_number" is null/i.test(whereSql);
 
 describe("Claim.MD stage legacy envelope guard", () => {
   it("holds when a historical advice row has the same ISA13/ST02 but no GS provenance", async () => {
