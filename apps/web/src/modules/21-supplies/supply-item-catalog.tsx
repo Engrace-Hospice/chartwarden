@@ -32,6 +32,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SupplyItemSkuClass,
   type SupplyItemView,
@@ -44,11 +45,9 @@ import { SKU_CLASSES, shortDate } from "./supplies-status";
 import {
   CheckboxField,
   FilterRow,
-  Modal,
   Notice,
   SelectField,
   TextField,
-  columnStyle,
   enumOptions,
   ghostButtonStyle,
   pageTitleStyle,
@@ -148,164 +147,167 @@ export function SupplyItemCatalog(): JSX.Element {
     draft.name.trim() !== "" && draft.localSkuCode.trim() !== "" && draft.defaultUnit.trim() !== "";
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Supply catalog</span>}
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Button
-              tone="primary"
-              type="button"
-              onClick={() => {
-                setDraft(EMPTY_TENANT_ITEM);
-                setEditing(null);
-                setCreating(true);
-                setActionError(null);
-              }}
-            >
-              New tenant item
-            </Button>
-            <Link to="/supplies" style={ghostButtonStyle}>
-              Back to queue
-            </Link>
-          </div>
-        }
-      />
-
-      <Notice tone="info">
-        The platform catalog is rewritten wholesale by the annual HCPCS loader and cannot be edited
-        from a tenant session — the permission refuses it and the database write policy refuses it
-        again. Your agency's own shelf items live in the overlay below, and never carry a HCPCS
-        code.
-      </Notice>
-
-      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
-
-      <FilterRow>
-        <TextField label="Search name or HCPCS" value={query} onChange={setQuery} />
-        <SelectField
-          label="SKU class"
-          value={skuClass}
-          options={[{ value: "", label: "all classes" }, ...enumOptions(SKU_CLASSES, (c) => c)]}
-          onChange={setSkuClass}
+    <div className={`wx-list-drawer${creating || editing ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main wx-kit-column">
+        <PageHeader
+          title={<span style={pageTitleStyle}>Supply catalog</span>}
+          actions={
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              <Button
+                tone="primary"
+                type="button"
+                onClick={() => {
+                  setDraft(EMPTY_TENANT_ITEM);
+                  setEditing(null);
+                  setCreating(true);
+                  setActionError(null);
+                }}
+              >
+                New tenant item
+              </Button>
+              <Link to="/supplies" style={ghostButtonStyle}>
+                Back to queue
+              </Link>
+            </div>
+          }
         />
-        <CheckboxField
-          label="Include retired items"
-          checked={includeRetired}
-          onChange={setIncludeRetired}
-        />
-      </FilterRow>
 
-      <Panel stack headingLevel={3} title={`Platform catalog (${platform.length})`}>
-        {platform.length === 0 ? (
-          <span className="wx-text-muted">No canonical SKU matches this search.</span>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>HCPCS</th>
-                <th>Class</th>
-                <th>Unit</th>
-                <th>Billable</th>
-                <th>Controlled</th>
-                <th>Lot tracked</th>
-                <th>Expiry tracked</th>
-                <th>Effective</th>
-              </tr>
-            </thead>
-            <tbody>
-              {platform.map((i) => (
-                <tr key={i.supplyItemId}>
-                  <td>
-                    {i.name}
-                    {i.isActive ? null : <div className="wx-text-muted">retired</div>}
-                  </td>
-                  <td className="wx-data-md">{i.hcpcs ?? "—"}</td>
-                  <td>{i.skuClass}</td>
-                  <td>{i.defaultUnit}</td>
-                  <td>{i.isBillable ? "Yes" : "No"}</td>
-                  <td>{triState(i.isControlledSubstance)}</td>
-                  <td>{triState(i.requiresLotTracking)}</td>
-                  <td>{triState(i.requiresExpirationTracking)}</td>
-                  <td>
-                    {shortDate(i.effectiveFrom)}
-                    {i.effectiveTo ? ` → ${shortDate(i.effectiveTo)}` : ""}
-                  </td>
+        <Notice tone="info">
+          The platform catalog is rewritten wholesale by the annual HCPCS loader and cannot be
+          edited from a tenant session — the permission refuses it and the database write policy
+          refuses it again. Your agency's own shelf items live in the overlay below, and never carry
+          a HCPCS code.
+        </Notice>
+
+        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
+
+        <FilterRow>
+          <TextField label="Search name or HCPCS" value={query} onChange={setQuery} />
+          <SelectField
+            label="SKU class"
+            value={skuClass}
+            options={[{ value: "", label: "all classes" }, ...enumOptions(SKU_CLASSES, (c) => c)]}
+            onChange={setSkuClass}
+          />
+          <CheckboxField
+            label="Include retired items"
+            checked={includeRetired}
+            onChange={setIncludeRetired}
+          />
+        </FilterRow>
+
+        <Panel stack headingLevel={3} title={`Platform catalog (${platform.length})`}>
+          {platform.length === 0 ? (
+            <span className="wx-text-muted">No canonical SKU matches this search.</span>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>HCPCS</th>
+                  <th>Class</th>
+                  <th>Unit</th>
+                  <th>Billable</th>
+                  <th>Controlled</th>
+                  <th>Lot tracked</th>
+                  <th>Expiry tracked</th>
+                  <th>Effective</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <span className="wx-text-muted">
-          "Unclassified" is not "No". A SKU the loader has not yet classified is treated as needing
-          a decision before a controlled dispatch, not as safe.
-        </span>
-      </Panel>
-
-      <Panel stack headingLevel={3} title={`Tenant overlay (${overlay.length})`}>
-        {overlay.length === 0 ? (
+              </thead>
+              <tbody>
+                {platform.map((i) => (
+                  <tr key={i.supplyItemId}>
+                    <td>
+                      {i.name}
+                      {i.isActive ? null : <div className="wx-text-muted">retired</div>}
+                    </td>
+                    <td className="wx-data-md">{i.hcpcs ?? "—"}</td>
+                    <td>{i.skuClass}</td>
+                    <td>{i.defaultUnit}</td>
+                    <td>{i.isBillable ? "Yes" : "No"}</td>
+                    <td>{triState(i.isControlledSubstance)}</td>
+                    <td>{triState(i.requiresLotTracking)}</td>
+                    <td>{triState(i.requiresExpirationTracking)}</td>
+                    <td>
+                      {shortDate(i.effectiveFrom)}
+                      {i.effectiveTo ? ` → ${shortDate(i.effectiveTo)}` : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
           <span className="wx-text-muted">
-            Your agency has no local shelf items. These are the non-billable things that will never
-            have a HCPCS code.
+            "Unclassified" is not "No". A SKU the loader has not yet classified is treated as
+            needing a decision before a controlled dispatch, not as safe.
           </span>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Local SKU</th>
-                <th>Unit</th>
-                <th>Billable</th>
-                <th>Active</th>
-                <th>Updated</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {overlay.map((i) => (
-                <tr key={i.supplyItemId}>
-                  <td>{i.name}</td>
-                  <td className="wx-data-md">{i.localSkuCode ?? "—"}</td>
-                  <td>{i.defaultUnit}</td>
-                  <td>{i.isBillable ? "Yes" : "No"}</td>
-                  <td>{i.isActive ? "Yes" : "No"}</td>
-                  <td>{shortDate(i.updatedAt)}</td>
-                  <td>
-                    <Button
-                      tone="secondary"
-                      type="button"
-                      onClick={() => {
-                        setEditing(i);
-                        setCreating(false);
-                        setActionError(null);
-                        setDraft({
-                          name: i.name,
-                          localSkuCode: i.localSkuCode ?? "",
-                          defaultUnit: i.defaultUnit,
-                          isBillable: i.isBillable,
-                          isActive: i.isActive,
-                        });
-                      }}
-                    >
-                      Edit
-                    </Button>
-                  </td>
+        </Panel>
+
+        <Panel stack headingLevel={3} title={`Tenant overlay (${overlay.length})`}>
+          {overlay.length === 0 ? (
+            <span className="wx-text-muted">
+              Your agency has no local shelf items. These are the non-billable things that will
+              never have a HCPCS code.
+            </span>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Local SKU</th>
+                  <th>Unit</th>
+                  <th>Billable</th>
+                  <th>Active</th>
+                  <th>Updated</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Panel>
+              </thead>
+              <tbody>
+                {overlay.map((i) => (
+                  <tr key={i.supplyItemId}>
+                    <td>{i.name}</td>
+                    <td className="wx-data-md">{i.localSkuCode ?? "—"}</td>
+                    <td>{i.defaultUnit}</td>
+                    <td>{i.isBillable ? "Yes" : "No"}</td>
+                    <td>{i.isActive ? "Yes" : "No"}</td>
+                    <td>{shortDate(i.updatedAt)}</td>
+                    <td>
+                      <Button
+                        tone="secondary"
+                        type="button"
+                        onClick={() => {
+                          setEditing(i);
+                          setCreating(false);
+                          setActionError(null);
+                          setDraft({
+                            name: i.name,
+                            localSkuCode: i.localSkuCode ?? "",
+                            defaultUnit: i.defaultUnit,
+                            isBillable: i.isBillable,
+                            isActive: i.isActive,
+                          });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+      </div>
 
       {creating || editing ? (
-        <Modal
+        <FormDrawer
           title={editing ? "Edit tenant item" : "New tenant item"}
+          busy={busy}
           onClose={() => {
             setCreating(false);
             setEditing(null);
           }}
-          footer={
+          save={
             <Button
               tone="primary"
               type="button"
@@ -346,7 +348,7 @@ export function SupplyItemCatalog(): JSX.Element {
             An overlay item is agency-local by construction: it has no HCPCS code and defaults to
             non-billable, because a billable line needs a code the platform catalog owns.
           </Notice>
-        </Modal>
+        </FormDrawer>
       ) : null}
     </div>
   );
