@@ -205,3 +205,30 @@ The provider plumbing now shares a streaming byte-bounded response reader with t
 use `LocalFakeHttpClient`, a response-only test double with no global `fetch` or socket path. This validates local safety and
 fixture behavior only; it does not qualify the Episode Alert service, establish per-operator support or ratify this ADR. Manual
 DDE remains the operational baseline, and the ADR status remains **Proposed**.
+
+## Amendment 2026-11-18 — evidence boundary and scoped activation prerequisite (EPA-755-L3)
+
+The current public Episode Alert pages advertise eligibility, claim-status/remittance services, hosted DDE/SmartDDE, and API
+access. They do not provide the reviewed API guide, exact request/response contract, approved API destination, test isolation,
+write-operation list, or account-specific authorization. Publicly advertised hosted DDE is not evidence of a programmatic DDE
+write API. The public BAA page is a template, not an executed ChartWarden agreement. The consolidated source review and blocker
+matrix are in [`EPISODE_ALERT_ARCHITECTURE_AND_EVIDENCE_20261118.md`](../audits/clearinghouse-integration/EPISODE_ALERT_ARCHITECTURE_AND_EVIDENCE_20261118.md).
+
+ADR-0103 D2 remains a **proposed** platform-held credential model. ADR-0053 continues to govern tenant-owned clearinghouse
+selection and does not decide DDE account ownership. No final choice among tenant-owned accounts, isolated partner subaccounts,
+or a shared platform credential is made here. Prefer tenant-owned or demonstrably isolated subaccounts; a shared platform
+credential requires explicit vendor/legal authorization and independently enforced tenant, provider, and operator isolation.
+
+Before any qualified operation is wired, the platform-level `QualifiedDdeOperations` snapshot must be supplemented by a
+request-time evaluator for the tenant/account binding, provider entity, exact operation, applicable Medicare/MAC enrollment,
+acting operator and individual DDE authorization, ChartWarden permission, item scope/state/version, step-up, and in-doubt status.
+Unknown or revoked authorization fails closed. A queue capability snapshot is informational and cannot grant mutation authority.
+The current composition root injects no qualified operations and registers no Episode Alert DDE factory, so no real Episode Alert
+operation is reachable today. This amendment documents a mandatory pre-activation dependency; it does not implement the evaluator,
+change D2, ratify this ADR, or alter manual DDE behavior.
+
+For Medicare eligibility submitted through a third-party HETS vendor, CMS's 2026-05-11 validation requires a current enrollment
+relationship for each NPI with that vendor. That requirement is distinct from DDE identity, Medicare provider enrollment, and
+institutional claim/ERA authorization. Oregon is HH+H J6; current CMS material identifies Wellpoint Federal (formerly NGS) for
+HH+H J6 effective 2026-04-01. Provider-specific payer and enrollment records still require verification; no historical Oregon
+Part A identifier is hardcoded by this ADR.

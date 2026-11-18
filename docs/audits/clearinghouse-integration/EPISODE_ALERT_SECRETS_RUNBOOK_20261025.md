@@ -28,8 +28,24 @@ Verified in the source:
 - **There is no verified Episode Alert sandbox.** Test usage is refused unless a local `LocalFakeHttpClient` is injected by a
   test; it returns scripted in-memory responses and cannot open a socket. `allowTestUsage` and environment variables cannot
   enable vendor calls. A trial account must not be treated as a sandbox.
-- **Platform-held, not per tenant** (ADR-0103 D2). Per-operator DDE IDs are a separate matter (D4) and are not ChartWarden
-  secrets; if the vendor needs any, that is a design change to decide after the vendor answers.
+- **The current code seam expects a platform credential** under proposed ADR-0103 D2; it does not prove this model is allowed
+  by Episode Alert or appropriate for customer isolation. Per-operator DDE identity is separate (D4) and must not be shared.
+
+## Account and authorization decision is still open
+
+ADR-0103 D2's platform-held credential is a proposed architecture choice, not a confirmed Episode Alert account arrangement.
+Before any future activation, compare a tenant-owned account, vendor-isolated partner subaccounts, and a shared platform
+credential. Prefer tenant ownership or demonstrably isolated subaccounts. A shared credential requires written vendor and legal
+authorization plus independently enforced tenant, provider-entity, and acting-operator scope; billing NPI alone does not prove
+isolation. Do not create new secret names, storage, or account bindings before the architecture and vendor contract are settled.
+
+Eligibility credentials do not establish HETS authorization: CMS's validation effective 2026-05-11 requires a current HETS
+enrollment relationship for each submitted NPI and the third-party vendor. This is separate from DDE identity and hospice
+institutional claims/ERA enrollment.
+
+See [`EPISODE_ALERT_ARCHITECTURE_AND_EVIDENCE_20261118.md`](./EPISODE_ALERT_ARCHITECTURE_AND_EVIDENCE_20261118.md) for evidence,
+current CMS Oregon HH+H J6 routing sources, and capability blockers. Public BAA/pricing pages are not executed customer or partner
+agreements.
 
 ## What the adapters may need beyond today
 

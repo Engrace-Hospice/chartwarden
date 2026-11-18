@@ -1,5 +1,27 @@
 # Episode Alert clearinghouse adapter (#758, ADR-0053 / ADR-0103)
 
+## Current status — 2026-11-18 (EPA-755-L3)
+
+The original 2026-10-25 snapshot below is preserved as historical context; it has been superseded by #812 and EPA-755-L1/L3.
+Current code has a separate fail-closed `ELIGIBILITY_VENDOR` registry, but no backend consumer. The eligibility environment
+factory refuses the unverified wire/destination; test fixtures use `LocalFakeHttpClient` only. The DDE adapter remains a
+fail-closed skeleton and is not registered in the backend composition root. Claim status and remittance methods remain
+`CH_NOT_WIRED`. M23 eligibility remains on `M23_HETS_TRANSPORT`; manual DDE remains the operational baseline.
+
+Public product pages advertise capabilities but do not establish the API schema, account authorization, test isolation, DDE
+write support, or individual operator attribution. ADR-0103 D2 is a proposed platform credential model, not an approved account
+arrangement. CMS requires an active HETS relationship for each NPI submitted through a third-party vendor since 2026-05-11.
+Oregon HH+H is J6; current CMS sources identify Wellpoint Federal (formerly NGS) effective 2026-04-01. See
+[`EPISODE_ALERT_ARCHITECTURE_AND_EVIDENCE_20261118.md`](../audits/clearinghouse-integration/EPISODE_ALERT_ARCHITECTURE_AND_EVIDENCE_20261118.md)
+for reviewed sources, issue reconciliation, architecture options and blockers. Prepared questions are in
+[`EPISODE_ALERT_FOLLOWUP_QUESTIONS_20261118.md`](../audits/clearinghouse-integration/EPISODE_ALERT_FOLLOWUP_QUESTIONS_20261118.md)
+and have not been sent.
+
+## Historical implementation snapshot — 2026-10-25
+
+Statements below reflect the original implementation point. In particular, references to `allowTestUsage`, lack of an
+eligibility registry, and the initial environment seam were superseded by later safety work and #812.
+
 - **Built but not activated:** eligibility-only plumbing (`packages/x12-837-client/src/clearinghouse/episode-alert-transport.ts`, PR #769).
   The path, `Authorization` scheme, request body, guessed `EligibilityResponse` root and XML element names remain UNVERIFIED.
   The environment factory now refuses to bind until the wire contract and an exact approved API origin are reviewed in code;
