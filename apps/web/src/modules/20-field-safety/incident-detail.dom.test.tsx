@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-// The incident's ceremonies (edit the draft, submit, change state, OSHA sign-off) open as a drawer in the detail rail
-// beside the incident they act on (the redesign's pattern), so the record stays in view while its state is changed.
-// Cancel closes the drawer and writes nothing; one ceremony is open at a time; each write button stays disabled until
-// its own rule (a reason of a minimum length, a state code) is met.
+// The draft editor opens as a drawer in the detail rail beside the incident (a plain record form). The three ceremonies
+// (submit for review, change state, OSHA sign-off) are focus-trapped modals (DESIGN.md §7.4: an attestation, a sign-off
+// and an irreversible transition): a dialog that blocks the page, cannot be dismissed while its write is in flight, and
+// that a click on the scrim never closes. Cancel closes either and writes nothing; each write button stays disabled
+// until its own rule (a reason of a minimum length, a state code) is met.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -110,7 +111,12 @@ function mount(
   return { get, patch, post };
 }
 
-const open = async (button: string, drawerName: string): Promise<HTMLElement> => {
+// The three ceremonies are modals (a dialog); the draft editor stays a drawer beside the incident (a complementary).
+const open = async (button: string, dialogName: string): Promise<HTMLElement> => {
+  fireEvent.click(await screen.findByRole("button", { name: button }));
+  return screen.findByRole("dialog", { name: dialogName });
+};
+const openDrawer = async (button: string, drawerName: string): Promise<HTMLElement> => {
   fireEvent.click(await screen.findByRole("button", { name: button }));
   return screen.findByRole("complementary", { name: drawerName });
 };
@@ -120,7 +126,7 @@ const RULE = "29 CFR 1904.7 — the injury needed treatment beyond first aid, so
 describe("incident detail — the ceremonies", () => {
   it("opens the draft editor as a drawer beside the incident, not a dialog over it", async () => {
     mount("draft");
-    const drawer = await open("Edit draft", "Edit this draft");
+    const drawer = await openDrawer("Edit draft", "Edit this draft");
     expect((within(drawer).getByLabelText("Where") as HTMLInputElement).value).toBe(
       "Front porch of the home",
     );
@@ -131,7 +137,7 @@ describe("incident detail — the ceremonies", () => {
 
   it("closes from Cancel without writing anything", async () => {
     const { patch, post } = mount("draft");
-    const drawer = await open("Edit draft", "Edit this draft");
+    const drawer = await openDrawer("Edit draft", "Edit this draft");
     fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Edit this draft" })).toBeNull(),
@@ -142,7 +148,7 @@ describe("incident detail — the ceremonies", () => {
 
   it("saves the edited draft with its row version and closes", async () => {
     const { patch } = mount("draft");
-    const drawer = await open("Edit draft", "Edit this draft");
+    const drawer = await openDrawer("Edit draft", "Edit this draft");
     fireEvent.change(within(drawer).getByLabelText("Where"), { target: { value: "Back steps" } });
     fireEvent.click(within(drawer).getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
@@ -158,7 +164,7 @@ describe("incident detail — the ceremonies", () => {
     );
   });
 
-  it("submits a draft for review from its own drawer", async () => {
+  it("submits a draft for review from its own dialog", async () => {
     const { post } = mount("draft");
     const drawer = await open("Submit for review", "Submit this incident for review");
     fireEvent.click(within(drawer).getByRole("button", { name: "Submit" }));
@@ -167,9 +173,7 @@ describe("incident detail — the ceremonies", () => {
       "/api/v1/safety/incidents/{incidentId}/submit",
     );
     await waitFor(() =>
-      expect(
-        screen.queryByRole("complementary", { name: "Submit this incident for review" }),
-      ).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "Submit this incident for review" })).toBeNull(),
     );
   });
 
@@ -217,30 +221,18 @@ describe("incident detail — the ceremonies", () => {
     expect(call[0]).toBe("/api/v1/safety/incidents/{incidentId}/osha-signoff");
     expect(call[1].body).toMatchObject({ oshaReportable: true, stateCode: "OR" });
   });
-
-  it("keeps one ceremony open at a time", async () => {
-    mount("submitted");
-    await open("Change state", "Change this incident's state");
-    fireEvent.click(screen.getByRole("button", { name: "OSHA sign-off" }));
-    expect(
-      await screen.findByRole("complementary", { name: "OSHA-equivalent sign-off" }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("complementary", { name: "Change this incident's state" }),
-    ).toBeNull();
-  });
 });
 
-describe("incident detail — a write in flight and a write that fails", () => {
+describe("incident detail — the draft editor, a write in flight and a write that fails", () => {
   const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
   const cancelOf = (drawer: HTMLElement) =>
     within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
 
-  it("makes the page inert while a submit is in flight, then live again", async () => {
+  it("makes the page inert while the draft is being saved, then live again", async () => {
     const write = deferred<unknown>();
-    mount("draft", { post: () => write.promise });
-    const drawer = await open("Submit for review", "Submit this incident for review");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Submit" }));
+    mount("draft", { patch: () => write.promise });
+    const drawer = await openDrawer("Edit draft", "Edit this draft");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save draft" }));
     const reload = screen.getByRole("button", { name: "Reload" });
     await waitFor(() => expect(isInert(reload)).toBe(true));
     expect(isInert(screen.getByRole("button", { name: "OSHA sign-off" }))).toBe(true);
@@ -248,45 +240,14 @@ describe("incident detail — a write in flight and a write that fails", () => {
     expect(isInert(drawer)).toBe(false);
     write.resolve(ok({}));
     await waitFor(() =>
-      expect(
-        screen.queryByRole("complementary", { name: "Submit this incident for review" }),
-      ).toBeNull(),
+      expect(screen.queryByRole("complementary", { name: "Edit this draft" })).toBeNull(),
     );
     expect(isInert(await screen.findByRole("button", { name: "Reload" }))).toBe(false);
   });
 
-  it("leaves another ceremony open when an earlier write lands", async () => {
-    const write = deferred<unknown>();
-    const { get } = mount("draft", { post: () => write.promise });
-    const drawer = await open("Submit for review", "Submit this incident for review");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Submit" }));
-    // A browser blocks this click (the page is inert); jsdom delivers it, so the guard is what is tested.
-    fireEvent.click(screen.getByRole("button", { name: "OSHA sign-off" }));
-    await screen.findByRole("complementary", { name: "OSHA-equivalent sign-off" });
-    const readsBefore = get.mock.calls.length;
-    write.resolve(ok({}));
-    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
-    expect(
-      await screen.findByRole("complementary", { name: "OSHA-equivalent sign-off" }),
-    ).toBeTruthy();
-  });
-
-  it("recovers when a submit is rejected by the network", async () => {
-    mount("draft", { post: offline });
-    const drawer = await open("Submit for review", "Submit this incident for review");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Submit" }));
-    const alert = await within(drawer).findByRole("alert");
-    expect(alert.textContent).toContain("No answer came back");
-    expect(
-      (within(drawer).getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
-    expect(cancelOf(drawer).disabled).toBe(false);
-    expect(isInert(screen.getByRole("button", { name: "Reload" }))).toBe(false);
-  });
-
   it("recovers when a draft edit is rejected by the network", async () => {
     mount("draft", { patch: offline });
-    const drawer = await open("Edit draft", "Edit this draft");
+    const drawer = await openDrawer("Edit draft", "Edit this draft");
     fireEvent.click(within(drawer).getByRole("button", { name: "Save draft" }));
     expect((await within(drawer).findByRole("alert")).textContent).toContain("No answer came back");
     expect(cancelOf(drawer).disabled).toBe(false);
@@ -296,7 +257,7 @@ describe("incident detail — a write in flight and a write that fails", () => {
 describe("incident detail — nothing outlives a dismissed ceremony", () => {
   const dismiss = async (drawer: HTMLElement, name: string): Promise<void> => {
     fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("complementary", { name })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name })).toBeNull());
   };
 
   it("reopens the state change without its reason", async () => {
@@ -346,13 +307,13 @@ describe("incident detail — nothing outlives a dismissed ceremony", () => {
 describe("incident detail — another incident, and opening a form that is already open", () => {
   it("does not carry an open drawer or its draft over to another incident", async () => {
     const { patch } = mount("draft");
-    const drawer = await open("Edit draft", "Edit this draft");
+    const drawer = await openDrawer("Edit draft", "Edit this draft");
     fireEvent.change(within(drawer).getByLabelText("Where"), { target: { value: "Back steps" } });
     fireEvent.click(screen.getByRole("button", { name: "Go to another incident" }));
     // The other incident arrives with no drawer open, and its own values, not the first one's draft.
     expect(await screen.findByText("Garage door")).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "Edit this draft" })).toBeNull();
-    const again = await open("Edit draft", "Edit this draft");
+    const again = await openDrawer("Edit draft", "Edit this draft");
     expect((within(again).getByLabelText("Where") as HTMLInputElement).value).toBe("Garage door");
     fireEvent.click(within(again).getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
@@ -366,31 +327,99 @@ describe("incident detail — another incident, and opening a form that is alrea
 
   it("keeps what was typed when the same form's opener is clicked again", async () => {
     mount("draft");
-    const edit = await open("Edit draft", "Edit this draft");
+    const edit = await openDrawer("Edit draft", "Edit this draft");
     fireEvent.change(within(edit).getByLabelText("Where"), { target: { value: "Back steps" } });
     fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
     expect((within(edit).getByLabelText("Where") as HTMLInputElement).value).toBe("Back steps");
   });
+});
 
-  it("keeps the OSHA sign-off's draft and choice when its opener is clicked again", async () => {
-    mount("submitted");
-    const drawer = await open("OSHA sign-off", "OSHA-equivalent sign-off");
-    fireEvent.change(within(drawer).getByLabelText(/^Reason/), { target: { value: RULE } });
-    const reportable = within(drawer).getByLabelText(
-      "This incident IS OSHA-equivalent reportable",
-    ) as HTMLInputElement;
-    fireEvent.click(reportable);
-    const choice = reportable.checked;
-    fireEvent.click(screen.getByRole("button", { name: "OSHA sign-off" }));
-    expect((within(drawer).getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe(RULE);
-    expect(reportable.checked).toBe(choice);
+const fillReason = (dialog: HTMLElement): void => {
+  fireEvent.change(within(dialog).getByLabelText("Why"), { target: { value: REASON } });
+};
+const fillSignOff = (dialog: HTMLElement): void => {
+  fireEvent.change(within(dialog).getByLabelText("State"), { target: { value: "or" } });
+  fireEvent.change(within(dialog).getByLabelText(/^Reason/), { target: { value: RULE } });
+};
+const nothing = (): void => {};
+
+const CEREMONIES = [
+  {
+    title: "Submit this incident for review",
+    opener: "Submit for review",
+    state: "draft",
+    save: "Submit",
+    fill: nothing,
+  },
+  {
+    title: "Change this incident's state",
+    opener: "Change state",
+    state: "submitted",
+    save: "Record transition",
+    fill: fillReason,
+  },
+  {
+    title: "OSHA-equivalent sign-off",
+    opener: "OSHA sign-off",
+    state: "submitted",
+    save: "Sign off as reportable",
+    fill: fillSignOff,
+  },
+] as const;
+
+describe.each(CEREMONIES)("incident detail — $title as a modal", (c) => {
+  const gone = () => expect(screen.queryByRole("dialog", { name: c.title })).toBeNull();
+  const press = (dialog: HTMLElement) =>
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+
+  it("is a dialog, not a drawer beside the incident", async () => {
+    mount(c.state);
+    const dialog = await open(c.opener, c.title);
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 
-  it("keeps the state change's reason when its opener is clicked again", async () => {
-    mount("submitted");
-    const drawer = await open("Change state", "Change this incident's state");
-    fireEvent.change(within(drawer).getByLabelText("Why"), { target: { value: REASON } });
-    fireEvent.click(screen.getByRole("button", { name: "Change state" }));
-    expect((within(drawer).getByLabelText("Why") as HTMLTextAreaElement).value).toBe(REASON);
+  it("closes from Cancel without writing anything", async () => {
+    const { patch, post } = mount(c.state);
+    const dialog = await open(c.opener, c.title);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(gone);
+    expect(patch).not.toHaveBeenCalled();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("is not dismissed by the scrim, and refuses Cancel and Escape while its write is pending", async () => {
+    const write = deferred<unknown>();
+    mount(c.state, { post: () => write.promise });
+    const dialog = await open(c.opener, c.title);
+    c.fill(dialog);
+    // A click outside never discards what was typed.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog", { name: c.title })).toBe(dialog);
+    press(dialog);
+    await waitFor(() =>
+      expect(
+        (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+      ).toBe(true),
+    );
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog", { name: c.title })).toBe(dialog);
+    write.resolve(ok({}));
+    await waitFor(gone);
+  });
+
+  it("ends a request the network rejected with the failure in the dialog, which can be dismissed", async () => {
+    mount(c.state, { post: offline });
+    const dialog = await open(c.opener, c.title);
+    c.fill(dialog);
+    press(dialog);
+    const failure = await within(dialog).findByText(/No answer came back/);
+    expect(failure.getAttribute("role")).toBe("alert");
+    expect(
+      (within(dialog).getByRole("button", { name: c.save }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(gone);
   });
 });

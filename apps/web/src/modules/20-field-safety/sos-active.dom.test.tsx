@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-// Acknowledging an SOS on the active board is a form on a list screen, so it opens as a drawer in the detail rail beside
-// the board (the redesign's pattern): the board keeps polling and stays in view while the responder writes what they did.
-// Cancel closes it and records nothing; the record button stays disabled until the account is long enough.
+// Acknowledging an SOS is an attestation (who answered, at this moment, and what they did), so it is a focus-trapped modal
+// (DESIGN.md §7.4): a dialog that blocks the board until it is answered, cannot be dismissed while its write is in flight,
+// and that a click on the scrim never closes. Cancel closes it and records nothing; the record button stays disabled
+// until the account is long enough.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -81,48 +82,46 @@ const rowButton = async (name: string): Promise<HTMLElement> =>
   });
 const ackOf = async (name: string): Promise<HTMLElement> => {
   fireEvent.click(await rowButton(name));
-  return screen.findByRole("complementary", { name: `Acknowledge ${name}'s SOS` });
+  return screen.findByRole("dialog", { name: `Acknowledge ${name}'s SOS` });
 };
-const record = (drawer: HTMLElement): void => {
-  fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+const record = (dialog: HTMLElement): void => {
+  fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
     target: { value: ACTION },
   });
-  fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
 };
-const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
 
 describe("active SOS board — acknowledge an alert", () => {
-  it("opens the form as a drawer beside the board, not a dialog over it", async () => {
+  it("opens the form as a modal dialog, not a drawer beside the board", async () => {
     mount();
-    const drawer = await ackOf("Maya");
-    expect(within(drawer).getByLabelText("What did you do?")).toBeTruthy();
-    expect(screen.queryByRole("dialog")).toBeNull();
-    // The board stays on the page, with the other alert still on it.
-    expect(screen.getByText("Noor")).toBeTruthy();
+    const dialog = await ackOf("Maya");
+    expect(within(dialog).getByLabelText("What did you do?")).toBeTruthy();
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 
   it("closes from Cancel without recording anything", async () => {
     const { post } = mount();
-    const drawer = await ackOf("Maya");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    const dialog = await ackOf("Maya");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBeNull(),
     );
     expect(post).not.toHaveBeenCalled();
   });
 
   it("keeps Record acknowledgment disabled until the account says enough", async () => {
     mount();
-    const drawer = await ackOf("Maya");
-    const record = within(drawer).getByRole("button", {
+    const dialog = await ackOf("Maya");
+    const record = within(dialog).getByRole("button", {
       name: "Record acknowledgment",
     }) as HTMLButtonElement;
     expect(record.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+    fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
       target: { value: "Called her." },
     });
     expect(record.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+    fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
       target: { value: ACTION },
     });
     expect(record.disabled).toBe(false);
@@ -130,11 +129,11 @@ describe("active SOS board — acknowledge an alert", () => {
 
   it("records the acknowledgment against the version read on open, then closes", async () => {
     const { post } = mount();
-    const drawer = await ackOf("Maya");
-    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+    const dialog = await ackOf("Maya");
+    fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
       target: { value: ACTION },
     });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     const call = post.mock.calls[0] as unknown as [
       string,
@@ -144,62 +143,19 @@ describe("active SOS board — acknowledge an alert", () => {
     expect(call[1].body).toMatchObject({ actionTaken: ACTION });
     expect(call[1].headers["If-Match"]).toBe("3");
     await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBeNull(),
     );
-  });
-
-  it("starts a fresh form when another alert is opened while one is open", async () => {
-    mount();
-    const first = await ackOf("Maya");
-    fireEvent.change(within(first).getByLabelText("What did you do?"), {
-      target: { value: ACTION },
-    });
-    const second = await ackOf("Noor");
-    expect((within(second).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
-      "",
-    );
-    expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull();
-  });
-
-  it("makes the board inert while the acknowledgment is in flight, then live again", async () => {
-    const write = deferred<unknown>();
-    mount({ post: () => write.promise });
-    const drawer = await ackOf("Maya");
-    const noor = await rowButton("Noor");
-    record(drawer);
-    await waitFor(() => expect(isInert(noor)).toBe(true));
-    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(true);
-    expect(isInert(screen.getByRole("link", { name: "Safety board" }))).toBe(true);
-    expect(isInert(drawer)).toBe(false);
-    write.resolve(ok({}));
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull(),
-    );
-    expect(isInert(noor)).toBe(false);
-  });
-
-  it("leaves another alert's form open when an earlier acknowledgment lands", async () => {
-    const write = deferred<unknown>();
-    const { get } = mount({ post: () => write.promise });
-    const first = await ackOf("Maya");
-    record(first);
-    // A browser blocks this click (the board is inert); jsdom delivers it, so the same-alert guard is what is tested.
-    const second = await ackOf("Noor");
-    const readsBefore = get.mock.calls.length;
-    write.resolve(ok({}));
-    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
-    expect(screen.getByRole("complementary", { name: "Acknowledge Noor's SOS" })).toBe(second);
   });
 
   it("names the alert when the server refuses the acknowledgment, and keeps the form for a retry", async () => {
-    mount({ post: async () => refused("CONFLICT") });
-    const drawer = await ackOf("Maya");
-    record(drawer);
-    const alert = await within(drawer).findByRole("alert");
+    mount({ post: async () => refused("FORBIDDEN") });
+    const dialog = await ackOf("Maya");
+    record(dialog);
+    const alert = await within(dialog).findByRole("alert");
     expect(alert.textContent).toContain("The acknowledgment for Maya was not recorded.");
-    expect(alert.textContent).toContain("This record changed while you were working on it");
+    expect(alert.textContent).toContain("You do not hold the authority");
     expect(
-      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+      (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
     ).toBe(false);
   });
 
@@ -209,20 +165,19 @@ describe("active SOS board — acknowledge an alert", () => {
         throw new TypeError("Failed to fetch");
       },
     });
-    const drawer = await ackOf("Maya");
-    record(drawer);
-    const alert = await within(drawer).findByRole("alert");
+    const dialog = await ackOf("Maya");
+    record(dialog);
+    const alert = await within(dialog).findByRole("alert");
     expect(alert.textContent).toContain("The acknowledgment for Maya was not confirmed.");
     expect(alert.textContent).toContain("No answer came back");
-    // Not stuck: the drawer can be retried or dismissed and the board is live again.
+    // Not stuck: the dialog can be retried or dismissed.
     expect(
-      (within(drawer).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+      (within(dialog).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
         .disabled,
     ).toBe(false);
     expect(
-      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+      (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
     ).toBe(false);
-    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(false);
   });
 
   it("announces a failed open on a ready board instead of doing nothing", async () => {
@@ -230,7 +185,7 @@ describe("active SOS board — acknowledge an alert", () => {
     fireEvent.click(await rowButton("Maya"));
     const notice = await screen.findByText("That alert could not be opened.");
     expect(notice.getAttribute("role")).toBe("alert");
-    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("does not leave Acknowledge stuck when the alert read is rejected", async () => {
@@ -250,12 +205,12 @@ describe("active SOS board — acknowledge an alert", () => {
 describe("active SOS board — nothing outlives a dismissed form", () => {
   it("reopens empty and without the last failure", async () => {
     mount({ post: async () => refused("CONFLICT") });
-    const drawer = await ackOf("Maya");
-    record(drawer);
-    await within(drawer).findByText(/The acknowledgment for Maya was not recorded/);
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    const dialog = await ackOf("Maya");
+    record(dialog);
+    await within(dialog).findByText(/The acknowledgment for Maya was not recorded/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBeNull(),
     );
     const again = await ackOf("Maya");
     expect((within(again).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
@@ -265,50 +220,113 @@ describe("active SOS board — nothing outlives a dismissed form", () => {
   });
 });
 
-describe("active SOS board — opening a form that is already open", () => {
-  it("keeps the account typed when the same alert's Acknowledge is clicked again", async () => {
-    mount();
-    const drawer = await ackOf("Maya");
-    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+describe("active SOS board — a write that is pending", () => {
+  it("is not dismissed by the scrim, and refuses Cancel and Escape while its write is pending", async () => {
+    const write = deferred<unknown>();
+    mount({ post: () => write.promise });
+    const dialog = await ackOf("Maya");
+    fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
       target: { value: ACTION },
     });
-    fireEvent.click(await rowButton("Maya"));
-    // The opener re-reads the alert before it resets anything: let that settle before looking.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect((within(drawer).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
-      ACTION,
+    // A click outside never discards what was typed.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBe(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
+    await waitFor(() =>
+      expect(
+        (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+      ).toBe(true),
+    );
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBe(dialog);
+    write.resolve(ok({}));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBeNull(),
     );
   });
 });
 
-describe("active SOS board — recovering from a refused stale version", () => {
-  it("re-reads only the version when the same alert's Acknowledge is clicked again", async () => {
+describe("active SOS board — a refused stale version", () => {
+  const stampOf = (post: ReturnType<typeof vi.fn>, call: number): string =>
+    (post.mock.calls[call] as unknown as [string, { headers: Record<string, string> }])[1].headers[
+      "If-Match"
+    ] ?? "";
+  const alertReads = (get: ReturnType<typeof vi.fn>): number =>
+    get.mock.calls.filter((c) => c[0] === "/api/v1/safety/sos/{sosAlertId}").length;
+
+  it("re-reads the version itself, keeps what was typed and the refusal, and the next submit succeeds", async () => {
+    let version = 3;
+    let writes = 0;
+    const { post } = mount({
+      alertRead: async () => ok({ version }),
+      post: async () => (writes++ === 0 ? refused("STALE_LIFECYCLE_STATE") : ok({})),
+    });
+    const dialog = await ackOf("Maya");
+    // The alert changed while the responder was typing (the poll and escalation can bump it).
+    version = 4;
+    record(dialog);
+    const refusal = await within(dialog).findByText(/The acknowledgment for Maya was not recorded/);
+    expect(refusal.textContent).toContain("re-read (version 4)");
+    expect(refusal.getAttribute("role")).toBe("alert");
+    expect(dialog.textContent).toContain("stamped against version 4");
+    // What was typed is kept and the refusal stays visible, so the responder can submit again.
+    expect((within(dialog).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
+      ACTION,
+    );
+    expect(
+      (within(dialog).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(stampOf(post, 0)).toBe("3");
+    expect(stampOf(post, 1)).toBe("4");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+    );
+  });
+
+  it("also recovers from a bare conflict", async () => {
     let version = 3;
     let writes = 0;
     const { post } = mount({
       alertRead: async () => ok({ version }),
       post: async () => (writes++ === 0 ? refused("CONFLICT") : ok({})),
     });
-    const drawer = await ackOf("Maya");
-    record(drawer);
-    await within(drawer).findByText(/The acknowledgment for Maya was not recorded/);
-    // The alert changed while the responder was typing (the poll and escalation can bump it).
-    version = 4;
-    fireEvent.click(await rowButton("Maya"));
-    await within(drawer).findByText(/stamped against version 4/);
-    // What was typed is kept, and the next write carries the new stamp.
-    expect((within(drawer).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
-      ACTION,
-    );
-    fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+    const dialog = await ackOf("Maya");
+    version = 5;
+    record(dialog);
+    await within(dialog).findByText(/re-read \(version 5\)/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
-    const headers = (name: number) =>
-      (post.mock.calls[name] as unknown as [string, { headers: Record<string, string> }])[1]
-        .headers;
-    expect(headers(0)["If-Match"]).toBe("3");
-    expect(headers(1)["If-Match"]).toBe("4");
+    expect(stampOf(post, 1)).toBe("5");
+  });
+
+  it("says so when the version cannot be re-read, and the dialog can still be dismissed", async () => {
+    let reads = 0;
+    mount({
+      alertRead: async () => {
+        if (reads++ === 0) return ok({ version: 3 });
+        throw new TypeError("Failed to fetch");
+      },
+      post: async () => refused("STALE_LIFECYCLE_STATE"),
+    });
+    const dialog = await ackOf("Maya");
+    record(dialog);
+    await within(dialog).findByText(/could not be re-read/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBeNull(),
     );
+  });
+
+  it("does not re-read the alert for a refusal that is not about the version", async () => {
+    const { get } = mount({ post: async () => refused("FORBIDDEN") });
+    const dialog = await ackOf("Maya");
+    const readsBefore = alertReads(get);
+    record(dialog);
+    await within(dialog).findByText(/You do not hold the authority/);
+    expect(alertReads(get)).toBe(readsBefore);
   });
 });

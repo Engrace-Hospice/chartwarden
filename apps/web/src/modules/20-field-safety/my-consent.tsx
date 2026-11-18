@@ -14,7 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
-import { FormDrawer } from "../../shell/form-drawer";
+import { FormModal } from "../../shell/form-modal";
 import {
   type SafetyConsentPurpose,
   type SafetyConsentView,
@@ -171,194 +171,188 @@ export function MyConsentScreen(): JSX.Element {
   }
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="My Safety Consent"
-          actions={
-            <div style={actionGroupStyle}>
-              <Link to="/me/safety" style={linkButtonStyle}>
-                My safety
-              </Link>
-              <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
-                Refresh
-              </Button>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="My Safety Consent"
+            actions={
+              <div style={actionGroupStyle}>
+                <Link to="/me/safety" style={linkButtonStyle}>
+                  My safety
+                </Link>
+                <Button
+                  type="button"
+                  tone="secondary"
+                  onClick={() => void load()}
+                  loading={loading}
+                >
+                  Refresh
+                </Button>
+              </div>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              {asOf ? `Read at ${dateTime(asOf)}.` : "Consent settings scoped to your own account."}
             </div>
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            <Notice tone="info" live>
+              These consents are separate. Refusing all three does not disable SOS; the alert is
+              still raised and responders are told location is unknown.
+            </Notice>
+            {error ? (
+              <Notice tone="warning" live>
+                {error}
+              </Notice>
+            ) : null}
+          </div>
+        }
+        table={
+          <div style={contentStyle}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: "24%" }}>Purpose</th>
+                  <th style={{ width: "13%" }}>Status</th>
+                  <th style={{ width: "15%" }}>Given</th>
+                  <th style={{ width: "15%" }}>Withdrawn</th>
+                  <th style={{ width: "15%" }}>Expires</th>
+                  <th style={{ width: "10%" }}>Contact</th>
+                  <th style={{ width: "8%", textAlign: "right" }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {CONSENT_PURPOSES.map((purpose) => {
+                  const consent = byPurpose.get(purpose);
+                  return (
+                    <ConsentRow
+                      key={purpose}
+                      purpose={purpose}
+                      consent={consent}
+                      // One form at a time: opening one closes the other.
+                      onGrant={() => {
+                        setModalError(null);
+                        setRevoking(null);
+                        setContactName("");
+                        setContactPhone("");
+                        setContactRelationship("");
+                        setGranting(purpose);
+                      }}
+                      onRevoke={() => {
+                        setRevokeReason("");
+                        setModalError(null);
+                        setGranting(null);
+                        setRevoking(purpose);
+                      }}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+
+            <section style={sectionStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Consent wording</span>
+                <strong>Current text shown before a grant</strong>
+              </div>
+              <div style={wordingGridStyle}>
+                {CONSENT_PURPOSES.map((purpose) => (
+                  <details key={purpose} style={detailsStyle}>
+                    <summary style={summaryStyle}>{consentPurposeLabel(purpose)}</summary>
+                    <p style={paragraphStyle}>{CONSENT_TEXT[purpose]}</p>
+                  </details>
+                ))}
+              </div>
+            </section>
+
+            <div role="note" style={noteStyle}>
+              <StatusPill label="Audit gap" tone="neutral" />
+              <span>
+                Coordinate reads are logged, but M20 does not yet expose a self-service read route
+                for that audit list. This page names the gap instead of showing an empty list.
+              </span>
+            </div>
+          </div>
+        }
+        fullPageScroll
+      />
+      {granting ? (
+        <FormModal
+          key={`grant:${granting}`}
+          title={consentPurposeLabel(granting)}
+          busy={saving}
+          error={modalError}
+          onClose={closeGrant}
+          save={
+            <Button
+              tone="primary"
+              size="lg"
+              type="button"
+              onClick={() => void doGrant()}
+              disabled={
+                saving ||
+                (granting === "emergency_contact_call" &&
+                  (contactName.trim().length === 0 || contactPhone.trim().length === 0))
+              }
+            >
+              {saving ? "Recording..." : "I consent"}
+            </Button>
           }
         >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            {asOf ? `Read at ${dateTime(asOf)}.` : "Consent settings scoped to your own account."}
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          <Notice tone="info" live>
-            These consents are separate. Refusing all three does not disable SOS; the alert is still
-            raised and responders are told location is unknown.
-          </Notice>
-          {error ? (
-            <Notice tone="warning" live>
-              {error}
-            </Notice>
+          <p style={paragraphStyle}>{CONSENT_TEXT[granting]}</p>
+          {granting === "emergency_contact_call" ? (
+            <>
+              <TextField label="Their name" value={contactName} onChange={setContactName} />
+              <TextField
+                label="Their phone number"
+                value={contactPhone}
+                onChange={setContactPhone}
+                type="tel"
+                hint="Enter a full number with area code (no extension). Stored encrypted. It is not shown back on any screen."
+              />
+              <TextField
+                label="Relationship to you (optional)"
+                value={contactRelationship}
+                onChange={setContactRelationship}
+              />
+            </>
           ) : null}
-        </div>
-      }
-      table={
-        <div style={contentStyle}>
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: "24%" }}>Purpose</th>
-                <th style={{ width: "13%" }}>Status</th>
-                <th style={{ width: "15%" }}>Given</th>
-                <th style={{ width: "15%" }}>Withdrawn</th>
-                <th style={{ width: "15%" }}>Expires</th>
-                <th style={{ width: "10%" }}>Contact</th>
-                <th style={{ width: "8%", textAlign: "right" }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {CONSENT_PURPOSES.map((purpose) => {
-                const consent = byPurpose.get(purpose);
-                return (
-                  <ConsentRow
-                    key={purpose}
-                    purpose={purpose}
-                    consent={consent}
-                    // One form beside the list at a time: opening one closes the other.
-                    onGrant={() => {
-                      // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
-                      if (granting === purpose) return;
-                      setModalError(null);
-                      setRevoking(null);
-                      setContactName("");
-                      setContactPhone("");
-                      setContactRelationship("");
-                      setGranting(purpose);
-                    }}
-                    onRevoke={() => {
-                      if (revoking === purpose) return;
-                      setRevokeReason("");
-                      setModalError(null);
-                      setGranting(null);
-                      setRevoking(purpose);
-                    }}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
-
-          <section style={sectionStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Consent wording</span>
-              <strong>Current text shown before a grant</strong>
-            </div>
-            <div style={wordingGridStyle}>
-              {CONSENT_PURPOSES.map((purpose) => (
-                <details key={purpose} style={detailsStyle}>
-                  <summary style={summaryStyle}>{consentPurposeLabel(purpose)}</summary>
-                  <p style={paragraphStyle}>{CONSENT_TEXT[purpose]}</p>
-                </details>
-              ))}
-            </div>
-          </section>
-
-          <div role="note" style={noteStyle}>
-            <StatusPill label="Audit gap" tone="neutral" />
-            <span>
-              Coordinate reads are logged, but M20 does not yet expose a self-service read route for
-              that audit list. This page names the gap instead of showing an empty list.
-            </span>
-          </div>
-        </div>
-      }
-      fullPageScroll
-      detail={
-        granting ? (
-          <FormDrawer
-            key={`grant:${granting}`}
-            title={consentPurposeLabel(granting)}
-            busy={saving}
-            onClose={closeGrant}
-            save={
-              <Button
-                tone="primary"
-                size="lg"
-                type="button"
-                onClick={() => void doGrant()}
-                disabled={
-                  saving ||
-                  (granting === "emergency_contact_call" &&
-                    (contactName.trim().length === 0 || contactPhone.trim().length === 0))
-                }
-              >
-                {saving ? "Recording..." : "I consent"}
-              </Button>
-            }
-          >
-            <p style={paragraphStyle}>{CONSENT_TEXT[granting]}</p>
-            {granting === "emergency_contact_call" ? (
-              <>
-                <TextField label="Their name" value={contactName} onChange={setContactName} />
-                <TextField
-                  label="Their phone number"
-                  value={contactPhone}
-                  onChange={setContactPhone}
-                  type="tel"
-                  hint="Enter a full number with area code (no extension). Stored encrypted. It is not shown back on any screen."
-                />
-                <TextField
-                  label="Relationship to you (optional)"
-                  value={contactRelationship}
-                  onChange={setContactRelationship}
-                />
-              </>
-            ) : null}
-            <Notice tone="info">
-              The words above are stored with your consent exactly as written.
-            </Notice>
-            {modalError ? (
-              <Notice tone="error" assertive>
-                {modalError}
-              </Notice>
-            ) : null}
-          </FormDrawer>
-        ) : revoking ? (
-          <FormDrawer
-            key={`revoke:${revoking}`}
-            title={`Withdraw: ${consentPurposeLabel(revoking)}`}
-            busy={saving}
-            onClose={closeRevoke}
-            save={
-              <Button
-                tone="primary"
-                size="lg"
-                type="button"
-                onClick={() => void doRevoke()}
-                disabled={saving}
-              >
-                {saving ? "Recording..." : "Withdraw my consent"}
-              </Button>
-            }
-          >
-            <Notice tone="info">{withdrawalCopy(revoking)}</Notice>
-            <TextAreaField
-              label="Reason (optional)"
-              value={revokeReason}
-              onChange={setRevokeReason}
-              rows={3}
-            />
-            {modalError ? (
-              <Notice tone="error" assertive>
-                {modalError}
-              </Notice>
-            ) : null}
-          </FormDrawer>
-        ) : undefined
-      }
-    />
+          <Notice tone="info">
+            The words above are stored with your consent exactly as written.
+          </Notice>
+        </FormModal>
+      ) : revoking ? (
+        <FormModal
+          key={`revoke:${revoking}`}
+          title={`Withdraw: ${consentPurposeLabel(revoking)}`}
+          busy={saving}
+          error={modalError}
+          onClose={closeRevoke}
+          save={
+            <Button
+              tone="primary"
+              size="lg"
+              type="button"
+              onClick={() => void doRevoke()}
+              disabled={saving}
+            >
+              {saving ? "Recording..." : "Withdraw my consent"}
+            </Button>
+          }
+        >
+          <Notice tone="info">{withdrawalCopy(revoking)}</Notice>
+          <TextAreaField
+            label="Reason (optional)"
+            value={revokeReason}
+            onChange={setRevokeReason}
+            rows={3}
+          />
+        </FormModal>
+      ) : null}
+    </>
   );
 }
 

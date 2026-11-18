@@ -39,6 +39,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { FormDrawer } from "../../shell/form-drawer";
+import { FormModal } from "../../shell/form-modal";
 import {
   type SafetyIncidentCategory,
   type SafetyIncidentSeverity,
@@ -166,12 +167,10 @@ function IncidentDetailBody(): JSX.Element {
 
   const openCeremony = useCallback(
     (next: Exclude<Ceremony, "none">) => {
-      // Already open (the drawer is not modal while idle): opening again must not wipe what was typed.
-      if (ceremony === next) return;
       resetDrafts();
       setCeremony(next);
     },
-    [ceremony, resetDrafts],
+    [resetDrafts],
   );
 
   const closeCeremony = useCallback(() => {
@@ -200,7 +199,7 @@ function IncidentDetailBody(): JSX.Element {
   }, []);
 
   // Every write below runs through `.catch(() => null)`: the client REJECTS on a network failure, and `saving` must
-  // reset on every path or the drawer can never be dismissed. `null` is that failure.
+  // reset on every path or the form can never be dismissed. `null` is that failure.
   const submitEdit = useCallback(async () => {
     if (!incident) return;
     setSaving(true);
@@ -320,263 +319,276 @@ function IncidentDetailBody(): JSX.Element {
   }));
 
   return (
-    <div className={`wx-list-drawer${ceremony !== "none" ? " has-drawer" : ""}`}>
-      <div className="wx-list-drawer-main wx-kit-column">
-        <PageHeader
-          title={<span style={pageTitleStyle}>Incident {shortId(incident.id)}</span>}
-          actions={
-            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-              <Link to="/safety/incidents" style={ghostButtonStyle}>
-                Back to ledger
-              </Link>
-              <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
-                Reload
-              </Button>
-            </div>
-          }
-        />
+    <>
+      <div className={`wx-list-drawer${ceremony === "edit" ? " has-drawer" : ""}`}>
+        <div className="wx-list-drawer-main wx-kit-column">
+          <PageHeader
+            title={<span style={pageTitleStyle}>Incident {shortId(incident.id)}</span>}
+            actions={
+              <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+                <Link to="/safety/incidents" style={ghostButtonStyle}>
+                  Back to ledger
+                </Link>
+                <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
+                  Reload
+                </Button>
+              </div>
+            }
+          />
 
-        {reportableUnsigned ? (
-          <Notice tone="error" assertive>
-            <strong>Marked OSHA-reportable with no sign-off on record.</strong> A supervisor must
-            sign off before this incident can leave draft — the database refuses the combination
-            outright, so this is not a warning that can be worked around.
-          </Notice>
-        ) : null}
+          {reportableUnsigned ? (
+            <Notice tone="error" assertive>
+              <strong>Marked OSHA-reportable with no sign-off on record.</strong> A supervisor must
+              sign off before this incident can leave draft — the database refuses the combination
+              outright, so this is not a warning that can be worked around.
+            </Notice>
+          ) : null}
 
-        {filedOnBehalf && !isClosed ? (
-          <Notice tone="warning" live>
-            <strong>This incident was filed on the affected clinician's behalf.</strong> §6 requires
-            HER acknowledgment before it may close, and that acknowledgment cannot be coerced — if
-            she declines, the row stays under review and a compliance flag fires. There is no button
-            here to record it for her, deliberately: M20 publishes no route that would let one
-            person post another's acknowledgment.
-          </Notice>
-        ) : null}
+          {filedOnBehalf && !isClosed ? (
+            <Notice tone="warning" live>
+              <strong>This incident was filed on the affected clinician's behalf.</strong> §6
+              requires HER acknowledgment before it may close, and that acknowledgment cannot be
+              coerced — if she declines, the row stays under review and a compliance flag fires.
+              There is no button here to record it for her, deliberately: M20 publishes no route
+              that would let one person post another's acknowledgment.
+            </Notice>
+          ) : null}
 
-        <Panel
-          stack
-          headingLevel={3}
-          title="Incident"
-          action={
-            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-              {isDraft ? (
-                <>
-                  <Button tone="secondary" size="lg" type="button" onClick={openEdit}>
-                    Edit draft
-                  </Button>
+          <Panel
+            stack
+            headingLevel={3}
+            title="Incident"
+            action={
+              <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+                {isDraft ? (
+                  <>
+                    <Button tone="secondary" size="lg" type="button" onClick={openEdit}>
+                      Edit draft
+                    </Button>
+                    <Button
+                      tone="primary"
+                      size="lg"
+                      type="button"
+                      onClick={() => openCeremony("submit")}
+                    >
+                      Submit for review
+                    </Button>
+                  </>
+                ) : null}
+                {!isDraft ? (
                   <Button
-                    tone="primary"
+                    tone="secondary"
                     size="lg"
                     type="button"
-                    onClick={() => openCeremony("submit")}
+                    onClick={() => openCeremony("transition")}
                   >
-                    Submit for review
+                    Change state
                   </Button>
-                </>
-              ) : null}
-              {!isDraft ? (
+                ) : null}
                 <Button
                   tone="secondary"
                   size="lg"
                   type="button"
-                  onClick={() => openCeremony("transition")}
+                  onClick={() => {
+                    openCeremony("osha");
+                    setOshaReportable(!incident.oshaReportable);
+                  }}
+                  disabled={isClosed}
                 >
-                  Change state
+                  OSHA sign-off
                 </Button>
-              ) : null}
+              </div>
+            }
+          >
+            <SummaryGrid>
+              <Field label="State" value={<IncidentStatePill state={incident.lifecycleState} />} />
+              <Field label="Category" value={incidentCategoryLabel(incident.category)} />
+              <Field label="Severity" value={<SeverityPill severity={incident.severity} />} />
+              <Field label="Occurred" value={dateTime(incident.occurredAt)} />
+              <Field label="Reported" value={dateTime(incident.reportedAt)} />
+              <Field
+                label="Affected clinician"
+                value={shortId(incident.affectedClinicianMembershipId)}
+                mono
+              />
+              <Field label="Reported by" value={shortId(incident.reportedByMembershipId)} mono />
+              <Field
+                label="Visit"
+                value={incident.visitId ? shortId(incident.visitId) : "None"}
+                mono={incident.visitId !== null}
+              />
+              <Field label="Submitted" value={dateTime(incident.submittedAt)} />
+              <Field label="Reviewed" value={dateTime(incident.reviewedAt)} />
+              <Field label="Closed" value={dateTime(incident.closedAt)} />
+              <Field label="Row version" value={String(incident.version)} mono />
+              <Field
+                label="OSHA-reportable"
+                value={
+                  incident.oshaReportable ? (
+                    <StatusPill
+                      label={incident.oshaReportableSignedOffAt ? "Yes — signed" : "Yes — UNSIGNED"}
+                      tone={incident.oshaReportableSignedOffAt ? "critical" : "error"}
+                    />
+                  ) : (
+                    "No"
+                  )
+                }
+              />
+              <Field
+                label="Signed off"
+                value={
+                  incident.oshaReportableSignedOffAt
+                    ? `${dateTime(incident.oshaReportableSignedOffAt)} · ${shortId(incident.oshaReportableSignedOffByMembershipId)}`
+                    : "—"
+                }
+              />
+              <Field
+                label="Workers' comp"
+                value={
+                  incident.workersCompClaimInitiated
+                    ? (incident.workersCompClaimReference ?? "Initiated")
+                    : "Not initiated"
+                }
+                mono={incident.workersCompClaimReference !== null}
+              />
+              <Field
+                label="Linked SOS"
+                value={
+                  incident.linkedSosAlertId ? (
+                    <Link to={`/safety/sos/${incident.linkedSosAlertId}`} style={linkStyle}>
+                      {shortId(incident.linkedSosAlertId)}
+                    </Link>
+                  ) : (
+                    "None"
+                  )
+                }
+              />
+            </SummaryGrid>
+            {incident.locationDescription ? (
+              <Field label="Where" value={incident.locationDescription} />
+            ) : null}
+            {incident.reopenReason ? (
+              <Notice tone="warning">
+                <strong>Reopened:</strong> {incident.reopenReason}
+              </Notice>
+            ) : null}
+          </Panel>
+
+          <Panel stack headingLevel={3} title="Narrative">
+            <CipherText value={incident.narrative} available={incident.narrativeAvailable} />
+          </Panel>
+
+          {incident.witnesses ? (
+            <Panel stack headingLevel={3} title="Witnesses">
+              <p style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
+                {incident.witnesses}
+              </p>
+            </Panel>
+          ) : null}
+
+          <Panel stack headingLevel={3} title="Action plan">
+            <CipherText
+              value={incident.actionPlan}
+              available={incident.actionPlanAvailable}
+              emptyLabel="No action plan — this incident has not been closed with one."
+            />
+          </Panel>
+
+          <Panel stack headingLevel={3} title="Lifecycle ledger">
+            {ledger.length === 0 ? (
+              <span className="wx-text-muted">
+                No transitions yet — this incident is still a draft.
+              </span>
+            ) : (
+              <Timeline entries={ledger} />
+            )}
+          </Panel>
+        </div>
+
+        {/* ── the draft editor is a drawer beside the incident ───────────────────────────────────────── */}
+
+        {ceremony === "edit" ? (
+          <FormDrawer
+            title="Edit this draft"
+            busy={saving}
+            onClose={closeCeremony}
+            save={
               <Button
-                tone="secondary"
+                tone="primary"
                 size="lg"
                 type="button"
-                onClick={() => {
-                  if (ceremony === "osha") return;
-                  openCeremony("osha");
-                  setOshaReportable(!incident.oshaReportable);
-                }}
-                disabled={isClosed}
+                onClick={() => void submitEdit()}
+                disabled={saving}
               >
-                OSHA sign-off
+                {saving ? "Saving…" : "Save draft"}
               </Button>
-            </div>
-          }
-        >
-          <SummaryGrid>
-            <Field label="State" value={<IncidentStatePill state={incident.lifecycleState} />} />
-            <Field label="Category" value={incidentCategoryLabel(incident.category)} />
-            <Field label="Severity" value={<SeverityPill severity={incident.severity} />} />
-            <Field label="Occurred" value={dateTime(incident.occurredAt)} />
-            <Field label="Reported" value={dateTime(incident.reportedAt)} />
-            <Field
-              label="Affected clinician"
-              value={shortId(incident.affectedClinicianMembershipId)}
-              mono
+            }
+          >
+            {!incident.narrativeAvailable ? (
+              <Notice tone="warning" assertive>
+                The stored narrative could not be decrypted for display, so the box below starts
+                empty. Leaving it empty keeps what is already stored; typing into it REPLACES text
+                you cannot see.
+              </Notice>
+            ) : null}
+            <SelectField
+              label="Category"
+              value={category}
+              options={INCIDENT_CATEGORIES.map((v) => ({
+                value: v,
+                label: incidentCategoryLabel(v),
+              }))}
+              onChange={setCategory}
             />
-            <Field label="Reported by" value={shortId(incident.reportedByMembershipId)} mono />
-            <Field
-              label="Visit"
-              value={incident.visitId ? shortId(incident.visitId) : "None"}
-              mono={incident.visitId !== null}
+            <SelectField
+              label="Severity"
+              value={severity}
+              options={INCIDENT_SEVERITIES.map((v) => ({ value: v, label: humanize(v) }))}
+              onChange={setSeverity}
             />
-            <Field label="Submitted" value={dateTime(incident.submittedAt)} />
-            <Field label="Reviewed" value={dateTime(incident.reviewedAt)} />
-            <Field label="Closed" value={dateTime(incident.closedAt)} />
-            <Field label="Row version" value={String(incident.version)} mono />
-            <Field
-              label="OSHA-reportable"
-              value={
-                incident.oshaReportable ? (
-                  <StatusPill
-                    label={incident.oshaReportableSignedOffAt ? "Yes — signed" : "Yes — UNSIGNED"}
-                    tone={incident.oshaReportableSignedOffAt ? "critical" : "error"}
-                  />
-                ) : (
-                  "No"
-                )
-              }
+            <TextField
+              label="Where"
+              value={locationDescription}
+              onChange={setLocationDescription}
             />
-            <Field
-              label="Signed off"
-              value={
-                incident.oshaReportableSignedOffAt
-                  ? `${dateTime(incident.oshaReportableSignedOffAt)} · ${shortId(incident.oshaReportableSignedOffByMembershipId)}`
-                  : "—"
-              }
+            <TextAreaField
+              label="What happened"
+              value={narrative}
+              onChange={setNarrative}
+              rows={8}
+              minChars={INCIDENT_NARRATIVE_MIN_CHARS}
+              hint="Stored encrypted under the tenant key. Once submitted, this text is part of a record an insurer and a state agency may read."
             />
-            <Field
-              label="Workers' comp"
-              value={
-                incident.workersCompClaimInitiated
-                  ? (incident.workersCompClaimReference ?? "Initiated")
-                  : "Not initiated"
-              }
-              mono={incident.workersCompClaimReference !== null}
+            <TextAreaField label="Witnesses" value={witnesses} onChange={setWitnesses} rows={3} />
+            <CheckboxField
+              label="A workers' compensation claim has been initiated"
+              checked={wcInitiated}
+              onChange={setWcInitiated}
             />
-            <Field
-              label="Linked SOS"
-              value={
-                incident.linkedSosAlertId ? (
-                  <Link to={`/safety/sos/${incident.linkedSosAlertId}`} style={linkStyle}>
-                    {shortId(incident.linkedSosAlertId)}
-                  </Link>
-                ) : (
-                  "None"
-                )
-              }
-            />
-          </SummaryGrid>
-          {incident.locationDescription ? (
-            <Field label="Where" value={incident.locationDescription} />
-          ) : null}
-          {incident.reopenReason ? (
-            <Notice tone="warning">
-              <strong>Reopened:</strong> {incident.reopenReason}
-            </Notice>
-          ) : null}
-        </Panel>
-
-        <Panel stack headingLevel={3} title="Narrative">
-          <CipherText value={incident.narrative} available={incident.narrativeAvailable} />
-        </Panel>
-
-        {incident.witnesses ? (
-          <Panel stack headingLevel={3} title="Witnesses">
-            <p style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
-              {incident.witnesses}
-            </p>
-          </Panel>
+            {wcInitiated ? (
+              <TextField
+                label="Claim reference"
+                value={wcReference}
+                onChange={setWcReference}
+                mono
+              />
+            ) : null}
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
         ) : null}
-
-        <Panel stack headingLevel={3} title="Action plan">
-          <CipherText
-            value={incident.actionPlan}
-            available={incident.actionPlanAvailable}
-            emptyLabel="No action plan — this incident has not been closed with one."
-          />
-        </Panel>
-
-        <Panel stack headingLevel={3} title="Lifecycle ledger">
-          {ledger.length === 0 ? (
-            <span className="wx-text-muted">
-              No transitions yet — this incident is still a draft.
-            </span>
-          ) : (
-            <Timeline entries={ledger} />
-          )}
-        </Panel>
       </div>
 
-      {/* ── ceremonies: drawers beside the incident ─────────────────────────────────────────────────── */}
-
-      {ceremony === "edit" ? (
-        <FormDrawer
-          title="Edit this draft"
-          busy={saving}
-          onClose={closeCeremony}
-          save={
-            <Button
-              tone="primary"
-              size="lg"
-              type="button"
-              onClick={() => void submitEdit()}
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save draft"}
-            </Button>
-          }
-        >
-          {!incident.narrativeAvailable ? (
-            <Notice tone="warning" assertive>
-              The stored narrative could not be decrypted for display, so the box below starts
-              empty. Leaving it empty keeps what is already stored; typing into it REPLACES text you
-              cannot see.
-            </Notice>
-          ) : null}
-          <SelectField
-            label="Category"
-            value={category}
-            options={INCIDENT_CATEGORIES.map((v) => ({
-              value: v,
-              label: incidentCategoryLabel(v),
-            }))}
-            onChange={setCategory}
-          />
-          <SelectField
-            label="Severity"
-            value={severity}
-            options={INCIDENT_SEVERITIES.map((v) => ({ value: v, label: humanize(v) }))}
-            onChange={setSeverity}
-          />
-          <TextField label="Where" value={locationDescription} onChange={setLocationDescription} />
-          <TextAreaField
-            label="What happened"
-            value={narrative}
-            onChange={setNarrative}
-            rows={8}
-            minChars={INCIDENT_NARRATIVE_MIN_CHARS}
-            hint="Stored encrypted under the tenant key. Once submitted, this text is part of a record an insurer and a state agency may read."
-          />
-          <TextAreaField label="Witnesses" value={witnesses} onChange={setWitnesses} rows={3} />
-          <CheckboxField
-            label="A workers' compensation claim has been initiated"
-            checked={wcInitiated}
-            onChange={setWcInitiated}
-          />
-          {wcInitiated ? (
-            <TextField label="Claim reference" value={wcReference} onChange={setWcReference} mono />
-          ) : null}
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </FormDrawer>
-      ) : null}
+      {/* ── ceremonies: attestations, sign-offs and state changes are modals (DESIGN.md §7.4) ──────── */}
 
       {ceremony === "submit" ? (
-        <FormDrawer
+        <FormModal
           title="Submit this incident for review"
           busy={saving}
+          error={modalError}
           onClose={closeCeremony}
           save={
             <Button
@@ -608,18 +620,14 @@ function IncidentDetailBody(): JSX.Element {
             supervisor's step-up'd sign-off, precisely so a filing with a state agency is never made
             on the reporting clinician's own say-so.
           </span>
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </FormDrawer>
+        </FormModal>
       ) : null}
 
       {ceremony === "transition" ? (
-        <FormDrawer
+        <FormModal
           title="Change this incident's state"
           busy={saving}
+          error={modalError}
           onClose={closeCeremony}
           save={
             <Button
@@ -670,18 +678,14 @@ function IncidentDetailBody(): JSX.Element {
               second sign-off afterwards.
             </Notice>
           ) : null}
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </FormDrawer>
+        </FormModal>
       ) : null}
 
       {ceremony === "osha" ? (
-        <FormDrawer
+        <FormModal
           title="OSHA-equivalent sign-off"
           busy={saving}
+          error={modalError}
           onClose={closeCeremony}
           save={
             <Button
@@ -746,13 +750,8 @@ function IncidentDetailBody(): JSX.Element {
               stays honest.
             </Notice>
           ) : null}
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </FormDrawer>
+        </FormModal>
       ) : null}
-    </div>
+    </>
   );
 }

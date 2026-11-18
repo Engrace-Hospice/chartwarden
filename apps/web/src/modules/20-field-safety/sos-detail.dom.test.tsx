@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-// The SOS ceremonies (acknowledge, resolve, read the coordinates) open as a drawer in the detail rail beside the alert
-// they act on (the redesign's pattern), so the ledger and the answers so far stay in view while a responder writes.
-// Cancel closes the drawer and writes nothing; one ceremony is open at a time; each button stays disabled until its own
-// rule (an account of a minimum length, a written reason once the alert has closed) is met.
+// The SOS ceremonies (acknowledge, resolve, read the coordinates) are focus-trapped modals (DESIGN.md §7.4: an
+// attestation, an irreversible transition and an audited read): a dialog named for the act that blocks the page until it
+// is answered, that cannot be dismissed while a write is in flight, and that a click on the scrim never closes. Cancel
+// closes it and writes nothing; each button stays disabled until its own rule (an account of a minimum length, a written
+// reason once the alert has closed) is met.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -117,9 +118,9 @@ function mount(
   return { get, post };
 }
 
-const open = async (button: string, drawerName: string): Promise<HTMLElement> => {
+const open = async (button: string, dialogName: string): Promise<HTMLElement> => {
   fireEvent.click(await screen.findByRole("button", { name: button }));
-  return screen.findByRole("complementary", { name: drawerName });
+  return screen.findByRole("dialog", { name: dialogName });
 };
 const ACTION = "Reached the daughter on the number we hold and asked her to stay with the nurse.";
 const NARRATIVE =
@@ -128,33 +129,31 @@ const NARRATIVE =
   );
 
 describe("SOS detail — the ceremonies", () => {
-  it("opens the acknowledgment as a drawer beside the alert, not a dialog over it", async () => {
+  it("opens the acknowledgment as a modal dialog, not a drawer beside the alert", async () => {
     mount(alertIn("escalation_tier_1", false));
-    const drawer = await open("Acknowledge", "Acknowledge this SOS");
-    expect(within(drawer).getByLabelText("What did you do?")).toBeTruthy();
-    expect(screen.queryByRole("dialog")).toBeNull();
-    // The alert's ledger stays on the page while a responder writes.
-    expect(screen.getByRole("heading", { name: "Lifecycle ledger" })).toBeTruthy();
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    expect(within(dialog).getByLabelText("What did you do?")).toBeTruthy();
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 
   it("closes from Cancel without recording anything", async () => {
     const { post } = mount(alertIn("escalation_tier_1", false));
-    const drawer = await open("Acknowledge", "Acknowledge this SOS");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Acknowledge this SOS" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "Acknowledge this SOS" })).toBeNull(),
     );
     expect(post).not.toHaveBeenCalled();
   });
 
   it("records the acknowledgment against the alert's version once the account is long enough", async () => {
     const { post } = mount(alertIn("escalation_tier_1", false));
-    const drawer = await open("Acknowledge", "Acknowledge this SOS");
-    const record = within(drawer).getByRole("button", {
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    const record = within(dialog).getByRole("button", {
       name: "Record acknowledgment",
     }) as HTMLButtonElement;
     expect(record.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+    fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
       target: { value: ACTION },
     });
     expect(record.disabled).toBe(false);
@@ -168,22 +167,22 @@ describe("SOS detail — the ceremonies", () => {
     expect(call[1].body).toMatchObject({ actionTaken: ACTION });
     expect(call[1].headers["If-Match"]).toBe("3");
     await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Acknowledge this SOS" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "Acknowledge this SOS" })).toBeNull(),
     );
   });
 
   it("keeps Close this alert disabled until the account is long enough, and says when it opens an incident", async () => {
     mount(alertIn("acknowledged", true));
-    const drawer = await open("Resolve", "Resolve this SOS");
-    const closeAlert = within(drawer).getByRole("button", {
+    const dialog = await open("Resolve", "Resolve this SOS");
+    const closeAlert = within(dialog).getByRole("button", {
       name: "Close this alert",
     }) as HTMLButtonElement;
     expect(closeAlert.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("What happened, and how did it end?"), {
+    fireEvent.change(within(dialog).getByLabelText("What happened, and how did it end?"), {
       target: { value: NARRATIVE },
     });
-    fireEvent.click(within(drawer).getByLabelText("Open a safety incident from this alert"));
-    const closeAndOpen = within(drawer).getByRole("button", {
+    fireEvent.click(within(dialog).getByLabelText("Open a safety incident from this alert"));
+    const closeAndOpen = within(dialog).getByRole("button", {
       name: "Close and open an incident",
     }) as HTMLButtonElement;
     expect(closeAndOpen.disabled).toBe(false);
@@ -191,10 +190,10 @@ describe("SOS detail — the ceremonies", () => {
 
   it("asks for no written reason to read coordinates while the alert is live", async () => {
     const { get } = mount(alertIn("escalation_tier_1", false));
-    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
-    expect(within(drawer).queryByLabelText(/Why do you need this/)).toBeNull();
+    const dialog = await open("Request coordinate access", "Read this clinician's coordinates");
+    expect(within(dialog).queryByLabelText(/Why do you need this/)).toBeNull();
     fireEvent.click(
-      within(drawer).getByRole("button", { name: "I understand — show the coordinates" }),
+      within(dialog).getByRole("button", { name: "I understand — show the coordinates" }),
     );
     await waitFor(() =>
       expect(get).toHaveBeenCalledWith(
@@ -203,128 +202,39 @@ describe("SOS detail — the ceremonies", () => {
       ),
     );
     expect(await screen.findByText(stream.auditWarningBanner)).toBeTruthy();
-    expect(
-      screen.queryByRole("complementary", { name: "Read this clinician's coordinates" }),
-    ).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Read this clinician's coordinates" })).toBeNull();
   });
 
   it("requires a written reason to read coordinates once the alert has closed", async () => {
     mount(alertIn("resolved", true));
-    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
-    const show = within(drawer).getByRole("button", {
+    const dialog = await open("Request coordinate access", "Read this clinician's coordinates");
+    const show = within(dialog).getByRole("button", {
       name: "I understand — show the coordinates",
     }) as HTMLButtonElement;
     expect(show.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText(/Why do you need this/), {
+    fireEvent.change(within(dialog).getByLabelText(/Why do you need this/), {
       target: { value: "Reviewing the response for the quality committee meeting on Friday." },
     });
     expect(show.disabled).toBe(false);
   });
-
-  it("keeps one ceremony open at a time", async () => {
-    mount(alertIn("acknowledged", true));
-    await open("Resolve", "Resolve this SOS");
-    fireEvent.click(screen.getByRole("button", { name: "Request coordinate access" }));
-    expect(
-      await screen.findByRole("complementary", { name: "Read this clinician's coordinates" }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("complementary", { name: "Resolve this SOS" })).toBeNull();
-  });
 });
 
-describe("SOS detail — a write in flight and a write that fails", () => {
-  const record = (drawer: HTMLElement): void => {
-    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
-      target: { value: ACTION },
-    });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
-  };
-  const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
-
-  it("makes the page inert while the acknowledgment is in flight, then live again", async () => {
-    const write = deferred<unknown>();
-    mount(alertIn("escalation_tier_1", false), { post: () => write.promise });
-    const drawer = await open("Acknowledge", "Acknowledge this SOS");
-    record(drawer);
-    const reload = screen.getByRole("button", { name: "Reload" });
-    const reveal = screen.getByRole("button", { name: "Request coordinate access" });
-    await waitFor(() => expect(isInert(reload)).toBe(true));
-    expect(isInert(reveal)).toBe(true);
-    expect(isInert(screen.getByRole("link", { name: "Back to active SOS" }))).toBe(true);
-    expect(isInert(drawer)).toBe(false);
-    write.resolve(ok({}));
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Acknowledge this SOS" })).toBeNull(),
-    );
-    expect(isInert(await screen.findByRole("button", { name: "Reload" }))).toBe(false);
-  });
-
-  it("leaves another ceremony open when an earlier write lands", async () => {
-    const write = deferred<unknown>();
-    const { get } = mount(alertIn("escalation_tier_1", false), { post: () => write.promise });
-    record(await open("Acknowledge", "Acknowledge this SOS"));
-    // A browser blocks this click (the page is inert); jsdom delivers it, so the guard is what is tested.
-    fireEvent.click(screen.getByRole("button", { name: "Request coordinate access" }));
-    await screen.findByRole("complementary", { name: "Read this clinician's coordinates" });
-    const readsBefore = get.mock.calls.length;
-    write.resolve(ok({}));
-    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
-    expect(
-      await screen.findByRole("complementary", { name: "Read this clinician's coordinates" }),
-    ).toBeTruthy();
-  });
-
-  it("recovers when the acknowledgment request is rejected by the network", async () => {
-    mount(alertIn("escalation_tier_1", false), {
-      post: async () => {
-        throw new TypeError("Failed to fetch");
-      },
-    });
-    const drawer = await open("Acknowledge", "Acknowledge this SOS");
-    record(drawer);
-    const alert = await within(drawer).findByRole("alert");
-    expect(alert.textContent).toContain("No answer came back");
-    expect(
-      (within(drawer).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-    expect(
-      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
-    expect(isInert(screen.getByRole("button", { name: "Reload" }))).toBe(false);
-  });
-
-  it("recovers when the coordinate read is rejected by the network", async () => {
-    mount(alertIn("escalation_tier_1", false), {
-      streamRead: async () => {
-        throw new TypeError("Failed to fetch");
-      },
-    });
-    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
-    fireEvent.click(
-      within(drawer).getByRole("button", { name: "I understand — show the coordinates" }),
-    );
-    expect(await within(drawer).findByText(/No answer came back, so no coordinates/)).toBeTruthy();
-    expect(
-      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
-  });
-
-  it("announces a refused coordinate read once, in the drawer, and not after it is dismissed", async () => {
+describe("SOS detail — what a ceremony leaves behind", () => {
+  it("announces a refused coordinate read once, in the dialog, and not after it is dismissed", async () => {
     mount(alertIn("escalation_tier_1", false), {
       streamRead: async () => refused("FORBIDDEN"),
     });
-    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
+    const dialog = await open("Request coordinate access", "Read this clinician's coordinates");
     fireEvent.click(
-      within(drawer).getByRole("button", { name: "I understand — show the coordinates" }),
+      within(dialog).getByRole("button", { name: "I understand — show the coordinates" }),
     );
     const refusal = "You do not hold the authority this action requires for this record.";
-    await within(drawer).findByText(refusal);
+    await within(dialog).findByText(refusal);
     expect(screen.getAllByText(refusal)).toHaveLength(1);
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(
-        screen.queryByRole("complementary", { name: "Read this clinician's coordinates" }),
+        screen.queryByRole("dialog", { name: "Read this clinician's coordinates" }),
       ).toBeNull(),
     );
     expect(screen.queryByText(refusal)).toBeNull();
@@ -333,16 +243,16 @@ describe("SOS detail — a write in flight and a write that fails", () => {
     expect(within(again).queryByText(refusal)).toBeNull();
   });
 
-  it("asks for the audit reason fresh each time, never pre-filled from a dismissed form", async () => {
+  it("asks for the audit reason fresh each time, never pre-filled from a dismissed dialog", async () => {
     mount(alertIn("resolved", true), { streamRead: async () => refused("FORBIDDEN") });
-    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
-    fireEvent.change(within(drawer).getByLabelText(/Why do you need this/), {
+    const dialog = await open("Request coordinate access", "Read this clinician's coordinates");
+    fireEvent.change(within(dialog).getByLabelText(/Why do you need this/), {
       target: { value: "Reviewing the response for the quality committee meeting on Friday." },
     });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(
-        screen.queryByRole("complementary", { name: "Read this clinician's coordinates" }),
+        screen.queryByRole("dialog", { name: "Read this clinician's coordinates" }),
       ).toBeNull(),
     );
     const again = await open("Request coordinate access", "Read this clinician's coordinates");
@@ -353,12 +263,12 @@ describe("SOS detail — a write in flight and a write that fails", () => {
 
   it("does not carry a revealed stream or a typed reason over to another alert", async () => {
     mount(alertIn("resolved", true));
-    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
-    fireEvent.change(within(drawer).getByLabelText(/Why do you need this/), {
+    const dialog = await open("Request coordinate access", "Read this clinician's coordinates");
+    fireEvent.change(within(dialog).getByLabelText(/Why do you need this/), {
       target: { value: "Reviewing the response for the quality committee meeting on Friday." },
     });
     fireEvent.click(
-      within(drawer).getByRole("button", { name: "I understand — show the coordinates" }),
+      within(dialog).getByRole("button", { name: "I understand — show the coordinates" }),
     );
     expect(await screen.findByText(stream.auditWarningBanner)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Go to another alert" }));
@@ -377,7 +287,7 @@ describe("SOS detail — a write in flight and a write that fails", () => {
     });
     fireEvent.click(within(resolve).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Resolve this SOS" })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: "Resolve this SOS" })).toBeNull(),
     );
     const again = await open("Resolve", "Resolve this SOS");
     expect(
@@ -387,7 +297,7 @@ describe("SOS detail — a write in flight and a write that fails", () => {
   });
 });
 
-describe("SOS detail — another alert, a slower read, and opening a form that is already open", () => {
+describe("SOS detail — another alert and a slower read", () => {
   const OTHER = "22222222-2222-4222-8222-222222222222";
   const other = { ...alertIn("escalation_tier_1", false), id: OTHER, version: 7 };
 
@@ -403,11 +313,11 @@ describe("SOS detail — another alert, a slower read, and opening a form that i
     expect(screen.getByRole("heading", { name: /SOS 22222222/ })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /SOS 11111111/ })).toBeNull();
     // And an acknowledgment acts on the alert on screen.
-    const drawer = await open("Acknowledge", "Acknowledge this SOS");
-    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
       target: { value: ACTION },
     });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     const call = post.mock.calls[0] as unknown as [
       string,
@@ -440,31 +350,6 @@ describe("SOS detail — another alert, a slower read, and opening a form that i
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.getByRole("heading", { name: /SOS 22222222/ })).toBeTruthy();
   });
-
-  it("keeps the acknowledgment typed when its opener is clicked again", async () => {
-    mount(alertIn("escalation_tier_1", false));
-    const drawer = await open("Acknowledge", "Acknowledge this SOS");
-    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
-      target: { value: ACTION },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
-    expect((within(drawer).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
-      ACTION,
-    );
-  });
-
-  it("keeps the audit reason typed when the coordinate opener is clicked again", async () => {
-    mount(alertIn("resolved", true));
-    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
-    const reason = "Reviewing the response for the quality committee meeting on Friday.";
-    fireEvent.change(within(drawer).getByLabelText(/Why do you need this/), {
-      target: { value: reason },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Request coordinate access" }));
-    expect(
-      (within(drawer).getByLabelText(/Why do you need this/) as HTMLTextAreaElement).value,
-    ).toBe(reason);
-  });
 });
 
 describe("SOS detail — a read that gets no answer", () => {
@@ -486,12 +371,124 @@ describe("SOS detail — a read that gets no answer", () => {
         throw new TypeError("Failed to fetch");
       },
     });
-    const drawer = await open("Acknowledge", "Acknowledge this SOS");
-    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
       target: { value: ACTION },
     });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Alert unavailable")).toBeTruthy();
+  });
+});
+
+const offline = async (): Promise<never> => {
+  throw new TypeError("Failed to fetch");
+};
+const fillAccount = (dialog: HTMLElement): void => {
+  fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
+    target: { value: ACTION },
+  });
+};
+const fillNarrative = (dialog: HTMLElement): void => {
+  fireEvent.change(within(dialog).getByLabelText("What happened, and how did it end?"), {
+    target: { value: NARRATIVE },
+  });
+};
+const nothing = (): void => {};
+// The write goes through the POST for the two commands and through the GET for the audited read.
+const writing = (via: "post" | "streamRead", run: () => Promise<unknown>) =>
+  via === "post" ? { post: run } : { streamRead: run };
+
+// Each ceremony's own write: the acknowledge and resolve commands are POSTs; the coordinate reveal is an audited read.
+const CEREMONIES = [
+  {
+    title: "Acknowledge this SOS",
+    opener: "Acknowledge",
+    alert: alertIn("escalation_tier_1", false),
+    save: "Record acknowledgment",
+    fill: fillAccount,
+    via: "post",
+    answer: ok({}),
+  },
+  {
+    title: "Resolve this SOS",
+    opener: "Resolve",
+    alert: alertIn("acknowledged", true),
+    save: "Close this alert",
+    fill: fillNarrative,
+    via: "post",
+    answer: ok({}),
+  },
+  {
+    title: "Read this clinician's coordinates",
+    opener: "Request coordinate access",
+    alert: alertIn("escalation_tier_1", false),
+    save: "I understand — show the coordinates",
+    fill: nothing,
+    via: "streamRead",
+    answer: ok(stream),
+  },
+] as const;
+
+describe.each(CEREMONIES)("SOS detail — $title as a modal", (c) => {
+  const writesOf = (m: ReturnType<typeof mount>): number =>
+    c.via === "post"
+      ? m.post.mock.calls.length
+      : m.get.mock.calls.filter((call) => String(call[0]).endsWith("/location-stream")).length;
+  const gone = () => expect(screen.queryByRole("dialog", { name: c.title })).toBeNull();
+  const press = (dialog: HTMLElement) =>
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+
+  it("is a dialog, not a drawer beside the alert", async () => {
+    mount(c.alert);
+    const dialog = await open(c.opener, c.title);
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("closes from Cancel without writing anything", async () => {
+    const m = mount(c.alert);
+    const dialog = await open(c.opener, c.title);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(gone);
+    expect(writesOf(m)).toBe(0);
+  });
+
+  it("is not dismissed by the scrim, and refuses Cancel and Escape while its write is pending", async () => {
+    const write = deferred<unknown>();
+    mount(
+      c.alert,
+      writing(c.via, () => write.promise),
+    );
+    const dialog = await open(c.opener, c.title);
+    c.fill(dialog);
+    // A click outside never discards what was typed.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog", { name: c.title })).toBe(dialog);
+    press(dialog);
+    await waitFor(() =>
+      expect(
+        (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+      ).toBe(true),
+    );
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog", { name: c.title })).toBe(dialog);
+    write.resolve(c.answer);
+    await waitFor(gone);
+  });
+
+  it("ends a request the network rejected with the failure in the dialog, which can be dismissed", async () => {
+    mount(c.alert, writing(c.via, offline));
+    const dialog = await open(c.opener, c.title);
+    c.fill(dialog);
+    press(dialog);
+    const failure = await within(dialog).findByText(/No answer came back/);
+    expect(failure.getAttribute("role")).toBe("alert");
+    expect(
+      (within(dialog).getByRole("button", { name: c.save }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(gone);
   });
 });

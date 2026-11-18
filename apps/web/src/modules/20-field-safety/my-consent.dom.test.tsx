@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// Giving or withdrawing a consent is a form on the clinician's own consent list, so it opens as a drawer in the detail
-// rail beside the list (the redesign's pattern): the wording she is agreeing to stays next to the table of what she has
-// already agreed to. Cancel closes it and records nothing, and only one of the two forms is open at a time.
+// Giving or withdrawing a consent is an attestation (the exact wording she agreed to is stored with it), so it is a
+// focus-trapped modal (DESIGN.md §7.4): a dialog that blocks the page until it is answered, cannot be dismissed while its
+// write is in flight, and that a click on the scrim never closes. Cancel closes it and records nothing.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -72,51 +72,50 @@ const CONTACT = "Calling my emergency contact";
 const COORDS = "Location at the moment I press SOS";
 const give = async (): Promise<HTMLElement> => {
   fireEvent.click(within(await rowOf(CONTACT)).getByRole("button", { name: "Give" }));
-  return screen.findByRole("complementary", { name: CONTACT });
+  return screen.findByRole("dialog", { name: CONTACT });
 };
 const withdraw = async (): Promise<HTMLElement> => {
   fireEvent.click(within(await rowOf(COORDS)).getByRole("button", { name: "Withdraw" }));
-  return screen.findByRole("complementary", { name: `Withdraw: ${COORDS}` });
+  return screen.findByRole("dialog", { name: `Withdraw: ${COORDS}` });
 };
 
 describe("my safety consent — give or withdraw a consent", () => {
-  it("opens the consent as a drawer beside the list, not a dialog over it", async () => {
+  it("opens the consent as a modal dialog, not a drawer beside the list", async () => {
     mount();
-    const drawer = await give();
-    expect(within(drawer).getByLabelText("Their name")).toBeTruthy();
+    const dialog = await give();
+    expect(within(dialog).getByLabelText("Their name")).toBeTruthy();
     expect(
-      within(drawer).getByText(/I give the person named below as my emergency contact/),
+      within(dialog).getByText(/I give the person named below as my emergency contact/),
     ).toBeTruthy();
-    expect(screen.queryByRole("dialog")).toBeNull();
-    // The list of what she has agreed to stays on the page.
-    expect(screen.getByRole("table")).toBeTruthy();
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 
-  it("opens the withdrawal as a drawer too", async () => {
+  it("opens the withdrawal as a modal dialog too", async () => {
     mount();
-    const drawer = await withdraw();
-    expect(within(drawer).getByLabelText("Reason (optional)")).toBeTruthy();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    const dialog = await withdraw();
+    expect(within(dialog).getByLabelText("Reason (optional)")).toBeTruthy();
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 
   it("closes from Cancel without recording anything", async () => {
     const { post } = mount();
-    const drawer = await give();
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: CONTACT })).toBeNull());
+    const dialog = await give();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: CONTACT })).toBeNull());
     expect(post).not.toHaveBeenCalled();
   });
 
   it("keeps I consent disabled until a contact's name and number are given", async () => {
     mount();
-    const drawer = await give();
-    const consent = within(drawer).getByRole("button", { name: "I consent" }) as HTMLButtonElement;
+    const dialog = await give();
+    const consent = within(dialog).getByRole("button", { name: "I consent" }) as HTMLButtonElement;
     expect(consent.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("Their name"), {
+    fireEvent.change(within(dialog).getByLabelText("Their name"), {
       target: { value: "Sam Rivera" },
     });
     expect(consent.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("Their phone number"), {
+    fireEvent.change(within(dialog).getByLabelText("Their phone number"), {
       target: { value: "5035550123" },
     });
     expect(consent.disabled).toBe(false);
@@ -124,14 +123,14 @@ describe("my safety consent — give or withdraw a consent", () => {
 
   it("records the consent with the wording she saw, then closes", async () => {
     const { post } = mount();
-    const drawer = await give();
-    fireEvent.change(within(drawer).getByLabelText("Their name"), {
+    const dialog = await give();
+    fireEvent.change(within(dialog).getByLabelText("Their name"), {
       target: { value: "Sam Rivera" },
     });
-    fireEvent.change(within(drawer).getByLabelText("Their phone number"), {
+    fireEvent.change(within(dialog).getByLabelText("Their phone number"), {
       target: { value: "5035550123" },
     });
-    fireEvent.click(within(drawer).getByRole("button", { name: "I consent" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "I consent" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     const call = post.mock.calls[0] as unknown as [string, { body: Record<string, unknown> }];
     expect(call[0]).toBe("/api/v1/safety/consent/grant");
@@ -140,108 +139,97 @@ describe("my safety consent — give or withdraw a consent", () => {
       contact: { name: "Sam Rivera", phone: "5035550123" },
     });
     expect(String(call[1].body.acknowledgmentTextSnapshot)).toContain("emergency contact");
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: CONTACT })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: CONTACT })).toBeNull());
   });
 
   it("records a withdrawal and closes", async () => {
     const { post } = mount();
-    const drawer = await withdraw();
-    fireEvent.click(within(drawer).getByRole("button", { name: "Withdraw my consent" }));
+    const dialog = await withdraw();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Withdraw my consent" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     const call = post.mock.calls[0] as unknown as [string, { body: Record<string, unknown> }];
     expect(call[0]).toBe("/api/v1/safety/consent/revoke");
     expect(call[1].body).toMatchObject({ purpose: "sos_coordinates" });
     await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: `Withdraw: ${COORDS}` })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: `Withdraw: ${COORDS}` })).toBeNull(),
     );
-  });
-
-  it("keeps one form open at a time", async () => {
-    mount();
-    await give();
-    fireEvent.click(within(await rowOf(COORDS)).getByRole("button", { name: "Withdraw" }));
-    expect(await screen.findByRole("complementary", { name: `Withdraw: ${COORDS}` })).toBeTruthy();
-    expect(screen.queryByRole("complementary", { name: CONTACT })).toBeNull();
   });
 });
 
-describe("my safety consent — a write in flight and a write that fails", () => {
-  const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
-  const fillContact = (drawer: HTMLElement): void => {
-    fireEvent.change(within(drawer).getByLabelText("Their name"), {
-      target: { value: "Sam Rivera" },
-    });
-    fireEvent.change(within(drawer).getByLabelText("Their phone number"), {
-      target: { value: "5035550123" },
-    });
-  };
-  const consent = (drawer: HTMLElement): void => {
-    fillContact(drawer);
-    fireEvent.click(within(drawer).getByRole("button", { name: "I consent" }));
-  };
+const fillContact = (dialog: HTMLElement): void => {
+  fireEvent.change(within(dialog).getByLabelText("Their name"), {
+    target: { value: "Sam Rivera" },
+  });
+  fireEvent.change(within(dialog).getByLabelText("Their phone number"), {
+    target: { value: "5035550123" },
+  });
+};
+const nothing = (): void => {};
+const offline = async (): Promise<never> => {
+  throw new TypeError("Failed to fetch");
+};
 
-  it("makes the page inert while the consent is being recorded, then live again", async () => {
+const CEREMONIES = [
+  {
+    title: CONTACT,
+    open: give,
+    save: "I consent",
+    fill: fillContact,
+  },
+  {
+    title: `Withdraw: ${COORDS}`,
+    open: withdraw,
+    save: "Withdraw my consent",
+    fill: nothing,
+  },
+] as const;
+
+describe.each(CEREMONIES)("my safety consent — $title as a modal", (c) => {
+  const gone = () => expect(screen.queryByRole("dialog", { name: c.title })).toBeNull();
+  const press = (dialog: HTMLElement) =>
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+
+  it("closes from Cancel without recording anything", async () => {
+    const { post } = mount();
+    const dialog = await c.open();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(gone);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("is not dismissed by the scrim, and refuses Cancel and Escape while its write is pending", async () => {
     const write = deferred<unknown>();
     mount({ post: () => write.promise });
-    const drawer = await give();
-    const withdrawRow = within(await rowOf(COORDS)).getByRole("button", { name: "Withdraw" });
-    consent(drawer);
-    await waitFor(() => expect(isInert(withdrawRow)).toBe(true));
-    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(true);
-    expect(isInert(screen.getByRole("link", { name: "My safety" }))).toBe(true);
-    expect(isInert(drawer)).toBe(false);
-    write.resolve(ok({}));
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: CONTACT })).toBeNull());
-    expect(isInert(withdrawRow)).toBe(false);
-  });
-
-  it("leaves another purpose's form open when an earlier consent lands", async () => {
-    const write = deferred<unknown>();
-    const { get } = mount({ post: () => write.promise });
-    consent(await give());
-    // A browser blocks this click (the page is inert); jsdom delivers it, so the guard is what is tested.
-    fireEvent.click(
-      within(await rowOf("Continuous location while an SOS is active")).getByRole("button", {
-        name: "Give again",
-      }),
+    const dialog = await c.open();
+    c.fill(dialog);
+    // A click outside never discards what was typed.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog", { name: c.title })).toBe(dialog);
+    press(dialog);
+    await waitFor(() =>
+      expect(
+        (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+      ).toBe(true),
     );
-    const readsBefore = get.mock.calls.length;
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog", { name: c.title })).toBe(dialog);
     write.resolve(ok({}));
-    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
-    expect(
-      await screen.findByRole("complementary", {
-        name: "Continuous location while an SOS is active",
-      }),
-    ).toBeTruthy();
+    await waitFor(gone);
   });
 
-  it("recovers when the consent request is rejected by the network", async () => {
-    mount({
-      post: async () => {
-        throw new TypeError("Failed to fetch");
-      },
-    });
-    const drawer = await give();
-    consent(drawer);
-    expect((await within(drawer).findByRole("alert")).textContent).toContain("No answer came back");
+  it("ends a request the network rejected with the failure in the dialog, which can be dismissed", async () => {
+    mount({ post: offline });
+    const dialog = await c.open();
+    c.fill(dialog);
+    press(dialog);
+    const failure = await within(dialog).findByText(/No answer came back/);
+    expect(failure.getAttribute("role")).toBe("alert");
     expect(
-      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+      (within(dialog).getByRole("button", { name: c.save }) as HTMLButtonElement).disabled,
     ).toBe(false);
-    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(false);
-  });
-
-  it("recovers when the withdrawal request is rejected by the network", async () => {
-    mount({
-      post: async () => {
-        throw new TypeError("Failed to fetch");
-      },
-    });
-    const drawer = await withdraw();
-    fireEvent.click(within(drawer).getByRole("button", { name: "Withdraw my consent" }));
-    expect((await within(drawer).findByRole("alert")).textContent).toContain("No answer came back");
-    expect(
-      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(gone);
   });
 });
 
@@ -252,17 +240,17 @@ describe("my safety consent — nothing outlives a dismissed form", () => {
         throw new TypeError("Failed to fetch");
       },
     });
-    const drawer = await give();
-    fireEvent.change(within(drawer).getByLabelText("Their name"), {
+    const dialog = await give();
+    fireEvent.change(within(dialog).getByLabelText("Their name"), {
       target: { value: "Sam Rivera" },
     });
-    fireEvent.change(within(drawer).getByLabelText("Their phone number"), {
+    fireEvent.change(within(dialog).getByLabelText("Their phone number"), {
       target: { value: "5035550123" },
     });
-    fireEvent.click(within(drawer).getByRole("button", { name: "I consent" }));
-    await within(drawer).findByText(/No answer came back/);
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: CONTACT })).toBeNull());
+    fireEvent.click(within(dialog).getByRole("button", { name: "I consent" }));
+    await within(dialog).findByText(/No answer came back/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: CONTACT })).toBeNull());
     const again = await give();
     expect((within(again).getByLabelText("Their name") as HTMLInputElement).value).toBe("");
     expect((within(again).getByLabelText("Their phone number") as HTMLInputElement).value).toBe("");
@@ -271,43 +259,17 @@ describe("my safety consent — nothing outlives a dismissed form", () => {
 
   it("reopens a withdrawal without its reason", async () => {
     mount();
-    const drawer = await withdraw();
-    fireEvent.change(within(drawer).getByLabelText("Reason (optional)"), {
+    const dialog = await withdraw();
+    fireEvent.change(within(dialog).getByLabelText("Reason (optional)"), {
       target: { value: "Changed my mind about sharing this." },
     });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: `Withdraw: ${COORDS}` })).toBeNull(),
+      expect(screen.queryByRole("dialog", { name: `Withdraw: ${COORDS}` })).toBeNull(),
     );
     const again = await withdraw();
     expect((within(again).getByLabelText("Reason (optional)") as HTMLTextAreaElement).value).toBe(
       "",
-    );
-  });
-});
-
-describe("my safety consent — opening a form that is already open", () => {
-  it("keeps a typed contact when its Give is clicked again", async () => {
-    mount();
-    const drawer = await give();
-    fireEvent.change(within(drawer).getByLabelText("Their name"), {
-      target: { value: "Sam Rivera" },
-    });
-    fireEvent.click(within(await rowOf(CONTACT)).getByRole("button", { name: "Give" }));
-    expect((within(drawer).getByLabelText("Their name") as HTMLInputElement).value).toBe(
-      "Sam Rivera",
-    );
-  });
-
-  it("keeps a typed withdrawal reason when its Withdraw is clicked again", async () => {
-    mount();
-    const drawer = await withdraw();
-    fireEvent.change(within(drawer).getByLabelText("Reason (optional)"), {
-      target: { value: "Changed my mind about sharing this." },
-    });
-    fireEvent.click(within(await rowOf(COORDS)).getByRole("button", { name: "Withdraw" }));
-    expect((within(drawer).getByLabelText("Reason (optional)") as HTMLTextAreaElement).value).toBe(
-      "Changed my mind about sharing this.",
     );
   });
 });

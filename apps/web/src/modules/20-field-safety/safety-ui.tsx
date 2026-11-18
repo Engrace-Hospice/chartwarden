@@ -1,7 +1,7 @@
 // apps/web/src/modules/20-field-safety — the shared Lantern presentation atoms every M20 screen reuses
 // (Track B / ADR-0030, §5 / DESIGN.md §6.7). Extracted so the fourteen screens share ONE No-Line table
-// vocabulary and one set of fields instead of re-declaring them per file. Panels, text fields, drawers and the
-// table chrome are the kit's (`Panel`, `src/shell/value-fields`, `src/shell/form-drawer`); this file keeps what the kit
+// vocabulary and one set of fields instead of re-declaring them per file. Panels, text fields, drawers, modals and the
+// table chrome are the kit's (`Panel`, `src/shell/value-fields`, `src/shell/form-drawer`, `src/shell/form-modal`); this file keeps what the kit
 // has no atom for. Each web slice owns its own (the M15 discipline-ui.tsx / M16 bereavement-ui.tsx / M19 oncall-ui.tsx
 // precedent), because apps/web/src/modules/* may not import a sibling module.
 //
@@ -40,6 +40,13 @@ export const pageTitleStyle: CSSProperties = {
   letterSpacing: "-0.01em",
   lineHeight: 1.2,
   color: t.onSurface,
+};
+export const columnStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: t.space4,
+  padding: t.space5,
+  minWidth: 0,
 };
 export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
 export const linkStyle: CSSProperties = {

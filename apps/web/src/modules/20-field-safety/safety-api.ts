@@ -247,6 +247,14 @@ export function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/** A refusal because the `If-Match` version a write carried is no longer the row's (§2.5): the row changed since it was
+ *  read. 409 `STALE_LIFECYCLE_STATE` from the lifecycle layer; a bare 409 `CONFLICT` reads the same to the client. */
+const STALE_VERSION_CODES = new Set(["STALE_LIFECYCLE_STATE", "CONFLICT"]);
+export function isStaleVersion(error: unknown): boolean {
+  const code = (error as { error?: { code?: string } } | null)?.error?.code;
+  return code !== undefined && STALE_VERSION_CODES.has(code);
+}
+
 /**
  * `client.POST/PUT/PATCH/DELETE` REJECT on a network failure instead of returning `{ error }`. A write handler runs
  * its call through `.catch(() => null)` so that failure reaches the handler as `null` (and `saving` is reset on

@@ -15,7 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
-import { FormDrawer } from "../../shell/form-drawer";
+import { FormModal } from "../../shell/form-modal";
 import {
   type ActiveSosView,
   NO_ANSWER,
@@ -23,6 +23,7 @@ import {
   acknowledgeSos,
   errorMessage,
   getSosAlert,
+  isStaleVersion,
   listActiveSos,
 } from "./safety-api";
 import {
@@ -94,12 +95,8 @@ export function ActiveSosScreen(): JSX.Element {
 
   const openAck = useCallback(
     async (id: string, who: string) => {
-      // Already open (the drawer is not modal while idle): clicking its Acknowledge again only re-reads the version
-      // the write is stamped with, which is how a responder recovers from a refusal of a stale one. Nothing typed
-      // (or refused) is wiped.
-      const refreshing = ackFor?.id === id;
       setAckOpening(id);
-      if (!refreshing) setModalError(null);
+      setModalError(null);
       setOpenError(null);
       const res = await getSosAlert(client, id).catch(() => null);
       setAckOpening(null);
@@ -111,18 +108,12 @@ export function ActiveSosScreen(): JSX.Element {
         );
         return;
       }
-      const { version } = res.alert;
-      if (refreshing) {
-        // Only the stamp changes; if the form was closed while the alert was re-read, it stays closed.
-        setAckFor((current) => (current?.id === id ? { ...current, version } : current));
-        return;
-      }
       setActionTaken("");
       setOutcome(DEFAULT_ACK_OUTCOME);
       setPhoneMasked("");
-      setAckFor({ id, who, version });
+      setAckFor({ id, who, version: res.alert.version });
     },
-    [ackFor, client],
+    [client],
   );
 
   // Nothing typed or refused in the form outlives it: an account is written fresh each time.
@@ -145,13 +136,29 @@ export function ActiveSosScreen(): JSX.Element {
       outcome: outcome as SafetySosAcknowledgeOutcome,
       ...(phoneMasked.trim() ? { outreachPhoneNumberMasked: phoneMasked.trim() } : {}),
     }).catch(() => null);
+    // The alert moved while the responder typed (the poll and escalation bump its version): re-read it now and
+    // refresh ONLY the stamp, so what was typed is kept and the next submit carries the current version.
+    let refreshedVersion: number | null = null;
+    if (res && isStaleVersion(res.error)) {
+      const fresh = await getSosAlert(client, target.id).catch(() => null);
+      refreshedVersion = fresh?.alert?.version ?? null;
+      if (refreshedVersion !== null) {
+        const version = refreshedVersion;
+        setAckFor((current) => (current?.id === target.id ? { ...current, version } : current));
+      }
+    }
     setSaving(false);
     if (!res || res.error) {
       // Names the alert: a failure must never read as another alert's.
+      const lead = `The acknowledgment for ${target.who} was not recorded.`;
       setModalError(
-        res
-          ? `The acknowledgment for ${target.who} was not recorded. ${errorMessage(res.error, "")}`.trim()
-          : `The acknowledgment for ${target.who} was not confirmed. ${NO_ANSWER}`,
+        !res
+          ? `The acknowledgment for ${target.who} was not confirmed. ${NO_ANSWER}`
+          : isStaleVersion(res.error)
+            ? refreshedVersion !== null
+              ? `${lead} The alert changed while you were typing; it was re-read (version ${refreshedVersion}) and what you typed is kept. Submit again if it is still needed.`
+              : `${lead} The alert changed while you were typing and could not be re-read. Cancel and open it again.`
+            : `${lead} ${errorMessage(res.error, "")}`.trim(),
       );
       return;
     }
@@ -226,266 +233,267 @@ export function ActiveSosScreen(): JSX.Element {
   }
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Active SOS"
-          actions={
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-              <Link to="/safety" style={linkButtonStyle}>
-                Safety board
-              </Link>
-              <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
-                Refresh
-              </Button>
-            </div>
-          }
-        >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Server answer at {dateTime(active.fetchedAt)}. Polls every {POLL_MS / 1000} seconds.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {board === "unknown" ? (
-            <Notice tone="warning" assertive>
-              <strong>This board did not refresh.</strong> {error} What follows is the last answer
-              received at {dateTime(active.fetchedAt)}.
-            </Notice>
-          ) : null}
-          {openError ? (
-            <Notice tone="error" assertive>
-              {openError}
-            </Notice>
-          ) : null}
-          {orderedAlerts.length === 0 ? (
-            <Notice tone="success" live>
-              <strong>No SOS is open</strong> as of {dateTime(active.fetchedAt)}. The read succeeded
-              and returned nothing.
-            </Notice>
-          ) : (
-            <Notice tone="error" assertive>
-              <strong>
-                {orderedAlerts.length} SOS {orderedAlerts.length === 1 ? "alert is" : "alerts are"}{" "}
-                open
-              </strong>
-              . Acknowledging records who answered; resolving still happens on the alert detail.
-            </Notice>
-          )}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Open alerts</span>
-              <strong>{filteredAlerts.length} matching SOS alerts</strong>
-            </div>
-            <div style={controlGroupStyle}>
-              <label className="wx-search-field">
-                <Glyph name="search" size={16} />
-                <input
-                  type="search"
-                  placeholder="Search clinician or alert..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Search active SOS alerts"
-                />
-              </label>
-              <label className="wx-filter-field">
-                <span>State</span>
-                <select
-                  className="wx-select"
-                  aria-label="SOS state"
-                  value={stateFilter}
-                  onChange={(e) => {
-                    setStateFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="Active SOS"
+            actions={
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                <Link to="/safety" style={linkButtonStyle}>
+                  Safety board
+                </Link>
+                <Button
+                  type="button"
+                  tone="secondary"
+                  onClick={() => void load()}
+                  loading={loading}
                 >
-                  <option value="">All</option>
-                  {stateOptions.map((state) => (
-                    <option key={state} value={state}>
-                      {humanize(state)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="wx-filter-field">
-                <span>Ack</span>
-                <select
-                  className="wx-select"
-                  aria-label="Acknowledgment status"
-                  value={ackFilter}
-                  onChange={(e) => {
-                    setAckFilter(e.target.value as AckFilter);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="all">All</option>
-                  <option value="unacknowledged">Unacknowledged</option>
-                  <option value="acknowledged">Acknowledged</option>
-                </select>
-              </label>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
+                  Refresh
                 </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      }
-      table={
-        filteredAlerts.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching SOS alerts" : "No active SOS"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the SOS filters."
-                  : "The server answered successfully and no SOS alert is currently open."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ width: "20%" }}>Clinician</th>
-                  <th style={{ width: "18%" }}>Alert</th>
-                  <th style={{ width: "18%" }}>State</th>
-                  <th style={{ width: "16%" }}>Raised</th>
-                  <th style={{ width: "12%" }}>Open for</th>
-                  <th style={{ width: "10%" }}>Ack</th>
-                  <th style={{ width: "6%", textAlign: "right" }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedAlerts.map((alert) => (
-                  <tr key={alert.id}>
-                    <td>{alert.postedByFirstName}</td>
-                    <td>
-                      <Link to={`/safety/sos/${alert.id}`} style={linkStyle}>
-                        {shortId(alert.id)}
-                      </Link>
-                    </td>
-                    <td>
-                      <SosStatePill state={alert.lifecycleState} />
-                    </td>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {dateTime(alert.postedAt)}
-                    </td>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {durationLabel(alert.minutesOpen ?? minutesSince(alert.postedAt))}
-                    </td>
-                    <td>
-                      {alert.acknowledgedAt ? (
-                        <span style={secondaryTextStyle}>{dateTime(alert.acknowledgedAt)}</span>
-                      ) : (
-                        <span style={{ color: "var(--color-error)", fontWeight: 600 }}>
-                          Nobody yet
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <Button
-                        size="sm"
-                        tone="secondary"
-                        disabled={ackOpening !== null}
-                        onClick={() => void openAck(alert.id, alert.postedByFirstName)}
-                      >
-                        {ackOpening === alert.id ? "Opening..." : "Acknowledge"}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={filteredAlerts.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={PAGE_SIZES}
-              noun="alerts"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
-      detail={
-        ackFor ? (
-          <FormDrawer
-            key={ackFor.id}
-            title={`Acknowledge ${ackFor.who}'s SOS`}
-            busy={saving}
-            onClose={closeAck}
-            save={
-              <Button
-                tone="primary"
-                size="lg"
-                type="button"
-                onClick={() => void submitAck()}
-                disabled={saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)}
-              >
-                {saving ? "Recording..." : "Record acknowledgment"}
-              </Button>
+              </div>
             }
           >
-            <Notice tone="warning">
-              This records that <strong>you</strong> answered, at this moment, and what you did. It
-              does not close the alert.
-            </Notice>
-            <TextAreaField
-              label="What did you do?"
-              value={actionTaken}
-              onChange={setActionTaken}
-              rows={4}
-              minChars={ACK_ACTION_TAKEN_MIN_CHARS}
-              hint="Who you reached, on what number, and what you asked them to do."
-            />
-            <SelectField
-              label="Outcome of your action"
-              value={outcome}
-              options={ACKNOWLEDGMENT_OUTCOMES.map((v) => ({ value: v, label: humanize(v) }))}
-              onChange={setOutcome}
-            />
-            <TextField
-              label="Number you called (masked)"
-              value={phoneMasked}
-              onChange={setPhoneMasked}
-              placeholder="***-***-4417"
-              hint="Masked on purpose. Leave blank if you did not call."
-            />
-            {modalError ? (
-              <Notice tone="error" assertive>
-                {modalError}
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Server answer at {dateTime(active.fetchedAt)}. Polls every {POLL_MS / 1000} seconds.
+            </div>
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {board === "unknown" ? (
+              <Notice tone="warning" assertive>
+                <strong>This board did not refresh.</strong> {error} What follows is the last answer
+                received at {dateTime(active.fetchedAt)}.
               </Notice>
             ) : null}
-            <span style={secondaryTextStyle}>
-              This acknowledgment is stamped against version {ackFor.version} of the alert. If the
-              alert changed and the server refused it, click Acknowledge on that alert again to
-              re-read the version; what you typed is kept.
-            </span>
-          </FormDrawer>
-        ) : undefined
-      }
-    />
+            {openError ? (
+              <Notice tone="error" assertive>
+                {openError}
+              </Notice>
+            ) : null}
+            {orderedAlerts.length === 0 ? (
+              <Notice tone="success" live>
+                <strong>No SOS is open</strong> as of {dateTime(active.fetchedAt)}. The read
+                succeeded and returned nothing.
+              </Notice>
+            ) : (
+              <Notice tone="error" assertive>
+                <strong>
+                  {orderedAlerts.length} SOS{" "}
+                  {orderedAlerts.length === 1 ? "alert is" : "alerts are"} open
+                </strong>
+                . Acknowledging records who answered; resolving still happens on the alert detail.
+              </Notice>
+            )}
+            <div style={toolbarStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Open alerts</span>
+                <strong>{filteredAlerts.length} matching SOS alerts</strong>
+              </div>
+              <div style={controlGroupStyle}>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
+                  <input
+                    type="search"
+                    placeholder="Search clinician or alert..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search active SOS alerts"
+                  />
+                </label>
+                <label className="wx-filter-field">
+                  <span>State</span>
+                  <select
+                    className="wx-select"
+                    aria-label="SOS state"
+                    value={stateFilter}
+                    onChange={(e) => {
+                      setStateFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    {stateOptions.map((state) => (
+                      <option key={state} value={state}>
+                        {humanize(state)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Ack</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Acknowledgment status"
+                    value={ackFilter}
+                    onChange={(e) => {
+                      setAckFilter(e.target.value as AckFilter);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="all">All</option>
+                    <option value="unacknowledged">Unacknowledged</option>
+                    <option value="acknowledged">Acknowledged</option>
+                  </select>
+                </label>
+                {activeFilters > 0 ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        }
+        table={
+          filteredAlerts.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching SOS alerts" : "No active SOS"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the SOS filters."
+                    : "The server answered successfully and no SOS alert is currently open."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: "20%" }}>Clinician</th>
+                    <th style={{ width: "18%" }}>Alert</th>
+                    <th style={{ width: "18%" }}>State</th>
+                    <th style={{ width: "16%" }}>Raised</th>
+                    <th style={{ width: "12%" }}>Open for</th>
+                    <th style={{ width: "10%" }}>Ack</th>
+                    <th style={{ width: "6%", textAlign: "right" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedAlerts.map((alert) => (
+                    <tr key={alert.id}>
+                      <td>{alert.postedByFirstName}</td>
+                      <td>
+                        <Link to={`/safety/sos/${alert.id}`} style={linkStyle}>
+                          {shortId(alert.id)}
+                        </Link>
+                      </td>
+                      <td>
+                        <SosStatePill state={alert.lifecycleState} />
+                      </td>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                        {dateTime(alert.postedAt)}
+                      </td>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                        {durationLabel(alert.minutesOpen ?? minutesSince(alert.postedAt))}
+                      </td>
+                      <td>
+                        {alert.acknowledgedAt ? (
+                          <span style={secondaryTextStyle}>{dateTime(alert.acknowledgedAt)}</span>
+                        ) : (
+                          <span style={{ color: "var(--color-error)", fontWeight: 600 }}>
+                            Nobody yet
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <Button
+                          size="sm"
+                          tone="secondary"
+                          disabled={ackOpening !== null}
+                          onClick={() => void openAck(alert.id, alert.postedByFirstName)}
+                        >
+                          {ackOpening === alert.id ? "Opening..." : "Acknowledge"}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={filteredAlerts.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={PAGE_SIZES}
+                noun="alerts"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+      {ackFor ? (
+        <FormModal
+          key={ackFor.id}
+          title={`Acknowledge ${ackFor.who}'s SOS`}
+          busy={saving}
+          error={modalError}
+          onClose={closeAck}
+          save={
+            <Button
+              tone="primary"
+              size="lg"
+              type="button"
+              onClick={() => void submitAck()}
+              disabled={saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)}
+            >
+              {saving ? "Recording..." : "Record acknowledgment"}
+            </Button>
+          }
+        >
+          <Notice tone="warning">
+            This records that <strong>you</strong> answered, at this moment, and what you did. It
+            does not close the alert.
+          </Notice>
+          <TextAreaField
+            label="What did you do?"
+            value={actionTaken}
+            onChange={setActionTaken}
+            rows={4}
+            minChars={ACK_ACTION_TAKEN_MIN_CHARS}
+            hint="Who you reached, on what number, and what you asked them to do."
+          />
+          <SelectField
+            label="Outcome of your action"
+            value={outcome}
+            options={ACKNOWLEDGMENT_OUTCOMES.map((v) => ({ value: v, label: humanize(v) }))}
+            onChange={setOutcome}
+          />
+          <TextField
+            label="Number you called (masked)"
+            value={phoneMasked}
+            onChange={setPhoneMasked}
+            placeholder="***-***-4417"
+            hint="Masked on purpose. Leave blank if you did not call."
+          />
+          <span style={secondaryTextStyle}>
+            This acknowledgment is stamped against version {ackFor.version} of the alert. If the
+            alert changes while you type and the server refuses it, the version is re-read for you
+            and what you typed is kept.
+          </span>
+        </FormModal>
+      ) : null}
+    </>
   );
 }
 
