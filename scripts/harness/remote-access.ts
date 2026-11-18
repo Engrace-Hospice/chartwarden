@@ -11,6 +11,7 @@
 
 import { cloudCliReason } from "./cloud-cli-sessions";
 import { readCloudWords } from "./cloud-global-options";
+import { shortValue } from "./engine-short-options";
 import { remoteOperandReason } from "./remote-operands";
 import { remoteHopReason } from "./ssh-hops";
 
@@ -126,6 +127,19 @@ function engineVariableReason(assigns: readonly string[]): string | null {
 function engineOptionReason(prog: string, args: readonly string[]): string | null {
   for (let k = 0; k < args.length; k++) {
     const a = args[k] as string;
+    // `-cprod`, `-c=prod`, `-Dc prod`: the letter's value attached or clustered (`engine-short-options.ts`); the bare letter is read below.
+    const short = a.length > 2 ? shortValue(prog, a) : undefined;
+    if (short?.letter === "H") return reason(`\`${prog} -H\``);
+    if (short?.letter === "c") {
+      const named = short.value ?? args[k + 1] ?? "";
+      if (!LOCAL_CONTEXT.test(named) && !LOCAL_CONNECTION.test(named)) {
+        return reason(`\`${prog} --context\``);
+      }
+    }
+    if (short !== undefined) {
+      if (short.value === null) k++;
+      continue;
+    }
     if (ENGINE_HOST_OPTION.test(a)) return reason(`\`${prog} ${a.split("=")[0]}\``);
     if (ENGINE_REMOTE_FLAG.test(a)) return reason(`\`${prog} ${a}\``);
     const connection = CONNECTION_OPTION.exec(a);
