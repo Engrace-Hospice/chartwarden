@@ -90825,6 +90825,7 @@
                   "type": "object",
                   "required": [
                     "items",
+                    "providerCapability",
                     "nextCursor",
                     "hasMore"
                   ],
@@ -91061,7 +91062,7 @@
                             ]
                           },
                           "submissionMode": {
-                            "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                            "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                             "anyOf": [
                               {
                                 "const": "manual",
@@ -91227,6 +91228,118 @@
                             "format": "date-time",
                             "type": "string"
                           }
+                        }
+                      }
+                    },
+                    "providerCapability": {
+                      "type": "object",
+                      "required": [
+                        "mode",
+                        "label",
+                        "submissionItemTypes",
+                        "statusCheckItemTypes",
+                        "explanation"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "anyOf": [
+                            {
+                              "const": "manual_only",
+                              "type": "string"
+                            },
+                            {
+                              "const": "test_provider",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "qualified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "submissionItemTypes": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "noe",
+                                "type": "string"
+                              },
+                              {
+                                "const": "notr",
+                                "type": "string"
+                              },
+                              {
+                                "const": "claim_entry",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rtp_correction",
+                                "type": "string"
+                              },
+                              {
+                                "const": "adjustment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancel",
+                                "type": "string"
+                              },
+                              {
+                                "const": "adr_response",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "statusCheckItemTypes": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "noe",
+                                "type": "string"
+                              },
+                              {
+                                "const": "notr",
+                                "type": "string"
+                              },
+                              {
+                                "const": "claim_entry",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rtp_correction",
+                                "type": "string"
+                              },
+                              {
+                                "const": "adjustment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancel",
+                                "type": "string"
+                              },
+                              {
+                                "const": "adr_response",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "explanation": {
+                          "type": "string"
                         }
                       }
                     },
@@ -91508,7 +91621,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -92009,7 +92122,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -92238,6 +92351,9 @@
                                   },
                                   {
                                     "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
                                   },
                                   {
                                     "type": "null"
@@ -92584,7 +92700,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -93050,7 +93166,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -93511,7 +93627,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -93972,7 +94088,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -94433,7 +94549,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -94657,6 +94773,9 @@
                     "maxLength": 500,
                     "description": "Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs.",
                     "type": "string"
+                  },
+                  "confirmedExistingTransaction": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -94926,7 +95045,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -95160,6 +95279,9 @@
                     "maxLength": 500,
                     "description": "Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs.",
                     "type": "string"
+                  },
+                  "confirmedExistingTransaction": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -95429,7 +95551,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -95631,6 +95753,10 @@
                     "maxLength": 500,
                     "description": "Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs.",
                     "type": "string"
+                  },
+                  "confirmedExistingTransaction": {
+                    "description": "Required when resolving an uncertain provider attempt: confirms the operator verified that the transaction exists in DDE. Does not establish the submission channel.",
+                    "type": "boolean"
                   }
                 }
               }
@@ -95900,7 +96026,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -96361,7 +96487,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -96822,7 +96948,7 @@
                       ]
                     },
                     "submissionMode": {
-                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                       "anyOf": [
                         {
                           "const": "manual",
@@ -97290,7 +97416,7 @@
                           ]
                         },
                         "submissionMode": {
-                          "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                          "description": "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
                           "anyOf": [
                             {
                               "const": "manual",

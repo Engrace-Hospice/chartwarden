@@ -1,6 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/services/dde-queue-service.ts — the M23 DDE work-queue service
-// (ADR-0052): HUMAN WORK TRACKING for Medicare Direct Data Entry (FISS). ChartWarden holds no DDE credential and
-// performs no DDE call; `record submission` is an operator attestation, never a verified fact.
+// (ADR-0052): HUMAN WORK TRACKING for Medicare Direct Data Entry (FISS). Manual DDE remains the operational baseline.
+// The generic ADR-0103 provider port is used only when an explicitly qualified operation is enabled; adapter
+// presence alone never makes a queue action operational.
 //
 // Every write runs in ONE `withOrgContext` unit of work (RLS on `app.org_id`), drives the pure
 // `ddeWorkItemMachine`, is version-checked (§2.5 -> 409 STALE_VERSION), appends a `dde_work_event` row (the item's append-only
@@ -61,6 +62,8 @@ import {
 } from "./claim-state-service";
 import type { DdeBeneficiaryPort } from "./dde-beneficiary";
 import { applyDdeNoticeAcceptance } from "./dde-notice-acceptance";
+import { type QualifiedDdeOperations, ddeProviderCapability } from "./dde-provider-capability";
+import type { DdeProviderCapability } from "./dde-provider-capability";
 import {
   DDE_PROVIDER_CALL_TIMEOUT_MS,
   PROVIDER_REFERENCE_PATTERN,
@@ -128,6 +131,8 @@ export interface DdeQueueServicePorts {
    * (fail closed; manual keying is the baseline).
    */
   readonly ddeProvider?: DdeAccessProvider;
+  /** Explicit code-wired qualification; environment configuration alone never enables an unverified adapter. */
+  readonly qualifiedDdeOperations?: QualifiedDdeOperations;
   /**
    * The read-only provider-identifier seam (#765): CCN + billing NPI for the keying sheet. Absent => the sheet has no
    * Provider CCN / Billing NPI fields (fail closed to "not shown", never a guess). Never an MBI (ADR-0052 D7).
@@ -159,6 +164,12 @@ export interface DdeQueueService {
     limit: number | undefined,
     scope: repositories.DdeListScope,
   ): Promise<DdeItemListView>;
+  /** Pre-step-up, non-mutating send check. The route calls this only after RBAC, provider-scope and item ownership. */
+  assertProviderSubmissionAllowed(
+    actor: DdeWriteActor,
+    id: string,
+    expectedVersion: number,
+  ): Promise<void>;
   get(actor: DdeQueueReadActor, id: string): Promise<DdeItemDetailView>;
   create(actor: BillingWriteActor, body: CreateBody): Promise<DdeItemView>;
   /** Take an unassigned item for yourself. */
@@ -166,7 +177,7 @@ export interface DdeQueueService {
   /** Assign (or reassign) an item to a named membership. */
   assign(actor: BillingWriteActor, id: string, body: AssignBody): Promise<DdeItemView>;
   start(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
-  /** Attest the item was keyed in DDE (step-up required). */
+  /** Record manual keying, or confirm an existing transaction while resolving an uncertain provider attempt. */
   recordSubmission(actor: DdeWriteActor, id: string, body: SubmissionBody): Promise<DdeItemView>;
   /** Record a RETURNED / rejected outcome (with its RTP reason code). */
   recordOutcome(actor: DdeWriteActor, id: string, body: OutcomeBody): Promise<DdeItemView>;
@@ -220,6 +231,10 @@ const ACTIONS_BY_STATE: Record<DdeWorkItemState, readonly Action[]> = {
   cancelled: [],
 };
 
+function capabilityFor(ports: DdeQueueServicePorts): DdeProviderCapability {
+  return ddeProviderCapability(ports.ddeProvider, ports.qualifiedDdeOperations);
+}
+
 /** The calendar day on the CMS / CWF (Eastern) clock; deadlines are judged on it, not on the UTC date. */
 function toIsoDate(d: Date): string {
   return medicareReceiptDay(d);
@@ -254,6 +269,20 @@ function screenNotes(notes: string | undefined): void {
       : "notes are too long";
   throw new ValidationError("request validation failed", [
     { field: "notes", code: verdict.reason, message },
+  ]);
+}
+
+export function assertDdeInDoubtResolutionConfirmed(
+  providerInDoubt: boolean,
+  confirmedExistingTransaction: boolean | undefined,
+): void {
+  if (!providerInDoubt || confirmedExistingTransaction === true) return;
+  throw new ValidationError("request validation failed", [
+    {
+      field: "confirmedExistingTransaction",
+      code: "REQUIRED",
+      message: "verify the existing transaction in DDE before resolving this uncertain attempt",
+    },
   ]);
 }
 
@@ -468,7 +497,12 @@ export function buildDdeQueueService(
           outcomeCode: plan.outcomeCode,
           ...(plan.dcn ? { dcn: plan.dcn } : {}),
         },
-        { ...detail, rtpReasonCode: plan.rtpReasonCode, dcn: plan.dcn },
+        {
+          ...detail,
+          outcomeSource: "provider",
+          rtpReasonCode: plan.rtpReasonCode,
+          dcn: plan.dcn,
+        },
       );
     }
     let macAcceptedOn = plan.macAcceptedOn;
@@ -494,7 +528,7 @@ export function buildDdeQueueService(
       current.version,
       "accept",
       { macAcceptedOn, outcomeCode: "accepted", ...(plan.dcn ? { dcn: plan.dcn } : {}) },
-      { ...detail, macAcceptedOn, dcn: plan.dcn },
+      { ...detail, outcomeSource: "provider", macAcceptedOn, dcn: plan.dcn },
     );
   };
 
@@ -519,6 +553,25 @@ export function buildDdeQueueService(
     });
   };
 
+  const providerForSubmission = async (
+    actor: DdeWriteActor,
+    id: string,
+    expectedVersion: number,
+  ): Promise<DdeAccessProvider> => {
+    assertNotAiActor(actor);
+    return withOwnedItem(actor, id, async (_tx, item) => {
+      const provider = requireProvider("submit", item.itemType);
+      staleVersion(item, expectedVersion);
+      if (item.providerInDoubtAt) throw ddeProviderRefusal(DDE.IN_DOUBT);
+      if (
+        ddeWorkItemMachine.reduce(item.state, "submit", { attemptNumber: item.attemptNumber }).error
+      ) {
+        throw new ConflictError(`cannot submit a DDE item in state '${item.state}'`);
+      }
+      return provider;
+    });
+  };
+
   const mutate = async (
     actor: DdeWriteActor,
     id: string,
@@ -529,8 +582,20 @@ export function buildDdeQueueService(
   };
 
   /** The bound provider, or the same fail-closed refusal an unbound registry answers with. */
-  const requireProvider = (): DdeAccessProvider => {
+  const requireProvider = (
+    operation: "submit" | "status",
+    itemType: DdeItemType,
+  ): DdeAccessProvider => {
     if (!ports.ddeProvider) throw ddeProviderRefusal(DDE.NOT_WIRED);
+    const capability = capabilityFor(ports);
+    const supportedTypes =
+      operation === "submit" ? capability.submissionItemTypes : capability.statusCheckItemTypes;
+    const enabled = supportedTypes.includes(itemType);
+    if (!enabled) {
+      throw ddeProviderRefusal(
+        ports.ddeProvider.vendor === "not_wired" ? DDE.NOT_WIRED : DDE.NOT_READY,
+      );
+    }
     return ports.ddeProvider;
   };
 
@@ -607,9 +672,14 @@ export function buildDdeQueueService(
       const asOf = toIsoDate(now());
       return {
         items: page.items.map((r) => viewOf(r, asOf)),
+        providerCapability: capabilityFor(ports),
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
       };
+    },
+
+    async assertProviderSubmissionAllowed(actor, id, expectedVersion) {
+      await providerForSubmission(actor, id, expectedVersion);
     },
 
     async get(actor, id) {
@@ -764,8 +834,12 @@ export function buildDdeQueueService(
       requireStepUp(actor);
       screenNotes(body.notes);
       screenCodes(body);
-      return mutate(actor, id, (tx, item) =>
-        applyEvent(
+      return mutate(actor, id, async (tx, item) => {
+        assertDdeInDoubtResolutionConfirmed(
+          item.providerInDoubtAt !== null,
+          body.confirmedExistingTransaction,
+        );
+        return applyEvent(
           tx,
           actor,
           item,
@@ -773,7 +847,9 @@ export function buildDdeQueueService(
           "submit",
           {
             submittedAt: now(),
-            submissionMode: "manual",
+            // A confirmed existing transaction resolves an ambiguous provider send, but does not establish which
+            // channel created the transaction. Keep the channel unknown instead of relabeling it as manual.
+            submissionMode: item.providerInDoubtAt ? null : "manual",
             // An operator who keyed it by hand settles any "possibly sent" provider attempt.
             providerInDoubtAt: null,
             providerOperatorMembershipId: null,
@@ -782,10 +858,13 @@ export function buildDdeQueueService(
           },
           {
             dcn: body.dcn ?? null,
+            ...(item.providerInDoubtAt
+              ? { submissionSource: "operator_verified_existing" }
+              : { submissionMode: "manual", submissionSource: "operator" }),
             ...(item.providerInDoubtAt ? { resolvedProviderInDoubt: true } : {}),
           },
-        ),
-      );
+        );
+      });
     },
 
     recordOutcome(actor, id, body) {
@@ -803,14 +882,20 @@ export function buildDdeQueueService(
       }
       screenNotes(body.notes);
       screenCodes(body);
-      return mutate(actor, id, (tx, item) =>
-        applyEvent(
+      return mutate(actor, id, async (tx, item) => {
+        assertDdeInDoubtResolutionConfirmed(
+          item.providerInDoubtAt !== null,
+          body.confirmedExistingTransaction,
+        );
+        return applyEvent(
           tx,
           actor,
           item,
           body.expectedVersion,
           "return",
           {
+            // A provider/manual-submit race leaves the channel ambiguous even if the operator now records an outcome.
+            ...(item.providerInDoubtAt ? { submissionMode: null } : {}),
             rtpReasonCode: body.rtpReasonCode,
             // Always set: a code left from an earlier attempt must not outlive the state it described.
             outcomeCode: body.outcomeCode ?? null,
@@ -820,9 +905,15 @@ export function buildDdeQueueService(
             ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
           },
-          { rtpReasonCode: body.rtpReasonCode, dcn: body.dcn ?? null },
-        ),
-      );
+          {
+            outcomeSource: "operator",
+            ...(item.providerInDoubtAt ? { submissionSource: "operator_verified_existing" } : {}),
+            rtpReasonCode: body.rtpReasonCode,
+            dcn: body.dcn ?? null,
+            ...(item.providerInDoubtAt ? { resolvedProviderInDoubt: true } : {}),
+          },
+        );
+      });
     },
 
     recordAcceptance(actor, id, body) {
@@ -833,6 +924,10 @@ export function buildDdeQueueService(
       assertRealDate("macAcceptedOn", body.macAcceptedOn);
       return mutate(actor, id, async (tx, item) => {
         const isNotice = item.itemType === "noe" || item.itemType === "notr";
+        assertDdeInDoubtResolutionConfirmed(
+          item.providerInDoubtAt !== null,
+          body.confirmedExistingTransaction,
+        );
         if (isNotice && !body.macAcceptedOn) {
           throw new ValidationError("request validation failed", [
             {
@@ -875,6 +970,8 @@ export function buildDdeQueueService(
           body.expectedVersion,
           "accept",
           {
+            // A provider/manual-submit race leaves the channel ambiguous even if the operator now records an outcome.
+            ...(item.providerInDoubtAt ? { submissionMode: null } : {}),
             ...(macAcceptedOn ? { macAcceptedOn } : {}),
             outcomeCode: body.outcomeCode ?? null,
             // A person who recorded the real outcome settles any "possibly sent" marker.
@@ -883,15 +980,21 @@ export function buildDdeQueueService(
             ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
           },
-          { macAcceptedOn: macAcceptedOn ?? null, dcn: body.dcn ?? null },
+          {
+            outcomeSource: "operator",
+            ...(item.providerInDoubtAt ? { submissionSource: "operator_verified_existing" } : {}),
+            macAcceptedOn: macAcceptedOn ?? null,
+            dcn: body.dcn ?? null,
+            ...(item.providerInDoubtAt ? { resolvedProviderInDoubt: true } : {}),
+          },
         );
       });
     },
 
     async submitViaProvider(actor, id, expectedVersion) {
       assertNotAiActor(actor);
-      // Unbound first: never ask for a second factor for an operation that cannot run.
-      const provider = requireProvider();
+      // Verify scoped ownership, state and operation capability before asking for a second factor.
+      const provider = await providerForSubmission(actor, id, expectedVersion);
       requireStepUp(actor);
 
       // Phase 1 (short transaction): refuse a stale/wrong-state/in-doubt item, then durably mark it "possibly sent"
@@ -1056,7 +1159,6 @@ export function buildDdeQueueService(
 
     async syncProviderOutcome(actor, id) {
       assertNotAiActor(actor);
-      const provider = requireProvider();
 
       // Phase 1 (short transaction): ownership and eligibility. Provider calls about an operation are made as the
       // person whose DDE ID keyed it (ADR-0103 D4); older rows without one fall back to the syncing operator.
@@ -1075,6 +1177,7 @@ export function buildDdeQueueService(
           item: current,
         };
       });
+      const provider = requireProvider("status", target.item.itemType);
 
       // Phase 2 (NO transaction held): the status inquiry, bounded. Nothing is sent, so a timeout is just unavailable.
       const bounded = await runWithTimeout(
