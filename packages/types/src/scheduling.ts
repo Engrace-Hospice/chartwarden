@@ -68,6 +68,40 @@ export type VisitPurpose =
   | "huv2"
   | "sfv";
 
+/**
+ * The one display label for each {@link VisitPurpose}, shared by every screen that shows a visit
+ * (scheduling, patient chart, home dashboard) so they cannot disagree. Exhaustive on purpose: a new purpose
+ * fails to compile here until it has a label. `recert` is the RN recertification KICKOFF visit (M8 §2.2,
+ * "not the F2F itself"); the physician/NP encounter of a recertification is `f2f`.
+ */
+export const VISIT_PURPOSE_LABELS: Readonly<Record<VisitPurpose, string>> = {
+  routine_visit: "Routine Visit",
+  prn: "PRN Visit",
+  aide_poc: "HHA Visit",
+  msw_assessment: "MSW Assessment",
+  msw_followup: "MSW Follow-up",
+  chaplain_visit: "Chaplain Visit",
+  chaplain_assessment: "Chaplain Assessment",
+  volunteer_visit: "Volunteer Visit",
+  f2f: "Face-to-Face",
+  recert: "Recert Kickoff (RN)",
+  loc_change: "LOC Change",
+  pronouncement: "Pronouncement",
+  admission_visit: "Admission Visit",
+  discharge_visit: "Discharge Visit",
+  huv1: "HUV1",
+  huv2: "HUV2",
+  sfv: "SFV",
+};
+
+/** The label for a visit purpose, or `undefined` for a value outside the vocabulary (the caller falls back
+ * to its own title-casing, so an unknown purpose from a newer server still renders). */
+export function visitPurposeLabel(purpose: string): string | undefined {
+  return Object.hasOwn(VISIT_PURPOSE_LABELS, purpose)
+    ? VISIT_PURPOSE_LABELS[purpose as VisitPurpose]
+    : undefined;
+}
+
 /** The §2.3 service-location class (mirrors `visit_setting`). */
 export type VisitSetting = "patient_home" | "facility" | "inpatient_unit" | "telephonic";
 

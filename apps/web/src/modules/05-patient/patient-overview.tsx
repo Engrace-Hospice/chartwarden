@@ -1,3 +1,4 @@
+import { visitPurposeLabel } from "@chartwarden/types";
 import {
   Button,
   CountBadge,
@@ -1462,7 +1463,11 @@ function UpcomingVisitsPanel({
 
                 <td className="wx-nums">{fmtTime(v.scheduledStartedAt)}</td>
 
-                <td>{v.visitPurpose ? titleCase(v.visitPurpose) : "Visit"}</td>
+                <td>
+                  {v.visitPurpose
+                    ? (visitPurposeLabel(v.visitPurpose) ?? titleCase(v.visitPurpose))
+                    : "Visit"}
+                </td>
 
                 <td>{memberName(data, v.assignedMembershipId) ?? "Unassigned"}</td>
 
