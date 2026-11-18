@@ -54,6 +54,7 @@ import {
   buildClaimValidationService,
   buildDrizzleM23WriteService,
   buildM23RemittanceConsumer,
+  buildSubmissionControlNumberReader,
 } from "../src/modules/23-billing-medicare/index";
 import {
   type ClaimSubmitJob,
@@ -707,6 +708,14 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     expect(await find(current.ccn)).toBeNull();
     expect((await find(historical.ccn))?.id).toBe(historical.submissionId);
     expect(await find("NO-SUCH-CONTROL-NUMBER")).toBeNull();
+
+    // The direct-MAC gateway routes a 277CA back by the number its reader returns, so that must be the same number.
+    const controlNumberOf = buildSubmissionControlNumberReader(handle.db);
+    expect(await controlNumberOf(ORG, current.submissionId)).toBe(
+      current.externalPatientControlNumber,
+    );
+    expect(await controlNumberOf(ORG, historical.submissionId)).toBe(historical.ccn);
+    expect(await controlNumberOf(ORG, randomUUID())).toBeNull();
   });
 
   it("the ack crons pull both stages from the vendor: clearinghouse accept -> ACK_PENDING, payer accept -> ACK_ACCEPTED", async () => {
