@@ -34,10 +34,21 @@ const ACCEPTED_ADVISORIES: ReadonlyArray<{
 
 const result = spawnSync("bun", ["audit", "--json"], { encoding: "utf8" });
 // bun audit exits 1 when it finds ANY advisory — that is not itself a failure for this gate; only an
-// UNLISTED advisory is. A genuine tool failure (missing binary, network error) has no parseable JSON.
+// UNLISTED advisory is. A clean run prints `{}` and exits 0. A genuine tool failure (missing binary,
+// unreachable registry) prints nothing to stdout and exits non-zero (or fails to spawn), and must FAIL
+// here: reading empty output as "no advisories" would let an offline run pass with an empty allowlist.
+const rawReport = result.stdout.trim();
+if (result.error || (rawReport === "" && result.status !== 0)) {
+  console.error(
+    "FAIL check-audit-exceptions: `bun audit --json` could not run, so nothing was checked.",
+  );
+  console.error(result.error?.message ?? `exit ${result.status}`);
+  console.error(result.stderr);
+  process.exit(1);
+}
 let report: Record<string, Advisory[]>;
 try {
-  report = JSON.parse(result.stdout.trim() || "{}");
+  report = JSON.parse(rawReport || "{}");
 } catch {
   console.error("FAIL check-audit-exceptions: `bun audit --json` did not return parseable JSON.");
   console.error(result.stdout);
