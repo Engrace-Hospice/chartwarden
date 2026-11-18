@@ -21,6 +21,7 @@ import {
   MembershipLookupField,
   ProviderEntityLookupField,
 } from "../../shell/entity-lookups";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SafetySubscriptionAlertKind,
   type SafetySubscriptionScopeKind,
@@ -42,7 +43,7 @@ import {
   shortId,
   toneOf,
 } from "./safety-status";
-import { ChipMultiSelect, Modal, Notice, SelectField } from "./safety-ui";
+import { ChipMultiSelect, Notice, SelectField } from "./safety-ui";
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -320,125 +321,117 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
               The server reports coverage gaps when a row is deactivated.
             </span>
           </div>
-          {adding ? (
-            <Modal
-              title="Add a subscription"
-              onClose={() => setAdding(false)}
-              footer={
-                <Button
-                  tone="primary"
-                  size="lg"
-                  type="button"
-                  onClick={() => void add()}
-                  disabled={
-                    saving ||
-                    supervisor.trim().length === 0 ||
-                    alertKinds.length === 0 ||
-                    !selectorFilled ||
-                    (forwarding && forwardTo.trim().length === 0)
-                  }
-                >
-                  {saving ? "Adding..." : "Add subscription"}
-                </Button>
-              }
-            >
-              <MembershipLookupField
-                label="Supervisor"
-                value={supervisor}
-                onChange={setSupervisor}
-                appearance="modal"
-              />
-              <SelectField
-                label="Scope"
-                value={scopeKind}
-                options={SUBSCRIPTION_SCOPE_KINDS.map((value) => ({
-                  value,
-                  label: humanize(value),
-                }))}
-                onChange={setScopeKind}
-              />
-              {selector === "clinician" ? (
-                <MembershipLookupField
-                  label="Clinician"
-                  value={clinician}
-                  onChange={setClinician}
-                  appearance="modal"
-                  hint="A supervisor may not subscribe to herself."
-                />
-              ) : null}
-              {selector === "location" ? (
-                <>
-                  <ProviderEntityLookupField
-                    label="Provider entity"
-                    value={locationEntityId}
-                    onChange={(id) => {
-                      setLocationEntityId(id);
-                      setLocationId("");
-                    }}
-                    appearance="modal"
-                  />
-                  <LocationLookupField
-                    label="Location"
-                    value={locationId}
-                    providerEntityId={locationEntityId}
-                    onChange={setLocationId}
-                    appearance="modal"
-                  />
-                </>
-              ) : null}
-              {selector === "providerEntity" ? (
-                <ProviderEntityLookupField
-                  label="Provider entity"
-                  value={providerEntityId}
-                  onChange={setProviderEntityId}
-                  appearance="modal"
-                />
-              ) : null}
-              {selector === null ? (
-                <span style={secondaryTextStyle}>
-                  A role-scoped row needs no selector; it covers every clinician the role reaches.
-                </span>
-              ) : null}
-              <ChipMultiSelect
-                label="Page this supervisor for"
-                values={ALERT_KINDS}
-                selected={alertKinds}
-                onChange={setAlertKinds}
-              />
-              {!alertKinds.includes("sos") ? (
-                <Notice tone="warning">
-                  This row will not page for SOS. Make sure another subscription covers those
-                  alerts.
-                </Notice>
-              ) : null}
-              <SelectField
-                label="Is this a vacation forward?"
-                value={forwarding ? "yes" : "no"}
-                options={[
-                  { value: "no", label: "No" },
-                  { value: "yes", label: "Yes - send pages elsewhere" },
-                ]}
-                onChange={(value) => setForwarding(value === "yes")}
-              />
-              {forwarding ? (
-                <MembershipLookupField
-                  label="Forward to"
-                  value={forwardTo}
-                  onChange={setForwardTo}
-                  appearance="modal"
-                  hint="Cannot be the same supervisor."
-                />
-              ) : null}
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
         </div>
       }
       fullPageScroll
+      detail={
+        adding ? (
+          <FormDrawer
+            title="Add a subscription"
+            busy={saving}
+            onClose={() => setAdding(false)}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void add()}
+                disabled={
+                  saving ||
+                  supervisor.trim().length === 0 ||
+                  alertKinds.length === 0 ||
+                  !selectorFilled ||
+                  (forwarding && forwardTo.trim().length === 0)
+                }
+              >
+                {saving ? "Adding..." : "Add subscription"}
+              </Button>
+            }
+          >
+            <MembershipLookupField label="Supervisor" value={supervisor} onChange={setSupervisor} />
+            <SelectField
+              label="Scope"
+              value={scopeKind}
+              options={SUBSCRIPTION_SCOPE_KINDS.map((value) => ({
+                value,
+                label: humanize(value),
+              }))}
+              onChange={setScopeKind}
+            />
+            {selector === "clinician" ? (
+              <MembershipLookupField
+                label="Clinician"
+                value={clinician}
+                onChange={setClinician}
+                hint="A supervisor may not subscribe to herself."
+              />
+            ) : null}
+            {selector === "location" ? (
+              <>
+                <ProviderEntityLookupField
+                  label="Provider entity"
+                  value={locationEntityId}
+                  onChange={(id) => {
+                    setLocationEntityId(id);
+                    setLocationId("");
+                  }}
+                />
+                <LocationLookupField
+                  label="Location"
+                  value={locationId}
+                  providerEntityId={locationEntityId}
+                  onChange={setLocationId}
+                />
+              </>
+            ) : null}
+            {selector === "providerEntity" ? (
+              <ProviderEntityLookupField
+                label="Provider entity"
+                value={providerEntityId}
+                onChange={setProviderEntityId}
+              />
+            ) : null}
+            {selector === null ? (
+              <span style={secondaryTextStyle}>
+                A role-scoped row needs no selector; it covers every clinician the role reaches.
+              </span>
+            ) : null}
+            <ChipMultiSelect
+              label="Page this supervisor for"
+              values={ALERT_KINDS}
+              selected={alertKinds}
+              onChange={setAlertKinds}
+            />
+            {!alertKinds.includes("sos") ? (
+              <Notice tone="warning">
+                This row will not page for SOS. Make sure another subscription covers those alerts.
+              </Notice>
+            ) : null}
+            <SelectField
+              label="Is this a vacation forward?"
+              value={forwarding ? "yes" : "no"}
+              options={[
+                { value: "no", label: "No" },
+                { value: "yes", label: "Yes - send pages elsewhere" },
+              ]}
+              onChange={(value) => setForwarding(value === "yes")}
+            />
+            {forwarding ? (
+              <MembershipLookupField
+                label="Forward to"
+                value={forwardTo}
+                onChange={setForwardTo}
+                hint="Cannot be the same supervisor."
+              />
+            ) : null}
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : undefined
+      }
     />
   );
 }
