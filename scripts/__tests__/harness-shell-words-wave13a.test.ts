@@ -171,6 +171,22 @@ allowed("A2/A3: everyday neighbours stay allowed", [
   "x=1; echo $x$x",
   "A=--stat; git diff $A",
 ]);
+describe("A2: a reading that only guessed is capped at ask, one the command determines keeps its deny", () => {
+  it.each([
+    "git commit --no-verify${X} -m x",
+    "git commit --no-ver$(true)ify -m x",
+    "git p${X}ush --force origin main",
+    "git add -${X}f .env",
+  ])("%s asks", (cmd) => {
+    expect(decide(cmd), cmd).toBe("ask");
+  });
+  it.each(["git commit --no-ver\\ify -m x", "A=--no-verify; git commit $A -m x"])(
+    "%s denies",
+    (cmd) => {
+      expect(decide(cmd), cmd).toBe("deny");
+    },
+  );
+});
 describe("A2/A3: the readings of one command (the pure reader)", () => {
   const bound = (...pairs: string[]) => bindAfter(NO_BINDINGS, "", pairs);
   it("writes a known value in, exact", () => {
