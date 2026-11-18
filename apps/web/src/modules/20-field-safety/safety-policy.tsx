@@ -32,7 +32,6 @@ import {
 import {
   CheckboxField,
   ChipMultiSelect,
-  Modal,
   Notice,
   SelectField,
   TextAreaField,

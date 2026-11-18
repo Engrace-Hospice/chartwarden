@@ -5,6 +5,7 @@ import type {
   SafetyIncidentView,
   SafetyMyDayView,
   SafetyPolicyView,
+  SafetySosAlertView,
   SafetySubscriptionView,
 } from "../modules/20-field-safety/safety-api";
 // modules-preview fixtures for M20 Field Safety. Typed against the module's own wire shapes so a drifted field fails
@@ -192,11 +193,49 @@ const myDay: SafetyMyDayView = {
   ],
 };
 
+const sos: SafetySosAlertView = {
+  id: "5a5a5a5a-1111-4111-8111-111111111111",
+  providerEntityId: "pe-1",
+  postedByMembershipId: "m-lopez",
+  postedAt: iso(-0.4),
+  lastKnownVisitId: "visit-1",
+  lifecycleState: "escalation_tier_1",
+  cancelWindowExpiredAt: iso(-0.39),
+  cancelStatus: "not_cancelled",
+  cancelAttemptedAt: null,
+  acknowledgedAt: null,
+  acknowledgedByMembershipId: null,
+  resolvedAt: null,
+  resolvedByMembershipId: null,
+  outcome: null,
+  resolutionNarrative: null,
+  resolutionNarrativeAvailable: false,
+  linkedIncidentId: null,
+  coordinatesCaptured: true,
+  version: 3,
+  stateHistory: [
+    {
+      fromState: null,
+      toState: "raised",
+      transitionedAt: iso(-0.4),
+      transitionedByMembershipId: "m-lopez",
+    },
+    {
+      fromState: "raised",
+      toState: "escalation_tier_1",
+      transitionedAt: iso(-0.3),
+      transitionedByMembershipId: null,
+    },
+  ],
+  acknowledgments: [],
+};
+
 const fixtures: Fixtures = {
   "/api/v1/safety/incidents/{incidentId}": incident,
   "/api/v1/safety/high-risk-areas": page(areas),
   "/api/v1/safety/supervisor-subscriptions": page(subscriptions),
   "/api/v1/safety/policy": policy,
+  "/api/v1/safety/sos/{sosAlertId}": sos,
   "/api/v1/orgs/{id}/members": {
     members: [
       {

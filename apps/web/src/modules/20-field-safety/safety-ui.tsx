@@ -1,8 +1,9 @@
 // apps/web/src/modules/20-field-safety — the shared Lantern presentation atoms every M20 screen reuses
 // (Track B / ADR-0030, §5 / DESIGN.md §6.7). Extracted so the fourteen screens share ONE No-Line table
-// vocabulary, one field and one modal chrome instead of re-declaring them per file (panels are the kit's `Panel`; the M15
-// discipline-ui.tsx / M16 bereavement-ui.tsx / M19 oncall-ui.tsx precedent — each web slice owns its own,
-// because apps/web/src/modules/* may not import a sibling module).
+// vocabulary and one set of fields instead of re-declaring them per file. Panels, text fields, drawers and the
+// table chrome are the kit's (`Panel`, `src/shell/value-fields`, `src/shell/form-drawer`); this file keeps what the kit
+// has no atom for. Each web slice owns its own (the M15 discipline-ui.tsx / M16 bereavement-ui.tsx / M19 oncall-ui.tsx
+// precedent), because apps/web/src/modules/* may not import a sibling module.
 //
 // Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens` stays green and the twilight dark
 // mode is automatic.
@@ -14,7 +15,7 @@
 //   • {@link CancelCountdown} — SC 1.4.1's non-colour-only countdown: the ring AND the sentence "N seconds
 //     to cancel", announced through an assertive live region so a screen-reader user gets the same
 //     realtime feedback a sighted one does (SC 4.1.3).
-import { Button, Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
+import { Button, StatusPill, t } from "@chartwarden/ui";
 import type { StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import {
@@ -30,19 +31,6 @@ import {
 } from "./safety-status";
 
 // ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
-/** Screen-reader-only text — keeps a control labelled without occupying visual space (§5.4). */
-export const visuallyHidden: CSSProperties = {
-  position: "absolute",
-  width: "1px",
-  height: "1px",
-  padding: 0,
-  margin: "-1px",
-  overflow: "hidden",
-  clip: "rect(0 0 0 0)",
-  whiteSpace: "nowrap",
-  border: 0,
-};
-
 // ── page chrome ────────────────────────────────────────────────────────────────────────────────────────
 export const pageTitleStyle: CSSProperties = {
   // Matches PageHeader's own title (the redesign's bold sans heading).
@@ -60,13 +48,6 @@ export const linkStyle: CSSProperties = {
   fontSize: "0.8rem",
   color: t.primary,
   textDecoration: "none",
-};
-export const columnStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: t.space4,
-  padding: t.space5,
-  minWidth: 0,
 };
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
@@ -95,15 +76,6 @@ export const ghostButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-};
-
-// ── modal chrome (the §5 ceremonies: acknowledge, resolve, sign off, transition, grant) ────────────────
-export const modalTitleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontDisplay,
-  fontSize: "1.1rem",
-  fontWeight: 500,
-  color: t.onSurface,
 };
 
 /** A label/value pair — the summary-grid and card atom (mono for identifiers, per §8's identifier rule). */
@@ -237,36 +209,6 @@ export function ChipMultiSelect({
         })}
       </div>
     </fieldset>
-  );
-}
-
-/** The §5 modal shell — backdrop + dialog + footer actions. Every M20 ceremony reuses it. Delegates
- * to `@chartwarden/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
- * trap/restore, keeping this call-site's `{title, onClose, footer, children}` shape unchanged. */
-export function Modal({
-  title,
-  onClose,
-  footer,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  footer: ReactNode;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <SharedModal open onClose={onClose} ariaLabel={title} width="36rem">
-      <div style={{ display: "flex", flexDirection: "column", gap: t.space4, padding: t.space5 }}>
-        <h2 style={modalTitleStyle}>{title}</h2>
-        {children}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
-          <Button tone="secondary" size="lg" type="button" onClick={onClose}>
-            Cancel
-          </Button>
-          {footer}
-        </div>
-      </div>
-    </SharedModal>
   );
 }
 

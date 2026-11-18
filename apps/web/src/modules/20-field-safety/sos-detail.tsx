@@ -38,6 +38,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SafetySosAcknowledgeOutcome,
   type SafetySosAlertView,
@@ -70,14 +71,12 @@ import {
   CheckboxField,
   CipherText,
   Field,
-  Modal,
   Notice,
   SelectField,
   SosStatePill,
   SummaryGrid,
   TextAreaField,
   Timeline,
-  columnStyle,
   ghostButtonStyle,
   linkStyle,
   pageTitleStyle,
@@ -219,285 +218,295 @@ export function SosDetailScreen(): JSX.Element {
   }));
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>SOS {shortId(alert.id)}</span>}
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/safety/sos" style={ghostButtonStyle}>
-              Back to active SOS
+    <div className={`wx-list-drawer${ceremony !== "none" ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main wx-kit-column">
+        <PageHeader
+          title={<span style={pageTitleStyle}>SOS {shortId(alert.id)}</span>}
+          actions={
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              <Link to="/safety/sos" style={ghostButtonStyle}>
+                Back to active SOS
+              </Link>
+              <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
+                Reload
+              </Button>
+            </div>
+          }
+        />
+
+        {rejectedCancel ? (
+          <Notice tone="error" assertive>
+            <strong>A cancel was attempted on this alert and REJECTED.</strong> The biometric check
+            did not pass at {dateTime(alert.cancelAttemptedAt)}, and the alert proceeded exactly as
+            if no cancel had happened. That is D5 working: a phone taken from a clinician cannot be
+            used to silence her call for help. Treat this as a stronger signal than an ordinary SOS,
+            not a weaker one.
+          </Notice>
+        ) : null}
+
+        {isOpen ? (
+          <Notice tone="error" assertive>
+            <strong>{sosStateLabel(alert.lifecycleState)}</strong> — open for{" "}
+            {durationLabel(minutesSince(alert.postedAt))}.
+            {alert.acknowledgedAt === null
+              ? " Nobody has acknowledged this yet; the escalation ladder is still climbing."
+              : ` Acknowledged at ${dateTime(alert.acknowledgedAt)}, not yet resolved.`}
+          </Notice>
+        ) : (
+          <Notice tone={alert.lifecycleState === "resolved" ? "success" : "info"} live>
+            <strong>{sosStateLabel(alert.lifecycleState)}</strong>
+            {alert.resolvedAt ? ` at ${dateTime(alert.resolvedAt)}` : ""}. This alert is closed; the
+            record below is what a review reads.
+          </Notice>
+        )}
+
+        {alert.lifecycleState === "emergency_terminus" ? (
+          <TerminusPanel sosAlertId={alert.id} />
+        ) : null}
+
+        <Panel
+          stack
+          headingLevel={3}
+          title="Alert"
+          action={
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              {canAcknowledge ? (
+                <Button
+                  tone="primary"
+                  size="lg"
+                  type="button"
+                  onClick={() => setCeremony("acknowledge")}
+                >
+                  Acknowledge
+                </Button>
+              ) : null}
+              {canResolve ? (
+                <Button
+                  tone="primary"
+                  size="lg"
+                  type="button"
+                  onClick={() => setCeremony("resolve")}
+                >
+                  Resolve
+                </Button>
+              ) : null}
+            </div>
+          }
+        >
+          <SummaryGrid>
+            <Field label="Alert" value={shortId(alert.id)} mono />
+            <Field label="State" value={<SosStatePill state={alert.lifecycleState} />} />
+            <Field label="Raised by" value={shortId(alert.postedByMembershipId)} mono />
+            <Field label="Raised at" value={dateTime(alert.postedAt)} />
+            <Field label="Cancel window closed" value={dateTime(alert.cancelWindowExpiredAt)} />
+            <Field
+              label="Cancel status"
+              value={
+                <StatusPill
+                  label={humanize(alert.cancelStatus)}
+                  tone={rejectedCancel ? "critical" : "neutral"}
+                />
+              }
+            />
+            <Field
+              label="Visit at the time"
+              value={alert.lastKnownVisitId ? shortId(alert.lastKnownVisitId) : "None recorded"}
+              mono={alert.lastKnownVisitId !== null}
+            />
+            <Field label="Acknowledged" value={dateTime(alert.acknowledgedAt)} />
+            <Field label="Resolved" value={dateTime(alert.resolvedAt)} />
+            <Field label="Outcome" value={alert.outcome ? humanize(alert.outcome) : "—"} />
+            <Field label="Row version" value={String(alert.version)} mono />
+          </SummaryGrid>
+          {alert.coordinatesCaptured ? null : (
+            <Notice tone="info">
+              <strong>No coordinate was captured with this press</strong>, and the alert fanned out
+              anyway (M20-F16). Declining location consent never disables the SOS button — it only
+              means the people who were paged were told there is no position. Do not read this as a
+              failed press.
+            </Notice>
+          )}
+        </Panel>
+
+        <Panel stack headingLevel={3} title="Lifecycle ledger">
+          {ledger.length === 0 ? (
+            <span className="wx-text-muted">No transitions recorded yet.</span>
+          ) : (
+            <Timeline entries={ledger} />
+          )}
+          <span className="wx-text-muted">
+            Every row is one <code>safety_sos_alert_state_history</code> entry, in order, with the
+            membership that caused it or "system" for a worker. This is the ledger a deposition
+            reads end to end; it is append-only in the database, so nothing here can be tidied up
+            after the fact.
+          </span>
+        </Panel>
+
+        <Panel stack headingLevel={3} title="Who answered">
+          {alert.acknowledgments.length === 0 ? (
+            <Notice tone={isOpen ? "error" : "warning"} live>
+              <strong>Nobody has signed on to this alert.</strong>{" "}
+              {isOpen
+                ? "The ladder keeps climbing until somebody does."
+                : "This alert reached a terminal state without an acknowledgment — that is worth a look."}
+            </Notice>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Responder</th>
+                  <th>At</th>
+                  <th>Outcome</th>
+                  <th>What was done</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alert.acknowledgments.map((a) => (
+                  <tr key={a.id}>
+                    <td className="wx-data-md">{shortId(a.acknowledgedByMembershipId)}</td>
+                    <td>{dateTime(a.acknowledgedAt)}</td>
+                    <td>{a.outcome ? humanize(a.outcome) : "—"}</td>
+                    <td>{a.actionTaken}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+
+        <Panel stack headingLevel={3} title="Resolution">
+          <CipherText
+            value={alert.resolutionNarrative}
+            available={alert.resolutionNarrativeAvailable}
+            emptyLabel="No resolution narrative — this alert has not been resolved."
+          />
+          {alert.linkedIncidentId ? (
+            <Link to={`/safety/incidents/${alert.linkedIncidentId}`} style={linkStyle}>
+              Open the linked incident ({shortId(alert.linkedIncidentId)})
             </Link>
-            <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
-              Reload
-            </Button>
-          </div>
-        }
-      />
-
-      {rejectedCancel ? (
-        <Notice tone="error" assertive>
-          <strong>A cancel was attempted on this alert and REJECTED.</strong> The biometric check
-          did not pass at {dateTime(alert.cancelAttemptedAt)}, and the alert proceeded exactly as if
-          no cancel had happened. That is D5 working: a phone taken from a clinician cannot be used
-          to silence her call for help. Treat this as a stronger signal than an ordinary SOS, not a
-          weaker one.
-        </Notice>
-      ) : null}
-
-      {isOpen ? (
-        <Notice tone="error" assertive>
-          <strong>{sosStateLabel(alert.lifecycleState)}</strong> — open for{" "}
-          {durationLabel(minutesSince(alert.postedAt))}.
-          {alert.acknowledgedAt === null
-            ? " Nobody has acknowledged this yet; the escalation ladder is still climbing."
-            : ` Acknowledged at ${dateTime(alert.acknowledgedAt)}, not yet resolved.`}
-        </Notice>
-      ) : (
-        <Notice tone={alert.lifecycleState === "resolved" ? "success" : "info"} live>
-          <strong>{sosStateLabel(alert.lifecycleState)}</strong>
-          {alert.resolvedAt ? ` at ${dateTime(alert.resolvedAt)}` : ""}. This alert is closed; the
-          record below is what a review reads.
-        </Notice>
-      )}
-
-      {alert.lifecycleState === "emergency_terminus" ? (
-        <TerminusPanel sosAlertId={alert.id} />
-      ) : null}
-
-      <Panel
-        stack
-        headingLevel={3}
-        title="Alert"
-        action={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            {canAcknowledge ? (
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+              <span className="wx-text-muted">No incident is linked to this alert.</span>
               <Button
-                tone="primary"
+                tone="secondary"
                 size="lg"
                 type="button"
-                onClick={() => setCeremony("acknowledge")}
+                onClick={() => navigate(`/safety/incidents/new?sosAlertId=${alert.id}`)}
               >
-                Acknowledge
+                Open an incident from this alert
               </Button>
-            ) : null}
-            {canResolve ? (
-              <Button tone="primary" size="lg" type="button" onClick={() => setCeremony("resolve")}>
-                Resolve
+            </div>
+          )}
+        </Panel>
+
+        {/* ── the D6 coordinate boundary ─────────────────────────────────────────────────────────────── */}
+        <Panel
+          stack
+          headingLevel={3}
+          title="Location stream"
+          action={
+            stream === null ? (
+              <Button
+                tone="secondary"
+                size="lg"
+                type="button"
+                onClick={() => {
+                  setAccessReason("");
+                  setStreamError(null);
+                  setCeremony("coordinates");
+                }}
+              >
+                Request coordinate access
               </Button>
-            ) : null}
-          </div>
-        }
-      >
-        <SummaryGrid>
-          <Field label="Alert" value={shortId(alert.id)} mono />
-          <Field label="State" value={<SosStatePill state={alert.lifecycleState} />} />
-          <Field label="Raised by" value={shortId(alert.postedByMembershipId)} mono />
-          <Field label="Raised at" value={dateTime(alert.postedAt)} />
-          <Field label="Cancel window closed" value={dateTime(alert.cancelWindowExpiredAt)} />
-          <Field
-            label="Cancel status"
-            value={
-              <StatusPill
-                label={humanize(alert.cancelStatus)}
-                tone={rejectedCancel ? "critical" : "neutral"}
-              />
-            }
-          />
-          <Field
-            label="Visit at the time"
-            value={alert.lastKnownVisitId ? shortId(alert.lastKnownVisitId) : "None recorded"}
-            mono={alert.lastKnownVisitId !== null}
-          />
-          <Field label="Acknowledged" value={dateTime(alert.acknowledgedAt)} />
-          <Field label="Resolved" value={dateTime(alert.resolvedAt)} />
-          <Field label="Outcome" value={alert.outcome ? humanize(alert.outcome) : "—"} />
-          <Field label="Row version" value={String(alert.version)} mono />
-        </SummaryGrid>
-        {alert.coordinatesCaptured ? null : (
-          <Notice tone="info">
-            <strong>No coordinate was captured with this press</strong>, and the alert fanned out
-            anyway (M20-F16). Declining location consent never disables the SOS button — it only
-            means the people who were paged were told there is no position. Do not read this as a
-            failed press.
-          </Notice>
-        )}
-      </Panel>
-
-      <Panel stack headingLevel={3} title="Lifecycle ledger">
-        {ledger.length === 0 ? (
-          <span className="wx-text-muted">No transitions recorded yet.</span>
-        ) : (
-          <Timeline entries={ledger} />
-        )}
-        <span className="wx-text-muted">
-          Every row is one <code>safety_sos_alert_state_history</code> entry, in order, with the
-          membership that caused it or "system" for a worker. This is the ledger a deposition reads
-          end to end; it is append-only in the database, so nothing here can be tidied up after the
-          fact.
-        </span>
-      </Panel>
-
-      <Panel stack headingLevel={3} title="Who answered">
-        {alert.acknowledgments.length === 0 ? (
-          <Notice tone={isOpen ? "error" : "warning"} live>
-            <strong>Nobody has signed on to this alert.</strong>{" "}
-            {isOpen
-              ? "The ladder keeps climbing until somebody does."
-              : "This alert reached a terminal state without an acknowledgment — that is worth a look."}
-          </Notice>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Responder</th>
-                <th>At</th>
-                <th>Outcome</th>
-                <th>What was done</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alert.acknowledgments.map((a) => (
-                <tr key={a.id}>
-                  <td className="wx-data-md">{shortId(a.acknowledgedByMembershipId)}</td>
-                  <td>{dateTime(a.acknowledgedAt)}</td>
-                  <td>{a.outcome ? humanize(a.outcome) : "—"}</td>
-                  <td>{a.actionTaken}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Panel>
-
-      <Panel stack headingLevel={3} title="Resolution">
-        <CipherText
-          value={alert.resolutionNarrative}
-          available={alert.resolutionNarrativeAvailable}
-          emptyLabel="No resolution narrative — this alert has not been resolved."
-        />
-        {alert.linkedIncidentId ? (
-          <Link to={`/safety/incidents/${alert.linkedIncidentId}`} style={linkStyle}>
-            Open the linked incident ({shortId(alert.linkedIncidentId)})
-          </Link>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <span className="wx-text-muted">No incident is linked to this alert.</span>
-            <Button
-              tone="secondary"
-              size="lg"
-              type="button"
-              onClick={() => navigate(`/safety/incidents/new?sosAlertId=${alert.id}`)}
-            >
-              Open an incident from this alert
-            </Button>
-          </div>
-        )}
-      </Panel>
-
-      {/* ── the D6 coordinate boundary ─────────────────────────────────────────────────────────────── */}
-      <Panel
-        stack
-        headingLevel={3}
-        title="Location stream"
-        action={
-          stream === null ? (
-            <Button
-              tone="secondary"
-              size="lg"
-              type="button"
-              onClick={() => {
-                setAccessReason("");
-                setStreamError(null);
-                setCeremony("coordinates");
-              }}
-            >
-              Request coordinate access
-            </Button>
-          ) : null
-        }
-      >
-        {stream === null ? (
-          <>
-            <Notice tone="warning">
-              <strong>Coordinates are not loaded, and opening this page did not read them.</strong>{" "}
-              The stream is behind its own permission (<code>safety.sos.read_coords</code>), its own
-              predicate and a <strong>warn-severity audit entry naming you</strong>. The clinician
-              who raised this alert can see that access on her own consent surface. Ask for it only
-              when you need it.
-            </Notice>
-            {streamError ? (
-              <Notice tone="error" assertive>
-                {streamError}
+            ) : null
+          }
+        >
+          {stream === null ? (
+            <>
+              <Notice tone="warning">
+                <strong>
+                  Coordinates are not loaded, and opening this page did not read them.
+                </strong>{" "}
+                The stream is behind its own permission (<code>safety.sos.read_coords</code>), its
+                own predicate and a <strong>warn-severity audit entry naming you</strong>. The
+                clinician who raised this alert can see that access on her own consent surface. Ask
+                for it only when you need it.
               </Notice>
-            ) : null}
-            {alert.coordinatesCaptured ? null : (
-              <span className="wx-text-muted">
-                This alert carries no press-time coordinate, so a stream read will most likely
-                return nothing even if you are entitled to it.
-              </span>
-            )}
-          </>
-        ) : (
-          <>
-            {/* VERBATIM from the response — see rule 4 in the module header. */}
-            <Notice tone="warning" assertive>
-              {stream.auditWarningBanner}
-            </Notice>
-            {stream.samples.length === 0 ? (
-              <span className="wx-text-muted">
-                No samples were recorded for this alert. Continuous streaming requires BOTH the
-                tenant's opt-in and this clinician's own consent (D6); absent either, the press-time
-                coordinate is all that exists and it is not part of this stream.
-              </span>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Sampled</th>
-                    <th style={{ textAlign: "right" }}>Latitude</th>
-                    <th style={{ textAlign: "right" }}>Longitude</th>
-                    <th style={{ textAlign: "right" }}>Accuracy (m)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stream.samples.map((s) => (
-                    <tr key={s.id}>
-                      <td>{dateTime(s.sampledAt)}</td>
-                      <td className="tabular-nums" style={{ textAlign: "right" }}>
-                        {s.latitude.toFixed(5)}
-                      </td>
-                      <td className="tabular-nums" style={{ textAlign: "right" }}>
-                        {s.longitude.toFixed(5)}
-                      </td>
-                      <td className="tabular-nums" style={{ textAlign: "right" }}>
-                        {s.accuracyM}
-                      </td>
+              {streamError ? (
+                <Notice tone="error" assertive>
+                  {streamError}
+                </Notice>
+              ) : null}
+              {alert.coordinatesCaptured ? null : (
+                <span className="wx-text-muted">
+                  This alert carries no press-time coordinate, so a stream read will most likely
+                  return nothing even if you are entitled to it.
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              {/* VERBATIM from the response — see rule 4 in the module header. */}
+              <Notice tone="warning" assertive>
+                {stream.auditWarningBanner}
+              </Notice>
+              {stream.samples.length === 0 ? (
+                <span className="wx-text-muted">
+                  No samples were recorded for this alert. Continuous streaming requires BOTH the
+                  tenant's opt-in and this clinician's own consent (D6); absent either, the
+                  press-time coordinate is all that exists and it is not part of this stream.
+                </span>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Sampled</th>
+                      <th style={{ textAlign: "right" }}>Latitude</th>
+                      <th style={{ textAlign: "right" }}>Longitude</th>
+                      <th style={{ textAlign: "right" }}>Accuracy (m)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            {stream.has_more ? (
+                  </thead>
+                  <tbody>
+                    {stream.samples.map((s) => (
+                      <tr key={s.id}>
+                        <td>{dateTime(s.sampledAt)}</td>
+                        <td className="tabular-nums" style={{ textAlign: "right" }}>
+                          {s.latitude.toFixed(5)}
+                        </td>
+                        <td className="tabular-nums" style={{ textAlign: "right" }}>
+                          {s.longitude.toFixed(5)}
+                        </td>
+                        <td className="tabular-nums" style={{ textAlign: "right" }}>
+                          {s.accuracyM}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {stream.has_more ? (
+                <span className="wx-text-muted">
+                  More samples exist beyond this page. Paging fetches them through the same audited
+                  route — each page is another disclosure, which is why this screen does not page
+                  automatically.
+                </span>
+              ) : null}
               <span className="wx-text-muted">
-                More samples exist beyond this page. Paging fetches them through the same audited
-                route — each page is another disclosure, which is why this screen does not page
-                automatically.
+                Coordinates are rendered as numbers rather than plotted. A map tile request would
+                send this clinician's position to a third-party tile server, which is a disclosure
+                nobody consented to and one this module has no agreement covering.
               </span>
-            ) : null}
-            <span className="wx-text-muted">
-              Coordinates are rendered as numbers rather than plotted. A map tile request would send
-              this clinician's position to a third-party tile server, which is a disclosure nobody
-              consented to and one this module has no agreement covering.
-            </span>
-          </>
-        )}
-      </Panel>
+            </>
+          )}
+        </Panel>
+      </div>
 
       {ceremony === "acknowledge" ? (
-        <Modal
+        <FormDrawer
           title="Acknowledge this SOS"
+          busy={saving}
           onClose={closeCeremony}
-          footer={
+          save={
             <Button
               tone="primary"
               size="lg"
@@ -528,14 +537,15 @@ export function SosDetailScreen(): JSX.Element {
               {modalError}
             </Notice>
           ) : null}
-        </Modal>
+        </FormDrawer>
       ) : null}
 
       {ceremony === "resolve" ? (
-        <Modal
+        <FormDrawer
           title="Resolve this SOS"
+          busy={saving}
           onClose={closeCeremony}
-          footer={
+          save={
             <Button
               tone="primary"
               size="lg"
@@ -582,14 +592,15 @@ export function SosDetailScreen(): JSX.Element {
               {modalError}
             </Notice>
           ) : null}
-        </Modal>
+        </FormDrawer>
       ) : null}
 
       {ceremony === "coordinates" ? (
-        <Modal
+        <FormDrawer
           title="Read this clinician's coordinates"
+          busy={saving}
           onClose={closeCeremony}
-          footer={
+          save={
             <Button
               tone="primary"
               size="lg"
@@ -633,7 +644,7 @@ export function SosDetailScreen(): JSX.Element {
               {streamError}
             </Notice>
           ) : null}
-        </Modal>
+        </FormDrawer>
       ) : null}
     </div>
   );
