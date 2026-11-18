@@ -74,6 +74,28 @@ describe("Stedi contract qualification classification", () => {
     expect(result.reasonCode).toBe("successful_response_missing_vendor_receipt_id");
   });
 
+  it("does not classify a successful result as PASS unless the vendor request was sent", () => {
+    const result = classifyVendorSubmission(
+      "json_claim",
+      {
+        ok: true,
+        data: {
+          clearinghouseSubmissionId: "vendor-reference",
+          idempotencyKey: "synthetic-contract-key",
+          controlNumber: "SYNTHETIC01",
+          receivedAt: "2026-11-01T00:00:00.000Z",
+          replayed: false,
+        },
+      },
+      false,
+    );
+    expect(result).toMatchObject({
+      state: "FAIL",
+      reasonCode: "successful_result_without_vendor_request",
+      requestSent: false,
+    });
+  });
+
   it("classifies ambiguous transport outcomes as BLOCKED, never vendor PASS", () => {
     const result = classifyVendorSubmission(
       "json_claim",
@@ -111,6 +133,26 @@ describe("Stedi contract qualification classification", () => {
         true,
       ).overall,
     ).toBe("NOT_RUN");
+  });
+
+  it("preserves executed vendor FAIL/BLOCKED outcomes when dependent local checks are NOT_RUN", () => {
+    const dependentLocal = localScenario("dependent_local_replay", "NOT_RUN");
+    const blocked = classifyVendorSubmission(
+      "json_claim",
+      degraded(CH.NOT_PROVISIONED, "not provisioned"),
+      true,
+    );
+    const failed = classifyVendorSubmission(
+      "json_claim",
+      degraded(CH.INVALID_REQUEST, "refused"),
+      true,
+    );
+    expect(summarizeQualification([blocked, dependentLocal], ["json_claim"], true).overall).toBe(
+      "BLOCKED",
+    );
+    expect(summarizeQualification([failed, dependentLocal], ["json_claim"], true).overall).toBe(
+      "FAIL",
+    );
   });
 
   it("labels local refusal as local evidence, not a vendor observation", async () => {

@@ -32,11 +32,16 @@ export function classifyVendorSubmission(
       result.data.replayed === false &&
       result.data.clearinghouseSubmissionId.length > 0 &&
       !result.data.clearinghouseSubmissionId.startsWith("stedi:");
+    const passed = requestSent && receiptValidated;
     return {
       scenario,
       evidence: "vendor",
-      state: receiptValidated ? "PASS" : "FAIL",
-      reasonCode: receiptValidated ? undefined : "successful_response_missing_vendor_receipt_id",
+      state: passed ? "PASS" : "FAIL",
+      reasonCode: passed
+        ? undefined
+        : !requestSent
+          ? "successful_result_without_vendor_request"
+          : "successful_response_missing_vendor_receipt_id",
       receiptValidated,
       requestSent,
     };
@@ -115,22 +120,21 @@ export function summarizeQualification(
   const local = scenarios.filter((s) => s.evidence === "local");
   if (local.some((s) => s.state === "FAIL"))
     return { overall: "FAIL", requiredVendorScenarios, scenarios };
-  if (local.some((s) => s.state === "BLOCKED"))
-    return { overall: "BLOCKED", requiredVendorScenarios, scenarios };
-  if (local.some((s) => s.state === "NOT_RUN"))
-    return { overall: "NOT_RUN", requiredVendorScenarios, scenarios };
 
   const vendorByName = new Map(
     scenarios.filter((s) => s.evidence === "vendor").map((s) => [s.scenario, s] as const),
   );
   const required = requiredVendorScenarios.map((name) => vendorByName.get(name));
-  if (required.some((s) => !s || s.state === "NOT_RUN")) {
-    return { overall: "NOT_RUN", requiredVendorScenarios, scenarios };
-  }
   if (required.some((s) => s?.state === "FAIL"))
     return { overall: "FAIL", requiredVendorScenarios, scenarios };
   if (required.some((s) => s?.state === "BLOCKED"))
     return { overall: "BLOCKED", requiredVendorScenarios, scenarios };
+  if (local.some((s) => s.state === "BLOCKED"))
+    return { overall: "BLOCKED", requiredVendorScenarios, scenarios };
+  if (required.some((s) => !s || s.state === "NOT_RUN"))
+    return { overall: "NOT_RUN", requiredVendorScenarios, scenarios };
+  if (local.some((s) => s.state === "NOT_RUN"))
+    return { overall: "NOT_RUN", requiredVendorScenarios, scenarios };
   return { overall: "PASS", requiredVendorScenarios, scenarios };
 }
 
