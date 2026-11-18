@@ -3,14 +3,14 @@
 // Create carries an `Idempotency-Key`; an edit also carries the group version the page READ in `If-Match`. A 409/404 on an edit means the
 // group moved under the reader: the dialog closes and the page reloads and says why. While a group is open its schedule (recurrence) is fixed:
 // only a draft's schedule can change, and a drop-in group has none. The format itself is chosen once, at creation.
-import { Button, Drawer, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import {
   CheckboxField,
   ErrorText,
-  Modal,
+  FormShell,
   SelectField,
   TextAreaField,
   TextField,
@@ -104,51 +104,6 @@ export const GroupFormModal = (props: GroupFormProps): JSX.Element => (
 export const GroupFormDrawer = (props: GroupFormProps): JSX.Element => (
   <GroupForm {...props} presentation="drawer" />
 );
-
-/** The one shell choice: a dialog blocks the page; a drawer sits beside the list. Closing is refused while a save is in flight, either way. */
-function FormShell({
-  presentation,
-  title,
-  busy,
-  onClose,
-  save,
-  children,
-}: {
-  presentation: "modal" | "drawer";
-  title: string;
-  busy: boolean;
-  onClose: () => void;
-  save: ReactNode;
-  children: ReactNode;
-}): JSX.Element {
-  if (presentation === "modal") {
-    return (
-      <Modal title={title} onClose={onClose} busy={busy} dirty footer={save}>
-        {children}
-      </Modal>
-    );
-  }
-  const close = () => {
-    if (!busy) onClose();
-  };
-  return (
-    <Drawer
-      title={title}
-      label={title}
-      onClose={close}
-      footer={
-        <>
-          <Button tone="secondary" type="button" disabled={busy} onClick={close}>
-            Cancel
-          </Button>
-          {save}
-        </>
-      }
-    >
-      {children}
-    </Drawer>
-  );
-}
 
 function GroupForm({
   group,

@@ -5,7 +5,7 @@ import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
-import { ErrorText, Modal, SelectField, TextAreaField, TextField } from "./bereavement-ui";
+import { ErrorText, FormShell, SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { intOrNull, isHttpsUrl, isoToLocal, localToIso, orNull } from "./program-status";
 import { type Memorial, type MemorialBody, createMemorial, updateMemorial } from "./programs-api";
 
@@ -68,19 +68,32 @@ function toBody(d: Draft, keepJoinUrl: boolean): MemorialBody | string {
   };
 }
 
-export function MemorialFormModal({
-  service,
-  onClose,
-  onSaved,
-  onStale,
-}: {
+interface MemorialFormProps {
   /** null: create a new service; otherwise edit this one at the version read. */
   service: Memorial | null;
   onClose: () => void;
   onSaved: (saved: Memorial) => void;
-  /** An edit was refused because the service moved: the page closes this dialog, says `message` and reloads. */
+  /** An edit was refused because the service moved: the page closes this form, says `message` and reloads. */
   onStale?: (message: string) => void;
-}): JSX.Element {
+}
+
+/** The form as a dialog over the page: the service's own detail page. */
+export const MemorialFormModal = (props: MemorialFormProps): JSX.Element => (
+  <MemorialForm {...props} presentation="modal" />
+);
+
+/** The same form as a drawer beside the list: the memorial services list screen. */
+export const MemorialFormDrawer = (props: MemorialFormProps): JSX.Element => (
+  <MemorialForm {...props} presentation="drawer" />
+);
+
+function MemorialForm({
+  service,
+  onClose,
+  onSaved,
+  onStale,
+  presentation,
+}: MemorialFormProps & { presentation: "modal" | "drawer" }): JSX.Element {
   const client = useApiClient();
   const keys = useAttemptKey();
   const [draft, setDraft] = useState<Draft>(() => draftOf(service));
@@ -124,12 +137,12 @@ export function MemorialFormModal({
   };
 
   return (
-    <Modal
+    <FormShell
+      presentation={presentation}
       title={service ? "Edit memorial service" : "New memorial service"}
       onClose={onClose}
       busy={busy}
-      dirty
-      footer={
+      save={
         <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : "Save"}
         </Button>
@@ -169,6 +182,6 @@ export function MemorialFormModal({
         onChange={set("inviteWindowMonths")}
       />
       {error ? <ErrorText>{error}</ErrorText> : null}
-    </Modal>
+    </FormShell>
   );
 }

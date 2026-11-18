@@ -6,7 +6,7 @@
 //
 // Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens` stays green and the twilight dark
 // mode is automatic.
-import { Button, Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
+import { Button, Drawer, Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
 import type { StatusTone } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
@@ -247,6 +247,71 @@ export function Modal({
         </div>
       </div>
     </SharedModal>
+  );
+}
+
+/** A record's form as the redesign's right-hand drawer beside its list: the kit `Drawer` with Cancel and the save action in its footer.
+ * Like `Modal`, it cannot be dismissed (Cancel, the close button, Escape) while a write is in flight. */
+export function FormDrawer({
+  title,
+  busy,
+  onClose,
+  save,
+  children,
+}: {
+  title: string;
+  busy: boolean;
+  onClose: () => void;
+  /** The primary action; the drawer adds Cancel before it. */
+  save: ReactNode;
+  children: ReactNode;
+}): JSX.Element {
+  const close = () => {
+    if (!busy) onClose();
+  };
+  return (
+    <Drawer
+      title={title}
+      label={title}
+      onClose={close}
+      footer={
+        <>
+          <Button tone="secondary" type="button" disabled={busy} onClick={close}>
+            Cancel
+          </Button>
+          {save}
+        </>
+      }
+    >
+      {children}
+    </Drawer>
+  );
+}
+
+/** One form, two shells: a dialog over the page (a record's own detail page) or a drawer beside the list (the list screen). */
+export function FormShell({
+  presentation,
+  title,
+  busy,
+  onClose,
+  save,
+  children,
+}: {
+  presentation: "modal" | "drawer";
+  title: string;
+  busy: boolean;
+  onClose: () => void;
+  save: ReactNode;
+  children: ReactNode;
+}): JSX.Element {
+  return presentation === "modal" ? (
+    <Modal title={title} onClose={onClose} busy={busy} dirty footer={save}>
+      {children}
+    </Modal>
+  ) : (
+    <FormDrawer title={title} busy={busy} onClose={onClose} save={save}>
+      {children}
+    </FormDrawer>
   );
 }
 

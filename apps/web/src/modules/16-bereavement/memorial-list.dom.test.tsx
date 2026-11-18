@@ -127,6 +127,26 @@ describe("memorial services list", () => {
     expect(screen.queryByRole("button", { name: "New memorial service" })).toBeNull();
   });
 
+  it("opens the form as a drawer beside the list, not a dialog over it", async () => {
+    mount(() => page([service()]), MANAGE);
+    fireEvent.click(await screen.findByRole("button", { name: "New memorial service" }));
+    expect(await screen.findByRole("complementary", { name: "New memorial service" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The list stays on the page while the form is open.
+    expect(screen.getByRole("table", { name: "Memorial services" })).toBeTruthy();
+  });
+
+  it("closes the drawer from Cancel without sending anything", async () => {
+    const { calls } = mount(() => page([]), MANAGE);
+    fireEvent.click(await screen.findByRole("button", { name: "New memorial service" }));
+    const drawer = await screen.findByRole("complementary", { name: "New memorial service" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New memorial service" })).toBeNull(),
+    );
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
   it("creates a service with an Idempotency-Key and opens it", async () => {
     const created = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const { calls } = mount(
