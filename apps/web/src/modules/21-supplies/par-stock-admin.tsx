@@ -46,17 +46,11 @@ import {
   SelectField,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
   inputNarrowStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdQty,
-  th,
   thNum,
 } from "./supplies-ui";
 
@@ -175,7 +169,7 @@ export function ParStockAdmin(): JSX.Element {
         and the screen reading it would show a green shelf that is actually empty.
       </Notice>
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       <FilterRow>
         <TextField label="Location id" value={locationId} onChange={setLocationId} mono />
@@ -194,43 +188,43 @@ export function ParStockAdmin(): JSX.Element {
 
       <Panel stack headingLevel={3} title={`Shelf (${visible.length})`}>
         {visible.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No par row matches. A Location with no par rows has no monitored shelf — the nightly par
             monitor has nothing to raise for it.
           </span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Item</th>
-                <th style={th}>Location</th>
-                <th style={th}>Band</th>
+                <th>Item</th>
+                <th>Location</th>
+                <th>Band</th>
                 <th style={thNum}>On hand</th>
                 <th style={thNum}>Reorder point</th>
                 <th style={thNum}>Reorder qty</th>
                 <th style={thNum}>Safety stock</th>
-                <th style={th}>Last counted</th>
-                <th style={th} />
+                <th>Last counted</th>
+                <th />
               </tr>
             </thead>
             <tbody>
               {visible.map((row) => {
                 const isEditing = editing === row.parStockId;
                 return (
-                  <tr key={row.parStockId} style={rowLine}>
-                    <td style={td}>
+                  <tr key={row.parStockId}>
+                    <td>
                       {row.skuName}
-                      <div style={mutedStyle}>
+                      <div className="wx-text-muted">
                         {row.skuId ? "platform SKU" : "tenant item"} · {row.unit}
                         {row.isActive ? "" : " · inactive"}
                       </div>
                     </td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(row.locationId)}</td>
-                    <td style={td}>
+                    <td className="wx-data-md">{shortId(row.locationId)}</td>
+                    <td>
                       <ParSeverityPill severity={row.severity} />
                     </td>
                     <td style={tdQty}>{row.currentQuantity}</td>
-                    <td style={isEditing ? td : tdQty}>
+                    <td style={isEditing ? undefined : tdQty}>
                       {isEditing ? (
                         <input
                           aria-label={`Reorder point for ${row.skuName}`}
@@ -242,7 +236,7 @@ export function ParStockAdmin(): JSX.Element {
                         row.reorderPoint
                       )}
                     </td>
-                    <td style={isEditing ? td : tdQty}>
+                    <td style={isEditing ? undefined : tdQty}>
                       {isEditing ? (
                         <input
                           aria-label={`Reorder quantity for ${row.skuName}`}
@@ -254,7 +248,7 @@ export function ParStockAdmin(): JSX.Element {
                         row.reorderQuantity
                       )}
                     </td>
-                    <td style={isEditing ? td : tdQty}>
+                    <td style={isEditing ? undefined : tdQty}>
                       {isEditing ? (
                         <input
                           aria-label={`Safety stock for ${row.skuName}`}
@@ -266,8 +260,8 @@ export function ParStockAdmin(): JSX.Element {
                         row.minSafetyStock
                       )}
                     </td>
-                    <td style={td}>{dateTime(row.lastParReviewAt)}</td>
-                    <td style={td}>
+                    <td>{dateTime(row.lastParReviewAt)}</td>
+                    <td>
                       <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
                         {isEditing ? (
                           <>
@@ -310,7 +304,7 @@ export function ParStockAdmin(): JSX.Element {
             </tbody>
           </table>
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The band filter narrows the page you fetched — M21 publishes no per-band query parameter,
           only the coarser "below reorder point".
         </span>

@@ -53,17 +53,11 @@ import {
   SelectField,
   SummaryGrid,
   TextField,
-  alertStyle,
   columnStyle,
   enumOptions,
   ghostButtonStyle,
   inputStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   thNum,
 } from "./supplies-ui";
 
@@ -260,7 +254,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
         violates the floor never exists even briefly.
       </Notice>
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       <CheckboxField
         label="Include superseded versions"
@@ -273,7 +267,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
       >
         <Panel stack headingLevel={3} title="Templates">
           {ordered.length === 0 ? (
-            <span style={mutedStyle}>No template is visible.</span>
+            <span className="wx-text-muted">No template is visible.</span>
           ) : (
             <ul
               style={{
@@ -302,7 +296,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                     }}
                   >
                     {tm.name}
-                    <div style={mutedStyle}>
+                    <div className="wx-text-muted">
                       {tm.isPlatformFloor ? "Platform floor · read-only" : "Tenant template"}
                       {tm.effectiveTo ? " · superseded" : ""}
                     </div>
@@ -341,13 +335,13 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                 <Field label="Replaces" value={shortId(selected.replacesTemplateId)} mono />
                 <Field label="Medications" value={selected.medications.length} />
               </SummaryGrid>
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>Medication</th>
-                    <th style={th}>RxNorm</th>
-                    <th style={th}>Form / route</th>
-                    <th style={th}>Schedule</th>
+                    <th>Medication</th>
+                    <th>RxNorm</th>
+                    <th>Form / route</th>
+                    <th>Schedule</th>
                     <th style={thNum}>Expected</th>
                     {/* Stored as a FRACTION in [0,1] (§3.1.4's CHECK) despite the column's "_pct" name. */}
                     <th style={thNum}>Replenish below</th>
@@ -355,25 +349,25 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                 </thead>
                 <tbody>
                   {selected.medications.map((m) => (
-                    <tr key={m.templateMedicationId} style={rowLine}>
-                      <td style={td}>
+                    <tr key={m.templateMedicationId}>
+                      <td>
                         {m.drugName}
-                        <div style={mutedStyle}>{m.strength}</div>
+                        <div className="wx-text-muted">{m.strength}</div>
                       </td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>{m.rxnorm}</td>
-                      <td style={td}>
+                      <td className="wx-data-md">{m.rxnorm}</td>
+                      <td>
                         {m.dosageForm} · {m.routeOfAdministration}
                       </td>
-                      <td style={td}>
+                      <td>
                         <SchedulePill
                           schedule={m.controlledSubstanceSchedule}
                           isControlled={m.isControlledSubstance}
                         />
                       </td>
-                      <td style={{ ...td, textAlign: "right", fontFamily: t.fontMono }}>
+                      <td style={{ textAlign: "right", fontFamily: t.fontMono }}>
                         {m.expectedQuantity} {m.expectedUnit}
                       </td>
-                      <td style={{ ...td, textAlign: "right", fontFamily: t.fontMono }}>
+                      <td style={{ textAlign: "right", fontFamily: t.fontMono }}>
                         {fractionAsPct(m.replenishmentThresholdPct)}
                       </td>
                     </tr>
@@ -381,7 +375,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                 </tbody>
               </table>
               {selected.isPlatformFloor ? (
-                <span style={mutedStyle}>
+                <span className="wx-text-muted">
                   Seeded with the migration chain and locked. Every tenant reads it; no tenant can
                   write it — its organization is null and the write policy admits only the platform
                   role.
@@ -423,24 +417,24 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                 </Notice>
               ) : null}
               <TextField label="Template name" value={name} onChange={setName} />
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>Drug</th>
-                    <th style={th}>RxNorm</th>
-                    <th style={th}>Strength</th>
-                    <th style={th}>Form</th>
-                    <th style={th}>Route</th>
-                    <th style={th}>Controlled</th>
+                    <th>Drug</th>
+                    <th>RxNorm</th>
+                    <th>Strength</th>
+                    <th>Form</th>
+                    <th>Route</th>
+                    <th>Controlled</th>
                     <th style={thNum}>Expected</th>
-                    <th style={th}>Unit</th>
-                    <th style={th} />
+                    <th>Unit</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
                   {meds.map((m) => (
-                    <tr key={m.key} style={rowLine}>
-                      <td style={td}>
+                    <tr key={m.key}>
+                      <td>
                         <input
                           aria-label="Drug name"
                           value={m.drugName}
@@ -448,7 +442,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                           style={{ ...inputStyle, minWidth: "9rem" }}
                         />
                       </td>
-                      <td style={td}>
+                      <td>
                         <input
                           aria-label="RxNorm CUI"
                           value={m.rxnorm}
@@ -456,7 +450,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                           style={{ ...inputStyle, minWidth: "6rem", fontFamily: t.fontMono }}
                         />
                       </td>
-                      <td style={td}>
+                      <td>
                         <input
                           aria-label="Strength"
                           value={m.strength}
@@ -464,7 +458,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                           style={{ ...inputStyle, minWidth: "6rem" }}
                         />
                       </td>
-                      <td style={td}>
+                      <td>
                         <input
                           aria-label="Dosage form"
                           value={m.dosageForm}
@@ -472,7 +466,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                           style={{ ...inputStyle, minWidth: "6rem" }}
                         />
                       </td>
-                      <td style={td}>
+                      <td>
                         <input
                           aria-label="Route of administration"
                           value={m.routeOfAdministration}
@@ -482,7 +476,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                           style={{ ...inputStyle, minWidth: "6rem" }}
                         />
                       </td>
-                      <td style={td}>
+                      <td>
                         <CheckboxField
                           label="Controlled"
                           checked={m.isControlledSubstance}
@@ -503,7 +497,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                           />
                         ) : null}
                       </td>
-                      <td style={td}>
+                      <td>
                         <input
                           aria-label="Expected quantity"
                           value={m.expectedQuantity}
@@ -511,7 +505,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                           style={{ ...inputStyle, minWidth: "5rem", fontFamily: t.fontMono }}
                         />
                       </td>
-                      <td style={td}>
+                      <td>
                         <input
                           aria-label="Expected unit"
                           value={m.expectedUnit}
@@ -519,7 +513,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                           style={{ ...inputStyle, minWidth: "4rem" }}
                         />
                       </td>
-                      <td style={td}>
+                      <td>
                         <Button
                           tone="secondary"
                           type="button"
@@ -548,7 +542,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                   dispatch time.
                 </Notice>
               ) : null}
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 Floor validation runs on the server and names the medication it is missing.
                 Templates effective from {shortDate(floor?.effectiveFrom)} carry the current floor.
               </span>

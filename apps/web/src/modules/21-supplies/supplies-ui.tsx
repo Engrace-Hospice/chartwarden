@@ -19,33 +19,10 @@ import {
 } from "./supplies-status";
 
 // ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
-export const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.85rem",
-};
-export const th: CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  textAlign: "left",
-  fontSize: "0.7rem",
-  fontWeight: 600,
-  color: t.onSurfaceVariant,
-};
-export const thNum: CSSProperties = { ...th, textAlign: "right" };
-export const td: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  color: t.onSurface,
-  verticalAlign: "top",
-};
-export const tdMono: CSSProperties = { ...td, fontFamily: t.fontMono };
-export const tdNum: CSSProperties = {
-  ...td,
-  textAlign: "right",
-  fontVariantNumeric: "tabular-nums",
-};
+export const thNum: CSSProperties = { textAlign: "right" };
+export const tdNum: CSSProperties = { textAlign: "right", fontVariantNumeric: "tabular-nums" };
 /** A quantity cell — mono AND tabular, because a DEA count is read column-wise against another count. */
 export const tdQty: CSSProperties = { ...tdNum, fontFamily: t.fontMono };
-export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
 /** Screen-reader-only text — keeps a control labelled without occupying visual space (§16 WCAG AA). */
 export const visuallyHidden: CSSProperties = {
@@ -72,13 +49,11 @@ export const pageTitleStyle: CSSProperties = {
   color: t.onSurface,
 };
 export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
-export const alertStyle: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.error };
 export const linkStyle: CSSProperties = {
   fontSize: "0.8rem",
   color: t.primary,
   textDecoration: "none",
 };
-export const linkMonoStyle: CSSProperties = { ...linkStyle, fontFamily: t.fontMono };
 export const columnStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",

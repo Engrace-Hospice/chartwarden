@@ -48,16 +48,10 @@ import {
   Notice,
   SelectField,
   TextField,
-  alertStyle,
   columnStyle,
   enumOptions,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./supplies-ui";
 
 const PAGE = 200;
@@ -185,7 +179,7 @@ export function SupplyItemCatalog(): JSX.Element {
         code.
       </Notice>
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       <FilterRow>
         <TextField label="Search name or HCPCS" value={query} onChange={setQuery} />
@@ -204,37 +198,37 @@ export function SupplyItemCatalog(): JSX.Element {
 
       <Panel stack headingLevel={3} title={`Platform catalog (${platform.length})`}>
         {platform.length === 0 ? (
-          <span style={mutedStyle}>No canonical SKU matches this search.</span>
+          <span className="wx-text-muted">No canonical SKU matches this search.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Name</th>
-                <th style={th}>HCPCS</th>
-                <th style={th}>Class</th>
-                <th style={th}>Unit</th>
-                <th style={th}>Billable</th>
-                <th style={th}>Controlled</th>
-                <th style={th}>Lot tracked</th>
-                <th style={th}>Expiry tracked</th>
-                <th style={th}>Effective</th>
+                <th>Name</th>
+                <th>HCPCS</th>
+                <th>Class</th>
+                <th>Unit</th>
+                <th>Billable</th>
+                <th>Controlled</th>
+                <th>Lot tracked</th>
+                <th>Expiry tracked</th>
+                <th>Effective</th>
               </tr>
             </thead>
             <tbody>
               {platform.map((i) => (
-                <tr key={i.supplyItemId} style={rowLine}>
-                  <td style={td}>
+                <tr key={i.supplyItemId}>
+                  <td>
                     {i.name}
-                    {i.isActive ? null : <div style={mutedStyle}>retired</div>}
+                    {i.isActive ? null : <div className="wx-text-muted">retired</div>}
                   </td>
-                  <td style={{ ...td, fontFamily: t.fontMono }}>{i.hcpcs ?? "—"}</td>
-                  <td style={td}>{i.skuClass}</td>
-                  <td style={td}>{i.defaultUnit}</td>
-                  <td style={td}>{i.isBillable ? "Yes" : "No"}</td>
-                  <td style={td}>{triState(i.isControlledSubstance)}</td>
-                  <td style={td}>{triState(i.requiresLotTracking)}</td>
-                  <td style={td}>{triState(i.requiresExpirationTracking)}</td>
-                  <td style={td}>
+                  <td className="wx-data-md">{i.hcpcs ?? "—"}</td>
+                  <td>{i.skuClass}</td>
+                  <td>{i.defaultUnit}</td>
+                  <td>{i.isBillable ? "Yes" : "No"}</td>
+                  <td>{triState(i.isControlledSubstance)}</td>
+                  <td>{triState(i.requiresLotTracking)}</td>
+                  <td>{triState(i.requiresExpirationTracking)}</td>
+                  <td>
                     {shortDate(i.effectiveFrom)}
                     {i.effectiveTo ? ` → ${shortDate(i.effectiveTo)}` : ""}
                   </td>
@@ -243,7 +237,7 @@ export function SupplyItemCatalog(): JSX.Element {
             </tbody>
           </table>
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           "Unclassified" is not "No". A SKU the loader has not yet classified is treated as needing
           a decision before a controlled dispatch, not as safe.
         </span>
@@ -251,33 +245,33 @@ export function SupplyItemCatalog(): JSX.Element {
 
       <Panel stack headingLevel={3} title={`Tenant overlay (${overlay.length})`}>
         {overlay.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Your agency has no local shelf items. These are the non-billable things that will never
             have a HCPCS code.
           </span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Name</th>
-                <th style={th}>Local SKU</th>
-                <th style={th}>Unit</th>
-                <th style={th}>Billable</th>
-                <th style={th}>Active</th>
-                <th style={th}>Updated</th>
-                <th style={th} />
+                <th>Name</th>
+                <th>Local SKU</th>
+                <th>Unit</th>
+                <th>Billable</th>
+                <th>Active</th>
+                <th>Updated</th>
+                <th />
               </tr>
             </thead>
             <tbody>
               {overlay.map((i) => (
-                <tr key={i.supplyItemId} style={rowLine}>
-                  <td style={td}>{i.name}</td>
-                  <td style={{ ...td, fontFamily: t.fontMono }}>{i.localSkuCode ?? "—"}</td>
-                  <td style={td}>{i.defaultUnit}</td>
-                  <td style={td}>{i.isBillable ? "Yes" : "No"}</td>
-                  <td style={td}>{i.isActive ? "Yes" : "No"}</td>
-                  <td style={td}>{shortDate(i.updatedAt)}</td>
-                  <td style={td}>
+                <tr key={i.supplyItemId}>
+                  <td>{i.name}</td>
+                  <td className="wx-data-md">{i.localSkuCode ?? "—"}</td>
+                  <td>{i.defaultUnit}</td>
+                  <td>{i.isBillable ? "Yes" : "No"}</td>
+                  <td>{i.isActive ? "Yes" : "No"}</td>
+                  <td>{shortDate(i.updatedAt)}</td>
+                  <td>
                     <Button
                       tone="secondary"
                       type="button"

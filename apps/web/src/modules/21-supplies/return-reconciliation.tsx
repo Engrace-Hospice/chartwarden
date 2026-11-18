@@ -75,18 +75,12 @@ import {
   TextAreaField,
   TextField,
   Timeline,
-  alertStyle,
   columnStyle,
   enumOptions,
   ghostButtonStyle,
   inputNarrowStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdQty,
-  th,
   thNum,
 } from "./supplies-ui";
 
@@ -307,7 +301,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
       ) : null}
 
       {manifestError ? <Notice tone="error">{manifestError}</Notice> : null}
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       <Panel
         stack
@@ -334,13 +328,13 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           <Field label="Receipt document (M22)" value={shortId(ret.receiptDocumentId)} mono />
           <Field label="Version stamp" value={dateTime(ret.updatedAt)} />
         </SummaryGrid>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The reason this return was opened is captured on the transition, not republished on the
           read surface — the M4 audit record owns it.
         </span>
         {ret.disposalNotes ? (
           <div>
-            <span style={mutedStyle}>Disposal notes (audit-denylisted free text)</span>
+            <span className="wx-text-muted">Disposal notes (audit-denylisted free text)</span>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
               {ret.disposalNotes}
             </p>
@@ -348,7 +342,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
         ) : null}
         {ret.discrepancyNotes ? (
           <div>
-            <span style={mutedStyle}>Discrepancy notes</span>
+            <span className="wx-text-muted">Discrepancy notes</span>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
               {ret.discrepancyNotes}
             </p>
@@ -356,7 +350,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
         ) : null}
         {ret.unreturnableReason ? (
           <div>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Unreturnable — attested by {shortId(ret.unreturnableAttestedByMembershipId)}
             </span>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
@@ -373,44 +367,44 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
       {/* Once reconciled, the STORED accounting replaces the worksheet: those numbers are the record. */}
       {ret.lines.length > 0 ? (
         <Panel stack headingLevel={3} title="Recorded accounting">
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             As stored. The unaccounted quantity and its share were computed by the database from
             dispatched − returned − disposed-at-home, and the flag is the server's, not a
             reconciler's. `discrepancy_pct` is stored as a FRACTION (the trigger compares against
             0.05) and is converted to a percentage here — printing the raw 0.05 under a "%" heading
             would understate a controlled-substance shortfall a hundredfold.
           </span>
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Medication</th>
-                <th style={th}>Schedule</th>
-                <th style={th}>Lot</th>
+                <th>Medication</th>
+                <th>Schedule</th>
+                <th>Lot</th>
                 <th style={thNum}>Dispatched</th>
                 <th style={thNum}>Returned</th>
                 <th style={thNum}>Disposed at home</th>
                 <th style={thNum}>Unaccounted</th>
                 <th style={thNum}>Discrepancy %</th>
-                <th style={th}>Flag</th>
+                <th>Flag</th>
               </tr>
             </thead>
             <tbody>
               {ret.lines.map((l) => (
-                <tr key={l.returnedContentId} style={rowLine}>
-                  <td style={td}>{l.drugName}</td>
-                  <td style={td}>
+                <tr key={l.returnedContentId}>
+                  <td>{l.drugName}</td>
+                  <td>
                     <SchedulePill
                       schedule={l.controlledSubstanceSchedule}
                       isControlled={l.isControlledSubstance}
                     />
                   </td>
-                  <td style={{ ...td, fontFamily: t.fontMono }}>{l.lotNumber ?? "—"}</td>
+                  <td className="wx-data-md">{l.lotNumber ?? "—"}</td>
                   <td style={tdQty}>{l.dispatchedQuantity}</td>
                   <td style={tdQty}>{l.quantityReturned}</td>
                   <td style={tdQty}>{l.quantityDisposedAtHome}</td>
                   <td style={tdQty}>{l.quantityUnaccounted}</td>
                   <td style={tdQty}>{fractionAsPct(l.discrepancyPct)}</td>
-                  <td style={td}>
+                  <td>
                     {l.discrepancyFlagged ? (
                       <StatusPill label="Flagged" tone="error" />
                     ) : (
@@ -450,36 +444,36 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
               a preview — the database computes and stores the authoritative discrepancy.
             </Notice>
           ) : null}
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Medication</th>
-                <th style={th}>Schedule</th>
-                <th style={th}>Lot</th>
+                <th>Medication</th>
+                <th>Schedule</th>
+                <th>Lot</th>
                 <th style={thNum}>Dispatched</th>
                 <th style={thNum}>Returned</th>
                 <th style={thNum}>Disposed at home</th>
                 <th style={thNum}>Unaccounted (preview)</th>
-                <th style={th}>Explanation</th>
+                <th>Explanation</th>
               </tr>
             </thead>
             <tbody>
               {counts.map((c, i) => {
                 const preview = previews[i];
                 return (
-                  <tr key={c.dispatchedContentId} style={rowLine}>
-                    <td style={td}>{c.drugName}</td>
-                    <td style={td}>
+                  <tr key={c.dispatchedContentId}>
+                    <td>{c.drugName}</td>
+                    <td>
                       <SchedulePill
                         schedule={c.controlledSubstanceSchedule}
                         isControlled={c.isControlledSubstance}
                       />
                     </td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{c.lotNumber ?? "—"}</td>
+                    <td className="wx-data-md">{c.lotNumber ?? "—"}</td>
                     <td style={tdQty}>
                       {c.dispatchedQuantity} {c.dispatchedUnit}
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
                         aria-label={`Quantity returned for ${c.drugName}`}
                         value={c.quantityReturned}
@@ -487,7 +481,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
                         style={inputNarrowStyle}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
                         aria-label={`Quantity disposed at home for ${c.drugName}`}
                         value={c.quantityDisposedAtHome}
@@ -500,12 +494,12 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
                         ? `${preview.unaccounted.toFixed(3)} (${preview.pct.toFixed(1)}%)`
                         : "—"}
                       {flagged[i] ? (
-                        <div style={{ ...mutedStyle, color: t.error }}>
+                        <div className="wx-text-error" style={{ fontSize: "0.8rem" }}>
                           at or above the {DISCREPANCY_THRESHOLD_PCT}% threshold
                         </div>
                       ) : null}
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
                         aria-label={`Discrepancy explanation for ${c.drugName}`}
                         value={c.discrepancyExplanation}
@@ -601,7 +595,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
             Declare unreturnable
           </Button>
         </div>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Writing off a kit that held a CII solution is a different authority from counting one that
           came back, which is why it is a separate action rather than an option inside reconcile.
         </span>

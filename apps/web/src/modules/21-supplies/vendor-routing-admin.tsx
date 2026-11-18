@@ -57,16 +57,10 @@ import {
   Notice,
   SelectField,
   TextField,
-  alertStyle,
   columnStyle,
   enumOptions,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   thNum,
 } from "./supplies-ui";
 
@@ -220,7 +214,7 @@ export function VendorRoutingAdmin(): JSX.Element {
         one answer.
       </Notice>
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       <FilterRow>
         <SelectField
@@ -247,64 +241,66 @@ export function VendorRoutingAdmin(): JSX.Element {
           }
         >
           {scope === "platform" ? (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Platform rules are the floor every tenant reads and none may write. A tenant cannot
               author one: the request schema omits the scope and the database write policy would
               refuse it anyway.
             </span>
           ) : null}
           {rows.length === 0 ? (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               {scope === "tenant"
                 ? "No tenant default is configured. Boot validation refuses a tenant with no tenant-scope rule — a request with nothing to resolve against cannot be routed."
                 : "No rule at this scope."}
             </span>
           ) : (
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Rule</th>
-                  <th style={th}>Target</th>
-                  <th style={th}>SKU pattern</th>
-                  <th style={th}>Vendor</th>
-                  <th style={th}>Fulfillment</th>
+                  <th>Rule</th>
+                  <th>Target</th>
+                  <th>SKU pattern</th>
+                  <th>Vendor</th>
+                  <th>Fulfillment</th>
                   <th style={thNum}>Priority</th>
-                  <th style={th}>Effective</th>
-                  <th style={th}>State</th>
-                  <th style={th} />
+                  <th>Effective</th>
+                  <th>State</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.ruleId} style={rowLine}>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.ruleId)}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.scopeId)}</td>
-                    <td style={td}>{r.skuClassPattern ?? "any"}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>
+                  <tr key={r.ruleId}>
+                    <td className="wx-data-md">{shortId(r.ruleId)}</td>
+                    <td className="wx-data-md">{shortId(r.scopeId)}</td>
+                    <td>{r.skuClassPattern ?? "any"}</td>
+                    <td className="wx-data-md">
                       {r.assignedVendorId ? shortId(r.assignedVendorId) : "internal hub"}
                     </td>
-                    <td style={td}>
+                    <td>
                       {humanize(r.assignedFulfillmentMode)}
                       {r.defaultPharmacyDispatchMode ? (
-                        <div style={mutedStyle}>{humanize(r.defaultPharmacyDispatchMode)}</div>
+                        <div className="wx-text-muted">
+                          {humanize(r.defaultPharmacyDispatchMode)}
+                        </div>
                       ) : null}
                     </td>
-                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                       {r.precedencePriority}
                     </td>
-                    <td style={td}>
+                    <td>
                       {shortDate(r.effectiveFrom)}
                       {r.effectiveTo ? ` → ${shortDate(r.effectiveTo)}` : ""}
                     </td>
-                    <td style={td}>
+                    <td>
                       <StatusPill
                         label={r.isActive ? "Active" : "Retired"}
                         tone={r.isActive ? "success" : "neutral"}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       {r.isPlatform ? (
-                        <span style={mutedStyle}>platform</span>
+                        <span className="wx-text-muted">platform</span>
                       ) : (
                         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
                           <Button

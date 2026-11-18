@@ -79,17 +79,10 @@ import {
   TextAreaField,
   TextField,
   Timeline,
-  alertStyle,
   columnStyle,
   enumOptions,
   ghostButtonStyle,
-  linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./supplies-ui";
 
 type Ceremony =
@@ -263,7 +256,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         </Notice>
       ) : null}
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       <Panel
         stack
@@ -300,7 +293,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         </SummaryGrid>
         {request.deliveryInstructions ? (
           <div>
-            <span style={mutedStyle}>Delivery instructions (D13 — audit-denylisted free text)</span>
+            <span className="wx-text-muted">
+              Delivery instructions (D13 — audit-denylisted free text)
+            </span>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
               {request.deliveryInstructions}
             </p>
@@ -308,7 +303,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         ) : null}
         {request.cancellationReason ? (
           <div>
-            <span style={mutedStyle}>Cancellation reason</span>
+            <span className="wx-text-muted">Cancellation reason</span>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
               {request.cancellationReason}
             </p>
@@ -339,7 +334,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         {/* The per-kind D1 `data` payload is rendered as data. §3.4's per-kind TypeBox is NOT published to
             the client, so a hand-written field list here would be a second, drifting copy of the contract
             the write path validates against — and would silently hide a field a kind gained. */}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The per-kind payload as stored. M21 publishes no client-side schema for it, so it is shown
           verbatim rather than re-rendered into fields this screen would have to guess.
         </span>
@@ -411,38 +406,38 @@ export function SupplyRequestDetailScreen(): JSX.Element {
                 mono
               />
             </SummaryGrid>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Every rule the D4 ladder evaluated, in precedence order — this is the frozen answer to
               "why this vendor", and it survives an override.
             </span>
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Precedence</th>
-                  <th style={th}>Rule</th>
-                  <th style={th}>Matched</th>
-                  <th style={th}>Reason</th>
+                  <th>Precedence</th>
+                  <th>Rule</th>
+                  <th>Matched</th>
+                  <th>Reason</th>
                 </tr>
               </thead>
               <tbody>
                 {request.routingRuleResolved.candidatesEvaluated.map((c, i) => (
-                  <tr key={`${c.precedenceLevel}-${c.ruleId ?? i}`} style={rowLine}>
-                    <td style={td}>{humanize(c.precedenceLevel)}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(c.ruleId)}</td>
-                    <td style={td}>
+                  <tr key={`${c.precedenceLevel}-${c.ruleId ?? i}`}>
+                    <td>{humanize(c.precedenceLevel)}</td>
+                    <td className="wx-data-md">{shortId(c.ruleId)}</td>
+                    <td>
                       <StatusPill
                         label={c.matched ? "Matched" : "Skipped"}
                         tone={c.matched ? "success" : "neutral"}
                       />
                     </td>
-                    <td style={td}>{c.reason}</td>
+                    <td>{c.reason}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </>
         ) : (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No routing has been resolved yet. The D4 ladder runs at vendor assignment and is frozen
             onto the row from that moment.
           </span>
@@ -450,12 +445,12 @@ export function SupplyRequestDetailScreen(): JSX.Element {
       </Panel>
 
       <Panel stack headingLevel={3} title="Lifecycle">
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Reconstructed from this request's own timestamp columns. The immutable actor trail — who
           read it, who was refused, who broke glass — belongs to the M4 audit surface that owns it.
         </span>
         {timeline.length === 0 ? (
-          <span style={mutedStyle}>Nothing has happened to this request yet.</span>
+          <span className="wx-text-muted">Nothing has happened to this request yet.</span>
         ) : (
           <Timeline entries={timeline} />
         )}

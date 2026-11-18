@@ -52,16 +52,10 @@ import {
   TextAreaField,
   TextField,
   Timeline,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdQty,
-  th,
   thNum,
 } from "./supplies-ui";
 
@@ -168,7 +162,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
         </Notice>
       ) : null}
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       <Panel
         stack
@@ -205,7 +199,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
         </SummaryGrid>
         {dispatch.specialHandlingNotes ? (
           <div>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Special handling notes (D13 — audit-denylisted free text)
             </span>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
@@ -227,32 +221,32 @@ export function ComfortKitDispatchDetail(): JSX.Element {
           )
         }
       >
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           What physically left the hub. These quantities are the DEA outbound record — every return
           count is subtracted from them, and they are never edited: a correction is a new
           reconciliation row.
         </span>
-        <table style={tableStyle}>
+        <table>
           <thead>
             <tr>
-              <th style={th}>Medication</th>
-              <th style={th}>Schedule</th>
+              <th>Medication</th>
+              <th>Schedule</th>
               <th style={thNum}>Dispatched</th>
-              <th style={th}>Lot</th>
-              <th style={th}>Expires</th>
-              <th style={th}>Prescription</th>
+              <th>Lot</th>
+              <th>Expires</th>
+              <th>Prescription</th>
             </tr>
           </thead>
           <tbody>
             {dispatch.contents.map((c) => (
-              <tr key={c.dispatchedContentId} style={rowLine}>
-                <td style={td}>
+              <tr key={c.dispatchedContentId}>
+                <td>
                   {c.drugName}
-                  <div style={mutedStyle}>
+                  <div className="wx-text-muted">
                     {c.strength} · {c.dosageForm} · {c.routeOfAdministration}
                   </div>
                 </td>
-                <td style={td}>
+                <td>
                   <SchedulePill
                     schedule={c.controlledSubstanceSchedule}
                     isControlled={c.isControlledSubstance}
@@ -261,9 +255,9 @@ export function ComfortKitDispatchDetail(): JSX.Element {
                 <td style={tdQty}>
                   {c.dispatchedQuantity} {c.dispatchedUnit}
                 </td>
-                <td style={{ ...td, fontFamily: t.fontMono }}>{c.lotNumber ?? "—"}</td>
-                <td style={td}>{shortDate(c.expirationDate)}</td>
-                <td style={{ ...td, fontFamily: t.fontMono }}>
+                <td className="wx-data-md">{c.lotNumber ?? "—"}</td>
+                <td>{shortDate(c.expirationDate)}</td>
+                <td className="wx-data-md">
                   {/* Null on an IPU stock kit, which has no per-patient prescription behind it. */}
                   {c.medicationOrderId ? shortId(c.medicationOrderId) : "stock kit"}
                 </td>
@@ -274,7 +268,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
       </Panel>
 
       <Panel stack headingLevel={3} title="Chain of custody">
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The dispatch's own custody stamps. The per-lot ledger is the DEA perpetual log, behind its
           own permission.
         </span>
@@ -308,7 +302,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             Initiate return
           </Button>
         </div>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Reconciliation is not an action here. The physical count, its witness and the disposal
           record live on the return record, which is a different authority from dispatching.
         </span>

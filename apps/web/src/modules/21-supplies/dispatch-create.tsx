@@ -73,17 +73,11 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   enumOptions,
   inputNarrowStyle,
   inputStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   thNum,
 } from "./supplies-ui";
 
@@ -274,11 +268,11 @@ export function ComfortKitDispatchCreate(): JSX.Element {
         refused rather than recorded.
       </Notice>
 
-      {submitError ? <p style={alertStyle}>{submitError}</p> : null}
+      {submitError ? <p className="wx-text-error">{submitError}</p> : null}
 
       <Panel stack headingLevel={3} title="Supply request">
         {requests.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No open comfort-kit request is available. A dispatch is always tied to one — the
             patient, admission and provider entity come from the request, not from this form.
           </span>
@@ -381,7 +375,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
         }
       >
         {lines.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Pick a template — its medications seed the manifest. Quantities default to the recipe's
             expected amounts and are edited per line to what physically went in the box.
           </span>
@@ -392,32 +386,32 @@ export function ComfortKitDispatchCreate(): JSX.Element {
               must sit at least 14 days out. Those rules are enforced by the server with their own
               error codes, so a refusal names the rule instead of a generic validation failure.
             </Notice>
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Medication</th>
-                  <th style={th}>Schedule</th>
+                  <th>Medication</th>
+                  <th>Schedule</th>
                   <th style={thNum}>Quantity</th>
-                  <th style={th}>Unit</th>
-                  <th style={th}>Lot</th>
-                  <th style={th}>Expires</th>
-                  <th style={th}>Manufacturer NDC</th>
+                  <th>Unit</th>
+                  <th>Lot</th>
+                  <th>Expires</th>
+                  <th>Manufacturer NDC</th>
                 </tr>
               </thead>
               <tbody>
                 {lines.map((l, i) => (
-                  <tr key={l.comfortKitTemplateMedicationId} style={rowLine}>
-                    <td style={td}>
+                  <tr key={l.comfortKitTemplateMedicationId}>
+                    <td>
                       {l.drugName}
-                      <div style={mutedStyle}>{l.strength}</div>
+                      <div className="wx-text-muted">{l.strength}</div>
                     </td>
-                    <td style={td}>
+                    <td>
                       <SchedulePill
                         schedule={l.controlledSubstanceSchedule}
                         isControlled={l.isControlledSubstance}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
                         aria-label={`Dispatched quantity for ${l.drugName}`}
                         value={l.dispatchedQuantity}
@@ -425,7 +419,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
                         style={inputNarrowStyle}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
                         aria-label={`Unit for ${l.drugName}`}
                         value={l.dispatchedUnit}
@@ -433,7 +427,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
                         style={{ ...inputStyle, minWidth: "5rem", width: "6rem" }}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
                         aria-label={`Lot number for ${l.drugName}`}
                         value={l.lotNumber ?? ""}
@@ -441,7 +435,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
                         style={{ ...inputStyle, minWidth: "7rem", fontFamily: t.fontMono }}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
                         aria-label={`Expiration date for ${l.drugName}`}
                         type="date"
@@ -450,7 +444,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
                         style={{ ...inputStyle, minWidth: "9rem" }}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
                         aria-label={`Manufacturer NDC for ${l.drugName}`}
                         value={l.manufacturerNdc ?? ""}
