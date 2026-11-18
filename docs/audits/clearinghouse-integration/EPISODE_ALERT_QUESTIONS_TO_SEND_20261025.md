@@ -1,6 +1,6 @@
 # Episode Alert and MAC NSV enrollment: written questions to send (issue #762)
 
-**Date:** 2026-10-25 · **Status:** ready to send, **not sent**. Nothing here is a vendor answer. Every statement about what
+**Date:** 2026-10-25 · **Status:** historical questionnaire, **not sent**. Use the prioritized [2026-11-18 follow-up](./EPISODE_ALERT_FOLLOWUP_QUESTIONS_20261118.md) instead; its Oregon HH+H wording reflects the current CMS J6/Wellpoint Federal source review and asks the provider owner to verify the specific route. Nothing here is a vendor answer. Every statement about what
 Episode Alert publishes comes from the tracking issue (#755, findings of 2026-10-24) and stays unverified until Episode Alert
 or the MAC confirms it in writing. Onboarding steps: [`EPISODE_ALERT_ONBOARDING_RUNBOOK_20261025.md`](./EPISODE_ALERT_ONBOARDING_RUNBOOK_20261025.md).
 Secrets: [`EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md`](./EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md).

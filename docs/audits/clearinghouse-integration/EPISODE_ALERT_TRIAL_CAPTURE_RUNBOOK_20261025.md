@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-25 · **Safety update:** 2026-11-18 · Status: human capture checklist only; the current ChartWarden adapter is not activatable. Companion to the
 [onboarding runbook](./EPISODE_ALERT_ONBOARDING_RUNBOOK_20261025.md) (BAA gate, trial start) and the
-[secrets runbook](./EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md). In the style of the
+[secrets runbook](./EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md) and the [2026-11-18 architecture/evidence review](./EPISODE_ALERT_ARCHITECTURE_AND_EVIDENCE_20261118.md). Current prepared questions are in [EPISODE_ALERT_FOLLOWUP_QUESTIONS_20261118.md](./EPISODE_ALERT_FOLLOWUP_QUESTIONS_20261118.md). In the style of the
 [Stedi sandbox runbook](./STEDI_SANDBOX_RUNBOOK_20261025.md).
 
 The adapter (`episode-alert-transport.ts`, `episode-alert-eligibility.ts`) contains local eligibility plumbing only. Its
@@ -20,6 +20,13 @@ be guessed into code; every item is a human capture, and it does not authorize a
 - `ELIGIBILITY_VENDOR=episode_alert` selects the package registry seam only; no backend consumer binds it today. Never set
   `CLEARINGHOUSE_VENDOR=episode_alert` (refused at boot; it would stop claim submission).
 - Redact MBIs, names, keys and account numbers before filing anything. Keys go in the secret manager only.
+- Episode Alert's public API/product pages advertise REST POST, XML responses, eligibility/hospice fields, claim status,
+  remittances, SmartDDE and hosted DDE. These are `PUBLICLY_ADVERTISED`, not an API schema. The guide, exact auth/origin,
+  operation list, test isolation and ChartWarden account authorization remain unverified.
+- CMS requires a current HETS enrollment relationship for each NPI submitted through a third-party vendor since 2026-05-11.
+  This does not grant DDE or institutional claim/ERA authorization. Oregon HH+H is J6; current CMS sources identify Wellpoint
+  Federal (formerly NGS) from 2026-04-01. Confirm the actual provider's payer and enrollment instead of assuming a legacy
+  Oregon Part A route.
 
 ## Capture list
 
@@ -50,6 +57,6 @@ be guessed into code; every item is a human capture, and it does not authorize a
 4. Wire the consumer: nothing in `apps/backend` calls `bindEligibilityTransport` yet. Medicare eligibility runs through
    `M23_HETS_TRANSPORT`; routing it to this adapter is a follow-up once item 4 is captured.
 
-#758 closes when items 1 to 9 are recorded and claim status and remits are implemented or ruled out in writing. Any vendor
-contract run additionally requires explicit human authorization and a reviewed execution procedure. Do not use a green local
-test process as vendor qualification evidence.
+#758 closes when the documented API facts and account-specific authorization are recorded and claim status/remittances are
+implemented or ruled out in writing. Any vendor contract run additionally requires an approved isolated test procedure and
+explicit human authorization. Do not use a green local test process as vendor qualification evidence.
