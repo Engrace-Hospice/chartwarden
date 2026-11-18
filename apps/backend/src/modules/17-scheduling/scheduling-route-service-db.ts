@@ -2608,6 +2608,14 @@ export function createDbSchedulingBackend(
           if (!qualifying.length) reasonCodes.push("CLINICIAN_DISCIPLINE_NOT_ALLOWED");
           else if (!facts.activeCredentialDisciplines.length)
             reasonCodes.push("CLINICIAN_CREDENTIAL_MISSING");
+          // The discipline the write would stamp must have a legal M8 encounter type, or the write refuses.
+          const stamped = selectVisitAssignmentDiscipline(
+            input.visitPurpose,
+            qualifying,
+            facts.activeCredentialDisciplines,
+          );
+          if (stamped !== null && encounterTypeForVisit(input.visitPurpose, stamped) === null)
+            reasonCodes.push("CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED");
           if (pto) reasonCodes.push("CLINICIAN_ON_PTO");
           if (!pool && !facts.inCaseload) reasonCodes.push("CLINICIAN_NOT_IN_CASELOAD");
           return {

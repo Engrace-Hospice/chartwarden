@@ -75,6 +75,8 @@ const eligibilityReason = (reasons: readonly string[]): string => {
     return "No active credential for the selected date.";
   if (reasons.includes("CLINICIAN_DISCIPLINE_NOT_ALLOWED"))
     return "This discipline cannot perform the selected visit type.";
+  if (reasons.includes("CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED"))
+    return "This discipline cannot yet be scheduled for the selected visit type.";
   if (reasons.includes("CLINICIAN_ON_PTO")) return "Unavailable during the selected time.";
   if (reasons.includes("CLINICIAN_NOT_IN_CASELOAD"))
     return "Not currently assigned to this patient's care team.";
