@@ -121,28 +121,59 @@ describe.skipIf(!DB_URL)(
     const NOOP_OUTBOX = { async publish() {} };
     const OPEN_CIPHER = { seal: (_o: string, p: string) => p, open: (_o: string, c: string) => c };
     const PAYER = "dddddddd-dddd-dddd-dddd-dddddddddddd";
-    const coverage = {
-      async activeMedicaidCoverage() {
-        return { id: PAYER, payerId: PAYER, subscriberId: "sub-1", rank: 1 };
-      },
-      async activeMedicaidCoverageInTransaction() {
-        return { id: PAYER, payerId: PAYER, subscriberId: "sub-1", rank: 1 };
-      },
-    };
+    const coverageForRank = (rank: number) => ({
+      id: PAYER,
+      patientId: PATIENT,
+      payerId: PAYER,
+      rank,
+      coverageKind: "medicaid",
+      subscriberId: "synthetic-member-0001",
+      groupNumber: null,
+      current: true,
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+    const resolution = (coverageRow: ReturnType<typeof coverageForRank>) => ({
+      status: "uniform" as const,
+      coverage: coverageRow,
+    });
+    function makeCoverage(preflightRank: number, lockedRank = preflightRank) {
+      const preflightMedicaid = coverageForRank(preflightRank);
+      const lockedMedicaid = coverageForRank(lockedRank);
+      const medicarePrimary = {
+        ...preflightMedicaid,
+        id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        payerId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        rank: 1,
+        coverageKind: "medicare_ffs",
+        subscriberId: "synthetic-member-0002",
+      };
+      return {
+        async activeMedicaidCoverage() {
+          return { id: PAYER, payerId: PAYER, subscriberId: "synthetic-member-0001", rank: 1 };
+        },
+        async claimCoverageForRange() {
+          return {
+            medicaid: resolution(preflightMedicaid),
+            primary: resolution(preflightRank === 1 ? preflightMedicaid : medicarePrimary),
+          };
+        },
+        async claimCoverageSnapshotInTransaction() {
+          return {
+            medicaid: resolution(lockedMedicaid),
+            primary: resolution(lockedRank === 1 ? lockedMedicaid : medicarePrimary),
+          };
+        },
+      };
+    }
+    const coverage = makeCoverage(1);
     const ccnReader = {
       async ccnForProviderEntity() {
         return "123456";
       },
     };
     function coverageWithRanks(preflightRank: number, lockedRank = preflightRank) {
-      return {
-        async activeMedicaidCoverage() {
-          return { id: PAYER, payerId: PAYER, subscriberId: "sub-1", rank: preflightRank };
-        },
-        async activeMedicaidCoverageInTransaction() {
-          return { id: PAYER, payerId: PAYER, subscriberId: "sub-1", rank: lockedRank };
-        },
-      };
+      return makeCoverage(preflightRank, lockedRank);
     }
 
     beforeAll(async () => {
@@ -225,7 +256,7 @@ describe.skipIf(!DB_URL)(
       });
     });
 
-    it("refuses hospice_only when Medicaid is secondary in the range preflight", async () => {
+    it("refuses hospice_only when Medicare is the rank-1 payer in the range preflight", async () => {
       const before = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
       const svc = buildDrizzleM24WriteService(
         handle.db,
@@ -249,12 +280,12 @@ describe.skipIf(!DB_URL)(
             kind: "hospice_only",
           },
         ),
-      ).rejects.toMatchObject({ code: "MEDICAID_PRIMARY_PAYER_REQUIRED", statusCode: 409 });
+      ).rejects.toMatchObject({ code: "MEDICARE_PRIMARY_HOSPICE_RESPONSIBILITY", statusCode: 409 });
       const after = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
       expect(after.rows[0].n).toBe(before.rows[0].n);
     });
 
-    it("rechecks the hospice_only primary-payer rule on the locked transaction snapshot", async () => {
+    it("refuses when the selected Medicaid coverage changes in the locked transaction snapshot", async () => {
       const before = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
       const svc = buildDrizzleM24WriteService(
         handle.db,
@@ -278,12 +309,61 @@ describe.skipIf(!DB_URL)(
             kind: "hospice_only",
           },
         ),
-      ).rejects.toMatchObject({ code: "MEDICAID_PRIMARY_PAYER_REQUIRED", statusCode: 409 });
+      ).rejects.toMatchObject({ code: "MEDICAID_COVERAGE_CHANGED", statusCode: 409 });
       const after = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
       expect(after.rows[0].n).toBe(before.rows[0].n);
     });
 
-    it("allows combined hospice and R&B assembly when active Medicaid is secondary", async () => {
+    it("refuses when only the actual primary coverage identity changes in the locked snapshot", async () => {
+      const before = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
+      const unchangedMedicaid = coverageForRank(1);
+      const changedPrimary = {
+        ...unchangedMedicaid,
+        id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        payerId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        subscriberId: "synthetic-member-0003",
+      };
+      const baseCoverage = coverageWithRanks(1);
+      const coverageWithPrimaryIdentityChange = {
+        ...baseCoverage,
+        async claimCoverageSnapshotInTransaction() {
+          return {
+            medicaid: resolution(unchangedMedicaid),
+            primary: resolution(changedPrimary),
+          };
+        },
+      };
+      const svc = buildDrizzleM24WriteService(
+        handle.db,
+        NOOP_OUTBOX,
+        OPEN_CIPHER,
+        coverageWithPrimaryIdentityChange,
+        ccnReader,
+        locPeriodReader([]),
+        noEncounters(),
+      );
+
+      await expect(
+        svc.assembleClaim(
+          { organizationId: ORG, userId: USER, roles: [] },
+          {
+            patientId: PATIENT,
+            admissionId: "21212121-2121-2121-2121-212121212121",
+            providerEntityId: peId,
+            serviceFrom: "2026-01-01",
+            serviceTo: "2026-01-31",
+            kind: "hospice_only",
+          },
+        ),
+      ).rejects.toMatchObject({ code: "MEDICAID_COVERAGE_CHANGED", statusCode: 409 });
+      const after = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
+      expect(after.rows[0].n).toBe(before.rows[0].n);
+    });
+
+    it("refuses unverified combined secondary-Medicaid format before any claim rows are written", async () => {
+      const before = await admin.query(
+        "SELECT (SELECT count(*)::int FROM medicaid_claim) AS claims, (SELECT count(*)::int FROM medicaid_claim_line) AS lines",
+      );
       const svc = buildDrizzleM24WriteService(
         handle.db,
         NOOP_OUTBOX,
@@ -301,20 +381,26 @@ describe.skipIf(!DB_URL)(
         noEncounters(),
       );
 
-      const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [] },
-        {
-          patientId: PATIENT,
-          admissionId: "30303030-3030-3030-3030-303030303030",
-          providerEntityId: peId,
-          serviceFrom: "2026-08-01",
-          serviceTo: "2026-08-05",
-          kind: "combined_hospice_rb",
-        },
+      await expect(
+        svc.assembleClaim(
+          { organizationId: ORG, userId: USER, roles: [] },
+          {
+            patientId: PATIENT,
+            admissionId: "30303030-3030-3030-3030-303030303030",
+            providerEntityId: peId,
+            serviceFrom: "2026-08-01",
+            serviceTo: "2026-08-05",
+            kind: "combined_hospice_rb",
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "MEDICAID_SECONDARY_COMBINED_FORMAT_UNVERIFIED",
+        statusCode: 409,
+      });
+      const after = await admin.query(
+        "SELECT (SELECT count(*)::int FROM medicaid_claim) AS claims, (SELECT count(*)::int FROM medicaid_claim_line) AS lines",
       );
-
-      expect(claim.kind).toBe("combined_hospice_rb");
-      expect(claim.tob).toBe("812");
+      expect(after.rows[0]).toEqual(before.rows[0]);
     });
 
     it("serializes concurrent original-claim cadence on the M6 admission row", async () => {
@@ -859,7 +945,7 @@ describe.skipIf(!DB_URL)(
             kind: "rb_only",
           },
         ),
-      ).rejects.toMatchObject({ code: "MEDICAID_PRIMARY_PAYER_REQUIRED", statusCode: 409 });
+      ).rejects.toMatchObject({ code: "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED", statusCode: 409 });
     });
 
     it("a state with a plan code but no rate schedule → MEDICAID_STATE_RATE_SCHEDULE_MISSING", async () => {

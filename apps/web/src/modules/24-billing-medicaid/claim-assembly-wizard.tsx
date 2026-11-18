@@ -26,6 +26,7 @@ import {
   ProviderEntityLookupField,
 } from "../../shell/entity-lookups";
 import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
+import { assembleErrorMessage } from "./assembly-errors";
 import { ELIGIBILITY_OUTCOME_TONE, humanize, kindLabel, shortId, toneOf } from "./medicaid-status";
 import { Card, Field, alertStyle, inputStyle, mutedStyle, selectStyle } from "./medicaid-ui";
 
@@ -134,7 +135,7 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     } as never)) as { data?: unknown; error?: unknown; response?: Response };
     setBusy(false);
     if (err) {
-      setError(assembleErrorMessage(response?.status));
+      setError(assembleErrorMessage(response?.status, err));
       return;
     }
     setAssembledId((data as { id?: string } | undefined)?.id ?? null);
@@ -455,14 +456,3 @@ const primaryLinkButtonStyle = {
   background: "var(--color-primary)",
   color: "var(--color-on-primary)",
 };
-
-/** Map an assemble status code to a precise, PHI-free inline message (§5.4). */
-function assembleErrorMessage(status: number | undefined): string {
-  if (status === 409) return "A claim already covers this patient and service range.";
-  if (status === 422) return "The service range or R&B arrangement is not valid for this patient.";
-  if (status === 401 || status === 403)
-    return "You lack permission to assemble claims for this entity.";
-  if (status === 503)
-    return "Claim assembly is unavailable — the upstream clinical readers are not bound in this environment.";
-  return "The claim could not be assembled.";
-}

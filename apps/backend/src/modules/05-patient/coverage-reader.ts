@@ -96,9 +96,11 @@ export function buildPatientCoverageReader(db: DbClient): PatientCoverageReader 
         .where(and(eq(PATIENT.organizationId, organizationId), eq(PATIENT.id, patientId)))
         .for("share");
       const coverages = await loadFrom(transaction as DbClient, organizationId, patientId, true);
+      const range = { from, to };
       return {
         coverages: [...coverages].sort((a, b) => a.rank - b.rank),
-        resolution: coverageForRange(coverages, { from, to }, coverageKind),
+        primaryResolution: coverageForRange(coverages, range),
+        resolution: coverageForRange(coverages, range, coverageKind),
       };
     },
   };

@@ -21,10 +21,10 @@ import {
   deriveMedicaidControlNumber,
   deriveMedicaidTobFromAdmission,
   electronicSubmissionRefusal,
+  evaluateMedicaidPayerResponsibility,
   isMedicaidCadenceBearingClaim,
   medicaidClaimMachine,
   medicaidClaimRouteReadiness,
-  medicaidCoverageAllowedForClaim,
   parseMedicaidControlNumber,
   rbArrangementMachine,
   runMedicaidRules,
@@ -33,6 +33,7 @@ import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
+  type CoverageForRange,
   ForbiddenError,
   NotFoundError,
   type PatientCoverageReader,
@@ -112,7 +113,7 @@ const UNBOUND_CIPHER: CredentialCipherPort = {
 };
 
 /**
- * How the write path resolves a patient's Medicaid coverage. Bound at the composition root to M5's §3.4
+ * How the write path resolves a patient's Medicaid and actual primary coverage. Bound at the composition root to M5's §3.4
  * `PatientCoverageReader` seam (via getSeam); left undefined in a slice/test, where the paths that need it
  * degrade with a precise message instead of a blanket "readers unbound".
  */
@@ -121,27 +122,28 @@ export interface CoverageResolverPort {
     organizationId: string;
     patientId: string;
     onDate: string;
-    /**
-     * #845 — when given, the SAME Medicaid coverage row must be the top-ranked Medicaid coverage on every day of
-     * `onDate..throughDate` (M5's range-wide resolver), not merely in force on `onDate`; otherwise null.
-     */
-    throughDate?: string;
   }): Promise<{ id: string; payerId: string; subscriberId: string; rank: number } | null>;
-  activeMedicaidCoverageInTransaction(
+  claimCoverageForRange(input: {
+    organizationId: string;
+    patientId: string;
+    from: string;
+    to: string;
+  }): Promise<{ medicaid: CoverageForRange; primary: CoverageForRange }>;
+  claimCoverageSnapshotInTransaction(
     transaction: unknown,
     input: {
       organizationId: string;
       patientId: string;
-      onDate: string;
-      throughDate: string;
+      from: string;
+      to: string;
     },
-  ): Promise<{ id: string; payerId: string; subscriberId: string; rank: number } | null>;
+  ): Promise<{ medicaid: CoverageForRange; primary: CoverageForRange }>;
 }
 
 /**
  * The production {@link CoverageResolverPort} over M5's §3.4 `PatientCoverageReader` seam, resolved at CALL time so
- * registration order does not matter. #845 — a claim window (`throughDate` given) asks the range-wide resolver: one
- * Medicaid row on top on EVERY day of the window, else nothing; a single date (eligibility) stays a point read.
+ * registration order does not matter. Claim assembly resolves Medicaid and all-kind primary coverage range-wide;
+ * its transaction path derives both from one M5 row-locked snapshot. Eligibility refresh remains a point read.
  */
 export function buildM24MedicaidCoverageResolver(
   reader: () => Pick<
@@ -151,42 +153,12 @@ export function buildM24MedicaidCoverageResolver(
 ): CoverageResolverPort {
   return {
     async activeMedicaidCoverage(q) {
-      const r = reader();
-      const found =
-        q.throughDate === undefined
-          ? await r.activeCoverageOfKind({
-              organizationId: q.organizationId,
-              patientId: q.patientId,
-              coverageKind: "medicaid",
-              onDate: q.onDate,
-            })
-          : await r
-              .coverageForRange({
-                organizationId: q.organizationId,
-                patientId: q.patientId,
-                from: q.onDate,
-                to: q.throughDate,
-                coverageKind: "medicaid",
-              })
-              .then((res) => (res.status === "uniform" ? res.coverage : null));
-      return found
-        ? {
-            id: found.id,
-            payerId: found.payerId,
-            subscriberId: found.subscriberId,
-            rank: found.rank,
-          }
-        : null;
-    },
-    async activeMedicaidCoverageInTransaction(transaction, q) {
-      const { resolution } = await reader().coverageSnapshotForRangeInTransaction(transaction, {
+      const found = await reader().activeCoverageOfKind({
         organizationId: q.organizationId,
         patientId: q.patientId,
-        from: q.onDate,
-        to: q.throughDate,
         coverageKind: "medicaid",
+        onDate: q.onDate,
       });
-      const found = resolution.status === "uniform" ? resolution.coverage : null;
       return found
         ? {
             id: found.id,
@@ -196,7 +168,140 @@ export function buildM24MedicaidCoverageResolver(
           }
         : null;
     },
+    async claimCoverageForRange(q) {
+      const r = reader();
+      const range = { from: q.from, to: q.to };
+      const [medicaid, primary] = await Promise.all([
+        r.coverageForRange({
+          organizationId: q.organizationId,
+          patientId: q.patientId,
+          ...range,
+          coverageKind: "medicaid",
+        }),
+        r.coverageForRange({
+          organizationId: q.organizationId,
+          patientId: q.patientId,
+          ...range,
+        }),
+      ]);
+      return { medicaid, primary };
+    },
+    async claimCoverageSnapshotInTransaction(transaction, q) {
+      const snapshot = await reader().coverageSnapshotForRangeInTransaction(transaction, {
+        organizationId: q.organizationId,
+        patientId: q.patientId,
+        from: q.from,
+        to: q.to,
+        coverageKind: "medicaid",
+      });
+      return { medicaid: snapshot.resolution, primary: snapshot.primaryResolution };
+    },
   };
+}
+
+function coverageResolutionKey(resolution: CoverageForRange): string {
+  return resolution.status === "uniform"
+    ? `uniform:${resolution.coverage.id}:${resolution.coverage.payerId}:${resolution.coverage.rank}:${resolution.coverage.coverageKind}`
+    : `${resolution.status}:${resolution.onDate}`;
+}
+
+function requireUniformClaimCoverage(
+  resolution: CoverageForRange,
+  role: "medicaid" | "primary",
+): Extract<CoverageForRange, { status: "uniform" }>["coverage"] {
+  if (resolution.status === "uniform") return resolution.coverage;
+
+  if (role === "medicaid") {
+    switch (resolution.status) {
+      case "none":
+        throw new ConflictError(
+          "MEDICAID_COVERAGE_NOT_IN_FORCE",
+          "No single Medicaid coverage is in force for the complete service window. Correct the coverage dates or split the claim at the coverage change.",
+        );
+      case "changes":
+        throw new ConflictError(
+          "MEDICAID_COVERAGE_CHANGED",
+          `Medicaid coverage changes within the service window (starting ${resolution.onDate}). Correct the coverage dates or split the claim at that boundary.`,
+        );
+      case "ambiguous":
+        throw new ConflictError(
+          "MEDICAID_COVERAGE_AMBIGUOUS",
+          `More than one Medicaid coverage has the same highest rank on ${resolution.onDate}. Resolve the coverage overlap before assembling a claim.`,
+        );
+    }
+  }
+
+  switch (resolution.status) {
+    case "none":
+      throw new ConflictError(
+        "MEDICAID_PRIMARY_COVERAGE_MISSING",
+        "The patient's primary coverage is missing for part or all of this service window. Correct the coverage record before assembling a Medicaid claim.",
+      );
+    case "changes":
+      throw new ConflictError(
+        "MEDICAID_PRIMARY_COVERAGE_CHANGED",
+        `The patient's highest-ranked coverage changes within the service window (starting ${resolution.onDate}). Correct the coverage dates or split the claim at that boundary.`,
+      );
+    case "ambiguous":
+      throw new ConflictError(
+        "MEDICAID_PRIMARY_COVERAGE_AMBIGUOUS",
+        `More than one coverage has the same highest rank on ${resolution.onDate}. Resolve the overlap before assembling a Medicaid claim.`,
+      );
+  }
+}
+
+function assertMedicaidPayerResponsibility(
+  kind: AssembleClaimInput["kind"],
+  medicaid: Extract<CoverageForRange, { status: "uniform" }>["coverage"],
+  primary: Extract<CoverageForRange, { status: "uniform" }>["coverage"],
+): void {
+  const decision = evaluateMedicaidPayerResponsibility({
+    claimKind: kind,
+    medicaidCoverageId: medicaid.id,
+    medicaidRank: medicaid.rank,
+    primaryCoverageId: primary.id,
+    primaryCoverageKind: primary.coverageKind,
+    primaryRank: primary.rank,
+  });
+  if (decision.allowed) return;
+
+  switch (decision.reason) {
+    case "rank_one_coverage_missing":
+      throw new ConflictError(
+        "MEDICAID_PRIMARY_COVERAGE_MISSING",
+        "No rank-1 coverage is established for the complete service window. Medicaid ranked second or higher cannot be treated as primary; correct the coverage records before assembly.",
+      );
+    case "tertiary_medicaid_unsupported":
+      throw new ConflictError(
+        "MEDICAID_TERTIARY_BILLING_UNSUPPORTED",
+        "Tertiary Medicaid billing is not authorized by the current payer-responsibility policy.",
+      );
+    case "coverage_identity_conflict":
+      throw new ConflictError(
+        "MEDICAID_COVERAGE_RESOLUTION_CONFLICT",
+        "The selected Medicaid coverage does not match the resolved rank-1 payer. Review the coverage records before assembly.",
+      );
+    case "medicare_hospice_is_primary":
+      throw new ConflictError(
+        "MEDICARE_PRIMARY_HOSPICE_RESPONSIBILITY",
+        "Medicare is primary for hospice-covered services. Assemble those services through M23; no secondary Medicaid hospice-only claim is assembled here.",
+      );
+    case "medicare_secondary_rb_format_unconfirmed":
+      throw new ConflictError(
+        "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED",
+        "Medicaid may have a distinct Room & Board responsibility for a qualifying Medicare-primary patient, but the applicable secondary R&B-only claim format is unverified. This is not a Medicaid eligibility denial; assembly remains blocked pending state-format confirmation.",
+      );
+    case "medicare_secondary_combined_format_unconfirmed":
+      throw new ConflictError(
+        "MEDICAID_SECONDARY_COMBINED_FORMAT_UNVERIFIED",
+        "The secondary combined hospice and Room & Board claim format and its Medicare COB treatment are unverified. This is not a Medicaid eligibility denial; assembly remains blocked pending state-format confirmation.",
+      );
+    case "third_party_liability_policy_unconfirmed":
+      throw new ConflictError(
+        "MEDICAID_TPL_POLICY_UNVERIFIED",
+        "The applicable Medicaid third-party-liability policy for this primary payer and claim kind is not established. Resolve payer responsibility before assembly.",
+      );
+  }
 }
 
 /**
@@ -582,26 +687,15 @@ export function buildDrizzleM24WriteService(
           "claim assembly requires M5's PatientCoverageReader seam (not bound in this environment)",
         );
       }
-      const resolved = await coverage.activeMedicaidCoverage({
+      const preflight = await coverage.claimCoverageForRange({
         organizationId: actor.organizationId,
         patientId: input.patientId,
-        onDate: input.serviceFrom,
-        throughDate: input.serviceTo,
+        from: input.serviceFrom,
+        to: input.serviceTo,
       });
-      if (!resolved) {
-        throw new ConflictError(
-          "MEDICAID_COVERAGE_NOT_IN_FORCE",
-          "this patient holds no single Medicaid coverage in force on every day of the claim's service window (split the claim where the coverage changes)",
-        );
-      }
-      if (!medicaidCoverageAllowedForClaim(input.kind, resolved.rank)) {
-        throw new ConflictError(
-          "MEDICAID_PRIMARY_PAYER_REQUIRED",
-          input.kind === "rb_only"
-            ? "secondary Medicaid for an R&B-only claim is not authorized by the current billing policy; use the combined claim path or record Medicaid as primary"
-            : "a hospice-only Medicaid claim requires Medicaid to be the patient's primary coverage for the full service window",
-        );
-      }
+      const preflightMedicaid = requireUniformClaimCoverage(preflight.medicaid, "medicaid");
+      const preflightPrimary = requireUniformClaimCoverage(preflight.primary, "primary");
+      assertMedicaidPayerResponsibility(input.kind, preflightMedicaid, preflightPrimary);
       if (!admissionCadenceReader) {
         throw new DegradedError(
           "MEDICAID_ADMISSION_CADENCE_READER_UNBOUND",
@@ -612,26 +706,24 @@ export function buildDrizzleM24WriteService(
         // #877 — re-resolve under a row lock in the claim-write transaction. Coverage replacement
         // now waits until this claim commits, and a change already committed after the optimistic
         // preflight is refused before anything is inserted.
-        const lockedCoverage = await coverage.activeMedicaidCoverageInTransaction(tx, {
+        const locked = await coverage.claimCoverageSnapshotInTransaction(tx, {
           organizationId: actor.organizationId,
           patientId: input.patientId,
-          onDate: input.serviceFrom,
-          throughDate: input.serviceTo,
+          from: input.serviceFrom,
+          to: input.serviceTo,
         });
-        if (!lockedCoverage || lockedCoverage.id !== resolved.id) {
+        if (
+          coverageResolutionKey(locked.medicaid) !== coverageResolutionKey(preflight.medicaid) ||
+          coverageResolutionKey(locked.primary) !== coverageResolutionKey(preflight.primary)
+        ) {
           throw new ConflictError(
             "MEDICAID_COVERAGE_CHANGED",
-            "Medicaid coverage changed while this claim was being assembled. Reload coverage and assemble again.",
+            "Primary or Medicaid coverage changed while this claim was being assembled. Reload coverage and assemble again.",
           );
         }
-        if (!medicaidCoverageAllowedForClaim(input.kind, lockedCoverage.rank)) {
-          throw new ConflictError(
-            "MEDICAID_PRIMARY_PAYER_REQUIRED",
-            input.kind === "rb_only"
-              ? "secondary Medicaid for an R&B-only claim is not authorized by the current billing policy; use the combined claim path or record Medicaid as primary"
-              : "a hospice-only Medicaid claim requires Medicaid to be the patient's primary coverage for the full service window",
-          );
-        }
+        const lockedMedicaid = requireUniformClaimCoverage(locked.medicaid, "medicaid");
+        const lockedPrimary = requireUniformClaimCoverage(locked.primary, "primary");
+        assertMedicaidPayerResponsibility(input.kind, lockedMedicaid, lockedPrimary);
         // The M6 admission row is the per-admission serialization point. FOR UPDATE makes concurrent
         // assemblers derive cadence sequentially and also serializes against discharge writers.
         const admission = await admissionCadenceReader.cadenceSnapshotInTransaction(
@@ -732,7 +824,7 @@ export function buildDrizzleM24WriteService(
             organizationId: actor.organizationId,
             providerEntityId: input.providerEntityId,
             patientId: input.patientId,
-            patientPayerId: lockedCoverage.id,
+            patientPayerId: lockedMedicaid.id,
             admissionId: input.admissionId,
             serviceState,
             kind: input.kind,

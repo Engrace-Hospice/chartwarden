@@ -31,7 +31,7 @@ export const m24ClaimState = pgEnum("m24_claim_state", [
 ]);
 
 export const m24ClaimKind = pgEnum("m24_claim_kind", [
-  "combined_hospice_rb", // single 837I with hospice + R&B lines (Oregon path)
+  "combined_hospice_rb", // combined line-family kind; state-specific claim-format support is a separate decision
   "hospice_only", // hospice-only claim (no NF residence)
   "rb_only", // R&B-only on a separate claim (some states' path)
 ]);
