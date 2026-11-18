@@ -1,6 +1,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -751,6 +753,322 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       );
       await expect(resolver().allowsUnassignedPool(ORG_A)).resolves.toBe(true);
       // Restore the fixture baseline (true) — this is the last test in the file, but keep state honest.
+    });
+  });
+
+  // ── WF08/WF09 (PR #1055) — migration 1509's purposes, the real-discipline stamp, and the M8 §2.2 / §2.7
+  // legal-pair guard. Runs as the NOBYPASSRLS app role like every test above. Declared LAST: it seeds the
+  // `lpn`/`np`/`md` roles with an upsert, and the GAP-030 block above inserts an `lpn` role plainly.
+  describe("WF08/WF09 — purpose stamp, encounter-pair guard, reassign/edit re-stamp, tenancy", () => {
+    type Purpose = Parameters<typeof svc.createVisit>[2]["visitPurpose"];
+
+    /** A clinician holding `roles` as M3 role keys and `credentials` as active M17 licences. */
+    async function clinician(roles: string[], credentials: string[]): Promise<string> {
+      const user = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+          `m17w-wf09-${userSeq++}@x.test`,
+        ])
+      ).rows[0].id as string;
+      const membership = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status, default_provider_entity_id, default_location_ids)
+           VALUES ($1,$2,'active',$3,$4::jsonb) RETURNING id`,
+          [user, ORG_A, seeded[ORG_A].pe, JSON.stringify([seeded[ORG_A].location])],
+        )
+      ).rows[0].id as string;
+      for (const key of roles) {
+        const roleId = (
+          await admin.query(
+            `INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'clinical_staff')
+             ON CONFLICT (organization_id, key) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+            [ORG_A, key],
+          )
+        ).rows[0].id as string;
+        await admin.query(
+          `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+          [ORG_A, membership, roleId],
+        );
+      }
+      for (const credential of credentials) {
+        await admin.query(
+          `INSERT INTO membership_credential (organization_id, membership_id, credential_type, effective_at, granted_by_membership_id)
+           VALUES ($1,$2,$3,'2020-01-01',$2)`,
+          [ORG_A, membership, credential],
+        );
+      }
+      return membership;
+    }
+    let userSeq = 0;
+
+    const create = (member: string, visitPurpose: Purpose) => {
+      const w = nextWindow();
+      return svc.createVisit(ORG_A, member, {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        patientAddressId: null,
+        externalFacilityId: null,
+        assignedMembershipId: member,
+        visitPurpose,
+        visitSetting: "patient_home",
+        scheduledStartedAt: w.start,
+        scheduledEndedAt: w.end,
+      });
+    };
+    async function visitRow(id: string) {
+      return (
+        await admin.query(
+          `SELECT visit_purpose, assigned_membership_id, assigned_discipline_at_assignment AS discipline, version
+             FROM visit WHERE id=$1`,
+          [id],
+        )
+      ).rows[0] as {
+        visit_purpose: string;
+        assigned_membership_id: string;
+        discipline: string;
+        version: number;
+      };
+    }
+    async function eventPayload(aggregateId: string, eventType: string) {
+      const { rows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2 ORDER BY created_at DESC LIMIT 1",
+        [aggregateId, eventType],
+      );
+      return rows[0]?.payload as Record<string, unknown> | undefined;
+    }
+    /** (visit rows, m17.visit.* events) system-wide: a refused write must move neither. */
+    async function footprint(): Promise<{ visits: number; events: number }> {
+      const visits = await admin.query("SELECT count(*)::int AS n FROM visit");
+      const events = await admin.query(
+        "SELECT count(*)::int AS n FROM outbox_event WHERE event_type LIKE 'm17.visit.%'",
+      );
+      return { visits: visits.rows[0].n, events: events.rows[0].n };
+    }
+
+    let rn: string;
+    let lpn: string;
+    let np: string;
+    let md: string;
+    let rnAndNp: string;
+    let npWithRnLicenceOnly: string;
+    beforeAll(async () => {
+      rn = seeded[ORG_A].member; // rn role + rn licence from the file-level seed
+      lpn = await clinician(["lpn"], ["lpn"]);
+      np = await clinician(["np"], ["np"]);
+      md = await clinician(["md"], ["md"]);
+      rnAndNp = await clinician(["rn", "np"], ["rn", "np"]);
+      npWithRnLicenceOnly = await clinician(["np"], ["rn"]);
+    });
+
+    it("migration 1509: huv1, huv2 and sfv round-trip through visit.visit_purpose; an RN is stamped rn and the published event carries routine_visit/rn", async () => {
+      for (const purpose of ["huv1", "huv2", "sfv"] as const) {
+        const v = await create(rn, purpose);
+        expect(await visitRow(v.id)).toMatchObject({
+          visit_purpose: purpose,
+          assigned_membership_id: rn,
+          discipline: "rn",
+        });
+        expect(v.visitPurpose).toBe(purpose);
+        expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+          visitPurpose: purpose,
+          assignedDiscipline: "rn",
+          encounterType: "routine_visit",
+        });
+        expect(await eventsFor(v.id)).toContain("m17.visit.published");
+      }
+    });
+
+    it("an LPN with an active lpn licence schedules an sfv and is stamped lpn (routine_visit/lpn is a legal M8 pair)", async () => {
+      const v = await create(lpn, "sfv");
+      expect((await visitRow(v.id)).discipline).toBe("lpn");
+      expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+        visitPurpose: "sfv",
+        assignedDiscipline: "lpn",
+        encounterType: "routine_visit",
+      });
+    });
+
+    it("an np role + active np licence is stamped np (not rn) on an f2f, and md likewise, on the row AND the published event", async () => {
+      for (const [member, discipline] of [
+        [np, "np"],
+        [md, "md"],
+      ] as const) {
+        const v = await create(member, "f2f");
+        expect((await visitRow(v.id)).discipline).toBe(discipline);
+        expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+          assignedDiscipline: discipline,
+          encounterType: "face_to_face",
+        });
+        expect(await eventPayload(v.id, "m17.visit.proposed")).toMatchObject({
+          proposedDiscipline: discipline,
+        });
+      }
+    });
+
+    it("a dual-role RN+NP is stamped by policy order: rn on an huv1, np on an f2f", async () => {
+      expect((await visitRow((await create(rnAndNp, "huv1")).id)).discipline).toBe("rn");
+      expect((await visitRow((await create(rnAndNp, "f2f")).id)).discipline).toBe("np");
+    });
+
+    it("an np role with only an rn licence is refused on create (the licence must be the discipline's own); no row, no event", async () => {
+      const before = await footprint();
+      await expect(create(npWithRnLicenceOnly, "f2f")).rejects.toMatchObject({
+        code: "VISIT_PRE_SCHEDULE_GATE_UNMET",
+        statusCode: 422,
+      });
+      expect(await footprint()).toEqual(before);
+    });
+
+    // M8 spec §2.2: routine_visit admits rn|lpn only and no other §2.2 type is an HUV/SFV/recert/loc_change/
+    // pronouncement visit. The M8 seed consumer inserts the draft directly, so scheduling must refuse these
+    // BEFORE publishing m17.visit.published.
+    it.each([
+      ["np", "huv1"],
+      ["md", "huv1"],
+      ["np", "huv2"],
+      ["md", "huv2"],
+      ["np", "sfv"],
+      ["np", "pronouncement"],
+      ["md", "pronouncement"],
+      ["np", "loc_change"],
+      ["md", "recert"],
+    ] as const)(
+      "%s cannot be scheduled for %s: no legal M8 encounter pair, refused with VISIT_ENCOUNTER_TYPE_UNSUPPORTED, nothing written",
+      async (who, purpose) => {
+        const member = who === "np" ? np : md;
+        const before = await footprint();
+        await expect(create(member, purpose)).rejects.toMatchObject({
+          code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+          statusCode: 422,
+        });
+        expect(await footprint()).toEqual(before);
+      },
+    );
+
+    it("the refusal names codes only: no membership, patient or visit content", async () => {
+      // The exact message: the two enum codes and nothing else (no membership, patient or visit id).
+      await expect(create(np, "huv1")).rejects.toMatchObject({
+        message: "no legal encounter type for visit purpose 'huv1' and discipline 'np'",
+      });
+    });
+
+    it("reassignVisit re-runs the gate and re-stamps the discipline (np f2f -> md), emitting assigned for the new clinician", async () => {
+      const v = await create(np, "f2f");
+      const re = await svc.reassignVisit(ORG_A, np, v.id, md);
+      expect(re.assignedMembershipId).toBe(md);
+      const row = await visitRow(v.id);
+      expect(row).toMatchObject({ assigned_membership_id: md, discipline: "md", version: 2 });
+      expect(await eventPayload(v.id, "m17.visit.assigned")).toMatchObject({
+        assignedMembershipId: md,
+      });
+    });
+
+    it("a failing reassign gate (np with an rn licence only) is 403 PRE_SCHEDULE_GATE_FAILED and leaves the visit and its events untouched", async () => {
+      const v = await create(np, "f2f");
+      const before = { row: await visitRow(v.id), footprint: await footprint() };
+      await expect(svc.reassignVisit(ORG_A, np, v.id, npWithRnLicenceOnly)).rejects.toMatchObject({
+        message: "PRE_SCHEDULE_GATE_FAILED",
+        statusCode: 403,
+      });
+      expect(await visitRow(v.id)).toEqual(before.row);
+      expect(await footprint()).toEqual(before.footprint);
+    });
+
+    it("reassigning an HUV to an NP is refused (no legal M8 pair) and the visit keeps its RN", async () => {
+      const v = await create(rn, "huv1");
+      const before = await visitRow(v.id);
+      await expect(svc.reassignVisit(ORG_A, rn, v.id, np)).rejects.toMatchObject({
+        code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+        statusCode: 422,
+      });
+      expect(await visitRow(v.id)).toEqual(before);
+    });
+
+    it("editVisit on the purpose re-runs the gate and re-stamps the discipline (rn+np: f2f np -> huv1 rn)", async () => {
+      const v = await create(rnAndNp, "f2f");
+      expect((await visitRow(v.id)).discipline).toBe("np");
+      const edited = await svc.editVisit(ORG_A, rnAndNp, v.id, { visitPurpose: "huv1" });
+      expect(edited.visitPurpose).toBe("huv1");
+      expect(await visitRow(v.id)).toMatchObject({ visit_purpose: "huv1", discipline: "rn" });
+    });
+
+    it("a failing purpose-edit gate (np f2f -> routine_visit) is 403 PRE_SCHEDULE_GATE_FAILED and leaves the visit unchanged", async () => {
+      const v = await create(np, "f2f");
+      const before = await visitRow(v.id);
+      await expect(
+        svc.editVisit(ORG_A, np, v.id, { visitPurpose: "routine_visit" }),
+      ).rejects.toMatchObject({ message: "PRE_SCHEDULE_GATE_FAILED", statusCode: 403 });
+      expect(await visitRow(v.id)).toEqual(before);
+    });
+
+    it("a purpose-edit to a purpose with no legal pair for the stamped discipline (np f2f -> huv1) is refused and unchanged", async () => {
+      const v = await create(np, "f2f");
+      const before = await visitRow(v.id);
+      await expect(svc.editVisit(ORG_A, np, v.id, { visitPurpose: "huv1" })).rejects.toMatchObject({
+        code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+        statusCode: 422,
+      });
+      expect(await visitRow(v.id)).toEqual(before);
+    });
+
+    it("recurring materialization skips (does not abort on) a policy whose clinician has no legal pair, and writes nothing for it", async () => {
+      const rec = await svc.createRecurring(ORG_A, np, {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        assignedMembershipId: np,
+        visitPurpose: "huv1",
+        visitSetting: "patient_home",
+        rrule: "FREQ=DAILY",
+        timeOfDayStart: "10:00",
+        timeOfDayEnd: "11:00",
+        timeZone: "America/Los_Angeles",
+        startDate: new Date().toISOString().slice(0, 10),
+      });
+      const before = await footprint();
+      const result = await svc.materializeRecurringVisitsForOrg(ORG_A, np, { horizonDays: 3 });
+      expect(result.visitsCreated).toBe(0);
+      expect(result.occurrencesSkipped).toBeGreaterThan(0);
+      expect(await footprint()).toEqual(before);
+      await svc.discontinueRecurring(ORG_A, np, rec.id);
+    });
+
+    it("tenancy on the app role: org B cannot read, reassign or edit org A's visit, and A's row is untouched", async () => {
+      const v = await create(np, "f2f");
+      const before = await visitRow(v.id);
+      const { member: bMember, member2: bMember2 } = seeded[ORG_B];
+
+      // The connection really is the unprivileged role (a superuser would make every assertion below moot).
+      const role = await withOrgContext(
+        handle.db,
+        { organizationId: ORG_B, userId: "" },
+        async (tx) =>
+          (
+            await (tx as unknown as typeof handle.db).execute(
+              sql`SELECT current_user AS who, (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypass`,
+            )
+          ).rows[0] as { who: string; bypass: boolean },
+      );
+      expect(role).toEqual({ who: "chartwarden_app", bypass: false });
+
+      const visibleToB = await withOrgContext(
+        handle.db,
+        { organizationId: ORG_B, userId: "" },
+        async (tx) =>
+          (
+            await (tx as unknown as typeof handle.db).execute(
+              sql`SELECT count(*)::int AS n FROM visit WHERE id = ${v.id}`,
+            )
+          ).rows[0] as { n: number },
+      );
+      expect(visibleToB.n).toBe(0);
+
+      await expect(svc.getVisit(ORG_B, v.id)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(svc.reassignVisit(ORG_B, bMember, v.id, bMember2)).rejects.toMatchObject({
+        statusCode: 404,
+      });
+      await expect(
+        svc.editVisit(ORG_B, bMember, v.id, { visitPurpose: "routine_visit" }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(await visitRow(v.id)).toEqual(before);
     });
   });
 });
