@@ -1,8 +1,8 @@
 // @chartwarden/ui — Drawer. The redesign's right-hand drawer for a record's form or detail: the
 // `aside.wx-admission-drawer` column (sticky beside its list inside `.wx-list-drawer.has-drawer`), a head
 // of [icon · title · subtitle · Close] and one body card. Focus, Escape and focus-return are `useDrawerA11y`'s.
-// A confirmation or a signing ceremony belongs in a Modal (DESIGN.md §7.4): those must block the page until answered. A screen
-// that puts one in a Drawer anyway must stop the page changing under it while the write is in flight (apps/web's FormDrawer does).
+// A confirmation or a signing ceremony is a Modal, not a Drawer (DESIGN.md §7.4): those must block the page until answered.
+// A drawer is a plain record form; while one saves, apps/web's FormDrawer makes the page inert so nothing swaps it mid-write.
 import type { JSX, ReactNode } from "react";
 import { useDrawerA11y } from "../hooks/use-drawer-a11y";
 import { Glyph, type GlyphName } from "../system/glyphs";
