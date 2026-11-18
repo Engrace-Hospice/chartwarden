@@ -63,7 +63,9 @@ function submission(
 }
 
 /** The same mapper and agreement check used by M23's Stedi JSON dispatch path. */
-function productionJsonSubmission(): ClearinghouseSubmission {
+function productionJsonSubmission(): ClearinghouseSubmission & {
+  readonly jsonDocument: ReturnType<typeof buildStediClaimJson>;
+} {
   const patientControlNumber = `WX${RUN_ID}`;
   const input = {
     ...CLAIM_INPUT,
@@ -79,6 +81,7 @@ function productionJsonSubmission(): ClearinghouseSubmission {
     controlNumber: patientControlNumber,
     idempotencyKey: `contract-json-${RUN_ID}`,
     payload: { format: "json", document },
+    jsonDocument: document,
   };
 }
 
@@ -188,12 +191,9 @@ describe.skipIf(!RUN)("Stedi Test-mode vendor qualification (#727)", () => {
     }
 
     currentScenario = "json_837i_claim";
-    const document =
-      jsonClaim.payload.format === "json"
-        ? (jsonClaim.payload.document as Record<string, unknown>)
-        : {};
-    const claimInformation = document.claimInformation as Record<string, unknown> | undefined;
-    const billing = document.billing as Record<string, unknown> | undefined;
+    const document = jsonClaim.jsonDocument;
+    const claimInformation = document.claimInformation;
+    const billing = document.billing;
     localScenarios.push(
       localScenario(
         "json_837i_mapping_and_identity",
@@ -201,7 +201,7 @@ describe.skipIf(!RUN)("Stedi Test-mode vendor qualification (#727)", () => {
           billing?.npi === CTX.billingNpi &&
           claimInformation?.patientControlNumber === jsonClaim.controlNumber &&
           compareStediClaimJsonToX12(
-            document as ReturnType<typeof buildStediClaimJson>,
+            document,
             build837iClaim({
               ...CLAIM_INPUT,
               envelope: { ...CLAIM_INPUT.envelope, usage: "T" },
@@ -285,7 +285,7 @@ describe.skipIf(!RUN)("Stedi Test-mode vendor qualification (#727)", () => {
       payload: {
         format: "json" as const,
         document: {
-          ...(document as Record<string, unknown>),
+          ...document,
           usageIndicator: "P",
           claimInformation: { ...claimInformation, patientControlNumber: `WP${RUN_ID}` },
         },
