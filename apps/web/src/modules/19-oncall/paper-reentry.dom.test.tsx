@@ -9,7 +9,6 @@ import { ApiClientProvider, isoToLocalInput } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_ANSWER_MESSAGE } from "./drawer-write";
 import type { PaperReentryWorklistView } from "./oncall-api";
 import { PaperReentryWorklistScreen } from "./paper-reentry";
 
@@ -236,6 +235,24 @@ describe("paper re-entry worklist — re-enter a call", () => {
     expect(body).not.toHaveProperty("chiefComplaintText");
   });
 
+  it("keeps the draft when the open window's own button is chosen again", async () => {
+    mount();
+    const drawer = await openRow(0);
+    await draftAnAnchoredCall(drawer);
+    fireEvent.click((await rowButtons())[0] as HTMLElement);
+    expect((within(drawer).getByLabelText("Caller name") as HTMLInputElement).value).toBe(
+      "Jordan Testcaller",
+    );
+    expect((within(drawer).getByLabelText("Caller kind") as HTMLSelectElement).value).toBe(
+      "patient",
+    );
+    expect(
+      (within(drawer).getByRole("combobox", { name: /Patient \(optional\)/ }) as HTMLInputElement)
+        .value,
+    ).not.toBe("");
+    expect(fileButton(drawer).disabled).toBe(false);
+  });
+
   it("reopens blank after Cancel", async () => {
     mount();
     const drawer = await openRow(0);
@@ -268,7 +285,9 @@ describe("paper re-entry worklist — re-enter a call", () => {
     );
     const drawer = await openRow(0);
     fireEvent.click(fileButton(drawer));
-    expect((await within(drawer).findByRole("alert")).textContent).toContain(NO_ANSWER_MESSAGE);
+    expect((await within(drawer).findByRole("alert")).textContent).toContain(
+      "No answer came back; it may not have been recorded",
+    );
     expect(fileButton(drawer).disabled).toBe(false);
     const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
     expect(cancel.disabled).toBe(false);

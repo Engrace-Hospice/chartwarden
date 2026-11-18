@@ -8,10 +8,13 @@ import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_ANSWER_MESSAGE } from "./drawer-write";
 import { OnCallShiftsScreen } from "./oncall-shifts";
+import { nowLocalInput } from "./oncall-status";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const ENTITY = "22222222-2222-4222-8222-222222222222";
 const MEMBERSHIP = "33333333-aaaa-4aaa-8aaa-333333333333";
@@ -176,7 +179,9 @@ describe("on-call roster — add a shift", () => {
     const drawer = await openDrawer();
     await fillValidForm(drawer);
     fireEvent.click(createButton(drawer));
-    expect((await within(drawer).findByRole("alert")).textContent).toContain(NO_ANSWER_MESSAGE);
+    expect((await within(drawer).findByRole("alert")).textContent).toContain(
+      "No answer came back; it may not have been recorded",
+    );
     expect(createButton(drawer).disabled).toBe(false);
     const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
     expect(cancel.disabled).toBe(false);
@@ -212,5 +217,60 @@ describe("on-call roster — add a shift", () => {
       expect(screen.queryByRole("complementary", { name: "Add an on-call shift" })).toBeNull(),
     );
     await waitFor(() => expect(document.querySelector("[inert]")).toBeNull());
+  });
+  describe("a form that starts from scratch every time", () => {
+    const field = (drawer: HTMLElement, label: string) =>
+      within(drawer).getByLabelText(label) as HTMLInputElement;
+    const entity = (drawer: HTMLElement) =>
+      within(drawer).getByRole("combobox", { name: /Provider entity/ }) as HTMLInputElement;
+
+    function expectBlankForm(drawer: HTMLElement): void {
+      expect(entity(drawer).value).toBe("");
+      expect(field(drawer, "Primary membership id").value).toBe("");
+      expect(field(drawer, "Backup membership id").value).toBe("");
+      expect(field(drawer, "Starts at").value).toBe(nowLocalInput());
+      expect(field(drawer, "Ends at").value).toBe(nowLocalInput(12 * 60));
+      expect(createButton(drawer).disabled).toBe(true);
+    }
+
+    it("reopens blank after a shift was saved, so one click cannot file it again", async () => {
+      const { post } = mount();
+      const drawer = await openDrawer();
+      await fillValidForm(drawer);
+      fireEvent.change(field(drawer, "Backup membership id"), { target: { value: MEMBERSHIP } });
+      fireEvent.click(createButton(drawer));
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(screen.queryByRole("complementary", { name: "Add an on-call shift" })).toBeNull(),
+      );
+      expectBlankForm(await openDrawer());
+    });
+
+    it("reopens blank after Cancel, with the times freshly defaulted", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 10, 18, 9, 0));
+      mount();
+      const drawer = await openDrawer();
+      await fillValidForm(drawer);
+      fireEvent.change(field(drawer, "Starts at"), { target: { value: "2030-01-01T00:00" } });
+      fireEvent.change(field(drawer, "Ends at"), { target: { value: "2030-01-01T12:00" } });
+      vi.setSystemTime(new Date(2026, 10, 18, 15, 30));
+      fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+      await waitFor(() =>
+        expect(screen.queryByRole("complementary", { name: "Add an on-call shift" })).toBeNull(),
+      );
+      const reopened = await openDrawer();
+      expect(field(reopened, "Starts at").value).toBe("2026-11-18T15:30");
+      expectBlankForm(reopened);
+    });
+
+    it("keeps the draft when Add shift is clicked again while the drawer is open", async () => {
+      mount();
+      const drawer = await openDrawer();
+      await fillValidForm(drawer);
+      fireEvent.click((await addShift()) as HTMLElement);
+      expect(field(drawer, "Primary membership id").value).toBe(MEMBERSHIP);
+      expect(createButton(drawer).disabled).toBe(false);
+    });
   });
 });

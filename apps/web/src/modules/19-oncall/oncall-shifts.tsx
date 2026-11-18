@@ -176,12 +176,27 @@ export function OnCallShiftsScreen(): JSX.Element {
     (isExternal ? UUID_RE.test(externalActorId) : UUID_RE.test(primaryMembership)) &&
     !busy;
 
-  const openCreate = (): void => {
+  // Every open and every close starts the form from scratch (times freshly defaulted): a saved or abandoned draft
+  // must not sit behind the next "Add shift", where one click would file the same shift again.
+  const resetCreateForm = (): void => {
+    setProviderEntityId("");
+    setStartsAt(nowLocalInput());
+    setEndsAt(nowLocalInput(12 * 60));
+    setNewDiscipline(DEFAULT_SHIFT_DISCIPLINE);
+    setPrimaryMembership("");
+    setBackupMembership("");
+    setExternalActorId("");
+    setExternalActorLabel("");
     setActionError(null);
+  };
+  const openCreate = (): void => {
+    // Already open: another click on an opener must not wipe what is being typed.
+    if (creating) return;
+    resetCreateForm();
     setCreating(true);
   };
   const closeCreate = (): void => {
-    setActionError(null);
+    resetCreateForm();
     setCreating(false);
   };
 
@@ -207,7 +222,7 @@ export function OnCallShiftsScreen(): JSX.Element {
       "The shift could not be created.",
     );
     if (!saved) return;
-    setCreating(false);
+    closeCreate();
     await load();
   }
 

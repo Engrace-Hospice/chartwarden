@@ -3,7 +3,10 @@
 // API client REJECTS (a network failure rejects; it does not resolve with `error`). Otherwise the drawer is stuck.
 import { errorMessage } from "./oncall-api";
 
-export const NO_ANSWER_MESSAGE = "That did not go through. Check your connection and try again.";
+// A lost reply is not a refusal: the write may have landed, so the copy says it may not have been recorded and asks for a
+// retry (the API client keeps its Idempotency-Key across a lost reply, so retrying cannot file it twice).
+export const NO_ANSWER_MESSAGE =
+  "No answer came back; it may not have been recorded. Check your connection, then retry.";
 
 /**
  * Runs `write` with `busy` true for its whole duration and false after it settles. Clears the drawer's error first,

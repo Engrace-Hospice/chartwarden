@@ -122,6 +122,8 @@ export function PaperReentryWorklistScreen(): JSX.Element {
   // Opening a worklist row, switching to another, or closing (`null`) starts from a blank form: a draft typed for
   // one outage window must never ride into another window's filing, and a refused write's message is not carried over.
   function openFor(row: PaperReentryWorklistView | null): void {
+    // The row whose drawer is already open: choosing it again must not wipe the draft being typed.
+    if (row !== null && row.id === entering?.id) return;
     setEntering(row);
     setActionError(null);
     setOpenedAt(row ? isoToLocalInput(row.shiftStartsAt) : "");

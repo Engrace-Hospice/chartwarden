@@ -8,7 +8,6 @@ import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_ANSWER_MESSAGE } from "./drawer-write";
 import type { VendorBindingView } from "./oncall-api";
 import { ExternalVendorAdminScreen } from "./vendor-admin";
 
@@ -205,7 +204,9 @@ describe("external triage vendors — bind and renew", () => {
       const drawer = await openBind();
       fillValidBinding(drawer);
       fireEvent.click(bindButton(drawer));
-      expect((await within(drawer).findByRole("alert")).textContent).toContain(NO_ANSWER_MESSAGE);
+      expect((await within(drawer).findByRole("alert")).textContent).toContain(
+        "No answer came back; it may not have been recorded",
+      );
       expect(bindButton(drawer).disabled).toBe(false);
       expect(cancelButton(drawer).disabled).toBe(false);
       fireEvent.click(cancelButton(drawer));
@@ -263,7 +264,9 @@ describe("external triage vendors — bind and renew", () => {
       mount({ patch: lost });
       const drawer = await openRenew();
       fireEvent.click(saveButton(drawer));
-      expect((await within(drawer).findByRole("alert")).textContent).toContain(NO_ANSWER_MESSAGE);
+      expect((await within(drawer).findByRole("alert")).textContent).toContain(
+        "No answer came back; it may not have been recorded",
+      );
       expect(saveButton(drawer).disabled).toBe(false);
       expect(cancelButton(drawer).disabled).toBe(false);
       fireEvent.click(cancelButton(drawer));
@@ -283,6 +286,85 @@ describe("external triage vendors — bind and renew", () => {
       write.finish();
       await waitFor(() => expect(screen.queryByRole("complementary", { name: RENEW })).toBeNull());
       await waitFor(() => expect(document.querySelector("[inert]")).toBeNull());
+    });
+  });
+  describe("forms that start from scratch every time", () => {
+    const input = (drawer: HTMLElement, label: string) =>
+      within(drawer).getByLabelText(label) as HTMLInputElement;
+    const RN = "The vendor has attested to RN-level coverage";
+
+    function fillEverything(drawer: HTMLElement): void {
+      fillValidBinding(drawer);
+      fireEvent.click(input(drawer, RN));
+      fireEvent.change(input(drawer, "BAA expiry (optional)"), { target: { value: "2028-01-31" } });
+      fireEvent.change(within(drawer).getByLabelText("PHI-minimization profile"), {
+        target: { value: "minimum_necessary" },
+      });
+    }
+
+    function expectBlankBind(drawer: HTMLElement): void {
+      expect(input(drawer, "Canonical vendor entity id").value).toBe("");
+      expect(input(drawer, "Display name").value).toBe("");
+      expect(input(drawer, "Adapter key").value).toBe("");
+      // A compliance attestation never carries over to the next binding.
+      expect(input(drawer, "A BAA is in force (required)").checked).toBe(false);
+      expect(input(drawer, RN).checked).toBe(false);
+      expect(input(drawer, "BAA expiry (optional)").value).toBe("");
+      expect(
+        (within(drawer).getByLabelText("PHI-minimization profile") as HTMLSelectElement).value,
+      ).toBe("hybrid_phi_min");
+      expect(bindButton(drawer).disabled).toBe(true);
+    }
+
+    it("reopens Bind blank and unticked after a binding was saved", async () => {
+      const { post } = mount();
+      const drawer = await openBind();
+      fillEverything(drawer);
+      fireEvent.click(bindButton(drawer));
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: BIND })).toBeNull());
+      expectBlankBind(await openBind());
+    });
+
+    it("reopens Bind blank and unticked after Cancel", async () => {
+      mount();
+      const drawer = await openBind();
+      fillEverything(drawer);
+      fireEvent.click(cancelButton(drawer));
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: BIND })).toBeNull());
+      expectBlankBind(await openBind());
+    });
+
+    it("keeps the draft when Bind a vendor is clicked again while the drawer is open", async () => {
+      mount();
+      const drawer = await openBind();
+      fillEverything(drawer);
+      fireEvent.click(screen.getByRole("button", { name: "Bind a vendor" }));
+      expect(input(drawer, "Display name").value).toBe("Harbor Night Triage");
+      expect(input(drawer, "A BAA is in force (required)").checked).toBe(true);
+      expect(bindButton(drawer).disabled).toBe(false);
+    });
+
+    it("reopens a renewal from the binding, not from an abandoned edit", async () => {
+      mount();
+      const drawer = await openRenew();
+      fireEvent.click(input(drawer, "A BAA is in force"));
+      fireEvent.click(input(drawer, RN));
+      fireEvent.change(input(drawer, "BAA expiry"), { target: { value: "" } });
+      fireEvent.click(cancelButton(drawer));
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: RENEW })).toBeNull());
+      const reopened = await openRenew();
+      expect(input(reopened, "A BAA is in force").checked).toBe(true);
+      expect(input(reopened, RN).checked).toBe(true);
+      expect(input(reopened, "BAA expiry").value).toBe("2027-06-06");
+    });
+
+    it("keeps the renewal edit when the open binding's own button is chosen again", async () => {
+      mount();
+      const drawer = await openRenew();
+      fireEvent.click(input(drawer, "A BAA is in force"));
+      fireEvent.click(screen.getByRole("button", { name: "BAA renewal" }));
+      expect(input(drawer, "A BAA is in force").checked).toBe(false);
     });
   });
 });

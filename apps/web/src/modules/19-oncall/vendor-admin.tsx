@@ -114,14 +114,33 @@ export function ExternalVendorAdminScreen(): JSX.Element {
     baaInEffect &&
     !busy;
 
-  // At most one form drawer is open. Opening either (or closing) drops a refused write's message.
-  const openCreate = (): void => {
+  // At most one form drawer is open. Opening or closing either starts both forms from scratch: a saved or abandoned
+  // draft must not sit behind the next "Bind a vendor" (least of all a ticked BAA / RN-coverage attestation), and a
+  // refused write's message is not carried over.
+  const resetForms = (): void => {
+    setMdmVendorId("");
+    setName("");
+    setAdapterKey("");
+    setRnAttested(false);
+    setBaaInEffect(false);
+    setBaaExpiresOn("");
+    setProfile(DEFAULT_MINIMIZATION_PROFILE);
+    setRenewBaa(true);
+    setRenewExpiry("");
+    setRenewRn(true);
     setActionError(null);
+  };
+  const openCreate = (): void => {
+    // Already open: another click on the opener must not wipe what is being typed.
+    if (creating) return;
+    resetForms();
     setRenewing(null);
     setCreating(true);
   };
   const openRenew = (binding: VendorBindingView): void => {
-    setActionError(null);
+    // Same binding already open: keep the edit in progress.
+    if (renewing?.id === binding.id) return;
+    resetForms();
     setCreating(false);
     setRenewing(binding);
     setRenewBaa(binding.baaInEffect);
@@ -129,7 +148,7 @@ export function ExternalVendorAdminScreen(): JSX.Element {
     setRenewExpiry(binding.baaExpiresOn ?? "");
   };
   const closeForm = (): void => {
-    setActionError(null);
+    resetForms();
     setCreating(false);
     setRenewing(null);
   };
@@ -151,7 +170,7 @@ export function ExternalVendorAdminScreen(): JSX.Element {
       "The vendor binding could not be created.",
     );
     if (!saved) return;
-    setCreating(false);
+    closeForm();
     await load();
   }
 
@@ -168,7 +187,7 @@ export function ExternalVendorAdminScreen(): JSX.Element {
       "The binding could not be updated.",
     );
     if (!saved) return;
-    setRenewing(null);
+    closeForm();
     await load();
   }
 

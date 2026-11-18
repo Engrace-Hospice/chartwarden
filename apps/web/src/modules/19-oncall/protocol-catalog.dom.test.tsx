@@ -8,7 +8,6 @@ import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_ANSWER_MESSAGE } from "./drawer-write";
 import type { TriageProtocolView } from "./oncall-api";
 import { TriageProtocolCatalogScreen } from "./protocol-catalog";
 
@@ -169,7 +168,9 @@ describe("triage protocol catalog — author a protocol", () => {
     const drawer = await openDrawer();
     await fillValidForm(drawer);
     fireEvent.click(createButton(drawer));
-    expect((await within(drawer).findByRole("alert")).textContent).toContain(NO_ANSWER_MESSAGE);
+    expect((await within(drawer).findByRole("alert")).textContent).toContain(
+      "No answer came back; it may not have been recorded",
+    );
     expect(createButton(drawer).disabled).toBe(false);
     const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
     expect(cancel.disabled).toBe(false);
@@ -202,5 +203,54 @@ describe("triage protocol catalog — author a protocol", () => {
     finish(ok({}));
     await waitFor(() => expect(screen.queryByRole("complementary", { name: DRAWER })).toBeNull());
     await waitFor(() => expect(document.querySelector("[inert]")).toBeNull());
+  });
+  describe("a form that starts from scratch every time", () => {
+    const input = (drawer: HTMLElement, label: string) =>
+      within(drawer).getByLabelText(label) as HTMLInputElement;
+
+    function expectBlankForm(drawer: HTMLElement): void {
+      expect(input(drawer, "Key").value).toBe("");
+      expect(input(drawer, "Chief complaint label").value).toBe("");
+      expect(
+        (within(drawer).getByRole("combobox", { name: /SNOMED code/ }) as HTMLInputElement).value,
+      ).toBe("");
+      expect(input(drawer, "This protocol always escalates").checked).toBe(false);
+      expect(within(drawer).queryByLabelText("Escalation tier")).toBeNull();
+      expect(createButton(drawer).disabled).toBe(true);
+    }
+
+    it("reopens blank after a protocol was saved, the always-escalates flag included", async () => {
+      const { post } = mount();
+      const drawer = await openDrawer();
+      await fillValidForm(drawer);
+      fireEvent.click(input(drawer, "This protocol always escalates"));
+      fireEvent.click(createButton(drawer));
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      expect((post.mock.calls[0]?.[1] as { body: unknown }).body).toMatchObject({
+        requiresMandatoryEscalation: true,
+        mandatoryEscalationTier: "tier_1_rn_supervisor",
+      });
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: DRAWER })).toBeNull());
+      expectBlankForm(await openDrawer());
+    });
+
+    it("reopens blank after Cancel", async () => {
+      mount();
+      const drawer = await openDrawer();
+      await fillValidForm(drawer);
+      fireEvent.click(input(drawer, "This protocol always escalates"));
+      fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: DRAWER })).toBeNull());
+      expectBlankForm(await openDrawer());
+    });
+
+    it("keeps the draft when Author a protocol is clicked again while the drawer is open", async () => {
+      mount();
+      const drawer = await openDrawer();
+      await fillValidForm(drawer);
+      fireEvent.click(screen.getByRole("button", { name: "Author a protocol" }));
+      expect(input(drawer, "Key").value).toBe("pain_flare_check");
+      expect(createButton(drawer).disabled).toBe(false);
+    });
   });
 });

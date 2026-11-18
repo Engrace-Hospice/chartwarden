@@ -134,12 +134,25 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
 
   const canCreate = KEY_RE.test(key) && label.trim().length >= 3 && SNOMED_RE.test(snomed) && !busy;
 
-  const openCreate = (): void => {
+  // Every open and every close starts the form from scratch: a saved or abandoned draft (the "always escalates" flag
+  // included) must not ride into the next protocol authored.
+  const resetCreateForm = (): void => {
+    setKey("");
+    setLabel("");
+    setSnomed("");
+    setRequired(DEFAULT_SHIFT_DISCIPLINE);
+    setMandatory(false);
+    setTier(DEFAULT_ESCALATION_TIER);
     setActionError(null);
+  };
+  const openCreate = (): void => {
+    // Already open: another click on the opener must not wipe what is being typed.
+    if (creating) return;
+    resetCreateForm();
     setCreating(true);
   };
   const closeCreate = (): void => {
-    setActionError(null);
+    resetCreateForm();
     setCreating(false);
   };
 
@@ -160,10 +173,7 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
       "The protocol could not be created.",
     );
     if (!saved) return;
-    setCreating(false);
-    setKey("");
-    setLabel("");
-    setSnomed("");
+    closeCreate();
     await load();
   }
 
