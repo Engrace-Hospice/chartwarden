@@ -31,18 +31,7 @@ import {
   shortId,
   toneOf,
 } from "./discipline-status";
-import {
-  Modal,
-  Notice,
-  TextAreaField,
-  TextField,
-  alertStyle,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
-} from "./discipline-ui";
+import { Modal, Notice, TextAreaField, TextField } from "./discipline-ui";
 import { DisciplinePlanWorkspace } from "./plan-workspace";
 
 /** §8.6 — the documented-override floor the pure guard enforces server-side. */
@@ -191,7 +180,7 @@ function AssignmentModal({
           />
         </>
       ) : null}
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <p className="wx-text-error">{error}</p> : null}
     </Modal>
   );
 }
@@ -242,40 +231,40 @@ function AssignmentLedger({
           </Button>
         }
       >
-        {error ? <p style={alertStyle}>{error}</p> : null}
+        {error ? <p className="wx-text-error">{error}</p> : null}
         {plan.volunteerAssignments.length === 0 ? (
-          <span style={mutedStyle}>No active volunteer assignments.</span>
+          <span className="wx-text-muted">No active volunteer assignments.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Volunteer</th>
-                <th style={th}>Activities</th>
-                <th style={th}>Window</th>
-                <th style={th}>Acknowledged</th>
-                <th style={th}>State</th>
-                <th style={th}>&nbsp;</th>
+                <th>Volunteer</th>
+                <th>Activities</th>
+                <th>Window</th>
+                <th>Acknowledged</th>
+                <th>State</th>
+                <th>&nbsp;</th>
               </tr>
             </thead>
             <tbody>
               {plan.volunteerAssignments.map((a) => (
-                <tr key={a.assignmentId} style={rowLine}>
-                  <td style={td}>{shortId(a.volunteerMembershipId)}</td>
-                  <td style={td}>{a.activities.join(", ")}</td>
-                  <td style={td}>
+                <tr key={a.assignmentId}>
+                  <td>{shortId(a.volunteerMembershipId)}</td>
+                  <td>{a.activities.join(", ")}</td>
+                  <td>
                     {shortDate(a.startsAt)} → {a.endsAt ? shortDate(a.endsAt) : "open"}
                   </td>
-                  <td style={td}>{dateTime(a.coordinatorAcknowledgedAt)}</td>
-                  <td style={td}>
+                  <td>{dateTime(a.coordinatorAcknowledgedAt)}</td>
+                  <td>
                     <StatusPill
                       label={a.inactivatedAt ? "Inactive" : "Active"}
                       tone={a.inactivatedAt ? "neutral" : "success"}
                     />
                     {a.inactivationReason ? (
-                      <div style={mutedStyle}>{a.inactivationReason}</div>
+                      <div className="wx-text-muted">{a.inactivationReason}</div>
                     ) : null}
                   </td>
-                  <td style={td}>
+                  <td>
                     <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
                       {a.coordinatorAcknowledgedAt ? null : (
                         <Button

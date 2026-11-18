@@ -1,38 +1,11 @@
-// apps/web/src/modules/15-discipline-care-plans — the shared Lantern presentation atoms every M15 screen
-// reuses (Track B / ADR-0030, §5 / DESIGN.md §6.7). Extracted so the thirteen screens share ONE No-Line
-// table vocabulary, one card, one field and one modal chrome instead of re-declaring them per file (the
-// M24 medicaid-ui.tsx precedent). Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens`
-// stays green and the twilight dark mode is automatic.
+// apps/web/src/modules/15-discipline-care-plans — the presentation atoms every M15 screen still shares
+// (Track B / ADR-0030, §5). Cards, fields and tables come from the kit now (`Panel`, the value-field
+// adapters re-exported below, the base table chrome and `wx-*` text classes); what remains here is the
+// modal chrome and a few layout constants. Zero raw hex — `t.*` / CSS-var tokens only, so
+// `arch:design-tokens` stays green and the twilight dark mode is automatic.
 import { Button, Modal as SharedModal, t } from "@chartwarden/ui";
 import { useEffect } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-
-// ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
-export const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.85rem",
-};
-export const th: CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  textAlign: "left",
-  fontSize: "0.7rem",
-  fontWeight: 600,
-  color: t.onSurfaceVariant,
-};
-export const thNum: CSSProperties = { ...th, textAlign: "right" };
-export const td: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  color: t.onSurface,
-  verticalAlign: "top",
-};
-export const tdMono: CSSProperties = { ...td, fontFamily: t.fontMono };
-export const tdNum: CSSProperties = {
-  ...td,
-  textAlign: "right",
-  fontVariantNumeric: "tabular-nums",
-};
-export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
 /**
  * Keeps clinical tables usable at narrow widths without forcing the whole patient workspace to overflow.
@@ -93,21 +66,11 @@ export const pageTitleStyle: CSSProperties = {
   lineHeight: 1.2,
   color: t.onSurface,
 };
-export const sectionTitleStyle: CSSProperties = {
-  margin: `0 0 ${t.space2}`,
-  fontFamily: t.fontDisplay,
-  fontSize: "1rem",
-  fontWeight: 500,
-  color: t.onSurface,
-};
-export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
-export const alertStyle: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.error };
 export const linkStyle: CSSProperties = {
   fontSize: "0.8rem",
   color: t.primary,
   textDecoration: "none",
 };
-export const linkMonoStyle: CSSProperties = { ...linkStyle, fontFamily: t.fontMono };
 export const columnStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",

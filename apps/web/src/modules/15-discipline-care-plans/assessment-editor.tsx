@@ -51,10 +51,8 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
   useUnsavedChangesWarning,
 } from "./discipline-ui";
@@ -298,7 +296,7 @@ export function AssessmentEditor(): JSX.Element {
       />
 
       {actionError ? (
-        <p role="alert" aria-live="assertive" style={alertStyle}>
+        <p role="alert" aria-live="assertive" className="wx-text-error">
           {actionError}
         </p>
       ) : null}
@@ -401,7 +399,7 @@ export function AssessmentEditor(): JSX.Element {
           rows={14}
           hint="Validated against this kind's schema on the server; a validation failure is reported field by field."
         />
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           {signed
             ? "This record is signed. Editing it means recording an amendment — the signed row stays on the record."
             : "A draft assessment can be re-captured until it is signed."}

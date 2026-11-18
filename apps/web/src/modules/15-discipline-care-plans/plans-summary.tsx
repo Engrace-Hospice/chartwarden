@@ -39,18 +39,7 @@ import {
   shortDate,
   toneOf,
 } from "./discipline-status";
-import {
-  Notice,
-  alertStyle,
-  columnStyle,
-  ghostButtonStyle,
-  mutedStyle,
-  pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
-} from "./discipline-ui";
+import { Notice, columnStyle, ghostButtonStyle, pageTitleStyle } from "./discipline-ui";
 
 export function DisciplinePlansSummary(): JSX.Element {
   const client = useApiClient();
@@ -119,7 +108,7 @@ export function DisciplinePlansSummary(): JSX.Element {
         cleared to see it on the plan itself.
       </Notice>
       {partial.length > 0 ? (
-        <p style={alertStyle}>
+        <p className="wx-text-error">
           Not included in this summary: {partial.join(", ")} — the summary for{" "}
           {partial.length === 1 ? "that plan" : "those plans"} could not be read in this session.
         </p>
@@ -137,9 +126,9 @@ export function DisciplinePlansSummary(): JSX.Element {
             headingLevel={3}
             key={s.planId}
             title={kindLabel(s.kind)}
-            action={<span style={mutedStyle}>{kindRegulation(s.kind)}</span>}
+            action={<span className="wx-text-muted">{kindRegulation(s.kind)}</span>}
           >
-            <span style={mutedStyle}>Plan status: {humanize(s.status)}</span>
+            <span className="wx-text-muted">Plan status: {humanize(s.status)}</span>
 
             {s.kind === "spiritual_plan" && s.spiritualCareDeclined ? (
               <Notice tone="info">
@@ -158,22 +147,22 @@ export function DisciplinePlansSummary(): JSX.Element {
               Goals
             </h4>
             {s.goals.length === 0 ? (
-              <span style={mutedStyle}>No goals recorded.</span>
+              <span className="wx-text-muted">No goals recorded.</span>
             ) : (
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>Goal</th>
-                    <th style={th}>Target</th>
-                    <th style={th}>Status</th>
+                    <th>Goal</th>
+                    <th>Target</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {s.goals.map((g) => (
-                    <tr key={g.goalId} style={rowLine}>
-                      <td style={td}>{g.text}</td>
-                      <td style={td}>{shortDate(g.targetAt)}</td>
-                      <td style={td}>
+                    <tr key={g.goalId}>
+                      <td>{g.text}</td>
+                      <td>{shortDate(g.targetAt)}</td>
+                      <td>
                         <StatusPill
                           label={humanize(g.status)}
                           tone={toneOf(GOAL_STATUS_TONE, g.status)}
@@ -196,22 +185,22 @@ export function DisciplinePlansSummary(): JSX.Element {
               Interventions
             </h4>
             {s.interventions.length === 0 ? (
-              <span style={mutedStyle}>No interventions recorded.</span>
+              <span className="wx-text-muted">No interventions recorded.</span>
             ) : (
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>Scope</th>
-                    <th style={th}>Frequency</th>
-                    <th style={th}>Status</th>
+                    <th>Scope</th>
+                    <th>Frequency</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {s.interventions.map((iv) => (
-                    <tr key={iv.interventionId} style={rowLine}>
-                      <td style={td}>{iv.scopeText}</td>
-                      <td style={td}>{iv.frequencyText}</td>
-                      <td style={td}>
+                    <tr key={iv.interventionId}>
+                      <td>{iv.scopeText}</td>
+                      <td>{iv.frequencyText}</td>
+                      <td>
                         <StatusPill
                           label={humanize(iv.status)}
                           tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}

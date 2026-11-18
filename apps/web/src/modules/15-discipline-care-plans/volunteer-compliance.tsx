@@ -38,21 +38,7 @@ import {
   shortId,
   toneOf,
 } from "./discipline-status";
-import {
-  FilterRow,
-  Modal,
-  Notice,
-  SelectField,
-  TextAreaField,
-  TextField,
-  alertStyle,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdMono,
-  th,
-} from "./discipline-ui";
+import { FilterRow, Modal, Notice, SelectField, TextAreaField, TextField } from "./discipline-ui";
 
 /** `volunteer_gate_kind` (enums.ts §3.2) — the seven 418.78 postures. */
 const GATE_KINDS = [
@@ -253,51 +239,51 @@ export function VolunteerComplianceGates(): JSX.Element {
             </div>
           ) : (
             <div style={tableWrapStyle}>
-              {actionError ? <p style={alertStyle}>{actionError}</p> : null}
-              <table style={tableStyle}>
+              {actionError ? <p className="wx-text-error">{actionError}</p> : null}
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>Volunteer</th>
-                    <th style={th}>Gate</th>
-                    <th style={th}>Valid from</th>
-                    <th style={th}>Valid until</th>
-                    <th style={th}>Evidence</th>
-                    <th style={th}>Status</th>
-                    <th style={th}>&nbsp;</th>
+                    <th>Volunteer</th>
+                    <th>Gate</th>
+                    <th>Valid from</th>
+                    <th>Valid until</th>
+                    <th>Evidence</th>
+                    <th>Status</th>
+                    <th>&nbsp;</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((g) => (
-                    <tr key={g.gateId} style={rowLine}>
-                      <td style={tdMono}>{shortId(g.volunteerMembershipId)}</td>
-                      <td style={td}>{gateKindLabel(g.gateKind)}</td>
-                      <td style={td}>{shortDate(g.validFrom)}</td>
-                      <td style={td}>
+                    <tr key={g.gateId}>
+                      <td className="wx-data-md">{shortId(g.volunteerMembershipId)}</td>
+                      <td>{gateKindLabel(g.gateKind)}</td>
+                      <td>{shortDate(g.validFrom)}</td>
+                      <td>
                         {g.validUntil ? (
                           <>
                             {shortDate(g.validUntil)}
-                            <div style={mutedStyle}>{dueLabel(g.validUntil)}</div>
+                            <div className="wx-text-muted">{dueLabel(g.validUntil)}</div>
                           </>
                         ) : (
-                          <span style={mutedStyle}>no expiry</span>
+                          <span className="wx-text-muted">no expiry</span>
                         )}
                       </td>
-                      <td style={tdMono}>{shortId(g.sourceDocumentId)}</td>
-                      <td style={td}>
+                      <td className="wx-data-md">{shortId(g.sourceDocumentId)}</td>
+                      <td>
                         <StatusPill
                           label={humanize(g.effectiveStatus)}
                           tone={toneOf(GATE_STATUS_TONE, g.effectiveStatus)}
                         />
                         {g.storedStatus !== g.effectiveStatus ? (
-                          <div style={mutedStyle}>
+                          <div className="wx-text-muted">
                             last written as {humanize(g.storedStatus).toLowerCase()}
                           </div>
                         ) : null}
                         {g.revokedAt ? (
-                          <div style={mutedStyle}>revoked {shortDate(g.revokedAt)}</div>
+                          <div className="wx-text-muted">revoked {shortDate(g.revokedAt)}</div>
                         ) : null}
                       </td>
-                      <td style={td}>
+                      <td>
                         <div style={{ display: "flex", gap: t.space2 }}>
                           <Button tone="secondary" type="button" onClick={() => setEditing(g)}>
                             Correct
@@ -346,7 +332,7 @@ export function VolunteerComplianceGates(): JSX.Element {
                 window — is the one the scheduler enforces.
               </Notice>
             ) : null}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Alerts fire at 30 / 14 / 7 / 1 days before expiry. `Expiring soon` warns; it does not
               block.
             </span>
@@ -449,7 +435,7 @@ function GateFormDrawer({
       }
     >
       {editingExisting ? (
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           A correction changes the validity window and the evidence only. The volunteer and gate
           kind identify the row and cannot be re-pointed — record a new gate instead.
         </span>
@@ -475,7 +461,7 @@ function GateFormDrawer({
       />
       <TextField label="Source document id" value={sourceDocumentId} onChange={setSourceDocument} />
       <TextAreaField label="Notes" value={notes} onChange={setNotes} rows={2} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <p className="wx-text-error">{error}</p> : null}
     </Drawer>
   );
 }
@@ -532,7 +518,7 @@ function RevokeGateModal({
         rows={3}
         hint="Stored on the gate and carried into the expiry cascade audit."
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <p className="wx-text-error">{error}</p> : null}
     </Modal>
   );
 }

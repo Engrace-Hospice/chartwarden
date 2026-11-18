@@ -47,7 +47,6 @@ import {
   SummaryGrid,
   columnStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
 } from "./discipline-ui";
 
@@ -166,7 +165,7 @@ export function DisciplinePlansIndex(): JSX.Element {
             <h1 id="discipline-plans-title" style={pageTitleStyle}>
               Discipline plans
             </h1>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               The Aide, MSW, Spiritual and Volunteer plans of care for this patient.
             </span>
           </div>
@@ -206,7 +205,7 @@ export function DisciplinePlansIndex(): JSX.Element {
                     )
                   }
                 >
-                  <span style={mutedStyle}>{kindRegulation(kind)}</span>
+                  <span className="wx-text-muted">{kindRegulation(kind)}</span>
                   {plan ? (
                     <>
                       <SummaryGrid>
@@ -306,7 +305,7 @@ export function DisciplinePlansIndex(): JSX.Element {
                   ) : (
                     <div style={columnStyle}>
                       <Field label="Next action" value={presentation.nextAction} />
-                      <span style={mutedStyle}>{presentation.description}</span>
+                      <span className="wx-text-muted">{presentation.description}</span>
                     </div>
                   )}
                 </Panel>

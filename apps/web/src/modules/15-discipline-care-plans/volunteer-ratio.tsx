@@ -37,8 +37,6 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
-  mutedStyle,
 } from "./discipline-ui";
 
 /** The §7.6 bands, stated on the page so the color is never the only signal (Hard Rule §10.10). */
@@ -203,16 +201,16 @@ export function VolunteerHourRatio(): JSX.Element {
                   }}
                 >
                   <StatusPill label={b.label} tone={b.tone} />
-                  <span style={mutedStyle}>{b.detail}</span>
+                  <span className="wx-text-muted">{b.detail}</span>
                 </div>
               ))}
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 An unavailable ratio never pages: alerting on a missing denominator would train the
                 recipients to ignore a real breach.
               </span>
             </Panel>
             <Panel stack headingLevel={3} title="Numerator sources">
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 Signed volunteer visits are ledgered nightly; administrative volunteer time is its
                 own typed source; a manual adjustment is the audited correction path and is the only
                 entry that may carry negative minutes.
@@ -323,9 +321,9 @@ function HourAdjustmentModal({
         hint="Required. The adjustment is attributed to your membership on the ledger."
       />
       {!validMinutes && durationMinutes !== "" ? (
-        <p style={alertStyle}>Enter a non-zero whole number of minutes.</p>
+        <p className="wx-text-error">Enter a non-zero whole number of minutes.</p>
       ) : null}
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <p className="wx-text-error">{error}</p> : null}
     </Modal>
   );
 }
