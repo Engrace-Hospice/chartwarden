@@ -52,8 +52,32 @@ total Medicare hospice days** in the cap year (Oct 1 – Sep 30, ADR-0002). M26 
 cap year from the architecture and **removes its in-spec override** (the mechanism was an
 unauthorized BLOCKER; the value is now authoritative upstream).
 
+### D6 — Interim payer-responsibility gate for M24 assembly (#876)
+
+Coverage rank is not itself proof of the payer responsible for a claim. M24 assembly resolves the selected
+Medicaid coverage and the highest-ranked coverage across **all** coverage kinds for every day of the service
+window. The claim-write transaction re-evaluates both from one M5 row-locked snapshot. A Medicaid row at rank 2
+or higher is never reinterpreted as primary when rank-1 coverage is absent, ambiguous, or changes during the
+window.
+
+Until the applicable state billing owner and claim-format evidence establish secondary Medicaid formats,
+assembly permits only a selected Medicaid coverage that is the same unambiguous rank-1 coverage for the full
+window. This is a conservative engineering gate, **not** a determination that a dual-eligible person lacks
+Medicaid eligibility or that Medicaid can never reimburse a distinct Room & Board responsibility. Medicare-
+primary secondary rb_only and combined_hospice_rb assembly remain blocked pending state-specific claim
+format and COB treatment. Ordinary hospice-only services with Medicare primary remain in M23. Other primary
+payers and tertiary Medicaid remain unsupported absent an applicable TPL policy.
+
+This interim assembly rule does not establish electronic submission authorization. A payer-policy pass does
+not establish clinical eligibility, Room & Board qualification, valid COB/adjudication evidence, state
+claim-format support, or permission to submit. Those controls remain independent. The Oregon combined
+secondary claim scenario in the M24 proposal is not evidence that Oregon accepts that electronic format.
+Billing-owner approval and applicable Oregon format/COB confirmation remain open under #876.
+
 ## Consequences
 
 - M24 re-specs R&B pricing, patient liability, TPL/crossover/retro/timely-filing, and corrects the
   cap accrual; strikes the fabricated citation.
 - M26 drops the override and corrects the inpatient-cap numerator/denominator + overage math.
+- M24 implements D6 as an interim fail-closed assembly boundary; it does not settle Oregon's separate-versus-
+  combined secondary R&B format or Medicaid eligibility policy.

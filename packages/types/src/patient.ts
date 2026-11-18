@@ -558,6 +558,9 @@ export interface PatientCoverageReader {
     },
   ): Promise<{
     readonly coverages: readonly PatientCoverage[];
+    /** Top-ranked coverage across every kind from this same locked snapshot. */
+    readonly primaryResolution: CoverageForRange;
+    /** Top-ranked coverage within `coverageKind` when one was requested, otherwise same as primaryResolution. */
     readonly resolution: CoverageForRange;
   }>;
 }

@@ -22,7 +22,7 @@ export * from "./errors";
 export * from "./control-number";
 // D13 the TOB derivation (811/812/813/814) + replacement/void (817/818) mapping.
 export * from "./tob";
-// M24 payer-ranking policy: hospice-only requires primary Medicaid; R&B shapes permit secondary.
+// M24 payer-responsibility gate: claim kind, selected Medicaid and actual cross-kind primary coverage.
 export * from "./payer-policy";
 // §4.6 the validation rule MODEL + REGISTRY + runner + the 13 platform-default rules.
 export * from "./rules";
