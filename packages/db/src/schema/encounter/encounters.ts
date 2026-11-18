@@ -183,6 +183,11 @@ export const encounters = pgTable(
     openClockIdx: index("encounter_open_clock_idx")
       .on(t.organizationId, t.authoredByMembershipId, t.clockStartedAt)
       .where(sql`status IN ('draft', 'finalized') AND clock_started_at IS NOT NULL`),
+    // The supervisor board's page: the org's oldest clocked open notes across every author, ordered by the clock (the index above
+    // leads with the author, so the board read and sorted every matching note).
+    openClockBoardIdx: index("encounter_open_clock_board_idx")
+      .on(t.organizationId, t.clockStartedAt, t.id)
+      .where(sql`status IN ('draft', 'finalized') AND clock_started_at IS NOT NULL`),
   }),
 );
 
