@@ -410,6 +410,9 @@ const DENIED_FAMILY_ROUTES = [
   "PATCH /api/v1/safety/policy",
   "PATCH /api/v1/standing-orders/:id",
   "PATCH /api/v1/triage-protocols/:protocolId",
+  // SIA's confirm-after-the-fact route for a row signed before delivery capture: not a way to finish an open note (signing carries the
+  // modality in its own body), so it waits for the note like every other chart edit.
+  "POST /api/v1/encounters/:encounterId/visit-modality",
   "POST /api/v1/encounters/:encounterId/void",
   "POST /api/v1/safety/high-risk-areas",
   "POST /api/v1/safety/supervisor-subscriptions",
