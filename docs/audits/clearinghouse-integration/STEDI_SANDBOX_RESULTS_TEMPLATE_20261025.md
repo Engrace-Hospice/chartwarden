@@ -1,79 +1,80 @@
-# Stedi synthetic contract run: results (TEMPLATE, copy per run)
+# Stedi synthetic contract qualification results (TEMPLATE; copy per run)
 
-Copy to `STEDI_SANDBOX_RESULTS_<YYYYMMDD>.md` and fill after an authorized run. Synthetic data only: no API key,
-response body, PHI/PII, or raw claim payload. Follow
-[`STEDI_SANDBOX_RUNBOOK_20261025.md`](./STEDI_SANDBOX_RUNBOOK_20261025.md).
+Copy this template per authorized run and summarize the sanitized JSON artifact produced by `bun run test:stedi:contract`. Synthetic data only. Never attach an API key, response body, raw X12/JSON claim, PHI or PII. See [`STEDI_SANDBOX_RUNBOOK_20261025.md`](./STEDI_SANDBOX_RUNBOOK_20261025.md).
 
-## Run identity and safety
+## Run identity and process result
 
-- **Test date/time (UTC):**
-- **Operator:**
-- **Commit SHA (`git rev-parse HEAD`):**
-- **Stedi account type:** production account / free Sandbox / OAuth Integrated Account / other (explain)
-- **Credential mode used:** Test API key / Production API key / OAuth token / other (never include credential value)
-- **Credential mode attested by account owner:** yes / no
-- **Written Q14 confirmation reference/date:**
-- **Test key obtained from:** authorized account name/reference only; no secret value
-- **Platform binding (`CLEARINGHOUSE_VENDOR`):** unset / `in_memory` / other (stop and explain)
-- **Synthetic-only confirmation:** yes / no
-- **Test ran with Production credential or OAuth token:** no / yes (if yes, stop and report)
-- **Test API request was expected to remain in Stedi Test mode:** yes / no
+- **Run date/time (UTC):**
+- **Operator and role:**
+- **Commit SHA:**
+- **Sanitized JSON artifact reference:**
+- **Authorization reference:**
+- **Stedi written confirmation reference:**
+- **Vitest exit code:**
+- **Wrapper exit code:**
+- **Overall qualification:** `PASS` / `FAIL` / `BLOCKED` / `NOT_RUN`
+- **Gate reason codes, if any:**
+- **Platform binding check:** unset / `in_memory` / refused
+- **Production platform credential present:** no / yes (if yes, stop; do not run)
+- **Live platform configuration changed:** no / yes (if yes, stop)
 
-## Submission contract results
+## Independent credential and authorization verification
 
-Paste only the sanitized fields from `STEDI_CONTRACT_RESULTS_FILE`; do not paste the JSON if it contains an unexpected
-field. Never include a key, raw X12, response body, or PHI/PII.
+- **Stedi account type confirmed in vendor console:** authorized Production account / free Sandbox / OAuth Integrated Account / other
+- **Credential mode confirmed in vendor console:** Test / Production / OAuth / unknown
+- **Verified by authorized account owner:** name/role (never credential value)
+- **Verification date and vendor-controlled reference:**
+- **Operator explicitly authorized synthetic run:** yes / no
+- **Written Q14 applicability/account provisioning reference:**
+- **Synthetic-only fixtures confirmed:** yes / no
+- **Key appeared in logs or artifact:** no / yes (if yes, stop, revoke and escalate)
 
-| Step | Outcome (`ok`/degraded) | Degraded code | Local replayed | Expected? | Sanitized evidence reference / note |
-|---|---|---|---|---|---|
-| Synthetic claim submit | | | | | |
-| Identical claim replay | | | | | |
-| Same key / changed body conflict | | | | | |
-| Synthetic NOE submit | | | | | |
-| Production `ISA15=P` refused before request | | | | | |
-| Replacement/frequency 7 refused before request | | | | | |
-| Key absent from output | | n/a | n/a | | |
+## Scenario outcomes
 
-## Correlated response evidence (separate workflow)
+Copy only scenario name, evidence kind, state, sanitized reason code, `requestSent` and receipt-validation boolean from the JSON artifact. `local` evidence cannot satisfy a vendor scenario.
 
-Do not imply the existing contract test exercises these results; it currently does not retrieve 277CA/835 responses.
-Record `NOT RUN` unless a separately approved test was actually performed.
+| Scenario | Evidence (`local` / `vendor`) | State | Sanitized reason code | Request sent | Receipt validated | Note/reference |
+|---|---|---|---|---:|---:|---|
+| Raw-X12 837I claim | | | | | | |
+| JSON 837I claim via production mapper | | | | | | |
+| NOE 81A raw X12 | | | | | | |
+| Local JSON/X12 agreement and identity assertions | | | | | | |
+| Local identical replay (no second request) | | | | | | |
+| Local changed-body same-key conflict | | | | | | |
+| Local control-number reuse conflict | | | | | | |
+| Local `usageIndicator=P` refusal before request | | | | | | |
+| Local provider identity mismatch refusal | | | | | | |
+| Local malformed X12 refusal before request | | | | | | |
+| Frequency 7/8 adjustment refusal | | | | | | |
+| NOTR 81B local fake-HTTP shape | `local` | `PASS` / `FAIL` | `fake_http_bht06_rp_vendor_behavior_not_verified` | no vendor request | no vendor receipt | local fixture/transport coverage only |
 
-| Response | Status (`PASS` / `FAIL` / `NOT RUN`) | Correlation reference (non-sensitive ID only) | Evidence location | Scope/limitations |
-|---|---|---|---|---|
-| 837I test submission receipt | | | | |
-| Initial Stedi 277CA | | | | |
-| Later payer-stage 277CA | | | | |
-| Stedi Test Payer 835 ERA | | | | |
-| Response retrieval by polling/report | | | | |
-| Event/callback delivery | | | | |
-| Retry/idempotency behavior at Stedi | | | | |
+## Correlated response evidence (not part of this contract run)
 
-## Test Payer ERA setup, if separately performed
+Set `NOT_RUN` unless a separately authorized workflow actually retrieved the response. Never infer a response from a submission receipt.
 
-- **Test Payer enrollment created outside Test mode:** yes / no / not applicable
-- **Synthetic provider record used:** yes / no (describe only non-identifying fixture reference)
-- **Enrollment transaction type:**
-- **Enrollment effective/ready date:**
-- **No real Medicare payer enrollment or ERA routing changed:** yes / no
-
-## Written answers and decisions
-
-| Question | Stedi written answer reference/date | Internal decision or effect | Approval still needed? |
+| Response | State (`PASS` / `FAIL` / `BLOCKED` / `NOT_RUN`) | Non-sensitive evidence reference | Scope and limitations |
 |---|---|---|---|
-| Q14 test claims and test 277CA/835 | | | |
+| Initial Stedi 277CA retrieved | `NOT_RUN` | | |
+| Payer-stage 277CA retrieved | `NOT_RUN` | | |
+| Stedi Test Payer 835 ERA retrieved | `NOT_RUN` | | |
+| Event/callback signature and replay handling | `NOT_RUN` | | |
+| Stedi-side idempotency replay behavior | `NOT_RUN` | | |
+| MAC acceptance/adjudication | `NOT_RUN` | | |
+
+## Written answers and remaining approvals
+
+| Question | Written answer reference/date | Internal decision/effect | Still pending |
+|---|---|---|---|
+| Q14 Test claims/provisioning | | | |
 | Q16 Medicare Part A/hospice enrollment | | | |
-| Q17 / Q28 rejected versus paid-claim correction/void | | | |
-| Q27/Q32 tenant account, OAuth, attribution and isolation | | | |
+| Q17/Q28 corrections, voids and FISS/DDE | | | |
+| Q27/Q32 tenant account, OAuth and attribution | | | |
 | Q33 BAA and responsibilities | | | |
 
-## Unverified scenarios and disposition
+## Final interpretation
 
-List each not tested or not established by this run, including MAC jurisdiction, hospice notice acceptance, real payer
-adjudication, production routing, multi-NPI account behavior, tenant response isolation, OAuth approval, and any missing
-test enrollment. Synthetic fixtures do not constitute CGS, NGS, or Palmetto certification.
-
-- **Unverified:**
+- **Does overall qualification equal `PASS` in the sanitized artifact?** yes / no
+- **Were all three required vendor scenarios successful with validated vendor receipt IDs?** yes / no
+- **Outstanding vendor, Medicare/hospice or legal blockers:**
 - **Follow-up owner:**
-- **Live sending remained disabled:** yes / no (if no, stop and escalate)
-- **Overall result:** PASS / FAIL / INCOMPLETE (explain; never convert a skipped test to PASS)
+- **Can this evidence close #727?** no, until written answers and all acceptance evidence are filed

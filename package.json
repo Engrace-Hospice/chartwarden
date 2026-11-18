@@ -82,6 +82,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run",
+    "test:stedi:contract": "bun run scripts/run-stedi-contract-test.ts",
     "test:m23:claimmd:synthetic": "vitest run apps/backend/src/modules/23-billing-medicare/__tests__/claimmd-synthetic-rehearsal.test.ts apps/backend/src/modules/23-billing-medicare/__tests__/assembly.test.ts apps/backend/src/modules/23-billing-medicare/__tests__/validation-service.test.ts apps/backend/src/modules/23-billing-medicare/__tests__/claim-837i-loader.test.ts apps/backend/src/modules/23-billing-medicare/__tests__/claim-preview-integrity.test.ts apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-context.test.ts apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-submission.test.ts apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/resolver.test.ts packages/x12-837-client/src/clearinghouse/claimmd-transport.test.ts apps/web/src/modules/23-billing-medicare/__tests__/claimmd-synthetic-rehearsal.dom.test.tsx apps/web/src/modules/23-billing-medicare/__tests__/claim-history.dom.test.tsx apps/web/src/modules/23-billing-medicare/__tests__/claim-submission-stale-preview.dom.test.tsx",
     "test:m23:claimmd:http-rehearsal": "vitest run apps/backend/src/modules/23-billing-medicare/__tests__/claimmd-synthetic-rehearsal.test.ts",
     "test:db:migrate:live": "vitest run scripts/__tests__/db-migrate.live.test.ts",

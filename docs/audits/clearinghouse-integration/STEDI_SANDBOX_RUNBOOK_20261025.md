@@ -1,89 +1,72 @@
-# Runbook: Stedi synthetic contract test (issue #727)
+# Runbook: Stedi synthetic contract qualification (issue #727)
 
-**Reviewed:** 2026-11-16. The test is
-[`stedi-sandbox-contract.test.ts`](../../../packages/x12-837-client/src/clearinghouse/stedi-sandbox-contract.test.ts). It
-is skipped unless all three required switches are set, so normal CI and `bun run test` do not contact Stedi. This runbook
-describes a human-authorized synthetic test; no test was run as part of this documentation update.
+**Reviewed:** 2026-11-18. The local suite is [`stedi-sandbox-contract.test.ts`](../../../packages/x12-837-client/src/clearinghouse/stedi-sandbox-contract.test.ts), and the only supported vendor command is `bun run test:stedi:contract`. The ordinary `bun run test` suite and CI do not provide the gates and do not contact Stedi.
 
-## Keep the environments distinct
+## Modes and credential requirements
 
-| Stedi mode/account | Documented use | Allowed for this contract test? |
+| Stedi mode/account | Use | Contract test |
 |---|---|---|
-| Free Sandbox account | Mock eligibility and portal exploration; it cannot submit test claims. | **No.** It may return `ACCOUNT_NOT_PROVISIONED` for claim submission. |
-| Production account + **Test-mode API key** | Submit synthetic test claims; test data is processed in Stedi Test mode and not sent to payers. | **Yes**, only after the account owner confirms the key is a Test-mode key and Stedi has confirmed account eligibility. |
-| Production account + Production-mode API key | Real payer transactions. | **Never** for this run. Do not provide this key to the test. |
-| OAuth Integrated Account | OAuth app calls run against a real Production account; the OAuth-app setup guide says OAuth apps cannot use Test mode. | **No.** Do not submit claims or use OAuth credentials for this contract test. OAuth onboarding needs a separately approved, read-only plan. |
+| Free Sandbox account/key | Mock eligibility and portal exploration; not provisioned to submit test claims | Not sufficient |
+| Production Stedi account + Test-mode API key | Synthetic Test-mode claims, not routed to payers, subject to the account's enabled features | Required, after Stedi confirms account eligibility |
+| Production-mode API key | Can send real payer transactions | Prohibited |
+| OAuth Integrated Account token | OAuth requests use a Production account; current OAuth setup does not provide this Test-mode contract path | Prohibited |
 
-Current public references: [test claims workflow](https://www.stedi.com/docs/healthcare/test-claims-workflow),
-[test mode](https://www.stedi.com/docs/healthcare/test-mode), [OAuth app setup](https://www.stedi.com/docs/healthcare/oauth-apps-setup),
-and [Integrated Account overview](https://www.stedi.com/docs/healthcare/integrated-account-overview). These describe published
-behavior, not ChartWarden-specific provisioning or commercial approval. See the ready-to-send Q14/Q32 for written
-confirmation requests.
+Public docs explain these product modes; they do not prove that ChartWarden's account is enabled or that its hospice workflows are supported. Q14 written confirmation and a vendor authorization reference are prerequisites.
 
-## Before running
+## Human authorization and environment isolation
 
-1. Obtain written confirmation for Q14 and file it in
-   [`STEDI_QUESTIONS_20261008.md`](./STEDI_QUESTIONS_20261008.md). The public docs say a Production **account** uses a
-   Test-mode API key for claims; they do not make a Production-mode API key safe for testing. A key/usage mismatch is
-   refused according to Stedi's docs, but do not use that as a safety mechanism.
-2. Use only a Test-mode API key created in the authorized Stedi account. The test cannot inspect key mode itself; the
-   operator must attest that the key is test mode. If account type or key mode is uncertain, stop.
-3. Use repository synthetic fixtures only. Do not add or send real patient/provider identifiers, PHI, PII, or real payer
-   transactions. Stedi explicitly says not to submit PHI/PII in test claims.
-4. Keep the platform binding untouched: `CLEARINGHOUSE_VENDOR` must be unset or `in_memory` in the environment. The
-   test constructs its own `StediTransport`; do not run it from a process configured for live sending.
-5. Never paste the key into a file, shell history, issue, PR, logs, or results. Supply it only through a private
-   environment variable for the one test command.
-6. The current contract test submits a synthetic claim and NOE and checks local replay/refusal behavior. It does **not**
-   retrieve/assert a 277CA or 835, test an OAuth install, or prove payer/MAC acceptance. Test Payer 835 generation is a
-   separate workflow: Stedi's current guide says a provider must be enrolled with the Stedi Test Payer for 835 Claim
-   payment, with that enrollment created outside Test mode; afterward use Test credentials. Confirm the synthetic
-   provider/enrollment process with Stedi before setting it up. That enrollment is a test fixture workflow, not Medicare
-   payer enrollment.
+Before execution, an authorized account owner must independently open the Stedi account console (or another vendor-controlled credential inventory) and verify that the selected credential is a **Test-mode API key created under an authorized Production Stedi account**. Record the account/reference and confirmation in an approved ticket or vendor correspondence. Do not copy the key into evidence. If key type, account type, authorization or written Q14 confirmation is uncertain, stop.
 
-## Run
+`STEDI_CONTRACT_KEY_IS_TEST=yes` and `STEDI_CONTRACT_OPERATOR_AUTHORIZED=yes` are human attestations only. The test cannot inspect key mode; there is no cryptographic or API-based credential-mode check in this workflow. The guard does not rely on key format, a key prefix, `ISA15`, or Stedi rejecting an unsafe request. Independent verification is the safety control.
+
+The runner fails closed unless all gates are present:
+
+- `STEDI_TEST_API_KEY`: the account owner's Test-mode API key, supplied only by an approved ephemeral secret mechanism.
+- `STEDI_CONTRACT_CONFIRM=synthetic-only`: operator confirms approved synthetic fixtures only.
+- `STEDI_CONTRACT_KEY_IS_TEST=yes`: operator attests key mode was verified in the vendor-controlled console.
+- `STEDI_CONTRACT_OPERATOR_AUTHORIZED=yes`: operator explicitly authorizes this run.
+- `STEDI_CONTRACT_AUTHORIZATION_REF`: a non-sensitive ticket reference such as `OPS-727`.
+- `STEDI_CONTRACT_VENDOR_CONFIRMATION_REF`: a non-sensitive vendor confirmation reference such as `VENDOR-727`.
+- `STEDI_CONTRACT_RESULTS_FILE`: a protected path for the sanitized JSON artifact.
+- `CLEARINGHOUSE_VENDOR` must be unset or `in_memory`; `STEDI_API_KEY` must be unset; `NODE_ENV=production` is refused.
+
+The test creates a standalone `StediTransport`; it does not bind the platform sender, use an OAuth token, or change tenant configuration. Its fetch wrapper allows only Stedi's two documented institutional submission paths, POST requests, redirects disabled, and Test-marked X12/JSON. Never run from a production process or with a real platform binding present. Keep the Test key out of command history, `.env`, files, logs and the results path.
+
+Run only after the gates above are independently satisfied. Inject the key and other values through the approved secret manager or protected ephemeral shell environment; do not paste a literal key into a command:
 
 ```bash
-STEDI_TEST_API_KEY='<Stedi Test-mode key from an authorized Production account>' \
-STEDI_CONTRACT_CONFIRM=synthetic-only \
-STEDI_CONTRACT_KEY_IS_TEST=yes \
-STEDI_CONTRACT_RESULTS_FILE=/tmp/stedi-contract-results.json \
-bunx vitest run packages/x12-837-client/src/clearinghouse/stedi-sandbox-contract.test.ts
+bun run test:stedi:contract
 ```
 
-The test allocates a fresh control number and idempotency keys from the clock. That avoids local collisions, but it does
-not guarantee a vendor-side outcome. Do not run this command with a Production-mode key or OAuth token.
+The runner writes a sanitized artifact. If gates are missing it writes `NOT_RUN`, makes no request and exits nonzero. For a vendor run it records Vitest's actual exit code, the overall qualification state and per-scenario outcomes. A successful process is not qualification unless the artifact's `overallQualification` is `PASS`.
 
-## Existing test steps and safe interpretation
+## What is tested
 
-| Step | Current guard / expected observation | Interpretation |
-|---|---|---|
-| Submit synthetic claim (`usage: test`, X12 `ISA15=T`) | Success receipt or a known degraded result | `ACCOUNT_NOT_PROVISIONED` indicates the account/key path is not enabled; do not treat it as a successful claim test. |
-| Identical resubmission | Local attempt store replays; no second request | Verifies local idempotency only, not Stedi's idempotency response. |
-| Same idempotency key, changed body | Local conflict; no request | A failure to refuse is a stop condition. |
-| Submit synthetic NOE 81A (`BHT06=RP`) | Success receipt or known degraded result | Edit/transport observation only; not evidence that a MAC received or accepted a notice. |
-| Production-marked X12 (`ISA15=P`) in test context | Refused locally before request | Any outbound request is a critical defect; stop. |
-| Replacement/frequency 7 | Refused locally without request | Q17/Q28 remain open; this is not a MAC policy determination. |
-| Key leak check | Key is absent from result | Any leak is a critical defect; revoke the key and report. |
+| Scenario | Network? | Evidence meaning |
+|---|---:|---|
+| Synthetic raw-X12 837I claim (`ISA15=T`, matching `ISA13`) | Yes | Stedi Test-mode submission response only |
+| Synthetic JSON 837I claim | Yes | Uses `CLAIM_INPUT`, `buildStediClaimJson`, `build837iClaim` and the JSON/X12 agreement check used by M23's Stedi route; verifies Test indicator, billing NPI and patient control number locally before submit |
+| Synthetic NOE 81A, raw X12 (`BHT06=RP`) | Yes | Stedi Test-mode submission response only; no MAC filing or acceptance claim |
+| Identical JSON replay, changed-body same-key conflict and control-number reuse | No second request | ChartWarden's in-memory attempt-store behavior only; not Stedi idempotency behavior |
+| Production-marked JSON, provider NPI mismatch and malformed X12 | No | Local refusal before the fetch boundary |
+| Replacement/frequency 7 or void/frequency 8 | No | Continues to fail closed while Q17/Q28 are unanswered |
+| NOTR 81B | No vendor call in this run | Covered by local transport tests/fixture review only; vendor behavior is not qualified |
 
-Stedi's docs say test claims to any payer return a test 277CA without payer routing. The current test itself does not
-retrieve that response. A separate Test Payer test can produce a test 277CA and 835 after its required Test Payer
-enrollment; it is outside this contract test and should be captured separately.
+Local mapper tests remain separate and run without credentials. The contract test records vendor observations only for operations whose fetch call occurred. A locally passing refusal is labeled `evidence: local` and cannot satisfy a required vendor scenario.
 
-## After the run
+## Outcome states
 
-1. Copy the PHI-free output into a dated copy of
-   [`STEDI_SANDBOX_RESULTS_TEMPLATE_20261025.md`](./STEDI_SANDBOX_RESULTS_TEMPLATE_20261025.md). Do not include keys,
-   response bodies, PHI/PII, or raw claim payloads.
-2. Record only observed results in the template and the
-   [`STEDI_TRANSPORT_CONTRACT_20261011.md`](./STEDI_TRANSPORT_CONTRACT_20261011.md), with date and evidence reference.
-   Keep undocumented or unobserved behavior marked unknown; do not change adapter behavior from a single run without
-   reviewing the written vendor answer.
-3. If any result suggests production routing, stop, revoke the key, notify the security owner, and preserve only
-   sanitized evidence.
+- **PASS:** each mandatory vendor scenario was sent through the authorized Test-mode key, Stedi returned a successful response with a real extracted vendor receipt identifier, local safety assertions passed, and no required scenario is missing.
+- **FAIL:** a safety assertion failed, Stedi contradicted the expected contract, a required operation returned an unexpected refusal, or a successful response lacked a usable receipt identifier.
+- **BLOCKED:** Stedi reports the account is not provisioned, rejects credentials, is unavailable, times out, or gives an ambiguous outcome. Blocked is not qualification and must not be converted to PASS.
+- **NOT_RUN:** prerequisites were missing, the suite was skipped, or a required vendor scenario was not executed.
 
-## What this cannot prove
+Vitest's exit status and vendor qualification are recorded independently. The wrapper exits nonzero for `FAIL`, `BLOCKED` or `NOT_RUN`; use the JSON artifact's `process` and `overallQualification` fields together. No response body, claim payload, API key, or free-form vendor error is written to the artifact. It contains only closed reason codes, booleans, scenario names and non-sensitive authorization references.
 
-This contract test cannot establish real payer/MAC acceptance, Medicare enrollment, hospice-specific edits or NOE
-timeliness, production 277CA/835 behavior, OAuth account isolation, legal approval, or compliance with CGS, NGS, or
-Palmetto companion guides. Synthetic results are not MAC certification.
+## What this does not prove
+
+The test does not retrieve a 277CA or 835, prove vendor-side idempotency, establish payer/MAC routing, Medicare enrollment, hospice-specific edits, NOE timeliness, paid-claim correction rules, tenant account isolation, OAuth approval, or MAC acceptance. Test-mode receipts are not payer certification. Test Payer ERA setup is a separate vendor-authorized workflow; do not include it here unless separately approved and documented.
+
+## Before declaring #727 complete
+
+Attach the sanitized artifact, verify all mandatory vendor scenarios are `PASS`, preserve the Vitest exit code, and file Stedi's written Q14, Q16, Q17/Q28, Q27/Q32 and Q33 answers with references. Keep outstanding payer/MAC, enrollment and legal approvals explicit. A `BLOCKED` or `NOT_RUN` artifact keeps #727 open.
