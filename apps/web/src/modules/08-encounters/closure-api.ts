@@ -58,7 +58,10 @@ const REFUSAL_COPY: Readonly<Record<string, string>> = {
   // so the sentence does not say which.
   NOTE_CLOSURE_SUBJECT_NOT_BLOCKED:
     "There is nothing for you to lift for this clinician right now.",
-  NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE: "That clinician's note is outside your sites.",
+  // Only a REVOKE can answer this now (a grant that has nothing to lift for the caller is the 409 above): a site-scoped supervisor
+  // trying to revoke an override another supervisor granted.
+  NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE:
+    "Only the supervisor who granted this override, or one who covers every site, can revoke it.",
 };
 
 /** A refusal that means the board's picture of who is blocked is out of date, so the board re-reads. */

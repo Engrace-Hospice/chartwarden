@@ -731,14 +731,18 @@ describe("what a refused grant says", () => {
     await waitFor(() => expect(boardReads()).toBe(2));
   });
 
-  it("says a note outside the supervisor's sites is out of their reach", async () => {
-    mount({ grant: refusal(403, "NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE") });
+  it("says who may revoke an override when a site-scoped supervisor tries to revoke another's (the one place this refusal is still sent)", async () => {
+    mount({ revoke: refusal(403, "NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE") });
     const drawer = await openDrawer();
     typeReason(drawer, LONG_REASON);
     submitGrant(drawer);
+    fireEvent.click(await within(drawer).findByRole("button", { name: "Revoke override" }));
     expect(
-      await within(drawer).findByText("That clinician's note is outside your sites."),
+      await within(drawer).findByText(
+        "Only the supervisor who granted this override, or one who covers every site, can revoke it.",
+      ),
     ).toBeTruthy();
+    expect(within(drawer).queryByText("That clinician's note is outside your sites.")).toBeNull();
   });
 
   it("puts an identifier-shaped reason's refusal under the reason box in our own words", async () => {
