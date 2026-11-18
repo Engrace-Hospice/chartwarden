@@ -1,9 +1,9 @@
 // apps/web/src/modules/21-supplies — one write's `busy` flag, held for the WHOLE call and released on every path.
 //
-// `FormDrawer` refuses Cancel / Close / Escape while `busy` and marks the page inert, so a `busy` that never comes
-// back strands the drawer (and every Save) until a reload. `client.POST` REJECTS on a network failure (there is no
-// error middleware), so the release lives in a `finally` and a rejection is turned into a message the screen shows like
-// any server refusal.
+// `FormDrawer` / `FormModal` refuse Cancel / Close / Escape while `busy` (the drawer also marks the page inert), so a
+// `busy` that never comes back strands the form (and every Save) until a reload. `client.POST` REJECTS on a network
+// failure (there is no error middleware), so the release lives in a `finally` and a rejection is turned into a message
+// the screen shows like any server refusal.
 import { useCallback, useState } from "react";
 import { errorMessage } from "./supplies-api";
 

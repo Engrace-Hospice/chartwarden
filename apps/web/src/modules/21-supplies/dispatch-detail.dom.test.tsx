@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-// Marking a comfort kit deployed and opening its return obligation open as a drawer in the detail rail beside the
-// dispatch (the redesign's pattern), so the manifest and the chain of custody stay in view while the act is recorded.
-// Cancel closes the drawer and writes nothing; each write stays disabled until its own rule is met. While a write is in
-// flight the drawer cannot be dismissed and the page beside it is inert; a refused or rejected write is announced in the
-// drawer, which stays dismissible.
+// Marking a comfort kit deployed and opening its return obligation are ceremonies (DESIGN.md §7.4): each is a
+// focus-trapped modal over the dispatch, not a drawer beside it. Cancel closes it and writes nothing; the scrim never
+// dismisses it; each write stays disabled until its own rule is met. While a write is in flight the modal cannot be
+// dismissed (Cancel, Escape); a refused or rejected write is announced in the modal, which stays dismissible.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -75,52 +74,64 @@ function mount(
   return { post };
 }
 
-const open = async (button: string, drawerName: string): Promise<HTMLElement> => {
+const open = async (button: string, dialogName: string): Promise<HTMLElement> => {
   fireEvent.click(await screen.findByRole("button", { name: button }));
-  return screen.findByRole("complementary", { name: drawerName });
+  return screen.findByRole("dialog", { name: dialogName });
 };
+const gone = (dialogName: string) =>
+  waitFor(() => expect(screen.queryByRole("dialog", { name: dialogName })).toBeNull());
 
 describe("comfort-kit dispatch — deploy and return", () => {
-  it("opens the deployment as a drawer beside the dispatch, not a dialog over it", async () => {
+  it("opens the deployment as a modal over the dispatch, not a drawer beside it", async () => {
     mount("dispatched");
-    const drawer = await open("Mark deployed at patient", "Mark deployed at patient");
-    expect(within(drawer).getByLabelText("Deployed at")).toBeTruthy();
-    expect(screen.queryByRole("dialog")).toBeNull();
-    // The dispatch's actions stay on the page while the act is recorded.
-    expect(screen.getByRole("heading", { name: "Actions" })).toBeTruthy();
+    const dialog = await open("Mark deployed at patient", "Mark deployed at patient");
+    expect(within(dialog).getByLabelText("Deployed at")).toBeTruthy();
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 
   it("closes from Cancel without writing anything", async () => {
     const { post } = mount("dispatched");
-    const drawer = await open("Mark deployed at patient", "Mark deployed at patient");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Mark deployed at patient" })).toBeNull(),
-    );
+    const dialog = await open("Mark deployed at patient", "Mark deployed at patient");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await gone("Mark deployed at patient");
     expect(post).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["dispatched", "Mark deployed at patient", "Mark deployed at patient"],
+    ["deployed_at_patient", "Initiate return", "Open the return obligation"],
+  ] as const)(
+    "does not close the %s modal from a click on the scrim",
+    async (status, opener, name) => {
+      const { post } = mount(status);
+      const dialog = await open(opener, name);
+      const scrim = document.querySelector(".wx-modal-scrim");
+      expect(scrim).toBeTruthy();
+      fireEvent.click(scrim as Element);
+      expect(screen.getByRole("dialog", { name })).toBe(dialog);
+      expect(post).not.toHaveBeenCalled();
+    },
+  );
+
   it("records the deployment against the dispatch's version and closes", async () => {
     const { post } = mount("dispatched");
-    const drawer = await open("Mark deployed at patient", "Mark deployed at patient");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Mark deployed" }));
+    const dialog = await open("Mark deployed at patient", "Mark deployed at patient");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark deployed" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     const call = post.mock.calls[0] as unknown as [string, { headers: Record<string, string> }];
     expect(call[0]).toBe("/api/v1/supplies/comfort-kit-dispatches/{dispatchId}/deploy-at-patient");
     expect(call[1].headers["If-Match"]).toBeTruthy();
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Mark deployed at patient" })).toBeNull(),
-    );
+    await gone("Mark deployed at patient");
   });
 
   it("keeps Open return disabled until a reason is given, then opens it and closes", async () => {
     const { post } = mount("deployed_at_patient");
-    const drawer = await open("Initiate return", "Open the return obligation");
-    const openReturn = within(drawer).getByRole("button", {
+    const dialog = await open("Initiate return", "Open the return obligation");
+    const openReturn = within(dialog).getByRole("button", {
       name: "Open return",
     }) as HTMLButtonElement;
     expect(openReturn.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("Return reason"), {
+    fireEvent.change(within(dialog).getByLabelText("Return reason"), {
       target: { value: "Patient discharged; kit no longer needed." },
     });
     expect(openReturn.disabled).toBe(false);
@@ -131,14 +142,10 @@ describe("comfort-kit dispatch — deploy and return", () => {
     expect(call[1].body).toMatchObject({
       returnReason: "Patient discharged; kit no longer needed.",
     });
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("complementary", { name: "Open the return obligation" }),
-      ).toBeNull(),
-    );
+    await gone("Open the return obligation");
   });
 
-  it("starts the deployment time at the moment the drawer is opened, every time", async () => {
+  it("starts the deployment time at the moment the modal is opened, every time", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(new Date(2026, 10, 18, 9, 0));
@@ -148,11 +155,7 @@ describe("comfort-kit dispatch — deploy and return", () => {
       expect(field().value).toBe("2026-11-18T09:00");
       fireEvent.change(field(), { target: { value: "2026-11-01T01:00" } });
       fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("complementary", { name: "Mark deployed at patient" }),
-        ).toBeNull(),
-      );
+      await gone("Mark deployed at patient");
       vi.setSystemTime(new Date(2026, 10, 18, 11, 30));
       const second = await open("Mark deployed at patient", "Mark deployed at patient");
       expect((within(second).getByLabelText("Deployed at") as HTMLInputElement).value).toBe(
@@ -163,60 +166,63 @@ describe("comfort-kit dispatch — deploy and return", () => {
     }
   });
 
-  it("holds the drawer and everything beside it while a write is in flight", async () => {
-    let release: () => void = () => {};
-    const { post } = mount(
-      "dispatched",
-      () =>
-        new Promise((resolve) => {
-          release = () => resolve(ok({}));
-        }),
-    );
-    const drawer = await open("Mark deployed at patient", "Mark deployed at patient");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Mark deployed" }));
-    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
-    expect(
-      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(
-      (within(drawer).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    fireEvent.keyDown(drawer, { key: "Escape" });
-    expect(screen.getByRole("complementary", { name: "Mark deployed at patient" })).toBe(drawer);
-    // The page's own openers cannot swap the drawer under the write.
-    const opener = screen.getByRole("button", { name: "Initiate return", hidden: true });
-    expect(opener.closest("[inert]")).not.toBeNull();
-    release();
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Mark deployed at patient" })).toBeNull(),
-    );
-  });
+  it.each([
+    ["dispatched", "Mark deployed at patient", "Mark deployed at patient", "Mark deployed"],
+    ["deployed_at_patient", "Initiate return", "Open the return obligation", "Open return"],
+  ] as const)(
+    "refuses Cancel, Escape and the scrim while the %s write is in flight",
+    async (status, opener, name, save) => {
+      let release: () => void = () => {};
+      const { post } = mount(
+        status,
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(ok({}));
+          }),
+      );
+      const dialog = await open(opener, name);
+      if (status === "deployed_at_patient") {
+        fireEvent.change(within(dialog).getByLabelText("Return reason"), {
+          target: { value: "Patient discharged; kit no longer needed." },
+        });
+      }
+      fireEvent.click(within(dialog).getByRole("button", { name: save }));
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      expect(
+        (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+      expect(screen.getByRole("dialog", { name })).toBe(dialog);
+      release();
+      await gone(name);
+    },
+  );
 
   it.each([
     ["dispatched", "Mark deployed at patient", "Mark deployed at patient", "Mark deployed"],
     ["deployed_at_patient", "Initiate return", "Open the return obligation", "Open return"],
   ] as const)(
-    "announces a rejected request in the %s drawer, which stays dismissible",
-    async (status, opener, drawerName, save) => {
+    "announces a rejected request in the %s modal, which stays dismissible",
+    async (status, opener, name, save) => {
       mount(status, async () => {
         throw new TypeError("Failed to fetch");
       });
-      const drawer = await open(opener, drawerName);
+      const dialog = await open(opener, name);
       if (status === "deployed_at_patient") {
-        fireEvent.change(within(drawer).getByLabelText("Return reason"), {
+        fireEvent.change(within(dialog).getByLabelText("Return reason"), {
           target: { value: "Patient discharged; kit no longer needed." },
         });
       }
-      fireEvent.click(within(drawer).getByRole("button", { name: save }));
-      const alert = await within(drawer).findByRole("alert");
+      fireEvent.click(within(dialog).getByRole("button", { name: save }));
+      const alert = await within(dialog).findByRole("alert");
       expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
-      const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+      const cancel = within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
       expect(cancel.disabled).toBe(false);
       fireEvent.click(cancel);
-      await waitFor(() =>
-        expect(screen.queryByRole("complementary", { name: drawerName })).toBeNull(),
-      );
+      await gone(name);
       expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByRole("complementary")).toBeNull();
     },
   );
 
@@ -230,8 +236,8 @@ describe("comfort-kit dispatch — deploy and return", () => {
           ? Promise.resolve(ok(dispatchIn("dispatched")))
           : Promise.reject(new TypeError("offline")),
     );
-    const drawer = await open("Mark deployed at patient", "Mark deployed at patient");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Mark deployed" }));
+    const dialog = await open("Mark deployed at patient", "Mark deployed at patient");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark deployed" }));
     expect(await screen.findByText("Unavailable")).toBeTruthy();
     expect(screen.getByText("This comfort-kit dispatch could not be loaded.")).toBeTruthy();
   });

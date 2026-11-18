@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-// Assigning a retriever and declaring a kit unreturnable open as a drawer in the detail rail beside the return (the
-// redesign's pattern), so the custody trail and the count worksheet stay in view. Cancel closes the drawer and writes
-// nothing; each write stays disabled until its own rule is met; one of the two is open at a time. While a write is in
-// flight the drawer cannot be dismissed and the page beside it is inert; a refused or rejected write is announced in the
-// drawer, which stays dismissible. A reload after a step keeps the count worksheet's typed quantities and any open drawer.
+// Assigning a retriever is a routine recording, so it opens as a drawer in the detail rail beside the return (the
+// redesign's pattern), keeping the custody trail and the count worksheet in view; declaring a kit unreturnable is an
+// irreversible, attested write-off (DESIGN.md §7.4), so it is a focus-trapped modal over the page that the scrim never
+// dismisses. Cancel closes either and writes nothing; each write stays disabled until its own rule is met; one of the two
+// is open at a time. While a write is in flight the drawer cannot be dismissed and the page beside it is inert, and the
+// modal cannot be dismissed (Cancel, Escape); a refused or rejected write is announced in the drawer or modal, which
+// stays dismissible. A reload after a step keeps the count worksheet's typed quantities and any open drawer.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -110,6 +112,14 @@ const open = async (button: string, drawerName: string): Promise<HTMLElement> =>
   return screen.findByRole("complementary", { name: drawerName });
 };
 
+const openModal = async (button: string, name: string): Promise<HTMLElement> => {
+  fireEvent.click(await screen.findByRole("button", { name: button }));
+  return screen.findByRole("dialog", { name });
+};
+const WRITE_OFF = "Declare this kit unreturnable";
+const modalGone = (name: string) =>
+  waitFor(() => expect(screen.queryByRole("dialog", { name })).toBeNull());
+
 describe("comfort-kit return — assign and declare unreturnable", () => {
   it("opens the retriever form as a drawer beside the return, not a dialog over it", async () => {
     mount();
@@ -157,14 +167,31 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
     );
   });
 
+  it("opens the write-off as a modal over the return, not a drawer beside it", async () => {
+    mount();
+    const dialog = await openModal("Declare unreturnable…", WRITE_OFF);
+    expect(within(dialog).getByLabelText("Attested reason")).toBeTruthy();
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("closes the write-off from Cancel without writing, and not from the scrim", async () => {
+    const { post } = mount();
+    const dialog = await openModal("Declare unreturnable…", WRITE_OFF);
+    fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+    expect(screen.getByRole("dialog", { name: WRITE_OFF })).toBe(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await modalGone(WRITE_OFF);
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("keeps the write-off disabled until a reason is attested", async () => {
     const { post } = mount();
-    const drawer = await open("Declare unreturnable…", "Declare this kit unreturnable");
-    const declare = within(drawer).getByRole("button", {
+    const dialog = await openModal("Declare unreturnable…", WRITE_OFF);
+    const declare = within(dialog).getByRole("button", {
       name: "Declare unreturnable",
     }) as HTMLButtonElement;
     expect(declare.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("Attested reason"), {
+    fireEvent.change(within(dialog).getByLabelText("Attested reason"), {
       target: { value: "The family could not be reached after three attempts." },
     });
     expect(declare.disabled).toBe(false);
@@ -173,26 +200,15 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
     expect((post.mock.calls[0] as unknown as [string])[0]).toBe(
       "/api/v1/supplies/comfort-kit-returns/{returnId}/declare-unreturnable",
     );
+    await modalGone(WRITE_OFF);
   });
 
-  it("keeps one form open at a time", async () => {
+  it("keeps one step open at a time: the write-off modal replaces the retriever drawer", async () => {
     mount();
     await open("Assign retriever", "Assign the retrieving staff member");
     fireEvent.click(screen.getByRole("button", { name: "Declare unreturnable…" }));
-    expect(
-      await screen.findByRole("complementary", { name: "Declare this kit unreturnable" }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("complementary", { name: "Assign the retrieving staff member" }),
-    ).toBeNull();
-  });
-
-  it("names the page's openers apart from the open drawer's own buttons", async () => {
-    mount();
-    const drawer = await open("Declare unreturnable…", "Declare this kit unreturnable");
-    expect(screen.getAllByRole("button", { name: "Declare unreturnable" })).toEqual([
-      within(drawer).getByRole("button", { name: "Declare unreturnable" }),
-    ]);
+    expect(await screen.findByRole("dialog", { name: WRITE_OFF })).toBeTruthy();
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 
   it("holds the drawer and everything beside it while a write is in flight", async () => {
@@ -230,41 +246,74 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
     );
   });
 
-  it.each([
-    [
-      "Assign retriever",
-      "Assign the retrieving staff member",
-      "Retrieving membership id",
-      "Assign",
-    ],
-    [
-      "Declare unreturnable…",
-      "Declare this kit unreturnable",
-      "Attested reason",
-      "Declare unreturnable",
-    ],
-  ] as const)(
-    "announces a rejected %s request in the drawer, which stays dismissible",
-    async (opener, drawerName, field, save) => {
-      mount({
-        onPost: async () => {
-          throw new TypeError("Failed to fetch");
-        },
-      });
-      const drawer = await open(opener, drawerName);
-      fireEvent.change(within(drawer).getByLabelText(field), { target: { value: "text" } });
-      fireEvent.click(within(drawer).getByRole("button", { name: save }));
-      const alert = await within(drawer).findByRole("alert");
-      expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
-      const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
-      expect(cancel.disabled).toBe(false);
-      fireEvent.click(cancel);
-      await waitFor(() =>
-        expect(screen.queryByRole("complementary", { name: drawerName })).toBeNull(),
-      );
-      expect(screen.queryByRole("alert")).toBeNull();
-    },
-  );
+  it("announces a rejected Assign retriever request in the drawer, which stays dismissible", async () => {
+    mount({
+      onPost: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await open("Assign retriever", "Assign the retrieving staff member");
+    fireEvent.change(within(drawer).getByLabelText("Retrieving membership id"), {
+      target: { value: "m-okafor" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign" }));
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
+    const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+    expect(cancel.disabled).toBe(false);
+    fireEvent.click(cancel);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "Assign the retrieving staff member" }),
+      ).toBeNull(),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("refuses Cancel, Escape and the scrim while the write-off is in flight", async () => {
+    let release: () => void = () => {};
+    const { post } = mount({
+      onPost: () =>
+        new Promise((resolve) => {
+          release = () => resolve(ok({}));
+        }),
+    });
+    const dialog = await openModal("Declare unreturnable…", WRITE_OFF);
+    fireEvent.change(within(dialog).getByLabelText("Attested reason"), {
+      target: { value: "The family could not be reached after three attempts." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Declare unreturnable" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(
+      (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+    expect(screen.getByRole("dialog", { name: WRITE_OFF })).toBe(dialog);
+    release();
+    await modalGone(WRITE_OFF);
+  });
+
+  it("announces a rejected write-off in the modal, which stays dismissible", async () => {
+    mount({
+      onPost: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const dialog = await openModal("Declare unreturnable…", WRITE_OFF);
+    fireEvent.change(within(dialog).getByLabelText("Attested reason"), {
+      target: { value: "The family could not be reached after three attempts." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Declare unreturnable" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+    expect(cancel.disabled).toBe(false);
+    fireEvent.click(cancel);
+    await modalGone(WRITE_OFF);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
 
   it("keeps the typed counts when a step reloads the return", async () => {
     const { get } = mount({ contents: [line] });
@@ -452,5 +501,47 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
       drawer,
     );
     expect(assign.disabled).toBe(true);
+  });
+
+  it("keeps the write-off's Save disabled once the return it was opened on is reconciled", async () => {
+    let release: () => void = () => {};
+    let reconciled = false;
+    const { post, get } = mount({
+      contents: [line],
+      onPost: () =>
+        new Promise((resolve) => {
+          release = () => {
+            reconciled = true;
+            resolve(ok({}));
+          };
+        }),
+      onGet: (path, _id, respond) =>
+        Promise.resolve(
+          reconciled && path === "/api/v1/supplies/comfort-kit-returns/{returnId}"
+            ? ok({ ...returnRow, state: "reconciled" })
+            : respond(path),
+        ),
+    });
+    fireEvent.change(await screen.findByLabelText("Quantity returned for Morphine oral solution"), {
+      target: { value: "30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reconcile" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    // The opener is still live while the reconcile is in flight.
+    const dialog = await openModal("Declare unreturnable…", WRITE_OFF);
+    fireEvent.change(within(dialog).getByLabelText("Attested reason"), {
+      target: { value: "The family could not be reached after three attempts." },
+    });
+    const declare = within(dialog).getByRole("button", {
+      name: "Declare unreturnable",
+    }) as HTMLButtonElement;
+    release();
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(4));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // The reload shows a reconciled return; the open modal cannot write against it.
+    expect(screen.getByRole("dialog", { name: WRITE_OFF })).toBe(dialog);
+    expect(declare.disabled).toBe(true);
   });
 });

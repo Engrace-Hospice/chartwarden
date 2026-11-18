@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-// A supply request's lifecycle steps (assign a vendor, record the order, the shipment, the delivery, the receipt, cancel,
-// start a kit return) open as a drawer in the detail rail beside the request (the redesign's pattern), so the routing
-// trace and the timeline stay in view while the step is recorded. Cancel closes the drawer and writes nothing; each write
-// stays disabled until its own rule is met; one step is open at a time, and a reason typed for one step never follows
-// the responder into another. While a write is in flight the drawer cannot be dismissed and the page beside it is inert;
-// a refused or rejected write is announced in the drawer, which stays dismissible.
+// A supply request's routine recordings (assign a vendor, record the order, record the shipment) open as a drawer in the
+// detail rail beside the request (the redesign's pattern), so the routing trace and the timeline stay in view. The
+// attestation of delivery, the receipt, the cancellation and the kit return are ceremonies (DESIGN.md §7.4): focus-trapped
+// modals over the page that the scrim never dismisses. Cancel closes either and writes nothing; each write stays disabled
+// until its own rule is met; one step is open at a time, and a reason typed for one step never follows the responder into
+// another. While a write is in flight the drawer cannot be dismissed and the page beside it is inert, and the modal cannot
+// be dismissed (Cancel, Escape); a refused or rejected write is announced in the drawer or modal, which stays dismissible.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -109,6 +110,12 @@ const open = async (button: string, drawerName: string): Promise<HTMLElement> =>
   fireEvent.click(await screen.findByRole("button", { name: button }));
   return screen.findByRole("complementary", { name: drawerName });
 };
+const openModal = async (button: string, name: string): Promise<HTMLElement> => {
+  fireEvent.click(await screen.findByRole("button", { name: button }));
+  return screen.findByRole("dialog", { name });
+};
+const modalGone = (name: string) =>
+  waitFor(() => expect(screen.queryByRole("dialog", { name })).toBeNull());
 const posted = (post: ReturnType<typeof vi.fn>, call = 0) =>
   post.mock.calls[call] as unknown as [
     string,
@@ -189,59 +196,57 @@ describe("supply request — lifecycle steps", () => {
 
   it("attests a delivery as the signed-in responder and closes", async () => {
     const { post } = mount("in_transit");
-    const drawer = await open("Record delivery", "Attest delivery");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Attest delivery" }));
+    const dialog = await openModal("Record delivery", "Attest delivery");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Attest delivery" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(posted(post)[0]).toBe(
       "/api/v1/supplies/supply-requests/{supplyRequestId}/mark-delivered",
     );
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Attest delivery" })).toBeNull(),
-    );
+    await modalGone("Attest delivery");
   });
 
   it("confirms receipt and closes", async () => {
     const { post } = mount("delivered");
-    const drawer = await open("Confirm receipt…", "Confirm receipt");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Confirm receipt" }));
+    const dialog = await openModal("Confirm receipt…", "Confirm receipt");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm receipt" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(posted(post)[0]).toBe(
       "/api/v1/supplies/supply-requests/{supplyRequestId}/confirm-received",
     );
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Confirm receipt" })).toBeNull(),
-    );
+    await modalGone("Confirm receipt");
   });
 
   it("keeps Cancel request disabled until a reason is given", async () => {
     const { post } = mount("requested");
-    const drawer = await open("Cancel this request…", "Cancel this request");
-    const cancel = within(drawer).getByRole("button", {
+    const dialog = await openModal("Cancel this request…", "Cancel this request");
+    const cancel = within(dialog).getByRole("button", {
       name: "Cancel request",
     }) as HTMLButtonElement;
     expect(cancel.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("Reason"), {
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
       target: { value: "The family declined the equipment." },
     });
     expect(cancel.disabled).toBe(false);
     fireEvent.click(cancel);
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(posted(post)[0]).toBe("/api/v1/supplies/supply-requests/{supplyRequestId}/cancel");
+    await modalGone("Cancel this request");
   });
 
   it("opens the kit return from a delivered kit, with a reason", async () => {
     const { post } = mount("delivered", "comfort_kit_deploy");
-    const drawer = await open("Initiate kit return", "Initiate the kit return");
-    const start = within(drawer).getByRole("button", {
+    const dialog = await openModal("Initiate kit return", "Initiate the kit return");
+    const start = within(dialog).getByRole("button", {
       name: "Initiate return",
     }) as HTMLButtonElement;
     expect(start.disabled).toBe(true);
-    fireEvent.change(within(drawer).getByLabelText("Reason"), {
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
       target: { value: "Patient discharged to another agency." },
     });
     fireEvent.click(start);
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(posted(post)[0]).toBe("/api/v1/supplies/supply-requests/{supplyRequestId}/return");
+    await modalGone("Initiate the kit return");
   });
 
   it("keeps one step open at a time and never carries a typed reason into the next", async () => {
@@ -251,11 +256,26 @@ describe("supply request — lifecycle steps", () => {
       target: { value: "Vendor of record is closed this week." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel this request…" }));
-    const second = await screen.findByRole("complementary", { name: "Cancel this request" });
-    expect(
-      screen.queryByRole("complementary", { name: "Assign or override the vendor" }),
-    ).toBeNull();
+    const second = await screen.findByRole("dialog", { name: "Cancel this request" });
+    // The modal ceremony replaces the drawer step: the frame closes with it.
+    expect(screen.queryByRole("complementary")).toBeNull();
     expect((within(second).getByLabelText("Reason") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("never carries a reason typed in a modal ceremony into a drawer step", async () => {
+    mount("requested");
+    const cancel = await openModal("Cancel this request…", "Cancel this request");
+    fireEvent.change(within(cancel).getByLabelText("Reason"), {
+      target: { value: "The family declined the equipment." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Assign / override vendor" }));
+    const drawer = await screen.findByRole("complementary", {
+      name: "Assign or override the vendor",
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect((within(drawer).getByLabelText("Override reason") as HTMLTextAreaElement).value).toBe(
+      "",
+    );
   });
 
   it("names the page's openers apart from the open drawer's own buttons", async () => {
@@ -270,21 +290,19 @@ describe("supply request — lifecycle steps", () => {
     ]);
   });
 
-  it("starts the delivery time at the moment the drawer is opened, every time", async () => {
+  it("starts the delivery time at the moment the modal is opened, every time", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(new Date(2026, 10, 18, 9, 0));
       mount("in_transit");
-      const first = await open("Record delivery", "Attest delivery");
+      const first = await openModal("Record delivery", "Attest delivery");
       const field = () => within(first).getByLabelText("Delivered at") as HTMLInputElement;
       expect(field().value).toBe("2026-11-18T09:00");
       fireEvent.change(field(), { target: { value: "2026-11-01T01:00" } });
       fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
-      await waitFor(() =>
-        expect(screen.queryByRole("complementary", { name: "Attest delivery" })).toBeNull(),
-      );
+      await modalGone("Attest delivery");
       vi.setSystemTime(new Date(2026, 10, 18, 11, 30));
-      const second = await open("Record delivery", "Attest delivery");
+      const second = await openModal("Record delivery", "Attest delivery");
       expect((within(second).getByLabelText("Delivered at") as HTMLInputElement).value).toBe(
         "2026-11-18T11:30",
       );
@@ -293,15 +311,15 @@ describe("supply request — lifecycle steps", () => {
     }
   });
 
-  it("starts the receipt time at the moment the drawer is opened, not at page load", async () => {
+  it("starts the receipt time at the moment the modal is opened, not at page load", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(new Date(2026, 10, 18, 9, 0));
       mount("delivered");
       await screen.findByRole("button", { name: "Confirm receipt…" });
       vi.setSystemTime(new Date(2026, 10, 18, 14, 15));
-      const drawer = await open("Confirm receipt…", "Confirm receipt");
-      expect((within(drawer).getByLabelText("Confirmed at") as HTMLInputElement).value).toBe(
+      const dialog = await openModal("Confirm receipt…", "Confirm receipt");
+      expect((within(dialog).getByLabelText("Confirmed at") as HTMLInputElement).value).toBe(
         "2026-11-18T14:15",
       );
     } finally {
@@ -417,4 +435,121 @@ describe("supply request — lifecycle steps", () => {
     expect(screen.queryByText(/Supply request aaaaaaaa/)).toBeNull();
     expect(screen.getByText(/Supply request bbbbbbbb/)).toBeTruthy();
   });
+
+  const MODALS: Array<{
+    status: SupplyRequestDetail["status"];
+    kind: SupplyRequestDetail["kind"];
+    opener: string;
+    name: string;
+    save: string;
+    reason?: string;
+  }> = [
+    {
+      status: "in_transit",
+      kind: "supply",
+      opener: "Record delivery",
+      name: "Attest delivery",
+      save: "Attest delivery",
+    },
+    {
+      status: "delivered",
+      kind: "supply",
+      opener: "Confirm receipt…",
+      name: "Confirm receipt",
+      save: "Confirm receipt",
+    },
+    {
+      status: "requested",
+      kind: "supply",
+      opener: "Cancel this request…",
+      name: "Cancel this request",
+      save: "Cancel request",
+      reason: "The family declined the equipment.",
+    },
+    {
+      status: "delivered",
+      kind: "comfort_kit_deploy",
+      opener: "Initiate kit return",
+      name: "Initiate the kit return",
+      save: "Initiate return",
+      reason: "Patient discharged to another agency.",
+    },
+  ];
+  const cases = MODALS.map((m) => [m.name, m] as const);
+  const fillReason = (dialog: HTMLElement, reason: string | undefined) => {
+    if (reason)
+      fireEvent.change(within(dialog).getByLabelText("Reason"), { target: { value: reason } });
+  };
+
+  it.each(cases)(
+    "opens %s as a modal over the request, not a drawer beside it",
+    async (_name, m) => {
+      mount(m.status, m.kind);
+      const dialog = await openModal(m.opener, m.name);
+      expect(dialog).toBeTruthy();
+      expect(screen.queryByRole("complementary")).toBeNull();
+      // The request stays on the page behind the modal.
+      expect(screen.getByRole("heading", { name: "Lifecycle" })).toBeTruthy();
+    },
+  );
+
+  it.each(cases)(
+    "closes %s from Cancel without writing, and not from the scrim",
+    async (_name, m) => {
+      const { post } = mount(m.status, m.kind);
+      const dialog = await openModal(m.opener, m.name);
+      fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+      expect(screen.getByRole("dialog", { name: m.name })).toBe(dialog);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await modalGone(m.name);
+      expect(post).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(cases)(
+    "refuses Cancel, Escape and the scrim while the %s write is in flight",
+    async (_name, m) => {
+      let release: () => void = () => {};
+      const { post } = mount(
+        m.status,
+        m.kind,
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(ok({}));
+          }),
+      );
+      const dialog = await openModal(m.opener, m.name);
+      fillReason(dialog, m.reason);
+      fireEvent.click(within(dialog).getByRole("button", { name: m.save }));
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      expect(
+        (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+      expect(screen.getByRole("dialog", { name: m.name })).toBe(dialog);
+      release();
+      await modalGone(m.name);
+    },
+  );
+
+  it.each(cases)(
+    "announces a rejected request in the %s modal, which stays dismissible",
+    async (_name, m) => {
+      mount(m.status, m.kind, async () => {
+        throw new TypeError("Failed to fetch");
+      });
+      const dialog = await openModal(m.opener, m.name);
+      fillReason(dialog, m.reason);
+      fireEvent.click(within(dialog).getByRole("button", { name: m.save }));
+      const alert = await within(dialog).findByRole("alert");
+      expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
+      const cancel = within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+      expect(cancel.disabled).toBe(false);
+      fireEvent.click(cancel);
+      await modalGone(m.name);
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByRole("complementary")).toBeNull();
+    },
+  );
 });
