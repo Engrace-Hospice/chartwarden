@@ -185,6 +185,8 @@ describe("Encounter workspace web workflow", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Sign encounter" }));
     fireEvent.click(await screen.findByRole("checkbox"));
+    // The sign ceremony asks how the visit was delivered (an RN's note cannot be signed without it).
+    fireEvent.click(await screen.findByRole("radio", { name: "In person" }));
     await waitFor(() => expect(closureReads).toBe(1));
     fireEvent.click(screen.getByRole("button", { name: "Sign & commit" }));
     await waitFor(() => expect(closureReads).toBe(2));
