@@ -14,12 +14,17 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { preview15 } from "./modules-preview/m15";
 import { preview16 } from "./modules-preview/m16";
+import { preview19 } from "./modules-preview/m19";
 import { createMockClient } from "./modules-preview/mock-client";
 import type { ModulePreview } from "./modules-preview/types";
 import { SessionProvider } from "./shell/session";
 import type { Session } from "./shell/session";
 
-const previews: Record<string, ModulePreview> = { "15": preview15, "16": preview16 };
+const previews: Record<string, ModulePreview> = {
+  "15": preview15,
+  "16": preview16,
+  "19": preview19,
+};
 
 const params = new URLSearchParams(location.search);
 document.documentElement.classList.toggle("dark", params.has("dark"));
