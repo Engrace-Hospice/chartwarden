@@ -762,10 +762,10 @@ describe("what a refused grant says", () => {
 });
 
 describe("the reason box", () => {
-  it("stops at the server's 2,000 characters", async () => {
+  it("stops at the server's 500 characters", async () => {
     mount();
     const drawer = await openDrawer();
-    expect(reasonBox(drawer).maxLength).toBe(2_000);
+    expect(reasonBox(drawer).maxLength).toBe(500);
   });
 
   it("keeps the server's own sentence for a reason error that is not the identifier refusal", async () => {
@@ -852,7 +852,7 @@ describe("the board reads itself again", () => {
         .closest("tr") as HTMLElement,
     ).getAllByRole("cell")[7]?.textContent ?? "";
 
-  it("re-reads on its minute tick, quietly and in the background, so a row moves from At risk to Overdue and the counts follow", async () => {
+  it("re-reads on its refresh tick (OVERDUE_BOARD_REFRESH_MS, five minutes), quietly and in the background, so a row moves from At risk to Overdue and the counts follow", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const calls: Call[] = [];
     let reads = 0;
@@ -892,6 +892,26 @@ describe("the board reads itself again", () => {
     const summary = screen.getByLabelText("Overdue note summary");
     expect(within(summary).getByText("Overdue").nextSibling?.textContent).toBe("1");
     expect(within(summary).getByText("At risk").nextSibling?.textContent).toBe("0");
+  });
+
+  it("polls every five minutes, not every minute: each read audits one event per patient on the page, so a minute poll of a full board was up to 200 audit rows a minute", async () => {
+    expect(OVERDUE_BOARD_REFRESH_MS).toBe(5 * 60_000);
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const calls: Call[] = [];
+    mount({ calls });
+    await region();
+    const boardCalls = (): Call[] =>
+      calls.filter((c) => c.path === "/api/v1/encounters/overdue-notes");
+    expect(boardCalls()).toHaveLength(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(OVERDUE_BOARD_REFRESH_MS - 1);
+    });
+    expect(boardCalls()).toHaveLength(1); // not at one, two, three or four minutes: the countdowns tick on the client instead
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    await waitFor(() => expect(boardCalls()).toHaveLength(2));
   });
 
   it("does not read on the tick while the tab is hidden, and the Refresh button stays a normal request", async () => {

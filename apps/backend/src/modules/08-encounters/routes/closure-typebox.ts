@@ -4,6 +4,7 @@
 import { pageLimit } from "@chartwarden/shared/route-kit";
 import {
   CLOSURE_OVERRIDE_MAX_HOURS,
+  CLOSURE_OVERRIDE_MAX_REASON_CHARS,
   CLOSURE_OVERRIDE_MIN_REASON_CHARS,
   DOCUMENTATION_OBLIGATION_MAX_THRESHOLD_HOURS,
   DOCUMENTATION_OBLIGATION_MIN_THRESHOLD_HOURS,
@@ -13,8 +14,6 @@ import { Type } from "@sinclair/typebox";
 /** The board returns the oldest rows first and never more than this many in one answer. */
 export const OVERDUE_NOTES_MAX_LIMIT = 200;
 export const OVERDUE_NOTES_DEFAULT_LIMIT = 50;
-/** A supervisor's typed reason; the lower bound mirrors the table CHECK, the upper bound keeps the row sane. */
-const OVERRIDE_REASON_MAX_CHARS = 2_000;
 
 const Mode = Type.Union([Type.Literal("off"), Type.Literal("warn"), Type.Literal("block")]);
 const Stage = Type.Union([
@@ -36,7 +35,7 @@ export const GrantClosureOverrideSchema = Type.Object({
   subjectMembershipId: Type.String({ format: "uuid" }),
   reason: Type.String({
     minLength: CLOSURE_OVERRIDE_MIN_REASON_CHARS,
-    maxLength: OVERRIDE_REASON_MAX_CHARS,
+    maxLength: CLOSURE_OVERRIDE_MAX_REASON_CHARS,
   }),
   hours: Type.Optional(Type.Integer({ minimum: 1, maximum: CLOSURE_OVERRIDE_MAX_HOURS })),
 });

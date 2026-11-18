@@ -220,9 +220,15 @@ describe.skipIf(!DB_URL)(
         discipline: "rn" as never,
         serviceDate: SERVICE_DATE as never,
       });
-      await enc.updateSelections(ORG_A, d.id, 0, requiredSectionSelections("routine_visit", "rn"));
+      await enc.updateSelections(
+        ORG_A,
+        d.id,
+        0,
+        requiredSectionSelections("routine_visit", "rn"),
+        null,
+      );
       const vitals = requiredVitalsCapture("routine_visit", "rn");
-      if (vitals) await enc.captureVitals(ORG_A, d.id, vitals);
+      if (vitals) await enc.captureVitals(ORG_A, d.id, vitals, null);
       await enc.finalize(ORG_A, d.id, SERVICE_DATE as never);
       await enc.sign(ORG_A, d.id, actor(), {
         at: SERVICE_DATE as never,

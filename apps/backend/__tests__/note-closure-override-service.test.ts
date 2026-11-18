@@ -74,11 +74,19 @@ const evaluation = (
   encounterId: string | null = null,
 ): MemberClosureEvaluation => ({ verdict, encounterId }) as unknown as MemberClosureEvaluation;
 
-/** Answer the evaluator per clinician: the grantor's verdict, then the subject's (clear / blocked on the oldest note by default). */
-function evaluatorSays(grantor: MemberClosureEvaluation, subject: MemberClosureEvaluation) {
-  vi.mocked(evaluateMemberClosure).mockImplementation(async (_tx, input) =>
-    input.membershipId === SUPERVISOR ? grantor : subject,
-  );
+/**
+ * Answer the evaluator per clinician: the grantor's verdict, then the subject's. The grantor is asked with `ignoreOverrides: true`, so
+ * `grantorOwnPosition` is what they stand at ignoring any override they hold (it defaults to their verdict).
+ */
+function evaluatorSays(
+  grantor: MemberClosureEvaluation,
+  subject: MemberClosureEvaluation,
+  grantorOwnPosition: MemberClosureEvaluation = grantor,
+) {
+  vi.mocked(evaluateMemberClosure).mockImplementation(async (_tx, input) => {
+    if (input.membershipId !== SUPERVISOR) return subject;
+    return input.ignoreOverrides ? grantorOwnPosition : grantor;
+  });
 }
 const GRANTOR_CLEAR = evaluation("clear");
 const SUBJECT_BLOCKED = evaluation("blocked", OLDEST_NOTE);
@@ -168,6 +176,21 @@ describe("grantClosureOverride", () => {
     }
   });
 
+  it("refuses a reason over 500 characters (counting trimmed ones) and accepts exactly 500; nothing is written", async () => {
+    for (const reason of ["z".repeat(501), `  ${"z".repeat(501)}  `]) {
+      const fake = fakeTx([]);
+      const failure = (await failureOf(
+        grantClosureOverride(fake.tx, grantArgs({ reason })),
+      )) as ValidationError;
+      expect(failure).toBeInstanceOf(ValidationError);
+      expect(failure.details?.[0]).toMatchObject({ field: "reason", code: "INVALID" });
+      expect(fake.queriesRun()).toBe(0);
+    }
+    const fake = fakeTx([[{ id: SUBJECT }], [overrideRow()], []]);
+    await grantClosureOverride(fake.tx, grantArgs({ reason: `  ${"z".repeat(500)}  ` }));
+    expect(fake.insertedValues()[0]).toMatchObject({ reason: "z".repeat(500) });
+  });
+
   it("accepts a reason of exactly 40 characters and stores it trimmed", async () => {
     const fake = fakeTx([[{ id: SUBJECT }], [overrideRow()], []]);
     await grantClosureOverride(fake.tx, grantArgs({ reason: `  ${"z".repeat(40)}  ` }));
@@ -252,20 +275,50 @@ describe("grantClosureOverride: the reason is screened for patient identifiers",
 });
 
 describe("grantClosureOverride: who may be released, and by whom", () => {
+  const failureCode = async (run: Promise<unknown>): Promise<[string, number]> => {
+    const failure = (await failureOf(run)) as ChartWardenError;
+    expect(failure).toBeInstanceOf(ChartWardenError);
+    return [failure.code, failure.statusCode];
+  };
+
   it("refuses a grantor who is blocked themselves: 403 NOTE_CLOSURE_GRANTOR_BLOCKED, nothing written", async () => {
     evaluatorSays(evaluation("blocked", OLDEST_NOTE), SUBJECT_BLOCKED);
     const fake = fakeTx([[{ id: SUBJECT }]]);
     const failure = (await failureOf(
       grantClosureOverride(fake.tx, grantArgs()),
     )) as ChartWardenError;
-    expect(failure).toBeInstanceOf(ChartWardenError);
     expect([failure.code, failure.statusCode]).toEqual([NOTE_CLOSURE_GRANTOR_BLOCKED_CODE, 403]);
     expect(failure.message).toBe("Close your own overdue notes before releasing someone else.");
     expect(fake.insertedValues()).toHaveLength(0);
   });
 
+  it("asks about the grantor's OWN position, ignoring any override they hold; the clinician is asked as the gate asks", async () => {
+    const fake = fakeTx([[{ id: SUBJECT }], [overrideRow()], []]);
+    await grantClosureOverride(fake.tx, grantArgs());
+    const calls = vi.mocked(evaluateMemberClosure).mock.calls.map(([, input]) => input);
+    expect(calls).toEqual([
+      { organizationId: ORG, membershipId: SUPERVISOR, now: NOW, ignoreOverrides: true },
+      { organizationId: ORG, membershipId: SUBJECT, now: NOW },
+    ]);
+  });
+
+  it("refuses a grantor who is only unblocked by someone else's override (mutual release): their own note is past its block instant", async () => {
+    // As the gate sees them they are overridden (warn); ignoring the override they are blocked.
+    evaluatorSays(
+      evaluation("warn", OLDEST_NOTE),
+      SUBJECT_BLOCKED,
+      evaluation("blocked", OLDEST_NOTE),
+    );
+    const fake = fakeTx([[{ id: SUBJECT }]]);
+    expect(await failureCode(grantClosureOverride(fake.tx, grantArgs()))).toEqual([
+      NOTE_CLOSURE_GRANTOR_BLOCKED_CODE,
+      403,
+    ]);
+    expect(fake.insertedValues()).toHaveLength(0);
+  });
+
   it.each(["clear", "warn"] as const)(
-    "lets a grantor whose verdict is %s grant (overridden degrades to warn)",
+    "lets a grantor whose own position is %s grant (nothing past its block instant)",
     async (verdict) => {
       evaluatorSays(evaluation(verdict), SUBJECT_BLOCKED);
       const fake = fakeTx([[{ id: SUBJECT }], [overrideRow()], []]);
@@ -294,42 +347,41 @@ describe("grantClosureOverride: who may be released, and by whom", () => {
     },
   );
 
-  it("refuses a blocked verdict with no oldest note (nothing to scope against) as not blocked", async () => {
-    evaluatorSays(GRANTOR_CLEAR, evaluation("blocked", null));
+  it("refuses a clinician with no open note at all as not blocked, with no scope query", async () => {
+    evaluatorSays(GRANTOR_CLEAR, evaluation("clear", null));
     const fake = fakeTx([[{ id: SUBJECT }]]);
-    const failure = (await failureOf(
-      grantClosureOverride(fake.tx, grantArgs()),
-    )) as ChartWardenError;
-    expect(failure.code).toBe(NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE);
+    expect(
+      await failureCode(grantClosureOverride(fake.tx, grantArgs({ locationIds: [SITE] }))),
+    ).toEqual([NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE, 409]);
+    expect(fake.queriesRun()).toBe(1); // the membership read only: nothing to scope against
   });
 
-  it("asks the grantor's question first: a blocked grantor hears about themselves even when the clinician is not blocked", async () => {
-    evaluatorSays(evaluation("blocked", OLDEST_NOTE), evaluation("clear"));
+  it("asks the grantor's question first: a blocked grantor hears about themselves whatever the clinician's state", async () => {
+    evaluatorSays(evaluation("blocked", OLDEST_NOTE), evaluation("clear", OLDEST_NOTE));
     const fake = fakeTx([[{ id: SUBJECT }]]);
-    const failure = (await failureOf(
-      grantClosureOverride(fake.tx, grantArgs()),
-    )) as ChartWardenError;
-    expect(failure.code).toBe(NOTE_CLOSURE_GRANTOR_BLOCKED_CODE);
+    expect(
+      await failureCode(grantClosureOverride(fake.tx, grantArgs({ locationIds: [SITE] }))),
+    ).toEqual([NOTE_CLOSURE_GRANTOR_BLOCKED_CODE, 403]);
   });
 
-  it("asks the clinician's question before the scope's: an unblocked clinician is 409 even outside the sites", async () => {
-    evaluatorSays(GRANTOR_CLEAR, evaluation("clear"));
-    const fake = fakeTx([[{ id: SUBJECT }]]);
-    const failure = (await failureOf(
-      grantClosureOverride(fake.tx, grantArgs({ locationIds: [SITE] })),
-    )) as ChartWardenError;
-    expect(failure.code).toBe(NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE);
-    expect(fake.queriesRun()).toBe(1); // the membership read only: no scope query
+  it("asks the scope's question BEFORE the blocked one: out of scope is 403 whether or not the clinician is blocked, so a site-scoped supervisor learns nothing about them", async () => {
+    for (const verdict of ["clear", "warn", "blocked"] as const) {
+      evaluatorSays(GRANTOR_CLEAR, evaluation(verdict, OLDEST_NOTE));
+      const fake = fakeTx([[{ id: SUBJECT }], []]); // the scope query finds nothing: the note is outside their sites
+      expect(
+        await failureCode(grantClosureOverride(fake.tx, grantArgs({ locationIds: [SITE] }))),
+        verdict,
+      ).toEqual([NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE_CODE, 403]);
+      expect(fake.insertedValues()).toHaveLength(0);
+    }
   });
 
-  it("evaluates both clinicians in this organization at the grant's clock", async () => {
-    const fake = fakeTx([[{ id: SUBJECT }], [overrideRow()], []]);
-    await grantClosureOverride(fake.tx, grantArgs());
-    const calls = vi.mocked(evaluateMemberClosure).mock.calls.map(([, input]) => input);
-    expect(calls).toEqual([
-      { organizationId: ORG, membershipId: SUPERVISOR, now: NOW },
-      { organizationId: ORG, membershipId: SUBJECT, now: NOW },
-    ]);
+  it("an unblocked clinician whose note IS in the grantor's sites is 409 (the scope passed, the verdict is the refusal)", async () => {
+    evaluatorSays(GRANTOR_CLEAR, evaluation("clear", OLDEST_NOTE));
+    const fake = fakeTx([[{ id: SUBJECT }], [{ id: OLDEST_NOTE }]]);
+    expect(
+      await failureCode(grantClosureOverride(fake.tx, grantArgs({ locationIds: [SITE] }))),
+    ).toEqual([NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE, 409]);
   });
 
   it("an org-wide grantor needs no scope query", async () => {
@@ -416,10 +468,12 @@ describe("revokeClosureOverride", () => {
     organizationId: ORG,
     overrideId: OVERRIDE_ID,
     revokedByMembershipId: SUPERVISOR,
+    locationIds: null,
     audit: AUDIT,
     now: NOW,
   };
   const revokedRow = overrideRow({ revokedAt: NOW });
+  const OTHER_SUPERVISOR = "00000000-0000-4000-8000-0000000000b9";
 
   it("stamps only the two revocation columns and returns the row the UPDATE returned", async () => {
     // select existing, update returning, audit insert, other-grants lookup
@@ -516,5 +570,77 @@ describe("revokeClosureOverride", () => {
       overrideId: OTHER_OVERRIDE_ID,
     });
     expect(result.remainingActiveUntil).toEqual(stillActive.expiresAt);
+  });
+
+  describe("who may revoke (a site-scoped supervisor may revoke only what they granted)", () => {
+    it("lets the original grantor revoke whatever their scope (a blocked supervisor revokes their own grant too)", async () => {
+      const fake = fakeTx([[overrideRow()], [revokedRow], [], []]);
+      const result = await revokeClosureOverride(fake.tx, { ...revokeArgs, locationIds: [SITE] });
+      expect(result.override.revokedAt).toEqual(NOW);
+      const empty = fakeTx([[overrideRow()], [revokedRow], [], []]);
+      await expect(
+        revokeClosureOverride(empty.tx, { ...revokeArgs, locationIds: [] }),
+      ).resolves.toBeDefined();
+    });
+
+    it("lets a caller whose scope is org-wide revoke another supervisor's grant", async () => {
+      const fake = fakeTx([[overrideRow()], [revokedRow], [], []]);
+      const result = await revokeClosureOverride(fake.tx, {
+        ...revokeArgs,
+        revokedByMembershipId: OTHER_SUPERVISOR,
+        locationIds: null,
+      });
+      expect(result.override.revokedAt).toEqual(NOW);
+      expect(fake.updatedSets()[0]).toEqual({
+        revokedAt: NOW,
+        revokedByMembershipId: OTHER_SUPERVISOR,
+      });
+    });
+
+    it.each([[[SITE]], [[]]] as const)(
+      "refuses a site-scoped (%j) caller who did not grant it: 403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE, nothing written, no event",
+      async (locationIds) => {
+        const fake = fakeTx([[overrideRow()]]);
+        const failure = (await failureOf(
+          revokeClosureOverride(fake.tx, {
+            ...revokeArgs,
+            revokedByMembershipId: OTHER_SUPERVISOR,
+            locationIds: [...locationIds],
+          }),
+        )) as ChartWardenError;
+        expect([failure.code, failure.statusCode]).toEqual([
+          NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE_CODE,
+          403,
+        ]);
+        expect(failure.message).toBe(
+          "Only the supervisor who granted this override, or one who covers every site, can revoke it.",
+        );
+        expect(fake.updatedSets()).toHaveLength(0);
+        expect(fake.insertedValues()).toHaveLength(0);
+      },
+    );
+
+    it("refuses the same caller on an already revoked grant too (the repeat is not a way round the scope)", async () => {
+      const fake = fakeTx([[overrideRow({ revokedAt: NOW })]]);
+      const failure = await failureOf(
+        revokeClosureOverride(fake.tx, {
+          ...revokeArgs,
+          revokedByMembershipId: OTHER_SUPERVISOR,
+          locationIds: [SITE],
+        }),
+      );
+      expect((failure as ChartWardenError).code).toBe(NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE_CODE);
+    });
+
+    it("still answers 404 first for an override that does not exist, whatever the caller's scope", async () => {
+      const fake = fakeTx([[]]);
+      await expect(
+        revokeClosureOverride(fake.tx, {
+          ...revokeArgs,
+          revokedByMembershipId: OTHER_SUPERVISOR,
+          locationIds: [SITE],
+        }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
   });
 });

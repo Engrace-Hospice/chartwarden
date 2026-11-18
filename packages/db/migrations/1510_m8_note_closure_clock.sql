@@ -19,6 +19,10 @@
 -- Tenancy: both new tables are organization-level configuration or supervisor action with no patient column, so they carry
 -- organization_id only (the tenant_sbar_policy precedent, migration 1099). The override reason is the one free-text field and is
 -- treated as potentially identifying (see above). The encounter keeps its own three columns.
+-- DEV DATABASES: this file was edited in place before it was ever released, so a database that applied an EARLIER copy of 1510 (the
+-- runner records the ordinal, not the content) does not have the later pieces (the write-once clock trigger, the override org guard, the
+-- board index, the 500-character reason cap). Reset such a database, or hand-apply the missing statements from this file. Nothing
+-- released ever carried an earlier copy.
 -- Lock behaviour (accepted, not restructured): ADD COLUMN ... CHECK on encounter scans the table once under ACCESS EXCLUSIVE, and
 -- each CREATE INDEX (not CONCURRENTLY) holds a SHARE lock for its build (both indexes are partial: they hold only open clocked notes). Both columns are NULL for every existing row and the previous
 -- release never writes them, so the change is expand-safe; encounter is small relative to the deploy window and the runner is
@@ -72,7 +76,8 @@ CREATE TABLE "documentation_obligation_override" (
   "expires_at" timestamptz NOT NULL,
   "revoked_at" timestamptz,
   "revoked_by_membership_id" uuid REFERENCES "membership"("id") ON DELETE RESTRICT,
-  CONSTRAINT "documentation_obligation_override_reason_len" CHECK (char_length(btrim("reason")) >= 40),
+  CONSTRAINT "documentation_obligation_override_reason_len"
+    CHECK (char_length(btrim("reason")) >= 40 AND char_length("reason") <= 500),
   CONSTRAINT "documentation_obligation_override_expiry_window"
     CHECK ("expires_at" > "granted_at" AND "expires_at" - "granted_at" <= interval '24 hours'),
   CONSTRAINT "documentation_obligation_override_not_self" CHECK ("subject_membership_id" <> "granted_by_membership_id"),

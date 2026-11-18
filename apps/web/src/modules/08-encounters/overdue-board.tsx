@@ -7,8 +7,9 @@
 // `warn` and `off` the board is read-only and says why. A supervisor cannot override their own note (the server refuses it): that row
 // offers no action. Listing existing overrides is a later route, so the drawer revokes only grants made in this session.
 // READING: the first read and the Refresh button are the person's (ordinary requests, a spinner on the button); the board also reads
-// itself again every minute and when the tab is visited again (background requests, no spinner, visible tab only; the shared cues in
-// shell/use-refresh-cues.ts), because a note's stage moves with the clock and a row must not stay "At risk" under a stale count. A failed
+// itself again every five minutes (OVERDUE_BOARD_REFRESH_MS; the minute-by-minute countdowns are client-side) and when the tab is visited again
+// (background requests, no spinner, visible tab only; the shared cues in shell/use-refresh-cues.ts), because a note's stage moves with the clock
+// and a row must not stay "At risk" under a stale count. A failed
 // first read is an error with a retry, never an empty board. A refresh that fails with a 5xx or no answer keeps the rows already on screen
 // (and an open drawer, with what was typed in it) and says the board could not be refreshed; a REFUSAL (403) is final: the rows and the
 // drawer go (its stashed step-up draft too), because the person may no longer see them. A note that drops off the board while its
@@ -72,8 +73,13 @@ const DEFAULT_PAGE_SIZE = 10;
 const FORBIDDEN_STATUS = 403;
 /** How often the "Due in Xh" countdowns are recomputed from the clock (they are the only client-side arithmetic on the board). */
 const COUNTDOWN_TICK_MS = 60_000;
-/** How often the board reads itself again while its tab is visible: a stage can only move with the clock, so a minute is plenty. */
-export const OVERDUE_BOARD_REFRESH_MS = 60_000;
+/**
+ * How often the board reads itself again while its tab is visible. A stage only moves with the clock, so the countdowns (recomputed
+ * every minute above, client-side) keep the screen honest between reads. Five minutes, not one: every read writes one `encounter.viewed`
+ * audit event per distinct patient on the page (the board is a multi-patient read, up to 200 rows), so a minute-by-minute poll of a
+ * full board wrote up to 200 audit rows a minute per open tab. Returning to the tab and the Refresh button still read at once.
+ */
+export const OVERDUE_BOARD_REFRESH_MS = 5 * 60_000;
 
 type Grants = Readonly<Record<string, HeldOverride>>;
 

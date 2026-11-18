@@ -171,6 +171,30 @@ describe("evaluateMemberClosure", () => {
     expect(out.overrideExpiresAt).toEqual(activeOverride.expiresAt);
   });
 
+  it("ignoreOverrides evaluates the clinician's OWN position: an active override does not lift the block, and none is looked up", async () => {
+    // the grant asks it of the GRANTOR, so a supervisor only unblocked by someone else's override cannot release others in turn
+    const fake = fakeTx([[note(NOTE_OLD, 30)], [activeOverride]]);
+    const out = await evaluateMemberClosure(fake.tx, {
+      ...input(policy("block")),
+      ignoreOverrides: true,
+    });
+    expect(out.verdict).toBe("blocked");
+    expect(out.overrideExpiresAt).toBeNull();
+    expect(fake.queriesRun()).toBe(1); // the note scan only: the override table is never read
+    // control: the same facts without the option are overridden (warn)
+    const honoured = fakeTx([[note(NOTE_OLD, 30)], [activeOverride]]);
+    expect((await evaluateMemberClosure(honoured.tx, input(policy("block")))).verdict).toBe("warn");
+  });
+
+  it("ignoreOverrides changes nothing when there is nothing past the block instant", async () => {
+    const fake = fakeTx([[note(NOTE_NEW, 2)]]);
+    const out = await evaluateMemberClosure(fake.tx, {
+      ...input(policy("block")),
+      ignoreOverrides: true,
+    });
+    expect(out.verdict).toBe("clear");
+  });
+
   it("an expired override does not lift the block", async () => {
     const expired = { ...activeOverride, expiresAt: new Date(NOW.getTime() - 1) };
     const fake = fakeTx([[note(NOTE_OLD, 30)], [expired]]);

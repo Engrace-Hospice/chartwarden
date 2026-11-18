@@ -156,7 +156,14 @@ export class ConflictError extends ChartWardenError {
 }
 
 export class RateLimitedError extends ChartWardenError {
-  constructor(message = "Too many requests") {
+  /**
+   * @param retryAfterSeconds when a thrower cannot set the header itself (a hook that has no `reply`), the error carries the hint and
+   *   the M1 error handler sets `Retry-After` from it. A thrower that already set the header on its reply leaves this undefined.
+   */
+  constructor(
+    message = "Too many requests",
+    public readonly retryAfterSeconds?: number,
+  ) {
     super("RATE_LIMITED", message, ERROR_CODES.RATE_LIMITED);
     this.name = "RateLimitedError";
   }

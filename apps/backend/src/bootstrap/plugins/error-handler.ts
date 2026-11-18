@@ -10,7 +10,7 @@
 // correlationId is read off request.context (applyRequestContext) so a client can quote it
 // to support and ops can stitch the request across logs/audit/outbox.
 import { classifyDatabaseError, classifyRetryableDatabaseError } from "@chartwarden/db";
-import { ChartWardenError, ConflictError } from "@chartwarden/types";
+import { ChartWardenError, ConflictError, RateLimitedError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 const DOCS_BASE = "https://docs.chartwarden.app/errors";
@@ -94,6 +94,10 @@ export function applyErrorHandler(app: FastifyInstance): void {
         );
       } else {
         request.log.info({ errCode: err.code, statusCode: err.statusCode }, "handled error");
+      }
+      // A rate-limit refusal raised where there is no `reply` to set the header on (a hook) carries its own hint.
+      if (err instanceof RateLimitedError && err.retryAfterSeconds !== undefined) {
+        reply.header("Retry-After", String(err.retryAfterSeconds));
       }
       return reply.code(err.statusCode).send({
         error: {

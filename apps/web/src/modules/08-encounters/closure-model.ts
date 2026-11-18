@@ -5,6 +5,7 @@
 // here: the board shows what the server's clock decided.
 import {
   CLOSURE_OVERRIDE_MAX_HOURS,
+  CLOSURE_OVERRIDE_MAX_REASON_CHARS,
   DOCUMENTATION_OBLIGATION_MAX_THRESHOLD_HOURS,
   DOCUMENTATION_OBLIGATION_MIN_THRESHOLD_HOURS,
   DOCUMENTATION_OBLIGATION_MODES,
@@ -22,11 +23,11 @@ export type ClosureMode = DocumentationObligationMode;
 /** The shortest override window the form accepts (the longest and the default are the shared bounds). */
 export const OVERRIDE_MIN_HOURS = 1;
 /**
- * The longest reason the grant box takes: the server caps it at 2,000 characters (OVERRIDE_REASON_MAX_CHARS in
- * apps/backend/src/modules/08-encounters/routes/closure-typebox.ts, a route-local constant, not a shared one), so the box stops a
- * reason the server would refuse. Pinned by closure-model.test.ts.
+ * The longest reason the grant box takes: the shared server cap (CLOSURE_OVERRIDE_MAX_REASON_CHARS, 500: the text is stored on the
+ * override row and copied into the audit event, both append-only), so the box stops a reason the server would refuse. Pinned by
+ * closure-model.test.ts.
  */
-export const OVERRIDE_REASON_MAX_CHARS = 2_000;
+export const OVERRIDE_REASON_MAX_CHARS = CLOSURE_OVERRIDE_MAX_REASON_CHARS;
 /** Hours before the deadline when a clinician is first warned (the server's AT_RISK_LEAD_HOURS in note-clock.ts): copy only. */
 export const WARNING_LEAD_HOURS = 6;
 

@@ -304,9 +304,10 @@ describe.skipIf(!DB_URL)("M8 post-discharge authoring guard — LIVE Postgres (S
         d.id,
         0,
         requiredSectionSelections("routine_visit" as never, "rn" as never),
+        null,
       );
       const vitals = requiredVitalsCapture("routine_visit" as never, "rn" as never);
-      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
+      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals, null);
       await svc.finalize(ORG_A, d.id, LATE_DATE as never);
       return { a, id: d.id };
     }

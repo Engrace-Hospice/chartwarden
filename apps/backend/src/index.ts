@@ -196,6 +196,7 @@ import {
   mountMetricsRoute,
   registerBullMQQueueMetrics,
   registerHttpMetrics,
+  registerNoteClosureMetrics,
   registerOutboxMetrics,
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
@@ -4341,6 +4342,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // the organization id only and the request is refused 503 (the gate fails closed; the one exception is a failed policy refresh for an
   // organization whose last known mode was off / warn, read under 60s ago, which is served instead).
   const closurePolicyCache = dbHandle ? createDbClosurePolicyCache(dbHandle.db) : undefined;
+  // The refusal counter lives on the metrics registry built much later in boot (the outboxDispatcherRef forward-ref precedent):
+  // until it is registered a refusal is only logged.
+  let recordNoteClosureRefusals: (count: number) => void = () => {};
   const noteClosureGate =
     dbHandle && closurePolicyCache
       ? createNoteClosureGate({
@@ -4360,6 +4364,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               { err: error, organizationId, servedStale, suppressed },
               "note-closure gate read failed",
             ),
+          // The evidence that the control enforces: at most one line per organization per 30s, the organization id and a count only.
+          onRefusal: ({ organizationId, refused }) => {
+            app.log.info({ organizationId, refused }, "note-closure gate refused requests");
+            recordNoteClosureRefusals(refused);
+          },
         })
       : undefined;
   const tenantClearinghouse = dbHandle
@@ -6760,6 +6769,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           );
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher, {
             deviceAttestationEnforced: evvDeviceAttestationEnforced,
+            // ADR-0113 D6 - the two offline-sync routes are allowlisted for check-OUT uploads, but a batch that carries a check-IN starts
+            // a visit, so the route asks the closure gate's policy+evaluator half (no allowlist) first. Absent gate = fail closed (500).
+            assertMayStartVisit: (actor) => {
+              if (!noteClosureGate) {
+                throw new Error(
+                  "the note-closure gate is unavailable: refusing an EVV offline batch that starts a visit",
+                );
+              }
+              return noteClosureGate.assertNotBlocked(actor);
+            },
             // GAP-133 — capture seals coords under the tenant DEK; no key bound ⇒ the capture is refused.
             coordsCipher: m18CoordsCipher(),
             // A coordinate the location list cannot open reads as null and is logged as an integrity fault.
@@ -9830,6 +9849,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     return [...measures, ...rows, ...financial];
   });
   registerHttpMetrics(app, metricsRegistry);
+  recordNoteClosureRefusals = registerNoteClosureMetrics(metricsRegistry).recordRefusals;
   const outboxMetrics = registerOutboxMetrics(metricsRegistry, {
     pendingDepth: outboxPendingDepth,
     oldestPendingAgeSeconds: outboxOldestPendingAgeSeconds,

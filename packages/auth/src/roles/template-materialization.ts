@@ -16,8 +16,12 @@
 //   - THE TWO FULL-CATALOG ROLES (`administrator`, `org_admin` - the latter supersedes the former) receive every
 //     mirror key EXCEPT the `platform` category (cross-tenant authority is never a tenant admin's default) and the
 //     keys in FULL_CATALOG_EXCLUDED_KEYS (`messaging.review`: the lifecycle review queue is a supervisory decision,
-//     ADR-0065 D6; `messaging.urgent.send` / `.receive`: ADR-0068; `encounter.closure_override` / `.closure_policy_admin`:
-//     ADR-0113 - a tenant may still grant them to any role it owns).
+//     ADR-0065 D6; `messaging.urgent.send` / `.receive`: ADR-0068; `encounter.closure_override`: ADR-0113 D7). The exclusion is a
+//     DEFAULT, not a wall, and it is not "a tenant may grant them to any role it owns": putting a key on a role (create, patch or
+//     assign, authz-routes.ts `assertNoEscalation`) needs the caller to hold the key already, so an org admin, who does not hold an
+//     excluded key, cannot hand it out; only a caller who holds the key AND `role.manage` / `role.assign` can move it, and a
+//     migration or the operator tooling can set it directly. (`encounter.closure_policy_admin` is NOT excluded: the administrators
+//     set the closure policy with the director of nursing, ADR-0113 D7.)
 import { isTenantRoleReserved } from "./platform-reserved";
 import type { RoleTemplate } from "./templates";
 
@@ -27,7 +31,7 @@ export const FULL_CATALOG_ROLE_KEYS: ReadonlySet<string> = new Set(["administrat
 /** The permission category that is cross-tenant authority and never a tenant default grant. */
 export const PLATFORM_PERMISSION_CATEGORY = "platform";
 
-/** Keys withheld from the full-catalog roles: granted deliberately to a supervisory role, never by default (ADR-0065 D6). */
+/** Keys withheld from the full-catalog roles: granted deliberately to a supervisory role, never by default (ADR-0065 D6, ADR-0113 D7). */
 export const FULL_CATALOG_EXCLUDED_KEYS: ReadonlySet<string> = new Set([
   "messaging.review",
   // WP 4.1 (ADR-0068, migration 1105): raising / receiving an urgent clinical message is a clinical decision; never an admin default.
@@ -36,10 +40,10 @@ export const FULL_CATALOG_EXCLUDED_KEYS: ReadonlySet<string> = new Set([
   // WP 5.6 (ADR-0055 D9): org admin has no implicit right to request or approve a message redaction.
   "messaging.redact.request",
   "messaging.redact.approve",
-  // ADR-0113: lifting a blocked clinician's visit-note closure and setting the tenant's closure mode belong to the supervisory
-  // roles that own the clinical-documentation duty (migration 1511, NOTE_CLOSURE_DEFAULT_GRANTS); never an org-admin default.
+  // ADR-0113 D7: lifting a blocked clinician's visit-note closure belongs to the clinical supervisors who answer for the duty (migration
+  // 1511, NOTE_CLOSURE_DEFAULT_GRANTS); an administrator is not a clinical supervisor, so never an org-admin or superadmin default.
+  // `encounter.closure_policy_admin` is deliberately NOT here: administrators and the DON set the tenant's closure policy.
   "encounter.closure_override",
-  "encounter.closure_policy_admin",
 ]);
 
 /**

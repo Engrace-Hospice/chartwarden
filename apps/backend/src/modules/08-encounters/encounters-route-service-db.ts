@@ -32,6 +32,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type AdmissionSummary,
   type CarePlanOverdueStatus,
+  type EncounterClockStartSource,
   type EncounterVisitModality,
   type EvvBracketResolution,
   ForbiddenError,
@@ -76,7 +77,7 @@ import {
   promotionHasDraft,
   requireReview,
 } from "./chart-promotion";
-import { stampClockIfNull } from "./closure/clock-stamp";
+import { clampClockStart, localDayStart, stampClockIfNull } from "./closure/clock-stamp";
 import { myNotesOf } from "./closure/my-notes";
 import { OPEN_NOTE_STATUS_LIST_SQL } from "./closure/open-status";
 import { readClosurePolicy } from "./closure/policy-service";
@@ -453,8 +454,8 @@ export function createDbEncounterRouteService(
    * ADR-0113: a seeded draft that never got an M17 start event gets its documentation clock on the AUTHOR's first
    * authoring write (and at sign, so a signed note always has one). Only the author's own write counts: the clock is the
    * author's duty, so an edit by anyone else (a supervisor on `IS_AUTHOR_OR_SUPERVISOR` routes) never starts it, and a
-   * legacy (pre-deploy, clockless) draft is not clocked by someone else touching it (D9). An absent `actorMembershipId`
-   * (a caller that did not say who is writing) stamps nothing. Write-once and open-notes-only in the UPDATE itself; the
+   * legacy (pre-deploy, clockless) draft is not clocked by someone else touching it (D9). A `null` `actorMembershipId`
+   * (a caller with no acting member) stamps nothing. Write-once and open-notes-only in the UPDATE itself; the
    * row's own `clockStartedAt` just skips the round trip once it is set. A GET never calls this.
    */
   const stampDraftOpened = async (
@@ -465,10 +466,10 @@ export function createDbEncounterRouteService(
       readonly clockStartedAt: Date | null;
       readonly authoredByMembershipId: string;
     },
-    actorMembershipId: string | undefined,
+    actorMembershipId: string | null,
   ): Promise<void> => {
     if (row.clockStartedAt !== null) return;
-    if (actorMembershipId === undefined || actorMembershipId !== row.authoredByMembershipId) return;
+    if (actorMembershipId === null || actorMembershipId !== row.authoredByMembershipId) return;
     await stampClockIfNull(t, {
       orgId: organizationId,
       encounterId: row.id,
@@ -478,28 +479,71 @@ export function createDbEncounterRouteService(
   };
 
   /**
-   * ADR-0113 D1: a visit-linked note leaves its clock to the M17 `visit.started` event ONLY when that is true: the visit resolves
-   * through the M17 `VisitReader` seam in this organization, is assigned to the author, and has not started yet (so the arrival
-   * signal is still to come). A `visitId` is otherwise just a uuid the clinician typed (no FK), so honouring it unconditionally
-   * would let a random one defer the clock until the first later authoring write. Anything else, including a seam that cannot
-   * answer, starts the clock at creation: the fail-safe is a clock that runs, never one that waits.
+   * ADR-0113 D1: what a note's clock does at CREATION. The clock starts at ARRIVAL, so a visit-linked note follows the visit, but a
+   * `visitId` is otherwise just a uuid the clinician typed (no FK), so it counts only when the visit resolves, through the M17
+   * `VisitReader` seam, in this organization AND is assigned to the author. Then: a visit that has not started yet leaves the clock to
+   * the M17 `visit.started` event (`await_arrival`); one that has ALREADY started (that event came and went before this note existed)
+   * starts the clock at the visit's actual start, with the source the event consumer would have used (`arrived`). Anything else (no
+   * visit, a made-up or someone else's visit id, a seam that cannot answer) starts the clock at creation: the fail-safe is a clock that
+   * runs, never one that waits, and an arbitrary visit id can neither defer the clock nor move it into the past.
    */
-  async function visitAwaitsAuthorArrival(
+  type CreationClockPlan =
+    | { readonly kind: "at_creation" }
+    | { readonly kind: "await_arrival" }
+    | {
+        readonly kind: "arrived";
+        readonly startedAt: Date;
+        readonly source: EncounterClockStartSource;
+      };
+
+  async function creationClockPlan(
     organizationId: string,
-    visitId: string,
+    visitId: string | undefined,
     authorMembershipId: string,
-  ): Promise<boolean> {
+  ): Promise<CreationClockPlan> {
+    if (!visitId) return { kind: "at_creation" };
     try {
       const visit = await getSeam("VisitReader").visitForEncounter(organizationId, visitId);
-      return (
-        visit !== null &&
-        visit.organizationId === organizationId &&
-        visit.assignedMembershipId === authorMembershipId &&
-        visit.actualStartedAt === null
-      );
+      if (
+        visit === null ||
+        visit.organizationId !== organizationId ||
+        visit.assignedMembershipId !== authorMembershipId
+      ) {
+        return { kind: "at_creation" };
+      }
+      if (visit.actualStartedAt === null) return { kind: "await_arrival" };
+      const startedAt = new Date(visit.actualStartedAt);
+      if (Number.isNaN(startedAt.getTime())) return { kind: "at_creation" };
+      const source = visit.evvBracketState === "evv_present" ? "evv_check_in" : "visit_started";
+      return { kind: "arrived", startedAt, source };
     } catch {
-      return false;
+      return { kind: "at_creation" };
     }
+  }
+
+  /**
+   * The clock columns for the INSERT. An `arrived` instant is bounded like the consumer's: no earlier than the note's service day (in
+   * the organization's own timezone) and never after now, so a skewed device instant on the visit cannot back-date or post-date it.
+   */
+  async function creationClockColumns(
+    t: DbClient,
+    organizationId: string,
+    serviceDate: string,
+    plan: CreationClockPlan,
+  ): Promise<{ clockStartedAt?: Date; clockStartSource?: EncounterClockStartSource }> {
+    if (plan.kind === "await_arrival") return {};
+    const created = clock();
+    if (plan.kind === "at_creation")
+      return { clockStartedAt: created, clockStartSource: "draft_created" };
+    const timeZone = await organizationTimezone(t, organizationId);
+    return {
+      clockStartedAt: clampClockStart(
+        plan.startedAt,
+        localDayStart(serviceDate, timeZone),
+        created,
+      ),
+      clockStartSource: plan.source,
+    };
   }
 
   const freeTextCipher = ciphers?.freeText;
@@ -1309,7 +1353,7 @@ export function createDbEncounterRouteService(
     organizationId: string,
     encounterId: string,
     input: Parameters<EncounterRouteService["captureMileage"]>[2],
-    actorMembershipId: string | undefined,
+    actorMembershipId: string | null,
   ) {
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const t = tx as unknown as DbClient;
@@ -1544,9 +1588,7 @@ export function createDbEncounterRouteService(
       // connection (M10's `admissionSiting` records the same rule).
       const admission = await admissionSummaryFor(organizationId, args.admissionId);
       // Likewise resolved before the write tx (the VisitReader seam opens its own tenant context).
-      const deferClockToVisitStart = args.visitId
-        ? await visitAwaitsAuthorArrival(organizationId, args.visitId, actorUserId)
-        : false;
+      const clockPlan = await creationClockPlan(organizationId, args.visitId, actorUserId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // §2.7 pre-write guards (the rest — volunteer assignment, service-date-after-admission — thread
@@ -1580,11 +1622,8 @@ export function createDbEncounterRouteService(
               status: "draft",
               // Only a telephonic encounter type implies a modality at creation; confirmed_at stays NULL.
               visitModality: seedModalityFor({ encounterType: args.encounterType }),
-              // ADR-0113: a note that is NOT waiting for its visit's start event (ad-hoc, or a visit that does not check out as the
-              // author's, not yet started one) starts its own clock at creation, in this INSERT.
-              ...(deferClockToVisitStart
-                ? {}
-                : { clockStartedAt: clock(), clockStartSource: "draft_created" as const }),
+              // ADR-0113: the clock columns by plan (at creation, at the visit's arrival, or left to the M17 start event), in this INSERT.
+              ...(await creationClockColumns(t, organizationId, args.serviceDate, clockPlan)),
             })
             .returning(),
           "encounter insert returned no row",

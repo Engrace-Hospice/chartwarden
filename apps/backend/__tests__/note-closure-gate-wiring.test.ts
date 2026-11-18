@@ -56,9 +56,33 @@ describe("the composition root wires the note-closure gate", () => {
     );
   });
 
-  it("hands the closure alert sweep the real alert-table reader, so it skips alerts that already exist instead of re-emitting them every tick", () => {
+  it("hands the M8 workers the real alert-table reader, so the closure sweep skips alerts that already exist", () => {
+    // tolerant of any object literal or key added earlier in the argument list: the key must be inside the buildM8WorkerDeps call
     expect(index).toMatch(
-      /buildM8WorkerDeps\(\{[^}]*existingAlertCorrelations:createDbAlertCorrelationReader\(dbHandle\.db\)/,
+      /buildM8WorkerDeps\(\{[\s\S]{0,2000}?existingAlertCorrelations:createDbAlertCorrelationReader\(dbHandle\.db\)/,
+    );
+  });
+
+  it("boot-registers the closure alert catalog and wraps the M8 workers' emitter with it (a malformed closure payload fails the boot or the tick, not an inbox)", () => {
+    expect(index).toContain("registerClosureAlertCatalog(");
+    expect(index).toContain("withClosureAlertCatalog(");
+    expect(index).toMatch(
+      /buildM8WorkerDeps\(\{[\s\S]{0,2000}?alerts:withClosureAlertCatalog\(getSeam\("AlertEmitter"\)asAlertEmitter,registerClosureAlertCatalog\(createAlertPayloadRegistry\(\)\)\)/,
+    );
+  });
+
+  it("hands the EVV routes the gate's not-blocked check, so an offline-sync batch that starts a visit is refused for a blocked clinician", () => {
+    expect(index).toMatch(
+      /mountEvvRoutes\(app,dbHandle\.db,m18OutboxPublisher,\{[\s\S]{0,2500}?assertMayStartVisit:\(actor\)=>\{if\(!noteClosureGate\)\{throw[\s\S]{0,400}?returnnoteClosureGate\.assertNotBlocked\(actor\);\}/,
+    );
+  });
+
+  it("hands the gate the refusal sink and registers its counter on the metrics registry", () => {
+    expect(index).toMatch(
+      /createNoteClosureGate\(\{[\s\S]{0,3000}?onRefusal:\(\{organizationId,refused\}\)=>\{/,
+    );
+    expect(index).toContain(
+      "recordNoteClosureRefusals=registerNoteClosureMetrics(metricsRegistry).recordRefusals;",
     );
   });
 

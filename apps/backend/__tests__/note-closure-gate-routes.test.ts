@@ -217,6 +217,8 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/evv/check-out",
   "POST /api/v1/evv/offline-sync",
   "POST /api/v1/evv/offline-sync/v2",
+  "POST /api/v1/ipu-restraint/:id/reassess",
+  "POST /api/v1/ipu-restraint/:id/release",
   "POST /api/v1/medication-orders",
   "POST /api/v1/medication-orders/:id/complete",
   "POST /api/v1/medication-orders/:id/correct",
@@ -323,6 +325,7 @@ const FAMILY_PREFIXES = [
   "/api/v1/triage-protocols",
   "/api/v1/escalations",
   "/api/v1/safety",
+  "/api/v1/ipu-restraint",
   "/api/v1/alerts",
   "/api/v1/scheduled-doses",
   "/api/v1/missed-doses",
@@ -425,6 +428,39 @@ const FORBIDDEN_ROOT_CARVE_OUTS = [
   "POST /api/v1/supplies/comfort-kit-dispatches/:dispatchId/deploy-at-patient",
 ];
 
+/**
+ * Writes that look like patient-safety or regulatory duties but are DELIBERATELY refused for a blocked clinician (the owner's decision:
+ * only the IPU restraint release and reassess were added). Each carries the reason it stays closed, and the test below keeps the table
+ * honest both ways: every entry is a real route, is not on the allowlist, and has a stated reason, so a future allowlist change that
+ * opens one must delete its row here and say why in the same change.
+ */
+const DENIED_SAFETY_DUTY_WRITES: readonly (readonly [route: string, reason: string])[] = [
+  [
+    "POST /api/v1/admissions/:id/revocation",
+    "hospice election revocation is a patient or representative decision that can wait for the note; revoking it releases the benefit period",
+  ],
+  [
+    "POST /api/v1/admissions/:id/discharge",
+    "a discharge is an administrative and billing event with its own notices and deadlines, not an emergency",
+  ],
+  [
+    "POST /api/v1/patients/:id/allergies/:allergyId/entered-in-error",
+    "an allergy write (here, retracting one) alters the safety record and can wait; reading allergies stays open",
+  ],
+  [
+    "POST /api/v1/patients/:id/allergies/:allergyId/verify",
+    "an allergy write (here, verifying one) alters the safety record and can wait; reading allergies stays open",
+  ],
+  [
+    "POST /api/v1/consents/:consentId/revoke",
+    "consent revocation is a disclosure and billing decision that can wait for the note",
+  ],
+  [
+    "POST /api/v1/ipu-admissions/:id/restraint",
+    "applying a NEW restraint is new clinical work; only releasing or reassessing one already applied stays open",
+  ],
+];
+
 describe("the note-closure allowlist against the registered route table", () => {
   it("scans a plausible route table (the guard against an empty scan passing everything vacuously)", () => {
     expect(routes.length).toBeGreaterThan(500);
@@ -467,6 +503,27 @@ describe("the note-closure allowlist against the registered route table", () => 
     expect(unclassified, "classify these: add to the allowlist or to DENIED_FAMILY_ROUTES").toEqual(
       [],
     );
+  });
+
+  it("every deliberately refused safety-duty write is a real route, is not on the allowlist, and says why", () => {
+    for (const [entry, reason] of DENIED_SAFETY_DUTY_WRITES) {
+      expect(registered.has(entry), `${entry} must be a real route`).toBe(true);
+      expect(NOTE_CLOSURE_ALLOWED_ROUTES.has(entry), `${entry} is both allowed and denied`).toBe(
+        false,
+      );
+      expect(reason.length, `${entry} needs a reason`).toBeGreaterThan(30);
+    }
+  });
+
+  it("the IPU restraint family is classified: release and reassess stay open (42 CFR 418.110), applying a new one does not", () => {
+    for (const entry of [
+      "POST /api/v1/ipu-restraint/:id/release",
+      "POST /api/v1/ipu-restraint/:id/reassess",
+    ]) {
+      expect(registered.has(entry), `${entry} must be a real route`).toBe(true);
+      expect(NOTE_CLOSURE_ALLOWED_ROUTES.has(entry), entry).toBe(true);
+    }
+    expect(allowed("POST", "/api/v1/ipu-admissions/:id/restraint")).toBe(false);
   });
 
   it.each([

@@ -64,10 +64,12 @@ supervisor to work the oldest first. Paged client-side (10, 25, 50).
 
 Opens from **Grant override** or the row. Shows the note's facts, a consequence line, then:
 
-- **Reason** (required, at least 40 characters, counted as the server counts it; the running count is in
-  the hint, never in the alert). It is stored with the override and copied, as `context.justification`, into the
-  `m8.encounter.closure_override_granted` audit event; no screen reads it back. The server refuses an SSN- or
-  Medicare-number-shaped reason (422, field `reason`), and the hint says not to enter patient names.
+- **Reason** (required, 40 to 500 characters, counted as the server counts it; the box stops at 500, and the
+  running count is in the hint, never in the alert). It is stored with the override and copied, as
+  `context.justification`, into the `m8.encounter.closure_override_granted` audit event; no screen reads it
+  back. Both copies are append-only, which is why the cap is low. The server refuses an SSN- or
+  Medicare-number-shaped reason (422, field `reason`) and nothing else: names, dates of birth and record numbers
+  are caught only by the hint, which says not to enter patient names or identifiers.
 - **Hours** (whole number 1 to 24, default 4). The override ends by itself.
 
 Consequence line: the clinician can use the rest of the app for the hours chosen; the note stays open,
@@ -106,7 +108,10 @@ Write rules:
 - **No permission** (the server answers 403): "Not available", no retry. The route itself is gated by the
   permission key in the screen registry.
 - **Empty**: "No notes need attention."
-- **Refresh**: keeps the rows and an open panel mounted (stale-while-revalidate).
+- **Refresh**: keeps the rows and an open panel mounted (stale-while-revalidate). The board also reads itself
+  every five minutes while its tab is visible, and when the tab is visited again; the "Due in" countdowns are
+  recomputed every minute on the client. Every read is audited as a multi-patient read (one `encounter.viewed`
+  event per distinct patient on the page), which is why the timer is not faster.
 
 ---
 

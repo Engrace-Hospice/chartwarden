@@ -153600,7 +153600,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Grant a supervisor override that lifts the closure BLOCK for one clinician for 1-24 hours (default 4). Needs a fresh step-up. The reason (>= 40 characters) is free text: it is screened and refused with a 422 VALIDATION_FAILED (details[0].field `reason`, details[0].code EVIDENCE_LOOKS_LIKE_PHI, nothing written, the text never echoed) when it looks like an SSN or Medicare number; it is stored on the override row and carried, as `context.justification`, in the `m8.encounter.closure_override_granted` audit event, and no route returns it. Refused with 403 NOTE_CLOSURE_GRANTOR_BLOCKED when the granting supervisor is themselves blocked right now (close your own overdue notes first; one who is overridden or clear may grant), 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED when the clinician is not blocked (clear, warn-only or already overridden), 403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE when the clinician's oldest open note is outside the caller's sites (a note with no site is in scope for every supervisor; org-wide roles see every site), and 403 FORBIDDEN for an override of oneself",
+        "summary": "Grant a supervisor override that lifts the closure BLOCK for one clinician for 1-24 hours (default 4). Needs a fresh step-up. The reason (40 to 500 characters) is free text: it is screened and refused with a 422 VALIDATION_FAILED (details[0].field `reason`, details[0].code EVIDENCE_LOOKS_LIKE_PHI, nothing written, the text never echoed) when it looks like an SSN or Medicare number; it is stored on the override row and carried, as `context.justification`, in the `m8.encounter.closure_override_granted` audit event, and no route returns it. Refused, in this order, with 403 NOTE_CLOSURE_GRANTOR_BLOCKED when the granting supervisor has a note of their own past its block instant (judged with any override they hold ignored: close your own overdue notes first; only a genuinely clear supervisor releases others), 403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE when the clinician's oldest open note is outside the caller's sites (a note with no site is in scope for every supervisor; org-wide roles see every site; asked before the blocked question so a scoped supervisor learns nothing about a clinician outside their sites), 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED when the clinician is not blocked (no open note, clear, warn-only or already overridden), and 403 FORBIDDEN for an override of oneself",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -153689,7 +153689,7 @@
                   },
                   "reason": {
                     "minLength": 40,
-                    "maxLength": 2000,
+                    "maxLength": 500,
                     "type": "string"
                   },
                   "hours": {
@@ -153710,7 +153710,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Revoke a closure override early (idempotent; needs a fresh step-up). The grant row is never deleted and a revoked grant can never be un-revoked. The response is the stored grant plus `remainingActiveUntil`: the latest expiry of any OTHER active override for the same clinician (another supervisor's grant keeps them unblocked), or null when the revoke re-blocks them. The first revoke writes an `m8.encounter.closure_override_revoked` audit event (ids and instants, never the reason); a repeat writes none",
+        "summary": "Revoke a closure override early (idempotent; needs a fresh step-up). The grant row is never deleted and a revoked grant can never be un-revoked. The response is the stored grant plus `remainingActiveUntil`: the latest expiry of any OTHER active override for the same clinician (another supervisor's grant keeps them unblocked), or null when the revoke re-blocks them. Only the supervisor who granted the override, or a caller whose scope is org-wide, may revoke it: anyone else is refused 403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE. The first revoke writes an `m8.encounter.closure_override_revoked` audit event (ids and instants, never the reason); a repeat writes none",
         "parameters": [
           {
             "name": "overrideId",

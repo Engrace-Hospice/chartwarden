@@ -144,7 +144,10 @@ export function registerClosureRoutes(app: FastifyInstance, deps: ClosureRouteDe
     async (request) => {
       const actor = closureActorOf(request);
       const { overrideId } = parse(ClosureOverrideParamsSchema, request.params);
-      return service.revokeOverride(actor, overrideId, auditContextOf(request));
+      return service.revokeOverride(actor, overrideId, {
+        locationIds: boardScopeOf(request),
+        audit: auditContextOf(request),
+      });
     },
   );
 

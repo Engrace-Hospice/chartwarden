@@ -9,14 +9,18 @@ Module: Encounters / Visit Documentation (M08) — visit-note closure clock (ADR
 ## Purpose
 
 The tenant's note-closure policy: how long clinicians have to close a visit note after starting it
-(1 to 168 hours, default 24) and what happens when they do not. An administrator, director of nursing
-or clinical supervisor holding `encounter.closure_policy_admin` edits it here.
+(1 to 168 hours, default 24) and what happens when they do not. The screen is offered to, and the route
+answers, exactly the holders of `encounter.closure_policy_admin`: the director of nursing (`director_of_nursing`,
+`don`), the organization administrators (`org_admin`, `administrator`) and platform `superadmin`. Clinical
+supervisors and clinical leads do not hold it: they are the field supervisors the clock binds, and they do not
+set the deadline they are held to (ADR-0113 D7). A mistaken `block` is undone here; if every holder is
+blocked themselves, see the runbook `docs/runbooks/m8-note-closure-policy-reset.md`.
 
 ---
 
 ## Primary Users
 
-Organization administrator, director of nursing, clinical supervisor.
+Organization administrator, director of nursing.
 
 ---
 

@@ -20,7 +20,8 @@ const HTTP_INTERNAL = 500;
 /**
  * Register M8's closure alerts on the Foundation `registry` the composition root created, assert it well-formed and collision-free
  * (throws on a malformed entry or a duplicate type), and return the `payloadType -> entry` map. The registry is passed in, not created
- * here: index.ts already owns the one `createAlertPayloadRegistry` call.
+ * here: the composition root (index.ts) creates it, and it builds one registry per consumer group (this M8 one, and one for each of the
+ * M14 alert consumers), each separate, so a contribution registered on one is not visible on another.
  */
 export function registerClosureAlertCatalog(
   registry: AlertPayloadRegistry,

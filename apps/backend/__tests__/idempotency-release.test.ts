@@ -11,7 +11,7 @@
  * `gap-007-idempotency-claim.live.test.ts`.
  */
 import { HopeStateError } from "@chartwarden/hope";
-import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
+import { ChartWardenError, ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
@@ -115,6 +115,26 @@ describe("applyIdempotency — a retryable failure is not replayed", () => {
     const first = await post();
     expect(first.statusCode).toBe(409);
     expect(first.json().error.code).toBe("M10_RECORD_BUSY");
+    const retry = await post();
+    expect(retry.statusCode).toBe(201);
+    expect(retry.json()).toEqual({ saved: true });
+    expect(runs).toBe(2);
+  });
+
+  it("a 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED (state-dependent) frees the key: the same-key retry runs the write, it is not replayed for 24h", async () => {
+    await build((run, reply) => {
+      if (run === 1) {
+        throw new ChartWardenError(
+          "NOTE_CLOSURE_SUBJECT_NOT_BLOCKED",
+          "the clinician is not blocked right now",
+          409,
+        );
+      }
+      return reply.code(201).send({ saved: true });
+    });
+    const first = await post();
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error.code).toBe("NOTE_CLOSURE_SUBJECT_NOT_BLOCKED");
     const retry = await post();
     expect(retry.statusCode).toBe(201);
     expect(retry.json()).toEqual({ saved: true });

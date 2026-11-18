@@ -115,18 +115,55 @@ describe("createDraft", () => {
     ["no visit with that id exists (a made-up uuid)", null],
     ["the visit is assigned to someone else", visitRow({ assignedMembershipId: SUPERVISOR })],
     ["the visit belongs to another organization", visitRow({ organizationId: "other-org" })],
-    [
-      "the visit already started (its start event has come and gone)",
-      visitRow({ actualStartedAt: EARLIER.toISOString() }),
-    ],
     ["the visit seam cannot answer", "throw" as const],
+    ["the visit has an unreadable start instant", visitRow({ actualStartedAt: "not-an-instant" })],
   ])(
-    "starts the clock at creation (draft_created) when %s, so a typed visitId cannot defer it",
+    "starts the clock at creation (draft_created) when %s, so a typed visitId can neither defer it nor move it",
     async (_why, visit) => {
       const values = await created(visit);
       expect(values).toMatchObject({ clockStartedAt: NOW, clockStartSource: "draft_created" });
     },
   );
+
+  describe("a visit that has ALREADY started and is the author's own: the clock is the ARRIVAL, not the creation", () => {
+    it("self-attested start: the visit's actual start, source visit_started", async () => {
+      const values = await created(
+        visitRow({ actualStartedAt: EARLIER.toISOString(), evvBracketState: null }),
+      );
+      expect(values).toMatchObject({ clockStartedAt: EARLIER, clockStartSource: "visit_started" });
+    });
+
+    it("EVV-bracketed start: the same instant, source evv_check_in", async () => {
+      const values = await created(
+        visitRow({ actualStartedAt: EARLIER.toISOString(), evvBracketState: "evv_present" }),
+      );
+      expect(values).toMatchObject({ clockStartedAt: EARLIER, clockStartSource: "evv_check_in" });
+    });
+
+    it("never in the future: a start instant after now is held to now", async () => {
+      const values = await created(
+        visitRow({ actualStartedAt: "2026-11-17T21:00:00.000Z", evvBracketState: "evv_present" }),
+      );
+      expect(values).toMatchObject({ clockStartedAt: NOW, clockStartSource: "evv_check_in" });
+    });
+
+    it("never before the note's service day: an earlier instant is lifted to that day's start", async () => {
+      const values = await created(
+        visitRow({ actualStartedAt: "2026-10-20T12:00:00.000Z", evvBracketState: null }),
+      );
+      expect(values).toMatchObject({
+        clockStartedAt: new Date("2026-11-01T04:00:00.000Z"), // 00:00 EDT, the organization default zone America/New_York
+        clockStartSource: "visit_started",
+      });
+    });
+
+    it("someone else's started visit is NOT followed: the clock starts at creation", async () => {
+      const values = await created(
+        visitRow({ assignedMembershipId: SUPERVISOR, actualStartedAt: EARLIER.toISOString() }),
+      );
+      expect(values).toMatchObject({ clockStartedAt: NOW, clockStartSource: "draft_created" });
+    });
+  });
 });
 
 describe("first authoring write", () => {
@@ -157,7 +194,7 @@ describe("first authoring write", () => {
 
   it.each([
     ["a supervisor (not the author) edits the vitals", SUPERVISOR],
-    ["the caller does not say who is writing", undefined],
+    ["the caller has no acting member (a system caller: null)", null],
   ])("does NOT stamp the author's clock when %s", async (_who, actor) => {
     const { service, rec } = serviceOver({
       encounter: [encounterRow()],

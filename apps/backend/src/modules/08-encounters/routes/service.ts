@@ -575,16 +575,17 @@ export interface EncounterRouteService {
   ): Promise<CreatedEncounter>;
   getEncounter(organizationId: string, encounterId: string): Promise<EncounterView>;
   /**
-   * `actorMembershipId` (here and on the vitals and mileage writes) is the caller's membership. ADR-0113: the first authoring write on
-   * a seeded draft starts the AUTHOR's documentation clock (`draft_opened`), so it counts only when the caller IS the note's author;
-   * a supervisor's edit to someone else's draft never starts it, and a caller that omits the id never starts it either.
+   * `actorMembershipId` (here and on the vitals and mileage writes) is the caller's membership, or `null` for a caller with no acting
+   * member (a system or test caller), and it is REQUIRED so no call site can leave it out by accident. ADR-0113: the first authoring
+   * write on a seeded draft starts the AUTHOR's documentation clock (`draft_opened`), so it counts only when the caller IS the note's
+   * author; a supervisor's edit to someone else's draft never starts it, and a `null` caller never does either.
    */
   updateSelections(
     organizationId: string,
     encounterId: string,
     ifVersion: number,
     input: SelectionsInput,
-    actorMembershipId?: string,
+    actorMembershipId: string | null,
   ): Promise<{ version: number; layer1Preview: string }>;
   /** Read the stored selection tree back, assembled (#114 — the round-trip the PATCH never had). */
   getSelections(organizationId: string, encounterId: string): Promise<SelectionsView>;
@@ -592,14 +593,14 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     input: VitalsInput,
-    actorMembershipId?: string,
+    actorMembershipId: string | null,
   ): Promise<VitalsResult>;
   editVitals(
     organizationId: string,
     encounterId: string,
     vitalsId: string,
     input: VitalsInput,
-    actorMembershipId?: string,
+    actorMembershipId: string | null,
   ): Promise<VitalsResult>;
   /**
    * The authoring menu — the resolved template + the vocabulary each section accepts (F-063).
@@ -621,13 +622,13 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     input: MileageInput,
-    actorMembershipId?: string,
+    actorMembershipId: string | null,
   ): Promise<MileageResult>;
   editMileage(
     organizationId: string,
     encounterId: string,
     input: MileageInput,
-    actorMembershipId?: string,
+    actorMembershipId: string | null,
   ): Promise<MileageResult>;
   /**
    * `actorRoles` is REQUIRED (omitting it is a compile error): the link check validates the picked ids against the

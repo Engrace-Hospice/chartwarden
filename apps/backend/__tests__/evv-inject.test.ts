@@ -24,11 +24,14 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { createNoteClosureGate } from "../src/bootstrap/note-closure-gate";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
+  type EvvRouteDeps,
   type EvvRoutePort,
   EvvRouteService,
   buildEvvAbacPredicates,
@@ -209,7 +212,11 @@ function withUuidIds(backend: EvvRouteService): EvvRouteService {
 
 /** `deviceAttestationEnforced` defaults to TRUE here so the GAP-055 suites below keep exercising the enforced
  * contract; the production default is OFF (see the "NOT enforced" suite at the bottom). */
-function makeServer(service?: EvvRoutePort, deviceAttestationEnforced = true) {
+function makeServer(
+  service?: EvvRoutePort,
+  deviceAttestationEnforced = true,
+  assertMayStartVisit?: EvvRouteDeps["assertMayStartVisit"],
+) {
   const backend = withUuidIds(
     new EvvRouteService(
       {
@@ -351,7 +358,11 @@ function makeServer(service?: EvvRoutePort, deviceAttestationEnforced = true) {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerEvvRoutes(app, { service: service ?? backend, deviceAttestationEnforced });
+  registerEvvRoutes(app, {
+    service: service ?? backend,
+    deviceAttestationEnforced,
+    ...(assertMayStartVisit ? { assertMayStartVisit } : {}),
+  });
   return { app, backend };
 }
 
@@ -1682,6 +1693,173 @@ describe("GAP-055 — capture guards with device attestation NOT enforced", () =
     );
     expect([403, 422]).toContain(res.statusCode);
     expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+});
+
+// ADR-0113 D6 - the two offline-sync routes are allowlisted (so a note-blocked clinician can upload check-OUT events), but they also accept
+// `check_in` events, which start a visit and which `POST /evv/check-in` refuses for that clinician. The route asks an injected port (the
+// closure gate's policy+evaluator half) before it processes a batch that contains any check-in; check-out-only batches never ask.
+describe("§4.1 routes 3 and V2 — offline-sync does not let a note-blocked clinician start a visit", () => {
+  const blockedRefusal = () =>
+    new ChartWardenError("NOTE_CLOSURE_REQUIRED", "a visit note is past its closure deadline", 403);
+  const unavailable = () =>
+    new ChartWardenError(
+      "NOTE_CLOSURE_UNAVAILABLE",
+      "the closure status could not be checked",
+      503,
+    );
+  const blockedGuard = () =>
+    vi.fn<NonNullable<EvvRouteDeps["assertMayStartVisit"]>>(async () => {
+      throw blockedRefusal();
+    });
+  const localId = (n: number) => `aaaaaaaa-aaaa-4aaa-8aaa-bbbbbbbbbb${String(n).padStart(2, "0")}`;
+  const v1 = (events: Record<string, unknown>[]) => ({ evvDeviceId: DEVICE_UUID, events });
+  const v2 = (events: Record<string, unknown>[]) =>
+    v1(events.map((event, i) => ({ localId: localId(i), ...event })));
+  const checkIn = () => ({ kind: "check_in", ...checkInBody() });
+  const checkOut = () => ({ kind: "check_out", ...checkOutBody() });
+  const routes = [
+    ["/api/v1/evv/offline-sync", v1],
+    ["/api/v1/evv/offline-sync/v2", v2],
+  ] as const;
+
+  it.each(routes)(
+    "%s: a batch with a check-in is refused 403 NOTE_CLOSURE_REQUIRED and records nothing",
+    async (url, body) => {
+      const guard = blockedGuard();
+      const { app, backend } = makeServer(undefined, true, guard);
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: CLINICIAN,
+        payload: body([checkIn()]),
+      });
+      expect(res.statusCode, res.body).toBe(403);
+      expect(res.json().error.code).toBe("NOTE_CLOSURE_REQUIRED");
+      expect(guard).toHaveBeenCalledTimes(1);
+      expect(guard).toHaveBeenCalledWith({
+        organizationId: ORG,
+        userId: "rn_1",
+        membershipId: "rn_1",
+      });
+      expect(backend.listEvents(ORG, {})).toHaveLength(0);
+      await app.close();
+    },
+  );
+
+  it.each(routes)(
+    "%s: a MIXED batch (check-out plus check-in) is refused as a whole, so the check-out is not recorded either",
+    async (url, body) => {
+      const { app, backend } = makeServer(undefined, true, blockedGuard());
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: CLINICIAN,
+        payload: body([checkOut(), checkIn()]),
+      });
+      expect(res.statusCode, res.body).toBe(403);
+      expect(backend.listEvents(ORG, {})).toHaveLength(0);
+      await app.close();
+    },
+  );
+
+  it.each(routes)(
+    "%s: a check-OUT-only batch is allowed for a blocked clinician and never asks the gate",
+    async (url, body) => {
+      const guard = blockedGuard();
+      const { app, backend } = makeServer(undefined, true, guard);
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: CLINICIAN,
+        payload: body([checkOut()]),
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(guard).not.toHaveBeenCalled();
+      expect(backend.listEvents(ORG, {})).toHaveLength(1);
+      await app.close();
+    },
+  );
+
+  it.each(routes)(
+    "%s: a clinician who is not blocked is unaffected (the gate is asked and passes)",
+    async (url, body) => {
+      const guard = vi.fn<NonNullable<EvvRouteDeps["assertMayStartVisit"]>>(async () => {});
+      const { app, backend } = makeServer(undefined, true, guard);
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: CLINICIAN,
+        payload: body([checkIn()]),
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(guard).toHaveBeenCalledTimes(1);
+      expect(backend.listEvents(ORG, {})).toHaveLength(1);
+      await app.close();
+    },
+  );
+
+  it.each(routes)(
+    "%s: when the gate cannot decide the batch is refused 503 NOTE_CLOSURE_UNAVAILABLE, never passed",
+    async (url, body) => {
+      const guard = vi.fn<NonNullable<EvvRouteDeps["assertMayStartVisit"]>>(async () => {
+        throw unavailable();
+      });
+      const { app, backend } = makeServer(undefined, true, guard);
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: CLINICIAN,
+        payload: body([checkIn()]),
+      });
+      expect(res.statusCode, res.body).toBe(503);
+      expect(res.json().error.code).toBe("NOTE_CLOSURE_UNAVAILABLE");
+      expect(backend.listEvents(ORG, {})).toHaveLength(0);
+      await app.close();
+    },
+  );
+
+  it("composed with the REAL gate (policy block, evaluator blocked) the route refuses a check-in batch with the gate's own envelope, and lets a check-out batch through", async () => {
+    const gate = createNoteClosureGate({
+      policyCache: { get: async () => ({ mode: "block" as const }) },
+      evaluate: async () => ({
+        verdict: "blocked",
+        encounterId: "55555555-5555-4555-8555-555555555599",
+        overdueCount: 1,
+        decision: { deadlineAt: new Date("2026-06-07T12:00:00.000Z"), blockFrom: null },
+      }),
+    });
+    const { app } = makeServer(undefined, true, (actor) => gate.assertNotBlocked(actor));
+    const refused = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync",
+      headers: CLINICIAN,
+      payload: v1([checkIn()]),
+    });
+    expect(refused.statusCode, refused.body).toBe(403);
+    expect(refused.json().error.code).toBe("NOTE_CLOSURE_REQUIRED");
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync",
+      headers: CLINICIAN,
+      payload: v1([checkOut()]),
+    });
+    expect(allowed.statusCode, allowed.body).toBe(200);
+    await app.close();
+  });
+
+  it("the guard runs only after the request is parsed: a malformed batch is a 422, not a gate call", async () => {
+    const guard = blockedGuard();
+    const { app } = makeServer(undefined, true, guard);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync",
+      headers: CLINICIAN,
+      payload: { evvDeviceId: DEVICE_UUID, events: [{ kind: "check_in" }] },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(guard).not.toHaveBeenCalled();
     await app.close();
   });
 });

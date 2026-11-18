@@ -15,7 +15,8 @@
  *   8. The `m17.visit.started` stamp consumer behind the real catalog-validating publisher and the real outbox dispatcher.
  *   9. GET overdue-notes lands one `encounter.viewed` read event per distinct patient and honours location scope, a note with no
  *      location included.
- *  10. Migration 1511 grants the two permissions to the four supervisor role keys and to nobody else.
+ *  10. Migration 1511 grants the override to the four supervisor role keys, and the policy key to the DON keys and the administrators
+ *      (never to clinical_supervisor / clinical_lead), and to nobody else.
  *  11. Migration 1510's triggers: a revoked override stays revoked, an override's members belong to its organization, the clock is
  *      write-once (each with a negative control).
  *  12. The grant refuses a blocked grantor, an unblocked clinician and a note outside the grantor's sites, in that order.
@@ -90,12 +91,6 @@ const LONG_TTL_MS = 10 * MINUTE_MS;
 const SERVICE_DATE = "2026-01-15";
 const VOIDED_REASON = "voided by the closure live suite: synthetic fixture, no patient content";
 const NEW_YORK_SERVICE_DATE_START = "2026-01-15T05:00:00.000Z"; // 00:00 EST
-const NOTE_CLOSURE_ROLE_KEYS = [
-  "clinical_supervisor",
-  "director_of_nursing",
-  "don",
-  "clinical_lead",
-] as const;
 
 const ORG_A = "11111111-1111-1111-1111-111111111111"; // sections 1-5: policy, override, matrix, gate
 const ORG_B = "22222222-2222-2222-2222-222222222222"; // the other tenant
@@ -367,7 +362,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
   /** The gate, adapted EXACTLY as `apps/backend/src/index.ts` builds it, with an injectable clock. */
   function buildGate(clock: { now: Date }, policyCache = createDbClosurePolicyCache(handle.db)) {
     const failures: unknown[] = [];
-    const gate: NoteClosureGate = createNoteClosureGate({
+    const gate = createNoteClosureGate({
       policyCache,
       evaluate: ({ organizationId, userId, membershipId, now, policy }) =>
         withOrgContext(handle.db, { organizationId, userId }, (tx) =>
@@ -670,6 +665,13 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
     it("the boundaries are inclusive where the migration says so: exactly 24h and exactly 40 characters insert", async () => {
       expect((await insertAsApp({ expiresAt: "2026-11-19T12:00:00.000Z" })).rowCount).toBe(1);
       expect((await insertAsApp({ reason: "r".repeat(40) })).rowCount).toBe(1);
+      // the reason is capped at 500 characters: it is copied into the (append-only) audit event as well as stored on the row
+      expect((await insertAsApp({ reason: "r".repeat(500) })).rowCount).toBe(1);
+      const tooLong = await sqlFailure(insertAsApp({ reason: "r".repeat(501) }));
+      expect([tooLong.code, tooLong.constraint]).toEqual([
+        "23514",
+        "documentation_obligation_override_reason_len",
+      ]);
       const over = await sqlFailure(insertAsApp({ expiresAt: "2026-11-19T12:00:00.001Z" }));
       expect(over.constraint).toBe("documentation_obligation_override_expiry_window");
     });
@@ -801,6 +803,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
           organizationId: ORG_A,
           overrideId,
           revokedByMembershipId: supervisorA.membershipId,
+          locationIds: null,
           audit: auditContextOf(ORG_A, supervisorA.userId),
           now,
         }),
@@ -848,6 +851,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
             organizationId: ORG_B,
             overrideId: granted.id,
             revokedByMembershipId: supervisorB.membershipId,
+            locationIds: null,
             audit: auditContextOf(ORG_B, supervisorB.userId),
           }),
         ),
@@ -1384,6 +1388,39 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       expect([blocked.verdict, blocked.encounterId]).toEqual(["blocked", noteId]);
       const { gate: fresh } = buildGate(clock);
       expect(await gateOutcome(fresh, ORG_A, legacy)).toBe("NOTE_CLOSURE_REQUIRED");
+    });
+
+    it("assertNotBlocked (the half the EVV offline-sync route asks) agrees with the gate over the real evaluator: a blocked clinician is refused, a clear one passes, a signature lifts it at once", async () => {
+      await setPolicy(ORG_A, "block", { thresholdHours: 24 });
+      const NOW = new Date("2026-11-18T12:00:00.000Z");
+      const blockedMember = await seedMember(orgs.A, "assert-not-blocked");
+      const clearMember = await seedMember(orgs.A, "assert-clear");
+      const noteId = await seedEncounter({
+        org: orgs.A,
+        authorMembershipId: blockedMember.membershipId,
+        clockStartedAt: at(NOW, -30),
+      });
+      const { gate } = buildGate({ now: NOW });
+      const outcome = async (member: Member): Promise<string> => {
+        try {
+          await gate.assertNotBlocked({
+            organizationId: ORG_A,
+            userId: member.userId,
+            membershipId: member.membershipId,
+          });
+          return "pass";
+        } catch (error) {
+          if (error instanceof ChartWardenError) return error.code;
+          throw error;
+        }
+      };
+      expect(await outcome(blockedMember)).toBe("NOTE_CLOSURE_REQUIRED");
+      expect(await outcome(clearMember)).toBe("pass");
+      await admin.query(
+        "UPDATE encounter SET status='signed', signed_at=now(), vocab_version_id=$2 WHERE id=$1",
+        [noteId, randomUUID()],
+      );
+      expect(await outcome(blockedMember)).toBe("pass");
     });
 
     it("a signed, cosign_pending, cosigned or voided note is not open; a finalized one is; signing clears at once", async () => {
@@ -2426,8 +2463,19 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
   // ===============================================================================================================
   // 10. migration 1511
   // ===============================================================================================================
-  describe("10. migration 1511 mirrors the two permissions and grants them to the four supervisor role keys only", () => {
+  describe("10. migration 1511 mirrors the two permissions: the override to the four supervisor keys, the policy key to the DON keys and the administrators", () => {
     const KEYS = ["encounter.closure_override", "encounter.closure_policy_admin"];
+    const [OVERRIDE, POLICY_ADMIN] = KEYS as [string, string];
+    // ADR-0113 D7: who holds what once the migration has run over a tenant that already has these roles
+    const EXPECTED: Record<string, string[]> = {
+      clinical_supervisor: [OVERRIDE],
+      clinical_lead: [OVERRIDE],
+      director_of_nursing: [OVERRIDE, POLICY_ADMIN],
+      don: [OVERRIDE, POLICY_ADMIN],
+      org_admin: [POLICY_ADMIN],
+      administrator: [POLICY_ADMIN],
+      rn: [],
+    };
     const migration = () =>
       readFileSync(join(MIGRATIONS_DIR, "1511_m8_note_closure_permissions.sql"), "utf8");
     const grantsFor = async (roleKey: string, orgId: string | null) =>
@@ -2462,20 +2510,23 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       ]);
     });
 
-    it("grants every existing role with a supervisor key, and no clinician, admin or platform-template role (re-run is idempotent)", async () => {
+    it("grants each existing role exactly its share (override: four supervisors; policy: the DON keys and the administrators), no clinician or platform-template role (re-run is idempotent)", async () => {
       // The migration ran on an empty tenant set: roles created since hold no grant yet (the control).
-      for (const key of ["rn", "org_admin", ...NOTE_CLOSURE_ROLE_KEYS]) await roleIdOf(ORG_A, key);
+      for (const key of Object.keys(EXPECTED)) await roleIdOf(ORG_A, key);
       await admin.query(
         "INSERT INTO role (organization_id,key,name,category) VALUES (NULL,'clinical_lead','template','clinical_staff') ON CONFLICT DO NOTHING",
       );
-      for (const key of NOTE_CLOSURE_ROLE_KEYS)
+      for (const key of Object.keys(EXPECTED))
         expect(await grantsFor(key, ORG_A), `${key} before`).toEqual([]);
 
       await admin.query(migration());
-      for (const key of NOTE_CLOSURE_ROLE_KEYS)
-        expect(await grantsFor(key, ORG_A), `${key} after`).toEqual(KEYS);
-      expect(await grantsFor("rn", ORG_A)).toEqual([]);
-      expect(await grantsFor("org_admin", ORG_A)).toEqual([]);
+      for (const [key, expected] of Object.entries(EXPECTED))
+        expect(await grantsFor(key, ORG_A), `${key} after`).toEqual(expected);
+      // the field supervisors never get the policy key; an administrator never gets the override
+      expect(await grantsFor("clinical_supervisor", ORG_A)).not.toContain(POLICY_ADMIN);
+      expect(await grantsFor("clinical_lead", ORG_A)).not.toContain(POLICY_ADMIN);
+      expect(await grantsFor("org_admin", ORG_A)).not.toContain(OVERRIDE);
+      expect(await grantsFor("administrator", ORG_A)).not.toContain(OVERRIDE);
       expect(await grantsFor("clinical_lead", null)).toEqual([]);
 
       const before = await admin.query(
@@ -2819,7 +2870,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
         ).rows,
       ).n;
 
-    it("two blocked supervisors cannot release each other; once A closes their note, A can, and the blocked can still revoke", async () => {
+    it("two blocked supervisors cannot release each other; one who only holds an override is still not fit to release others; once they close their note they can; a blocked supervisor can still revoke", async () => {
       const a = await supervisor(31);
       const b = await supervisor(32);
       const before = await overrideCount();
@@ -2827,19 +2878,31 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       expect(await codeOf(grant(b, a))).toBe("403 NOTE_CLOSURE_GRANTOR_BLOCKED");
       expect(await overrideCount()).toBe(before);
 
+      // a clear supervisor releases B: B is overridden (the gate lets them through), but their own note is still past its block instant
+      const clear = await supervisor();
+      const released = await grant(clear, b);
+      expect((await evaluateAt(ORG_G, b, NOW)).verdict).toBe("warn");
+      expect((await evaluateAt(ORG_G, b, NOW)).overrideExpiresAt).not.toBeNull();
+      const c = await blockedClinician(0);
+      expect(await codeOf(grant(b, c))).toBe("403 NOTE_CLOSURE_GRANTOR_BLOCKED");
+      // ...and A, still blocked, is no better: so A and B cannot release each other in a loop, even with B overridden
+      expect(await codeOf(grant(b, a))).toBe("403 NOTE_CLOSURE_GRANTOR_BLOCKED");
+      expect(await overrideCount()).toBe(before + 1); // only the clear supervisor's grant
+
+      // control: once B closes their own note, B is clear and may release C
+      await admin.query(
+        "UPDATE encounter SET status='signed', signed_at=$2, vocab_version_id=gen_random_uuid() WHERE id=$1",
+        [b.noteId, NOW],
+      );
+      expect(await codeOf(grant(b, c))).toBe("granted");
+      // control: A closing theirs lets A release too
       await admin.query(
         "UPDATE encounter SET status='signed', signed_at=$2, vocab_version_id=gen_random_uuid() WHERE id=$1",
         [a.noteId, NOW],
       );
       expect((await evaluateAt(ORG_G, a, NOW)).verdict).toBe("clear");
-      const released = await grant(a, b);
-      expect((await evaluateAt(ORG_G, b, NOW)).verdict).toBe("warn"); // overridden: the block is lifted, the note is still overdue
 
-      // B is overridden, not blocked: B may now release a third clinician
-      const c = await blockedClinician(0);
-      expect(await codeOf(grant(b, c))).toBe("granted");
-
-      // a supervisor who is blocked themselves can still REVOKE (revoke is on the gate's allowlist and unguarded by design)
+      // a supervisor who is blocked themselves can still REVOKE (revoke is on the gate's allowlist); org-wide scope here
       const d = await supervisor(40);
       expect((await evaluateAt(ORG_G, d, NOW)).verdict).toBe("blocked");
       const revoked = await inOrg(ORG_G, d.userId, (tx) =>
@@ -2847,12 +2910,12 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
           organizationId: ORG_G,
           overrideId: released.id,
           revokedByMembershipId: d.membershipId,
+          locationIds: null,
           audit: auditContextOf(ORG_G, d.userId),
           now: NOW,
         }),
       );
       expect(revoked.override.revokedAt?.toISOString()).toBe(NOW.toISOString());
-      expect((await evaluateAt(ORG_G, b, NOW)).verdict).toBe("blocked");
     });
 
     it("a clinician who is not blocked right now cannot be released: 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED, nothing written", async () => {
@@ -2927,7 +2990,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       expect(await codeOf(grant(siteSupervisor, mixed, [siteTwo]))).toBe("granted");
     });
 
-    it("the order of refusals is the documented one: grantor blocked, then clinician not blocked, then scope", async () => {
+    it("the order of refusals is the documented one: grantor blocked, then out of scope, then clinician not blocked", async () => {
       const blockedGrantor = await supervisor(33);
       const clear = await supervisor();
       const outsideSites = await blockedClinician(1);
@@ -2936,10 +2999,90 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       expect(await codeOf(grant(blockedGrantor, outsideSites, [siteOne]))).toBe(
         "403 NOTE_CLOSURE_GRANTOR_BLOCKED",
       );
-      // clinician unblocked AND the (absent) note outside scope: not-blocked first, no scope question asked
+      // a clinician with no open note at all: not blocked, and no scope question asked
       expect(await codeOf(grant(clear, await supervisor(), [siteOne]))).toBe(
         "409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED",
       );
+    });
+
+    it("scope is decided BEFORE the blocked question: a site-scoped supervisor gets the same 403 for a blocked and an unblocked clinician outside their sites", async () => {
+      const [siteOne] = org.locationIds;
+      const scoped = await supervisor();
+      const blockedElsewhere = await blockedClinician(1, 30); // blocked, at site two
+      const freshElsewhere = await blockedClinician(1, 2); // not blocked (2h old), at site two
+      const overriddenElsewhere = await blockedClinician(1, 30);
+      await grant(scoped, overriddenElsewhere, null); // org-wide grant: now overridden (warn)
+      const before = await overrideCount();
+      for (const [label, subject] of [
+        ["blocked", blockedElsewhere],
+        ["unblocked", freshElsewhere],
+        ["overridden", overriddenElsewhere],
+      ] as const) {
+        expect(await codeOf(grant(scoped, subject, [siteOne])), label).toBe(
+          "403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE",
+        );
+      }
+      expect(await overrideCount()).toBe(before);
+      // control: inside their sites the unblocked one is the 409 and the blocked one is released
+      const freshHere = await blockedClinician(0, 2);
+      const blockedHere = await blockedClinician(0, 30);
+      expect(await codeOf(grant(scoped, freshHere, [siteOne]))).toBe(
+        "409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED",
+      );
+      expect(await codeOf(grant(scoped, blockedHere, [siteOne]))).toBe("granted");
+    });
+
+    it("a site-scoped supervisor may revoke only what they granted; an org-wide caller may revoke any; a blocked grantor can still revoke their own", async () => {
+      const [siteOne] = org.locationIds;
+      const granter = await supervisor();
+      const other = await supervisor();
+      const clinician = await blockedClinician(0, 30);
+      const override = await grant(granter, clinician, [siteOne]);
+      const revoke = (by: Member, locationIds: readonly string[] | null) =>
+        inOrg(ORG_G, by.userId, (tx) =>
+          revokeClosureOverride(tx, {
+            organizationId: ORG_G,
+            overrideId: override.id,
+            revokedByMembershipId: by.membershipId,
+            locationIds,
+            audit: auditContextOf(ORG_G, by.userId),
+            now: NOW,
+          }),
+        );
+      // another SITE-SCOPED supervisor (their scope includes this very site) did not grant it: refused, nothing written
+      expect(await codeOf(revoke(other, [siteOne]))).toBe("403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE");
+      expect(await codeOf(revoke(other, []))).toBe("403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE");
+      const stillActive = await admin.query(
+        "SELECT revoked_at FROM documentation_obligation_override WHERE id=$1",
+        [override.id],
+      );
+      expect(one(stillActive.rows).revoked_at).toBeNull();
+      expect((await evaluateAt(ORG_G, clinician, NOW)).verdict).toBe("warn");
+      // the grantor can, even when their own note is overdue and their scope is a single site
+      await seedEncounter({
+        org,
+        authorMembershipId: granter.membershipId,
+        clockStartedAt: at(NOW, -40),
+      });
+      expect((await evaluateAt(ORG_G, granter, NOW)).verdict).toBe("blocked");
+      const revoked = await revoke(granter, [siteOne]);
+      expect(revoked.override.revokedAt?.toISOString()).toBe(NOW.toISOString());
+      expect((await evaluateAt(ORG_G, clinician, NOW)).verdict).toBe("blocked");
+
+      // an org-wide caller may revoke someone else's grant
+      const second = await grant(await supervisor(), clinician, null);
+      const wide = await supervisor();
+      const revokedByWide = await inOrg(ORG_G, wide.userId, (tx) =>
+        revokeClosureOverride(tx, {
+          organizationId: ORG_G,
+          overrideId: second.id,
+          revokedByMembershipId: wide.membershipId,
+          locationIds: null,
+          audit: auditContextOf(ORG_G, wide.userId),
+          now: NOW,
+        }),
+      );
+      expect(revokedByWide.override.revokedAt?.toISOString()).toBe(NOW.toISOString());
     });
   });
 

@@ -18,7 +18,7 @@ import type { FastifyInstance } from "fastify";
 import { registerEvvAbacPredicates as _registerM18Abac } from "./abac-predicates";
 import type { EvvCoordsCipher, EvvCoordsFaultReporter } from "./coords";
 import { type EvvWriteOutboxPort, createDbEvvBackend } from "./evv-route-service-db";
-import { registerEvvRoutes as _registerM18Routes } from "./routes/evv-routes";
+import { type EvvRouteDeps, registerEvvRoutes as _registerM18Routes } from "./routes/evv-routes";
 
 /**
  * Mount the M18 EVV routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`), mirroring
@@ -38,6 +38,8 @@ export function mountEvvRoutes(
     readonly coordsCipher?: EvvCoordsCipher;
     /** Where the location list reports a coordinate it could not open (default: a process warning). */
     readonly onCoordsFault?: EvvCoordsFaultReporter;
+    /** ADR-0113 D6 - the visit-note closure gate's "not blocked" check, run before an offline batch that starts a visit. */
+    readonly assertMayStartVisit?: EvvRouteDeps["assertMayStartVisit"];
   } = {},
 ): void {
   // GAP-055 follow-up: ONE value (from validated server config, default OFF) feeds BOTH the routes' attestation
@@ -49,7 +51,11 @@ export function mountEvvRoutes(
     ...(options.onCoordsFault ? { onCoordsFault: options.onCoordsFault } : {}),
   });
   _registerM18Abac({ resolver: backend });
-  _registerM18Routes(app, { service: backend, deviceAttestationEnforced });
+  _registerM18Routes(app, {
+    service: backend,
+    deviceAttestationEnforced,
+    ...(options.assertMayStartVisit ? { assertMayStartVisit: options.assertMayStartVisit } : {}),
+  });
 }
 
 export { type EvvWriteOutboxPort, createDbEvvBackend } from "./evv-route-service-db";
@@ -84,7 +90,11 @@ export {
   selectBoundDevice,
   systemCapture,
 } from "./capture-guards";
-export { type EvvRouteDeps, registerEvvRoutes } from "./routes/evv-routes";
+export {
+  type EvvRouteDeps,
+  type EvvVisitStartActor,
+  registerEvvRoutes,
+} from "./routes/evv-routes";
 export {
   type ArrivalView,
   type CheckResultView,

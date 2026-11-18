@@ -4,13 +4,14 @@
 // and the policy are unchanged, and it does not satisfy the late-entry override routes. The table is append-only for the
 // application role: this service INSERTs a grant, stamps the two revocation columns on revoke, and never deletes.
 //
-// THE REASON is free text a supervisor typed (>= 40 chars) next to a clinician's name. It is screened for SSN / MBI shapes before
+// THE REASON is free text a supervisor typed (40 to 500 chars) next to a clinician's name. It is screened for SSN / MBI shapes before
 // anything is written (a refusal names the field and never echoes the text), stored on the override row (the row's audit snapshot
 // scrubs it), and carried, screened, as `context.justification` of the explicit `m8.encounter.closure_override_granted` event: that
 // event is the audit copy. No route returns the reason. The revoke event carries ids and instants only.
 //
-// WHO MAY BE RELEASED is decided by override-grant-guards.ts (the grantor is not blocked, the clinician is, the clinician's note is
-// in the grantor's scope). The caller's transaction (`withOrgContext`) is taken as-is so RLS scopes every row and each audit write
+// WHO MAY BE RELEASED, AND BY WHOM is decided by override-grant-guards.ts, in this order: the grantor has nothing of their own past its
+// block instant (overrides ignored), the clinician's oldest open note is in the grantor's scope, the clinician is blocked. A revoke is
+// allowed for the original grantor or an org-wide caller. The caller's transaction (`withOrgContext`) is taken as-is so RLS scopes every row and each audit write
 // is atomic with the change it records.
 import { type AuditContext, audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
@@ -19,6 +20,7 @@ import {
   ACTIVE_DOCUMENTATION_OBLIGATION_KINDS,
   CLOSURE_OVERRIDE_DEFAULT_HOURS,
   CLOSURE_OVERRIDE_MAX_HOURS,
+  CLOSURE_OVERRIDE_MAX_REASON_CHARS,
   CLOSURE_OVERRIDE_MIN_REASON_CHARS,
   type DocumentationObligationKind,
   ForbiddenError,
@@ -26,7 +28,7 @@ import {
   ValidationError,
 } from "@chartwarden/types";
 import { and, eq, isNull } from "drizzle-orm";
-import { assertGrantAllowed } from "./override-grant-guards";
+import { assertGrantAllowed, assertMayRevoke } from "./override-grant-guards";
 import {
   type ClosureOverrideView,
   remainingActiveUntil,
@@ -102,6 +104,9 @@ function validatedGrant(input: GrantClosureOverrideInput): { reason: string; hou
   const reason = input.reason.trim();
   if (reason.length < CLOSURE_OVERRIDE_MIN_REASON_CHARS) {
     refuse("reason", `reason must be at least ${CLOSURE_OVERRIDE_MIN_REASON_CHARS} characters`);
+  }
+  if (reason.length > CLOSURE_OVERRIDE_MAX_REASON_CHARS) {
+    refuse("reason", `reason must be at most ${CLOSURE_OVERRIDE_MAX_REASON_CHARS} characters`);
   }
   // The screen runs on the text as stored, here, at the one place it is written: a second caller of the service cannot put an
   // identifier on the row or in the audit event.
@@ -190,6 +195,8 @@ export interface RevokeClosureOverrideInput {
   readonly organizationId: string;
   readonly overrideId: string;
   readonly revokedByMembershipId: string;
+  /** The revoker's location scope, as the overdue board reads it: `null` = org-wide (any override), otherwise their sites (only their own grants). */
+  readonly locationIds: readonly string[] | null;
   /** The request's audit context for the explicit revoke event. */
   readonly audit: AuditContext;
   readonly now?: Date;
@@ -253,6 +260,11 @@ export async function revokeClosureOverride(
 ): Promise<RevokedClosureOverride> {
   const existing = await readOverride(tx, input.organizationId, input.overrideId);
   if (!existing) throw new NotFoundError("closure override", input.overrideId);
+  assertMayRevoke({
+    grantedByMembershipId: existing.grantedByMembershipId,
+    revokedByMembershipId: input.revokedByMembershipId,
+    locationIds: input.locationIds,
+  });
   const asOf = input.now ?? new Date();
   const { stored, revokedNow } =
     existing.revokedAt === null

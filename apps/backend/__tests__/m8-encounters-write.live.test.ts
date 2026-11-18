@@ -358,13 +358,14 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         d.id,
         0,
         requiredSectionSelections(encounterType as never, discipline as never),
+        null,
       );
     }
     // §2.6 check 2 (#125) — same posture as `document`: capture the roster `requiredVitalsFor` itself
     // names for this pair, unless the caller is exercising check 2's own refusal/escape-hatch behavior.
     if (extra.captureVitals !== false) {
       const vitals = requiredVitalsCapture(encounterType as never, discipline as never);
-      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
+      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals, null);
     }
     return d.id;
   }
@@ -386,30 +387,40 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   it("captureVitals computes BMI, derives abnormal flags, and emits m8.vitals.captured", async () => {
     const id = await draft("routine_visit", "rn");
-    const r = await svc.captureVitals(ORG_A, id, {
-      bpSystolic: 150,
-      bpDiastolic: 95,
-      weight: "80",
-      weightUnit: "kg",
-      height: "180",
-      heightUnit: "cm",
-    });
+    const r = await svc.captureVitals(
+      ORG_A,
+      id,
+      {
+        bpSystolic: 150,
+        bpDiastolic: 95,
+        weight: "80",
+        weightUnit: "kg",
+        height: "180",
+        heightUnit: "cm",
+      },
+      null,
+    );
     expect(r.bmi).toBe("24.7");
     expect(r.abnormalFlags).toContain("bp_systolic");
     expect(await eventsFor(r.vitalsId)).toContain("m8.vitals.captured");
     // An out-of-envelope reading is a precise 422 (defence-in-depth before the DB CHECK).
-    await expect(svc.captureVitals(ORG_A, id, { spo2: 20 })).rejects.toMatchObject({
+    await expect(svc.captureVitals(ORG_A, id, { spo2: 20 }, null)).rejects.toMatchObject({
       statusCode: 422,
     });
   });
 
   it("captureMileage stores the authoritative miles (D10) and emits m8.mileage.captured", async () => {
     const id = await draft("routine_visit", "rn");
-    const r = await svc.captureMileage(ORG_A, id, {
-      odometerStart: 1000,
-      odometerEnd: 1012,
-      source: "odometer",
-    });
+    const r = await svc.captureMileage(
+      ORG_A,
+      id,
+      {
+        odometerStart: 1000,
+        odometerEnd: 1012,
+        source: "odometer",
+      },
+      null,
+    );
     expect(r.milesDriven).toBe("12");
     expect(await eventsFor(r.mileageId)).toContain("m8.mileage.captured");
   });
@@ -862,10 +873,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   it("§7.7 optimistic concurrency — a stale updateSelections is 409 STALE_VERSION, a fresh one bumps the version", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
-    await expect(svc.updateSelections(ORG_A, id, 99, EMPTY_TREE)).rejects.toMatchObject({
+    await expect(svc.updateSelections(ORG_A, id, 99, EMPTY_TREE, null)).rejects.toMatchObject({
       statusCode: 409,
     });
-    const bumped = await svc.updateSelections(ORG_A, id, 0, EMPTY_TREE);
+    const bumped = await svc.updateSelections(ORG_A, id, 0, EMPTY_TREE, null);
     expect(bumped.version).toBe(1);
   });
 
@@ -873,7 +884,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
-    await expect(svc.captureVitals(ORG_A, id, { heartRate: 72 })).rejects.toMatchObject({
+    await expect(svc.captureVitals(ORG_A, id, { heartRate: 72 }, null)).rejects.toMatchObject({
       statusCode: 409,
     });
   });
@@ -885,26 +896,36 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     // captureVitals: false — this test asserts the EXACT row list its own two captures produce; the
     // #125 auto-capture default would add a third.
     const id = await draft("routine_visit", "rn", { captureVitals: false });
-    const first = await svc.captureVitals(ORG_A, id, {
-      heartRate: 60,
-      temperature: "37.1",
-      temperatureUnit: "c",
-    });
+    const first = await svc.captureVitals(
+      ORG_A,
+      id,
+      {
+        heartRate: 60,
+        temperature: "37.1",
+        temperatureUnit: "c",
+      },
+      null,
+    );
     // A distinct `captured_at` — the ordering claim is about the real clock, not an id tiebreak.
     await new Promise((r) => setTimeout(r, 25));
-    const second = await svc.captureVitals(ORG_A, id, {
-      bpSystolic: 150,
-      bpDiastolic: 95,
-      spo2: 97,
-      painScore: 4,
-      painScale: "nrs_0_10",
-      weight: "80",
-      weightUnit: "kg",
-      height: "180",
-      heightUnit: "cm",
-      bloodGlucose: 110,
-      bloodGlucoseUnit: "mg_dl",
-    });
+    const second = await svc.captureVitals(
+      ORG_A,
+      id,
+      {
+        bpSystolic: 150,
+        bpDiastolic: 95,
+        spo2: 97,
+        painScore: 4,
+        painScale: "nrs_0_10",
+        weight: "80",
+        weightUnit: "kg",
+        height: "180",
+        heightUnit: "cm",
+        bloodGlucose: 110,
+        bloodGlucoseUnit: "mg_dl",
+      },
+      null,
+    );
 
     const read = await svc.listVitals(ORG_A, id);
     expect(read.encounterId).toBe(id);
@@ -935,17 +956,22 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     // captureVitals: false + the full roster in ONE call — §2.6 check 2 (#125) now requires it for a
     // routine_visit to finalize at all, and this test's own assertion is the exact single row it wrote.
     const id = await draft("routine_visit", "rn", { captureVitals: false });
-    const written = await svc.captureVitals(ORG_A, id, {
-      heartRate: 72,
-      bpSystolic: 118,
-      bpDiastolic: 76,
-      respiratoryRate: 16,
-      temperature: "98.6",
-      temperatureUnit: "f",
-      spo2: 98,
-      painScore: 0,
-      painScale: "nrs_0_10",
-    });
+    const written = await svc.captureVitals(
+      ORG_A,
+      id,
+      {
+        heartRate: 72,
+        bpSystolic: 118,
+        bpDiastolic: 76,
+        respiratoryRate: 16,
+        temperature: "98.6",
+        temperatureUnit: "f",
+        spo2: 98,
+        painScore: 0,
+        painScale: "nrs_0_10",
+      },
+      null,
+    );
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     // Writing is refused after signing (§2.7); READING must not be — 42 CFR 418.104 requires the
@@ -957,7 +983,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   it("#92 RLS — org B cannot read org A's vitals, and gets a non-leaking 404 not an empty list", async () => {
     const id = await draft("routine_visit", "rn");
-    await svc.captureVitals(ORG_A, id, { heartRate: 72 });
+    await svc.captureVitals(ORG_A, id, { heartRate: 72 }, null);
     await expect(svc.listVitals(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
   });
 
@@ -970,7 +996,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   it("§2.6 — the tree is PERSISTED to hearthnote_selection and reads back assembled", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
-    const written = await svc.updateSelections(ORG_A, id, 0, TREE);
+    const written = await svc.updateSelections(ORG_A, id, 0, TREE, null);
     expect(written.version).toBe(1);
     expect(written.layer1Preview).toContain("2+ dependent edema");
 
@@ -994,10 +1020,16 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   it("§2.6 — a second PATCH UPDATES the one row rather than adding a second (mig 0225)", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
-    await svc.updateSelections(ORG_A, id, 0, TREE);
-    await svc.updateSelections(ORG_A, id, 1, {
-      sections: [{ sectionId: "assessment", entries: [{ code: "nv.neuro.alert" }] }],
-    });
+    await svc.updateSelections(ORG_A, id, 0, TREE, null);
+    await svc.updateSelections(
+      ORG_A,
+      id,
+      1,
+      {
+        sections: [{ sectionId: "assessment", entries: [{ code: "nv.neuro.alert" }] }],
+      },
+      null,
+    );
     const rows = await admin.query(
       "SELECT version, selections FROM hearthnote_selection WHERE encounter_id=$1",
       [id],
@@ -1013,9 +1045,15 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("§3.6 — free text is REFUSED with no cipher bound, and nothing is written", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
     await expect(
-      noCipherSvc.updateSelections(ORG_A, id, 0, {
-        sections: [{ sectionId: "plan", entries: [], freeText: "Family to call overnight." }],
-      }),
+      noCipherSvc.updateSelections(
+        ORG_A,
+        id,
+        0,
+        {
+          sections: [{ sectionId: "plan", entries: [], freeText: "Family to call overnight." }],
+        },
+        null,
+      ),
     ).rejects.toMatchObject({ statusCode: 503, code: "HEARTHNOTE_CIPHER_UNBOUND" });
     const rows = await admin.query("SELECT 1 FROM hearthnote_selection WHERE encounter_id=$1", [
       id,
@@ -1028,9 +1066,15 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("§3.6 — with a cipher bound, the prose round-trips and is NEVER stored in the clear", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
     const prose = "Family to call if pain escalates overnight.";
-    const written = await svc.updateSelections(ORG_A, id, 0, {
-      sections: [{ sectionId: "plan", entries: [], freeText: prose }],
-    });
+    const written = await svc.updateSelections(
+      ORG_A,
+      id,
+      0,
+      {
+        sections: [{ sectionId: "plan", entries: [], freeText: prose }],
+      },
+      null,
+    );
     expect(written.layer1Preview).toContain(prose);
 
     const rows = await admin.query(
@@ -1050,7 +1094,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn", { document: false });
     // Was a 200 with `final: ""` — an empty note reported as a successful render.
     await expect(svc.renderPayload(ORG_A, id)).rejects.toMatchObject({ statusCode: 404 });
-    await svc.updateSelections(ORG_A, id, 0, TREE);
+    await svc.updateSelections(ORG_A, id, 0, TREE, null);
     const rendered = await svc.renderPayload(ORG_A, id);
     expect(rendered.final).toContain("Assessment");
     expect(rendered.final).toContain("cardiovascularly stable");
@@ -1058,9 +1102,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   it("RLS — org B cannot read or write org A's hearthnote_selection (non-leaking 404)", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
-    await svc.updateSelections(ORG_A, id, 0, TREE);
+    await svc.updateSelections(ORG_A, id, 0, TREE, null);
     await expect(svc.getSelections(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.updateSelections(ORG_B, id, 1, TREE)).rejects.toMatchObject({
+    await expect(svc.updateSelections(ORG_B, id, 1, TREE, null)).rejects.toMatchObject({
       statusCode: 404,
     });
     await expect(svc.renderPayload(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
@@ -1093,12 +1137,18 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("§2.6 — a note documented short of its required sections is refused, per section", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
     // Only two of the four required sections for routine_visit × rn.
-    await svc.updateSelections(ORG_A, id, 0, {
-      sections: [
-        { sectionId: "chief_concern", entries: [{ code: "nv.cv.stable" }] },
-        { sectionId: "assessment", entries: [{ code: "nv.neuro.alert" }] },
-      ],
-    });
+    await svc.updateSelections(
+      ORG_A,
+      id,
+      0,
+      {
+        sections: [
+          { sectionId: "chief_concern", entries: [{ code: "nv.cv.stable" }] },
+          { sectionId: "assessment", entries: [{ code: "nv.neuro.alert" }] },
+        ],
+      },
+      null,
+    );
     const err = await svc.finalize(ORG_A, id, SERVICE_DATE as never).catch((e: unknown) => e);
     const details = (err as { details?: Array<{ field?: string }> }).details ?? [];
     expect(details.map((d) => d.field).sort()).toEqual(["plan", "vitals_review"]);
@@ -1108,15 +1158,20 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn", { captureVitals: false });
     // Every roster field but BP: the gate runs as a PREVIEW at finalize (same as check 1), so a note
     // missing a required vital never reaches `finalized` in the first place.
-    await svc.captureVitals(ORG_A, id, {
-      heartRate: 72,
-      respiratoryRate: 16,
-      temperature: "98.6",
-      temperatureUnit: "f",
-      spo2: 98,
-      painScore: 0,
-      painScale: "nrs_0_10",
-    });
+    await svc.captureVitals(
+      ORG_A,
+      id,
+      {
+        heartRate: 72,
+        respiratoryRate: 16,
+        temperature: "98.6",
+        temperatureUnit: "f",
+        spo2: 98,
+        painScore: 0,
+        painScale: "nrs_0_10",
+      },
+      null,
+    );
     const err = await svc.finalize(ORG_A, id, SERVICE_DATE as never).catch((e: unknown) => e);
     const details = (err as { details?: Array<{ field?: string; code?: string }> }).details ?? [];
     expect(details).toContainEqual(expect.objectContaining({ field: "bp", code: "MISSING_VITAL" }));
@@ -1125,10 +1180,15 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
     // The same encounter, with BP marked clinically not indicated and a reason ≥20 chars, finalizes
     // and signs — the escape hatch, reachable for the first time (#125's acceptance criterion).
-    await svc.captureVitals(ORG_A, id, {
-      clinicallyNotIndicatedFields: ["bp"],
-      clinicallyNotIndicatedReason: "patient refused cuff placement this visit",
-    });
+    await svc.captureVitals(
+      ORG_A,
+      id,
+      {
+        clinicallyNotIndicatedFields: ["bp"],
+        clinicallyNotIndicatedReason: "patient refused cuff placement this visit",
+      },
+      null,
+    );
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     const signed = await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     expect(signed.status).toBe("signed");
@@ -1362,6 +1422,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       id,
       before?.version as number,
       requiredSectionSelections("routine_visit" as never, "rn" as never),
+      null,
     );
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
 
@@ -1571,19 +1632,29 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
     it("MileagePayrollReader returns the signed encounter's authoritative miles; a draft's are not payable", async () => {
       const signedId = await draft("routine_visit", "rn");
-      await svc.captureMileage(ORG_A, signedId, {
-        odometerStart: 2000,
-        odometerEnd: 2018,
-        source: "odometer",
-      });
+      await svc.captureMileage(
+        ORG_A,
+        signedId,
+        {
+          odometerStart: 2000,
+          odometerEnd: 2018,
+          source: "odometer",
+        },
+        null,
+      );
       await svc.finalize(ORG_A, signedId, SERVICE_DATE as never);
       await svc.sign(ORG_A, signedId, ACTOR_A, SIGN_ARGS);
       const draftId = await draft("routine_visit", "rn");
-      await svc.captureMileage(ORG_A, draftId, {
-        odometerStart: 3000,
-        odometerEnd: 3050,
-        source: "odometer",
-      });
+      await svc.captureMileage(
+        ORG_A,
+        draftId,
+        {
+          odometerStart: 3000,
+          odometerEnd: 3050,
+          source: "odometer",
+        },
+        null,
+      );
       const rows = await runWithRequestContext(REQ, () =>
         seamStore().mileageForClinician(membershipOf[ORG_A], {
           from: SERVICE_DATE as never,
@@ -1640,9 +1711,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         d.id,
         0,
         requiredSectionSelections("routine_visit" as never, "rn" as never),
+        null,
       );
       const vitals = requiredVitalsCapture("routine_visit" as never, "rn" as never);
-      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
+      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals, null);
       await svc.finalize(ORG_A, d.id, SERVICE_DATE as never);
       await svc.sign(ORG_A, d.id, ACTOR_A, SIGN_ARGS);
 

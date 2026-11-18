@@ -510,8 +510,23 @@ describe("step-up on the override routes", () => {
     expect(service.revokeOverride).toHaveBeenCalledWith(
       expect.objectContaining({ membershipId: "sup_1" }),
       OVERRIDE_ID,
-      expect.objectContaining({ organizationId: ORG, userId: "sup_1", actorKind: "user" }),
+      {
+        // the revoke reads the caller's location scope exactly as the board and the grant do (this supervisor carries one site)
+        locationIds: [SITE],
+        audit: expect.objectContaining({ organizationId: ORG, userId: "sup_1", actorKind: "user" }),
+      },
     );
+  });
+
+  it("an org-wide role's revoke carries a null scope (it may revoke any override)", async () => {
+    const { app, service } = makeServer();
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/closure-overrides/${OVERRIDE_ID}/revoke`,
+      headers: DON,
+      payload: {},
+    });
+    expect(service.revokeOverride.mock.calls[0]?.[2]).toMatchObject({ locationIds: null });
   });
 
   it("a revoke that leaves another supervisor's grant in force says until when", async () => {
@@ -535,6 +550,7 @@ describe("step-up on the override routes", () => {
 describe("request validation (422 VALIDATION_FAILED, nothing reaches the service)", () => {
   it.each([
     ["a reason under 40 characters", { subjectMembershipId: SUBJECT, reason: "too short" }],
+    ["a reason over 500 characters", { subjectMembershipId: SUBJECT, reason: "r".repeat(501) }],
     ["hours above 24", { subjectMembershipId: SUBJECT, reason: GOOD_REASON, hours: 25 }],
     ["hours of zero", { subjectMembershipId: SUBJECT, reason: GOOD_REASON, hours: 0 }],
     ["a non-uuid subject", { subjectMembershipId: "not-a-uuid", reason: GOOD_REASON }],

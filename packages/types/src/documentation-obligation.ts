@@ -38,7 +38,12 @@ export const DOCUMENTATION_OBLIGATION_DEFAULT_THRESHOLD_HOURS = 24;
 export const DOCUMENTATION_OBLIGATION_MIN_THRESHOLD_HOURS = 1;
 export const DOCUMENTATION_OBLIGATION_MAX_THRESHOLD_HOURS = 168;
 
-/** The override CHECKs: a reason of at least 40 characters, and a window of at most 24 hours (4 by default). */
+/**
+ * The override CHECKs: a reason of at least 40 and at most 500 characters, and a window of at most 24 hours (4 by default). The cap
+ * is low on purpose: the reason is free text next to a clinician's name, it is stored on the override row AND copied into the audit
+ * event, and both are append-only, so what a supervisor types stays for good.
+ */
 export const CLOSURE_OVERRIDE_MIN_REASON_CHARS = 40;
+export const CLOSURE_OVERRIDE_MAX_REASON_CHARS = 500;
 export const CLOSURE_OVERRIDE_MAX_HOURS = 24;
 export const CLOSURE_OVERRIDE_DEFAULT_HOURS = 4;

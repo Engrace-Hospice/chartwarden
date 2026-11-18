@@ -20,6 +20,7 @@ import {
   type PreHandler,
   membershipActorOf,
   requireIdempotencyKey,
+  writeActorOf,
 } from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
@@ -68,6 +69,23 @@ export interface EvvRouteDeps {
    * apply either way. The service must be built with the same value.
    */
   deviceAttestationEnforced?: boolean;
+  /**
+   * ADR-0113 D6 - may this clinician START a visit right now? The visit-note closure gate refuses `POST /evv/check-in` for a clinician
+   * whose visit note is past its block instant, but the two offline-sync routes are allowlisted for the check-OUT events a blocked
+   * clinician must be able to upload, and they also accept `check_in` events (which start a visit). The composition root injects the gate's
+   * policy+evaluator half here (this module imports nothing from the gate); a batch that contains any `check_in` event calls it first and
+   * is refused with the gate's own 403 NOTE_CLOSURE_REQUIRED / 503 NOTE_CLOSURE_UNAVAILABLE when it throws. A check-out-only batch never
+   * calls it. Resolves when the clinician is not blocked.
+   */
+  assertMayStartVisit?: (actor: EvvVisitStartActor) => Promise<void>;
+}
+
+/** Who is posting an offline batch, as the closure gate needs it (ids only). */
+export interface EvvVisitStartActor {
+  readonly organizationId: string;
+  /** The Better Auth user id. */
+  readonly userId: string;
+  readonly membershipId: string;
 }
 
 /**
@@ -167,6 +185,18 @@ const sessionAttestationIdOf = (request: FastifyRequest): string | null =>
 
 export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): void {
   const { service } = deps;
+  /**
+   * ADR-0113 D6: a batch that carries any `check_in` event starts a visit, so it is held to the same closure verdict as
+   * `POST /evv/check-in` (see {@link EvvRouteDeps.assertMayStartVisit}); a check-out-only batch passes without asking.
+   */
+  const guardVisitStarts = async (
+    request: FastifyRequest,
+    events: readonly { readonly kind: string }[],
+  ): Promise<void> => {
+    if (!deps.assertMayStartVisit || !events.some((event) => event.kind === "check_in")) return;
+    const { organizationId, userId, membershipId } = writeActorOf(request);
+    await deps.assertMayStartVisit({ organizationId, userId, membershipId });
+  };
   const attested = deps.deviceAttestationEnforced === true;
   /** The attestation preHandler for a route, present only when attestation is enforced. */
   const attestationGates = (gate: PreHandler): PreHandler[] => (attested ? [gate] : []);
@@ -247,6 +277,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   app.post("/api/v1/evv/offline-sync", async (request) => {
     const { organizationId, userId } = membershipActorOf(request);
     const b = parse(OfflineSyncRequest, request.body);
+    await guardVisitStarts(request, b.events);
     const authority = captureAuthorityOf(request);
     const checked = new Set<string>();
     for (const e of b.events) {
@@ -333,6 +364,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   app.post("/api/v1/evv/offline-sync/v2", async (request, reply) => {
     const { organizationId, userId } = membershipActorOf(request);
     const b = parse(OfflineSyncV2Request, request.body);
+    await guardVisitStarts(request, b.events);
     const authority = captureAuthorityOf(request);
     if (new Set(b.events.map((event) => event.localId)).size !== b.events.length)
       throw new ValidationError("localId must be unique in a batch", [

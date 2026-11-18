@@ -13,6 +13,7 @@ import { STEP_UP_POLICY } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import { buildServer, createSessionAuthenticate } from "../src/bootstrap/index";
 import {
+  NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND,
   type NoteClosureGateEvaluation,
   createNoteClosureGate,
 } from "../src/bootstrap/note-closure-gate";
@@ -178,6 +179,20 @@ describe("note-closure gate through the real authenticate hook", () => {
     const res = await app.inject({ method: "GET", url: `${ALLOWED_URL}/no-such-child` });
     expect(res.statusCode, res.body).toBe(403);
     expect(res.json().error.code).toBe("NOTE_CLOSURE_REQUIRED");
+  });
+
+  it("a blocked clinician looping past the evaluation budget is refused 429 RATE_LIMITED with Retry-After 1, never passed", async () => {
+    const { app, evaluate } = serverFor({ actor: staffActor(BLOCKED_MEMBERSHIP) });
+    for (let i = 0; i < NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND; i++) {
+      expect((await app.inject({ method: "GET", url: REFUSED_URL })).statusCode).toBe(403);
+    }
+    const over = await app.inject({ method: "GET", url: REFUSED_URL });
+    expect(over.statusCode, over.body).toBe(429);
+    expect(over.json().error.code).toBe("RATE_LIMITED");
+    expect(over.headers["retry-after"]).toBe("1");
+    expect(evaluate).toHaveBeenCalledTimes(NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND);
+    // an allowlisted route is untouched by the budget (it never reaches the evaluator)
+    expect((await app.inject({ method: "GET", url: ALLOWED_URL })).statusCode).toBe(200);
   });
 
   it("a non-staff session never reaches the gate", async () => {

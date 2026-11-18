@@ -96,7 +96,7 @@ export interface ClosureRouteService {
   revokeOverride(
     actor: ClosureActor,
     overrideId: string,
-    audit: AuditContext,
+    scope: { readonly locationIds: readonly string[] | null; readonly audit: AuditContext },
   ): Promise<ClosureOverrideRevokedWire>;
   getPolicy(organizationId: string): Promise<ClosurePolicyWire>;
   /** Upserts the policy, records the explicit audit event and invalidates the gate's cache for the organization. */
@@ -218,12 +218,13 @@ export function createDbClosureRouteService(deps: ClosureRouteServiceDeps): Clos
       return overrideWire(view);
     },
 
-    async revokeOverride(actor, overrideId, audit) {
+    async revokeOverride(actor, overrideId, { locationIds, audit }) {
       const revoked = await inOrg(actor, (tx) =>
         revokeClosureOverride(tx, {
           organizationId: actor.organizationId,
           overrideId,
           revokedByMembershipId: actor.membershipId,
+          locationIds,
           audit,
           now: clock(),
         }),

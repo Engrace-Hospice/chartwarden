@@ -1,6 +1,9 @@
 // The pure closure rules the supervisor board and the policy screen share: the bounds mirror the server's, and a row's timing is read
 // from what the server's clock decided (never recomputed from the clock start). Synthetic values only.
-import { CLOSURE_OVERRIDE_MIN_REASON_CHARS } from "@chartwarden/types";
+import {
+  CLOSURE_OVERRIDE_MAX_REASON_CHARS,
+  CLOSURE_OVERRIDE_MIN_REASON_CHARS,
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   OVERRIDE_REASON_MAX_CHARS,
@@ -200,8 +203,9 @@ describe("overrideStatusText", () => {
 });
 
 describe("the reason's upper bound", () => {
-  it("is the server's 2,000 characters (closure-typebox.ts OVERRIDE_REASON_MAX_CHARS)", () => {
-    expect(OVERRIDE_REASON_MAX_CHARS).toBe(2_000);
+  it("is the server's 500 characters: the shared CLOSURE_OVERRIDE_MAX_REASON_CHARS the grant schema also reads", () => {
+    expect(OVERRIDE_REASON_MAX_CHARS).toBe(500);
+    expect(OVERRIDE_REASON_MAX_CHARS).toBe(CLOSURE_OVERRIDE_MAX_REASON_CHARS);
   });
 });
 

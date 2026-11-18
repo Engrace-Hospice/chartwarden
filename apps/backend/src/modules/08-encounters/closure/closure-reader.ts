@@ -67,6 +67,13 @@ export interface EvaluateMemberClosureInput {
   readonly now: Date;
   /** The caller's already-resolved policy (the gate passes its cached one); read from the database when absent. */
   readonly policy?: ClosurePolicy;
+  /**
+   * Evaluate as if no supervisor override existed: the clinician's OWN position on the clock, whatever a supervisor has lifted for them.
+   * Default off: the gate, the banner and the board honour overrides (an overridden clinician is `warn`, not `blocked`). The override
+   * grant turns it on for the GRANTOR, so a supervisor who is only unblocked by someone else's override cannot release others in turn
+   * (two supervisors overriding each other would otherwise never have to close a note). Never skips the policy or the note scan.
+   */
+  readonly ignoreOverrides?: boolean;
 }
 
 function isPastDeadline(decision: NoteClosureDecision): boolean {
@@ -170,7 +177,7 @@ export async function evaluateMemberClosure(
     now,
   );
   const override =
-    policy.mode === "block" && isPastDeadline(decision)
+    !input.ignoreOverrides && policy.mode === "block" && isPastDeadline(decision)
       ? await findActiveOverride(tx, organizationId, membershipId, VISIT_NOTE, now)
       : null;
   return {

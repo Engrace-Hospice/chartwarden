@@ -15,16 +15,21 @@
 //     incidents / check-ins, emergency messaging and its acknowledgment, break-glass (grant, cosign, revoke), the alert inbox.
 //   * regulatory and patient-safety DUTIES that cannot wait for a note: reporting a patient incident or an abuse allegation (the
 //     reporter's own three routes only), recording a death and acknowledging its notification, changing or correcting a code
-//     status, deploying a comfort kit at the patient's bedside, and finishing a visit that is ALREADY in progress (EVV check-out and
-//     the offline syncs, which carry the closing events of visits started before the block).
+//     status, deploying a comfort kit at the patient's bedside, releasing or reassessing an inpatient restraint (42 CFR 418.110: a
+//     restraint must be released as soon as the need ends and reassessed on its schedule, so a confined clinician cannot be locked
+//     out of ending one), and finishing a visit that is ALREADY in progress (EVV check-out, and the offline syncs, which carry the
+//     closing events of visits started before the block; the two sync routes also accept check-IN events, so a batch that contains
+//     one is refused for a blocked clinician by the route itself, through the gate's `assertNotBlocked`, see note-closure-gate.ts).
 //   * what the app chrome and those screens read: session plumbing, feature flags, name / terminology lookups, the read-only
 //     patient chart, and the patient / admission / document / order lists those screens and pickers call (`GET /patients`,
 //     `GET /admissions`, `GET /documents`, `GET /orders/pending-signature`, `GET /orders/cosign-pending` ...).
 //
 // WHAT IS DELIBERATELY NOT HERE: voiding a note (`.../void`), reading or writing the closure policy (a blocked administrator must not
 // release themselves), starting or scheduling visits and checking IN to one (a new visit is new work), the triage, investigation,
-// resolution and closure of a quality incident (only the reporter's routes are here), admission revocation, HOPE / billing /
-// referral / reporting / messaging administration, and the organization-wide dashboards, KPIs and compliance trackers.
+// resolution and closure of a quality incident (only the reporter's routes are here), applying a NEW inpatient restraint, hospice
+// election revocation, discharge, allergy writes and consent revocation (each is a decision that can wait for the note; the owner
+// decided to keep them refused, and note-closure-gate-routes.test.ts pins each with its reason), HOPE / billing / referral /
+// reporting / messaging administration, and the organization-wide dashboards, KPIs and compliance trackers.
 import { SESSION_PLUMBING_ROUTES } from "./onboarding-org-gate";
 
 /** M8: close the note, create an ad-hoc one, and the supervisor's closure-status / override routes. NOT `void`, NOT closure-policy. */
@@ -224,7 +229,9 @@ const EMERGENCY_ROUTES: readonly string[] = [
 /**
  * Regulatory and patient-safety duties that cannot wait for a note. The quality routes are the REPORTER's only (create, edit the draft,
  * submit: each is gated on ownership of the incident); triage, investigation, resolution and closure stay refused. EVV check-out and
- * the offline syncs finish visits that were already in progress when the block began; EVV check-in (starting a new visit) stays refused.
+ * the offline syncs finish visits that were already in progress when the block began; EVV check-in (starting a new visit) stays refused,
+ * and an offline-sync batch that carries a check-in event is refused by the route itself (it asks the gate's `assertNotBlocked`). The
+ * two IPU restraint routes (release, reassess; 42 CFR 418.110) let a confined clinician end or reassess a restraint already applied.
  */
 const SAFETY_DUTY_ROUTES: readonly string[] = [
   "POST /api/v1/quality/incidents",
@@ -238,6 +245,8 @@ const SAFETY_DUTY_ROUTES: readonly string[] = [
   "POST /api/v1/evv/check-out",
   "POST /api/v1/evv/offline-sync",
   "POST /api/v1/evv/offline-sync/v2",
+  "POST /api/v1/ipu-restraint/:id/reassess",
+  "POST /api/v1/ipu-restraint/:id/release",
 ];
 
 /** The alert inbox: the closure alert itself arrives here, so a confined clinician must keep reading and clearing it. */

@@ -3,13 +3,18 @@
 -- default grants. Idempotent.
 --   encounter.closure_override       a supervisor lifts the closure BLOCK for one clinician for up to 24 hours (route behind step-up)
 --   encounter.closure_policy_admin   sets the tenant's closure mode (off | warn | block) and threshold hours
--- Grants (the 0379 / 1103 pattern: wherever a tenant has ALREADY created the role): the four supervisor role keys. Single source:
--- NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS in packages/auth/src/roles/note-closure-grants.ts (pinned by
--- apps/backend/__tests__/note-closure-grants.test.ts). A tenant provisioned after this migration gets the keys from the
--- ROLE_TEMPLATES materializer instead (GAP-006): the director_of_nursing template carries NOTE_CLOSURE_DEFAULT_GRANTS, the only
--- one of the four that is a template. NEVER org_admin / administrator (both keys are in FULL_CATALOG_EXCLUDED_KEYS), aides,
--- volunteers or compliance roles; a tenant tightens by removing the grant from a role it owns. Both keys carry no ABAC default (`none`): the route composes step-up
--- (override) and the caller's own site scope (board) itself.
+-- Two keys, two owners (ADR-0113 D7); wherever a tenant has ALREADY created the role (the 0379 / 1103 pattern):
+--   closure_override       the four supervisor role keys: clinical_supervisor, director_of_nursing, don, clinical_lead.
+--   closure_policy_admin   the DON keys (director_of_nursing, don) AND the tenant administrators (org_admin, administrator, the way
+--                          1329 / 1429 grant a new catalog key to both). NOT clinical_supervisor or clinical_lead: they are the field
+--                          supervisors the clock binds and must not set the deadline they are held to.
+-- Single source: NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS, NOTE_CLOSURE_POLICY_ADMIN_SUPERVISOR_ROLE_KEYS and FULL_CATALOG_ROLE_KEYS in
+-- packages/auth/src/roles (pinned by apps/backend/__tests__/note-closure-grants.test.ts). A tenant provisioned after this migration
+-- gets the keys from the ROLE_TEMPLATES materializer instead (GAP-006): the director_of_nursing template carries both (it is the only
+-- supervisor key that is a template) and org_admin / administrator derive closure_policy_admin from the full catalog;
+-- closure_override is in FULL_CATALOG_EXCLUDED_KEYS, so an administrator is never a default overrider. NEVER aides, volunteers or
+-- compliance roles; a tenant tightens by removing a grant from a role it owns. Both keys carry no ABAC default (`none`): the route
+-- composes step-up (override and policy write) and the caller's own site scope (board) itself.
 
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('encounter.closure_override', 'encounter', 'closure_override', 'compliance', 'none', ''),
@@ -17,9 +22,15 @@ INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac
 ON CONFLICT ("key") DO NOTHING;--> statement-breakpoint
 
 INSERT INTO "role_permission" ("organization_id", "role_id", "permission_key")
-SELECT r."organization_id", r."id", k."key"
+SELECT r."organization_id", r."id", 'encounter.closure_override'
   FROM "role" r
- CROSS JOIN (VALUES ('encounter.closure_override'), ('encounter.closure_policy_admin')) AS k("key")
  WHERE r."key" IN ('clinical_supervisor', 'director_of_nursing', 'don', 'clinical_lead')
+   AND r."organization_id" IS NOT NULL
+ON CONFLICT ("role_id", "permission_key") DO NOTHING;--> statement-breakpoint
+
+INSERT INTO "role_permission" ("organization_id", "role_id", "permission_key")
+SELECT r."organization_id", r."id", 'encounter.closure_policy_admin'
+  FROM "role" r
+ WHERE r."key" IN ('director_of_nursing', 'don', 'org_admin', 'administrator')
    AND r."organization_id" IS NOT NULL
 ON CONFLICT ("role_id", "permission_key") DO NOTHING;
