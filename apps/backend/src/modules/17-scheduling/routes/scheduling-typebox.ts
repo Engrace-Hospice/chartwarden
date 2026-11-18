@@ -1,4 +1,3 @@
-import "@chartwarden/shared/route-kit";
 import { parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/17-scheduling/routes/scheduling-typebox.ts — M17-T07 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import

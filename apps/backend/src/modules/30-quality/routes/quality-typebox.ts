@@ -402,8 +402,6 @@ export const UpdateInfectionOutbreakBodySchema = Type.Object({
   resolutionNote: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
 });
 
-// ── parse helper ────────────────────────────────────────────────────────────────────────────────────────
-
 // ── §4.1 RESPONSE DTOs ─────────────────────────────────────────────────────────────────────────
 //
 // The reads the M30 web screens call. Without these the generated client types every M30 response as

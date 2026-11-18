@@ -1,4 +1,3 @@
-import "@chartwarden/shared/route-kit";
 import { VOID_REASON_MIN_LENGTH } from "@chartwarden/emar";
 import { parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/13-emar/routes/emar-typebox.ts — M13-T08 TypeBox route schemas (§4.2).

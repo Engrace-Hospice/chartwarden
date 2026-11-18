@@ -519,5 +519,3 @@ export const AdminUsageCurrentResponseDto = Type.Intersect([
   UsageCurrentResponseDto,
   Type.Object({ claimsBillingAddon: Type.Union([AddonUsageDto, Type.Null()]) }),
 ]);
-
-// ── validate helper ─────────────────────────────────────────────────────────────────────────────────────

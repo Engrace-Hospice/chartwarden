@@ -1,4 +1,3 @@
-import "@chartwarden/shared/route-kit";
 import { parse } from "@chartwarden/shared/route-kit";
 import type { EvvAggregatorSubmissionDto, EvvBracketDto, EvvEventDto } from "@chartwarden/types";
 // apps/backend/src/modules/18-evv/routes/evv-typebox.ts — M18-T06 TypeBox route schemas (§4.2).
