@@ -1916,9 +1916,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
           d.id,
           0,
           requiredSectionSelections("routine_visit" as never, "rn" as never),
+          null,
         );
         const vitals = requiredVitalsCapture("routine_visit" as never, "rn" as never);
-        if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
+        if (vitals) await svc.captureVitals(ORG_A, d.id, vitals, null);
         await svc.finalize(ORG_A, d.id, SERVICE_DATE as never);
         return d.id;
       };
@@ -2081,9 +2082,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         d.id,
         0,
         requiredSectionSelections("routine_visit" as never, "rn" as never),
+        null,
       );
       const vitals = requiredVitalsCapture("routine_visit" as never, "rn" as never);
-      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
+      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals, null);
       await svc.finalize(ORG_A, d.id, SERVICE_DATE as never);
       expect((await svc.getEncounter(ORG_A, d.id)).evvBracketPresent).toBe(true);
       await svc.sign(ORG_A, d.id, ACTOR_A, {
