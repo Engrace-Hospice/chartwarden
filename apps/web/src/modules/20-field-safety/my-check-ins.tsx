@@ -98,6 +98,15 @@ export function MyCheckInsScreen(): JSX.Element {
     [client],
   );
 
+  // Nothing typed or refused in the form outlives it: a correction's reason is written fresh each time.
+  const closeAmend = useCallback(() => {
+    setAmending(null);
+    setStatus("ok");
+    setNote("");
+    setReason("");
+    setModalError(null);
+  }, []);
+
   const submitAmend = useCallback(async () => {
     if (!amending) return;
     const submittedId = amending.id;
@@ -254,7 +263,7 @@ export function MyCheckInsScreen(): JSX.Element {
             key={amending.id}
             title="Amend this check-in"
             busy={saving}
-            onClose={() => setAmending(null)}
+            onClose={closeAmend}
             save={
               <Button
                 tone="primary"

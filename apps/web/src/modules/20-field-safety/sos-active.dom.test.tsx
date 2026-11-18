@@ -246,3 +246,21 @@ describe("active SOS board — acknowledge an alert", () => {
     expect((button as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+describe("active SOS board — nothing outlives a dismissed form", () => {
+  it("reopens empty and without the last failure", async () => {
+    mount({ post: async () => refused("CONFLICT") });
+    const drawer = await ackOf("Maya");
+    record(drawer);
+    await within(drawer).findByText(/The acknowledgment for Maya was not recorded/);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+    );
+    const again = await ackOf("Maya");
+    expect((within(again).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
+      "",
+    );
+    expect(within(again).queryByText(/was not recorded/)).toBeNull();
+  });
+});

@@ -115,6 +115,15 @@ export function ActiveSosScreen(): JSX.Element {
     [client],
   );
 
+  // Nothing typed or refused in the form outlives it: an account is written fresh each time.
+  const closeAck = useCallback(() => {
+    setAckFor(null);
+    setActionTaken("");
+    setOutcome(DEFAULT_ACK_OUTCOME);
+    setPhoneMasked("");
+    setModalError(null);
+  }, []);
+
   const submitAck = useCallback(async () => {
     if (!ackFor) return;
     const target = ackFor;
@@ -415,7 +424,7 @@ export function ActiveSosScreen(): JSX.Element {
             key={ackFor.id}
             title={`Acknowledge ${ackFor.who}'s SOS`}
             busy={saving}
-            onClose={() => setAckFor(null)}
+            onClose={closeAck}
             save={
               <Button
                 tone="primary"

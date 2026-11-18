@@ -216,3 +216,35 @@ describe("high-risk areas — a write in flight and a write that fails", () => {
     expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(false);
   });
 });
+
+describe("high-risk areas — nothing outlives a dismissed form", () => {
+  it("reopens empty and without the last failure", async () => {
+    mount({
+      post: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Loose dogs near the east entrance." },
+    });
+    fireEvent.change(within(drawer).getByLabelText("Polygon rings"), {
+      target: { value: "0,0 1,0 1,1 0,0" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Create area" }));
+    await within(drawer).findByText(/No answer came back/);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Draw a high-risk area" })).toBeNull(),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const again = await drawerNamed("Draw a high-risk area");
+    expect(
+      (within(again).getByLabelText("Advisory message (<=200 characters)") as HTMLInputElement)
+        .value,
+    ).toBe("");
+    expect((within(again).getByLabelText("Polygon rings") as HTMLTextAreaElement).value).toBe("");
+    expect(within(again).queryByText(/No answer came back/)).toBeNull();
+  });
+});

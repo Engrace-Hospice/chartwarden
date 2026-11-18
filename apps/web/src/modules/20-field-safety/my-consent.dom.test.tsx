@@ -244,3 +244,44 @@ describe("my safety consent — a write in flight and a write that fails", () =>
     ).toBe(false);
   });
 });
+
+describe("my safety consent — nothing outlives a dismissed form", () => {
+  it("reopens a grant without the contact's details or the last failure", async () => {
+    mount({
+      post: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await give();
+    fireEvent.change(within(drawer).getByLabelText("Their name"), {
+      target: { value: "Sam Rivera" },
+    });
+    fireEvent.change(within(drawer).getByLabelText("Their phone number"), {
+      target: { value: "5035550123" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "I consent" }));
+    await within(drawer).findByText(/No answer came back/);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: CONTACT })).toBeNull());
+    const again = await give();
+    expect((within(again).getByLabelText("Their name") as HTMLInputElement).value).toBe("");
+    expect((within(again).getByLabelText("Their phone number") as HTMLInputElement).value).toBe("");
+    expect(within(again).queryByText(/No answer came back/)).toBeNull();
+  });
+
+  it("reopens a withdrawal without its reason", async () => {
+    mount();
+    const drawer = await withdraw();
+    fireEvent.change(within(drawer).getByLabelText("Reason (optional)"), {
+      target: { value: "Changed my mind about sharing this." },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: `Withdraw: ${COORDS}` })).toBeNull(),
+    );
+    const again = await withdraw();
+    expect((within(again).getByLabelText("Reason (optional)") as HTMLTextAreaElement).value).toBe(
+      "",
+    );
+  });
+});

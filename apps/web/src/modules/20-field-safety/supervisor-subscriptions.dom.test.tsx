@@ -167,3 +167,23 @@ describe("supervisor subscriptions — a write that fails", () => {
     expect(screen.getByRole("link", { name: "Safety board" }).closest("[inert]")).toBeNull();
   });
 });
+
+describe("supervisor subscriptions — nothing outlives a dismissed form", () => {
+  it("reopens empty and without the last failure", async () => {
+    rejectWrites = true;
+    mount();
+    const drawer = await openDrawer();
+    await pick(drawer, /^Supervisor/, /Sam Supervisor/);
+    await pick(drawer, /^Clinician/, /Jordan Clinician/);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Add subscription" }));
+    await within(drawer).findByText(/No answer came back/);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Add a subscription" })).toBeNull(),
+    );
+    const again = await openDrawer();
+    expect((within(again).getByLabelText(/^Supervisor/) as HTMLInputElement).value).toBe("");
+    expect((within(again).getByLabelText(/^Clinician/) as HTMLInputElement).value).toBe("");
+    expect(within(again).queryByText(/No answer came back/)).toBeNull();
+  });
+});

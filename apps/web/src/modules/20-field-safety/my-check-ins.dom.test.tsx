@@ -203,3 +203,30 @@ describe("my check-ins — a write in flight and a write that fails", () => {
     expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(false);
   });
 });
+
+describe("my check-ins — nothing outlives a dismissed form", () => {
+  it("reopens empty and without the last failure", async () => {
+    mount(OPEN_WINDOW, {
+      patch: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    fireEvent.click((await screen.findAllByRole("button", { name: "Amend" }))[0] as HTMLElement);
+    const drawer = await drawerNamed("Amend this check-in");
+    fireEvent.change(within(drawer).getByLabelText("Why the correction?"), {
+      target: { value: "Tapped the wrong button on the first try" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Record correction" }));
+    await within(drawer).findByText(/No answer came back/);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Amend this check-in" })).toBeNull(),
+    );
+    fireEvent.click((await screen.findAllByRole("button", { name: "Amend" }))[0] as HTMLElement);
+    const again = await drawerNamed("Amend this check-in");
+    expect((within(again).getByLabelText("Why the correction?") as HTMLTextAreaElement).value).toBe(
+      "",
+    );
+    expect(within(again).queryByText(/No answer came back/)).toBeNull();
+  });
+});

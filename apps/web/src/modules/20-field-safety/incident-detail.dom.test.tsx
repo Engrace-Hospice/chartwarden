@@ -269,3 +269,53 @@ describe("incident detail — a write in flight and a write that fails", () => {
     expect(cancelOf(drawer).disabled).toBe(false);
   });
 });
+
+describe("incident detail — nothing outlives a dismissed ceremony", () => {
+  const dismiss = async (drawer: HTMLElement, name: string): Promise<void> => {
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("complementary", { name })).toBeNull());
+  };
+
+  it("reopens the state change without its reason", async () => {
+    mount("submitted");
+    const drawer = await open("Change state", "Change this incident's state");
+    fireEvent.change(within(drawer).getByLabelText("Why"), { target: { value: REASON } });
+    await dismiss(drawer, "Change this incident's state");
+    const again = await open("Change state", "Change this incident's state");
+    expect((within(again).getByLabelText("Why") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("reopens the OSHA sign-off without its state, window or rule", async () => {
+    mount("submitted");
+    const drawer = await open("OSHA sign-off", "OSHA-equivalent sign-off");
+    fireEvent.change(within(drawer).getByLabelText("State"), { target: { value: "or" } });
+    fireEvent.change(within(drawer).getByLabelText("Reporting window (hours)"), {
+      target: { value: "8" },
+    });
+    fireEvent.change(within(drawer).getByLabelText(/^Reason/), { target: { value: RULE } });
+    await dismiss(drawer, "OSHA-equivalent sign-off");
+    const again = await open("OSHA sign-off", "OSHA-equivalent sign-off");
+    expect((within(again).getByLabelText("State") as HTMLInputElement).value).toBe("");
+    expect(
+      (within(again).getByLabelText("Reporting window (hours)") as HTMLInputElement).value,
+    ).toBe("24");
+    expect((within(again).getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("reopens the submit form without the last failure or its added text", async () => {
+    mount("draft", { post: offline });
+    const drawer = await open("Submit for review", "Submit this incident for review");
+    fireEvent.change(within(drawer).getByLabelText("Anything to add before it goes?"), {
+      target: { value: "One more detail about the porch step." },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Submit" }));
+    await within(drawer).findByText(/No answer came back/);
+    await dismiss(drawer, "Submit this incident for review");
+    const again = await open("Submit for review", "Submit this incident for review");
+    expect(within(again).queryByText(/No answer came back/)).toBeNull();
+    expect(
+      (within(again).getByLabelText("Anything to add before it goes?") as HTMLTextAreaElement)
+        .value,
+    ).toBe("");
+  });
+});

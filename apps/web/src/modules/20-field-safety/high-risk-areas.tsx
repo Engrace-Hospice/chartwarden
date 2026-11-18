@@ -115,6 +115,18 @@ export function HighRiskAreasScreen(): JSX.Element {
     void load();
   }, [load]);
 
+  // Nothing typed or refused in the form outlives it.
+  const closeEditor = useCallback(() => {
+    setEditing(null);
+    setRiskCategory(DEFAULT_HIGH_RISK_CATEGORY);
+    setAdvisoryMessage("");
+    setRingText("");
+    setAreaPolicy(DEFAULT_HIGH_RISK_AREA_POLICY);
+    setEffectiveFrom("");
+    setEffectiveTo("");
+    setModalError(null);
+  }, []);
+
   const openNew = useCallback(() => {
     setRiskCategory(DEFAULT_HIGH_RISK_CATEGORY);
     setAdvisoryMessage("");
@@ -341,7 +353,7 @@ export function HighRiskAreasScreen(): JSX.Element {
             key={editing === "new" ? "new" : editing.id}
             title={editing === "new" ? "Draw a high-risk area" : "Edit this area"}
             busy={saving}
-            onClose={() => setEditing(null)}
+            onClose={closeEditor}
             save={
               <Button
                 tone="primary"

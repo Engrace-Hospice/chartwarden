@@ -6,7 +6,8 @@
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import type { JSX } from "react";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SafetySosAlertView } from "./safety-api";
 import { SosDetailScreen } from "./sos-detail";
@@ -75,6 +76,16 @@ const deferred = <T,>() => {
   return { promise, resolve };
 };
 
+// Stands in for any navigation from this alert's page to another alert's.
+function GoToAnotherAlert(): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/safety/sos/sos-2")}>
+      Go to another alert
+    </button>
+  );
+}
+
 function mount(
   alert: SafetySosAlertView,
   opts: { post?: () => Promise<unknown>; streamRead?: () => Promise<unknown> } = {},
@@ -92,6 +103,7 @@ function mount(
   render(
     <MemoryRouter initialEntries={["/safety/sos/sos-1"]}>
       <ApiClientProvider client={client}>
+        <GoToAnotherAlert />
         <Routes>
           <Route path="/safety/sos/:sosAlertId" element={<SosDetailScreen />} />
         </Routes>
@@ -294,7 +306,7 @@ describe("SOS detail — a write in flight and a write that fails", () => {
     ).toBe(false);
   });
 
-  it("announces a refused coordinate read once, in the drawer while it is open", async () => {
+  it("announces a refused coordinate read once, in the drawer, and not after it is dismissed", async () => {
     mount(alertIn("escalation_tier_1", false), {
       streamRead: async () => refused("FORBIDDEN"),
     });
@@ -305,13 +317,68 @@ describe("SOS detail — a write in flight and a write that fails", () => {
     const refusal = "You do not hold the authority this action requires for this record.";
     await within(drawer).findByText(refusal);
     expect(screen.getAllByText(refusal)).toHaveLength(1);
-    // Once the drawer is dismissed the Location-stream panel carries it, still once.
     fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(
         screen.queryByRole("complementary", { name: "Read this clinician's coordinates" }),
       ).toBeNull(),
     );
-    expect(screen.getAllByText(refusal)).toHaveLength(1);
+    expect(screen.queryByText(refusal)).toBeNull();
+    // And it is not waiting in the form the next time it opens.
+    const again = await open("Request coordinate access", "Read this clinician's coordinates");
+    expect(within(again).queryByText(refusal)).toBeNull();
+  });
+
+  it("asks for the audit reason fresh each time, never pre-filled from a dismissed form", async () => {
+    mount(alertIn("resolved", true), { streamRead: async () => refused("FORBIDDEN") });
+    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
+    fireEvent.change(within(drawer).getByLabelText(/Why do you need this/), {
+      target: { value: "Reviewing the response for the quality committee meeting on Friday." },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "Read this clinician's coordinates" }),
+      ).toBeNull(),
+    );
+    const again = await open("Request coordinate access", "Read this clinician's coordinates");
+    expect(
+      (within(again).getByLabelText(/Why do you need this/) as HTMLTextAreaElement).value,
+    ).toBe("");
+  });
+
+  it("does not carry a revealed stream or a typed reason over to another alert", async () => {
+    mount(alertIn("resolved", true));
+    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
+    fireEvent.change(within(drawer).getByLabelText(/Why do you need this/), {
+      target: { value: "Reviewing the response for the quality committee meeting on Friday." },
+    });
+    fireEvent.click(
+      within(drawer).getByRole("button", { name: "I understand — show the coordinates" }),
+    );
+    expect(await screen.findByText(stream.auditWarningBanner)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Go to another alert" }));
+    const again = await open("Request coordinate access", "Read this clinician's coordinates");
+    expect(screen.queryByText(stream.auditWarningBanner)).toBeNull();
+    expect(
+      (within(again).getByLabelText(/Why do you need this/) as HTMLTextAreaElement).value,
+    ).toBe("");
+  });
+
+  it("starts the acknowledgment and the resolution forms empty each time they open", async () => {
+    mount(alertIn("acknowledged", true));
+    const resolve = await open("Resolve", "Resolve this SOS");
+    fireEvent.change(within(resolve).getByLabelText("What happened, and how did it end?"), {
+      target: { value: NARRATIVE },
+    });
+    fireEvent.click(within(resolve).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Resolve this SOS" })).toBeNull(),
+    );
+    const again = await open("Resolve", "Resolve this SOS");
+    expect(
+      (within(again).getByLabelText("What happened, and how did it end?") as HTMLTextAreaElement)
+        .value,
+    ).toBe("");
   });
 });

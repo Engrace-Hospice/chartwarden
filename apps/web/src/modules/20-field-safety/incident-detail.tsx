@@ -136,8 +136,43 @@ export function IncidentDetailScreen(): JSX.Element {
     void load();
   }, [load]);
 
+  // Nothing typed or refused in a ceremony outlives it: a reason, a state code or a narrative is written fresh each
+  // time (this screen also stays mounted across a change of incident).
+  const resetDrafts = useCallback(() => {
+    setCategory("");
+    setSeverity("");
+    setLocationDescription("");
+    setNarrative("");
+    setWitnesses("");
+    setWcInitiated(false);
+    setWcReference("");
+    setFinalNarrative("");
+    setToState(DEFAULT_INCIDENT_TRANSITION);
+    setReason("");
+    setActionPlan("");
+    setOshaReportable(true);
+    setOshaReason("");
+    setStateCode("");
+    setWindowHours("24");
+    setModalError(null);
+  }, []);
+
+  const openCeremony = useCallback(
+    (next: Exclude<Ceremony, "none">) => {
+      resetDrafts();
+      setCeremony(next);
+    },
+    [resetDrafts],
+  );
+
+  const closeCeremony = useCallback(() => {
+    resetDrafts();
+    setCeremony("none");
+  }, [resetDrafts]);
+
   const openEdit = useCallback(() => {
     if (!incident) return;
+    resetDrafts();
     setCategory(incident.category);
     setSeverity(incident.severity);
     setLocationDescription(incident.locationDescription ?? "");
@@ -147,9 +182,8 @@ export function IncidentDetailScreen(): JSX.Element {
     setWitnesses(incident.witnesses ?? "");
     setWcInitiated(incident.workersCompClaimInitiated);
     setWcReference(incident.workersCompClaimReference ?? "");
-    setModalError(null);
     setCeremony("edit");
-  }, [incident]);
+  }, [incident, resetDrafts]);
 
   // A write's success closes only the ceremony it submitted, never whichever one is open by then.
   const closeIfStill = useCallback((submitted: Ceremony) => {
@@ -326,10 +360,7 @@ export function IncidentDetailScreen(): JSX.Element {
                     tone="primary"
                     size="lg"
                     type="button"
-                    onClick={() => {
-                      setModalError(null);
-                      setCeremony("submit");
-                    }}
+                    onClick={() => openCeremony("submit")}
                   >
                     Submit for review
                   </Button>
@@ -340,11 +371,7 @@ export function IncidentDetailScreen(): JSX.Element {
                   tone="secondary"
                   size="lg"
                   type="button"
-                  onClick={() => {
-                    setToState(DEFAULT_INCIDENT_TRANSITION);
-                    setModalError(null);
-                    setCeremony("transition");
-                  }}
+                  onClick={() => openCeremony("transition")}
                 >
                   Change state
                 </Button>
@@ -354,9 +381,8 @@ export function IncidentDetailScreen(): JSX.Element {
                 size="lg"
                 type="button"
                 onClick={() => {
+                  openCeremony("osha");
                   setOshaReportable(!incident.oshaReportable);
-                  setModalError(null);
-                  setCeremony("osha");
                 }}
                 disabled={isClosed}
               >
@@ -476,7 +502,7 @@ export function IncidentDetailScreen(): JSX.Element {
         <FormDrawer
           title="Edit this draft"
           busy={saving}
-          onClose={() => setCeremony("none")}
+          onClose={closeCeremony}
           save={
             <Button
               tone="primary"
@@ -541,7 +567,7 @@ export function IncidentDetailScreen(): JSX.Element {
         <FormDrawer
           title="Submit this incident for review"
           busy={saving}
-          onClose={() => setCeremony("none")}
+          onClose={closeCeremony}
           save={
             <Button
               tone="primary"
@@ -584,7 +610,7 @@ export function IncidentDetailScreen(): JSX.Element {
         <FormDrawer
           title="Change this incident's state"
           busy={saving}
-          onClose={() => setCeremony("none")}
+          onClose={closeCeremony}
           save={
             <Button
               tone="primary"
@@ -646,7 +672,7 @@ export function IncidentDetailScreen(): JSX.Element {
         <FormDrawer
           title="OSHA-equivalent sign-off"
           busy={saving}
-          onClose={() => setCeremony("none")}
+          onClose={closeCeremony}
           save={
             <Button
               tone="primary"

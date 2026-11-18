@@ -53,12 +53,27 @@ const deferred = <T,>() => {
   return { promise, resolve };
 };
 
-function mount(opts: { patch?: () => Promise<unknown> } = {}): {
+// The version in force before `policy` replaced it: what a replay of an earlier instant answers.
+const pastPolicy: SafetyPolicyView = {
+  ...policy,
+  versionId: "pol-v2",
+  effectiveTo: "2026-09-19T20:17:00.000Z",
+  midVisitCadenceMinutes: 60,
+};
+
+function mount(
+  opts: {
+    patch?: () => Promise<unknown>;
+    read?: (asOf: string | undefined) => Promise<unknown>;
+  } = {},
+): {
   patch: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
 } {
   const patch = vi.fn(opts.patch ?? (async () => ok(policy)));
-  const get = vi.fn(async () => ok(policy));
+  const get = vi.fn(async (_path: string, init?: { params?: { query?: { asOf?: string } } }) =>
+    opts.read ? opts.read(init?.params?.query?.asOf) : ok(policy),
+  );
   const client = { GET: get, PATCH: patch } as unknown as ApiClient;
   render(
     <MemoryRouter>
@@ -221,5 +236,95 @@ describe("safety policy — replay beside the editor, and a write that fails", (
     expect(
       (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+});
+
+describe("safety policy — which version the screen holds", () => {
+  const button = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+  const pickInstant = async (): Promise<void> => {
+    fireEvent.change(await screen.findByLabelText("Read the policy as it stood at"), {
+      target: { value: "2026-10-01T09:00" },
+    });
+  };
+
+  it("cannot open the editor between Back to current and its read landing", async () => {
+    const back = deferred<unknown>();
+    let currentReads = 0;
+    const { patch } = mount({
+      read: (asOf) => {
+        if (asOf) return Promise.resolve(ok(pastPolicy));
+        currentReads += 1;
+        return currentReads === 1 ? Promise.resolve(ok(policy)) : back.promise;
+      },
+    });
+    await pickInstant();
+    fireEvent.click(button("Time-travel"));
+    await screen.findByText(/Version pol-v2 in force/);
+    fireEvent.click(button("Back to current"));
+    // The toggle is already off, but the screen still holds the past version until the read lands.
+    await waitFor(() => expect(screen.queryByText(/Historical view for/)).toBeNull());
+    expect(screen.getByText(/Version pol-v2 in force/)).toBeTruthy();
+    expect(button("Edit policy").disabled).toBe(true);
+    fireEvent.click(button("Edit policy"));
+    expect(screen.queryByRole("complementary", { name: "Edit the safety policy" })).toBeNull();
+    back.resolve(ok(policy));
+    await screen.findByText(/Version pol-v3 in force/);
+    await waitFor(() => expect(button("Edit policy").disabled).toBe(false));
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it("ignores a replay read that lands after Back to current", async () => {
+    const replay = deferred<unknown>();
+    mount({ read: (asOf) => (asOf ? replay.promise : Promise.resolve(ok(policy))) });
+    await pickInstant();
+    fireEvent.click(button("Time-travel"));
+    fireEvent.click(button("Back to current"));
+    await waitFor(() => expect(button("Edit policy").disabled).toBe(false));
+    replay.resolve(ok(pastPolicy));
+    // Let the late answer land; it must not replace the current version.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByText(/Version pol-v3 in force/)).toBeTruthy();
+    expect(screen.queryByText(/Version pol-v2 in force/)).toBeNull();
+    expect(button("Edit policy").disabled).toBe(false);
+  });
+
+  it("does not stay loading when a policy read is rejected by the network", async () => {
+    let reads = 0;
+    mount({
+      read: () => {
+        reads += 1;
+        return reads === 1
+          ? Promise.resolve(ok(policy))
+          : Promise.reject(new TypeError("Failed to fetch"));
+      },
+    });
+    await pickInstant();
+    fireEvent.click(button("Time-travel"));
+    expect(await screen.findByText(/no answer came back/)).toBeTruthy();
+  });
+});
+
+describe("safety policy — nothing outlives a dismissed editor", () => {
+  it("reopens with an empty reason and without the last failure", async () => {
+    mount({
+      patch: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await openEditor();
+    fireEvent.change(within(drawer).getByLabelText("Why are you changing this?"), {
+      target: { value: REASON },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save new version" }));
+    await within(drawer).findByText(/No answer came back/);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Edit the safety policy" })).toBeNull(),
+    );
+    const again = await openEditor();
+    expect(
+      (within(again).getByLabelText("Why are you changing this?") as HTMLTextAreaElement).value,
+    ).toBe("");
+    expect(within(again).queryByText(/No answer came back/)).toBeNull();
   });
 });

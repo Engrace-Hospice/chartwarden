@@ -76,6 +76,25 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
     null,
   );
 
+  // The form starts empty each time it opens, and nothing picked or refused in it outlives it.
+  const resetForm = useCallback(() => {
+    setSupervisor("");
+    setScopeKind(DEFAULT_SUBSCRIPTION_SCOPE_KIND);
+    setClinician("");
+    setLocationId("");
+    setProviderEntityId("");
+    setLocationEntityId("");
+    setAlertKinds([...ALERT_KINDS]);
+    setForwarding(false);
+    setForwardTo("");
+    setModalError(null);
+  }, []);
+
+  const closeForm = useCallback(() => {
+    resetForm();
+    setAdding(false);
+  }, [resetForm]);
+
   const load = useCallback(async () => {
     setLoading(true);
     const res = await listSubscriptions(client, {
@@ -131,12 +150,13 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
       setModalError(writeErrorMessage(res, "The subscription was not created."));
       return;
     }
-    setAdding(false);
+    closeForm();
     await load();
   }, [
     alertKinds,
     client,
     clinician,
+    closeForm,
     forwardTo,
     forwarding,
     load,
@@ -205,7 +225,7 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
                 type="button"
                 tone="primary"
                 onClick={() => {
-                  setModalError(null);
+                  resetForm();
                   setAdding(true);
                 }}
               >
@@ -331,7 +351,7 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
           <FormDrawer
             title="Add a subscription"
             busy={saving}
-            onClose={() => setAdding(false)}
+            onClose={closeForm}
             save={
               <Button
                 tone="primary"

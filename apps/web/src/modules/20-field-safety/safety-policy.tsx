@@ -12,7 +12,7 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { FormDrawer } from "../../shell/form-drawer";
@@ -109,12 +109,21 @@ export function SafetyPolicyScreen(): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
+  // Only the latest read may write state: a slower earlier read (a replay, then Back to current) must not land on top.
+  const latestRead = useRef(0);
   const load = useCallback(
     async (at?: string) => {
+      const readId = ++latestRead.current;
       setLoading(true);
-      const res = await getPolicy(client, at);
-      if (res.error || !res.policy) {
-        setError(errorMessage(res.error, "The safety policy could not be read."));
+      // The client REJECTS on a network failure; `null` is that, and `loading` must not stay true.
+      const res = await getPolicy(client, at).catch(() => null);
+      if (readId !== latestRead.current) return;
+      if (!res || res.error || !res.policy) {
+        setError(
+          res
+            ? errorMessage(res.error, "The safety policy could not be read.")
+            : "The safety policy could not be read: no answer came back. Check your connection, then retry.",
+        );
         setPolicy(null);
       } else {
         setPolicy(res.policy);
@@ -125,12 +134,16 @@ export function SafetyPolicyScreen(): JSX.Element {
     [client],
   );
 
+  // Edit and Save act on the version this screen HOLDS, not on the replay toggle: the toggle flips before its read
+  // lands, so `policy` can still be a past version. Only the version still in force, with no read outstanding.
+  const editable = policy !== null && !historical && !loading && policy.effectiveTo === null;
+
   useEffect(() => {
     void load();
   }, [load]);
 
   const openEditor = useCallback(() => {
-    if (!policy) return;
+    if (!policy || !editable) return;
     const next: Record<string, string> = {};
     for (const k of Object.keys(BANDS)) next[k] = String(policy[k as keyof SafetyPolicyView] ?? "");
     setDraft(next);
@@ -143,11 +156,17 @@ export function SafetyPolicyScreen(): JSX.Element {
     setEditReason("");
     setModalError(null);
     setEditing(true);
-  }, [policy]);
+  }, [editable, policy]);
+
+  const closeEditor = useCallback(() => {
+    setEditing(false);
+    setEditReason("");
+    setModalError(null);
+  }, []);
 
   const save = useCallback(async () => {
-    // A replay shows a past version; saving from it would still write a new CURRENT version from this draft.
-    if (!policy || historical) return;
+    // A past version (a replay, or a read still landing) would still be saved as a new CURRENT version from this draft.
+    if (!policy || !editable) return;
     setSaving(true);
     setModalError(null);
     const body: Record<string, unknown> = { editReason };
@@ -174,7 +193,7 @@ export function SafetyPolicyScreen(): JSX.Element {
       setModalError(writeErrorMessage(res, "The policy was not changed."));
       return;
     }
-    setEditing(false);
+    closeEditor();
     await load(historical && asOf ? toInstant(asOf) : undefined);
   }, [
     afterHoursEnd,
@@ -183,7 +202,9 @@ export function SafetyPolicyScreen(): JSX.Element {
     autoFlag,
     biometric,
     client,
+    closeEditor,
     draft,
+    editable,
     editReason,
     historical,
     load,
@@ -243,7 +264,7 @@ export function SafetyPolicyScreen(): JSX.Element {
               <Link to="/safety" style={linkButtonStyle}>
                 Safety board
               </Link>
-              <Button type="button" tone="primary" onClick={openEditor} disabled={historical}>
+              <Button type="button" tone="primary" onClick={openEditor} disabled={!editable}>
                 Edit policy
               </Button>
             </div>
@@ -406,7 +427,7 @@ export function SafetyPolicyScreen(): JSX.Element {
           <FormDrawer
             title="Edit the safety policy"
             busy={saving}
-            onClose={() => setEditing(false)}
+            onClose={closeEditor}
             save={
               <Button
                 tone="primary"
@@ -414,7 +435,7 @@ export function SafetyPolicyScreen(): JSX.Element {
                 type="button"
                 onClick={() => void save()}
                 disabled={
-                  saving || historical || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)
+                  saving || !editable || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)
                 }
               >
                 {saving ? "Saving..." : "Save new version"}

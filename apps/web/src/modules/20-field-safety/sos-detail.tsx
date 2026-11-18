@@ -127,10 +127,38 @@ export function SosDetailScreen(): JSX.Element {
     void load();
   }, [load]);
 
-  const closeCeremony = useCallback(() => {
-    setCeremony("none");
+  // Nothing typed or refused in a ceremony outlives it: an audit reason or an account is written fresh each time.
+  const resetDrafts = useCallback(() => {
+    setActionTaken("");
+    setAckOutcome(DEFAULT_ACK_OUTCOME);
+    setNarrative("");
+    setOutcome(DEFAULT_SOS_OUTCOME);
+    setOpenIncident(false);
+    setAccessReason("");
+    setStreamError(null);
     setModalError(null);
   }, []);
+
+  const openCeremony = useCallback(
+    (next: Exclude<Ceremony, "none">) => {
+      resetDrafts();
+      setCeremony(next);
+    },
+    [resetDrafts],
+  );
+
+  const closeCeremony = useCallback(() => {
+    resetDrafts();
+    setCeremony("none");
+  }, [resetDrafts]);
+
+  // Another alert is another disclosure: nothing opened, typed or revealed for the previous one carries over.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `sosAlertId` is the trigger that restarts this screen's state.
+  useEffect(() => {
+    setStream(null);
+    resetDrafts();
+    setCeremony("none");
+  }, [sosAlertId, resetDrafts]);
 
   // A write's success closes only the ceremony it submitted, never whichever one is open by then.
   const closeIfStill = useCallback((submitted: Ceremony) => {
@@ -155,6 +183,7 @@ export function SosDetailScreen(): JSX.Element {
     }
     closeIfStill("acknowledge");
     setActionTaken("");
+    setAckOutcome(DEFAULT_ACK_OUTCOME);
     await load();
   }, [ackOutcome, actionTaken, alert, client, closeIfStill, load]);
 
@@ -175,6 +204,8 @@ export function SosDetailScreen(): JSX.Element {
     }
     closeIfStill("resolve");
     setNarrative("");
+    setOutcome(DEFAULT_SOS_OUTCOME);
+    setOpenIncident(false);
     // The write may have produced an incident; the reload is what tells us its id, so the CTA below can
     // link to a real row rather than to one this screen assumed into existence.
     await load();
@@ -201,6 +232,7 @@ export function SosDetailScreen(): JSX.Element {
       return;
     }
     setStream(res.stream);
+    setAccessReason("");
     closeIfStill("coordinates");
   }, [accessReason, alert, client, closeIfStill]);
 
@@ -285,7 +317,7 @@ export function SosDetailScreen(): JSX.Element {
                   tone="primary"
                   size="lg"
                   type="button"
-                  onClick={() => setCeremony("acknowledge")}
+                  onClick={() => openCeremony("acknowledge")}
                 >
                   Acknowledge
                 </Button>
@@ -295,7 +327,7 @@ export function SosDetailScreen(): JSX.Element {
                   tone="primary"
                   size="lg"
                   type="button"
-                  onClick={() => setCeremony("resolve")}
+                  onClick={() => openCeremony("resolve")}
                 >
                   Resolve
                 </Button>
@@ -420,11 +452,7 @@ export function SosDetailScreen(): JSX.Element {
                 tone="secondary"
                 size="lg"
                 type="button"
-                onClick={() => {
-                  setAccessReason("");
-                  setStreamError(null);
-                  setCeremony("coordinates");
-                }}
+                onClick={() => openCeremony("coordinates")}
               >
                 Request coordinate access
               </Button>
@@ -442,12 +470,6 @@ export function SosDetailScreen(): JSX.Element {
                 clinician who raised this alert can see that access on her own consent surface. Ask
                 for it only when you need it.
               </Notice>
-              {/* While the coordinates drawer is open it announces the refusal beside its own button. */}
-              {streamError && ceremony !== "coordinates" ? (
-                <Notice tone="error" assertive>
-                  {streamError}
-                </Notice>
-              ) : null}
               {alert.coordinatesCaptured ? null : (
                 <span className="wx-text-muted">
                   This alert carries no press-time coordinate, so a stream read will most likely

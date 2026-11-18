@@ -78,6 +78,21 @@ export function MyConsentScreen(): JSX.Element {
     void load();
   }, [load]);
 
+  // Nothing typed or refused in a form outlives it (a contact's details and a withdrawal's reason included).
+  const closeGrant = useCallback(() => {
+    setGranting(null);
+    setContactName("");
+    setContactPhone("");
+    setContactRelationship("");
+    setModalError(null);
+  }, []);
+
+  const closeRevoke = useCallback(() => {
+    setRevoking(null);
+    setRevokeReason("");
+    setModalError(null);
+  }, []);
+
   const doGrant = useCallback(async () => {
     if (!granting) return;
     const purpose = granting;
@@ -215,6 +230,9 @@ export function MyConsentScreen(): JSX.Element {
                     onGrant={() => {
                       setModalError(null);
                       setRevoking(null);
+                      setContactName("");
+                      setContactPhone("");
+                      setContactRelationship("");
                       setGranting(purpose);
                     }}
                     onRevoke={() => {
@@ -260,7 +278,7 @@ export function MyConsentScreen(): JSX.Element {
             key={`grant:${granting}`}
             title={consentPurposeLabel(granting)}
             busy={saving}
-            onClose={() => setGranting(null)}
+            onClose={closeGrant}
             save={
               <Button
                 tone="primary"
@@ -309,7 +327,7 @@ export function MyConsentScreen(): JSX.Element {
             key={`revoke:${revoking}`}
             title={`Withdraw: ${consentPurposeLabel(revoking)}`}
             busy={saving}
-            onClose={() => setRevoking(null)}
+            onClose={closeRevoke}
             save={
               <Button
                 tone="primary"
