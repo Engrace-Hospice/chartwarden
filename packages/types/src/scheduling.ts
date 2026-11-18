@@ -72,7 +72,9 @@ export type VisitPurpose =
  * The one display label for each {@link VisitPurpose}, shared by every screen that shows a visit
  * (scheduling, patient chart, home dashboard) so they cannot disagree. Exhaustive on purpose: a new purpose
  * fails to compile here until it has a label. `recert` is the RN recertification KICKOFF visit (M8 §2.2,
- * "not the F2F itself"); the physician/NP encounter of a recertification is `f2f`.
+ * "not the F2F itself"); the physician/NP encounter of a recertification is `f2f`. Staff screens only: these
+ * are clinician jargon ("HUV1", "SFV"), and the portal projection uses its own lay wording
+ * (`PortalVisitSummary.visitPurposeLabel`).
  */
 export const VISIT_PURPOSE_LABELS: Readonly<Record<VisitPurpose, string>> = {
   routine_visit: "Routine Visit",
