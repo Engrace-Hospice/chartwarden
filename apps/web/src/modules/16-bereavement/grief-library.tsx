@@ -25,7 +25,6 @@ import {
   FilterRow,
   Modal,
   SelectField,
-  columnStyle,
   dangerButtonStyle,
   pageTitleStyle,
   primaryButtonStyle,
@@ -33,8 +32,8 @@ import {
   thNum,
   useActionStatus,
 } from "./bereavement-ui";
-import { LibraryEditModal } from "./library-edit-modal";
-import { LibraryUploadModal } from "./library-upload-modal";
+import { LibraryEditDrawer } from "./library-edit-drawer";
+import { LibraryUploadDrawer } from "./library-upload-drawer";
 import { useLoaded } from "./mailing-load";
 import {
   LIBRARY_MANAGE_PERMISSION,
@@ -174,173 +173,220 @@ export function GriefLibrary(): JSX.Element | null {
 
   const rows = state.kind === "ready" ? state.data : [];
   const failure = state.kind === "error" ? state.message : state.notice;
+  const drawerOpen = uploading || editing !== null;
+  // A drawer does not block the page the way a dialog does, so opening one form closes the other.
+  const openUpload = (): void => {
+    setEditing(null);
+    setUploading(true);
+  };
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Grief library</span>}
-        actions={mayManage ? <Button onClick={() => setUploading(true)}>Upload item</Button> : null}
-      />
-      <span className="wx-text-muted">
-        Reading and viewing material for bereaved families. Only published items appear in the
-        family portal.
-      </span>
-      {region}
-      <FilterRow>
-        <SelectField
-          label="Status"
-          value={status}
-          onChange={(next) => setStatus(next as LibraryStatus | typeof ALL)}
-          options={[
-            { value: ALL, label: "All statuses" },
-            { value: "draft", label: "Draft" },
-            { value: "published", label: "Published" },
-            { value: "archived", label: "Archived" },
-          ]}
+    <div className={`wx-list-drawer${drawerOpen ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <PageHeader
+          title={<span style={pageTitleStyle}>Grief library</span>}
+          actions={mayManage ? <Button onClick={openUpload}>Upload item</Button> : null}
         />
-      </FilterRow>
-      {failure ? (
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          <ErrorText>{failure}</ErrorText>
-          <Button size="sm" tone="secondary" onClick={() => void reload()}>
-            Try again
-          </Button>
-        </div>
-      ) : null}
-      {state.kind === "ready" && rows.length === 0 ? (
-        <EmptyState
-          title="No library items"
-          description={
-            status === ALL
-              ? "Upload a PDF or image to start the library."
-              : "No item has this status. Choose another status."
-          }
-        />
-      ) : null}
-      {preview ? (
-        <span>
-          <a
-            ref={previewRef}
-            href={preview.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => {
-              setPreview(null);
-              announce("The preview link was used and removed from this page.");
-            }}
-          >
-            Open preview
-          </a>{" "}
-          <span className="wx-text-muted">
-            ({preview.part === "transcript" ? "transcript of " : ""}
-            {preview.title}; the file downloads, and the link expires at{" "}
-            {dateTime(preview.expiresAt)})
-          </span>
+        <span className="wx-text-muted">
+          Reading and viewing material for bereaved families. Only published items appear in the
+          family portal.
         </span>
-      ) : null}
-      {actionError && confirming === null ? <ErrorText>{actionError}</ErrorText> : null}
-      {rows.length > 0 ? (
-        <table aria-label="Grief library" aria-busy={state.kind === "ready" && state.refreshing}>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Category</th>
-              <th>Kind</th>
-              <th>Status</th>
-              <th style={thNum}>Sort order</th>
-              <th>Published</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((item) => (
-              <tr key={item.itemId}>
-                <td>{item.title}</td>
-                <td>{categoryLabel(item.category)}</td>
-                <td>{item.kind === "pdf" ? "PDF" : humanize(item.kind)}</td>
-                <td>
-                  <StatusPill
-                    label={humanize(item.status)}
-                    tone={toneOf(LIBRARY_STATUS_TONE, item.status)}
-                  />
-                </td>
-                <td style={tdNum}>{item.sortOrder}</td>
-                <td>{dateTime(item.publishedAt)}</td>
-                <td>
-                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                    <Button
-                      size="sm"
-                      tone="secondary"
-                      disabled={busyId !== null}
-                      aria-label={`Preview ${item.title}`}
-                      onClick={() => void mintPreview(item, "document")}
-                    >
-                      Preview
-                    </Button>
-                    {item.transcriptDocumentId ? (
+        {region}
+        <FilterRow>
+          <SelectField
+            label="Status"
+            value={status}
+            onChange={(next) => setStatus(next as LibraryStatus | typeof ALL)}
+            options={[
+              { value: ALL, label: "All statuses" },
+              { value: "draft", label: "Draft" },
+              { value: "published", label: "Published" },
+              { value: "archived", label: "Archived" },
+            ]}
+          />
+        </FilterRow>
+        {failure ? (
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <ErrorText>{failure}</ErrorText>
+            <Button size="sm" tone="secondary" onClick={() => void reload()}>
+              Try again
+            </Button>
+          </div>
+        ) : null}
+        {state.kind === "ready" && rows.length === 0 ? (
+          <EmptyState
+            title="No library items"
+            description={
+              status === ALL
+                ? "Upload a PDF or image to start the library."
+                : "No item has this status. Choose another status."
+            }
+          />
+        ) : null}
+        {preview ? (
+          <span>
+            <a
+              ref={previewRef}
+              href={preview.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                setPreview(null);
+                announce("The preview link was used and removed from this page.");
+              }}
+            >
+              Open preview
+            </a>{" "}
+            <span className="wx-text-muted">
+              ({preview.part === "transcript" ? "transcript of " : ""}
+              {preview.title}; the file downloads, and the link expires at{" "}
+              {dateTime(preview.expiresAt)})
+            </span>
+          </span>
+        ) : null}
+        {actionError && confirming === null ? <ErrorText>{actionError}</ErrorText> : null}
+        {rows.length > 0 ? (
+          <table aria-label="Grief library" aria-busy={state.kind === "ready" && state.refreshing}>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Kind</th>
+                <th>Status</th>
+                <th style={thNum}>Sort order</th>
+                <th>Published</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((item) => (
+                <tr key={item.itemId}>
+                  <td>{item.title}</td>
+                  <td>{categoryLabel(item.category)}</td>
+                  <td>{item.kind === "pdf" ? "PDF" : humanize(item.kind)}</td>
+                  <td>
+                    <StatusPill
+                      label={humanize(item.status)}
+                      tone={toneOf(LIBRARY_STATUS_TONE, item.status)}
+                    />
+                  </td>
+                  <td style={tdNum}>{item.sortOrder}</td>
+                  <td>{dateTime(item.publishedAt)}</td>
+                  <td>
+                    <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
                       <Button
                         size="sm"
                         tone="secondary"
                         disabled={busyId !== null}
-                        aria-label={`Transcript of ${item.title}`}
-                        onClick={() => void mintPreview(item, "transcript")}
+                        aria-label={`Preview ${item.title}`}
+                        onClick={() => void mintPreview(item, "document")}
                       >
-                        Transcript
+                        Preview
                       </Button>
-                    ) : null}
-                    {mayManage ? (
-                      <>
+                      {item.transcriptDocumentId ? (
                         <Button
                           size="sm"
                           tone="secondary"
                           disabled={busyId !== null}
-                          aria-label={`Edit ${item.title}`}
-                          onClick={() => {
-                            setActionError(null);
-                            setEditing(item);
-                          }}
+                          aria-label={`Transcript of ${item.title}`}
+                          onClick={() => void mintPreview(item, "transcript")}
                         >
-                          Edit
+                          Transcript
                         </Button>
-                        {libraryNextStatuses(item.status).map((next) => {
-                          const label =
-                            item.status === "archived" && next === "published"
-                              ? "Republish"
-                              : STATUS_ACTION[next];
-                          const blocked = needsTranscript(item, next);
-                          const reasonId = `${reasonIdBase}-${item.itemId}`;
-                          return (
-                            <span key={next} style={{ display: "inline-flex", gap: "0.4rem" }}>
-                              <Button
-                                size="sm"
-                                disabled={busyId !== null || blocked}
-                                aria-label={`${label} ${item.title}`}
-                                {...(blocked ? { "aria-describedby": reasonId } : {})}
-                                onClick={() => {
-                                  setActionError(null);
-                                  setConfirming({ item, next });
-                                }}
-                              >
-                                {label}
-                              </Button>
-                              {blocked ? (
-                                <span id={reasonId} className="wx-text-muted">
-                                  {TRANSCRIPT_NEEDED}
-                                </span>
-                              ) : null}
-                            </span>
-                          );
-                        })}
-                      </>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
+                      ) : null}
+                      {mayManage ? (
+                        <>
+                          <Button
+                            size="sm"
+                            tone="secondary"
+                            disabled={busyId !== null}
+                            aria-label={`Edit ${item.title}`}
+                            onClick={() => {
+                              setActionError(null);
+                              setUploading(false);
+                              setEditing(item);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          {libraryNextStatuses(item.status).map((next) => {
+                            const label =
+                              item.status === "archived" && next === "published"
+                                ? "Republish"
+                                : STATUS_ACTION[next];
+                            const blocked = needsTranscript(item, next);
+                            const reasonId = `${reasonIdBase}-${item.itemId}`;
+                            return (
+                              <span key={next} style={{ display: "inline-flex", gap: "0.4rem" }}>
+                                <Button
+                                  size="sm"
+                                  disabled={busyId !== null || blocked}
+                                  aria-label={`${label} ${item.title}`}
+                                  {...(blocked ? { "aria-describedby": reasonId } : {})}
+                                  onClick={() => {
+                                    setActionError(null);
+                                    setConfirming({ item, next });
+                                  }}
+                                >
+                                  {label}
+                                </Button>
+                                {blocked ? (
+                                  <span id={reasonId} className="wx-text-muted">
+                                    {TRANSCRIPT_NEEDED}
+                                  </span>
+                                ) : null}
+                              </span>
+                            );
+                          })}
+                        </>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
+        {confirming ? (
+          <Modal
+            title={`${
+              confirming.item.status === "archived" && confirming.next === "published"
+                ? "Republish"
+                : STATUS_ACTION[confirming.next]
+            } ${confirming.item.title}`}
+            onClose={() => {
+              setConfirming(null);
+              setActionError(null);
+            }}
+            busy={busyId !== null}
+            role="alertdialog"
+            describedBy={confirmDescId}
+            cancelLabel="Go back"
+            footer={
+              <button
+                type="button"
+                style={confirming.next === "archived" ? dangerButtonStyle : primaryButtonStyle}
+                disabled={busyId !== null}
+                onClick={() => void changeStatus(confirming.item, confirming.next)}
+              >
+                {busyId !== null
+                  ? "Saving…"
+                  : confirming.next === "archived"
+                    ? "Yes, archive it"
+                    : confirming.next === "published"
+                      ? "Yes, publish it"
+                      : "Yes, move it to draft"}
+              </button>
+            }
+          >
+            <span id={confirmDescId} className="wx-text-muted">
+              {STATUS_CONFIRM[confirming.next]}
+            </span>
+            {actionError ? <ErrorText>{actionError}</ErrorText> : null}
+          </Modal>
+        ) : null}
+      </div>
       {uploading ? (
-        <LibraryUploadModal
+        <LibraryUploadDrawer
           onClose={() => setUploading(false)}
           onRegistered={(item) => {
             setUploading(false);
@@ -350,7 +396,8 @@ export function GriefLibrary(): JSX.Element | null {
         />
       ) : null}
       {editing ? (
-        <LibraryEditModal
+        <LibraryEditDrawer
+          key={editing.itemId}
           item={editing}
           onClose={() => setEditing(null)}
           onStale={(message) => {
@@ -364,44 +411,6 @@ export function GriefLibrary(): JSX.Element | null {
             announce(`${saved.title} was saved.`);
           }}
         />
-      ) : null}
-      {confirming ? (
-        <Modal
-          title={`${
-            confirming.item.status === "archived" && confirming.next === "published"
-              ? "Republish"
-              : STATUS_ACTION[confirming.next]
-          } ${confirming.item.title}`}
-          onClose={() => {
-            setConfirming(null);
-            setActionError(null);
-          }}
-          busy={busyId !== null}
-          role="alertdialog"
-          describedBy={confirmDescId}
-          cancelLabel="Go back"
-          footer={
-            <button
-              type="button"
-              style={confirming.next === "archived" ? dangerButtonStyle : primaryButtonStyle}
-              disabled={busyId !== null}
-              onClick={() => void changeStatus(confirming.item, confirming.next)}
-            >
-              {busyId !== null
-                ? "Saving…"
-                : confirming.next === "archived"
-                  ? "Yes, archive it"
-                  : confirming.next === "published"
-                    ? "Yes, publish it"
-                    : "Yes, move it to draft"}
-            </button>
-          }
-        >
-          <span id={confirmDescId} className="wx-text-muted">
-            {STATUS_CONFIRM[confirming.next]}
-          </span>
-          {actionError ? <ErrorText>{actionError}</ErrorText> : null}
-        </Modal>
       ) : null}
     </div>
   );

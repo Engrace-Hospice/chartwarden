@@ -6,7 +6,7 @@ import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { errorMessage } from "./bereavement-api";
-import { ErrorText, Modal, SelectField, TextAreaField, TextField } from "./bereavement-ui";
+import { ErrorText, FormDrawer, SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, orNull } from "./program-status";
 import {
   LIBRARY_UPLOAD_MIME,
@@ -18,7 +18,7 @@ import {
 
 const UPLOAD_STOPPED = "The upload was cancelled. The file was not added to the library.";
 
-export function LibraryUploadModal({
+export function LibraryUploadDrawer({
   onClose,
   onRegistered,
 }: {
@@ -91,12 +91,11 @@ export function LibraryUploadModal({
   };
 
   return (
-    <Modal
+    <FormDrawer
       title="Upload a library item"
       onClose={onClose}
       busy={busy}
-      dirty
-      footer={
+      save={
         <>
           {cancellable ? (
             <Button
@@ -141,6 +140,6 @@ export function LibraryUploadModal({
         The item is added as a draft: families see it once it is published.
       </span>
       {error ? <ErrorText>{error}</ErrorText> : null}
-    </Modal>
+    </FormDrawer>
   );
 }

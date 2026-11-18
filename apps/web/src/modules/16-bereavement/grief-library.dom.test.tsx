@@ -202,6 +202,24 @@ describe("grief library — writes", () => {
     ).toBeTruthy();
   });
 
+  it("opens Edit as a drawer beside the list, not a dialog over it", async () => {
+    mount(() => ok([item()]));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
+    expect(await screen.findByRole("complementary", { name: "Edit library item" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps one form drawer open at a time", async () => {
+    mount(() => ok([item()]));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
+    await screen.findByRole("complementary", { name: "Edit library item" });
+    fireEvent.click(screen.getByRole("button", { name: "Upload item" }));
+    expect(
+      await screen.findByRole("complementary", { name: "Upload a library item" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: "Edit library item" })).toBeNull();
+  });
+
   it("edits with a PATCH carrying If-Match", async () => {
     const { calls } = mount((req) =>
       req.method === "PATCH" ? ok(item({ title: "Waves of grief", version: 4 })) : ok([item()]),
@@ -412,7 +430,7 @@ describe("grief library — review fixes", () => {
     );
   });
 
-  it("a stale edit closes the dialog, reloads the library and says why", async () => {
+  it("a stale edit closes the drawer, reloads the library and says why", async () => {
     let reads = 0;
     mount((req) => {
       if (req.method === "PATCH")
@@ -421,21 +439,25 @@ describe("grief library — review fixes", () => {
       return ok([item()]);
     });
     fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }));
+    fireEvent.click(
+      within(screen.getByRole("complementary", { name: "Edit library item" })).getByRole("button", {
+        name: "Save",
+      }),
+    );
     expect(await screen.findByText(/This item changed while you were editing it/)).toBeTruthy();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Edit library item" })).toBeNull();
     await waitFor(() => expect(reads).toBe(2));
   });
 
   it("refuses a transcript id that is not a valid id before sending", async () => {
     const { calls } = mount(() => ok([item()]));
     fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText(/Transcript document id/), {
+    const drawer = screen.getByRole("complementary", { name: "Edit library item" });
+    fireEvent.change(within(drawer).getByLabelText(/Transcript document id/), {
       target: { value: "not-an-id" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toContain("not a valid id");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("not a valid id");
     expect(calls.some((c) => c.method === "PATCH")).toBe(false);
   });
 
@@ -618,7 +640,7 @@ describe("grief library — round 3", () => {
     );
     expect(await screen.findByText("no preview")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Edit When grief comes in waves" }));
-    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(await screen.findByRole("complementary", { name: "Edit library item" })).toBeTruthy();
     expect(screen.queryByText("no preview")).toBeNull();
   });
 });

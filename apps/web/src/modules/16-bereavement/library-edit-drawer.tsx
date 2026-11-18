@@ -5,11 +5,11 @@ import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
-import { ErrorText, Modal, SelectField, TextAreaField, TextField } from "./bereavement-ui";
+import { ErrorText, FormDrawer, SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, isUuid, orNull } from "./program-status";
 import { type LibraryCategory, type LibraryItem, updateLibraryItem } from "./programs-api";
 
-export function LibraryEditModal({
+export function LibraryEditDrawer({
   item,
   onClose,
   onSaved,
@@ -72,12 +72,11 @@ export function LibraryEditModal({
   };
 
   return (
-    <Modal
+    <FormDrawer
       title="Edit library item"
       onClose={onClose}
       busy={busy}
-      dirty
-      footer={
+      save={
         <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : "Save"}
         </Button>
@@ -98,6 +97,6 @@ export function LibraryEditModal({
         onChange={setTranscript}
       />
       {error ? <ErrorText>{error}</ErrorText> : null}
-    </Modal>
+    </FormDrawer>
   );
 }
