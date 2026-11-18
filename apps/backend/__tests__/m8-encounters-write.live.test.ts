@@ -24,9 +24,10 @@ import {
   activeNarrativeVocabRelease,
   narrativeVocabReleaseById,
 } from "@chartwarden/narrative-vocab";
-import { runWithRequestContext } from "@chartwarden/tenancy";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { consentEvaluatorDenyStub } from "../src/bootstrap/seams/providers";
 import { getSeam, registerSeam } from "../src/bootstrap/seams/registry";
@@ -44,10 +45,12 @@ import { createDrizzleEncounterEraseStore } from "../src/modules/08-encounters/e
 import {
   type EncounterWriteOutboxPort,
   M8_OUTBOX_EVENTS,
+  buildM8VisitPublishedConsumer,
   createDbEncounterRouteService,
   createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
@@ -1822,6 +1825,192 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
           link(problemId, { membershipId: OTHER_MEMBERSHIP, roles: ["rn"] }),
         ).rejects.toMatchObject({ message: "problem is not valid for this encounter" });
       });
+    });
+  });
+
+  // ── M17 -> M8 visit-publication seed consumer (`m8.seed-visit-encounter`) ────────────────────────────
+  // The consumer INSERTs the draft straight into `encounter`, bypassing `checkEncounterDisciplinePair`
+  // (which guards only the route and the EncounterCreator seam), and there is no DB CHECK on the pair. So
+  // an `m17.visit.published` event that carries a pair M8 spec §2.2/§2.7 calls illegal must be refused
+  // here, or a draft with that pair is minted. A throw is this module's bad-payload convention: the relay
+  // retries, then parks the row as `failed` (never silently dropped).
+  describe("m8.seed-visit-encounter — the legal-pair guard (M8 §2.2 / §2.7), as the app role", () => {
+    const VISIT_SEED_DATE = "2026-01-14";
+    const consumer = () => {
+      const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M8_OUTBOX_EVENTS]));
+      return buildM8VisitPublishedConsumer({
+        db: handle.db,
+        outbox: {
+          publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m8" }),
+        },
+        isAdmissionActive: async () => true,
+      });
+    };
+    const published = (visitId: string, encounterType: string, assignedDiscipline: string) => ({
+      visitId,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      assignedMembershipId: membershipOf[ORG_A],
+      assignedDiscipline,
+      encounterType,
+      serviceDate: VISIT_SEED_DATE,
+      organizationId: ORG_A,
+      providerEntityId: SITING_A.providerEntityId,
+      locationId: SITING_A.locationId,
+    });
+    const draftsFor = async (visitId: string) =>
+      (
+        await admin.query(
+          "SELECT id, encounter_type, discipline, status FROM encounter WHERE visit_id = $1",
+          [visitId],
+        )
+      ).rows;
+
+    it("a legal pair seeds a draft and publishes m8.encounter.created with the same pair", async () => {
+      const visitId = randomUUID();
+      await consumer().handle({
+        organizationId: ORG_A,
+        payload: published(visitId, "routine_visit", "lpn"),
+      });
+      const drafts = await draftsFor(visitId);
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0]).toMatchObject({
+        encounter_type: "routine_visit",
+        discipline: "lpn",
+        status: "draft",
+      });
+      const { rows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm8.encounter.created'",
+        [drafts[0].id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload).toMatchObject({
+        encounterType: "routine_visit",
+        discipline: "lpn",
+        visitId,
+      });
+    });
+
+    // What an RN recert visit (recert_visit) and an RN level-of-care-change visit (routine_visit) publish.
+    it.each([
+      ["recert_visit", "rn"],
+      ["routine_visit", "rn"],
+    ])(
+      "the pair an RN recert or loc_change visit publishes (%s, %s) seeds a draft",
+      async (encounterType, discipline) => {
+        const visitId = randomUUID();
+        await consumer().handle({
+          organizationId: ORG_A,
+          payload: published(visitId, encounterType, discipline),
+        });
+        expect(await draftsFor(visitId)).toMatchObject([
+          { encounter_type: encounterType, discipline, status: "draft" },
+        ]);
+      },
+    );
+
+    it.each([
+      ["routine_visit", "np"],
+      ["routine_visit", "md"],
+      ["recert_visit", "np"],
+      ["face_to_face", "rn"],
+      ["chha_visit", "rn"],
+    ])(
+      "an illegal pair (%s, %s) is refused with INVALID_ENCOUNTER_DISCIPLINE_PAIR: no draft, no m8.encounter.created",
+      async (encounterType, discipline) => {
+        const visitId = randomUUID();
+        const eventsBefore = (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM outbox_event WHERE event_type = 'm8.encounter.created'",
+          )
+        ).rows[0].n as number;
+        const err = await consumer()
+          .handle({ organizationId: ORG_A, payload: published(visitId, encounterType, discipline) })
+          .then(
+            () => null,
+            (e: unknown) => e as Error,
+          );
+        expect(err?.message).toMatch(/INVALID_ENCOUNTER_DISCIPLINE_PAIR/);
+        // ids and codes only: the message names the visit and the two enum codes, nothing else.
+        expect(err?.message).toContain(visitId);
+        expect(err?.message).not.toContain(PATIENT);
+        expect(await draftsFor(visitId)).toHaveLength(0);
+        const eventsAfter = (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM outbox_event WHERE event_type = 'm8.encounter.created'",
+          )
+        ).rows[0].n as number;
+        expect(eventsAfter).toBe(eventsBefore);
+      },
+    );
+
+    // The consumer throws on an illegal pair (the bad-payload convention). The real dispatcher must retry it and
+    // then park it as `failed` (the DLQ terminal): never mint a draft, never silently drop the row.
+    it("through the real dispatcher an illegal-pair m17.visit.published is retried, then parked as failed with no draft and a dead-letter signal", async () => {
+      const catalog = buildBootOutboxCatalog([M17_OUTBOX_EVENTS, M8_OUTBOX_EVENTS]);
+      const txPublisher = buildTxOutboxPublisher(catalog);
+      const deadLetters: Array<{ eventId: string; eventType: string; attemptCount: number }> = [];
+      let nowMs = Date.now();
+      const dispatcher = createOutboxDispatcher({
+        db: handle.db,
+        orgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        consumers: [consumer()],
+        eventCatalog: catalog,
+        options: {
+          // The suite leaves many older pending rows for ORG_A; claim them all so the new row is reached on tick 1.
+          batchSize: 1000,
+          maxAttempts: 2,
+          backoffBaseMs: 1,
+          backoffCapMs: 1,
+          clock: () => nowMs,
+          log: () => {},
+          onDeadLetter: (e) =>
+            deadLetters.push({
+              eventId: e.eventId,
+              eventType: e.eventType,
+              attemptCount: e.attemptCount,
+            }),
+        },
+      });
+
+      const visitId = randomUUID();
+      await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        txPublisher.publish(tx as never, {
+          eventName: "m17.visit.published",
+          organizationId: ORG_A,
+          aggregateKind: "visit",
+          aggregateId: visitId,
+          callerModule: "m17",
+          payload: {
+            ...published(visitId, "routine_visit", "np"),
+            visitPurpose: "huv1",
+            visitSetting: "patient_home",
+            scheduledStartedAt: "2026-01-14T17:00:00.000Z",
+            scheduledEndedAt: "2026-01-14T18:00:00.000Z",
+            patientAddressId: null,
+            externalFacilityId: null,
+            parentRecurringVisitId: null,
+            parentProposalId: null,
+          },
+        }),
+      );
+
+      await dispatcher.tick();
+      nowMs += 60_000;
+      await dispatcher.tick();
+
+      const row = (
+        await admin.query(
+          "SELECT id, status, attempt_count FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm17.visit.published'",
+          [visitId],
+        )
+      ).rows[0];
+      expect(row).toMatchObject({ status: "failed", attempt_count: 2 });
+      // Scoped to THIS visit's row: the shared org may hold other rows the dispatcher also drained.
+      expect(deadLetters.filter((d) => d.eventId === row.id)).toEqual([
+        { eventId: row.id, eventType: "m17.visit.published", attemptCount: 2 },
+      ]);
+      expect(await draftsFor(visitId)).toHaveLength(0);
     });
   });
 });

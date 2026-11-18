@@ -27,6 +27,13 @@ import {
   isIdempotentMatchDecisionRetry,
 } from "../domain/era-match-review";
 import { providerEntityScopeCondition } from "../routes/scope";
+import {
+  adviceEnvelopeIdentityColumns,
+  claimMdStagePayeeIdentityEvidence,
+  stageEvidenceCodes,
+  stageIdentityDiffersFromSealedSet,
+} from "./advice-envelope-identity";
+import { stagedPaymentDate } from "./claimmd-era-payment-date";
 import type { M25IngestService } from "./service";
 import { getM25TransactionPostingPort, m25ContentDigestOf } from "./service-drizzle";
 import type {
@@ -494,7 +501,7 @@ export function projectClaimMdEraReviewItem(
       ? row.createdAt.toISOString()
       : new Date(row.createdAt).toISOString();
   const duplicateClassification =
-    row.safeReasonCode === "EXACT_DUPLICATE_FROM_M25"
+    row.safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE"
       ? "exact"
       : row.state === "possible_duplicate" ||
           row.safeReasonCode === "POSSIBLE_CROSS_SOURCE_DUPLICATE"
@@ -756,10 +763,7 @@ export function buildDrizzleClaimMdEraReviewService(
   const derivePostingFacts = async (tx: M25Tx, actor: M25ReadActor, stage: StoredStage) => {
     const detail = projectClaimMdEraReviewItem(stage, cipher);
     const blockers: string[] = [];
-    const factsValue = (stage.sourceEvidence as JsonRecord | null)?.evidenceCodes;
-    const evidenceCodes = Array.isArray(factsValue)
-      ? factsValue.filter((value): value is string => typeof value === "string")
-      : [];
+    const evidenceCodes = stageEvidenceCodes(stage.sourceEvidence);
     if (stage.state !== "staged") blockers.push("STAGE_NOT_DELIVERED");
     if (detail.duplicateClassification !== "none") blockers.push("POSSIBLE_DUPLICATE");
     if (
@@ -884,8 +888,7 @@ export function buildDrizzleClaimMdEraReviewService(
       !parsed.transactionSetControlNumber ||
       !parsed.checkOrEftTraceNumber ||
       !["check", "eft"].includes(parsed.paymentMethod) ||
-      !parsed.paymentEffectiveDate ||
-      !Number.isFinite(Date.parse(parsed.paymentEffectiveDate))
+      !stagedPaymentDate(parsed)
     )
       blockers.push("UNSUPPORTED_OR_INCOMPLETE_835");
 
@@ -1621,7 +1624,7 @@ export function buildDrizzleClaimMdEraReviewService(
         if (
           stage.state !== "staged" ||
           stage.possibleDuplicateAdviceId ||
-          stage.safeReasonCode === "EXACT_DUPLICATE_FROM_M25"
+          stage.safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE"
         )
           return { candidates: [], complete: true };
         const detail = projectClaimMdEraReviewItem(stage, cipher);
@@ -1668,7 +1671,7 @@ export function buildDrizzleClaimMdEraReviewService(
         if (
           stage.state !== "staged" ||
           stage.possibleDuplicateAdviceId ||
-          stage.safeReasonCode === "EXACT_DUPLICATE_FROM_M25"
+          stage.safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE"
         )
           throw new ChartWardenError(
             "INVALID_STATE",
@@ -2444,10 +2447,19 @@ export function buildDrizzleClaimMdEraReviewService(
             "the staged source lacks required payment identity",
             409,
           );
-        if (!parsed.paymentEffectiveDate)
+        const paymentDate = stagedPaymentDate(parsed);
+        if (!paymentDate)
           throw new ChartWardenError(
             "POSTING_SOURCE_INVALID",
             "the staged source lacks a payment effective date",
+            409,
+          );
+        // The posted advice takes its group identity from the sealed transaction set; the stage row's own
+        // ISA06/ISA08/GS06 columns (what staging deduped on) must agree, or the two would drift apart.
+        if (stageIdentityDiffersFromSealedSet(stage, parsed))
+          throw new ChartWardenError(
+            "POSTING_SOURCE_INVALID",
+            "the staged source identity does not match its sealed transaction set",
             409,
           );
         const [advice] = await tx
@@ -2457,17 +2469,25 @@ export function buildDrizzleClaimMdEraReviewService(
             providerEntityId: stage.providerEntityId,
             payerId: facts.payerId,
             payerKind: "commercial",
-            interchangeControlNumber: parsed.interchangeControlNumber,
-            transactionSetControlNumber: parsed.transactionSetControlNumber,
+            ...adviceEnvelopeIdentityColumns(parsed),
             checkOrEftTraceNumber: parsed.checkOrEftTraceNumber,
             paymentMethod: parsed.paymentMethod as "eft" | "check",
             totalPaymentAmount: (paymentCents / 100).toFixed(2),
             plbTotalAmount: "0.00",
             contentDigest: stage.contentDigest,
-            paymentEffectiveDate: parsed.paymentEffectiveDate,
+            payeeIdentityEvidence: claimMdStagePayeeIdentityEvidence({
+              organizationId: actor.organizationId,
+              providerEntityId: stage.providerEntityId,
+              sourceEvidence: stage.sourceEvidence,
+              verifiedAt: stage.createdAt,
+            }),
+            // A stage sealed before migration 1508 has only the legacy production day (see stagedPaymentDate): it is
+            // recorded as the legacy `production_date` alone and never asserted to be a BPR16.
+            paymentEffectiveDate:
+              paymentDate.source === "payment_effective_date" ? paymentDate.day : null,
             adjudicationCutoffDate: parsed.adjudicationCutoffDate,
             functionalGroupCreationDate: parsed.functionalGroupCreationDate,
-            productionDate: new Date(parsed.paymentEffectiveDate),
+            productionDate: new Date(paymentDate.day),
             receivedAt: new Date(),
             minioObjectKey: `claimmd-stage/${stage.id}/${sourceFileSha256}`,
             fileSha256: sourceFileSha256,
@@ -2477,6 +2497,9 @@ export function buildDrizzleClaimMdEraReviewService(
               stageId: stage.id,
               sourceDigest: stage.original835Digest,
               planId: plan.id,
+              ...(paymentDate.source === "legacy_production_date"
+                ? { paymentDateSource: paymentDate.source }
+                : {}),
             },
           })
           .returning({

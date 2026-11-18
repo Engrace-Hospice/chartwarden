@@ -62,6 +62,8 @@ let bodies: Record<string, unknown>[] = [];
 let writeFailure: { status: number; body: unknown } | null = null;
 let rejectWrite = false;
 let admissionReadBarrier: Promise<void> | null = null;
+// When set, the eligible-clinicians read returns exactly these rows (an org with nobody who qualifies).
+let eligibleOverride: unknown[] | null = null;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
   if (typeof input === "string")
@@ -73,6 +75,8 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
 
 function bodyFor(method: string, path: string): unknown {
   if (method === "GET") {
+    if (path === "/api/v1/scheduling/eligible-clinicians" && eligibleOverride)
+      return eligibleOverride;
     if (path === "/api/v1/scheduling/eligible-clinicians")
       return [
         {
@@ -259,6 +263,7 @@ beforeEach(() => {
   writeFailure = null;
   rejectWrite = false;
   admissionReadBarrier = null;
+  eligibleOverride = null;
   visitStatus = "published";
   proposalStatus = "pending";
   timeOffState = "requested";
@@ -496,6 +501,32 @@ describe("#91 — a visit can be scheduled", () => {
     expect(await within(dialog).findByText(/R\. Okonkwo/)).toBeTruthy();
     expect(calls).toContain("GET /api/v1/scheduling/eligible-clinicians");
     expect(within(dialog).queryByText(/Former Staff/)).toBeNull();
+  });
+
+  it.each([
+    ["recert", true],
+    ["loc_change", true],
+    ["routine_visit", false],
+  ])("with no eligible clinician, %s explains the RN-only rule: %s", async (purpose, explained) => {
+    // Recert kickoff and level-of-care change are RN visits (the physician/NP encounter is Face-to-Face), so a
+    // scheduler who sees nobody listed is told why; a purpose with no such rule gets the generic empty state.
+    eligibleOverride = [];
+    const dialog = await openNewVisit();
+    await choosePatient(dialog);
+    await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
+    fireEvent.change(within(dialog).getByLabelText(/visit purpose/i), {
+      target: { value: purpose },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
+    fireEvent.change(within(dialog).getByLabelText(/scheduled start/i), {
+      target: { value: "2026-08-28T09:00" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/scheduled end/i), {
+      target: { value: "2026-08-28T10:00" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to clinician/i }));
+    expect(await within(dialog).findByText(/no eligible clinicians found/i)).toBeTruthy();
+    expect(within(dialog).queryByText(/scheduled with an RN/i) !== null).toBe(explained);
   });
 
   it("a D8 pre-schedule refusal names the discipline or licence, not a generic error", async () => {

@@ -7,6 +7,7 @@
 // history snapshots for "vs last week" trends or a daily census/revenue series, and no "recently
 // viewed" patient list, so the cards show current detail instead and the patient panel lists the
 // patients the open work refers to.
+import { visitPurposeLabel } from "@chartwarden/types";
 import { EmptyState, Glyph, type GlyphName, Panel, t, useApiClient } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
@@ -260,26 +261,6 @@ const HOPE_KIND: Record<string, string> = {
   "03_huv2": "HOPE Update Visit 2",
   "04_sfv": "Symptom Follow-up",
   "05_discharge": "HOPE Discharge",
-};
-
-const VISIT_PURPOSE: Record<string, string> = {
-  routine_visit: "Routine visit",
-  prn: "PRN visit",
-  aide_poc: "Aide visit",
-  msw_assessment: "Social work assessment",
-  msw_followup: "Social work",
-  chaplain_visit: "Chaplain visit",
-  chaplain_assessment: "Spiritual assessment",
-  volunteer_visit: "Volunteer visit",
-  f2f: "Face-to-face",
-  recert: "Recertification visit",
-  loc_change: "Level-of-care change",
-  pronouncement: "Pronouncement",
-  admission_visit: "Admission visit",
-  discharge_visit: "Discharge visit",
-  huv1: "HUV1",
-  huv2: "HUV2",
-  sfv: "SFV",
 };
 
 const CLAIM_SETTLED = /paid|denied|void|cancel|reject|written_off|closed/i;
@@ -562,7 +543,7 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
         visits: visits.slice(0, 6).map((v) => ({
           id: v.id,
           patientId: v.patientId,
-          purpose: VISIT_PURPOSE[v.visitPurpose] ?? stateLabel(v.visitPurpose),
+          purpose: visitPurposeLabel(v.visitPurpose) ?? stateLabel(v.visitPurpose),
           startAt: v.scheduledStartedAt,
           href: `/scheduling/visits/${v.id}`,
         })),

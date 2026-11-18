@@ -17,7 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { dismissProposal, publishProposal } from "./scheduling-api";
-import { PROPOSAL_TONE, stateLabel } from "./scheduling-status";
+import { PROPOSAL_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import { SchedulingWorkspaceNav } from "./workspace-nav";
 
 interface ProposalRow {
@@ -151,7 +151,7 @@ export function SchedulingProposals(): JSX.Element {
                     <td className="tabular-nums" style={tdStyle}>
                       {r.proposedForDate}
                     </td>
-                    <td style={tdStyle}>{stateLabel(r.proposedVisitPurpose)}</td>
+                    <td style={tdStyle}>{purposeLabel(r.proposedVisitPurpose)}</td>
                     <td className="wx-data-md" style={tdStyle}>
                       {r.patientId.slice(0, 8)}
                     </td>

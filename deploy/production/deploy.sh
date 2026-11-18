@@ -89,7 +89,9 @@ deploy_alert() {
   if [ -n "${schema_applied:-}" ]; then
     alert_files=$(printf '%s\n' "$schema_applied" | grep -E '^[0-9]{4}_[a-z0-9_.]+\.sql$' | sed 's/.*/"&"/' | paste -sd, - || true)
   fi
-  if [ "$alert_rc" -eq "$HOLD_EXIT" ]; then
+  if [ "$alert_rc" -eq "$HOLD_EXIT" ] && [ -n "${held_before_schema_change:-}" ]; then
+    alert_what="HELD before any schema change (exit $alert_rc): nothing applied, previous release untouched, a pending migration needs an operator"
+  elif [ "$alert_rc" -eq "$HOLD_EXIT" ]; then
     alert_what="operator decision required (exit $alert_rc), automatic rollback refused"
   else
     alert_what="failed (exit $alert_rc)"
@@ -673,14 +675,35 @@ if ! { docker compose --env-file .env.production -f compose.yml up -d --no-recre
 fi
 deploy_step=migrate
 if docker compose --env-file .env.production -f compose.yml run --rm --no-deps migrate \
-  bun run scripts/db/migrate.ts --strict --schema-only; then
+  bun run scripts/db/migrate.ts --strict --schema-only --hold-contract; then
   migrate_ok=1
   assess_schema_change "$ledger_before"
   rm -f "$ledger_before" "$ledger_before.after"
 else
+  migrate_rc=$?
   # A multi-file run can have committed earlier files before failing on a later one; the ledger says which.
   assess_schema_change "$ledger_before"
   rm -f "$ledger_before" "$ledger_before.after"
+  # --hold-contract refuses the WHOLE batch before the first DDL when a pending migration is not a verified
+  # `expand` (1508 needs its old M25 writers drained, and this script never stops them before migrating). Nothing
+  # was applied, so the clean restore below leaves the running release untouched; the exit code tells the alert
+  # and the operator it is a decision, not a fault.
+  if [ "$migrate_rc" -eq "$HOLD_EXIT" ]; then
+    {
+      echo ""
+      echo "!! DEPLOY HELD BEFORE ANY SCHEMA CHANGE: a pending migration is not proven expand-compatible."
+      echo "!! Nothing was applied and the running release is untouched. Drain whatever the migration's header and"
+      echo "!! runbook name (1508: docs/runbooks/m25-835-deployment.md), then apply it by hand with the NEW release's"
+      echo "!! image (this script is about to put .env.production back on the previous one) and WITHOUT --hold-contract:"
+      echo "!!   cd $deploy_dir && CHARTWARDEN_IMAGE='$backend_ref' docker compose --env-file .env.production -f compose.yml \\"
+      echo "!!     run --rm --no-deps migrate bun run scripts/db/migrate.ts --strict --schema-only"
+      echo "!! then re-run this deploy."
+      echo ""
+    } >&2
+    held_before_schema_change=1
+    restore_previous_release
+    exit "$HOLD_EXIT"
+  fi
   restore_previous_release
   exit 1
 fi

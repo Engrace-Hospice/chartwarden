@@ -1,3 +1,4 @@
+import { visitPurposeLabel } from "@chartwarden/types";
 import {
   CountBadge,
   DeniedState,
@@ -1202,7 +1203,9 @@ export function ClinicalRail({
     ...(data.visits ?? []).slice(0, 2).map((v) => ({
       key: v.id,
       icon: "calendar" as GlyphName,
-      title: v.visitPurpose ? titleCase(v.visitPurpose) : "Visit",
+      title: v.visitPurpose
+        ? (visitPurposeLabel(v.visitPurpose) ?? titleCase(v.visitPurpose))
+        : "Visit",
       when: `${fmtDate(v.scheduledStartedAt)}  ${fmtTime(v.scheduledStartedAt)}`,
     })),
     ...(period?.scheduledEndAt

@@ -194,9 +194,14 @@ export function createClaimMdEraDeliveryService(input: {
           (resolution.decision as { claims?: readonly Record<string, unknown>[] }).claims?.filter(
             (entry) =>
               entry.fileIndex === component.fileIndex &&
-              entry.functionalGroupControlNumber ===
-                component.advice.functionalGroupControlNumber &&
-              entry.transactionSetControlNumber === component.advice.transactionSetControlNumber,
+              entry.transactionSetControlNumber === component.advice.transactionSetControlNumber &&
+              // A resolution persisted before group-scoped identity has claim entries with no GS06 (the key is
+              // new). Such an entry belongs to the set matched by file index and ST02, as it always did; matching
+              // it to no set would drop its conflict/ambiguous outcome and let an unsafe component through.
+              (entry.functionalGroupControlNumber === undefined ||
+                entry.functionalGroupControlNumber === null ||
+                entry.functionalGroupControlNumber ===
+                  component.advice.functionalGroupControlNumber),
           ) ?? [];
         if (
           !resolutionComponent ||
@@ -337,7 +342,7 @@ export function createClaimMdEraDeliveryService(input: {
         (sawPossible
           ? "POSSIBLE_CROSS_SOURCE_DUPLICATE"
           : sawExact
-            ? "EXACT_DUPLICATE_FROM_M25"
+            ? "EXACT_CROSS_SOURCE_DUPLICATE"
             : null),
     });
     const finalState = receipt.outcome as

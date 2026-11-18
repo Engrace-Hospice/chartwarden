@@ -45,14 +45,54 @@ export function buildM17WorkerDeps(deps: {
   return { ...deps, now: () => new Date() };
 }
 
+/**
+ * §4.8 `m17.recurring-materialize`. A recurring policy whose credentialed clinician has no legal M8 encounter
+ * pair for its purpose cannot materialize a visit; the service reports it instead of skipping it silently,
+ * and this cron alerts the scheduling roles (ids and a count only) once per org per day until it is fixed or
+ * discontinued. The alert is the only signal for those policies, so one that reaches nobody fails the job
+ * rather than completing quietly, and so does a policy that failed for any other reason (the service finished
+ * the rest of the org's pass first). One org's failure never stops the others (see {@link forEachActiveOrg}).
+ */
 export async function runRecurringMaterializationCron(deps: M17WorkerDeps): Promise<void> {
   const service = createDbSchedulingBackend(deps.db, deps.outbox) as SchedulingAutomationService;
+  const alerts = alertEmitterOf(deps);
   const now = (deps.now ?? (() => new Date()))();
-  for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
-    await service.materializeRecurringVisitsForOrg(organizationId, M17_WORKER_SYSTEM_USER_ID, {
-      now,
-    });
-  }
+  await forEachActiveOrg(deps, "M17 recurring-materialize", async (organizationId) => {
+    const result = await service.materializeRecurringVisitsForOrg(
+      organizationId,
+      M17_WORKER_SYSTEM_USER_ID,
+      { now },
+    );
+    const problems: string[] = [];
+    if (result.unschedulablePolicyIds.length > 0) {
+      const emitted = await alerts.emit(organizationId, {
+        eventType: "m17.recurring_policy_unschedulable",
+        severity: "warn",
+        correlationId: `m17:recurring-unschedulable:${organizationId}:${now.toISOString().slice(0, 10)}`,
+        payload: {
+          count: result.unschedulablePolicyIds.length,
+          policyIds: result.unschedulablePolicyIds,
+          detectedAt: now.toISOString(),
+          deepLink: "/scheduling/recurring",
+          message:
+            "Recurring visit policies cannot be scheduled: no credentialed discipline of the assigned clinician has a legal encounter type for the visit purpose.",
+        },
+      });
+      if (emitted.resolvedRecipientCount === 0) {
+        problems.push(
+          `the unschedulable-policy alert reached no recipient (${result.unschedulablePolicyIds.length} policy(ies))`,
+        );
+      }
+    }
+    if (result.failedPolicies.length > 0) {
+      problems.push(
+        `${result.failedPolicies.length} policy(ies) failed to materialize: ${result.failedPolicies
+          .map((failed) => `${failed.policyId}=${failed.code}`)
+          .join(",")}`,
+      );
+    }
+    if (problems.length > 0) throw new Error(problems.join("; "));
+  });
 }
 
 export async function runVisitAttentionCron(deps: M17WorkerDeps): Promise<void> {

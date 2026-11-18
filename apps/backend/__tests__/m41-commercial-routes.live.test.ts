@@ -619,6 +619,7 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       checkOrEftTraceNumber: `M41-${randomUUID().replaceAll("-", "").slice(0, 32)}`,
       paymentMethod: "eft",
       totalPaymentAmount: chargeCents / 100,
+      paymentEffectiveDate: "2026-03-31",
       productionDate: "2026-03-31",
       claims: [
         {

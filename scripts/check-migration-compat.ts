@@ -201,6 +201,25 @@ export function isExpandSafe(report: CompatReport): boolean {
   return report.declared === "expand" && report.contracting.length === 0;
 }
 
+/**
+ * The PENDING files an unattended deploy must not apply: declared from COMPAT_DECLARATION_FROM on and not
+ * proven expand (a `contract`, an undeclared, or a falsely-claimed `expand`). Older files are grandfathered
+ * and never held. deploy.sh runs migrate.ts with `--hold-contract`, which refuses the whole batch when this
+ * is non-empty: a contract migration can need its old writers drained first (1508), and nothing in a
+ * deploy stops them before the schema changes.
+ */
+export function pendingNeedingOperator(
+  pending: readonly { readonly file: string; readonly sql: string }[],
+): string[] {
+  return pending
+    .filter(({ file, sql }) => {
+      const ordinal = ordinalOf(file);
+      if (ordinal !== null && ordinal < COMPAT_DECLARATION_FROM) return false;
+      return !isExpandSafe(assess(sql));
+    })
+    .map(({ file }) => file);
+}
+
 /** Gate errors for one file; grandfathered files produce none. */
 export function gateErrors(filename: string, sql: string): string[] {
   const ordinal = ordinalOf(filename);

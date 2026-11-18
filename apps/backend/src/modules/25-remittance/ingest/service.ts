@@ -58,9 +58,22 @@ export interface ReceiveAdviceInput {
   readonly rawEdi: string;
 }
 
+/** Why a transaction set in a multi-set file was held (not stored as payable) rather than queued. */
+export type HeldSetReason = "LEGACY_IDENTITY_AMBIGUOUS" | "CLAIMMD_ERA_STAGE_MATCH";
+
 export type ReceiveAdviceResult =
-  | { readonly outcome: "queued"; readonly adviceId: string }
-  | { readonly outcome: "duplicate"; readonly existingAdviceId: string }
+  | {
+      readonly outcome: "queued";
+      readonly adviceId: string;
+      /** Other sets of the same file that were held; the response carries one outcome per file, so a held set
+       *  beside a queued/duplicate one would otherwise be invisible to the pull's operator-facing `held` report. */
+      readonly heldSets?: readonly HeldSetReason[];
+    }
+  | {
+      readonly outcome: "duplicate";
+      readonly existingAdviceId: string;
+      readonly heldSets?: readonly HeldSetReason[];
+    }
   | {
       readonly outcome: "unsupported";
       readonly code: "X12_835_UNSUPPORTED_ROUTING";
@@ -70,12 +83,16 @@ export type ReceiveAdviceResult =
       readonly outcome: "review_required";
       readonly stageId: string;
       readonly reason: "CLAIMMD_ERA_STAGE_MATCH";
+      /** Present only when MORE THAN ONE set of the file was held: every held set's reason, this one included. */
+      readonly heldSets?: readonly HeldSetReason[];
     }
   | {
       readonly outcome: "held_duplicate";
       readonly adviceId: string;
       readonly existingAdviceId: string;
       readonly reason: "LEGACY_IDENTITY_AMBIGUOUS";
+      /** Present only when MORE THAN ONE set of the file was held: every held set's reason, this one included. */
+      readonly heldSets?: readonly HeldSetReason[];
     }
   | {
       readonly outcome: "malformed";

@@ -3,7 +3,12 @@
 // `(organization_id, visit_id)` index so a crash/retry cannot mint a second note.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { EncounterDiscipline, EncounterType, LocalDate } from "@chartwarden/types";
+import {
+  type EncounterDiscipline,
+  type EncounterType,
+  type LocalDate,
+  isValidEncounterDisciplinePair,
+} from "@chartwarden/types";
 import type {
   VisitPublishedPayload,
   VisitSeedingAction,
@@ -143,6 +148,15 @@ export function buildM8VisitPublishedConsumer(deps: {
       const encounterType = encounterTypeOf(stringOf(payload, "encounterType"));
       const discipline = disciplineOf(stringOf(payload, "assignedDiscipline"));
       const serviceDate = localDateOf(stringOf(payload, "serviceDate"));
+      // §2.7: this consumer INSERTs the draft directly, bypassing `checkEncounterDisciplinePair` (route +
+      // EncounterCreator seam) and there is no DB CHECK on the pair, so an illegal pair is refused here.
+      // Throw (the bad-payload convention above): the relay retries, then parks the row as `failed`.
+      // Ids and enum codes only in the message.
+      if (!isValidEncounterDisciplinePair(encounterType, discipline)) {
+        throw new Error(
+          `m8.seed-visit-encounter: INVALID_ENCOUNTER_DISCIPLINE_PAIR for visit '${visitId}' (encounter type '${encounterType}', discipline '${discipline}'); no draft seeded`,
+        );
+      }
 
       if (!(await deps.isAdmissionActive(event.organizationId, admissionId))) {
         throw new Error(

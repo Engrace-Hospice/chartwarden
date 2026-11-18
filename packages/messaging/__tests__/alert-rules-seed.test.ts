@@ -9,6 +9,8 @@ import {
   PLATFORM_DEFAULT_ALERT_RULES,
   SYSTEM_LOCKED_EVENT_TYPES,
   assertAlertRuleSeedValid,
+  createRecipientResolverRegistry,
+  resolveRecipients,
   toNewAlertRuleRows,
   validateAlertRuleSeed,
 } from "../src/index";
@@ -120,6 +122,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m17.visit.rescheduled",
       "m17.visit.no_show_detected",
       "m17.stale_visit_detected",
+      "m17.recurring_policy_unschedulable",
       // F-187 (#248) — a lab order superseded after its ORM may already be at the laboratory (T-29.08 defines no
       // outbound cancel, so this alert is the only signal). A real emitter: M11's `lab-cancellation-required`.
       "m11.order.lab_cancellation_required",
@@ -426,5 +429,50 @@ describe("M36-T05 §7.4 system_locked floors", () => {
       (r) => r.eventType !== "system.backup_failure",
     );
     expect(validateAlertRuleSeed(missing).map((x) => x.type)).toContain("missing_system_locked");
+  });
+});
+
+describe("m17.recurring_policy_unschedulable audience", () => {
+  const rule = PLATFORM_DEFAULT_ALERT_RULES.find(
+    (r) => r.eventType === "m17.recurring_policy_unschedulable",
+  );
+
+  const portsFor = (holders: Readonly<Record<string, readonly string[]>>) => ({
+    careTeamMembers: async () => [],
+    onCallMembers: async () => [],
+    disciplineMembers: async () => [],
+    roleSetMembers: async (_orgId: string, roleKeys: readonly string[]) =>
+      roleKeys.flatMap((key) => holders[key] ?? []),
+    tenantAdmins: async () => [],
+    orgMembers: async () => [],
+  });
+
+  it("reaches a tenant that has only the role-template roles (it never created clinical_lead or scheduler)", async () => {
+    expect(rule).toBeDefined();
+    const registry = createRecipientResolverRegistry(
+      portsFor({ org_admin: ["u-admin"], director_of_nursing: ["u-don"] }),
+    );
+    const recipients = await resolveRecipients(
+      registry,
+      rule?.recipientResolver ?? "",
+      "org-1",
+      rule?.resolverArgs ?? {},
+      {},
+    );
+    expect([...recipients].sort()).toEqual(["u-admin", "u-don"]);
+  });
+
+  it("still reaches the scheduling roles where a tenant created them", async () => {
+    const registry = createRecipientResolverRegistry(
+      portsFor({ scheduler: ["u-sched"], clinical_lead: ["u-lead"] }),
+    );
+    const recipients = await resolveRecipients(
+      registry,
+      rule?.recipientResolver ?? "",
+      "org-1",
+      rule?.resolverArgs ?? {},
+      {},
+    );
+    expect([...recipients].sort()).toEqual(["u-lead", "u-sched"]);
   });
 });

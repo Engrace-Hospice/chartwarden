@@ -5326,9 +5326,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             )?.npi ?? null,
         )
     : async () => null; // no database: no NPI on file, so every 835 is refused
-  // #671 - the tenant's TIN an 835 payee's REF*TJ must match, and the opt-in policy for tax-id-only (N103=FI) payees. The
-  // sealed EIN is read through M1's published reader and opened with M2's tax-id cipher (the M23 837I precedent), so M25
-  // touches neither table nor DEK. A decrypt failure rejects and the ingest service refuses the file (fail closed).
+  // #671 - the tenant's TIN an 835 payee's REF*TJ must match (a tax-id-only N103=FI payee is always refused: there is no opt-in
+  // policy and no environment variable for one). The sealed EIN is read through M1's published reader and opened with M2's
+  // tax-id cipher (the M23 837I precedent), so M25 touches neither table nor DEK. A decrypt failure rejects and the ingest
+  // service refuses the file (fail closed).
   const m25PayeeTinDeps = {
     payeeTin: dbHandle
       ? (organizationId: string, providerEntityId: string): Promise<string | null> =>

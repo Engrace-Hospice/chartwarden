@@ -1,6 +1,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -30,8 +33,13 @@ import {
  * `visit` / `visit_state_history` are RANGE-partitioned → the throwaway superuser DB needs
  * `max_locks_per_transaction` raised. For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import {
+  type M17WorkerDeps,
+  runRecurringMaterializationCron,
+} from "../src/modules/17-scheduling/jobs/cron-workers";
 import { type CallerAuthority, NO_AUTHORITY } from "../src/modules/17-scheduling/routes/own-vs-any";
 import { createDrizzleCredentialStore } from "../src/modules/17-scheduling/seams/credentials-drizzle-store";
+import { M17_SYSTEM_USER_ID } from "../src/modules/17-scheduling/system-actor";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -751,6 +759,634 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       );
       await expect(resolver().allowsUnassignedPool(ORG_A)).resolves.toBe(true);
       // Restore the fixture baseline (true) — this is the last test in the file, but keep state honest.
+    });
+  });
+
+  // ── WF08/WF09 (PR #1055) — migration 1509's purposes, the real-discipline stamp, and the M8 §2.2 / §2.7
+  // legal-pair guard. Runs as the NOBYPASSRLS app role like every test above. Declared LAST: it seeds the
+  // `lpn`/`np`/`md` roles with an upsert, and the GAP-030 block above inserts an `lpn` role plainly.
+  describe("WF08/WF09 — purpose stamp, encounter-pair guard, reassign/edit re-stamp, tenancy", () => {
+    type Purpose = Parameters<typeof svc.createVisit>[2]["visitPurpose"];
+
+    /** A clinician holding `roles` as M3 role keys and `credentials` as active M17 licences. */
+    async function clinician(roles: string[], credentials: string[]): Promise<string> {
+      const user = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+          `m17w-wf09-${userSeq++}@x.test`,
+        ])
+      ).rows[0].id as string;
+      const membership = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status, default_provider_entity_id, default_location_ids)
+           VALUES ($1,$2,'active',$3,$4::jsonb) RETURNING id`,
+          [user, ORG_A, seeded[ORG_A].pe, JSON.stringify([seeded[ORG_A].location])],
+        )
+      ).rows[0].id as string;
+      for (const key of roles) {
+        const roleId = (
+          await admin.query(
+            `INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'clinical_staff')
+             ON CONFLICT (organization_id, key) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+            [ORG_A, key],
+          )
+        ).rows[0].id as string;
+        await admin.query(
+          `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+          [ORG_A, membership, roleId],
+        );
+      }
+      for (const credential of credentials) {
+        await admin.query(
+          `INSERT INTO membership_credential (organization_id, membership_id, credential_type, effective_at, granted_by_membership_id)
+           VALUES ($1,$2,$3,'2020-01-01',$2)`,
+          [ORG_A, membership, credential],
+        );
+      }
+      return membership;
+    }
+    let userSeq = 0;
+
+    const create = (member: string, visitPurpose: Purpose) => {
+      const w = nextWindow();
+      return svc.createVisit(ORG_A, member, {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        patientAddressId: null,
+        externalFacilityId: null,
+        assignedMembershipId: member,
+        visitPurpose,
+        visitSetting: "patient_home",
+        scheduledStartedAt: w.start,
+        scheduledEndedAt: w.end,
+      });
+    };
+    async function visitRow(id: string) {
+      return (
+        await admin.query(
+          `SELECT visit_purpose, assigned_membership_id, assigned_discipline_at_assignment AS discipline, version
+             FROM visit WHERE id=$1`,
+          [id],
+        )
+      ).rows[0] as {
+        visit_purpose: string;
+        assigned_membership_id: string;
+        discipline: string;
+        version: number;
+      };
+    }
+    async function eventPayload(aggregateId: string, eventType: string) {
+      const { rows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2 ORDER BY created_at DESC LIMIT 1",
+        [aggregateId, eventType],
+      );
+      return rows[0]?.payload as Record<string, unknown> | undefined;
+    }
+    /** (visit rows, m17.visit.* events) system-wide: a refused write must move neither. */
+    async function footprint(): Promise<{ visits: number; events: number }> {
+      const visits = await admin.query("SELECT count(*)::int AS n FROM visit");
+      const events = await admin.query(
+        "SELECT count(*)::int AS n FROM outbox_event WHERE event_type LIKE 'm17.visit.%'",
+      );
+      return { visits: visits.rows[0].n, events: events.rows[0].n };
+    }
+
+    let rn: string;
+    let lpn: string;
+    let np: string;
+    let md: string;
+    let rnAndNp: string;
+    let npWithRnLicenceOnly: string;
+    beforeAll(async () => {
+      rn = seeded[ORG_A].member; // rn role + rn licence from the file-level seed
+      lpn = await clinician(["lpn"], ["lpn"]);
+      np = await clinician(["np"], ["np"]);
+      md = await clinician(["md"], ["md"]);
+      rnAndNp = await clinician(["rn", "np"], ["rn", "np"]);
+      npWithRnLicenceOnly = await clinician(["np"], ["rn"]);
+    });
+
+    it("migration 1509: huv1, huv2 and sfv round-trip through visit.visit_purpose; an RN is stamped rn and the published event carries routine_visit/rn", async () => {
+      for (const purpose of ["huv1", "huv2", "sfv"] as const) {
+        const v = await create(rn, purpose);
+        expect(await visitRow(v.id)).toMatchObject({
+          visit_purpose: purpose,
+          assigned_membership_id: rn,
+          discipline: "rn",
+        });
+        expect(v.visitPurpose).toBe(purpose);
+        expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+          visitPurpose: purpose,
+          assignedDiscipline: "rn",
+          encounterType: "routine_visit",
+        });
+        expect(await eventsFor(v.id)).toContain("m17.visit.published");
+      }
+    });
+
+    it("an LPN with an active lpn licence schedules an sfv and is stamped lpn (routine_visit/lpn is a legal M8 pair)", async () => {
+      const v = await create(lpn, "sfv");
+      expect((await visitRow(v.id)).discipline).toBe("lpn");
+      expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+        visitPurpose: "sfv",
+        assignedDiscipline: "lpn",
+        encounterType: "routine_visit",
+      });
+    });
+
+    it("an np role + active np licence is stamped np (not rn) on an f2f, and md likewise, on the row AND the published event", async () => {
+      for (const [member, discipline] of [
+        [np, "np"],
+        [md, "md"],
+      ] as const) {
+        const v = await create(member, "f2f");
+        expect((await visitRow(v.id)).discipline).toBe(discipline);
+        expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+          assignedDiscipline: discipline,
+          encounterType: "face_to_face",
+        });
+        expect(await eventPayload(v.id, "m17.visit.proposed")).toMatchObject({
+          proposedDiscipline: discipline,
+        });
+      }
+    });
+
+    it("a dual-role RN+NP is stamped by policy order: rn on an huv1, np on an f2f", async () => {
+      expect((await visitRow((await create(rnAndNp, "huv1")).id)).discipline).toBe("rn");
+      expect((await visitRow((await create(rnAndNp, "f2f")).id)).discipline).toBe("np");
+    });
+
+    it("an np role with only an rn licence is refused on create (the licence must be the discipline's own); no row, no event", async () => {
+      const before = await footprint();
+      await expect(create(npWithRnLicenceOnly, "f2f")).rejects.toMatchObject({
+        code: "VISIT_PRE_SCHEDULE_GATE_UNMET",
+        statusCode: 422,
+      });
+      expect(await footprint()).toEqual(before);
+    });
+
+    // M8 spec §2.2: routine_visit admits rn|lpn only and no other §2.2 type is an HUV/SFV/pronouncement visit.
+    // The M8 seed consumer inserts the draft directly, so scheduling must refuse these BEFORE publishing
+    // m17.visit.published.
+    it.each([
+      ["np", "huv1"],
+      ["md", "huv1"],
+      ["np", "huv2"],
+      ["md", "huv2"],
+      ["np", "sfv"],
+      ["np", "pronouncement"],
+      ["md", "pronouncement"],
+    ] as const)(
+      "%s cannot be scheduled for %s: no legal M8 encounter pair, refused with VISIT_ENCOUNTER_TYPE_UNSUPPORTED, nothing written",
+      async (who, purpose) => {
+        const member = who === "np" ? np : md;
+        const before = await footprint();
+        await expect(create(member, purpose)).rejects.toMatchObject({
+          code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+          statusCode: 422,
+        });
+        expect(await footprint()).toEqual(before);
+      },
+    );
+
+    // M8 §2.2: `recert_visit` is the RN recertification-kickoff visit ("not the F2F itself") and a level-of-care
+    // change seeds `routine_visit` (RN/LPN), so both purposes are RN visits. They used to require md/np, which no
+    // M8 type accepts, so neither could be scheduled for anyone.
+    it.each([
+      ["recert", "recert_visit"],
+      ["loc_change", "routine_visit"],
+    ] as const)(
+      "an rn is stamped for %s and the published event carries the legal M8 type %s",
+      async (purpose, encounterType) => {
+        const v = await create(rn, purpose);
+        expect(await visitRow(v.id)).toMatchObject({ visit_purpose: purpose, discipline: "rn" });
+        expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+          assignedDiscipline: "rn",
+          encounterType,
+        });
+      },
+    );
+
+    it.each([
+      ["np", "recert"],
+      ["md", "recert"],
+      ["np", "loc_change"],
+      ["md", "loc_change"],
+    ] as const)(
+      "%s is not an eligible discipline for %s (the discipline gate, VISIT_PRE_SCHEDULE_GATE_UNMET), nothing written",
+      async (who, purpose) => {
+        const before = await footprint();
+        await expect(create(who === "np" ? np : md, purpose)).rejects.toMatchObject({
+          code: "VISIT_PRE_SCHEDULE_GATE_UNMET",
+          statusCode: 422,
+        });
+        expect(await footprint()).toEqual(before);
+      },
+    );
+
+    it("the refusal names codes only: no membership, patient or visit content", async () => {
+      // The exact message: the two enum codes and nothing else (no membership, patient or visit id).
+      await expect(create(np, "huv1")).rejects.toMatchObject({
+        message: "no legal encounter type for visit purpose 'huv1' and discipline 'np'",
+      });
+    });
+
+    it("reassignVisit re-runs the gate and re-stamps the discipline (np f2f -> md), emitting assigned for the new clinician", async () => {
+      const v = await create(np, "f2f");
+      const re = await svc.reassignVisit(ORG_A, np, v.id, md);
+      expect(re.assignedMembershipId).toBe(md);
+      const row = await visitRow(v.id);
+      expect(row).toMatchObject({ assigned_membership_id: md, discipline: "md", version: 2 });
+      expect(await eventPayload(v.id, "m17.visit.assigned")).toMatchObject({
+        assignedMembershipId: md,
+      });
+    });
+
+    it("a failing reassign gate (np with an rn licence only) is 403 PRE_SCHEDULE_GATE_FAILED and leaves the visit and its events untouched", async () => {
+      const v = await create(np, "f2f");
+      const before = { row: await visitRow(v.id), footprint: await footprint() };
+      await expect(svc.reassignVisit(ORG_A, np, v.id, npWithRnLicenceOnly)).rejects.toMatchObject({
+        message: "PRE_SCHEDULE_GATE_FAILED",
+        statusCode: 403,
+      });
+      expect(await visitRow(v.id)).toEqual(before.row);
+      expect(await footprint()).toEqual(before.footprint);
+    });
+
+    it("reassigning an HUV to an NP is refused (no legal M8 pair) and the visit keeps its RN", async () => {
+      const v = await create(rn, "huv1");
+      const before = await visitRow(v.id);
+      await expect(svc.reassignVisit(ORG_A, rn, v.id, np)).rejects.toMatchObject({
+        code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+        statusCode: 422,
+      });
+      expect(await visitRow(v.id)).toEqual(before);
+    });
+
+    it("editVisit on the purpose re-runs the gate and re-stamps the discipline (rn+np: f2f np -> huv1 rn)", async () => {
+      const v = await create(rnAndNp, "f2f");
+      expect((await visitRow(v.id)).discipline).toBe("np");
+      const edited = await svc.editVisit(ORG_A, rnAndNp, v.id, { visitPurpose: "huv1" });
+      expect(edited.visitPurpose).toBe("huv1");
+      expect(await visitRow(v.id)).toMatchObject({ visit_purpose: "huv1", discipline: "rn" });
+    });
+
+    it("a failing purpose-edit gate (np f2f -> routine_visit) is 403 PRE_SCHEDULE_GATE_FAILED and leaves the visit unchanged", async () => {
+      const v = await create(np, "f2f");
+      const before = await visitRow(v.id);
+      await expect(
+        svc.editVisit(ORG_A, np, v.id, { visitPurpose: "routine_visit" }),
+      ).rejects.toMatchObject({ message: "PRE_SCHEDULE_GATE_FAILED", statusCode: 403 });
+      expect(await visitRow(v.id)).toEqual(before);
+    });
+
+    it("a purpose-edit to a purpose with no legal pair for the stamped discipline (np f2f -> huv1) is refused and unchanged", async () => {
+      const v = await create(np, "f2f");
+      const before = await visitRow(v.id);
+      await expect(svc.editVisit(ORG_A, np, v.id, { visitPurpose: "huv1" })).rejects.toMatchObject({
+        code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+        statusCode: 422,
+      });
+      expect(await visitRow(v.id)).toEqual(before);
+    });
+
+    const recurringPolicy = (member: string, visitPurpose: Purpose) =>
+      svc.createRecurring(ORG_A, member, {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        assignedMembershipId: member,
+        visitPurpose,
+        visitSetting: "patient_home",
+        rrule: "FREQ=DAILY",
+        timeOfDayStart: "10:00",
+        timeOfDayEnd: "11:00",
+        timeZone: "America/Los_Angeles",
+        startDate: new Date().toISOString().slice(0, 10),
+      });
+    const recurringCount = async () =>
+      (await admin.query("SELECT count(*)::int AS n FROM recurring_visit")).rows[0].n as number;
+    const childCount = async (policyId: string) =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM visit WHERE parent_recurring_visit_id=$1",
+          [policyId],
+        )
+      ).rows[0].n as number;
+    const childIds = async (policyId: string) =>
+      (
+        await admin.query("SELECT id FROM visit WHERE parent_recurring_visit_id=$1", [policyId])
+      ).rows.map((row) => row.id as string);
+    /** A policy created BEFORE the creation guard existed: legal when made, then forced to an illegal pair. */
+    async function legacyUnschedulablePolicy(): Promise<string> {
+      const legacy = await recurringPolicy(np, "f2f");
+      await admin.query("UPDATE recurring_visit SET visit_purpose='huv1' WHERE id=$1", [legacy.id]);
+      return legacy.id;
+    }
+
+    it("createRecurring refuses a policy whose clinician has no legal M8 pair for the purpose (422), writing no policy; a legal pair still creates", async () => {
+      const before = await recurringCount();
+      await expect(recurringPolicy(np, "huv1")).rejects.toMatchObject({
+        code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+        statusCode: 422,
+      });
+      expect(await recurringCount()).toBe(before);
+
+      const ok = await recurringPolicy(np, "f2f");
+      expect(ok.status).toBe("active");
+      await svc.discontinueRecurring(ORG_A, np, ok.id);
+    });
+
+    it("createRecurring refuses a clinician who holds no discipline the purpose accepts (403 PRE_SCHEDULE_GATE_FAILED), writing no policy", async () => {
+      const before = await recurringCount();
+      // rn holds no md/np; md/np hold no rn: neither could ever be stamped for the purpose.
+      for (const [member, purpose] of [
+        [rn, "f2f"],
+        [md, "recert"],
+        [np, "loc_change"],
+      ] as const) {
+        await expect(recurringPolicy(member, purpose)).rejects.toMatchObject({
+          message: "PRE_SCHEDULE_GATE_FAILED",
+          statusCode: 403,
+        });
+      }
+      expect(await recurringCount()).toBe(before);
+    });
+
+    it("createRecurring accepts an rn for recert and loc_change (RN visits), and they materialize with the legal M8 type", async () => {
+      // Created inside the try so a failure on the second never leaves the first active for the next test.
+      const created: Array<{
+        policy: Awaited<ReturnType<typeof recurringPolicy>>;
+        encounterType: string;
+      }> = [];
+      try {
+        for (const [purpose, encounterType] of [
+          ["recert", "recert_visit"],
+          ["loc_change", "routine_visit"],
+        ] as const) {
+          created.push({
+            policy: await recurringPolicy(await clinician(["rn"], ["rn"]), purpose),
+            encounterType,
+          });
+        }
+        const result = await svc.materializeRecurringVisitsForOrg(ORG_A, M17_SYSTEM_USER_ID, {
+          horizonDays: 2,
+        });
+        for (const { policy, encounterType } of created) {
+          expect(result.unschedulablePolicyIds).not.toContain(policy.id);
+          expect(result.failedPolicies.map((f) => f.policyId)).not.toContain(policy.id);
+          const children = await childIds(policy.id);
+          expect(children.length).toBeGreaterThan(0);
+          for (const child of children) {
+            expect(await eventPayload(child, "m17.visit.published")).toMatchObject({
+              encounterType,
+            });
+          }
+        }
+      } finally {
+        for (const { policy } of created) {
+          await svc.discontinueRecurring(ORG_A, policy.assignedMembershipId, policy.id);
+        }
+      }
+    });
+
+    it("recurring materialization reports a policy with no legal pair (writing nothing for it) and still materializes the healthy policy in the same pass", async () => {
+      const healthyClinician = await clinician(["rn"], ["rn"]);
+      const healthy = await recurringPolicy(healthyClinician, "routine_visit");
+      const legacyId = await legacyUnschedulablePolicy();
+      try {
+        // The cron's own actor: the M17 system sentinel (recorded as a NULL audit actor), as in production.
+        const result = await svc.materializeRecurringVisitsForOrg(ORG_A, M17_SYSTEM_USER_ID, {
+          horizonDays: 3,
+        });
+        expect(result.unschedulablePolicyIds).toContain(legacyId);
+        expect(result.unschedulablePolicyIds).not.toContain(healthy.id);
+        expect(await childCount(legacyId)).toBe(0);
+        expect(await childCount(healthy.id)).toBeGreaterThan(0);
+      } finally {
+        // Leave no active policy behind: a later test asserts exactly which policies the cron reports.
+        await svc.discontinueRecurring(ORG_A, np, legacyId);
+        await svc.discontinueRecurring(ORG_A, healthyClinician, healthy.id);
+      }
+    });
+
+    it("the recurring cron alerts the scheduling roles with ids and a count only, and stays silent once nothing is unschedulable", async () => {
+      const emitted: Array<{ orgId: string } & Parameters<AlertEmitter["emit"]>[1]> = [];
+      const alerts: AlertEmitter = {
+        emit: async (orgId, input) => {
+          emitted.push({ orgId, ...input });
+          return { alertId: "recorded", resolvedRecipientCount: 1 };
+        },
+      };
+      const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M17_OUTBOX_EVENTS]));
+      const outbox: SchedulingWriteOutboxPort = {
+        publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m17" }),
+      };
+      // `connection` (BullMQ) is only read when workers are registered, never by the cron body under test.
+      const deps = {
+        db: handle.db,
+        outbox,
+        alerts,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      } as unknown as M17WorkerDeps;
+
+      const legacyId = await legacyUnschedulablePolicy();
+      try {
+        await runRecurringMaterializationCron(deps);
+        expect(emitted).toHaveLength(1);
+        const alert = emitted[0];
+        expect(alert).toMatchObject({
+          orgId: ORG_A,
+          eventType: "m17.recurring_policy_unschedulable",
+          severity: "warn",
+        });
+        expect(alert?.payload.policyIds).toEqual([legacyId]);
+        expect(alert?.payload.count).toBe(1);
+        expect(alert?.payload.deepLink).toBe("/scheduling/recurring");
+        // Ids and a count: never the patient, the clinician or any clinical content.
+        expect(JSON.stringify(alert?.payload)).not.toContain(PATIENT);
+        expect(JSON.stringify(alert?.payload)).not.toContain(np);
+
+        await svc.discontinueRecurring(ORG_A, np, legacyId);
+        await runRecurringMaterializationCron(deps);
+        expect(emitted).toHaveLength(1);
+      } finally {
+        // A failed assertion must not leave the legacy policy active for the tests after this one.
+        await admin.query(
+          "UPDATE recurring_visit SET status='discontinued', discontinued_at=now() WHERE id=$1 AND status='active'",
+          [legacyId],
+        );
+      }
+    });
+
+    it("one policy failing for another reason does not stop the pass: the unschedulable and the healthy policies are still handled, and the failure is reported by id and code", async () => {
+      const healthyClinician = await clinician(["rn"], ["rn"]);
+      const healthy = await recurringPolicy(healthyClinician, "routine_visit");
+      // A policy created BEFORE the creation guard existed whose clinician holds no qualifying discipline (an rn
+      // on an f2f policy): createRecurring refuses it now, so force it legacy-style, and every occurrence then
+      // misses the pre-schedule gate.
+      const noDiscipline = await recurringPolicy(await clinician(["rn"], ["rn"]), "routine_visit");
+      await admin.query("UPDATE recurring_visit SET visit_purpose='f2f' WHERE id=$1", [
+        noDiscipline.id,
+      ]);
+      const legacyId = await legacyUnschedulablePolicy();
+      try {
+        const result = await svc.materializeRecurringVisitsForOrg(ORG_A, M17_SYSTEM_USER_ID, {
+          horizonDays: 3,
+        });
+        expect(result.unschedulablePolicyIds).toEqual([legacyId]);
+        expect(result.failedPolicies).toEqual([
+          { policyId: noDiscipline.id, code: "VISIT_PRE_SCHEDULE_GATE_UNMET" },
+        ]);
+        // Whatever order the policies were visited in, the healthy one was materialized and the other two
+        // wrote nothing.
+        expect(await childCount(healthy.id)).toBeGreaterThan(0);
+        expect(await childCount(legacyId)).toBe(0);
+        expect(await childCount(noDiscipline.id)).toBe(0);
+      } finally {
+        // The healthy policy has children: discontinue it through the service so they are cancelled too.
+        await svc.discontinueRecurring(ORG_A, healthyClinician, healthy.id);
+        await admin.query(
+          "UPDATE recurring_visit SET status='discontinued', discontinued_at=now() WHERE id = ANY($1::uuid[]) AND status='active'",
+          [[noDiscipline.id, legacyId]],
+        );
+      }
+    });
+
+    it("a clinician holding np and lpn (no rn) is stamped lpn on an sfv, not refused as np", async () => {
+      const npAndLpn = await clinician(["np", "lpn"], ["np", "lpn"]);
+      const v = await create(npAndLpn, "sfv");
+      expect((await visitRow(v.id)).discipline).toBe("lpn");
+      expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+        assignedDiscipline: "lpn",
+        encounterType: "routine_visit",
+      });
+    });
+
+    it("rescheduleVisit refuses a replacement clinician with no legal pair (rn huv1 -> np) and leaves the original and the events untouched", async () => {
+      const v = await create(rn, "huv1");
+      const before = { row: await visitRow(v.id), footprint: await footprint() };
+      const w = nextWindow();
+      await expect(
+        svc.rescheduleVisit(ORG_A, rn, v.id, {
+          newAssignedMembershipId: np,
+          newScheduledStartedAt: w.start,
+          newScheduledEndedAt: w.end,
+          reason: "clinician double-booked this slot",
+        }),
+      ).rejects.toMatchObject({ code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED", statusCode: 422 });
+      expect(await visitRow(v.id)).toEqual(before.row);
+      expect(await footprint()).toEqual(before.footprint);
+    });
+
+    it("a visit already stamped np for an HUV before the guard cannot be rescheduled (422, unchanged), only cancelled", async () => {
+      const v = await create(np, "f2f");
+      await admin.query("UPDATE visit SET visit_purpose='huv1' WHERE id=$1", [v.id]);
+      const before = { row: await visitRow(v.id), footprint: await footprint() };
+      const w = nextWindow();
+      await expect(
+        svc.rescheduleVisit(ORG_A, np, v.id, {
+          newScheduledStartedAt: w.start,
+          newScheduledEndedAt: w.end,
+          reason: "clinician double-booked this slot",
+        }),
+      ).rejects.toMatchObject({ code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED", statusCode: 422 });
+      expect(await visitRow(v.id)).toEqual(before.row);
+      expect(await footprint()).toEqual(before.footprint);
+
+      const cancelled = await svc.cancelVisit(
+        ORG_A,
+        np,
+        v.id,
+        "legacy visit has no legal encounter type",
+      );
+      expect(cancelled.status).toBe("cancelled");
+    });
+
+    it("publishProposal refuses a suggested clinician with no legal pair (np huv1): 422, the proposal stays pending, no visit is written", async () => {
+      const proposalId = (
+        await admin.query(
+          `INSERT INTO visit_proposal (organization_id, provider_entity_id, location_id, patient_id, admission_id,
+             source, source_payload, source_idempotency_key, proposed_for_date, proposed_visit_purpose,
+             proposed_discipline, proposed_duration_minutes, suggested_membership_id)
+           VALUES ($1,$2,$3,$4,$5,'frequency_driven_m7','{}'::jsonb,$6,CURRENT_DATE + 3,'huv1','np',60,$7)
+           RETURNING id`,
+          [
+            ORG_A,
+            seeded[ORG_A].pe,
+            seeded[ORG_A].location,
+            PATIENT,
+            ADMISSION,
+            `wf09-pair-${Date.now()}`,
+            np,
+          ],
+        )
+      ).rows[0].id as string;
+      const before = await footprint();
+      await expect(svc.publishProposal(ORG_A, np, proposalId)).rejects.toMatchObject({
+        code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+        statusCode: 422,
+      });
+      expect(
+        (await admin.query("SELECT status FROM visit_proposal WHERE id=$1", [proposalId])).rows[0]
+          .status,
+      ).toBe("pending");
+      expect(await footprint()).toEqual(before);
+    });
+
+    it("the clinician picker marks a clinician with no legal pair CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED, and the same clinician is eligible where a pair exists", async () => {
+      const w = nextWindow();
+      const pick = async (visitPurpose: Purpose, member: string) =>
+        (
+          await svc.eligibleClinicians(ORG_A, {
+            patientId: PATIENT,
+            visitPurpose,
+            scheduledStartedAt: w.start,
+            scheduledEndedAt: w.end,
+          })
+        ).find((c) => c.membershipId === member);
+      const huv = await pick("huv1", np);
+      expect(huv).toMatchObject({ eligible: false });
+      expect(huv?.reasonCodes).toContain("CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED");
+      expect(await pick("f2f", np)).toMatchObject({ eligible: true, reasonCodes: [] });
+    });
+
+    it("tenancy on the app role: org B cannot read, reassign or edit org A's visit, and A's row is untouched", async () => {
+      const v = await create(np, "f2f");
+      const before = await visitRow(v.id);
+      const { member: bMember, member2: bMember2 } = seeded[ORG_B];
+
+      // The connection really is the unprivileged role (a superuser would make every assertion below moot).
+      const role = await withOrgContext(
+        handle.db,
+        { organizationId: ORG_B, userId: "" },
+        async (tx) =>
+          (
+            await (tx as unknown as typeof handle.db).execute(
+              sql`SELECT current_user AS who, (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypass`,
+            )
+          ).rows[0] as { who: string; bypass: boolean },
+      );
+      expect(role).toEqual({ who: "chartwarden_app", bypass: false });
+
+      const visibleToB = await withOrgContext(
+        handle.db,
+        { organizationId: ORG_B, userId: "" },
+        async (tx) =>
+          (
+            await (tx as unknown as typeof handle.db).execute(
+              sql`SELECT count(*)::int AS n FROM visit WHERE id = ${v.id}`,
+            )
+          ).rows[0] as { n: number },
+      );
+      expect(visibleToB.n).toBe(0);
+
+      await expect(svc.getVisit(ORG_B, v.id)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(svc.reassignVisit(ORG_B, bMember, v.id, bMember2)).rejects.toMatchObject({
+        statusCode: 404,
+      });
+      await expect(
+        svc.editVisit(ORG_B, bMember, v.id, { visitPurpose: "routine_visit" }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(await visitRow(v.id)).toEqual(before);
     });
   });
 });

@@ -27,6 +27,14 @@ describe("calendar URL state", () => {
     );
   });
 
+  it("drops a filter value that is an inherited object property, not a real purpose, setting or status", () => {
+    expect(
+      calendarFilterStateFromParams(
+        new URLSearchParams("purpose=constructor&setting=toString&status=__proto__"),
+      ),
+    ).toMatchObject({ purpose: "", setting: "", status: "" });
+  });
+
   it("reads shareable non-PHI filters and density from the URL", () => {
     expect(
       calendarFilterStateFromParams(

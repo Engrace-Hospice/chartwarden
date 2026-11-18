@@ -106,15 +106,23 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
         if (result.outcome === "malformed") {
           return reply.code(422).send({ outcome: result.outcome, reason: result.reason });
         }
+        // A multi-set file answers with one outcome; `heldSets` (only when a set was held) names every held set.
+        const heldSets =
+          "heldSets" in result && result.heldSets ? { heldSets: result.heldSets } : {};
         if (result.outcome === "duplicate") {
-          return reply
-            .code(409)
-            .send({ outcome: result.outcome, existingAdviceId: result.existingAdviceId });
+          return reply.code(409).send({
+            outcome: result.outcome,
+            existingAdviceId: result.existingAdviceId,
+            ...heldSets,
+          });
         }
         if (result.outcome === "review_required") {
-          return reply
-            .code(409)
-            .send({ outcome: result.outcome, stageId: result.stageId, reason: result.reason });
+          return reply.code(409).send({
+            outcome: result.outcome,
+            stageId: result.stageId,
+            reason: result.reason,
+            ...heldSets,
+          });
         }
         if (result.outcome === "unsupported") {
           return reply
@@ -127,9 +135,12 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
             adviceId: result.adviceId,
             existingAdviceId: result.existingAdviceId,
             reason: result.reason,
+            ...heldSets,
           });
         }
-        return reply.code(202).send({ outcome: result.outcome, adviceId: result.adviceId });
+        return reply
+          .code(202)
+          .send({ outcome: result.outcome, adviceId: result.adviceId, ...heldSets });
       },
     );
   }

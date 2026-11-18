@@ -55,6 +55,7 @@ import {
   type SchedulingSideEffect,
   SchedulingStateError,
   VISIT_PURPOSE_DISCIPLINES,
+  encounterTypeForVisit,
   materializeRecurrence,
   planFrequencyProposals,
   planVisitProposed,
@@ -248,12 +249,28 @@ export interface SchedulingWriteOutboxPort {
 }
 const NOOP_OUTBOX: SchedulingWriteOutboxPort = { async publish() {} };
 
+/** The error's class name only: its message can carry bound query parameters (PHI). */
+function errorClassName(err: unknown): string {
+  return err instanceof Error ? err.constructor.name : "UnknownError";
+}
+
 export interface SchedulingAutomationService {
   materializeRecurringVisitsForOrg(
     orgId: string,
     userId: string,
     options?: { now?: Date; horizonDays?: number },
-  ): Promise<{ policiesScanned: number; visitsCreated: number; occurrencesSkipped: number }>;
+  ): Promise<{
+    policiesScanned: number;
+    visitsCreated: number;
+    /** Occurrences that already had a published child (benign, expected nightly). */
+    occurrencesSkipped: number;
+    /** Policies with an occurrence whose credentialed clinician has no legal M8 encounter pair for the purpose. */
+    unschedulablePolicyIds: readonly string[];
+    /** Policies an occurrence of which failed for any OTHER reason (a gate miss, PTO, a database error): the
+     *  rest of the org's policies were still processed. `code` is the typed error code or the error class name,
+     *  never a message (a database error message can carry bound parameters). */
+    failedPolicies: readonly { readonly policyId: string; readonly code: string }[];
+  }>;
   generateCarePlanVisitProposals(
     orgId: string,
     userId: string,
@@ -299,24 +316,23 @@ export interface SchedulingAutomationService {
   ): Promise<{ remindersEmitted: number }>;
 }
 
-const encounterTypeFor = (purpose: VisitPurpose): EncounterType => {
-  switch (purpose) {
-    case "f2f":
-      return "face_to_face";
-    case "recert":
-      return "recert_visit";
-    case "aide_poc":
-      return "chha_visit";
-    case "msw_assessment":
-    case "msw_followup":
-    case "chaplain_assessment":
-    case "chaplain_visit":
-    case "volunteer_visit":
-    case "admission_visit":
-      return purpose;
-    default:
-      return "routine_visit";
+/**
+ * The M8 encounter type the stamped (purpose, discipline) seeds, refusing a pair M8 §2.2 has no legal
+ * encounter type for (§2.7 `INVALID_ENCOUNTER_DISCIPLINE_PAIR`). The M8 seed consumer inserts the draft
+ * directly, so this must refuse BEFORE `m17.visit.published` is emitted. Codes only in the message.
+ */
+const requireEncounterType = (
+  purpose: VisitPurpose,
+  discipline: SchedulingDiscipline,
+): EncounterType => {
+  const encounterType = encounterTypeForVisit(purpose, discipline);
+  if (encounterType === null) {
+    throw new SchedulingStateError(
+      "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+      `no legal encounter type for visit purpose '${purpose}' and discipline '${discipline}'`,
+    );
   }
+  return encounterType;
 };
 
 /**
@@ -624,15 +640,11 @@ export function createDbSchedulingBackend(
     endsAt: string,
     seamFacts: PreScheduleSeamFacts,
   ): Promise<SchedulingDiscipline | null> {
-    // The clinician qualifies if ANY discipline they hold is accepted for this visit purpose, and the
-    // credential check then runs against that same qualifying set — a membership holding `msw` + `rn`
-    // passes an `admission_visit` on its `rn` role and `rn` licence, whichever order the rows arrive in.
-    const qualifying = (await resolveDisciplinesTx(tx, orgId, membershipId)).filter((d) =>
-      VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(d),
-    );
-    const discipline = selectVisitAssignmentDiscipline(
+    const discipline = await stampedDisciplineOrNull(
+      tx,
+      orgId,
+      membershipId,
       visitPurpose,
-      qualifying,
       seamFacts.activeCredentialDisciplines,
     );
     if (discipline === null) return null;
@@ -681,6 +693,7 @@ export function createDbSchedulingBackend(
     const gatePassed = discipline !== null;
     const published = transitionVisit("proposed", { type: "publish", gatePassed });
     if (discipline === null) throw new Error("unreachable after refused pre-schedule transition");
+    const encounterType = requireEncounterType(input.visitPurpose, discipline);
     const timezone = await organizationTimezone(tx, orgId);
     const serviceDate = serviceDateOf(input.scheduledStartedAt, timezone);
 
@@ -743,7 +756,7 @@ export function createDbSchedulingBackend(
       admissionId: input.admissionId,
       assignedMembershipId: input.assignedMembershipId,
       assignedDiscipline: discipline,
-      encounterType: encounterTypeFor(input.visitPurpose),
+      encounterType,
       serviceDate,
       organizationId: orgId,
       providerEntityId,
@@ -959,13 +972,45 @@ export function createDbSchedulingBackend(
     });
   }
 
+  /** The discipline a clinician is stamped with for a visit purpose, or null when they hold none the purpose
+   *  accepts. Every stamping path routes through it (create/publish, edit, reassign, and recurring-policy
+   *  creation), so they cannot drift: a discipline the M8 seed consumer could not author a legal draft for is
+   *  refused here with VISIT_ENCOUNTER_TYPE_UNSUPPORTED, never stamped. The clinician qualifies if ANY discipline
+   *  they hold is accepted for the purpose, and the credential check runs against that same qualifying set (a
+   *  membership holding `msw` + `rn` passes an `admission_visit` on its `rn` role and `rn` licence, whichever
+   *  order the rows arrive in). `credentialed` is required so a caller cannot skip the credential half of the
+   *  gate by omission: pass the clinician's active credential disciplines, or `"held"` to judge only the held
+   *  disciplines (a recurring policy: each occurrence re-checks credentials when it materializes). */
+  async function stampedDisciplineOrNull(
+    tx: DbClient,
+    orgId: string,
+    membershipId: string,
+    visitPurpose: VisitPurpose,
+    credentialed: readonly SchedulingDiscipline[] | "held",
+  ): Promise<SchedulingDiscipline | null> {
+    const qualifying = (await resolveDisciplinesTx(tx, orgId, membershipId)).filter((d) =>
+      VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(d),
+    );
+    const discipline = selectVisitAssignmentDiscipline(
+      visitPurpose,
+      qualifying,
+      credentialed === "held" ? qualifying : credentialed,
+    );
+    if (discipline === null) return null;
+    requireEncounterType(visitPurpose, discipline);
+    return discipline;
+  }
+
+  // `md_np` is deliberately absent: the only purpose a physician or NP can be scheduled for is `f2f`, a
+  // regulatory encounter that dual-writes an F2F record to M6, so it must never stand in for an arbitrary
+  // physician intervention. (It used to map to `recert`, which no md/np clinician could be stamped for, and
+  // which is now an RN kickoff visit.)
   const proposalDisciplines: readonly InterventionDiscipline[] = [
     "rn",
     "lpn",
     "chha",
     "msw",
     "chaplain",
-    "md_np",
     "pt",
     "ot",
     "st",
@@ -985,8 +1030,6 @@ export function createDbSchedulingBackend(
         return "chaplain_visit";
       case "volunteer":
         return "volunteer_visit";
-      case "md_np":
-        return "recert";
       default:
         return "routine_visit";
     }
@@ -1660,6 +1703,20 @@ export function createDbSchedulingBackend(
           tx,
           input.assignedMembershipId,
         );
+        // A policy that could never schedule a visit is refused now, not failed every night. A clinician who
+        // holds NO discipline the purpose accepts gets the same 403 PRE_SCHEDULE_GATE_FAILED the edit and reassign
+        // gates give (the one-off create path reports the same cause as 422 VISIT_PRE_SCHEDULE_GATE_UNMET from
+        // the visit state machine); one who holds qualifying disciplines but NONE with a legal M8 pair gets 422
+        // VISIT_ENCOUNTER_TYPE_UNSUPPORTED from the shared helper. Only the HELD disciplines are judged here
+        // (credentials may lapse or arrive after creation, and each occurrence re-checks them).
+        const stamped = await stampedDisciplineOrNull(
+          tx,
+          orgId,
+          input.assignedMembershipId,
+          input.visitPurpose,
+          "held",
+        );
+        if (stamped === null) throw new ForbiddenError("PRE_SCHEDULE_GATE_FAILED");
         const [inserted] = await tx
           .insert(RV)
           .values({
@@ -1797,6 +1854,8 @@ export function createDbSchedulingBackend(
       );
       let visitsCreated = 0;
       let occurrencesSkipped = 0;
+      const unschedulablePolicyIds: string[] = [];
+      const failedPolicies: { policyId: string; code: string }[] = [];
       for (const policy of policies) {
         const windowStart = localDateInTimeZone(now, policy.timeZone);
         const occurrences = materializeRecurrence(
@@ -1823,30 +1882,59 @@ export function createDbSchedulingBackend(
             policy.patientId,
             occurrence.scheduledStartedAt,
           );
-          await withOrgContext(db, orgContextFor(orgId, userId), async (tx) => {
-            await insertAndPublish(
-              tx as DbClient,
-              orgId,
-              userId,
-              {
-                patientId: policy.patientId,
-                admissionId: policy.admissionId,
-                patientAddressId: policy.patientAddressId,
-                externalFacilityId: policy.externalFacilityId,
-                assignedMembershipId: policy.assignedMembershipId,
-                visitPurpose: policy.visitPurpose as VisitPurpose,
-                visitSetting: policy.visitSetting as VisitSetting,
-                scheduledStartedAt: occurrence.scheduledStartedAt,
-                scheduledEndedAt: occurrence.scheduledEndedAt,
-              },
-              { parentRecurringVisitId: policy.id, parentProposalId: null },
-              seamFacts,
-            );
-          });
+          try {
+            await withOrgContext(db, orgContextFor(orgId, userId), async (tx) => {
+              await insertAndPublish(
+                tx as DbClient,
+                orgId,
+                userId,
+                {
+                  patientId: policy.patientId,
+                  admissionId: policy.admissionId,
+                  patientAddressId: policy.patientAddressId,
+                  externalFacilityId: policy.externalFacilityId,
+                  assignedMembershipId: policy.assignedMembershipId,
+                  visitPurpose: policy.visitPurpose as VisitPurpose,
+                  visitSetting: policy.visitSetting as VisitSetting,
+                  scheduledStartedAt: occurrence.scheduledStartedAt,
+                  scheduledEndedAt: occurrence.scheduledEndedAt,
+                },
+                { parentRecurringVisitId: policy.id, parentProposalId: null },
+                seamFacts,
+              );
+            });
+          } catch (err) {
+            // One bad policy must not abandon the rest of the org's pass or lose what the pass already found
+            // (the cron alerts on the lists below AFTER the pass, then fails the job if any policy failed).
+            // The transaction rolled back, so nothing was written for this occurrence.
+            if (
+              err instanceof SchedulingStateError &&
+              err.code === "VISIT_ENCOUNTER_TYPE_UNSUPPORTED"
+            ) {
+              // The M8 §2.2 pair is judged per occurrence date (credentials are dated), so go on to the next
+              // occurrence: a credential that becomes valid mid-horizon still materializes its later days.
+              if (!unschedulablePolicyIds.includes(policy.id))
+                unschedulablePolicyIds.push(policy.id);
+              continue;
+            }
+            // Any other error (a gate miss, PTO, a database error) is recorded once for the policy, which
+            // is then left for the next pass; the error class or code only, never its message.
+            failedPolicies.push({
+              policyId: policy.id,
+              code: err instanceof SchedulingStateError ? err.code : errorClassName(err),
+            });
+            break;
+          }
           visitsCreated += 1;
         }
       }
-      return { policiesScanned: policies.length, visitsCreated, occurrencesSkipped };
+      return {
+        policiesScanned: policies.length,
+        visitsCreated,
+        occurrencesSkipped,
+        unschedulablePolicyIds,
+        failedPolicies,
+      };
     },
 
     async generateCarePlanVisitProposals(
@@ -2590,6 +2678,14 @@ export function createDbSchedulingBackend(
           if (!qualifying.length) reasonCodes.push("CLINICIAN_DISCIPLINE_NOT_ALLOWED");
           else if (!facts.activeCredentialDisciplines.length)
             reasonCodes.push("CLINICIAN_CREDENTIAL_MISSING");
+          // The discipline the write would stamp must have a legal M8 encounter type, or the write refuses.
+          const stamped = selectVisitAssignmentDiscipline(
+            input.visitPurpose,
+            qualifying,
+            facts.activeCredentialDisciplines,
+          );
+          if (stamped !== null && encounterTypeForVisit(input.visitPurpose, stamped) === null)
+            reasonCodes.push("CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED");
           if (pto) reasonCodes.push("CLINICIAN_ON_PTO");
           if (!pool && !facts.inCaseload) reasonCodes.push("CLINICIAN_NOT_IN_CASELOAD");
           return {

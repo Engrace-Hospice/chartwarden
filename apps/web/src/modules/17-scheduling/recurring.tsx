@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { discontinueRecurring } from "./scheduling-api";
-import { RECURRING_TONE, stateLabel } from "./scheduling-status";
+import { RECURRING_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 
 interface RecurringRow {
   id: string;
@@ -142,7 +142,7 @@ export function SchedulingRecurring(): JSX.Element {
               <tbody>
                 {active.map((r) => (
                   <tr key={r.id} style={rowStyle}>
-                    <td style={tdStyle}>{stateLabel(r.visitPurpose)}</td>
+                    <td style={tdStyle}>{purposeLabel(r.visitPurpose)}</td>
                     <td className="wx-data-md" style={tdStyle}>
                       {r.assignedMembershipId.slice(0, 8)}
                     </td>

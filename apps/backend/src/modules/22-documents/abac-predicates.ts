@@ -123,7 +123,7 @@ export function canReadInternalDocument(
  * cover them, because `md` is PHYSICIAN — MD *or* DO. The two are the same level with the same scope
  * and the platform has always stored them as one value: `VISIT_PURPOSE_DISCIPLINES` documents its
  * physician-intent purposes as "MD/DO or NP" while listing `md`. Splitting them to make this list
- * read literally would have stopped four CoP-relevant visit purposes accepting osteopathic
+ * read literally would have stopped the physician-intent visit purposes accepting osteopathic
  * physicians — a regression bought with a distinction no consumer makes.
  *
  * `pa` was genuinely missing from the vocabulary until migration 0221; a physician assistant could

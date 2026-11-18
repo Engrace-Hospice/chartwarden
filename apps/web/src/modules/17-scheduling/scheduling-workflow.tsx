@@ -18,7 +18,7 @@ import {
   createVisit,
 } from "./scheduling-api";
 import { mapSchedulingApiError } from "./scheduling-errors";
-import { VISIT_TONE, stateLabel } from "./scheduling-status";
+import { VISIT_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import {
   ASSIGNED_CLINICIAN_MESSAGE,
   EvvReasonField,
@@ -75,6 +75,8 @@ const eligibilityReason = (reasons: readonly string[]): string => {
     return "No active credential for the selected date.";
   if (reasons.includes("CLINICIAN_DISCIPLINE_NOT_ALLOWED"))
     return "This discipline cannot perform the selected visit type.";
+  if (reasons.includes("CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED"))
+    return "This discipline cannot yet be scheduled for the selected visit type.";
   if (reasons.includes("CLINICIAN_ON_PTO")) return "Unavailable during the selected time.";
   if (reasons.includes("CLINICIAN_NOT_IN_CASELOAD"))
     return "Not currently assigned to this patient's care team.";
@@ -540,6 +542,7 @@ export function NewVisitModal({
             <ClinicianStep
               clinicianId={clinicianId}
               clinicians={eligibleClinicians}
+              visitPurpose={visitPurpose}
               state={eligibilityState}
               hint={eligibilityHint}
               onChange={(value) => {
@@ -709,7 +712,7 @@ function WhoAndWhyStep({
         >
           {VISIT_PURPOSES.map((purpose) => (
             <option key={purpose} value={purpose}>
-              {stateLabel(purpose)}
+              {purposeLabel(purpose)}
             </option>
           ))}
         </select>
@@ -817,9 +820,15 @@ function WhenAndWhereStep({
   );
 }
 
+// Recertification kickoff and level-of-care change are RN visits (M17 purpose table); the physician or
+// NP encounter of a recertification is the separate Face-to-Face purpose.
+const RN_ONLY_PURPOSE_NOTE =
+  "Recertification kickoff and level-of-care change visits are scheduled with an RN. The physician or NP encounter is Face-to-Face.";
+
 interface ClinicianStepProps {
   clinicianId: string;
   clinicians: readonly EligibleClinician[];
+  visitPurpose: VisitPurpose;
   state: EligibilityState;
   hint: string | null;
   onChange: (value: string) => void;
@@ -829,6 +838,7 @@ interface ClinicianStepProps {
 function ClinicianStep({
   clinicianId,
   clinicians,
+  visitPurpose,
   state,
   hint,
   onChange,
@@ -866,6 +876,9 @@ function ClinicianStep({
             Review the care team, credentials, visit purpose, or selected time. No assignment has
             been accepted yet.
           </span>
+          {visitPurpose === "recert" || visitPurpose === "loc_change" ? (
+            <span>{RN_ONLY_PURPOSE_NOTE}</span>
+          ) : null}
         </output>
       ) : null}
       {state === "error" ? (
@@ -903,7 +916,7 @@ function NewVisitReview({
 }: NewVisitReviewProps): JSX.Element {
   const rows = [
     ["Patient", patientLabel || "Selected patient"],
-    ["Visit", stateLabel(visitPurpose)],
+    ["Visit", purposeLabel(visitPurpose)],
     ["When", `${formatInstant(isoFromLocal(start))} – ${formatInstant(isoFromLocal(end))}`],
     ["Clinician", clinicianLabel || "Selected clinician"],
     ["Setting", stateLabel(visitSetting)],

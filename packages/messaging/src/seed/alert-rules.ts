@@ -1056,6 +1056,22 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // A recurring visit policy whose assigned clinician has no legal M8 encounter pair for its purpose never
+  // materializes a visit. Raised directly by the M17 recurring-materialize cron (ids and a count only, once
+  // per org per day) so it is not a silent nightly skip.
+  {
+    eventType: "m17.recurring_policy_unschedulable",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // `director_of_nursing` and `org_admin` are role-template keys every tenant has; `clinical_lead` and
+    // `scheduler` exist only where a tenant created them. This alert is the only signal for the policy, so
+    // its audience must not depend on a tenant having created those two.
+    resolverArgs: { roleKeys: ["clinical_lead", "scheduler", "director_of_nursing", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   // F-187 (#248) — a lab order superseded (discontinued / replaced by a corrected order) after its ORM may already
   // be at the laboratory. T-29.08 defines no outbound cancel, so this is the ONLY signal — the care team has to
   // cancel it with the lab. Ids only in the payload (`patientId` is the care-team resolver path).

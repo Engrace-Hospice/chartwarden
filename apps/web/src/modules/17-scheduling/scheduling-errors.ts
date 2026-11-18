@@ -22,6 +22,8 @@ const messageFor = (signal: string, status?: number | null): string => {
     return "This clinician does not have an active clinical credential for the selected visit date.";
   if (/CLINICIAN_DISCIPLINE|discipline_matches_visit/.test(signal))
     return "This clinician cannot perform the selected type of visit.";
+  if (/ENCOUNTER_TYPE_UNSUPPORTED/.test(signal))
+    return "This clinician's discipline cannot yet be scheduled for the selected visit type. Choose a different clinician or visit type.";
   if (/CLINICIAN_ON_PTO|not_on_pto/.test(signal))
     return "This clinician is unavailable during the selected time.";
   if (/CLINICIAN_NOT_IN_CASELOAD|within_caseload_or_unassigned_pool/.test(signal))

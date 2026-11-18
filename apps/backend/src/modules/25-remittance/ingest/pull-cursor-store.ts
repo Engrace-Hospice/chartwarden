@@ -58,6 +58,24 @@ export function buildDrizzleRemittanceCursorStore(db: DbClient): RemittanceCurso
         return row?.quarantinedAt != null;
       });
     },
+    async quarantineBacklog(key: RemittanceCursorKey): Promise<Readonly<Record<string, number>>> {
+      return withOrgContext(db, systemOrgContext(key.organizationId), async (tx) => {
+        const rows = await tx
+          .select({ reasonCode: R.reasonCode, count: sql<number>`count(*)::int` })
+          .from(R)
+          .where(
+            and(
+              eq(R.organizationId, key.organizationId),
+              eq(R.providerEntityId, key.providerEntityId),
+              eq(R.vendor, key.vendor),
+              eq(R.usage, key.usage),
+              sql`${R.quarantinedAt} IS NOT NULL`,
+            ),
+          )
+          .groupBy(R.reasonCode);
+        return Object.fromEntries(rows.map((r) => [r.reasonCode, r.count]));
+      });
+    },
     async clearRefusals(key, remittanceId, fileSha256) {
       await withOrgContext(db, systemOrgContext(key.organizationId), async (tx) => {
         await tx

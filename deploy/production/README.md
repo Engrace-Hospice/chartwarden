@@ -432,6 +432,28 @@ applied and causes a false hold. This is the safe direction.
 The compatibility contract (each new migration declares `expand` or `contract`, enforced by
 `bun run arch:migration-compat`) is described in `packages/db/migrations/README.md`.
 
+#### A deploy held BEFORE any schema change (exit 75)
+
+`deploy.sh` runs `migrate.ts --hold-contract`, which refuses the whole pending batch, before the first DDL, when any
+pending migration from 1288 on is not a verified `-- compat: expand` (a `contract`, an undeclared, or a falsely
+claimed `expand`). The log shows `DEPLOY HELD BEFORE ANY SCHEMA CHANGE`; nothing was applied, the previous release
+keeps running and `.env.production` is restored. A contract migration can need its old writers drained first (1508:
+`docs/runbooks/m25-835-deployment.md`) and nothing in a deploy stops them before the schema changes, so there is no
+acknowledge-and-proceed switch: back up, drain what the migration's header names, apply it by hand through the Docker
+migrate job with the NEW release's image (the restored `.env.production` names the previous one, which lacks the
+migration), without `--hold-contract`, then re-run the held deploy. The log prints the exact command with the digest filled in:
+
+```sh
+CHARTWARDEN_IMAGE='<new backend image, repo@sha256:digest>' docker compose --env-file .env.production -f compose.yml \
+  run --rm --no-deps migrate bun run scripts/db/migrate.ts --strict --schema-only
+```
+
+The compose `migrate` service itself defaults to `--hold-contract`, so a plain `docker compose up` cannot apply a held
+migration either. A database with an empty ledger is exempt (no old writers exist); a first deploy that fails part-way
+leaves a non-empty ledger, so its retry is held the same way (fails closed). The alert for this exit says "HELD before
+any schema change", distinct from the "automatic rollback refused" alert, and only fires when `DEPLOY_ALERT_WEBHOOK_URL`
+is configured. While a held migration is pending every push to `main` is held, a security fix included.
+
 #### When a deploy halts for an operator decision
 
 The log shows `DEPLOY HALTED FOR AN OPERATOR DECISION: AUTOMATIC ROLLBACK REFUSED` and lists the migrations it

@@ -10,6 +10,10 @@
 //     re-offered on the next tick (a transient refusal retries). After MAX_REFUSALS_PER_REMITTANCE refusals of the same
 //     file it (same content hash) is quarantined (durable `remittance_pull_refusal` row), skipped, and the cursor moves on; the tick reports
 //     it under `quarantined` with the explicit code REMITTANCE_QUARANTINED (ids only, never vendor text or content).
+//     A file whose functional group M25 cannot route (`unsupported`) is the same kind of refusal (its content will not change
+//     on a retry), recorded under its own reason code so it cannot pin the cursor forever.
+//   - a file the pipeline HOLDS rather than posts (`held_duplicate`, `review_required`) is received (the cursor moves on) but is
+//     not a duplicate: it is reported under `held` (id and code only) so an operator sees it.
 //   - the cursor moves only after every file of a page was received (queued or duplicate).
 // The transport is a structural view (M25 does not import the M23/transport wiring); the composition root supplies it.
 import { createHash } from "node:crypto";
@@ -24,6 +28,7 @@ export const MAX_REFUSALS_PER_REMITTANCE = 5;
 /** Failure-reason code for a quarantined file. */
 export const REMITTANCE_QUARANTINED = "REMITTANCE_QUARANTINED";
 const RECEIVE_REFUSED = "RECEIVE_REFUSED";
+const UNSUPPORTED_ROUTING = "UNSUPPORTED_ROUTING";
 
 /** Safety bound on one chain walk per provider entity per tick (the next tick continues from the stored cursor). */
 export const MAX_REMITTANCE_PAGES = 100;
@@ -58,6 +63,11 @@ export interface RemittanceCursorStore {
     remittanceId: string,
     fileSha256: string,
   ): Promise<boolean>;
+  /**
+   * Quarantined files of this key, by reason code (`UNSUPPORTED_ROUTING`, `RECEIVE_REFUSED`). Durable: a quarantined file is
+   * never re-offered once the cursor has moved past it, so this is the only standing signal that money is waiting on an operator.
+   */
+  quarantineBacklog(key: RemittanceCursorKey): Promise<Readonly<Record<string, number>>>;
   /** The file was accepted: zero its not-yet-quarantined refusal count so the cap means CONSECUTIVE refusals. */
   clearRefusals(key: RemittanceCursorKey, remittanceId: string, fileSha256: string): Promise<void>;
   /** Count one more refusal of this file (durable); `quarantined` once `count >= cap`. Code only: no vendor text. */
@@ -146,6 +156,17 @@ export interface RemittancePullResult {
   readonly unsupported: number;
   /** Quarantined files offered this tick (new and still-quarantined) (`<label>: remittance <id> REMITTANCE_QUARANTINED`); ids and a code only. */
   readonly quarantined: readonly string[];
+  /**
+   * Files received but held for an operator instead of posted (`held_duplicate`: a legacy GS06-less row has the same ISA13/ST02;
+   * `review_required`: a staged Claim.MD ERA matches): `<label>: remittance <id> <CODE>`. Ids and a code only. These are not in `duplicates`.
+   */
+  readonly held: readonly string[];
+  /**
+   * Standing quarantine per provider entity (`<label>: <n> quarantined remittance(s) awaiting operator release (<REASON>=<n>, ...)`),
+   * reported every tick until an operator releases the files. A quarantined file is never re-offered once the cursor has moved
+   * past it, so `quarantined` alone is a one-tick signal. Counts and codes only.
+   */
+  readonly backlog: readonly string[];
   /** PHI-free: ids and codes only, never file content. */
   readonly failures: readonly string[];
 }
@@ -166,6 +187,8 @@ export async function pullRemittances(
   let unsupported = 0;
   const failures: string[] = [];
   const quarantined: string[] = [];
+  const held: string[] = [];
+  const backlog: string[] = [];
   let binding: PullBinding | null;
   try {
     const resolved = await bindingOf(deps, organizationId);
@@ -186,13 +209,16 @@ export async function pullRemittances(
       duplicates,
       unsupported,
       quarantined,
+      held,
+      backlog,
       failures: [
         `org ${organizationId}: clearinghouse binding could not be resolved (${errorClassOf(err)})`,
       ],
     };
   }
   // No clearinghouse of its own (billing outside ChartWarden, or none chosen yet): nothing to pull, nothing failed.
-  if (binding === null) return { queued, duplicates, unsupported, quarantined, failures };
+  if (binding === null)
+    return { queued, duplicates, unsupported, quarantined, held, backlog, failures };
   let providerEntityIds: readonly string[];
   try {
     providerEntityIds = await deps.contexts.providerEntitiesFor(organizationId);
@@ -202,6 +228,8 @@ export async function pullRemittances(
       duplicates,
       unsupported,
       quarantined,
+      held,
+      backlog,
       failures: [`org ${organizationId}: provider entities could not be listed`],
     };
   }
@@ -215,6 +243,8 @@ export async function pullRemittances(
         providerEntityId,
         label,
         quarantined,
+        held,
+        backlog,
       );
       if (counts === "unsupported") unsupported += 1;
       else {
@@ -225,7 +255,7 @@ export async function pullRemittances(
       failures.push(`${label}: ${err instanceof Error ? err.message : "failed"}`);
     }
   }
-  return { queued, duplicates, unsupported, quarantined, failures };
+  return { queued, duplicates, unsupported, quarantined, held, backlog, failures };
 }
 
 async function pullOne(
@@ -235,6 +265,8 @@ async function pullOne(
   providerEntityId: string,
   label: string,
   quarantined: string[],
+  held: string[],
+  backlog: string[],
 ): Promise<{ queued: number; duplicates: number } | "unsupported"> {
   const ctx = await deps.contexts.contextFor(organizationId, providerEntityId, {
     payerRoute: "skip",
@@ -278,35 +310,60 @@ async function pullOne(
           rawEdi: file.rawX12,
         },
       );
-      if (received.outcome === "malformed") {
-        // Only a refusal caused by the file's own content counts; config / parser outages stay transient (retried, uncapped).
-        if (received.cause !== "content") {
+      if (received.outcome === "malformed" || received.outcome === "unsupported") {
+        // Only a refusal that is a property of the file counts: its own content (`malformed` + cause "content") or a valid
+        // interchange shape M25 cannot route (`unsupported`); neither changes on a retry. Config / parser outages stay
+        // transient (retried, uncapped). A counted refusal is capped like any other, so an unroutable file cannot pin the
+        // cursor forever: after the cap it is quarantined and the chain continues.
+        const unroutable = received.outcome === "unsupported";
+        if (!unroutable && received.cause !== "content") {
           throw new Error(`remittance ${file.remittanceId} refused at receive`);
         }
         const refusal = await deps.cursors.recordRefusal(
           key,
           file.remittanceId,
           fileSha256,
-          RECEIVE_REFUSED,
+          unroutable ? UNSUPPORTED_ROUTING : RECEIVE_REFUSED,
           MAX_REFUSALS_PER_REMITTANCE,
         );
         if (!refusal.quarantined) {
-          throw new Error(`remittance ${file.remittanceId} refused at receive`);
+          throw new Error(
+            unroutable
+              ? `remittance ${file.remittanceId} has unsupported X12 group routing`
+              : `remittance ${file.remittanceId} refused at receive`,
+          );
         }
         quarantined.push(`${label}: remittance ${file.remittanceId} ${REMITTANCE_QUARANTINED}`);
         continue;
       }
-      if (received.outcome === "unsupported") {
-        // This is a valid interchange shape M25 cannot route. Keep the cursor pinned for operator action;
-        // it is neither malformed content nor a successful duplicate.
-        throw new Error(`remittance ${file.remittanceId} has unsupported X12 group routing`);
-      }
       await deps.cursors.clearRefusals(key, file.remittanceId, fileSha256);
       if (received.outcome === "queued") queued += 1;
-      else duplicates += 1;
+      else if (received.outcome === "duplicate") duplicates += 1;
+      // A multi-set file answers with one outcome: `heldSets` lists every held set (beside a queued/duplicate set,
+      // or several held ones), and a lone held set is the outcome itself.
+      const heldReasons =
+        received.heldSets ??
+        (received.outcome === "held_duplicate" || received.outcome === "review_required"
+          ? [received.reason]
+          : []);
+      for (const reason of heldReasons)
+        held.push(`${label}: remittance ${file.remittanceId} ${reason}`);
     }
     if (result.data.nextCursor !== cursor) await deps.cursors.set(key, result.data.nextCursor);
-    if (!result.data.hasMore) return { queued, duplicates };
+    if (!result.data.hasMore) {
+      const standing = await deps.cursors.quarantineBacklog(key);
+      const total = Object.values(standing).reduce((sum, n) => sum + n, 0);
+      if (total > 0) {
+        const byReason = Object.entries(standing)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([reason, n]) => `${reason}=${n}`)
+          .join(", ");
+        backlog.push(
+          `${label}: ${total} quarantined remittance(s) awaiting operator release (${byReason})`,
+        );
+      }
+      return { queued, duplicates };
+    }
     cursor = result.data.nextCursor;
   }
   // Page bound reached with more waiting: the next tick resumes from the stored cursor.

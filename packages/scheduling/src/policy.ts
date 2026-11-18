@@ -5,14 +5,18 @@
 // pre-schedule gate ordering, and the §1.1 D7 EVV-missing self-attest reason floor. The state machine
 // (M17-T03), proposers (M17-T04), and the pre-schedule-gate orchestrator (M17-T07) consume these.
 
-import type { VisitPurpose } from "@chartwarden/types";
+import {
+  type EncounterType,
+  type VisitPurpose,
+  isValidEncounterDisciplinePair,
+} from "@chartwarden/types";
 
 /**
  * The discipline vocabulary (mirrors `encounter_discipline` / the M2-M3 catalog).
  *
  * `md` is PHYSICIAN — MD *or* DO. They are the same level with the same scope, which is why
  * {@link VISIT_PURPOSE_DISCIPLINES} below has always documented its physician-intent purposes as
- * "MD/DO or NP" while listing one value; splitting them would stop those four purposes accepting
+ * "MD/DO or NP" while listing one value; splitting them would stop those purposes accepting
  * osteopathic physicians. `pa` is a distinct licence BELOW MD/DO and appears in no purpose list
  * (F-030): recording the licence is not granting visit authority, and the Medicare hospice
  * face-to-face encounter is physician-or-NP only (42 CFR 418.22(a)(4)).
@@ -30,7 +34,15 @@ export type SchedulingDiscipline =
 
 /** §1.1 D8 predicate 3 (`discipline_matches_visit`) — the acceptable clinician disciplines for each
  * `visit_purpose`. An RN visit needs RN; an aide POC needs CHHA; a volunteer visit needs Volunteer; the
- * physician-intent purposes (`f2f`/`recert`/`loc_change`/`pronouncement`) need MD/DO or NP. */
+ * physician-intent purpose `f2f` needs MD/DO or NP.
+ *
+ * `recert` and `loc_change` are RN visits, not physician-intent ones: M8 §2.2 defines `recert_visit` as the
+ * recertification-period KICKOFF visit "(not the F2F itself)", documented with PPS/ESAS/prognosis indicators,
+ * and gives it to RN only; M8 has no level-of-care-change type, so `loc_change` seeds `routine_visit`, whose
+ * legal authors are RN/LPN. `loc_change` is nonetheless RN only: that is a deliberate conservative scheduling
+ * choice (the web already treated it as an RN visit), not an M8 or CoP constraint, so adding `lpn` later is a
+ * product decision. The physician or NP encounter of a recertification is the `f2f` purpose. These two used to
+ * list md/np, which no M8 type accepts, so neither purpose could be scheduled for anyone. */
 export const VISIT_PURPOSE_DISCIPLINES: {
   readonly [K in VisitPurpose]: readonly SchedulingDiscipline[];
 } = {
@@ -43,8 +55,8 @@ export const VISIT_PURPOSE_DISCIPLINES: {
   chaplain_assessment: ["chaplain"],
   volunteer_visit: ["volunteer"],
   f2f: ["md", "np"],
-  recert: ["md", "np"],
-  loc_change: ["md", "np"],
+  recert: ["rn"],
+  loc_change: ["rn"],
   pronouncement: ["rn", "md", "np"],
   admission_visit: ["rn"],
   discharge_visit: ["rn"],
@@ -57,7 +69,11 @@ export const VISIT_PURPOSE_DISCIPLINES: {
 
 /**
  * Select the discipline a visit assignment is actually authorized and credentialed under.
- * Policy order is deterministic when a clinician holds multiple qualifying disciplines.
+ * Policy order is deterministic when a clinician holds multiple qualifying disciplines, except that a
+ * discipline with a legal M8 encounter pair ({@link encounterTypeForVisit}) wins over an earlier one
+ * without (a clinician holding NP and LPN is stamped LPN for an SFV, not refused as NP). When none has a
+ * legal pair the first is still returned, so the stamping gate refuses it with its own
+ * `VISIT_ENCOUNTER_TYPE_UNSUPPORTED` code instead of reporting a generic gate miss.
  */
 export function selectVisitAssignmentDiscipline(
   visitPurpose: VisitPurpose,
@@ -66,11 +82,66 @@ export function selectVisitAssignmentDiscipline(
 ): SchedulingDiscipline | null {
   const held = new Set(heldDisciplines);
   const credentialed = new Set(activeCredentialDisciplines);
-  return (
-    VISIT_PURPOSE_DISCIPLINES[visitPurpose].find(
-      (discipline) => held.has(discipline) && credentialed.has(discipline),
-    ) ?? null
+  const eligible = VISIT_PURPOSE_DISCIPLINES[visitPurpose].filter(
+    (discipline) => held.has(discipline) && credentialed.has(discipline),
   );
+  return (
+    eligible.find((discipline) => encounterTypeForVisit(visitPurpose, discipline) !== null) ??
+    eligible[0] ??
+    null
+  );
+}
+
+/**
+ * The M8 encounter type a published visit of this purpose seeds (the `m17.visit.published` payload's
+ * `encounterType`). Exhaustive on purpose: a new `VisitPurpose` fails to compile here instead of silently
+ * falling through to `routine_visit`.
+ *
+ * M8 spec §2.2 names no HUV1/HUV2/SFV, `loc_change`, `pronouncement`, `prn` or `discharge_visit` encounter
+ * type, so those seed the generic `routine_visit`, whose legal authors are RN and LPN only. A NP/MD author
+ * of such a visit has no legal type: {@link encounterTypeForVisit} reports that as `null`.
+ */
+function encounterTypeForPurpose(purpose: VisitPurpose): EncounterType {
+  switch (purpose) {
+    case "f2f":
+      return "face_to_face";
+    case "recert":
+      return "recert_visit";
+    case "aide_poc":
+      return "chha_visit";
+    case "msw_assessment":
+    case "msw_followup":
+    case "chaplain_assessment":
+    case "chaplain_visit":
+    case "volunteer_visit":
+    case "admission_visit":
+      return purpose;
+    case "routine_visit":
+    case "prn":
+    case "discharge_visit":
+    case "loc_change":
+    case "pronouncement":
+    case "huv1":
+    case "huv2":
+    case "sfv":
+      return "routine_visit";
+  }
+}
+
+/**
+ * The encounter type a visit of `purpose` stamped with `discipline` seeds, or `null` when M8 §2.2 has no
+ * legal (encounter type, discipline) pair for it (M8 §2.7 `INVALID_ENCOUNTER_DISCIPLINE_PAIR`). The M8
+ * seed consumer inserts the draft straight into `encounter`, so a visit that would publish an illegal pair
+ * must be refused at scheduling time.
+ */
+export function encounterTypeForVisit(
+  purpose: VisitPurpose,
+  discipline: SchedulingDiscipline,
+): EncounterType | null {
+  const encounterType = encounterTypeForPurpose(purpose);
+  // `pa` is a licence, not an M8 encounter discipline (F-030): it never has a legal pair.
+  if (discipline === "pa") return null;
+  return isValidEncounterDisciplinePair(encounterType, discipline) ? encounterType : null;
 }
 
 /** §1.1 D8 — the seven-predicate pre-schedule gate, in evaluation order (the `visit_overlap` DB backstop is

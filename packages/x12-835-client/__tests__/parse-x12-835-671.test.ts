@@ -169,24 +169,66 @@ describe("parseX12835AllSets (#671)", () => {
     const result = parseX12835AllSets(mixed, "medicare");
     expect(!result.ok && result.degraded.code).toBe("X12_835_UNSUPPORTED_ROUTING");
   });
-  it("rejects bad functional-group counts, unclosed groups, and a second ISA", () => {
+  it("rejects bad functional-group counts, unclosed groups, a second ISA, a reused GS06 and a bad ISA12, each for its own reason", () => {
+    const refusalReason = (raw: string): string => {
+      const result = parseX12835AllSets(raw, "medicare");
+      expect(result.ok).toBe(false);
+      return result.ok ? "" : result.degraded.reason;
+    };
     const interchange = wrap835Groups([
       { gs06: "77", gs04: "20260616", sets: [["0001", CLEAN_BODY]] },
       { gs06: "78", gs04: "20260617", sets: [["0002", DENIAL_BODY]] },
     ]);
-    expect(parseX12835AllSets(interchange.replace("IEA*2*", "IEA*1*"), "medicare").ok).toBe(false);
-    expect(parseX12835AllSets(interchange.replace("GE*1*78~", ""), "medicare").ok).toBe(false);
-    expect(
-      parseX12835AllSets(interchange.replace("IEA*2*", "ISA*" + "IEA*2*"), "medicare").ok,
-    ).toBe(false);
+    expect(refusalReason(interchange.replace("IEA*2*", "IEA*1*"))).toBe(
+      "IEA01 functional-group count does not match",
+    );
+    expect(refusalReason(interchange.replace("GE*1*78~", ""))).toBe(
+      "functional group 2 is missing GE",
+    );
+    // A genuine second ISA..IEA interchange in the same document (two complete, individually valid ones).
+    const second = wrap835(CLEAN_BODY, { isa13: "100000002", gs06: "79" });
+    expect(parseX12835AllSets(interchange, "medicare").ok).toBe(true);
+    expect(parseX12835AllSets(second, "medicare").ok).toBe(true);
+    expect(refusalReason(interchange + second)).toBe(
+      "exactly one ISA/IEA interchange is supported",
+    );
     const reusedGroupControl = wrap835Groups([
       { gs06: "77", gs04: "20260616", sets: [["0001", CLEAN_BODY]] },
       { gs06: "77", gs04: "20260617", sets: [["0002", DENIAL_BODY]] },
     ]);
-    expect(parseX12835AllSets(reusedGroupControl, "medicare").ok).toBe(false);
-    expect(
-      parseX12835AllSets(wrap835(CLEAN_BODY).replace("^*00501*", "^*00401*"), "medicare").ok,
-    ).toBe(false);
+    expect(refusalReason(reusedGroupControl)).toBe(
+      "functional group 2: GS06 is reused within one interchange",
+    );
+    expect(refusalReason(wrap835(CLEAN_BODY).replace("^*00501*", "^*00401*"))).toBe(
+      "ISA12 is not a supported 00501 interchange version",
+    );
+  });
+  describe("control number shapes: ISA13 and GS06 are numeric, ST02 is alphanumeric (X12 AN 1-9)", () => {
+    const reasonOf = (raw: string): string | null => {
+      const result = parseX12835(raw, "medicare");
+      return result.ok ? null : result.degraded.reason;
+    };
+    it("accepts an alphanumeric ST02 and keeps it as the set's control number", () => {
+      const result = parseX12835(wrap835(CLEAN_BODY, { st02: "A1B2C3" }), "medicare");
+      expect(result.ok && result.value.transactionSetControlNumber).toBe("A1B2C3");
+      const all = parseX12835AllSets(wrap835(CLEAN_BODY, { st02: "ab12" }), "medicare");
+      expect(all.ok && all.value.map((set) => set.transactionSetControlNumber)).toEqual(["ab12"]);
+    });
+    it("still refuses an ST02 that is empty, longer than nine characters, or not alphanumeric", () => {
+      expect(reasonOf(wrap835(CLEAN_BODY, { st02: "ABCDEFGHIJ" }))).toMatch(/ST02 control number/);
+      expect(reasonOf(wrap835(CLEAN_BODY, { st02: "AB-1" }))).toMatch(/ST02 control number/);
+      expect(reasonOf(wrap835(CLEAN_BODY, { st02: "" }))).toMatch(/ST02/);
+    });
+    it("still refuses a non-numeric ISA13, and says so (not as an IEA01 count error)", () => {
+      expect(reasonOf(wrap835(CLEAN_BODY, { isa13: "ABC123456" }))).toBe(
+        "ISA13 interchange control number is invalid",
+      );
+    });
+    it("still refuses a non-numeric GS06", () => {
+      expect(reasonOf(wrap835(CLEAN_BODY, { gs06: "A7" }))).toBe(
+        "functional group 1: GS06 control number is invalid",
+      );
+    });
   });
   it("parses many groups and transaction sets deterministically", () => {
     const interchange = wrap835Groups(

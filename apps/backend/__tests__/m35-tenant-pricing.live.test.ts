@@ -340,13 +340,23 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
   let adviceSeq = 0;
   async function remittance(
     org: string,
-    o: { dollars: string; productionDate: string; status?: string; kind?: string; method?: string },
+    o: {
+      dollars: string;
+      /** The legacy `production_date` (pre-1508 rows carry only this). */
+      productionDate?: string;
+      /** BPR16, the payment date every new advice carries. */
+      paymentEffectiveDate?: string;
+      status?: string;
+      kind?: string;
+      method?: string;
+    },
   ): Promise<void> {
     adviceSeq += 1;
     await admin.query(
       `INSERT INTO remittance_advice (organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
-         transaction_set_control_number, payment_method, total_payment_amount, production_date, minio_object_key, file_sha256, parse_status)
-       VALUES ($1,$2,$3,$4::m25_payer_kind,$5,$6,$7::m25_payment_method_kind,$8,$9,$10,$11,$12::m25_parse_status)`,
+         transaction_set_control_number, payment_method, total_payment_amount, production_date, payment_effective_date,
+         minio_object_key, file_sha256, parse_status)
+       VALUES ($1,$2,$3,$4::m25_payer_kind,$5,$6,$7::m25_payment_method_kind,$8,$9,$10,$11,$12,$13::m25_parse_status)`,
       [
         org,
         "99000000-0000-4000-8000-000000000001",
@@ -356,7 +366,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         String(1_000 + adviceSeq),
         o.method ?? "eft",
         o.dollars,
-        o.productionDate,
+        o.productionDate ?? null,
+        o.paymentEffectiveDate ?? null,
         `synthetic/${adviceSeq}.835`,
         String(adviceSeq).padStart(64, "0"),
         o.status ?? "posted",
@@ -1755,6 +1766,49 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       // another tenant's money never appears
       expect(await reader.netCollectionsByMonth(ORG_F as never, range)).toEqual([]);
       await admin.query("DELETE FROM remittance_advice WHERE organization_id=$1", [ORG_E]);
+    });
+
+    it("net collections date a remittance by its BPR16 payment_effective_date (production_date NULL, or disagreeing), in any host timezone", async () => {
+      const reader = buildNetCollectionsReader(app.db);
+      const range = {
+        periodStart: new Date("2026-10-01T00:00:00Z"),
+        periodEnd: new Date("2027-01-01T00:00:00Z"),
+      };
+      // BPR16 only (production_date NULL): the first and last day of November are in, the days beside them are not.
+      await remittance(ORG_E, { dollars: "100.00", paymentEffectiveDate: "2026-11-01" });
+      await remittance(ORG_E, { dollars: "200.00", paymentEffectiveDate: "2026-11-30" });
+      await remittance(ORG_E, { dollars: "400.00", paymentEffectiveDate: "2026-10-31" });
+      await remittance(ORG_E, { dollars: "800.00", paymentEffectiveDate: "2026-12-01" });
+      // Both dates set and they disagree: BPR16 wins over the legacy production_date.
+      await remittance(ORG_E, {
+        dollars: "1600.00",
+        paymentEffectiveDate: "2026-11-15",
+        productionDate: "2026-12-20T00:00:00Z",
+      });
+      const hostTz = process.env.TZ;
+      try {
+        // The period bounds are UTC midnights; a driver that serialised them in the host zone would shift
+        // the compared date by a day west of UTC (Oct 31 would enter November under America/Los_Angeles).
+        for (const tz of ["UTC", "America/Los_Angeles", "Pacific/Auckland"]) {
+          process.env.TZ = tz;
+          expect(
+            await reader.netCollectionsForPeriod(ORG_E as never, {
+              periodStart: NOV.start,
+              periodEnd: NOV.end,
+            }),
+            tz,
+          ).toEqual({ netCents: 190_000, remittanceCount: 3, pendingCount: 0 });
+          expect(await reader.netCollectionsByMonth(ORG_E as never, range), tz).toEqual([
+            { yearMonth: "2026-10", netCents: 40_000, remittanceCount: 1, pendingCount: 0 },
+            { yearMonth: "2026-11", netCents: 190_000, remittanceCount: 3, pendingCount: 0 },
+            { yearMonth: "2026-12", netCents: 80_000, remittanceCount: 1, pendingCount: 0 },
+          ]);
+        }
+      } finally {
+        if (hostTz === undefined) Reflect.deleteProperty(process.env, "TZ");
+        else process.env.TZ = hostTz;
+        await admin.query("DELETE FROM remittance_advice WHERE organization_id=$1", [ORG_E]);
+      }
     });
 
     it("a month whose ledger spans MORE THAN ONE key epoch (a rotation mid-month) cannot be role-filtered: the busiest single epoch is counted, flagged unfiltered", async () => {

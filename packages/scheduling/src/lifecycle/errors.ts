@@ -19,6 +19,9 @@ export const M17_ERROR_STATUS = {
   // §2.2.1 `publish` — the D8 seven-predicate pre-schedule gate did not pass (the orchestrator names the
   // failing predicate at M17-T07; the machine refuses to leave `proposed` until the gate is satisfied).
   VISIT_PRE_SCHEDULE_GATE_UNMET: 422,
+  // §2.2.1 `publish` / assign — M8 §2.2 has no legal (encounter type, discipline) pair for the stamped
+  // visit purpose and discipline (e.g. an NP HUV), so the M8 seed consumer could not author a draft (§2.7).
+  VISIT_ENCOUNTER_TYPE_UNSUPPORTED: 422,
   // §2.2.1 `cancel` / §2.3 — `cancellation_reason` shorter than the 20-char floor.
   VISIT_CANCELLATION_REASON_TOO_SHORT: 422,
   // §2.2.1 `cancel` — `cancelled_by_membership_id` was not supplied.

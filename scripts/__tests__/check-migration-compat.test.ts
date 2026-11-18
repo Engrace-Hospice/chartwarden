@@ -1,5 +1,7 @@
 // #861 — the migration expand/contract declaration gate. deploy.sh auto-rolls back to the previous
 // image only over migrations this classifies as expand, so a false "expand" is the dangerous error.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   COMPAT_DECLARATION_FROM,
@@ -8,10 +10,49 @@ import {
   gateErrors,
   isExpandSafe,
   parseDeclaration,
+  pendingNeedingOperator,
 } from "../check-migration-compat";
 
 const NEW = `${COMPAT_DECLARATION_FROM}_m1_example.sql`;
 const OLD = `${COMPAT_DECLARATION_FROM - 1}_m1_example.sql`;
+
+describe("pendingNeedingOperator (deploy.sh --hold-contract)", () => {
+  const at = (offset: number, slug: string): string =>
+    `${COMPAT_DECLARATION_FROM + offset}_m1_${slug}.sql`;
+
+  it("holds contract, undeclared and falsely-claimed expand, and lets a verified expand through", () => {
+    const pending = [
+      { file: at(0, "ok"), sql: "-- compat: expand\nALTER TABLE t ADD COLUMN c int;" },
+      { file: at(1, "contract"), sql: "-- compat: contract\nDROP INDEX i;" },
+      { file: at(2, "undeclared"), sql: "ALTER TABLE t ADD COLUMN c int;" },
+      { file: at(3, "false"), sql: "-- compat: expand\nALTER TABLE t RENAME COLUMN a TO b;" },
+    ];
+    expect(pendingNeedingOperator(pending)).toEqual([
+      at(1, "contract"),
+      at(2, "undeclared"),
+      at(3, "false"),
+    ]);
+  });
+
+  it("never holds a grandfathered file, however destructive", () => {
+    expect(pendingNeedingOperator([{ file: OLD, sql: "DROP TABLE t;" }])).toEqual([]);
+  });
+
+  it("holds a file whose name carries no ordinal (cannot be proven expand)", () => {
+    expect(pendingNeedingOperator([{ file: "notes.sql", sql: "SELECT 1;" }])).toEqual([
+      "notes.sql",
+    ]);
+  });
+
+  it("holds the real 1508 (it swaps a unique conflict target, so old M25 writers must be drained first)", () => {
+    const file = "1508_m25_835_group_identity_dates.sql";
+    const sql = readFileSync(
+      fileURLToPath(new URL(`../../packages/db/migrations/${file}`, import.meta.url)),
+      "utf8",
+    );
+    expect(pendingNeedingOperator([{ file, sql }])).toEqual([file]);
+  });
+});
 
 describe("declaration parsing", () => {
   it("reads expand / contract from the header comment block", () => {

@@ -258,8 +258,10 @@ controls:
       - file: apps/backend/src/modules/41-billing-commercial/jobs/ack-worker.org-binding.test.ts
       - file: apps/backend/__tests__/m23-clearinghouse-injection.test.ts
       - file: apps/backend/__tests__/m25-clearinghouse-pull.test.ts
+      - file: scripts/db/provision-runtime-roles.ts
+      - file: apps/backend/__tests__/m23-claimmd-webhook.live.test.ts
     gap:
-      reason: The dispatcher is disabled by default and source-level ownership checks exist, but private PostgreSQL NOBYPASSRLS and platform-role transaction tests, synthetic account response certification, and BIL-1.1 capture runtime wiring are still required before activation. A tenant's own Claim.MD account is polled by the legacy provider poller, which main judged unable to label Claim.MD's normalized events as X12; M23 records those acknowledgments as ack_999 / ack_277ca and M41 records them as unknown_legacy (owner decision 2026-11-08). The database blocks reuse of a credential, not of a vendor account. Where a vendor issues several keys for one account (Stedi may; not confirmed against its documentation), a second organization could connect that account with a different key.
+      reason: The platform carrier reaches the central Claim.MD tables through MEMBERSHIP of the NOLOGIN `claimmd_capture` role (migrations 1350/1356 when the carrier already exists, and the runtime-role provisioner, which repeats the grant so migrate-then-provision on a fresh database leaves it in place; m23-claimmd-webhook.live asserts the membership, its idempotence and that the carrier is still not chartwarden_admin). That membership is wider than an enumerated column grant list in one respect that stays open — `claimmd_capture` holds table-wide SELECT on claimmd_era_m25_stage (GRANT SELECT plus the USING (true) policy claimmd_era_m25_stage_capture_read, migration 1356), including its sealed protected_details_cipher, so every member reads every tenant's stage rows, and no live test proves the platform-role boundary beyond that membership. The dispatcher is disabled by default and source-level ownership checks exist, but private PostgreSQL NOBYPASSRLS and platform-role transaction tests, synthetic account response certification, and BIL-1.1 capture runtime wiring are still required before activation. A tenant's own Claim.MD account is polled by the legacy provider poller, which main judged unable to label Claim.MD's normalized events as X12; M23 records those acknowledgments as ack_999 / ack_277ca and M41 records them as unknown_legacy (owner decision 2026-11-08). The database blocks reuse of a credential, not of a vendor account. Where a vendor issues several keys for one account (Stedi may; not confirmed against its documentation), a second organization could connect that account with a different key.
       owner: platform
       review_by: 2027-01-31
 
@@ -638,6 +640,80 @@ controls:
       # audit event. Known limit: the submission list caps at 500 batches (SUBMISSION_LIST_LIMIT in hope-route-service-db.ts,
       # no route filter or pagination yet), and `rejected` and `partially_accepted` batches are never treated as closed, so
       # an organization with more than 500 unfinished batches at once would see newer accepted ones fall out of the list.
+
+  - id: CW-PI-03
+    title: >-
+      M25 835 remittance intake keeps its integrity before money is recorded: a non-zero payment without BPR16 (its payment effective
+      date) is refused at receive, never stored with NULL dates; an advice's envelope identity (ISA13 with ISA06, ISA08, GS06 and ST02)
+      is part of the dedupe key, and an advice posted from a staged Claim.MD ERA carries the same identity (a stage staged before
+      migration 1508 stays executable; a recorded identity that disagrees with the sealed set is refused); the payee must be the
+      tenant's by NPI and, when the 835 sends one, by the sealed TIN, and the evidence kept holds no NPI or TIN value; a file the pull
+      cannot ingest is quarantined after a bounded number of refusals under a durable, audited reason code, and a well-formed NPI or
+      TIN that is not the tenant's is never quarantined (it keeps the cursor pinned and loud); and the pull cron reports a held file
+      on the tick that receives it and every standing quarantine on each tick that completes a pull for the provider entity until an
+      operator releases or dismisses it, by id and code only. Claim.MD controlled posting needs a stored plan, an approver other than
+      its creator and an executor other than the approver, each with a step-up, re-derives and re-compares the plan digest under a
+      stage row lock before inserting, and is refused at boot when enabled under NODE_ENV=production.
+    hipaa: ["164.312(c)(1)"]
+    soc2: ["PI1.2", "PI1.3"]
+    status: partial
+    evidence:
+      - script: test:m25:835-ingestion:live
+      - script: test:m25:835-golden:live
+      - script: test:rls:live:m25
+      - script: test:db:migrate:live
+      - file: packages/db/migrations/1256_m25_remittance_pull_refusal.sql
+      - file: packages/db/migrations/1508_m25_835_group_identity_dates.sql
+      - file: apps/backend/src/modules/25-remittance/ingest/service-drizzle.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/advice-envelope-identity.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/clearinghouse-pull.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/pull-cursor-store.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/claimmd-era-review.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/claimmd-era-config.ts
+      - file: apps/backend/src/modules/25-remittance/jobs/cron-workers.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/__tests__/receive-bpr16.test.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/__tests__/stage-identity.test.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/__tests__/claimmd-era-stage-legacy.test.ts
+      - file: apps/backend/__tests__/m25-clearinghouse-pull.test.ts
+      - file: apps/backend/__tests__/m25-835-ingestion.live.test.ts
+    gap:
+      reason: Proved with synthetic 835s only; no live proof against a real payer's 835, and a payer that omits BPR16 on a non-zero payment is refused for the whole file with no accept path short of the payer reissuing it. Controlled Claim.MD posting stays disabled in production (the boot refusal), so its approval and execution are proved in non-production only; approval is recorded even while posting is disabled, and an approval does not expire. A quarantined file is released or dismissed only by admin SQL on the superuser connection (the runbook's single transaction, guarded by the file hash and the quarantined state; the dismiss, the guard and the carrier role's zero-row result are proved live). The row trigger records no actor there, so the audit row is attributed only by the correlation id the operator sets to the change ticket, and nothing in the database enforces that, a stated reason or the second reviewer the runbook asks for before a payment file is dismissed. An unresolved quarantine keeps the pull cron failing on each tick that completes a pull for the provider entity by design (an org with no live clearinghouse binding is not pulled, so its standing quarantine is not reported); there is no in-app list. The alert on that failure is the DLQ-promotion alert (a log line always, and a webhook only when OPS_ALERT_WEBHOOK_URL is set), fired when a job exhausts its attempts. It is not CW-MON-01, which is audit-event detection and a gap. A held file is reported once, on the tick that receives it (a retry that finds nothing new completes), so it relies on the held rows themselves (the staged ERA for CLAIMMD_ERA_STAGE_MATCH, the held advice row for LEGACY_IDENTITY_AMBIGUOUS) and not on the cron to stay visible. A file whose interchange mixes a non-HP functional group with an HP one is refused whole (X12_835_UNSUPPORTED_ROUTING), so a supported group sharing it is quarantined with it. The Claim.MD ownership-evidence gate rests on the resolver and the delivery-time revalidation (the delivery service writes the evidence codes), and executing a plan does not re-check the payee NPI/TIN the way receive does at post time.
+      owner: engineering
+      review_by: 2027-01-31
+
+  - id: CW-PI-04
+    title: >-
+      A visit is scheduled only for a clinician discipline that has a legal M8 encounter pair: create, proposal publish, reschedule,
+      edit and reassign refuse an unsupported one (422 VISIT_ENCOUNTER_TYPE_UNSUPPORTED, or the discipline gate when the clinician
+      holds no discipline the purpose accepts), codes only, nothing written, no event. Every purpose has at least one schedulable
+      discipline (recert and loc_change are RN visits, and the physician or NP encounter of a recertification is f2f), pinned by a
+      ratchet in policy.test.ts. The clinician picker marks an unsupported discipline CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED. A
+      recurring policy whose clinician holds no discipline the purpose accepts (403 PRE_SCHEDULE_GATE_FAILED) or none with a legal
+      pair (422) is refused at creation, and if one already exists the nightly cron alerts the scheduling audience (ids and a count
+      only; an alert that reaches nobody fails the job) instead of skipping it silently, and a policy that fails for any other reason
+      no longer stops the rest of the org's pass (it is reported by id and error code in the failing job). The M8 visit-seed consumer
+      refuses an illegal pair rather than minting a draft, so an event that carries one is retried and then parked as failed. The pair
+      is enforced in application code only (no DB CHECK).
+    hipaa: ["164.312(c)(1)"]
+    soc2: ["PI1.2", "PI1.3"]
+    status: partial
+    evidence:
+      - script: test:m17:write:live
+      - script: test:m8:write:live
+      - file: packages/scheduling/src/policy.ts
+      - file: packages/scheduling/__tests__/policy.test.ts
+      - file: apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts
+      - file: apps/backend/src/modules/17-scheduling/jobs/cron-workers.ts
+      - file: apps/backend/src/modules/08-encounters/outbox-consumers/m17-visit-scheduled.ts
+      - file: packages/types/src/encounter.ts
+      - file: packages/messaging/src/seed/alert-rules.ts
+      - file: apps/backend/__tests__/m17-scheduling-write.live.test.ts
+      - file: apps/backend/__tests__/gap-052-m17-cron-isolation.test.ts
+      - file: apps/backend/__tests__/m8-encounters-write.live.test.ts
+    gap:
+      reason: Visits, recurring policies, M8 drafts and in-flight m17.visit.published events created before these rules that already carry an illegal pair or purpose are not remediated (a pre-fix NP/MD visit for a purpose with no legal M8 pair for that discipline, which is any of recert, loc_change, pronouncement, huv1, huv2 or sfv, can no longer be rescheduled, re-purposed to anything but f2f or edited while that NP or MD stays the assignee, but reassigning it to a qualifying clinician, rescheduling it onto one, an edit of the visit setting alone, a cancel and the start, arrive and no-show transitions still work, a policy whose clinician holds no discipline its purpose accepts fails the nightly pass by id and code until it is discontinued, and an event already queued at deploy is retried then parked as failed; the consumers bound after m8.seed-visit-encounter never receive that visit's event unless an operator replays the failed row, and the ops outbox is read-only, so there is no replay route). M17 proposes no visit for a physician or NP care-plan intervention (md_np), because the only purpose a physician or NP can be scheduled for is f2f, a regulatory encounter that dual-writes an F2F record to M6, so it is never used for an arbitrary intervention, and that intervention stays in the care plan unscheduled; a pending recert proposal already created from one stays pending, cannot be published because the worker never names a clinician, and should be dismissed rather than created by hand as an RN kickoff visit. A policy that is unschedulable only on some dates (a credential that becomes valid mid-horizon) is reported on every pass while any date in the horizon is refused, although the dates that can schedule still materialize. The scheduling alert's audience is clinical_lead, scheduler, director_of_nursing and org_admin by role key (the first two exist only where a tenant created them); a tenant holding none of the four gets a failing job, not a delivered alert. Reassigning a visit or editing its purpose does not re-seed or void the M8 draft the first publish created. The pair has no database CHECK, so a new encounter writer must call isValidEncounterDisciplinePair itself. loc_change is RN only as a conservative scheduling choice, not an M8 or CoP rule. A recurring policy is accepted for any purpose, so a recurring recert, loc_change or f2f policy is allowed and each occurrence seeds its own M8 draft.
+      owner: engineering
+      review_by: 2027-01-31
 
   - id: CW-AC-19
     title: >-
@@ -1363,8 +1439,16 @@ controls:
       - file: deploy/production/backup/mc/go.sum
       - script: arch:merge-artifacts
       - file: scripts/__tests__/deploy-rust-image-verify.test.ts
+      - file: scripts/db/migrate.ts
+      - file: scripts/__tests__/deploy-schema-rollback.test.ts
+      - script: arch:migration-compat
+      - script: test:db:migrate:live
+      - file: scripts/check-migration-compat.ts
+      - file: scripts/__tests__/check-migration-compat.test.ts
+      - file: deploy/production/deploy.sh
+      - file: deploy/production/compose.yml
     gap:
-      reason: deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path — EXCEPT while deploy.yml carries a ci-waived release-gate line (owner decision 2026-10-30, `verify` is commented out so main deploys without tests or live suites, but release still needs the `quality` job running typecheck and lint, which arch:release-gate pins; lift the waiver by restoring `verify`). While it stands arch:fitness, the tests and the live suites (including the NOBYPASSRLS cross-tenant proof) run only through the opt-in pre-push hook, whose e2e step is also disabled (2026-10-30, to be restored). What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented. The CW-RUST-M02 Rust image (ghcr chartwarden-rust, built in that repo) is verified by deploy.sh with cosign against that repository's own workflow identity and rolled only by the verified digest, never under the unverified opt-out (deploy-rust-image-verify.test.ts); it still cannot start today (compose profile + unpullable digest placeholder, arch:compose-policy), and that the chartwarden-rust workflow signs its images is not verifiable from this repo (see CW-AC-07). Also open — the Postgres image (ghcr chartwarden-postgres) is scanned, signed and SBOM-attested by .github/workflows/postgres-image.yml, but deploy.sh never touches postgres, so no automated step verifies it on the host; the operator runs cosign verify and verify-attestation per deploy/production/README.md (Postgres image, migration runbook step 1) and keeps the output as the change record. backup-image.yml now defines the equivalent scanned, signed and SBOM-attested GHCR publication, and compose.backup.yml requires one digest-pinned reference instead of a host-built local tag; the first successful main publication, operator cosign verification and production pin are still required before this part has runtime evidence.
+      reason: A pending migration that is not a verified `expand` (per its compat header) is refused before any DDL (migrate.ts --hold-contract, exit 75; deploy.sh and the compose migrate service default both pass it; db-migrate.live runs the real CLI and asserts the exit and that nothing changed), so an unattended deploy cannot apply, for example, 1508 while the old M25 writers still run. What stays open there is that the classifier is a heuristic (a `contract` migration falsely declared `expand` still auto-applies; the arch gate catches only obviously contracting DDL), that the hold has only been exercised against a stubbed docker, not the real VPS, that the alert reaches a person only when DEPLOY_ALERT_WEBHOOK_URL is configured, and that while any held migration is pending every push to main is held, a security fix included, until an operator applies it by hand. The hand-apply is attributed only by the operator's change ticket, because the `_chartwarden_migration` ledger row records no operator, so the runbook requires the ticket id in the retained verification record and the image digest to come only from the held-deploy banner (the cosign-verified digest). deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path — EXCEPT while deploy.yml carries a ci-waived release-gate line (owner decision 2026-10-30, `verify` is commented out so main deploys without tests or live suites, but release still needs the `quality` job running typecheck and lint, which arch:release-gate pins; lift the waiver by restoring `verify`). While it stands arch:fitness, the tests and the live suites (including the NOBYPASSRLS cross-tenant proof) run only through the opt-in pre-push hook, whose e2e step is also disabled (2026-10-30, to be restored). What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented. The CW-RUST-M02 Rust image (ghcr chartwarden-rust, built in that repo) is verified by deploy.sh with cosign against that repository's own workflow identity and rolled only by the verified digest, never under the unverified opt-out (deploy-rust-image-verify.test.ts); it still cannot start today (compose profile + unpullable digest placeholder, arch:compose-policy), and that the chartwarden-rust workflow signs its images is not verifiable from this repo (see CW-AC-07). Also open — the Postgres image (ghcr chartwarden-postgres) is scanned, signed and SBOM-attested by .github/workflows/postgres-image.yml, but deploy.sh never touches postgres, so no automated step verifies it on the host; the operator runs cosign verify and verify-attestation per deploy/production/README.md (Postgres image, migration runbook step 1) and keeps the output as the change record. backup-image.yml now defines the equivalent scanned, signed and SBOM-attested GHCR publication, and compose.backup.yml requires one digest-pinned reference instead of a host-built local tag; the first successful main publication, operator cosign verification and production pin are still required before this part has runtime evidence.
       owner: engineering
       review_by: 2026-12-15
 

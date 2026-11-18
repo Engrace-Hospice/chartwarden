@@ -25,7 +25,7 @@ import { usePatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
 import { mapSchedulingApiError } from "./scheduling-errors";
-import { VISIT_TONE, stateLabel } from "./scheduling-status";
+import { VISIT_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import {
   NewVisitButton,
   NewVisitModal,
@@ -98,7 +98,10 @@ export function MyVisits(): JSX.Element {
   }, [load]);
 
   const purposeOptions = useMemo(
-    () => [...new Set(visits.map((v) => v.visitPurpose).filter(Boolean))].sort(),
+    () =>
+      [...new Set(visits.map((v) => v.visitPurpose).filter(Boolean))].sort((a, b) =>
+        purposeLabel(a).localeCompare(purposeLabel(b)),
+      ),
     [visits],
   );
 
@@ -120,6 +123,7 @@ export function MyVisits(): JSX.Element {
         (patientNames[v.patientId]?.name ?? "").toLowerCase().includes(q) ||
         v.assignedMembershipId.toLowerCase().includes(q) ||
         v.visitPurpose.toLowerCase().includes(q) ||
+        purposeLabel(v.visitPurpose).toLowerCase().includes(q) ||
         v.status.toLowerCase().includes(q);
       return matchesDate && matchesStatus && matchesPurpose && matchesSearch;
     });
@@ -287,7 +291,7 @@ export function MyVisits(): JSX.Element {
                     <option value="">All</option>
                     {purposeOptions.map((option) => (
                       <option key={option} value={option}>
-                        {stateLabel(option)}
+                        {purposeLabel(option)}
                       </option>
                     ))}
                   </select>
@@ -365,7 +369,7 @@ export function MyVisits(): JSX.Element {
                       <td style={tdStyle}>
                         <NameLabel value={patientNameOf(patientNames, v.patientId)} />
                       </td>
-                      <td style={tdStyle}>{stateLabel(v.visitPurpose)}</td>
+                      <td style={tdStyle}>{purposeLabel(v.visitPurpose)}</td>
                       <td
                         style={{
                           ...tdStyle,

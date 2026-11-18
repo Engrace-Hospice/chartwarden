@@ -14,6 +14,7 @@ import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment }
 import type { DenialCategory } from "../domain";
 import { decimalDollarsToCents } from "../domain/era-match-review";
 import type { WriteOutboxPort } from "../routes/write-service";
+import { adviceEnvelopeIdentityColumns } from "./advice-envelope-identity";
 import { claimMdEraM25SerializationKey } from "./claimmd-era-duplicate";
 import type {
   ClaimMatchCandidateProvider,
@@ -28,6 +29,7 @@ import type {
   X12835WorkerClient,
 } from "./service";
 import { DENY_TERMINOLOGY, NO_CLAIM_MATCH_CANDIDATES } from "./service";
+import { summarizeSetOutcomes } from "./set-outcomes";
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 const CLAIMMD_ERA_STAGE = schema.claimmdEraM25Stage;
@@ -222,6 +224,15 @@ type PayeeIdentityEvidence = {
 };
 type PayeeIdentityCheck = {
   readonly reason: string | null;
+  /**
+   * Why the check refused. "content": a property of the 835 itself (no NPI, an invalid NPI, a payee tax id that
+   * is not a 9-digit TIN), which no retry changes, so the pull may quarantine it.
+   * "environment": tenant configuration or an unreadable lookup, and an NPI or tax id that is well-formed but is not
+   * the tenant's: a wrong NPI or EIN on file produces that just as a mis-addressed file does, and quarantining it would
+   * skip a tenant's whole payment stream. Transient and never counted toward the quarantine cap (the cursor stays pinned,
+   * loudly, until the configuration is fixed). Null when the check passed.
+   */
+  readonly cause: "content" | "environment" | null;
   readonly evidence: PayeeIdentityEvidence | null;
 };
 /** Explicit opt-out of the payee check, for tests that are not about it. */
@@ -353,34 +364,43 @@ export function buildDrizzleM25IngestService(
     });
   }
 
-  /** #671 — null when the payee's tax id is the tenant's, else a PHI-free refusal reason. Never logs either TIN. */
+  /** #671 — null when the payee's tax id is the tenant's, else a PHI-free refusal and its cause. Never logs either TIN. */
   async function tinMismatch(
     organizationId: string,
     providerEntityId: string,
     payeeTin: string,
-  ): Promise<string | null> {
-    if (!deps.payeeTin) return "payee check: no tax id lookup is bound";
+  ): Promise<{ reason: string; cause: "content" | "environment" } | null> {
+    const environment = (reason: string) => ({ reason, cause: "environment" as const });
+    if (!deps.payeeTin) return environment("payee check: no tax id lookup is bound");
     let expected: string | null;
     try {
       expected = await deps.payeeTin(organizationId, providerEntityId);
     } catch {
-      return "payee check: the provider entity's tax id could not be read";
+      return environment("payee check: the provider entity's tax id could not be read");
     }
     const want = normaliseTin(expected);
     const got = normaliseTin(payeeTin);
-    if (!want) return "payee check: the provider entity has no usable tax id on file";
-    if (!got) return "payee check: the 835 payee tax id is not a 9-digit TIN";
-    return got === want ? null : "payee check: the 835 payee tax id is not this provider entity's";
+    if (!want) return environment("payee check: the provider entity has no usable tax id on file");
+    if (!got)
+      return {
+        reason: "payee check: the 835 payee tax id is not a 9-digit TIN",
+        cause: "content",
+      };
+    // The NPI already matched, so a different well-formed tax id is far more likely a stale or mis-keyed EIN on file than a
+    // mis-addressed file: environment, never quarantined.
+    return got === want
+      ? null
+      : environment("payee check: the 835 payee tax id is not this provider entity's");
   }
 
-  /** #659/#671 — null when the payee is this tenant's, else a PHI-free refusal reason (fail closed). */
+  /** #659/#671 — null reason when the payee is this tenant's, else a PHI-free refusal and its cause (fail closed). */
   async function payeeMismatch(
     organizationId: string,
     providerEntityId: string,
     payee: ParsedRemittanceAdvice["payee"],
     payerKind: string,
   ): Promise<PayeeIdentityCheck> {
-    if (deps.payeeNpi === PAYEE_UNCHECKED) return { reason: null, evidence: null };
+    if (deps.payeeNpi === PAYEE_UNCHECKED) return { reason: null, cause: null, evidence: null };
     const evidence = (tinVerified: boolean | null): PayeeIdentityEvidence => ({
       version: 1,
       method: "npi",
@@ -390,33 +410,33 @@ export function buildDrizzleM25IngestService(
       tinVerified,
       verifiedAt: new Date().toISOString(),
     });
+    const refuse = (reason: string, cause: "content" | "environment"): PayeeIdentityCheck => ({
+      reason,
+      cause,
+      evidence: null,
+    });
     let expected: string | null;
     try {
       expected = (await deps.payeeNpi(organizationId, providerEntityId))?.trim() ?? null;
     } catch {
-      return { reason: "payee check: the provider entity NPI could not be read", evidence: null };
+      return refuse("payee check: the provider entity NPI could not be read", "environment");
     }
     if (!expected || !isValidNpi(expected))
-      return {
-        reason: "payee check: the provider entity has no valid NPI on file",
-        evidence: null,
-      };
+      return refuse("payee check: the provider entity has no valid NPI on file", "environment");
     if (payee?.idQualifier !== "XX" || !payee.id)
-      return { reason: "payee check: the 835 payee carries no NPI (N103 XX)", evidence: null };
+      return refuse("payee check: the 835 payee carries no NPI (N103 XX)", "content");
     if (!isValidNpi(payee.id))
-      return { reason: "payee check: the 835 payee NPI is invalid", evidence: null };
+      return refuse("payee check: the 835 payee NPI is invalid", "content");
     if (payee.id !== expected)
-      return {
-        reason: "payee check: the 835 payee NPI is not this provider entity's",
-        evidence: null,
-      };
-    // NPI matched: a REF*TJ the payer sent must also be this tenant's (a mismatch is a mis-addressed file).
+      return refuse("payee check: the 835 payee NPI is not this provider entity's", "environment");
+    // NPI matched: a REF*TJ the payer sent must also be this tenant's. A well-formed mismatch is most likely a
+    // stale or mis-keyed EIN on file, so it is transient (environment); only a malformed TIN is the file's own content.
     const taxMismatch = payee.taxId
       ? await tinMismatch(organizationId, providerEntityId, payee.taxId)
       : null;
     return taxMismatch
-      ? { reason: taxMismatch, evidence: null }
-      : { reason: null, evidence: evidence(payee.taxId ? true : null) };
+      ? refuse(taxMismatch.reason, taxMismatch.cause)
+      : { reason: null, cause: null, evidence: evidence(payee.taxId ? true : null) };
   }
 
   async function resolveCategory(carcCode: string): Promise<DenialCategory | null> {
@@ -1070,20 +1090,7 @@ export function buildDrizzleM25IngestService(
         providerEntityId: input.providerEntityId,
         payerId: input.payerId,
         payerKind: input.payerKind,
-        interchangeControlNumber: parsed.interchangeControlNumber,
-        interchangeSenderCode: parsed.interchangeSenderCode ?? null,
-        interchangeReceiverCode: parsed.interchangeReceiverCode ?? null,
-        functionalGroupControlNumber: parsed.functionalGroupControlNumber ?? null,
-        functionalGroupMetadata: {
-          identifierCode: parsed.functionalGroupIdentifierCode ?? null,
-          senderCode: parsed.functionalGroupSenderCode ?? null,
-          receiverCode: parsed.functionalGroupReceiverCode ?? null,
-          creationTime: parsed.functionalGroupCreationTime ?? null,
-          version: parsed.functionalGroupVersion ?? null,
-          position: parsed.functionalGroupPosition ?? null,
-        },
-        transactionSetPosition: parsed.transactionSetPosition ?? null,
-        transactionSetControlNumber: parsed.transactionSetControlNumber,
+        ...adviceEnvelopeIdentityColumns(parsed),
         checkOrEftTraceNumber: parsed.checkOrEftTraceNumber ?? null,
         paymentMethod: parsed.paymentMethod,
         totalPaymentAmount: money(parsed.totalPaymentAmount),
@@ -1578,18 +1585,29 @@ export function buildDrizzleM25IngestService(
             cause: "content",
           };
         }
+        // BPR16 is the date every period total (M35 percentage billing's net collections) and the appeal clock
+        // key on. A non-zero payment without it would be stored undated and drop out of every period, so the
+        // file is refused as malformed content (the Claim.MD path already requires it). A zero-dollar
+        // advice moves no money and may legitimately carry no date.
+        if (parsed.value.totalPaymentAmount !== 0 && !parsed.value.paymentEffectiveDate)
+          return {
+            outcome: "malformed",
+            reason: "a non-zero payment must carry BPR16, its payment effective date",
+            cause: "content",
+          };
         const identity = await payeeMismatch(
           actor.organizationId,
           input.providerEntityId,
           parsed.value.payee,
           input.payerKind,
         );
-        // Payee/NPI checks depend on tenant configuration: transient, never counted toward quarantine.
+        // A refusal that is a property of the file counts toward the pull's quarantine cap; one that depends on
+        // tenant configuration is transient and never does (see PayeeIdentityCheck.cause).
         if (identity.reason)
           return {
             outcome: "malformed",
             reason: identity.reason,
-            cause: "environment",
+            cause: identity.cause ?? "environment",
           };
         parsedSets.push({ advice: parsed.value, identityEvidence: identity.evidence });
       }
@@ -1606,7 +1624,8 @@ export function buildDrizzleM25IngestService(
           return out;
         },
       );
-      return results.find((r) => r.outcome === "queued") ?? (results[0] as ReceiveAdviceResult);
+      // One outcome per file: a held set beside a queued or duplicate one (or several held sets) must not vanish.
+      return summarizeSetOutcomes(results);
     },
 
     async postAdvice(actor: M25IngestActor, adviceId: string): Promise<PostAdviceResult> {

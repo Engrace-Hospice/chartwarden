@@ -52,6 +52,7 @@ describe("scheduling error mapping", () => {
     ["ADMISSION_NOT_ACTIVE", /does not have an active admission/i],
     ["INVALID_VISIT_PURPOSE", /visit type is not available/i],
     ["PATIENT_OUT_OF_SCOPE", /not authorized to schedule visits for this patient/i],
+    ["VISIT_ENCOUNTER_TYPE_UNSUPPORTED", /cannot yet be scheduled for the selected visit type/i],
   ])("maps %s to a safe next action", (code, expected) => {
     expect(mapSchedulingApiError({ error: { code } }, 422).message).toMatch(expected);
   });
