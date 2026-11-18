@@ -18,6 +18,7 @@
 
 import { CARE_PLAN_DEFAULT_GRANTS } from "./care-plan-grants";
 import { SYSTEM_ROLE_DISPLAY_NAMES } from "./display-names";
+import { NOTE_CLOSURE_DEFAULT_GRANTS } from "./note-closure-grants";
 
 /** The twelve role categories A–L (mirrors the `role_category` DB enum, spec §3.2). */
 export type RoleCategory =
@@ -379,12 +380,15 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     // WP 4.1 (ADR-0068): the supervisory nurse may raise and receive an urgent clinical message, as migration 1105 grants.
     // WP 5.8 (ADR-0087): the supervisory nurse may open a break-glass read grant, as migration 1140 grants.
     // D-2 (CW-AC-44): the DON can open, author and finalize a care plan on a fresh tenant, as migration 1494 grants.
+    // ADR-0113: the DON can lift a blocked clinician's visit-note closure and set the tenant's closure mode, as migration 1511
+    // grants; the two keys are in FULL_CATALOG_EXCLUDED_KEYS, so org_admin / administrator do not hold them.
     grants: [
       "messaging.review",
       "messaging.urgent.send",
       "messaging.urgent.receive",
       "messaging.break_glass.invoke",
       ...(CARE_PLAN_DEFAULT_GRANTS.director_of_nursing ?? []),
+      ...(NOTE_CLOSURE_DEFAULT_GRANTS.director_of_nursing ?? []),
     ],
   },
   {

@@ -63,6 +63,7 @@ export {
 } from "./admitting-clinician-grants";
 export { CODE_STATUS_EDITOR_ROLE_KEYS } from "./code-status-grants";
 export {
+  NOTE_CLOSURE_DEFAULT_GRANTS,
   NOTE_CLOSURE_PERMISSION_KEYS,
   NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS,
 } from "./note-closure-grants";

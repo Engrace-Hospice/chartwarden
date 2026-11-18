@@ -3,10 +3,12 @@
 -- default grants. Idempotent.
 --   encounter.closure_override       a supervisor lifts the closure BLOCK for one clinician for up to 24 hours (route behind step-up)
 --   encounter.closure_policy_admin   sets the tenant's closure mode (off | warn | block) and threshold hours
--- Grants (the 0379 / 1103 pattern: wherever a tenant has created the role; nothing materializes ROLE_TEMPLATES): the four supervisor
--- role keys. Single source: NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS in packages/auth/src/roles/note-closure-grants.ts (pinned by
--- apps/backend/__tests__/note-closure-grants.test.ts). NEVER org_admin, aides, volunteers or compliance roles by this migration; a
--- tenant tightens by removing the grant from a role it owns. Both keys carry no ABAC default (`none`): the route composes step-up
+-- Grants (the 0379 / 1103 pattern: wherever a tenant has ALREADY created the role): the four supervisor role keys. Single source:
+-- NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS in packages/auth/src/roles/note-closure-grants.ts (pinned by
+-- apps/backend/__tests__/note-closure-grants.test.ts). A tenant provisioned after this migration gets the keys from the
+-- ROLE_TEMPLATES materializer instead (GAP-006): the director_of_nursing template carries NOTE_CLOSURE_DEFAULT_GRANTS, the only
+-- one of the four that is a template. NEVER org_admin / administrator (both keys are in FULL_CATALOG_EXCLUDED_KEYS), aides,
+-- volunteers or compliance roles; a tenant tightens by removing the grant from a role it owns. Both keys carry no ABAC default (`none`): the route composes step-up
 -- (override) and the caller's own site scope (board) itself.
 
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES

@@ -6,6 +6,8 @@ import { join } from "node:path";
  */
 import { describe, expect, it } from "vitest";
 import {
+  NOTE_CLOSURE_PERMISSION_KEYS,
+  NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS,
   ROLE_TEMPLATES,
   allPermissionMirrorRows,
   isTenantRoleReserved,
@@ -93,6 +95,28 @@ describe("planRoleTemplateMaterialization", () => {
       expect(expected.length).toBeGreaterThan(0);
       expect(granted(key).length).toBeGreaterThan(5);
       expect(holders).toEqual(expected);
+    }
+  });
+
+  it("gives the two visit-note closure keys to the supervisor templates that exist and withholds them from org_admin and administrator (ADR-0113)", () => {
+    const templated = ROLE_TEMPLATES.filter((t) =>
+      (NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS as readonly string[]).includes(t.key),
+    ).map((t) => t.key);
+    // Only the DON is a template today; clinical_supervisor / don / clinical_lead get the keys from migration 1511 where a tenant created them.
+    expect(templated).toEqual(["director_of_nursing"]);
+    for (const key of NOTE_CLOSURE_PERMISSION_KEYS) {
+      expect(MIRROR.some((p) => p.key === key)).toBe(true);
+      expect(FULL_CATALOG_EXCLUDED_KEYS.has(key)).toBe(true);
+      for (const role of ["org_admin", "administrator", "compliance_officer"])
+        expect(plan().find((r) => r.key === role)?.permissionKeys, `${role} ${key}`).not.toContain(
+          key,
+        );
+      for (const role of templated)
+        expect(plan().find((r) => r.key === role)?.permissionKeys, `${role} ${key}`).toContain(key);
+      const holders = plan()
+        .filter((r) => r.permissionKeys.includes(key))
+        .map((r) => r.key);
+      expect(holders.sort()).toEqual([...templated].sort());
     }
   });
 

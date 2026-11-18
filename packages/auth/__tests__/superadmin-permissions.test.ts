@@ -29,9 +29,12 @@ describe("effectivePermissionKeys", () => {
     }
   });
 
-  it("withholds what the admin roles are denied by design: redaction request + approve, review, urgent send/receive", () => {
+  it("withholds what the admin roles are denied by design: closure override + policy admin, redaction request + approve, review, urgent send/receive", () => {
     // One account holding BOTH halves of the redaction two-person control (ADR-0055 D9) is the escalation to avoid.
+    // The two closure keys (ADR-0113) belong to the supervisors who own the documentation duty, not to a platform account.
     expect([...FULL_CATALOG_EXCLUDED_KEYS].sort()).toEqual([
+      "encounter.closure_override",
+      "encounter.closure_policy_admin",
       "messaging.redact.approve",
       "messaging.redact.request",
       "messaging.review",
