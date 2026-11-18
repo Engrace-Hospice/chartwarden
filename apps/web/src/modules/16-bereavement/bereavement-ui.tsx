@@ -52,23 +52,7 @@ export const visuallyHidden: CSSProperties = {
   border: 0,
 };
 
-// ── card + section chrome ──────────────────────────────────────────────────────────────────────────────
-export const cardStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: t.space2,
-  background: t.surfaceLowest,
-  border: `1px solid ${t.cardBorder}`,
-  borderRadius: t.radiusLg,
-  padding: `${t.space4} ${t.space5}`,
-};
-export const cardTitleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontSans,
-  fontSize: "1rem",
-  fontWeight: 600,
-  color: t.onSurface,
-};
+// ── section chrome ─────────────────────────────────────────────────────────────────────────────────────
 export const pageTitleStyle: CSSProperties = {
   // Matches PageHeader's own title (the redesign's bold sans heading).
   margin: 0,
@@ -120,27 +104,6 @@ export const plainFieldset: CSSProperties = {
 };
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
-export const selectStyle: CSSProperties = {
-  minHeight: "2.5rem",
-  padding: "0 0.75rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.8125rem",
-};
-export const inputStyle: CSSProperties = { ...selectStyle, minWidth: "9rem" };
-export const textareaStyle: CSSProperties = {
-  width: "100%",
-  padding: "0.5rem 0.6rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.85rem",
-  fontFamily: "inherit",
-  resize: "vertical",
-};
 export const primaryButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -213,30 +176,6 @@ export function Field({
   );
 }
 
-/** A titled card — the aside/panel atom. */
-export function Card({
-  title,
-  actions,
-  children,
-}: { title: string; actions?: ReactNode; children: ReactNode }): JSX.Element {
-  return (
-    <section style={cardStyle}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: t.space3,
-        }}
-      >
-        <h3 style={cardTitleStyle}>{title}</h3>
-        {actions}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 /** An auto-fitting label/value grid — the detail header atom. */
 export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element {
   return (
@@ -257,111 +196,8 @@ export function FilterRow({ children }: { children: ReactNode }): JSX.Element {
   return <div className="wx-filter-panel">{children}</div>;
 }
 
-/** A labelled <select> for the filter row / a modal field. */
-export function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  onChange: (v: string) => void;
-  disabled?: boolean;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--color-on-surface)" }}>
-        {label}
-      </span>
-      <select
-        aria-label={label}
-        disabled={disabled}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="wx-select"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-/** A labelled text/number/date input. */
-export function TextField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  describedBy,
-  maxLength,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: "text" | "number" | "date" | "datetime-local" | "email" | "tel";
-  placeholder?: string;
-  describedBy?: string;
-  maxLength?: number;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <input
-        aria-label={label}
-        aria-describedby={describedBy}
-        type={type}
-        value={value}
-        maxLength={maxLength}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        style={inputStyle}
-      />
-    </label>
-  );
-}
-
-/** A labelled multi-line field — narrative / attestation / reason capture. */
-export function TextAreaField({
-  label,
-  value,
-  onChange,
-  rows = 4,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  rows?: number;
-  hint?: string;
-}): JSX.Element {
-  const hintId = hint ? `${label.replace(/\W+/g, "-").toLowerCase()}-hint` : undefined;
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <textarea
-        aria-label={label}
-        aria-describedby={hintId}
-        value={value}
-        rows={rows}
-        onChange={(e) => onChange(e.target.value)}
-        style={textareaStyle}
-      />
-      {hint ? (
-        <span id={hintId} style={mutedStyle}>
-          {hint}
-        </span>
-      ) : null}
-    </label>
-  );
-}
+// The text, select and textarea fields are the kit's, behind string-valued `onChange(value)` adapters.
+export { SelectField, TextAreaField, TextField } from "../../shell/value-fields";
 
 /** A labelled checkbox — the boolean capture atom (roster seeding, "did the contact respond"). */
 export function CheckboxField({

@@ -43,6 +43,11 @@ describe("TextField", () => {
     expect(document.getElementById(described[0] as string)?.textContent).toBe("Be brief");
     expect(described[1]).toBe("outside");
   });
+
+  it("limits the typed length when maxLength is given", () => {
+    render(<TextField label="Code" value="" onChange={() => {}} maxLength={8} />);
+    expect(screen.getByLabelText("Code").getAttribute("maxlength")).toBe("8");
+  });
 });
 
 describe("SelectField", () => {
@@ -59,6 +64,11 @@ describe("SelectField", () => {
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Alpha", "Bravo"]);
     fireEvent.change(select, { target: { value: "b" } });
     expect(onChange).toHaveBeenCalledWith("b");
+  });
+
+  it("can be disabled while a write is in flight", () => {
+    render(<SelectField label="Kind" value="a" options={options} onChange={() => {}} disabled />);
+    expect((screen.getByLabelText("Kind") as HTMLSelectElement).disabled).toBe(true);
   });
 });
 

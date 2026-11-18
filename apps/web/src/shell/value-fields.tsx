@@ -18,6 +18,7 @@ export function TextField({
   placeholder,
   describedBy,
   hint,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -27,6 +28,7 @@ export function TextField({
   /** An id elsewhere on the page that describes this field; kept after the hint's own id. */
   describedBy?: string;
   hint?: string;
+  maxLength?: number;
 }): JSX.Element {
   return (
     <KitTextField
@@ -36,6 +38,7 @@ export function TextField({
       type={type}
       placeholder={placeholder}
       hint={hint}
+      maxLength={maxLength}
       aria-describedby={describedBy}
     />
   );
@@ -46,17 +49,20 @@ export function SelectField({
   value,
   options,
   onChange,
+  disabled,
 }: {
   label: string;
   value: string;
   options: readonly { value: string; label: string }[];
   onChange: (value: string) => void;
+  disabled?: boolean;
 }): JSX.Element {
   return (
     <KitSelectField
       label={label}
       value={value}
       options={options}
+      disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
     />
   );
