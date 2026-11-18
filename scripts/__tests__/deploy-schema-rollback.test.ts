@@ -428,7 +428,8 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
     const banner = o.out.split("\n").filter((l) => l.startsWith("!!"));
     // the env file is put back on the previous image right after, so the command must carry the new one explicitly
     const apply = banner.join("\n");
-    expect(apply).toContain("CHARTWARDEN_IMAGE='");
+    expect(apply).toContain(`CHARTWARDEN_IMAGE='${NEW_API}'`);
+    expect(apply).not.toContain(OLD_API); // the previous release's image would apply the migration with the OLD code
     expect(apply).toContain(
       "run --rm --no-deps migrate bun run scripts/db/migrate.ts --strict --schema-only",
     );
