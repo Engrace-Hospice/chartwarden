@@ -189,6 +189,19 @@ outbox event, audit entry or log (asserted live). No MBI on file refuses the sen
 to port code). Every vendor-specific fact is isolated in `episode-alert-dde-wire.ts`, which invents nothing: its functions answer
 "unverified", so the adapter fails closed with `DDE_NOT_WIRED` and `createEpisodeAlertDdeProviderFromEnv` throws, which keeps
 `DDE_PROVIDER=episode_alert` refusing to boot. D7 stays unanswered (issue #759): whether write operations exist, per-operator
-DDE IDs, a sandbox, push or poll, paging and cursor shape, authentication and idempotency. A contract kit
-(`episode-alert-dde-contract.test.ts`) is skipped unless a trial key is supplied. The conformance suite gained D14 (an outcome
-names the operation it answers) and has mutant tests.
+DDE IDs, a sandbox, push or poll, paging and cursor shape, authentication and idempotency. The Episode Alert contract kit is
+not currently executable; a trial key alone does not establish an isolated test environment. The conformance suite gained D14
+(an outcome names the operation it answers) and has mutant tests.
+
+## Amendment 2026-11-18 — Episode Alert adapter safety (EPA-755-L1)
+
+No vendor wire, sandbox or approved API origin has been verified. The default `EA_DDE_WIRE` remains frozen with
+`verified: false`; the production factory refuses to bind unless the wire and exact destination are approved in code. No
+environment variable, trial credential, `usage: "test"` flag or operator attestation can enable it. The DDE contract suite
+does not read credentials from the process environment and remains statically skipped until a separately reviewed
+qualification procedure exists.
+
+The provider plumbing now shares a streaming byte-bounded response reader with the eligibility adapter. Local adapter tests
+use `LocalFakeHttpClient`, a response-only test double with no global `fetch` or socket path. This validates local safety and
+fixture behavior only; it does not qualify the Episode Alert service, establish per-operator support or ratify this ADR. Manual
+DDE remains the operational baseline, and the ADR status remains **Proposed**.
