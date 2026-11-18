@@ -364,6 +364,17 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE (last_health_status, last_health_check_at) ON "ai_model_backend" TO chartwarden_platform;',
       );
+      // Central Claim.MD capture (migrations 1350 / 1356): the platform carrier reaches the account-wide stream, inbox and
+      // ERA-staging tables only through membership of the NOLOGIN `claimmd_capture` role. Those migrations grant the
+      // membership only if `chartwarden_platform` already exists when they run, and nothing but this provisioner creates
+      // it, so a fresh database (migrate, then provision) would leave the platform login with "permission denied" on every
+      // central Claim.MD table. Repeat the grant here, like the other conditional carrier grants; it is idempotent and
+      // skipped when the capture role is absent (provisioning before the first migrate: the migration then grants it).
+      await run(`DO $$ BEGIN
+        IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'claimmd_capture') THEN
+          GRANT claimmd_capture TO chartwarden_platform;
+        END IF;
+      END $$;`);
       // M23 Claim.MD webhook (migration 1322): the receipt table is platform-only (the route stores, the sweep settles; no
       // DELETE: retention clears the cipher column). The sweep resolves a tenant from two COLUMN grants only: the
       // platform-unique provider NPI and the platform-unique live control number.
