@@ -182,7 +182,7 @@ try {
       if (!definition?.startsWith("create unique index ")) return false;
       const actualColumns = definition
         .match(/\(([^()]*)\)/)?.[1]
-        .split(",")
+        ?.split(",")
         .map((column) => column.trim());
       if (!actualColumns || JSON.stringify(actualColumns) !== JSON.stringify(columns)) return false;
       return definition.includes("nulls not distinct") === nullsNotDistinct;
