@@ -4503,6 +4503,19 @@
 .wx-addendum-body .wx-data-table td {
   white-space: normal;
 }
+/* The SIA card's visit table: the "Why" column holds the reason a visit did not count, so it wraps and takes the spare width
+   (auto layout) instead of the list-screen fixed-width, ellipsised cells. */
+.wx-sia-visits .wx-data-table {
+  min-width: 0;
+  table-layout: auto;
+}
+.wx-sia-visits .wx-data-table td {
+  white-space: nowrap;
+}
+.wx-sia-visits .wx-data-table td:last-child {
+  white-space: normal;
+  text-overflow: clip;
+}
 /* "Not covered" group in the section: a hairline-separated sub-list, not a nested box. */
 .wx-addendum-group {
   display: grid;

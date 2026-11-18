@@ -1,5 +1,6 @@
 import type { ClaimValueCodes } from "../cbsa";
 import type { DischargeClaimCodes } from "../claim-codes";
+import type { VisitModality } from "../claim-lines/visit-codes";
 // @chartwarden/billing — M23 §11.A Pre-Submission Validation Framework RULE MODEL (D1, spec §4.5). The
 // configurable rule library is the architectural answer to the ">99% claim acceptance" / "31-point audit
 // equivalent" promise: every claim is run through a set of typed predicates before it can leave READY.
@@ -290,13 +291,19 @@ export interface BillableEncounterSnapshot {
   readonly encounterType?: string | null;
   /** Documented visit minutes (the start-to-end bracket); `0`/`null` = not documented, never fabricated. */
   readonly durationMinutes?: number | null;
+  /** The delivery mode recorded on the M8 encounter (`visit_modality`); `null`/absent = unknown (legacy row). */
+  readonly modality?: VisitModality | null;
+  /** True once the clinician confirmed `modality` at signing; an unconfirmed visit is not SIA-eligible. */
+  readonly modalityConfirmed?: boolean;
+  /** Who supplied the documented bracket behind `durationMinutes`: the M18 EVV bracket or the signing clinician. */
+  readonly timeSource?: "evv" | "clinician" | null;
 }
 
 /** A signed encounter in the last 7 days of life window (M8 `SignedEncountersReader`), for the SIA rule. */
 export interface SignedEncounterSnapshot {
   readonly encounterId: string;
   readonly serviceDate: IsoDate;
-  /** Discipline code (e.g. `'RN'`, `'MSW'`, `'HHA'`, `'chaplain'`). */
+  /** Discipline as M8 stores it: lowercase enum values (`'rn'`, `'msw'`, `'chha'`, `'chaplain'`). Compare via `normalizeDiscipline`. */
   readonly discipline: string;
   readonly signed: boolean;
   readonly cosignRequired: boolean;
@@ -369,6 +376,14 @@ export interface PerDiemClassSnapshot {
 export interface SiaSnapshot {
   readonly present: boolean;
   readonly qualifyingVisitCount: number;
+  /** Units the shared engine counted as payable (per-visit 15-minute units, 16 per day cap). */
+  readonly paidUnits: number;
+  /** The wage-adjusted CHC hourly rate the add-on was priced at; the rule re-derives `amountCents` from it. */
+  readonly chcHourlyRateCents: Cents;
+  /** `[death − 6, death]` — the window the counted units must sit in. */
+  readonly window: { readonly from: IsoDate; readonly to: IsoDate };
+  /** Payable units per service day (the rule checks the 16-unit cap on each). */
+  readonly days: readonly { readonly date: IsoDate; readonly paidUnits: number }[];
   readonly amountCents: Cents;
   /** True iff the SIA was double-counted with another adjustment (a defect the rule flags). */
   readonly doubleCounted: boolean;

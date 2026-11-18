@@ -27,6 +27,7 @@ import { getSeam } from "../../../bootstrap/index";
 import {
   AddendumParamsSchema,
   AdministrativeOverrideSchema,
+  AttestationSchema,
   BillableQuerySchema,
   CaptureMileageSchema,
   CaptureVitalsSchema,
@@ -34,6 +35,7 @@ import {
   CarePlanLinkSchema,
   ChartPromotionListParamsSchema,
   ChartPromotionParamsSchema,
+  ConfirmVisitModalitySchema,
   CreateAddendumSchema,
   CreateEncounterSchema,
   EncounterListQuerySchema,
@@ -637,7 +639,35 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       return service.sign(organizationId, encounterIdOf(request), signingActorOf(request), {
         at: today(),
         lateEntryReason: body.lateEntryReason,
+        visitModality: body.visitModality,
+        startedAt: body.startedAt,
+        endedAt: body.endedAt,
       });
+    },
+  );
+
+  // 14b — confirm how an ALREADY-SIGNED visit was delivered (rows signed before the modality column).
+  // Same gates as the sign route (permission, caseload scope, author-only, fresh step-up): it writes only the
+  // three modality columns, a deliberate carve-out of the post-sign immutability rule (§2.7).
+  app.post(
+    "/api/v1/encounters/:encounterId/visit-modality",
+    {
+      preHandler: [
+        SIGN,
+        SCOPE_FOR("encounter.sign"),
+        IS_AUTHOR("encounter.sign"),
+        STEP_UP("encounter.sign"),
+      ],
+    },
+    async (request) => {
+      const { organizationId } = membershipActorOf(request);
+      const body = parse(ConfirmVisitModalitySchema, request.body);
+      return service.confirmVisitModality(
+        organizationId,
+        encounterIdOf(request),
+        signingActorOf(request),
+        { visitModality: body.visitModality },
+      );
     },
   );
 
@@ -731,7 +761,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
     async (request) => {
       const { organizationId, roles } = membershipActorOf(request);
-      parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
+      parse(AttestationSchema, request.body); // validates the attestation-confirmed shape
       return service.cosignSign(organizationId, encounterIdOf(request), signingActorOf(request), {
         isQualifiedRn: isRn(roles),
         at: today(),
@@ -897,7 +927,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
-      parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
+      parse(AttestationSchema, request.body); // validates the attestation-confirmed shape
       return service.signAddendum(
         organizationId,
         encounterId,

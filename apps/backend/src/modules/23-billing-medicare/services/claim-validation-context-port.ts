@@ -14,6 +14,7 @@ import {
   type ClaimAssemblySeams,
   type IsoDate,
   type NoeStatusSnapshot,
+  applySequestrationPolicy,
   medicareReceiptDay,
   repositories,
 } from "@chartwarden/billing";
@@ -21,6 +22,7 @@ import {
   computeClaimPerDiemClass,
   computeClaimSia,
   readAssemblyFacts,
+  siaSnapshotOf,
 } from "./claim-assembly-facts";
 import type { BillingTx, BillingWriteActor } from "./claim-state-service";
 import type {
@@ -80,7 +82,13 @@ export function buildClaimValidationContextPort(
         { serviceFrom: claim.serviceFrom, serviceTo: claim.serviceTo },
         rhcCarryOver.priorDays,
       );
-      const sia = await computeClaimSia(deps.seams, facts);
+      const sia = await computeClaimSia(deps.seams, facts, {
+        orgId,
+        providerEntityId: claim.providerEntityId,
+        patientId: claim.patientId,
+        serviceFrom: claim.serviceFrom,
+        serviceTo: claim.serviceTo,
+      });
 
       // Prior-claim continuity for the admission, EXCLUDING the claim under validation.
       const patientClaims = await new repositories.ClaimRepository(tx).listByOrgPage(
@@ -130,8 +138,7 @@ export function buildClaimValidationContextPort(
         },
         lines,
         perDiemClass,
-        siaQualifyingVisitCount: sia?.qualifyingVisits.length ?? 0,
-        siaCents: sia?.siaAddOnCents ?? 0,
+        sia: siaSnapshotOf(sia),
         eligibility: latestEligibility
           ? {
               outcome: latestEligibility.outcome,
@@ -151,7 +158,12 @@ export function buildClaimValidationContextPort(
         eligibilityBound: deps.eligibilityBound,
         rhcCarryOver: rhcCarryOverSnapshot(rhcCarryOver),
       });
-      return { context };
+      // The expected payment the claim should show NOW: per-diem total + SIA, net of sequestration (the assembly's arithmetic).
+      const expectedPaymentCents = applySequestrationPolicy(
+        perDiemClass.totalCents + (sia?.result.siaAddOnCents ?? 0),
+        { percentage: facts.seqPolicy.percentage },
+      ).netCents;
+      return { context, siaRefresh: { sia, expectedPaymentCents } };
     },
   };
 }

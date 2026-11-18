@@ -224,7 +224,10 @@ describe.skipIf(!DB_URL)(
       const vitals = requiredVitalsCapture("routine_visit", "rn");
       if (vitals) await enc.captureVitals(ORG_A, d.id, vitals);
       await enc.finalize(ORG_A, d.id, SERVICE_DATE as never);
-      await enc.sign(ORG_A, d.id, actor(), { at: SERVICE_DATE as never });
+      await enc.sign(ORG_A, d.id, actor(), {
+        at: SERVICE_DATE as never,
+        visitModality: "in_person",
+      });
       return d.id;
     }
     const actor = () => ({

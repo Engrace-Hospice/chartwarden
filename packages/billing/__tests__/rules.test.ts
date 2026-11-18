@@ -526,67 +526,190 @@ describe("per_diem_class_coding_correct", () => {
   });
 });
 
-describe("sia_calculation_correct", () => {
-  it("SKIPs (not_applicable) when no SIA is present", () => {
-    const r = run(siaCalculationCorrect, passingContext());
-    expect(isSkip(r)).toBe(true);
+describe("sia_calculation_correct (v2: units, rate, cap, window, status, and what the lines carry)", () => {
+  const DEATH = "2026-03-31";
+  const HOURLY = 7_192; // FY2027 national CHC hourly, $71.92
+  const siaLine = (over: Record<string, unknown> = {}) => ({
+    claimLineId: "sia-line-1",
+    serviceDate: "2026-03-30",
+    revenueCode: "0551",
+    qCode: null,
+    levelOfCare: "routine_home_care" as const,
+    hcpcs: "G0299",
+    modifiers: [] as string[],
+    unitCount: 4,
+    unitRateCents: 0,
+    lineChargeCents: 0,
+    icdPointerPositions: [1],
+    backingEncounterIds: ["e1"],
+    ...over,
   });
-  it("passes when the SIA is backed by signed RN/MSW visits and not double-counted", () => {
+  /** A death-claim context with one SIA-coded RN line (4 units) and a matching SIA snapshot. */
+  function siaContext(
+    over: {
+      /** `null` = the engine counted nothing, so the claim carries no SIA snapshot at all. */
+      sia?: Record<string, unknown> | null;
+      lines?: unknown[];
+      claim?: Record<string, unknown>;
+    } = {},
+  ) {
     const ctx = passingContext();
-    const r = run(siaCalculationCorrect, {
+    return {
       ...ctx,
-      sia: { present: true, qualifyingVisitCount: 2, amountCents: 5_000, doubleCounted: false },
+      claim: {
+        ...ctx.claim,
+        deathDate: DEATH,
+        dischargeClaimCodes: {
+          patientStatus: "40" as const,
+          conditionCodes: [],
+          occurrenceCodes: [],
+          unresolved: null,
+        },
+        ...over.claim,
+      },
+      lines: [...ctx.lines, ...((over.lines ?? [siaLine()]) as typeof ctx.lines)],
+      // M8 hands the rule lowercase disciplines; the old rule compared uppercase and failed EVERY real claim.
       signedEncounters: [
         {
           encounterId: "e1",
-          serviceDate: "2026-03-29",
-          discipline: "RN",
+          serviceDate: "2026-03-30",
+          discipline: "rn",
           signed: true,
           cosignRequired: false,
           cosigned: false,
           durationMinutes: 60,
         },
-        {
-          encounterId: "e2",
-          serviceDate: "2026-03-30",
-          discipline: "MSW",
-          signed: true,
-          cosignRequired: false,
-          cosigned: false,
-          durationMinutes: 45,
-        },
       ],
-    });
+      sia:
+        over.sia === null
+          ? null
+          : {
+              present: true,
+              qualifyingVisitCount: 1,
+              paidUnits: 4,
+              chcHourlyRateCents: HOURLY,
+              window: { from: "2026-03-25", to: DEATH },
+              days: [{ date: "2026-03-30", paidUnits: 4 }],
+              amountCents: 7_192, // 4 units = 1 hour x $71.92
+              doubleCounted: false,
+              ...over.sia,
+            },
+    };
+  }
+
+  /** The first defect the rule reported — each failing case must fail for ITS reason, not just fail. */
+  const defectOf = (r: ReturnType<typeof run>) =>
+    String(r.annotations?.observed?.firstDefect ?? "");
+
+  it("SKIPs (not_applicable) when no SIA is present", () => {
+    expect(isSkip(run(siaCalculationCorrect, passingContext()))).toBe(true);
+  });
+  it("passes a real-shaped claim: lowercase M8 disciplines, amount = units x hourly / 4, units backed by the lines", () => {
+    const r = run(siaCalculationCorrect, siaContext());
     expect(r.passed).toBe(true);
   });
-  it("fails when claimed visits exceed the backing signed RN/MSW visits", () => {
-    const ctx = passingContext();
-    const r = run(siaCalculationCorrect, {
-      ...ctx,
-      sia: { present: true, qualifyingVisitCount: 3, amountCents: 5_000, doubleCounted: false },
-      signedEncounters: [],
-    });
+  it("fails when the amount is not paidUnits x CHC hourly / 4", () => {
+    const r = run(siaCalculationCorrect, siaContext({ sia: { amountCents: 7_193 } }));
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
+    expect(defectOf(r)).toMatch(/amount/);
+  });
+  it("fails when a day carries more than 16 payable units", () => {
+    const r = run(
+      siaCalculationCorrect,
+      siaContext({
+        sia: { paidUnits: 17, amountCents: 30_566, days: [{ date: "2026-03-30", paidUnits: 17 }] },
+        lines: [siaLine({ unitCount: 17 })],
+      }),
+    );
+    expect(r.passed).toBe(false);
+    expect(defectOf(r)).toMatch(/more than 16 units/);
+  });
+  it("fails when the counted units exceed what the claim's visit lines carry (the MAC pays from the lines)", () => {
+    const r = run(
+      siaCalculationCorrect,
+      siaContext({
+        sia: { paidUnits: 8, amountCents: 14_384, days: [{ date: "2026-03-30", paidUnits: 8 }] },
+      }),
+    );
+    expect(r.passed).toBe(false);
+    expect(defectOf(r)).toMatch(/visit lines carry only 4/);
+  });
+  it("fails when the discharge status is not a death status (40/41/42)", () => {
+    const r = run(
+      siaCalculationCorrect,
+      siaContext({
+        claim: {
+          dischargeClaimCodes: {
+            patientStatus: "30",
+            conditionCodes: [],
+            occurrenceCodes: [],
+            unresolved: null,
+          },
+        },
+      }),
+    );
+    expect(r.passed).toBe(false);
+    expect(defectOf(r)).toMatch(/death status/);
+  });
+  it("fails when the date of death is missing or after the claim's service-to date", () => {
+    const missing = run(siaCalculationCorrect, siaContext({ claim: { deathDate: null } }));
+    const after = run(siaCalculationCorrect, siaContext({ claim: { deathDate: "2026-04-02" } }));
+    expect(missing.passed).toBe(false);
+    expect(defectOf(missing)).toMatch(/no date of death/);
+    expect(after.passed).toBe(false);
+    expect(defectOf(after)).toMatch(/after the claim's service-to date/);
+  });
+  it("fails when counted units sit outside the last-7-days window", () => {
+    const r = run(
+      siaCalculationCorrect,
+      siaContext({ sia: { days: [{ date: "2026-03-20", paidUnits: 4 }] } }),
+    );
+    expect(r.passed).toBe(false);
+    expect(defectOf(r)).toMatch(/outside the last 7 days/);
   });
   it("fails when the SIA is double-counted", () => {
-    const ctx = passingContext();
-    const r = run(siaCalculationCorrect, {
-      ...ctx,
-      sia: { present: true, qualifyingVisitCount: 1, amountCents: 5_000, doubleCounted: true },
-      signedEncounters: [
-        {
-          encounterId: "e1",
-          serviceDate: "2026-03-29",
-          discipline: "RN",
-          signed: true,
-          cosignRequired: false,
-          cosigned: false,
-          durationMinutes: 60,
-        },
-      ],
-    });
+    const r = run(siaCalculationCorrect, siaContext({ sia: { doubleCounted: true } }));
     expect(r.passed).toBe(false);
+    expect(defectOf(r)).toMatch(/double-counted/);
+  });
+
+  describe("two-way: the MAC pays the add-on from the lines, so lines the engine did not count are a defect too", () => {
+    it("fails a death claim with NO SIA snapshot whose in-person RN line the engine did not count (a telephonic / unconfirmed visit billed as in person)", () => {
+      const r = run(siaCalculationCorrect, siaContext({ sia: null }));
+      expect(r.passed).toBe(false);
+      expect(defectOf(r)).toMatch(/carry 4 SIA-eligible unit\(s\).*only 0 qualify/);
+    });
+    it("fails when the lines carry more SIA units than the engine counted", () => {
+      const r = run(siaCalculationCorrect, siaContext({ lines: [siaLine({ unitCount: 8 })] }));
+      expect(r.passed).toBe(false);
+      expect(defectOf(r)).toMatch(/carry 8 SIA-eligible unit\(s\).*only 4 qualify/);
+    });
+    it("derives the window from the claim's date of death, not from the snapshot", () => {
+      const r = run(
+        siaCalculationCorrect,
+        siaContext({ sia: { window: { from: "2026-03-18", to: DEATH } } }),
+      );
+      expect(r.passed).toBe(false);
+      expect(defectOf(r)).toMatch(/not the last 7 days of life/);
+    });
+    it("SKIPs a death claim with no snapshot and no SIA-coded line", () => {
+      expect(isSkip(run(siaCalculationCorrect, siaContext({ sia: null, lines: [] })))).toBe(true);
+    });
+    it("SKIPs a claim that is not a death claim, whatever its lines carry (an interim month)", () => {
+      const r = run(siaCalculationCorrect, siaContext({ sia: null, claim: { deathDate: null } }));
+      expect(isSkip(r)).toBe(true);
+    });
+    it("ignores lines Medicare would not price as SIA: an MSW 0569 line, a PM-modified line, a non-RHC day", () => {
+      const notSia = [
+        siaLine({ revenueCode: "0569", hcpcs: "G0155" }),
+        siaLine({ modifiers: ["PM"] }),
+        siaLine({ levelOfCare: "general_inpatient" }),
+      ];
+      expect(isSkip(run(siaCalculationCorrect, siaContext({ sia: null, lines: notSia })))).toBe(
+        true,
+      );
+    });
   });
 });
 

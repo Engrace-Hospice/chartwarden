@@ -83654,23 +83654,255 @@
                             {
                               "type": "object",
                               "required": [
+                                "basis",
+                                "revision",
                                 "windowStart",
+                                "windowEnd",
+                                "paidUnits",
+                                "eligibleUnits",
+                                "truncatedUnits",
+                                "chcHourlyRateCents",
+                                "wageIndexFiscalYear",
+                                "amountCents",
                                 "totalQualifyingMinutes",
-                                "siaAddOnCents",
-                                "calculatedAt"
+                                "calculatedAt",
+                                "policy",
+                                "visits",
+                                "priorClaimAdvisory"
                               ],
                               "properties": {
+                                "basis": {
+                                  "anyOf": [
+                                    {
+                                      "const": "minutes_v1",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "units_v2",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "revision": {
+                                  "type": "integer"
+                                },
                                 "windowStart": {
+                                  "format": "date",
                                   "type": "string"
+                                },
+                                "windowEnd": {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                "paidUnits": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "eligibleUnits": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "truncatedUnits": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "chcHourlyRateCents": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "wageIndexFiscalYear": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "amountCents": {
+                                  "type": "integer"
                                 },
                                 "totalQualifyingMinutes": {
                                   "type": "integer"
                                 },
-                                "siaAddOnCents": {
-                                  "type": "integer"
-                                },
                                 "calculatedAt": {
+                                  "format": "date-time",
                                   "type": "string"
+                                },
+                                "policy": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "required": [
+                                        "unitTieBreak",
+                                        "videoEligible",
+                                        "visitDating",
+                                        "wageBasis"
+                                      ],
+                                      "properties": {
+                                        "unitTieBreak": {
+                                          "type": "string"
+                                        },
+                                        "videoEligible": {
+                                          "type": "boolean"
+                                        },
+                                        "visitDating": {
+                                          "type": "string"
+                                        },
+                                        "wageBasis": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "visits": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "id",
+                                      "date",
+                                      "discipline",
+                                      "minutes",
+                                      "timeSource",
+                                      "units",
+                                      "paidUnits",
+                                      "counted",
+                                      "reason"
+                                    ],
+                                    "properties": {
+                                      "id": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "date": {
+                                        "format": "date",
+                                        "type": "string"
+                                      },
+                                      "discipline": {
+                                        "type": "string"
+                                      },
+                                      "minutes": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "timeSource": {
+                                        "anyOf": [
+                                          {
+                                            "const": "evv",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "clinician",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "units": {
+                                        "anyOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "paidUnits": {
+                                        "type": "integer"
+                                      },
+                                      "counted": {
+                                        "type": "boolean"
+                                      },
+                                      "reason": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                "priorClaimAdvisory": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "required": [
+                                        "from",
+                                        "to",
+                                        "units",
+                                        "cents"
+                                      ],
+                                      "properties": {
+                                        "from": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
+                                        "to": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
+                                        "units": {
+                                          "type": "integer"
+                                        },
+                                        "cents": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               }
                             },
@@ -148373,6 +148605,54 @@
                               }
                             ]
                           },
+                          "visitModality": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "in_person",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "telephonic",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "video",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "visitModalityConfirmed": {
+                            "type": "boolean"
+                          },
+                          "timeSource": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "evv",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "clinician",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "evvBracketPresent": {
+                            "type": "boolean"
+                          },
                           "selections": {
                             "anyOf": [
                               {
@@ -149004,6 +149284,54 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "visitModality": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "in_person",
+                              "type": "string"
+                            },
+                            {
+                              "const": "telephonic",
+                              "type": "string"
+                            },
+                            {
+                              "const": "video",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "visitModalityConfirmed": {
+                      "type": "boolean"
+                    },
+                    "timeSource": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "evv",
+                              "type": "string"
+                            },
+                            {
+                              "const": "clinician",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "evvBracketPresent": {
+                      "type": "boolean"
                     },
                     "selections": {
                       "anyOf": [
@@ -151530,7 +151858,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Sign the encounter (Layer-3 gate; D13 step-up)",
+        "summary": "Sign the encounter (Layer-3 gate; D13 step-up); `visitModality` is required (422 MODALITY_CONFIRMATION_REQUIRED) for a Medicare-countable discipline that has no confirmed modality, and in person / video is refused on a telephonic encounter type (422 MODALITY_CONFLICTS_WITH_VISIT_TYPE; telephonic is always allowed); optional `startedAt`/`endedAt` are the clinician's documented visit times, both or neither, each an ISO-8601 date-time with an explicit UTC offset (`Z` or +hh:mm / -hh:mm), ordered, not in the future, starting on the encounter's org-local service date and ending on that date or the next, and at most 8 hours apart (422 VISIT_TIME_INVALID otherwise); they are ignored when an M18 EVV bracket exists (EVV always wins) and never defaulted or padded; typed times are refused with 503 EVV_BRACKET_UNAVAILABLE while the M18 EVV lookup cannot be reached (retry, or sign without times) and with 422 VISIT_TIME_OVERLAP when an in-person / video bracket overlaps another the same author documented",
         "parameters": [
           {
             "name": "encounterId",
@@ -151608,6 +151936,32 @@
                   "lateEntryReason": {
                     "minLength": 40,
                     "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "visitModality": {
+                    "anyOf": [
+                      {
+                        "const": "in_person",
+                        "type": "string"
+                      },
+                      {
+                        "const": "telephonic",
+                        "type": "string"
+                      },
+                      {
+                        "const": "video",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "startedAt": {
+                    "format": "date-time",
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  "endedAt": {
+                    "format": "date-time",
+                    "maxLength": 40,
                     "type": "string"
                   }
                 }
@@ -151860,6 +152214,104 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/visit-modality": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdVisitmodality",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "One-time confirmation of how an already-signed visit was delivered, for a legacy visit whose delivery mode is still unconfirmed (author only; writes only the modality columns); a visit whose delivery mode is already confirmed answers 409 MODALITY_ALREADY_CONFIRMED and is left unchanged (a confirmed mode is not correctable through this route), the guard being part of the same UPDATE so two concurrent calls cannot both win; in person / video is refused on a telephonic encounter type (422 MODALITY_CONFLICTS_WITH_VISIT_TYPE; telephonic is always allowed); an encounter that is not signed answers 409 ILLEGAL_TRANSITION",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "visitModality",
+                    "visitModalityConfirmedAt"
+                  ],
+                  "properties": {
+                    "visitModality": {
+                      "anyOf": [
+                        {
+                          "const": "in_person",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        },
+                        {
+                          "const": "video",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "visitModalityConfirmedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attestationConfirmed",
+                  "visitModality"
+                ],
+                "properties": {
+                  "attestationConfirmed": {
+                    "const": true,
+                    "type": "boolean"
+                  },
+                  "visitModality": {
+                    "anyOf": [
+                      {
+                        "const": "in_person",
+                        "type": "string"
+                      },
+                      {
+                        "const": "telephonic",
+                        "type": "string"
+                      },
+                      {
+                        "const": "video",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -153388,6 +153840,54 @@
                               }
                             ]
                           },
+                          "visitModality": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "in_person",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "telephonic",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "video",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "visitModalityConfirmed": {
+                            "type": "boolean"
+                          },
+                          "timeSource": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "evv",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "clinician",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "evvBracketPresent": {
+                            "type": "boolean"
+                          },
                           "selections": {
                             "anyOf": [
                               {
@@ -153804,6 +154304,54 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "visitModality": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "in_person",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "telephonic",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "video",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "visitModalityConfirmed": {
+                            "type": "boolean"
+                          },
+                          "timeSource": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "evv",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "clinician",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "evvBracketPresent": {
+                            "type": "boolean"
                           },
                           "selections": {
                             "anyOf": [
@@ -182622,6 +183170,54 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "visitModality": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "in_person",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "telephonic",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "video",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "visitModalityConfirmed": {
+                            "type": "boolean"
+                          },
+                          "timeSource": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "evv",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "clinician",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "evvBracketPresent": {
+                            "type": "boolean"
                           },
                           "selections": {
                             "anyOf": [

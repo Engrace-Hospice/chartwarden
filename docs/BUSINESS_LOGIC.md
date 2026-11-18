@@ -458,8 +458,8 @@ module.
   eligibility-check freshness is tenant-disableable — the rest are regulatory floor.
 - **CMS payment math** (pure, penny-exact, integer cents): `calculatePerDiemClass` walks each calendar
   day against level-of-care periods, buckets RHC days 1–7 vs 8+, applies wage-index-adjusted
-  per-diems. `calculateSia` computes the Service Intensity Add-on (qualifying RN/MSW visits in
-  the last 7 days of life, capped 240 min/day). `applySequestrationPolicy` applies the CMS
+  per-diems. `calculateSia` computes the Service Intensity Add-on (in-person RN/MSW visits on RHC days in
+  the last 7 days of life, in 15-minute units capped at 16 units/day, paid at the CHC hourly rate / 4). `applySequestrationPolicy` applies the CMS
   sequestration reduction so net+reduction always sums exactly to gross.
 - **Filing guards**: idempotency-key required; optimistic-concurrency `If-Match` on
   edit/submit/replace/void; step-up re-auth (re-verified server-side) for submit/replace/void; a

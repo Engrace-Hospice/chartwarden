@@ -18,10 +18,16 @@
 // adapters have no ambient request context to read.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
-import type { EncounterBillability, SignedEncounterDigest } from "@chartwarden/types";
+import type {
+  EncounterBillability,
+  EncounterTimeSource,
+  EncounterVisitModality,
+  SignedEncounterDigest,
+} from "@chartwarden/types";
 import { and, asc, between, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { evvStateOrMissing } from "../evv-at-sign";
 import { COSIGN_REQUIRED_DISCIPLINES } from "../lifecycle/index";
+import { deliveryViewFields } from "../visit-delivery";
 import { type EncounterStoreOpsDeps, createEncounterStoreOps } from "./drizzle-store-ops";
 import { deriveBillability } from "./readers";
 import type { EncounterReaderStore } from "./store";
@@ -34,6 +40,18 @@ const MS_PER_MINUTE = 60_000;
 function bracketMinutes(startedAt: Date | null, endedAt: Date | null): number | null {
   if (!startedAt || !endedAt) return null;
   const minutes = Math.round((endedAt.getTime() - startedAt.getTime()) / MS_PER_MINUTE);
+  return minutes > 0 ? minutes : null;
+}
+
+/**
+ * The DOCUMENTED minutes of a visit bracket, UNROUNDED: the billable-encounter reader hands these to the
+ * visit-line / SIA unit math, which owns the (tie-break aware) rounding — pre-rounding here would decide
+ * 7.5 vs 8 before that policy could. `null` (UNRESOLVED, never zero) when either end is missing or the span
+ * is not positive. A separate helper from {@link bracketMinutes}, which other readers still use rounded.
+ */
+function documentedMinutes(startedAt: Date | null, endedAt: Date | null): number | null {
+  if (!startedAt || !endedAt) return null;
+  const minutes = (endedAt.getTime() - startedAt.getTime()) / MS_PER_MINUTE;
   return minutes > 0 ? minutes : null;
 }
 
@@ -316,8 +334,15 @@ export async function billableEncountersInRangeForOrg(
       /** What M23 codes the hospice visit line from (CMS Pub. 100-04 ch. 11 §30.3). */
       readonly discipline: string;
       readonly encounterType: string;
-      /** The start-to-end bracket in minutes; `null` = unresolved (a gap is never fabricated into a duration). */
+      /** The documented start-to-end bracket in FRACTIONAL minutes (not rounded); `null` = unresolved (a gap is
+       *  never fabricated into a duration). */
       readonly durationMinutes: number | null;
+      /** How the visit was delivered; `null` = unknown (never read as in person). */
+      readonly visitModality: EncounterVisitModality | null;
+      /** True only once the clinician explicitly confirmed `visitModality` (a seeded value alone is false). */
+      readonly visitModalityConfirmed: boolean;
+      /** Who supplied the documented bracket: the M18 EVV bracket or the signing clinician; `null` = none. */
+      readonly timeSource: EncounterTimeSource | null;
     }
   >
 > {
@@ -338,6 +363,9 @@ export async function billableEncountersInRangeForOrg(
           serviceDate: E.serviceDate,
           startedAt: E.startedAt,
           endedAt: E.endedAt,
+          visitModality: E.visitModality,
+          visitModalityConfirmedAt: E.visitModalityConfirmedAt,
+          timeSource: E.timeSource,
         })
         .from(E)
         .where(
@@ -369,7 +397,14 @@ export async function billableEncountersInRangeForOrg(
           serviceDate: r.serviceDate,
           discipline: r.discipline,
           encounterType: r.encounterType,
-          durationMinutes: bracketMinutes(r.startedAt, r.endedAt),
+          durationMinutes: documentedMinutes(r.startedAt, r.endedAt),
+          visitModality: r.visitModality,
+          visitModalityConfirmed: r.visitModalityConfirmedAt !== null,
+          timeSource: deliveryViewFields({
+            visitModality: r.visitModality,
+            visitModalityConfirmedAt: r.visitModalityConfirmedAt,
+            timeSource: r.timeSource,
+          }).timeSource,
         };
       });
     },

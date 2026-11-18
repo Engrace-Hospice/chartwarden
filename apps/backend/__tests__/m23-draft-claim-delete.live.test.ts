@@ -20,6 +20,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { M23WriteActor } from "../src/modules/23-billing-medicare/routes/actor";
+import { buildDrizzleM23ReadService } from "../src/modules/23-billing-medicare/routes/read-service-drizzle";
 import { buildDrizzleM23WriteService } from "../src/modules/23-billing-medicare/routes/write-service-drizzle";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
@@ -74,7 +75,9 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
         org,
         PE,
         ANY,
-        state,
+        // The claim is born DRAFT and moved to `state` once its SIA row exists, the way a real claim gets there:
+        // trg_sia_calculation_insert_guard (1512) refuses a SIA row on a claim that is no longer DRAFT/VALIDATING/READY.
+        "DRAFT",
         `CCN-${claimId}`,
         org === ORG_A ? MEMBERSHIP_A : MEMBERSHIP_B,
         runId,
@@ -121,6 +124,9 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
        VALUES ($1,$2,NULL,'DRAFT','user',$3)`,
       [org, claimId, runId],
     );
+    if (state !== "DRAFT") {
+      await admin.query("UPDATE claim SET state=$2 WHERE id=$1", [claimId, state]);
+    }
     return { claimId, runId, resultId };
   }
 
@@ -962,6 +968,398 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
       await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_A));
       await svc().deleteDraftClaim(actorA, claimId);
       expect(await count("claim", "id=$1", [claimId])).toBe(0);
+    });
+  });
+
+  describe("SIA revisions and the expected-payment projection (migrations 1511 / 1512)", () => {
+    const POLICY = {
+      unitTieBreak: "up",
+      videoEligible: false,
+      visitDating: "service_date",
+      wageBasis: "chc_labor_share",
+    };
+    const ENCOUNTER_COUNTED = "e0000000-0000-4000-8000-0000000000e1";
+    const ENCOUNTER_EXCLUDED = "e0000000-0000-4000-8000-0000000000e2";
+    const snapshot = (
+      claimId: string,
+      over: Partial<repositories.SiaSnapshotInput> = {},
+    ): repositories.SiaSnapshotInput => ({
+      organizationId: ORG_A,
+      claimId,
+      patientDeceasedDate: "2026-09-30",
+      windowStart: "2026-09-24",
+      qualifyingVisits: [
+        {
+          encounterId: ENCOUNTER_COUNTED,
+          visitDate: "2026-09-28",
+          discipline: "rn",
+          durationMinutes: 75,
+          units: 5,
+          paidUnits: 5,
+        },
+      ],
+      totalQualifyingMinutes: 75,
+      siaAddOnCents: 6_000,
+      paidUnits: 5,
+      eligibleUnits: 6,
+      truncatedUnits: 1,
+      chcHourlyRateCents: 4_800,
+      wageIndexFiscalYear: 2026,
+      wageIndexFactor: "1.0412",
+      policy: POLICY,
+      visitOutcomes: [
+        {
+          encounterId: ENCOUNTER_COUNTED,
+          serviceDate: "2026-09-28",
+          discipline: "rn",
+          durationMinutes: 75,
+          units: 5,
+          paidUnits: 5,
+          counted: true,
+          excluded: null,
+        },
+        {
+          encounterId: ENCOUNTER_EXCLUDED,
+          serviceDate: "2026-09-29",
+          discipline: "msw",
+          durationMinutes: null,
+          units: null,
+          paidUnits: 0,
+          counted: false,
+          excluded: "no_documented_time",
+        },
+      ],
+      priorClaimAdvisory: null,
+      ...over,
+    });
+    const inSia = <T>(
+      org: string,
+      user: string,
+      fn: (r: repositories.SiaCalculationRepository) => Promise<T>,
+    ) =>
+      withOrgContext(handle.db, { organizationId: org, userId: user }, (tx) =>
+        fn(new repositories.SiaCalculationRepository(tx as never)),
+      );
+    const inClaims = <T>(
+      org: string,
+      user: string,
+      fn: (r: repositories.ClaimRepository) => Promise<T>,
+    ) =>
+      withOrgContext(handle.db, { organizationId: org, userId: user }, (tx) =>
+        fn(new repositories.ClaimRepository(tx as never)),
+      );
+
+    it("a legacy row defaults to basis minutes_v1 / revision 1 and appendSiaRevision adds revision 2, then 3", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      const legacy = await inSia(ORG_A, USER_A, (r) => r.findLatestSiaByClaim(claimId));
+      expect(legacy).toMatchObject({
+        basis: "minutes_v1",
+        revision: 1,
+        paidUnits: null,
+        visitOutcomes: null,
+      });
+      const second = await inSia(ORG_A, USER_A, (r) => r.appendSiaRevision(snapshot(claimId)));
+      expect(second).toMatchObject({
+        basis: "units_v2",
+        revision: 2,
+        paidUnits: 5,
+        chcHourlyRateCents: 4_800,
+      });
+      const third = await inSia(ORG_A, USER_A, (r) =>
+        r.appendSiaRevision(
+          snapshot(claimId, {
+            paidUnits: 4,
+            eligibleUnits: 4,
+            truncatedUnits: 0,
+            siaAddOnCents: 4_800,
+          }),
+        ),
+      );
+      expect(third).toMatchObject({ revision: 3, paidUnits: 4 });
+      expect(await inSia(ORG_A, USER_A, (r) => r.findLatestSiaByClaim(claimId))).toMatchObject({
+        revision: 3,
+      });
+      expect(await count("sia_calculation", "claim_id=$1", [claimId])).toBe(3);
+    });
+
+    it("appendSiaRevision starts at revision 1 for a claim that has no SIA row", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      await admin.query("DELETE FROM sia_calculation WHERE claim_id=$1", [claimId]);
+      expect(await inSia(ORG_A, USER_A, (r) => r.findLatestSiaByClaim(claimId))).toBeNull();
+      const first = await inSia(ORG_A, USER_A, (r) => r.appendSiaRevision(snapshot(claimId)));
+      expect(first).toMatchObject({ basis: "units_v2", revision: 1 });
+    });
+
+    it("keeps one row per (claim, revision) and leaves the append-only rules unchanged", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      // A second revision 1 is refused by the insert guard first; the UNIQUE index stays behind it as the backstop for a race
+      // the claim row lock did not serialise.
+      await expect(
+        admin.query(
+          `INSERT INTO sia_calculation (organization_id, claim_id, patient_deceased_date, window_start,
+             qualifying_visits, total_qualifying_minutes, sia_add_on_cents, revision)
+           VALUES ($1,$2,'2026-09-30','2026-09-24','[]',0,0,1)`,
+          [ORG_A, claimId],
+        ),
+      ).rejects.toThrow(/M23_SIA_REVISION_OUT_OF_ORDER/);
+      const backstop = await admin.query(
+        "SELECT 1 FROM pg_constraint WHERE conname='sia_calculation_claim_revision_uq' AND contype='u'",
+      );
+      expect(backstop.rowCount).toBe(1);
+      await asApp(ORG_A, (c) =>
+        expect(
+          c.query("UPDATE sia_calculation SET revision=9 WHERE claim_id=$1", [claimId]),
+        ).rejects.toThrow(/M23_TABLE_APPEND_ONLY/),
+      );
+    });
+
+    it("rejects an unknown basis, a revision below 1 and a units_v2 row without its units snapshot", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      const insert = (cols: string, vals: string) =>
+        admin.query(
+          `INSERT INTO sia_calculation (organization_id, claim_id, patient_deceased_date, window_start,
+             qualifying_visits, total_qualifying_minutes, sia_add_on_cents, ${cols})
+           VALUES ($1,$2,'2026-09-30','2026-09-24','[]',0,0,${vals})`,
+          [ORG_A, claimId],
+        );
+      // A complete units snapshot, so only the basis CHECK can fail (Postgres reports the first failing CHECK by name).
+      await expect(
+        insert(
+          "revision, basis, paid_units, eligible_units, truncated_units, chc_hourly_rate_cents, policy, visit_outcomes",
+          "2, 'bogus', 1, 1, 0, 100, '{}'::jsonb, '[]'::jsonb",
+        ),
+      ).rejects.toThrow(/sia_calculation_basis_chk/);
+      // Revision 0 is refused by the insert guard before the CHECK is evaluated; the CHECK stays as defence in depth.
+      await expect(insert("revision", "0")).rejects.toThrow(/M23_SIA_REVISION_OUT_OF_ORDER/);
+      const revisionCheck = await admin.query(
+        "SELECT 1 FROM pg_constraint WHERE conname='sia_calculation_revision_chk' AND contype='c'",
+      );
+      expect(revisionCheck.rowCount).toBe(1);
+      await expect(insert("revision, basis", "2, 'units_v2'")).rejects.toThrow(
+        /sia_calculation_units_v2_shape_chk/,
+      );
+    });
+
+    /** Drizzle wraps a database error as "Failed query: ..." and keeps the Postgres message on `cause`. */
+    const refusalOf = async (attempt: Promise<unknown>): Promise<string> => {
+      try {
+        await attempt;
+      } catch (e) {
+        const err = e as { message?: string; cause?: { message?: string } };
+        return `${err.message ?? ""} ${err.cause?.message ?? ""}`;
+      }
+      return "ACCEPTED";
+    };
+
+    it("adds a revision only while the claim is DRAFT, VALIDATING or READY, never after it was submitted or paid", async () => {
+      for (const state of ["VALIDATING", "READY"]) {
+        const { claimId } = await seedClaim(ORG_A, state);
+        const next = await inSia(ORG_A, USER_A, (r) => r.appendSiaRevision(snapshot(claimId)));
+        expect(next.revision).toBe(2);
+      }
+      for (const state of ["SUBMITTED", "PAID"]) {
+        const { claimId } = await seedClaim(ORG_A, state);
+        expect(
+          await refusalOf(inSia(ORG_A, USER_A, (r) => r.appendSiaRevision(snapshot(claimId)))),
+        ).toMatch(/M23_SIA_CLAIM_NOT_MUTABLE/);
+        // ...nor does a superuser's raw INSERT get a late revision past the guard: the add-on a claim was billed with stays.
+        await expect(
+          admin.query(
+            `INSERT INTO sia_calculation (organization_id, claim_id, patient_deceased_date, window_start,
+               qualifying_visits, total_qualifying_minutes, sia_add_on_cents, revision)
+             VALUES ($1,$2,'2026-09-30','2026-09-24','[]',0,0,2)`,
+            [ORG_A, claimId],
+          ),
+        ).rejects.toThrow(/M23_SIA_CLAIM_NOT_MUTABLE/);
+        expect(await count("sia_calculation", "claim_id=$1", [claimId])).toBe(1);
+      }
+    });
+
+    it("takes the revision lock on a claim that can still be revised, and answers an already-frozen or vanished claim with a typed error", async () => {
+      for (const state of ["DRAFT", "VALIDATING", "READY"]) {
+        const { claimId } = await seedClaim(ORG_A, state);
+        await inSia(ORG_A, USER_A, (r) => r.lockClaimForRevision(claimId)); // resolves
+      }
+      for (const state of ["SUBMITTED", "PAID"]) {
+        const { claimId } = await seedClaim(ORG_A, state);
+        await expect(
+          inSia(ORG_A, USER_A, (r) => r.lockClaimForRevision(claimId)),
+        ).rejects.toMatchObject({ code: "CLAIM_SIA_IMMUTABLE", statusCode: 409 });
+      }
+      // A claim that is absent under the lock (removed by the destruction role after the caller read it, or not visible to the
+      // tenant): a 404, not the guard trigger's raw check_violation (it runs before any FK check) that would surface as a 500.
+      await expect(
+        inSia(ORG_A, USER_A, (r) => r.lockClaimForRevision("00000000-0000-4000-8000-000000000999")),
+      ).rejects.toMatchObject({ code: "NOT_FOUND", statusCode: 404 });
+    });
+
+    it("reads the claim's state UNDER the lock: a submit that commits while the lock waits is seen, and answered with a 409", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      // A second, independent connection polls for the waiter. pg_stat_activity is a per-transaction snapshot, so it cannot be
+      // read from `admin` while `admin` holds the open transaction below.
+      const watcher = new Client({ connectionString: DB_URL });
+      await watcher.connect();
+      try {
+        await admin.query("BEGIN");
+        await admin.query("UPDATE claim SET state = 'SUBMITTED' WHERE id = $1", [claimId]);
+        // Not awaited: it blocks on the row lock `admin` holds. If the state were read before the lock (or `FOR NO KEY UPDATE`
+        // were dropped), it would not wait, would see DRAFT, and the wait below would time out.
+        const locking = inSia(ORG_A, USER_A, (r) => r.lockClaimForRevision(claimId));
+        const settled = locking.then(
+          () => "resolved" as const,
+          (e: unknown) => e,
+        );
+        const deadline = Date.now() + 15_000;
+        for (;;) {
+          const { rows } = await watcher.query<{ n: number }>(
+            `SELECT count(*)::int AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND pid <> pg_backend_pid()
+                AND wait_event_type = 'Lock' AND query ILIKE '%for no key update%'`,
+          );
+          if ((rows[0]?.n ?? 0) >= 1) break;
+          if (Date.now() > deadline) throw new Error("the revision lock never waited on the claim row");
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        await admin.query("COMMIT");
+        expect(await settled).toMatchObject({ code: "CLAIM_SIA_IMMUTABLE", statusCode: 409 });
+      } finally {
+        try {
+          await admin.query("ROLLBACK"); // a no-op (a warning) after the COMMIT; frees the connection if the test failed earlier
+        } finally {
+          await watcher.end();
+        }
+      }
+    });
+
+    it("accepts only the next revision: no gap, no skipped number, no caller-chosen revision", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      const raw = (revision: number) =>
+        admin.query(
+          `INSERT INTO sia_calculation (organization_id, claim_id, patient_deceased_date, window_start,
+             qualifying_visits, total_qualifying_minutes, sia_add_on_cents, revision)
+           VALUES ($1,$2,'2026-09-30','2026-09-24','[]',0,0,$3)`,
+          [ORG_A, claimId, revision],
+        );
+      expect(await refusalOf(raw(5))).toMatch(/M23_SIA_REVISION_OUT_OF_ORDER/);
+      expect((await raw(2)).rowCount).toBe(1);
+      expect(await refusalOf(raw(2))).toMatch(/M23_SIA_REVISION_OUT_OF_ORDER/);
+      expect(await count("sia_calculation", "claim_id=$1", [claimId])).toBe(2);
+    });
+
+    it("deleting a DRAFT claim removes every SIA revision", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      await inSia(ORG_A, USER_A, (r) => r.appendSiaRevision(snapshot(claimId)));
+      await inSia(ORG_A, USER_A, (r) =>
+        r.appendSiaRevision(
+          snapshot(claimId, { paidUnits: 3, eligibleUnits: 3, truncatedUnits: 0 }),
+        ),
+      );
+      expect(await count("sia_calculation", "claim_id=$1", [claimId])).toBe(3);
+      await svc().deleteDraftClaim(actorA, claimId);
+      expect(await count("sia_calculation", "claim_id=$1", [claimId])).toBe(0);
+    });
+
+    it("keeps the per-visit outcomes out of the write-audit trail", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      const row = await inSia(ORG_A, USER_A, (r) => r.appendSiaRevision(snapshot(claimId)));
+      const { rows } = await admin.query(
+        `SELECT after::text AS a FROM audit_event WHERE resource_kind='sia_calculation' AND resource_id=$1 AND event_type='sia_calculation.insert'`,
+        [row.id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].a).toContain("<changed>");
+      expect(rows[0].a).not.toContain(ENCOUNTER_COUNTED);
+      expect(rows[0].a).not.toContain("no_documented_time");
+    });
+
+    it("is tenant-isolated: org B can neither read org A's SIA nor write a row for org A", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      expect(await inSia(ORG_B, USER_B, (r) => r.findLatestSiaByClaim(claimId))).toBeNull();
+      await expect(
+        inSia(ORG_B, USER_B, (r) => r.appendSiaRevision(snapshot(claimId))),
+      ).rejects.toThrow();
+      expect(await count("sia_calculation", "claim_id=$1", [claimId])).toBe(1);
+    });
+
+    it("the claim detail publishes the newest revision through siaViewOf (and a legacy row as minutes_v1)", async () => {
+      const reads = buildDrizzleM23ReadService(handle.db);
+      const readActor = { organizationId: ORG_A, userId: USER_A, roles: ["org_admin"] };
+      const legacy = await seedClaim(ORG_A, "DRAFT");
+      expect((await reads.getClaim(readActor, legacy.claimId)).pricing.sia).toMatchObject({
+        basis: "minutes_v1",
+        revision: 1,
+        visits: [],
+        paidUnits: null,
+        amountCents: 500,
+      });
+      await inSia(ORG_A, USER_A, (r) => r.appendSiaRevision(snapshot(legacy.claimId)));
+      const sia = (await reads.getClaim(readActor, legacy.claimId)).pricing.sia;
+      expect(sia).toMatchObject({
+        basis: "units_v2",
+        revision: 2,
+        windowStart: "2026-09-24",
+        windowEnd: "2026-09-30",
+        paidUnits: 5,
+        eligibleUnits: 6,
+        truncatedUnits: 1,
+        chcHourlyRateCents: 4_800,
+        amountCents: 6_000,
+      });
+      expect(sia?.visits.map((v) => [v.id, v.counted, v.reason])).toEqual([
+        [ENCOUNTER_COUNTED, true, null],
+        [ENCOUNTER_EXCLUDED, false, "no_documented_time"],
+      ]);
+    });
+
+    describe("ClaimRepository.refreshExpectedPayment", () => {
+      const expected = async (claimId: string) =>
+        (
+          await admin.query(
+            "SELECT total_expected_payment_cents AS cents, version FROM claim WHERE id=$1",
+            [claimId],
+          )
+        ).rows[0] as { cents: string | number; version: number };
+
+      it.each(["DRAFT", "VALIDATING", "READY"])(
+        "updates a %s claim, no-ops when unchanged, and never bumps the version",
+        async (state) => {
+          const { claimId } = await seedClaim(ORG_A, state);
+          const before = await expected(claimId);
+          expect(
+            await inClaims(ORG_A, USER_A, (r) => r.refreshExpectedPayment(claimId, 12_345)),
+          ).toBe(true);
+          expect(
+            await inClaims(ORG_A, USER_A, (r) => r.refreshExpectedPayment(claimId, 12_345)),
+          ).toBe(false);
+          const after = await expected(claimId);
+          expect(Number(after.cents)).toBe(12_345);
+          expect(after.version).toBe(before.version);
+        },
+      );
+
+      it("every state from SUBMITTED onward refuses the change", async () => {
+        for (const state of ["SUBMITTED", "ACK_ACCEPTED", "PAID", "VOIDED"]) {
+          const { claimId } = await seedClaim(ORG_A, state);
+          await expect(
+            inClaims(ORG_A, USER_A, (r) => r.refreshExpectedPayment(claimId, 99)),
+          ).rejects.toMatchObject({ code: "CLAIM_EXPECTED_PAYMENT_IMMUTABLE" });
+          expect(Number((await expected(claimId)).cents)).toBe(0);
+        }
+      });
+
+      it("is false for an unknown claim and for another tenant's claim, and refuses a negative amount", async () => {
+        const { claimId } = await seedClaim(ORG_A, "DRAFT");
+        expect(await inClaims(ORG_A, USER_A, (r) => r.refreshExpectedPayment(ANY, 100))).toBe(
+          false,
+        );
+        expect(await inClaims(ORG_B, USER_B, (r) => r.refreshExpectedPayment(claimId, 100))).toBe(
+          false,
+        );
+        expect(Number((await expected(claimId)).cents)).toBe(0);
+        await expect(
+          inClaims(ORG_A, USER_A, (r) => r.refreshExpectedPayment(claimId, -1)),
+        ).rejects.toThrow(RangeError);
+      });
     });
   });
 });

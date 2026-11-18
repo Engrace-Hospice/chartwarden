@@ -41,8 +41,8 @@ export interface AssembleValidationContextInput {
   readonly claim: ClaimFactsInput;
   readonly lines: readonly repositories.ClaimLineRecord[];
   readonly perDiemClass: ReturnType<typeof calculatePerDiemClass>;
-  readonly siaQualifyingVisitCount: number;
-  readonly siaCents: Cents;
+  /** The payable SIA the shared units engine computed (`siaSnapshotOf`); `null` when none is payable. */
+  readonly sia: ValidationContext["sia"];
   /** `null` when no usable HETS determination exists (or the eligibility seam is unbound) — the rule skips. */
   readonly eligibility: EligibilitySnapshot | null;
   /** `null` when the admission has no NOE row yet. */
@@ -154,15 +154,7 @@ export function assembleValidationContext(
         rhcDayBucket: s.rhcDayBucket,
       })),
     },
-    sia:
-      input.siaQualifyingVisitCount > 0
-        ? {
-            present: true,
-            qualifyingVisitCount: input.siaQualifyingVisitCount,
-            amountCents: input.siaCents,
-            doubleCounted: false,
-          }
-        : null,
+    sia: input.sia,
     capProjection: capProjectionCtx, // M26 §11.A live projection (or null → cap rules warn-skip, D8)
     eligibility: input.eligibility,
     noe: input.noe,

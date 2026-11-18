@@ -15,7 +15,7 @@ import {
   useApiClient,
   useIdempotencyKeeper,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
@@ -24,6 +24,16 @@ import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal
 import type { AddendumRow } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
+import {
+  type DeliveryDraft,
+  asVisitModality,
+  deliveryBody,
+  deliveryContextOf,
+  deliveryProblem,
+  initialDelivery,
+  unconfirmedSeed,
+} from "./visit-delivery";
+import { VisitDeliveryFields } from "./visit-delivery-fields";
 import { authFailureRedirect } from "./write-workflow";
 
 type CeremonyMode = "sign" | "acknowledge" | "cosign-sign" | "supervisor-release" | null;
@@ -44,6 +54,12 @@ interface Encounter {
   isF2f: boolean;
   signedAt: string | null;
   cosignedAt: string | null;
+  /** How the visit was delivered, as seeded or confirmed; null = unknown. */
+  visitModality?: string | null;
+  /** True only once a clinician confirmed `visitModality`; an unconfirmed one is the scheduler's guess. */
+  visitModalityConfirmed?: boolean;
+  /** An M18 EVV bracket is on file, so the sign ceremony takes no typed times. */
+  evvBracketPresent?: boolean;
   selections: Record<string, unknown> | null;
   finalDocumentation: string | null;
   vitals: Record<string, unknown> | null;
@@ -281,11 +297,27 @@ export function EncounterRead(): JSX.Element {
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The sign ceremony's commit button is disabled while the request is in flight, so a failure would otherwise
+  // leave keyboard focus on nothing: move it to the error, which is also announced.
+  const signErrorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (actionError !== null) signErrorRef.current?.focus();
+  }, [actionError]);
+  // "The end time cannot be in the future" is judged against the clock at render time: while the sign dialog sits open,
+  // re-render now and then so a time typed a minute ahead clears by itself instead of blocking until the next keystroke.
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    if (ceremony !== "sign") return;
+    const timer = window.setInterval(() => setClockTick((n) => n + 1), 15_000);
+    return () => window.clearInterval(timer);
+  }, [ceremony]);
   const [actionRemediation, setActionRemediation] = useState<"carePlan" | "evv" | null>(null);
   const [sectionErrors, setSectionErrors] = useState<Partial<Record<EncounterSection, string>>>({});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [reason, setReason] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  // The sign ceremony's delivery step (how the visit was delivered + optional documented times).
+  const [delivery, setDelivery] = useState<DeliveryDraft>(() => initialDelivery(null));
 
   const [noteText, setNoteText] = useState("");
 
@@ -386,6 +418,9 @@ export function EncounterRead(): JSX.Element {
       isF2f: data.isF2f,
       signedAt: data.signedAt ?? null,
       cosignedAt: data.cosignedAt ?? null,
+      visitModality: data.visitModality ?? null,
+      visitModalityConfirmed: data.visitModalityConfirmed === true,
+      evvBracketPresent: data.evvBracketPresent === true,
       selections,
       finalDocumentation:
         (
@@ -611,16 +646,21 @@ export function EncounterRead(): JSX.Element {
               : "/api/v1/encounters/{encounterId}/cosignature/supervisor-release";
 
       const body =
-        mode === "sign" || mode === "cosign-sign"
+        mode === "sign"
           ? {
               attestationConfirmed: true as const,
+              ...(encounter ? deliveryBody(delivery, deliveryContextOf(encounter)) : {}),
             }
-          : mode === "supervisor-release"
+          : mode === "cosign-sign"
             ? {
-                reason: reason.trim(),
-                stepUpAuthAt: "", // replaced by the intent's first-attempt time below
+                attestationConfirmed: true as const,
               }
-            : undefined;
+            : mode === "supervisor-release"
+              ? {
+                  reason: reason.trim(),
+                  stepUpAuthAt: "", // replaced by the intent's first-attempt time below
+                }
+              : undefined;
 
       const init = {
         params: {
@@ -667,7 +707,18 @@ export function EncounterRead(): JSX.Element {
             ? { ...sent.res, error: { message: "The action was refused." } }
             : sent.res;
       } else {
-        outcome = (await client.POST(path as never, init as never)) as WriteOutcome;
+        try {
+          outcome = (await client.POST(path as never, init as never)) as WriteOutcome;
+        } catch {
+          // An offline/aborted request rejects rather than resolving to an error envelope: never leave `busy` stuck.
+          // A lost reply may mean the action already landed, so say so: retrying an unchanged form is safe (the same
+          // idempotency key replays), but a changed form is a new intent and the server may answer that it is done.
+          setBusy(false);
+          setActionError(
+            "Could not reach the server. Check your connection and try again; if it keeps failing, reload the page to see whether the action already went through.",
+          );
+          return;
+        }
       }
       const { error: err, response } = outcome;
 
@@ -693,7 +744,25 @@ export function EncounterRead(): JSX.Element {
           return;
         }
 
-        if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED") {
+        if (errCode === "MODALITY_CONFIRMATION_REQUIRED") {
+          setActionError("Choose how this visit was delivered, then sign again.");
+        } else if (errCode === "MODALITY_CONFLICTS_WITH_VISIT_TYPE") {
+          setActionError(
+            "This is a telephonic visit type, so it cannot be recorded as in person or video. Choose Telephonic, then sign again.",
+          );
+        } else if (errCode === "VISIT_TIME_INVALID") {
+          setActionError(
+            errMessage ?? "The visit times could not be accepted. Check them and sign again.",
+          );
+        } else if (errCode === "VISIT_TIME_OVERLAP") {
+          setActionError(
+            "These visit times overlap another visit you documented. Correct the times, or clear them and sign without times.",
+          );
+        } else if (errCode === "EVV_BRACKET_UNAVAILABLE") {
+          setActionError(
+            "The visit's check-in/check-out record could not be reached, so typed times cannot be accepted right now. Try again in a moment, or clear the times and sign without them.",
+          );
+        } else if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED") {
           setActionError("Your step-up expired — try again.");
         } else if (errCode === "STALE_VERSION") {
           setActionError("This encounter changed since you opened it — reload to retry.");
@@ -711,7 +780,18 @@ export function EncounterRead(): JSX.Element {
 
       void load();
     },
-    [encounterId, reason, client, releaseKeeper, navigate, closeCeremony, load, clearFieldError],
+    [
+      encounterId,
+      encounter,
+      delivery,
+      reason,
+      client,
+      releaseKeeper,
+      navigate,
+      closeCeremony,
+      load,
+      clearFieldError,
+    ],
   );
 
   async function runMutation(
@@ -1782,7 +1862,15 @@ export function EncounterRead(): JSX.Element {
                   {canSign ? (
                     <button
                       type="button"
-                      onClick={() => setCeremony("sign")}
+                      onClick={() => {
+                        setDelivery(
+                          initialDelivery(
+                            asVisitModality(e.visitModality),
+                            e.visitModalityConfirmed === true,
+                          ),
+                        );
+                        setCeremony("sign");
+                      }}
                       style={{
                         ...primaryBtn,
                         width: "100%",
@@ -2040,8 +2128,24 @@ export function EncounterRead(): JSX.Element {
 
             <RowField label="Discipline" value={stateLabel(e.discipline)} />
 
+            <VisitDeliveryFields
+              draft={delivery}
+              context={deliveryContextOf(e)}
+              scheduledAs={unconfirmedSeed(
+                asVisitModality(e.visitModality),
+                e.visitModalityConfirmed === true,
+              )}
+              onChange={setDelivery}
+            />
+
             {actionError ? (
-              <p role="alert" aria-live="assertive" style={alertStyle}>
+              <p
+                ref={signErrorRef}
+                tabIndex={-1}
+                role="alert"
+                aria-live="assertive"
+                style={alertStyle}
+              >
                 {actionError}
               </p>
             ) : null}
@@ -2053,6 +2157,9 @@ export function EncounterRead(): JSX.Element {
           role: "This session",
         }}
         commitLabel={busy ? "Signing…" : "Sign & commit"}
+        // `commitBlocked`, not `commitDisabled`: a sign request that never settles (flaky mobile data) must not also
+        // disable Cancel and trap the clinician in the dialog. Blocking only the commit still stops a double submit.
+        commitBlocked={busy || deliveryProblem(delivery, deliveryContextOf(e)) !== null}
         onCommit={() => void runWrite("sign")}
         onCancel={closeCeremony}
       />
@@ -2093,6 +2200,7 @@ export function EncounterRead(): JSX.Element {
           role: "This session",
         }}
         commitLabel={busy ? "Acknowledging…" : "Acknowledge"}
+        commitBlocked={busy}
         onCommit={() => void runWrite("acknowledge")}
         onCancel={closeCeremony}
       />
@@ -2139,6 +2247,7 @@ export function EncounterRead(): JSX.Element {
           role: "This session",
         }}
         commitLabel={busy ? "Signing…" : "Sign & commit"}
+        commitBlocked={busy}
         onCommit={() => void runWrite("cosign-sign")}
         onCancel={closeCeremony}
       />
@@ -2217,6 +2326,7 @@ export function EncounterRead(): JSX.Element {
           role: "This session",
         }}
         commitLabel={busy ? "Releasing…" : "Release"}
+        commitBlocked={busy}
         onCommit={() => void runWrite("supervisor-release")}
         onCancel={closeCeremony}
       />

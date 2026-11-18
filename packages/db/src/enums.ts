@@ -1286,6 +1286,14 @@ export const encounterDiscipline = pgEnum("encounter_discipline", [
   "slp",
 ]);
 
+/** `encounter_visit_modality` — how the visit was delivered (migration 1510). Medicare hospice SIA and the
+ *  visit lines count in-person visits only. NULL on the row = not yet confirmed, never "in_person". */
+export const encounterVisitModality = pgEnum("encounter_visit_modality", [
+  "in_person",
+  "telephonic",
+  "video",
+]);
+
 /** `encounter_status` — the §2.3 encounter lifecycle state machine. */
 export const encounterStatus = pgEnum("encounter_status", [
   "draft",

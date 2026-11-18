@@ -318,7 +318,10 @@ describe.skipIf(!DB_URL)("M8 post-discharge authoring guard — LIVE Postgres (S
         a.admissionId,
         "2026-01-15T20:00:00Z",
       ]);
-      const signed = await svc.sign(ORG_A, id, actor(), { at: LATE_DATE as never });
+      const signed = await svc.sign(ORG_A, id, actor(), {
+        at: LATE_DATE as never,
+        visitModality: "in_person",
+      });
       expect(signed.status).toBe("signed");
     });
 
@@ -328,7 +331,9 @@ describe.skipIf(!DB_URL)("M8 post-discharge authoring guard — LIVE Postgres (S
         a.admissionId,
         "2026-01-10T20:00:00Z",
       ]);
-      await expect(svc.sign(ORG_A, id, actor(), { at: LATE_DATE as never })).rejects.toMatchObject({
+      await expect(
+        svc.sign(ORG_A, id, actor(), { at: LATE_DATE as never, visitModality: "in_person" }),
+      ).rejects.toMatchObject({
         statusCode: 403,
       });
       const { rows } = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);

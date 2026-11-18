@@ -42,6 +42,8 @@ import { ClaimStayEndPanels } from "./claim-stay-end-panels";
 import { DdeFileAction, claimDdeOptions } from "./dde-file-action";
 import type { ClaimAttention } from "./discharge-attention";
 import { RhcDayCount } from "./rhc-day-count";
+import { SiaCard } from "./sia-card";
+import type { SiaPricing } from "./sia-card-model";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 const REPLACEABLE: ReadonlySet<string> = new Set(["ack_accepted", "ack_partial", "paid"]);
@@ -56,13 +58,6 @@ interface PerDiemClassPricing {
   rhcDays1to60?: number;
   rhcDays61Plus?: number;
   rhcCarryOver?: RhcCarryOver | null;
-}
-
-interface SiaPricing {
-  windowStart: string;
-  totalQualifyingMinutes: number;
-  siaAddOnCents: number;
-  calculatedAt: string;
 }
 
 interface ValidationRunSummary {
@@ -841,20 +836,7 @@ function PricingCards({ claim }: { claim: ClaimDetail }): JSX.Element {
           </>
         )}
       </section>
-      <section style={{ ...cardStyle, minWidth: "16rem", flex: "1 1 16rem" }}>
-        <h3 style={cardTitleStyle}>Service Intensity Add-on (SIA)</h3>
-        {!sia ? (
-          <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-            No SIA add-on.
-          </span>
-        ) : (
-          <>
-            <Field label="Window start" value={sia.windowStart} />
-            <Field label="Qualifying minutes" value={String(sia.totalQualifyingMinutes)} />
-            <Field label="SIA add-on" value={dollars(sia.siaAddOnCents)} />
-          </>
-        )}
-      </section>
+      <SiaCard sia={sia} patientId={claim.patientId} />
       {perDiemClass &&
       perDiemClass.rhcDays1to60 !== undefined &&
       perDiemClass.rhcDays61Plus !== undefined ? (

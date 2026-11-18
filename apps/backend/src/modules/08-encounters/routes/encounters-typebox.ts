@@ -1,5 +1,9 @@
 import { pageQuery } from "@chartwarden/shared/route-kit";
-import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
+import {
+  CHART_PROMOTION_REJECT_REASONS,
+  ENCOUNTER_VISIT_MODALITIES,
+  ValidationError,
+} from "@chartwarden/types";
 // apps/backend/src/modules/08-encounters/routes/encounters-typebox.ts — M8-T09 TypeBox route schemas
 // (§4.2). Named `encounters-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
 // mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
@@ -53,6 +57,10 @@ const ENCOUNTER_DISCIPLINE = [
 ] as const;
 
 const Text = (min = 1, max = 4000) => Type.String({ minLength: min, maxLength: max });
+
+/** The longest RFC 3339 date-time a clinician-entered visit time can be (`2026-05-05T10:00:00.123456789+05:30`
+ *  is 35 characters); anything longer is not a time, so it is refused before parsing. */
+const VISIT_INSTANT_MAX_LENGTH = 40;
 
 // ── Path params (slice ids are uuid-shaped; cross-module ids are validated uuids per §4.2) ───────────
 export const EncounterParamsSchema = Type.Object({
@@ -202,10 +210,37 @@ export const ModificationDecisionSchema = Type.Object({
 // server-side from M2's SessionContextResolver seam (packages/auth's requireStepUp preHandler + the
 // route's own re-resolution), never from anything the client asserts. `attestationConfirmed` stays: a
 // real "I attest" client confirmation, independent of how the signature is cryptographically proven.
-export const SignEncounterSchema = Type.Object({
+export const AttestationSchema = Type.Object({
   attestationConfirmed: Type.Literal(true),
   // GAP-013: supplied here only when the note slipped into a later tier between finalize and sign.
   lateEntryReason: Type.Optional(Text(40)),
+});
+
+/** The primary sign: the attestation plus how and when the visit happened (the cosignature and addendum
+ *  signatures take only the {@link AttestationSchema}). */
+export const SignEncounterSchema = Type.Composite([
+  AttestationSchema,
+  Type.Object({
+    // How the visit was delivered. Required (422 MODALITY_CONFIRMATION_REQUIRED) for the Medicare-countable
+    // disciplines unless the row already carries a confirmed modality.
+    visitModality: Type.Optional(lit(ENCOUNTER_VISIT_MODALITIES)),
+    // The clinician's documented visit bracket: the ACTUAL times, both or neither. Ignored when an M18 EVV
+    // bracket exists (EVV always wins); never defaulted or padded server-side. Each needs an explicit UTC
+    // offset (`Z` or `+hh:mm`) and the bracket may not exceed 8 hours (422 VISIT_TIME_INVALID, judged by
+    // `visit-delivery.ts`); the length cap keeps the longest valid RFC 3339 value and nothing more.
+    startedAt: Type.Optional(
+      Type.String({ format: "date-time", maxLength: VISIT_INSTANT_MAX_LENGTH }),
+    ),
+    endedAt: Type.Optional(
+      Type.String({ format: "date-time", maxLength: VISIT_INSTANT_MAX_LENGTH }),
+    ),
+  }),
+]);
+
+/** Confirm how an ALREADY-SIGNED visit was delivered (legacy rows signed before the modality column). */
+export const ConfirmVisitModalitySchema = Type.Object({
+  attestationConfirmed: Type.Literal(true),
+  visitModality: lit(ENCOUNTER_VISIT_MODALITIES),
 });
 
 export const LateEntryOverrideSchema = Type.Object({
@@ -327,6 +362,14 @@ export const EncounterViewResponseSchema = Type.Object({
   isF2f: Type.Boolean(),
   signedAt: Type.Union([Type.String(), Type.Null()]),
   cosignedAt: Type.Union([Type.String(), Type.Null()]),
+  /** How the visit was delivered; null = unknown (never read as in person). */
+  visitModality: Type.Optional(Type.Union([lit(ENCOUNTER_VISIT_MODALITIES), Type.Null()])),
+  /** True once the clinician explicitly confirmed `visitModality` (a seeded value alone is false). */
+  visitModalityConfirmed: Type.Optional(Type.Boolean()),
+  /** Who supplied the documented start/end: the EVV bracket, or the signing clinician; null = none. */
+  timeSource: Type.Optional(Type.Union([lit(["evv", "clinician"] as const), Type.Null()])),
+  /** Single-read only: an M18 EVV bracket is on file for this visit (the sign ceremony then takes no typed times). */
+  evvBracketPresent: Type.Optional(Type.Boolean()),
   selections: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   finalDocumentation: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   vitals: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
@@ -567,6 +610,12 @@ export const SignResponseSchema = Type.Object({
   cosignatureRequestId: Type.Union([Type.String(), Type.Null()]),
 });
 
+/** Legacy-confirm route — the modality now on the (already signed) encounter and when it was confirmed. */
+export const ConfirmVisitModalityResponseSchema = Type.Object({
+  visitModality: lit(ENCOUNTER_VISIT_MODALITIES),
+  visitModalityConfirmedAt: Type.String(),
+});
+
 /** Routes 15/16 — late-entry / administrative override (returns the current encounter status). */
 export const EncounterStatusResponseSchema = Type.Object({ status: lit(ENCOUNTER_STATUS) });
 
@@ -678,6 +727,10 @@ type _ModDecision = Conforms<
   Ret<"recordModificationDecision">
 >;
 type _Sign = Conforms<Static<typeof SignResponseSchema>, Ret<"sign">>;
+type _ConfirmModality = Conforms<
+  Static<typeof ConfirmVisitModalityResponseSchema>,
+  Ret<"confirmVisitModality">
+>;
 type _LateEntry = Conforms<Static<typeof EncounterStatusResponseSchema>, Ret<"lateEntryOverride">>;
 type _AdminOverride = Conforms<
   Static<typeof EncounterStatusResponseSchema>,

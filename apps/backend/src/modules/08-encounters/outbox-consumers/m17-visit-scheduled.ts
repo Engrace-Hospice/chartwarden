@@ -9,6 +9,7 @@ import {
   type LocalDate,
   isValidEncounterDisciplinePair,
 } from "@chartwarden/types";
+import { seedModalityFor } from "../consumers/seed-modality";
 import type {
   VisitPublishedPayload,
   VisitSeedingAction,
@@ -184,6 +185,11 @@ export function buildM8VisitPublishedConsumer(deps: {
               authoredByMembershipId: authorMembershipId,
               serviceDate,
               status: "draft",
+              // An unconfirmed pre-selection: confirmed_at/by stay NULL until the clinician signs.
+              visitModality: seedModalityFor({
+                visitSetting: payload.visitSetting,
+                encounterType,
+              }),
             })
             .onConflictDoNothing()
             .returning({ id: ENCOUNTER.id });
