@@ -1734,7 +1734,9 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
   // record / park of the same notice could commit in between and the notice would be transmitted AND recorded as filed. The worker
   // now takes the row's lock with its read and holds it to its commit: the concurrent write waits, and then loses (412).
   // The processor no longer reaches the upload (dispatch is not authorized, CM-4A), so the transmitting transaction is staged with
-  // the repository calls it made, and the test holds its lock open where the upload used to be.
+  // the repository calls it made, and the test holds its lock open where the upload used to be. This proves the rival's side only:
+  // when CM-4A re-enables dispatch, restore the variant that drives `runNoeSubmit` with a slow `macPortal.upload` (this test as of
+  // cacc0a9bb), so a worker that drops its `findByIdForUpdate` is caught again.
   it.each(["record", "park"] as const)(
     "a transmitting transaction holds the NOE row from its read to its commit: a concurrent %s waits for it and then loses, so the notice is never transmitted AND filed",
     async (concurrent) => {
@@ -1743,19 +1745,24 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       const id = await seedNoe(ORG_A, { state: "DRAFT" });
       const queued = await vendor.service.submitNoe(actorOf(ORG_A), id);
 
-      let reachedUpload!: () => void;
-      const atUpload = new Promise<void>((resolve) => {
-        reachedUpload = resolve;
+      let reachedLockHold!: () => void;
+      const atLockHold = new Promise<void>((resolve) => {
+        reachedLockHold = resolve;
       });
-      let finishUpload!: () => void;
-      const uploadMayFinish = new Promise<void>((resolve) => {
-        finishUpload = resolve;
+      let releaseLock!: () => void;
+      const lockMayRelease = new Promise<void>((resolve) => {
+        releaseLock = resolve;
       });
-      const worker = stageNoeTransmission(ORG_A, id, queued.submissionId as string, async () => {
-        reachedUpload();
-        await uploadMayFinish;
-      });
-      await atUpload; // the transaction has read the notice and holds its row lock mid-"upload"
+      const transmitting = stageNoeTransmission(
+        ORG_A,
+        id,
+        queued.submissionId as string,
+        async () => {
+          reachedLockHold();
+          await lockMayRelease;
+        },
+      );
+      await atLockHold; // the transaction has read the notice and holds its row lock where the upload used to be
 
       let outcome = "pending";
       const rival =
@@ -1771,18 +1778,18 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
         },
       );
       await new Promise((resolve) => setTimeout(resolve, 600));
-      const outcomeWhileUploading = outcome;
-      finishUpload(); // always let the worker end, so a failing assertion cannot strand its connection
-      const workerResult = await worker.then(
+      const outcomeWhileLocked = outcome;
+      releaseLock(); // always let the transaction end, so a failing assertion cannot strand its connection
+      const transmittingResult = await transmitting.then(
         () => "done",
         (error: unknown) => String(error),
       );
       await settledRival;
       expect(
-        outcomeWhileUploading,
-        "the concurrent write must wait behind the worker's row lock",
+        outcomeWhileLocked,
+        "the concurrent write must wait behind the transmitting transaction's row lock",
       ).toBe("pending");
-      expect(workerResult).toBe("done");
+      expect(transmittingResult).toBe("done");
       expect(outcome).toBe("VERSION_CONFLICT");
       expect(await noeRow(id)).toMatchObject({ state: "SUBMITTED", external_filing_status: null });
       expect(await eventRows("m23.noe.submitted", "noeId", id)).toHaveLength(1);

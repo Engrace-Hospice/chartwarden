@@ -84,7 +84,7 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
   async function submittedClaim(
     deps: M23WorkerDeps,
     pe: string,
-  ): Promise<{ claimId: string; ccn: string }> {
+  ): Promise<{ claimId: string; ccn: string; externalPatientControlNumber: string }> {
     seq += 1;
     const patient = `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`;
     const claimId = (
@@ -130,7 +130,7 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
         attemptIndex: 0,
       }),
     );
-    return { claimId, ccn };
+    return { claimId, ccn, externalPatientControlNumber };
   }
 
   const claimState = async (claimId: string): Promise<string> =>
@@ -309,7 +309,8 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
     const a = await submittedClaim(deps, PE);
     const b = await submittedClaim(deps, PE);
     const c = await submittedClaim(deps, PE);
-    for (const x of [a, b, c]) await clearinghouse.control.clearinghouseAccepts(x.ccn, SCOPE);
+    for (const x of [a, b, c])
+      await clearinghouse.control.clearinghouseAccepts(x.externalPatientControlNumber, SCOPE);
 
     await runAckPull999(deps); // 3 events over in-memory pages of 2
     expect(fetched).toEqual([null, "2"]);
@@ -320,7 +321,7 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
     await runAckPull999(deps);
     expect(fetched).toEqual(["3"]); // resumed, not null
     // The 277CA stage has its own cursor, so the 999 cron's progress did not hide anything from it.
-    await clearinghouse.control.payerAccepts(a.ccn, "ICN-A", SCOPE);
+    await clearinghouse.control.payerAccepts(a.externalPatientControlNumber, "ICN-A", SCOPE);
     await runAckPull277ca(deps);
     expect(await claimState(a.claimId)).toBe("ACK_ACCEPTED");
     expect((await storedCursor("ack_277ca"))?.cursor).toBe("4");
@@ -329,9 +330,9 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
   it("a crash while applying a page leaves the cursor behind; the next tick replays it and the claim lands", async () => {
     const { clearinghouse, deps, fetched, state } = setup();
     const a = await submittedClaim(deps, PE);
-    await clearinghouse.control.clearinghouseAccepts(a.ccn, SCOPE);
+    await clearinghouse.control.clearinghouseAccepts(a.externalPatientControlNumber, SCOPE);
     await runAckPull999(deps);
-    await clearinghouse.control.payerAccepts(a.ccn, "ICN-CRASH", SCOPE);
+    await clearinghouse.control.payerAccepts(a.externalPatientControlNumber, "ICN-CRASH", SCOPE);
     state.failPublish = true; // the payer acceptance emits m23.claim.acknowledged
     // the job error names the failing entity and the error class, never the crash's own message
     const crashed = await runAckPull277ca(deps).catch((e: unknown) => e as Error);
@@ -360,7 +361,7 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
   it("a cursor the vendor refuses is reset and the stream re-read from null", async () => {
     const { clearinghouse, deps, fetched } = setup();
     const a = await submittedClaim(deps, PE);
-    await clearinghouse.control.clearinghouseAccepts(a.ccn, SCOPE);
+    await clearinghouse.control.clearinghouseAccepts(a.externalPatientControlNumber, SCOPE);
     await admin.query(
       `INSERT INTO clearinghouse_ack_cursor (organization_id, provider_entity_id, vendor, usage, kind, cursor)
        VALUES ($1,$2,'in_memory','test','ack_999','9999')`,
@@ -376,11 +377,14 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
     const { clearinghouse, deps } = setup([PE, PE2]);
     const one = await submittedClaim(deps, PE);
     const two = await submittedClaim(deps, PE2);
-    await clearinghouse.control.clearinghouseAccepts(one.ccn, SCOPE);
+    await clearinghouse.control.clearinghouseAccepts(one.externalPatientControlNumber, SCOPE);
     await runAckPull999(deps);
     expect((await storedCursor("ack_999", PE))?.cursor).toBe("1");
     expect((await storedCursor("ack_999", PE2))?.cursor).toBe("0");
-    await clearinghouse.control.clearinghouseAccepts(two.ccn, { ...SCOPE, providerEntityId: PE2 });
+    await clearinghouse.control.clearinghouseAccepts(two.externalPatientControlNumber, {
+      ...SCOPE,
+      providerEntityId: PE2,
+    });
     await runAckPull999(deps);
     expect((await storedCursor("ack_999", PE))?.cursor).toBe("1");
     expect((await storedCursor("ack_999", PE2))?.cursor).toBe("1");
