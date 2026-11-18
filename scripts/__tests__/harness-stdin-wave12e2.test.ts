@@ -453,7 +453,8 @@ describe("E2-7: an unreadable sourced text makes any database client in the same
   it("an unreadable sourced text with no client in the text, and a readable one, are allowed", () => {
     for (const cmd of [
       "source <(kubectl completion bash)",
-      "source <(curl -s http://localhost:1/x); echo done",
+      // wave 13, B9: a download run as a script asks whatever else is in the line (it was this row, with curl); any other unreadable text stays allowed
+      "source <(pyenv init -); echo done",
       "source <(echo 'export FOO=1'); psql -h localhost -c 1",
     ]) {
       expect(decide(cmd), cmd).toBe("allow");
