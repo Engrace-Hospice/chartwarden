@@ -70,7 +70,10 @@ function auditContextOf(request: FastifyRequest): AuditContext {
   };
 }
 
-/** Org-wide roles see every site; everyone else sees only the locations their session carries (fail closed when empty). */
+/**
+ * Org-wide roles see every site; everyone else sees only the locations their session carries (fail closed when empty), plus the notes
+ * that have no location (see `closureLocationScope`). The board and the override grant read the same scope.
+ */
 function boardScopeOf(request: FastifyRequest): readonly string[] | null {
   const ctx = request.context;
   return hasOrgWideScope(ctx.roles) ? null : [...ctx.locationIds];
@@ -96,7 +99,17 @@ export function registerClosureRoutes(app: FastifyInstance, deps: ClosureRouteDe
     "/api/v1/encounters/overdue-notes",
     {
       preHandler: [CLOSURE_OVERRIDE],
-      config: { auditRead: { resourceKind: "encounter", list: true } },
+      // The board names a patient on every row, so it is audited as a MULTI-PATIENT read (the 36-messaging queue routes' convention):
+      // one `encounter.viewed` event per distinct patient disclosed, all against the first row's encounter id, for the §164.528
+      // accounting. `list: true` would record one aggregate event and ignore `patientIdsPayload`. An empty board discloses no
+      // patient, so it writes no event.
+      config: {
+        auditRead: {
+          resourceKind: "encounter",
+          resourceIdPayloadPath: "items.0.encounterId",
+          patientIdsPayload: { path: "items", key: "patientId" },
+        },
+      },
     },
     async (request) => {
       const actor = closureActorOf(request);
@@ -118,6 +131,7 @@ export function registerClosureRoutes(app: FastifyInstance, deps: ClosureRouteDe
         subjectMembershipId: body.subjectMembershipId,
         reason: body.reason,
         ...(body.hours === undefined ? {} : { hours: body.hours }),
+        locationIds: boardScopeOf(request),
         audit: auditContextOf(request),
       });
       return reply.code(201).send(granted);
@@ -130,7 +144,7 @@ export function registerClosureRoutes(app: FastifyInstance, deps: ClosureRouteDe
     async (request) => {
       const actor = closureActorOf(request);
       const { overrideId } = parse(ClosureOverrideParamsSchema, request.params);
-      return service.revokeOverride(actor, overrideId);
+      return service.revokeOverride(actor, overrideId, auditContextOf(request));
     },
   );
 
@@ -152,7 +166,7 @@ export function registerClosureRoutes(app: FastifyInstance, deps: ClosureRouteDe
     async (request) => {
       const actor = closureActorOf(request);
       const body = parse(PutClosurePolicySchema, request.body);
-      return service.putPolicy(actor, body);
+      return service.putPolicy(actor, body, auditContextOf(request));
     },
   );
 }

@@ -99,6 +99,15 @@ export const ClosureOverrideResponseSchema = Type.Object({
   revokedAt: NullableInstant,
 });
 
+export const ClosureOverrideRevokedResponseSchema = Type.Object({
+  ...ClosureOverrideResponseSchema.properties,
+  /**
+   * The latest expiry of any OTHER active override for the same clinician and kind, or null. Revoking one grant does not re-block a
+   * clinician another supervisor has also released: when this is set the clinician stays unblocked until that instant.
+   */
+  remainingActiveUntil: NullableInstant,
+});
+
 export const ClosurePolicyResponseSchema = Type.Object({
   obligationKind: Type.Literal("visit_note"),
   mode: Mode,

@@ -2,11 +2,14 @@
 //
 // One row per (organization, obligation kind) in `documentation_obligation_policy`: what an overdue note does (off | warn |
 // block) and how many hours the clinician has. An ABSENT row means warn / 24 hours, applied here in code (main auto-deploys,
-// so the default must never block). Moving a tenant to `block` stamps `enforce_from = now` SERVER-SIDE so notes that are already
-// overdue get a fresh window (`blockFrom = max(clock, enforce_from) + threshold`, see note-clock.ts) instead of locking
-// clinicians out on the switch. Slice 1 accepts only the `visit_note` kind at the API; the other kinds are reserved.
+// so the default must never block). Moving a tenant to `block`, or LOWERING the threshold while it stays in `block`, stamps
+// `enforce_from = now` SERVER-SIDE so notes that are already overdue get a fresh window (`blockFrom = max(clock, enforce_from)
+// + threshold`, see note-clock.ts) instead of locking clinicians out on the switch. Every write also records an explicit
+// `m8.encounter.closure_policy_changed` audit event (previous and new mode / threshold). Slice 1 accepts only the `visit_note`
+// kind at the API; the other kinds are reserved.
 //
 // The service takes the caller's transaction (`withOrgContext` upstream) so RLS scopes every row; it never opens its own.
+import { type AuditContext, audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   ACTIVE_DOCUMENTATION_OBLIGATION_KINDS,
@@ -23,6 +26,9 @@ import { and, eq } from "drizzle-orm";
 
 /** The in-process cache window the request-time gate reads the policy through. */
 export const CLOSURE_POLICY_CACHE_TTL_MS = 5_000;
+
+/** The explicit audit event a policy write records (catalogued in `M8_ACTION_CATALOG`); the row trigger records the row change too. */
+export const CLOSURE_POLICY_AUDIT_EVENT = "m8.encounter.closure_policy_changed";
 
 /** A tenant's effective policy for one obligation kind (the absent-row default already applied). */
 export interface ClosurePolicy {
@@ -56,17 +62,24 @@ export async function readClosurePolicy(
 }
 
 /**
- * The grace instant after a write: `now` when the mode MOVES to block, the original instant while it stays block (so a repeated
- * PUT is idempotent), and `null` once it leaves block. Pure.
+ * The grace instant after a write. Blocking restarts with a fresh window (`now`) whenever it starts or its effective deadline moves
+ * EARLIER: the mode moves to block, or it stays block and the threshold is lowered (a lower threshold would otherwise put every
+ * older open note's `blockFrom` in the past at once, with no grace). It keeps the original instant while the mode stays block and
+ * the threshold is unchanged or raised (a repeated PUT is idempotent; nobody is newly late), and is `null` once the mode leaves
+ * block. The instant never moves earlier. Pure.
  */
 export function nextEnforceFrom(
   previous: ClosurePolicy,
   nextMode: DocumentationObligationMode,
   now: Date,
+  nextThresholdHours: number,
 ): Date | null {
   if (nextMode !== "block") return null;
-  if (previous.mode === "block") return previous.enforceFrom;
-  return now;
+  if (previous.mode !== "block") return now;
+  const deadlineMovedEarlier = nextThresholdHours < previous.thresholdHours;
+  if (!deadlineMovedEarlier) return previous.enforceFrom;
+  const kept = previous.enforceFrom;
+  return kept !== null && kept.getTime() > now.getTime() ? kept : now;
 }
 
 export interface PutClosurePolicyInput {
@@ -76,6 +89,8 @@ export interface PutClosurePolicyInput {
   readonly thresholdHours: number;
   /** The Better Auth USER id (`documentation_obligation_policy.configured_by_user_id` references `user`). */
   readonly actorUserId: string;
+  /** The request's audit context (organization, acting user, correlation id) for the explicit audit event. */
+  readonly audit: AuditContext;
   /** Injected for tests; defaults to the server clock. */
   readonly now?: Date;
 }
@@ -109,7 +124,9 @@ function assertValidPut(input: PutClosurePolicyInput): void {
 
 /**
  * Idempotent upsert of the tenant's policy. Validates before any IO (kind, mode, threshold 1..168), derives `enforce_from`
- * server-side, and returns the effective policy written. The M4 audit trigger records the row change.
+ * server-side, writes the explicit `m8.encounter.closure_policy_changed` audit event on the same transaction (severity warn,
+ * previous and new mode / threshold, no free text) and returns the effective policy written. The M4 audit trigger records the row
+ * change too.
  *
  * ponytail: read-then-upsert, no row lock. Two concurrent PUTs both converge on the same primary key and the later write wins;
  * the only skew is which one stamps `enforce_from`, and both stamp "now". Add SELECT ... FOR UPDATE if policy edits ever race.
@@ -121,7 +138,7 @@ export async function putClosurePolicy(
   assertValidPut(input);
   const now = input.now ?? new Date();
   const previous = await readClosurePolicy(tx, input.organizationId, input.obligationKind);
-  const enforceFrom = nextEnforceFrom(previous, input.mode, now);
+  const enforceFrom = nextEnforceFrom(previous, input.mode, now, input.thresholdHours);
   const written = { mode: input.mode, thresholdHours: input.thresholdHours, enforceFrom };
   await tx
     .insert(P)
@@ -137,6 +154,23 @@ export async function putClosurePolicy(
       target: [P.organizationId, P.obligationKind],
       set: { ...written, configuredByUserId: input.actorUserId, updatedAt: now },
     });
+  await audit(tx, input.audit, {
+    eventType: CLOSURE_POLICY_AUDIT_EVENT,
+    resourceKind: "documentation_obligation_policy",
+    // The policy's key is (organization, kind): the row trigger's resource id is the organization too.
+    resourceId: input.organizationId,
+    outcome: "success",
+    severity: "warn",
+    retentionClass: "compliance",
+    after: {
+      obligationKind: input.obligationKind,
+      previousMode: previous.mode,
+      previousThresholdHours: previous.thresholdHours,
+      mode: written.mode,
+      thresholdHours: written.thresholdHours,
+      enforceFrom: enforceFrom === null ? null : enforceFrom.toISOString(),
+    },
+  });
   return written;
 }
 

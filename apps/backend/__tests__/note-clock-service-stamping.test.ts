@@ -2,7 +2,7 @@
 // INSERT; a seeded draft gets `draft_opened` on the author's first authoring write and never on a read or a
 // sealed note. Driven over the recording Drizzle fake — the UPDATE ... WHERE semantics and the sign path need a
 // real database (the live suite owns those).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
 import { createDbEncounterRouteService } from "../src/modules/08-encounters/encounters-route-service-db";
 import { type FakeRows, fakeDb } from "./_fake-drizzle";
@@ -14,6 +14,7 @@ const MEMBERSHIP = "44444444-4444-4444-8444-444444444444";
 const ENCOUNTER = "55555555-5555-4555-8555-555555555555";
 const VISIT = "66666666-6666-4666-8666-666666666666";
 const SITE = "77777777-7777-4777-8777-777777777777";
+const SUPERVISOR = "88888888-8888-4888-8888-888888888888";
 const NOW = new Date("2026-11-17T15:00:00.000Z");
 const EARLIER = new Date("2026-11-17T13:00:00.000Z");
 
@@ -29,6 +30,21 @@ registerSeam("AdmissionStatusReader", {
     locationId: SITE,
   }),
 } as never);
+
+/** The M17 `VisitReader` as this suite drives it: `visit` is what the seam answers, or `"throw"` for a seam that cannot answer. */
+const visitSeam: { visit: Record<string, unknown> | null | "throw" } = { visit: null };
+const visitForEncounter = vi.fn(async () => {
+  if (visitSeam.visit === "throw") throw new Error("VisitReader unavailable");
+  return visitSeam.visit;
+});
+registerSeam("VisitReader", { visitForEncounter } as never);
+const visitRow = (over: Record<string, unknown> = {}) => ({
+  id: VISIT,
+  organizationId: ORG,
+  assignedMembershipId: MEMBERSHIP,
+  actualStartedAt: null,
+  ...over,
+});
 
 const encounterRow = (over: Record<string, unknown> = {}) => ({
   id: ENCOUNTER,
@@ -61,6 +77,15 @@ const draftArgs = {
 } as never;
 
 describe("createDraft", () => {
+  const withVisit = { ...(draftArgs as object), visitId: VISIT } as never;
+  const created = async (visit: typeof visitSeam.visit) => {
+    visitSeam.visit = visit;
+    visitForEncounter.mockClear();
+    const { service, rec } = serviceOver({ encounter: [encounterRow({ visitId: VISIT })] });
+    await service.createDraft(ORG, MEMBERSHIP, withVisit);
+    return rec.inserts[0]?.values;
+  };
+
   it("starts the clock at creation (draft_created) inside the INSERT for an ad-hoc note", async () => {
     const { service, rec } = serviceOver({ encounter: [encounterRow()] });
     await service.createDraft(ORG, MEMBERSHIP, draftArgs);
@@ -72,15 +97,36 @@ describe("createDraft", () => {
     expect(rec.updates).toEqual([]); // no second UPDATE
   });
 
-  it("leaves the clock to the visit-start event when the note is tied to a visit", async () => {
-    const { service, rec } = serviceOver({ encounter: [encounterRow({ visitId: VISIT })] });
-    await service.createDraft(ORG, MEMBERSHIP, {
-      ...(draftArgs as object),
-      visitId: VISIT,
-    } as never);
-    expect(rec.inserts[0]?.values).not.toHaveProperty("clockStartedAt");
-    expect(rec.inserts[0]?.values).not.toHaveProperty("clockStartSource");
+  it("an ad-hoc note never asks the visit seam anything", async () => {
+    visitForEncounter.mockClear();
+    const { service } = serviceOver({ encounter: [encounterRow()] });
+    await service.createDraft(ORG, MEMBERSHIP, draftArgs);
+    expect(visitForEncounter).not.toHaveBeenCalled();
   });
+
+  it("leaves the clock to the visit-start event when the visit is the author's own and has not started", async () => {
+    const values = await created(visitRow());
+    expect(visitForEncounter).toHaveBeenCalledWith(ORG, VISIT);
+    expect(values).not.toHaveProperty("clockStartedAt");
+    expect(values).not.toHaveProperty("clockStartSource");
+  });
+
+  it.each([
+    ["no visit with that id exists (a made-up uuid)", null],
+    ["the visit is assigned to someone else", visitRow({ assignedMembershipId: SUPERVISOR })],
+    ["the visit belongs to another organization", visitRow({ organizationId: "other-org" })],
+    [
+      "the visit already started (its start event has come and gone)",
+      visitRow({ actualStartedAt: EARLIER.toISOString() }),
+    ],
+    ["the visit seam cannot answer", "throw" as const],
+  ])(
+    "starts the clock at creation (draft_created) when %s, so a typed visitId cannot defer it",
+    async (_why, visit) => {
+      const values = await created(visit);
+      expect(values).toMatchObject({ clockStartedAt: NOW, clockStartSource: "draft_created" });
+    },
+  );
 });
 
 describe("first authoring write", () => {
@@ -96,7 +142,7 @@ describe("first authoring write", () => {
       encounter: [encounterRow()],
       vitals: [{ id: "v-1" }],
     });
-    await service.captureVitals(ORG, ENCOUNTER, vitals);
+    await service.captureVitals(ORG, ENCOUNTER, vitals, MEMBERSHIP);
     expect(rec.updates).toEqual([stampUpdate]);
   });
 
@@ -105,8 +151,38 @@ describe("first authoring write", () => {
       encounter: [encounterRow()],
       mileage: (op) => (op === "insert" ? [{ id: "m-1" }] : []),
     });
-    await service.captureMileage(ORG, ENCOUNTER, mileage);
+    await service.captureMileage(ORG, ENCOUNTER, mileage, MEMBERSHIP);
     expect(rec.updates).toEqual([stampUpdate]);
+  });
+
+  it.each([
+    ["a supervisor (not the author) edits the vitals", SUPERVISOR],
+    ["the caller does not say who is writing", undefined],
+  ])("does NOT stamp the author's clock when %s", async (_who, actor) => {
+    const { service, rec } = serviceOver({
+      encounter: [encounterRow()],
+      vitals: [{ id: "v-1" }],
+    });
+    await service.captureVitals(ORG, ENCOUNTER, vitals, actor);
+    expect(rec.updates).toEqual([]);
+  });
+
+  it("does NOT stamp when a supervisor edits the mileage of a legacy (clockless) draft (ADR-0113 D9)", async () => {
+    const { service, rec } = serviceOver({
+      encounter: [encounterRow()],
+      mileage: (op) => (op === "insert" ? [{ id: "m-1" }] : []),
+    });
+    await service.editMileage(ORG, ENCOUNTER, mileage, SUPERVISOR);
+    expect(rec.updates).toEqual([]);
+  });
+
+  it("stamps on the author's own vitals edit too (editVitals)", async () => {
+    const { service, rec } = serviceOver({
+      encounter: [encounterRow()],
+      vitals: [{ id: "v-1" }],
+    });
+    await service.editVitals(ORG, ENCOUNTER, "v-1", vitals, MEMBERSHIP);
+    expect(rec.updates[0]).toEqual(stampUpdate);
   });
 
   it("never moves a clock the note already has", async () => {
@@ -114,7 +190,7 @@ describe("first authoring write", () => {
       encounter: [encounterRow({ clockStartedAt: EARLIER, clockStartSource: "evv_check_in" })],
       vitals: [{ id: "v-1" }],
     });
-    await service.captureVitals(ORG, ENCOUNTER, vitals);
+    await service.captureVitals(ORG, ENCOUNTER, vitals, MEMBERSHIP);
     expect(rec.updates).toEqual([]);
   });
 
@@ -125,7 +201,7 @@ describe("first authoring write", () => {
         encounter: [encounterRow({ status })],
         vitals: [{ id: "v-1" }],
       });
-      await expect(service.captureVitals(ORG, ENCOUNTER, vitals)).rejects.toThrow();
+      await expect(service.captureVitals(ORG, ENCOUNTER, vitals, MEMBERSHIP)).rejects.toThrow();
       expect(rec.updates).toEqual([]);
     },
   );

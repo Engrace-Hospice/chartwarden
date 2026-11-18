@@ -433,31 +433,31 @@ describe("M36-T05 §7.4 system_locked floors", () => {
     expect(validateAlertRuleSeed(missing).map((x) => x.type)).toContain("missing_system_locked");
   });
 
-  // The canonical DON key is `director_of_nursing` (packages/auth/src/roles/templates.ts). The cosign rules
-  // must reach every supervisor key M8 recognises: this literal mirrors SUPERVISOR_ROLE_KEYS in
-  // apps/backend/src/modules/08-encounters/supervisor-roles.ts (messaging cannot import apps/backend).
-  it("the m8 cosignature alerts reach the four-key supervisor set, including director_of_nursing", () => {
-    const supervisorKeys = ["clinical_lead", "clinical_supervisor", "director_of_nursing", "don"];
+  // The cosign rules must all reach the SAME supervisor audience. Which keys that audience is lives in ONE place: the cross-package
+  // equality with SUPERVISOR_ROLE_KEYS (apps/backend 08-encounters/supervisor-roles.ts; messaging cannot import apps/backend) is
+  // asserted in apps/backend/__tests__/m8-supervisor-role-keys-one-set.test.ts, so no literal copy of the keys is pinned here.
+  it("the m8 cosignature alerts all reach one and the same non-empty supervisor set, including director_of_nursing", () => {
     const cosignEventTypes = [
       "m8.encounter.cosignature_routed",
       "m8.encounter.cosignature_overdue",
       "m8.encounter.cosignature_escalated",
       "m8.encounter.cosignature_hard_cap_reached",
     ];
-    for (const eventType of cosignEventTypes) {
+    const audiences = cosignEventTypes.map((eventType) => {
       const rule = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
       expect(rule, `${eventType} must be seeded`).toBeDefined();
       expect(rule!.recipientResolver).toBe("role_set");
-      const roleKeys = (rule!.resolverArgs as { roleKeys: string[] }).roleKeys;
-      expect([...roleKeys].sort(), eventType).toEqual(supervisorKeys);
-    }
+      return [...(rule!.resolverArgs as { roleKeys: string[] }).roleKeys].sort();
+    });
+    expect(audiences[0]?.length).toBeGreaterThan(0);
+    expect(audiences[0]).toContain("director_of_nursing");
+    for (const audience of audiences) expect(audience).toEqual(audiences[0]);
   });
 
   // ADR-0113 D5 - the visit-note closure alerts. The old `m8.encounter.unsigned` / `documentation_late` rows are gone (one alert
   // stream); the three stages are info / warn / warn (never critical) and reach the author, with the supervisors of the note's
   // provider entity added at escalation only.
   describe("the m8 visit-note closure alerts (ADR-0113)", () => {
-    const supervisorKeys = ["clinical_lead", "clinical_supervisor", "director_of_nursing", "don"];
     const ruleOf = (eventType: string) => {
       const found = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
       expect(found, `${eventType} must be seeded`).toBeDefined();
@@ -496,6 +496,12 @@ describe("M36-T05 §7.4 system_locked floors", () => {
       },
     );
 
+    it("escalation is an administrative alert, so its push text is the generic notification line and never the urgent-request one", () => {
+      const rule = ruleOf("m8.encounter.closure_escalated");
+      expect(rule.category).toBe("administrative");
+      expect(rule.category).not.toBe("clinical_urgent");
+    });
+
     it("escalation reaches the author plus the provider-entity supervisors, org-wide supervisors as fallback", () => {
       const args = ruleOf("m8.encounter.closure_escalated").resolverArgs as {
         roleKeys: string[];
@@ -507,8 +513,13 @@ describe("M36-T05 §7.4 system_locked floors", () => {
       expect(args.roleKeys).toEqual([]);
       expect(args.userIdPaths).toEqual(["authorUserId"]);
       expect(args.providerEntityIdPath).toBe("providerEntityId");
-      expect([...args.providerEntityScopedRoleKeys].sort()).toEqual(supervisorKeys);
-      expect([...args.providerEntityFallbackRoleKeys].sort()).toEqual(supervisorKeys);
+      // The audience is the cosignature rules' (the exact keys are pinned once, in m8-supervisor-role-keys-one-set.test.ts).
+      const cosignAudience = [
+        ...(ruleOf("m8.encounter.cosignature_routed").resolverArgs as { roleKeys: string[] })
+          .roleKeys,
+      ].sort();
+      expect([...args.providerEntityScopedRoleKeys].sort()).toEqual(cosignAudience);
+      expect([...args.providerEntityFallbackRoleKeys].sort()).toEqual(cosignAudience);
     });
   });
 });

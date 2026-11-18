@@ -17,7 +17,8 @@ import {
   closureVerdict,
   decideNoteClosure,
 } from "./note-clock";
-import { findActiveOverride } from "./override-service";
+import { OPEN_NOTE_STATUS_LIST_SQL } from "./open-status";
+import { findActiveOverride } from "./override-lookup";
 import { type ClosurePolicy, readClosurePolicy } from "./policy-service";
 
 /** Slice 1 evaluates one obligation kind. */
@@ -108,7 +109,7 @@ async function loadClockedOpenNotes(
         eq(E.organizationId, organizationId),
         eq(E.authoredByMembershipId, membershipId),
         // A literal list (not bind parameters) so the planner can prove the partial-index predicate.
-        sql`${E.status} IN ('draft', 'finalized')`,
+        sql`${E.status} IN ${OPEN_NOTE_STATUS_LIST_SQL}`,
         isNotNull(E.clockStartedAt),
       ),
     )

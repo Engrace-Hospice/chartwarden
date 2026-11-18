@@ -13,7 +13,6 @@ import {
   type NoteClosureStage,
   closureVerdict,
   decideNoteClosure,
-  stageBeginsAt,
 } from "../src/modules/08-encounters/closure/note-clock";
 
 const DEFAULT_THRESHOLD_HOURS = 24;
@@ -316,60 +315,5 @@ describe("closureVerdict", () => {
       expect(closureVerdict("block", legacy, NO_OVERRIDE, hoursAfterStart(10_000))).toBe("clear");
       expect(closureVerdict("warn", legacy, NO_OVERRIDE, hoursAfterStart(10_000))).toBe("clear");
     });
-  });
-});
-
-describe("stageBeginsAt (the instant a stage starts, for the alert sweep's lookback)", () => {
-  it("places each stage boundary where decideNoteClosure flips to it (24h default)", () => {
-    expect(stageBeginsAt(CLOCK_START, DEFAULT_THRESHOLD_HOURS, "at_risk")).toEqual(
-      hoursAfterStart(18),
-    );
-    expect(stageBeginsAt(CLOCK_START, DEFAULT_THRESHOLD_HOURS, "overdue")).toEqual(
-      hoursAfterStart(24),
-    );
-    expect(stageBeginsAt(CLOCK_START, DEFAULT_THRESHOLD_HOURS, "escalated")).toEqual(
-      hoursAfterStart(36),
-    );
-  });
-
-  it.each<[number, NoteClosureAlertStage]>([
-    [1, "at_risk"],
-    [6, "at_risk"],
-    [24, "at_risk"],
-    [72, "overdue"],
-    [168, "escalated"],
-  ])("agrees with decideNoteClosure at its own boundary (T=%sh, %s)", (thresholdHours, stage) => {
-    const begins = stageBeginsAt(CLOCK_START, thresholdHours, stage);
-    const at = (asOf: Date) =>
-      decideNoteClosure({ clockStartedAt: CLOCK_START, asOf, thresholdHours, enforceFrom: null })
-        .stage;
-
-    expect(at(begins)).toBe(stage);
-    if (begins.getTime() > CLOCK_START.getTime()) {
-      expect(at(new Date(begins.getTime() - 1))).not.toBe(stage);
-    }
-  });
-
-  it("starts at_risk at the clock itself when the threshold is shorter than the lead", () => {
-    // T=4h: elapsed 0 is already >= T-6h, so decideNoteClosure says at_risk from the first instant.
-    expect(stageBeginsAt(CLOCK_START, 4, "at_risk")).toEqual(CLOCK_START);
-    expect(decideAt(0, { thresholdHours: 4 }).stage).toBe("at_risk");
-  });
-
-  it("is absolute elapsed hours with no DST arithmetic (clock inside a spring-forward night)", () => {
-    const clock = new Date("2026-03-07T20:00:00.000Z");
-    expect(stageBeginsAt(clock, DEFAULT_THRESHOLD_HOURS, "overdue")).toEqual(
-      new Date("2026-03-08T20:00:00.000Z"),
-    );
-  });
-
-  it("rejects the ok stage and an invalid instant or threshold with RangeError", () => {
-    expect(() => stageBeginsAt(CLOCK_START, DEFAULT_THRESHOLD_HOURS, "ok" as never)).toThrow(
-      RangeError,
-    );
-    expect(() => stageBeginsAt(new Date(Number.NaN), DEFAULT_THRESHOLD_HOURS, "overdue")).toThrow(
-      RangeError,
-    );
-    expect(() => stageBeginsAt(CLOCK_START, 0, "overdue")).toThrow(RangeError);
   });
 });

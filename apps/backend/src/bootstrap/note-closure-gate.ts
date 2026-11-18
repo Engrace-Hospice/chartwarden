@@ -10,9 +10,15 @@
 //   2. the policy mode (read through the shared 5s cache): `off` / `warn` pass;
 //   3. `block`: a cached CLEAR verdict (5s per organization + member) passes; otherwise ask the one evaluator the banner and the
 //      board also use. `blocked` refuses; `clear` / `warn` pass. Only `clear` is cached, never `blocked`, so a signature or an
-//      override takes effect on the very next request on every replica.
+//      override takes effect on the very next request on every replica. Concurrent evaluations for one organization + member share
+//      ONE in-flight evaluator call (a settled result is never reused), so a burst of blocked requests costs one transaction.
 //   4. ANY throw in 2 or 3 (policy read, evaluator, a RangeError from the pure clock) on a non-allowlisted route answers 503
-//      NOTE_CLOSURE_UNAVAILABLE. A failed read never passes: this is a security control, so it fails closed.
+//      NOTE_CLOSURE_UNAVAILABLE. A failed read never passes by default: this is a security control, so it fails closed. The one
+//      exception is a failed POLICY REFRESH for an organization whose last known mode was `off` or `warn` and was read less than
+//      NOTE_CLOSURE_POLICY_STALE_MS ago: that last known policy is served (those modes refuse nothing, so a database blip must not
+//      take every warn tenant down). Nothing known, a last known `block`, or a last known policy older than the bound fails closed.
+//      The failure is reported through `onFailure`, at most once per organization per NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS (with the
+//      count it suppressed), so an outage is one log line per organization, not one stack trace per request.
 //
 // This is bootstrap (M1) code and imports nothing from a module: the policy cache and the evaluator are injected by the
 // composition root (index.ts), which hands the SAME policy cache to the closure routes so a policy PUT invalidates what is read here.
@@ -38,6 +44,15 @@ export const NOTE_CLOSURE_CLEAR_TTL_MS = 5_000;
  * ponytail: per-replica in-process map, bounded by this constant. A Valkey-backed cache only if the extra reads ever show up.
  */
 export const NOTE_CLOSURE_CLEAR_CACHE_MAX_ENTRIES = 10_000;
+
+/**
+ * How long the last successfully read policy of an organization may stand in for a failed refresh, and only when its mode was `off` or
+ * `warn`. A `block` policy is never served stale: a failed read there fails closed at once.
+ */
+export const NOTE_CLOSURE_POLICY_STALE_MS = 60_000;
+
+/** At most one `onFailure` call per organization per this long; the calls in between are counted into `suppressed`. */
+export const NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS = 30_000;
 
 /** Slice 1 gates one obligation kind. */
 const VISIT_NOTE: DocumentationObligationKind = "visit_note";
@@ -65,7 +80,10 @@ export interface NoteClosureEvaluateInput<Policy> {
 }
 
 export interface NoteClosureGateDeps<Policy extends NoteClosureGatePolicy> {
-  /** The shared 5s policy cache (`createDbClosurePolicyCache`). A read that throws makes the gate answer 503 on a non-allowlisted route. */
+  /**
+   * The shared 5s policy cache (`createDbClosurePolicyCache`). A read that throws makes the gate answer 503 on a non-allowlisted route,
+   * unless the organization's last known policy was `off` / `warn` and is fresher than {@link NOTE_CLOSURE_POLICY_STALE_MS}.
+   */
   readonly policyCache: {
     get(organizationId: string, kind: DocumentationObligationKind): Promise<Policy>;
   };
@@ -75,11 +93,21 @@ export interface NoteClosureGateDeps<Policy extends NoteClosureGatePolicy> {
   ) => Promise<NoteClosureGateEvaluation>;
   /** Injected for tests; defaults to the server clock. */
   readonly now?: () => Date;
-  /** Called with the failure (and the organization id only) before the 503, so the cause reaches the server log. */
-  readonly onFailure?: (failure: {
-    readonly organizationId: string;
-    readonly error: unknown;
-  }) => void;
+  /**
+   * Called with the failure (and the organization id only) so the cause reaches the server log: before the 503, or when a stale `off` /
+   * `warn` policy was served instead (`servedStale`). Throttled per organization: `suppressed` counts the failures swallowed since
+   * the previous call for that organization.
+   */
+  readonly onFailure?: (failure: NoteClosureGateFailure) => void;
+}
+
+export interface NoteClosureGateFailure {
+  readonly organizationId: string;
+  readonly error: unknown;
+  /** True when the request was passed on the organization's last known `off` / `warn` policy rather than refused. */
+  readonly servedStale: boolean;
+  /** Failures for this organization not reported since the previous report (0 on the first). */
+  readonly suppressed: number;
 }
 
 export interface NoteClosureGateRequest {
@@ -168,24 +196,96 @@ function clearUntil(nowMs: number, blockFrom: Date | null): number {
   return blockFrom ? Math.min(ttlEnd, blockFrom.getTime()) : ttlEnd;
 }
 
+/** Remembers, per organization, the last policy a read returned and when. Mutable by nature; it never leaves this module. */
+function createKnownPolicies<Policy extends NoteClosureGatePolicy>() {
+  const byOrganization = new Map<string, { readonly policy: Policy; readonly readAtMs: number }>();
+  // ponytail: one entry per organization that has made a gated request (the policy cache is unbounded by organization count too).
+  return {
+    remember(organizationId: string, policy: Policy, readAtMs: number): void {
+      byOrganization.set(organizationId, { policy, readAtMs });
+    },
+    /** The last known policy if its mode refuses nothing and it was read within the bound; otherwise undefined (fail closed). */
+    usableAsStale(organizationId: string, nowMs: number): Policy | undefined {
+      const known = byOrganization.get(organizationId);
+      if (!known) return undefined;
+      const refusesNothing = known.policy.mode === "off" || known.policy.mode === "warn";
+      const fresh = nowMs - known.readAtMs <= NOTE_CLOSURE_POLICY_STALE_MS;
+      return refusesNothing && fresh ? known.policy : undefined;
+    },
+  };
+}
+
+/** Throttles `onFailure` to one call per organization per interval, carrying the count of the calls it swallowed. */
+function createFailureReporter(
+  onFailure: ((failure: NoteClosureGateFailure) => void) | undefined,
+  intervalMs: number,
+) {
+  const stateByOrganization = new Map<
+    string,
+    { readonly reportedAtMs: number; readonly suppressed: number }
+  >();
+  return (failure: Omit<NoteClosureGateFailure, "suppressed">, nowMs: number): void => {
+    if (!onFailure) return;
+    const state = stateByOrganization.get(failure.organizationId);
+    if (state && nowMs - state.reportedAtMs < intervalMs) {
+      stateByOrganization.set(failure.organizationId, {
+        reportedAtMs: state.reportedAtMs,
+        suppressed: state.suppressed + 1,
+      });
+      return;
+    }
+    stateByOrganization.set(failure.organizationId, { reportedAtMs: nowMs, suppressed: 0 });
+    onFailure({ ...failure, suppressed: state?.suppressed ?? 0 });
+  };
+}
+
 export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
   deps: NoteClosureGateDeps<Policy>,
 ): NoteClosureGate {
   const now = deps.now ?? (() => new Date());
   const clearCache = createClearVerdictCache(NOTE_CLOSURE_CLEAR_CACHE_MAX_ENTRIES);
+  const knownPolicies = createKnownPolicies<Policy>();
+  const reportFailure = createFailureReporter(deps.onFailure, NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS);
+  /** Evaluations in flight per organization + member: concurrent callers await the same promise; it is dropped the moment it settles. */
+  const evaluationsInFlight = new Map<string, Promise<NoteClosureGateEvaluation>>();
+
+  /** The organization's policy; on a failed read, its last known `off` / `warn` policy while fresh, else the failure is rethrown. */
+  async function policyFor(organizationId: string, asOfMs: number): Promise<Policy> {
+    try {
+      const policy = await deps.policyCache.get(organizationId, VISIT_NOTE);
+      knownPolicies.remember(organizationId, policy, asOfMs);
+      return policy;
+    } catch (error) {
+      const stale = knownPolicies.usableAsStale(organizationId, asOfMs);
+      if (stale === undefined) throw error;
+      reportFailure({ organizationId, error, servedStale: true }, asOfMs);
+      return stale;
+    }
+  }
+
+  function evaluateOnce(
+    key: string,
+    input: NoteClosureEvaluateInput<Policy>,
+  ): Promise<NoteClosureGateEvaluation> {
+    const running = evaluationsInFlight.get(key);
+    if (running) return running;
+    const started = deps.evaluate(input).finally(() => evaluationsInFlight.delete(key));
+    evaluationsInFlight.set(key, started);
+    return started;
+  }
 
   /** Steps 2 and 3. Resolves the evaluation that refuses, or null to pass; throws on any failure (the caller maps it to 503). */
   async function refusingEvaluation(
     request: NoteClosureGateRequest,
   ): Promise<NoteClosureGateEvaluation | null> {
     const asOf = now();
-    const policy = await deps.policyCache.get(request.organizationId, VISIT_NOTE);
+    const policy = await policyFor(request.organizationId, asOf.getTime());
     if (policy.mode === "off" || policy.mode === "warn") return null;
     if (policy.mode !== "block") throw new RangeError("unknown note-closure policy mode");
 
     const cacheKey = `${request.organizationId}:${request.membershipId}`;
     if (clearCache.isClear(cacheKey, asOf.getTime())) return null;
-    const evaluation = await deps.evaluate({
+    const evaluation = await evaluateOnce(cacheKey, {
       organizationId: request.organizationId,
       userId: request.userId,
       membershipId: request.membershipId,
@@ -213,7 +313,10 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
       try {
         refusal = await refusingEvaluation(request);
       } catch (error) {
-        deps.onFailure?.({ organizationId: request.organizationId, error });
+        reportFailure(
+          { organizationId: request.organizationId, error, servedStale: false },
+          now().getTime(),
+        );
         throw closureUnavailable();
       }
       if (refusal) throw closureRequired(refusal);

@@ -166,7 +166,7 @@ describe("m8 visit-started note-clock consumer", () => {
     evvBracketState: "evv_present",
     ...over,
   });
-  const event = (p: unknown) => ({
+  const event = (p: unknown, createdAt: Date = DELIVERED_AT) => ({
     id: "44444444-4444-4444-8444-444444444444",
     organizationId: ORG,
     eventType: "m17.visit.started",
@@ -174,7 +174,7 @@ describe("m8 visit-started note-clock consumer", () => {
     aggregateId: VISIT,
     payload: p,
     attemptCount: 0,
-    createdAt: DELIVERED_AT,
+    createdAt,
   });
   const openRow = (over: Record<string, unknown> = {}) => ({
     id: ENCOUNTER,
@@ -185,7 +185,7 @@ describe("m8 visit-started note-clock consumer", () => {
   });
   const build = (rows: Record<string, FakeRows>) => {
     const { db, rec } = fakeDb({ organization: [], ...rows });
-    const consumer = buildM8VisitStartedNoteClockConsumer({ db, clock: () => DELIVERED_AT });
+    const consumer = buildM8VisitStartedNoteClockConsumer({ db });
     return { consumer, rec };
   };
 
@@ -211,10 +211,27 @@ describe("m8 visit-started note-clock consumer", () => {
     expect(rec.updates[0]?.set).toMatchObject({ clockStartSource: "visit_started" });
   });
 
-  it("clamps a device clock in the future to the delivery time", async () => {
+  it("clamps a device clock in the future to the event's server-side creation time", async () => {
     const { consumer, rec } = build({ encounter: [openRow()] });
     await consumer.handle(event(payload({ startedAt: "2026-11-17T21:00:00.000Z" })));
     expect(rec.updates[0]?.set).toMatchObject({ clockStartedAt: DELIVERED_AT });
+  });
+
+  it("bounds the instant by when the event was CREATED, not when it is delivered: a late delivery cannot widen the window", async () => {
+    // M17 recorded the start at 14:30; the consumer runs hours later (a backlog) with the device claiming 16:00.
+    const createdAt = new Date("2026-11-17T14:30:00.000Z");
+    const { consumer, rec } = build({ encounter: [openRow()] });
+    await consumer.handle(event(payload({ startedAt: "2026-11-17T16:00:00.000Z" }), createdAt));
+    expect(rec.updates[0]?.set).toMatchObject({ clockStartedAt: createdAt });
+  });
+
+  it("keeps a device instant that is not after the event's creation time", async () => {
+    const createdAt = new Date("2026-11-17T14:30:00.000Z");
+    const { consumer, rec } = build({ encounter: [openRow()] });
+    await consumer.handle(event(payload({ startedAt: "2026-11-17T14:00:00.000Z" }), createdAt));
+    expect(rec.updates[0]?.set).toMatchObject({
+      clockStartedAt: new Date("2026-11-17T14:00:00.000Z"),
+    });
   });
 
   it("clamps a device clock before the org-local service date to that day's local start", async () => {

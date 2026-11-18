@@ -65,7 +65,9 @@ supervisor to work the oldest first. Paged client-side (10, 25, 50).
 Opens from **Grant override** or the row. Shows the note's facts, a consequence line, then:
 
 - **Reason** (required, at least 40 characters, counted as the server counts it; the running count is in
-  the hint, never in the alert). Recorded in the audit trail; the hint says not to enter patient names.
+  the hint, never in the alert). It is stored with the override and copied, as `context.justification`, into the
+  `m8.encounter.closure_override_granted` audit event; no screen reads it back. The server refuses an SSN- or
+  Medicare-number-shaped reason (422, field `reason`), and the hint says not to enter patient names.
 - **Hours** (whole number 1 to 24, default 4). The override ends by itself.
 
 Consequence line: the clinician can use the rest of the app for the hours chosen; the note stays open,

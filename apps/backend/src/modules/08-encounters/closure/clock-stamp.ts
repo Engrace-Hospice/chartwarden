@@ -10,11 +10,10 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import type { EncounterClockStartSource } from "@chartwarden/types";
 import { type SQL, and, eq, inArray, isNull } from "drizzle-orm";
+import { OPEN_NOTE_STATUSES } from "./open-status";
 
 const ENC = schema.encounters;
 
-/** A note is still "open" (its author still owes it) in these statuses; sealed or voided notes keep their clock as-is. */
-const OPEN_NOTE_STATUSES = ["draft", "finalized"] as const;
 const MS_PER_MINUTE = 60_000;
 /** Every real UTC offset lies in [-12h, +14h], so one day either side of the UTC midnight brackets any zone's local midnight. */
 const SEARCH_RADIUS_MINUTES = 24 * 60;
@@ -25,20 +24,21 @@ function assertValidInstant(name: string, instant: Date): void {
 }
 
 /**
- * Bound a device-supplied start instant to [`serviceDateLocalStart`, `deliveredAt`]: a handset clock that
- * ran behind cannot pull the clock into an earlier day, one that ran ahead cannot put it in the future.
- * If the window is inverted (service date after delivery) the delivery time wins. Returns a new Date.
+ * Bound a device-supplied start instant to [`serviceDateLocalStart`, `upperBound`]: a handset clock that ran behind cannot pull the
+ * clock into an earlier day, one that ran ahead cannot put it past `upperBound`. The consumer passes the SERVER time the start
+ * event was recorded (never its own, later, delivery time), so the device cannot choose its arrival from a widening window.
+ * If the window is inverted (service date after the upper bound) the upper bound wins. Returns a new Date.
  */
 export function clampClockStart(
   candidate: Date,
   serviceDateLocalStart: Date,
-  deliveredAt: Date,
+  upperBound: Date,
 ): Date {
   assertValidInstant("candidate", candidate);
   assertValidInstant("serviceDateLocalStart", serviceDateLocalStart);
-  assertValidInstant("deliveredAt", deliveredAt);
+  assertValidInstant("upperBound", upperBound);
   const lifted = Math.max(candidate.getTime(), serviceDateLocalStart.getTime());
-  return new Date(Math.min(lifted, deliveredAt.getTime()));
+  return new Date(Math.min(lifted, upperBound.getTime()));
 }
 
 /**

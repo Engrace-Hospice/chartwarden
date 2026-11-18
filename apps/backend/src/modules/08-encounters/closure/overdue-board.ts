@@ -4,14 +4,20 @@
 // closure reader, SQL only narrows to open notes that have been running long enough to matter and the pure clock stages every
 // row: a row the clock still calls `ok` is dropped, so the board can never disagree with the alerts or the gate. Policy `off`
 // lists nothing (the engine is disabled for the tenant).
+//
+// LOCATION SCOPE. A site-scoped supervisor sees the notes at their sites AND the notes that have no site at all (a seeded draft
+// whose visit carries no location): the escalation alert falls back to the org-wide supervisors for such a note, so the board and
+// the override grant must not hide it from a scoped supervisor either. `closureLocationScope` is the ONE predicate; the override
+// grant (override-service.ts) asks the same question of the blocked clinician's oldest note.
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, asc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { type SQL, and, asc, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import {
   AT_RISK_LEAD_HOURS,
   type NoteClosureMode,
   type NoteClosureStage,
   decideNoteClosure,
 } from "./note-clock";
+import { OPEN_NOTE_STATUS_LIST_SQL } from "./open-status";
 import type { ClosurePolicy } from "./policy-service";
 
 const MS_PER_HOUR = 3_600_000;
@@ -45,12 +51,22 @@ export interface ListOverdueNotesInput {
   readonly now: Date;
   /** 1..N; the caller clamps. */
   readonly limit: number;
-  /** `null` = org-wide scope; otherwise only encounters at these locations (an empty list sees nothing). */
+  /** `null` = org-wide scope; otherwise the encounters at these locations plus those with no location (an empty list sees nothing). */
   readonly locationIds: readonly string[] | null;
 }
 
 function emptyBoard(policy: ClosurePolicy): OverdueBoard {
   return { mode: policy.mode, thresholdHours: policy.thresholdHours, items: [], truncated: false };
+}
+
+/**
+ * The location predicate for a caller's scope. `null` = org-wide (no predicate). A scoped caller matches their locations OR a note
+ * with no location; an empty scope matches nothing (fail closed).
+ */
+export function closureLocationScope(locationIds: readonly string[] | null): SQL | undefined {
+  if (locationIds === null) return undefined;
+  if (locationIds.length === 0) return sql`false`;
+  return or(inArray(E.locationId, [...locationIds]), isNull(E.locationId));
 }
 
 /** The earliest clock start that can already be at risk: `now - (threshold - lead)`. Uses the clock's own lead constant. */
@@ -82,10 +98,11 @@ export async function listOverdueNotes(
     .where(
       and(
         eq(E.organizationId, organizationId),
-        sql`${E.status} IN ('draft', 'finalized')`,
+        // A literal list (not bind parameters) so the planner can prove the partial-index predicate.
+        sql`${E.status} IN ${OPEN_NOTE_STATUS_LIST_SQL}`,
         isNotNull(E.clockStartedAt),
         lte(E.clockStartedAt, atRiskCutoff(now, policy.thresholdHours)),
-        locationIds === null ? undefined : inArray(E.locationId, [...locationIds]),
+        closureLocationScope(locationIds),
       ),
     )
     .orderBy(asc(E.clockStartedAt), asc(E.id))

@@ -21,7 +21,7 @@ export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 // `director_of_nursing` (packages/auth/src/roles/templates.ts); `don`/`clinical_lead` are the legacy
 // aliases. packages/messaging cannot import from apps/backend, so this is a literal copy of
 // SUPERVISOR_ROLE_KEYS (apps/backend/src/modules/08-encounters/supervisor-roles.ts) — keep them in step
-// (alert-rules-seed.test.ts pins it).
+// (apps/backend/__tests__/m8-supervisor-role-keys-one-set.test.ts asserts they are equal).
 const M8_SUPERVISOR_ROLE_KEYS = [
   "clinical_supervisor",
   "director_of_nursing",
@@ -1143,7 +1143,10 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   },
   {
     eventType: "m8.encounter.closure_escalated",
-    category: "clinical_urgent",
+    // `administrative`, not `clinical_urgent`: the out-of-band sanitizer derives its push text from the category alone, and
+    // `clinical_urgent` reads "You have a new urgent request"; a late note is a documentation duty, not a patient emergency, so
+    // it gets the generic "new notification" line (the severity floor, warn, still carries the weight).
+    category: "administrative",
     severityFloor: "warn",
     recipientResolver: "role_set",
     resolverArgs: {

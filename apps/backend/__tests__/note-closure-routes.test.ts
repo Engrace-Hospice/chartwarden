@@ -126,7 +126,11 @@ function fakeService(): { [K in keyof ClosureRouteService]: ReturnType<typeof vi
     closureStatus: vi.fn(async () => STATUS),
     overdueNotes: vi.fn(async () => BOARD),
     grantOverride: vi.fn(async () => OVERRIDE),
-    revokeOverride: vi.fn(async () => ({ ...OVERRIDE, revokedAt: NOW })),
+    revokeOverride: vi.fn(async () => ({
+      ...OVERRIDE,
+      revokedAt: NOW,
+      remainingActiveUntil: null,
+    })),
     getPolicy: vi.fn(async () => POLICY),
     putPolicy: vi.fn(async (_actor: unknown, body: object) => ({
       ...POLICY,
@@ -417,6 +421,8 @@ describe("step-up on the override routes", () => {
     ];
     expect(actor).toMatchObject({ organizationId: ORG, userId: "sup_1", membershipId: "sup_1" });
     expect(request).toMatchObject({ subjectMembershipId: SUBJECT, reason: GOOD_REASON, hours: 6 });
+    // the grant reads the caller's location scope exactly as the board does (this supervisor carries one site)
+    expect(request.locationIds).toEqual([SITE]);
     expect(request.audit).toMatchObject({
       organizationId: ORG,
       userId: "sup_1",
@@ -437,7 +443,24 @@ describe("step-up on the override routes", () => {
     expect(service.grantOverride).not.toHaveBeenCalled();
   });
 
-  it("a fresh step-up revokes: 200 with the revoked override", async () => {
+  it("an org-wide role's grant carries a null scope; a supervisor with no site carries an empty one", async () => {
+    for (const [headers, expected] of [
+      [DON, null],
+      [as("sup_1", "clinical_supervisor"), []],
+    ] as const) {
+      const { app, service } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/encounters/closure-overrides",
+        headers: { ...headers, ...KEYED },
+        payload: { subjectMembershipId: SUBJECT, reason: GOOD_REASON },
+      });
+      expect(res.statusCode).toBe(201);
+      expect(service.grantOverride.mock.calls[0]?.[1]).toMatchObject({ locationIds: expected });
+    }
+  });
+
+  it("a fresh step-up revokes: 200 with the revoked override, remainingActiveUntil and an audit context", async () => {
     const { app, service } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -447,10 +470,29 @@ describe("step-up on the override routes", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().revokedAt).toBe(NOW);
+    expect(res.json().remainingActiveUntil).toBeNull();
     expect(service.revokeOverride).toHaveBeenCalledWith(
       expect.objectContaining({ membershipId: "sup_1" }),
       OVERRIDE_ID,
+      expect.objectContaining({ organizationId: ORG, userId: "sup_1", actorKind: "user" }),
     );
+  });
+
+  it("a revoke that leaves another supervisor's grant in force says until when", async () => {
+    const { app, service } = makeServer();
+    const until = "2026-11-17T16:00:00.000Z";
+    service.revokeOverride.mockResolvedValueOnce({
+      ...OVERRIDE,
+      revokedAt: NOW,
+      remainingActiveUntil: until,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/closure-overrides/${OVERRIDE_ID}/revoke`,
+      headers: SUPERVISOR,
+      payload: {},
+    });
+    expect(res.json().remainingActiveUntil).toBe(until);
   });
 });
 
@@ -515,6 +557,7 @@ describe("request validation (422 VALIDATION_FAILED, nothing reaches the service
     expect(service.putPolicy).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG, userId: "admin_1" }),
       { mode: "block", thresholdHours: 36 },
+      expect.objectContaining({ organizationId: ORG, userId: "admin_1" }),
     );
   });
 });

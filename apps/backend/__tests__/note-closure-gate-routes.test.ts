@@ -172,6 +172,7 @@ const EXPECTED_ALLOWLIST = [
   "PATCH /api/v1/encounters/:encounterId/vitals/:vitalId",
   "PATCH /api/v1/medication-orders/:id",
   "PATCH /api/v1/orders/:id",
+  "PATCH /api/v1/quality/incidents/:incidentId",
   "PATCH /api/v1/safety/check-ins/:checkInId",
   "PATCH /api/v1/safety/incidents/:incidentId",
   "PATCH /api/v1/triage-calls/:triageCallId/answers/:answerId/correct",
@@ -190,6 +191,8 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/auth/select-organization",
   "POST /api/v1/auth/unlock",
   "POST /api/v1/breakglass",
+  "POST /api/v1/breakglass/:id/cosign",
+  "POST /api/v1/breakglass/:id/revoke",
   "POST /api/v1/encounters",
   "POST /api/v1/encounters/:encounterId/addenda",
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/finalize",
@@ -211,6 +214,9 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/encounters/closure-overrides/:overrideId/revoke",
   "POST /api/v1/escalations/:escalationId/acknowledge",
   "POST /api/v1/escalations/:escalationId/resolve",
+  "POST /api/v1/evv/check-out",
+  "POST /api/v1/evv/offline-sync",
+  "POST /api/v1/evv/offline-sync/v2",
   "POST /api/v1/medication-orders",
   "POST /api/v1/medication-orders/:id/complete",
   "POST /api/v1/medication-orders/:id/correct",
@@ -226,6 +232,7 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/medication-orders/:id/verbal",
   "POST /api/v1/messaging/channels/:id/messages",
   "POST /api/v1/messaging/channels/:id/urgent-messages",
+  "POST /api/v1/messaging/death-notifications/:notificationId/ack",
   "POST /api/v1/messaging/emergencies/:emergencyId/ack",
   "POST /api/v1/messaging/messages/:messageId/emergency",
   "POST /api/v1/missed-doses/:id/acknowledge",
@@ -243,6 +250,11 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/orders/:id/sign",
   "POST /api/v1/orders/:id/sign-on-behalf",
   "POST /api/v1/orders/:id/verbal",
+  "POST /api/v1/patients/:id/code-status",
+  "POST /api/v1/patients/:id/code-status/:entryId/entered-in-error",
+  "POST /api/v1/patients/:id/deceased",
+  "POST /api/v1/quality/incidents",
+  "POST /api/v1/quality/incidents/:incidentId/submit",
   "POST /api/v1/safety/check-ins",
   "POST /api/v1/safety/consent/grant",
   "POST /api/v1/safety/consent/revoke",
@@ -260,6 +272,7 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/standing-orders/:id/discontinue",
   "POST /api/v1/standing-orders/:id/pause",
   "POST /api/v1/standing-orders/:id/spawn",
+  "POST /api/v1/supplies/comfort-kit-dispatches/:dispatchId/deploy-at-patient",
   "POST /api/v1/triage-calls",
   "POST /api/v1/triage-calls/:triageCallId/abandon",
   "POST /api/v1/triage-calls/:triageCallId/answers",
@@ -404,6 +417,14 @@ const DENIED_FAMILY_ROUTES = [
   "PUT /api/v1/encounters/closure-policy",
 ];
 
+/** Entries that sit under a forbidden root on purpose: a reporter's own incident routes and the comfort kit deployed at the bedside. */
+const FORBIDDEN_ROOT_CARVE_OUTS = [
+  "POST /api/v1/quality/incidents",
+  "PATCH /api/v1/quality/incidents/:incidentId",
+  "POST /api/v1/quality/incidents/:incidentId/submit",
+  "POST /api/v1/supplies/comfort-kit-dispatches/:dispatchId/deploy-at-patient",
+];
+
 describe("the note-closure allowlist against the registered route table", () => {
   it("scans a plausible route table (the guard against an empty scan passing everything vacuously)", () => {
     expect(routes.length).toBeGreaterThan(500);
@@ -461,6 +482,15 @@ describe("the note-closure allowlist against the registered route table", () => 
     ["GET", "/api/v1/patients/census-metrics"],
     ["POST", "/api/v1/standing-orders"],
     ["GET", "/api/v1/safety/policy"],
+    ["POST", "/api/v1/quality/incidents/:incidentId/triage"],
+    ["POST", "/api/v1/quality/incidents/:incidentId/investigation"],
+    ["POST", "/api/v1/quality/incidents/:incidentId/investigate"],
+    ["POST", "/api/v1/quality/incidents/:incidentId/resolve"],
+    ["POST", "/api/v1/quality/incidents/:incidentId/close"],
+    ["POST", "/api/v1/quality/incidents/:incidentId/reopen"],
+    ["GET", "/api/v1/quality/incidents"],
+    ["POST", "/api/v1/supplies/comfort-kit-dispatches"],
+    ["POST", "/api/v1/admissions/:id/revocation"],
   ])("%s %s exists and stays refused for a blocked clinician", (method, path) => {
     expect(
       registered.has(`${method} ${path}`),
@@ -487,12 +517,25 @@ describe("the note-closure allowlist against the registered route table", () => 
     ["GET", "/api/v1/alerts/inbox"],
     ["POST", "/api/v1/sessions/step-up"],
     ["GET", "/api/v1/auth/context"],
+    ["POST", "/api/v1/quality/incidents"],
+    ["PATCH", "/api/v1/quality/incidents/:incidentId"],
+    ["POST", "/api/v1/quality/incidents/:incidentId/submit"],
+    ["POST", "/api/v1/patients/:id/deceased"],
+    ["POST", "/api/v1/patients/:id/code-status"],
+    ["POST", "/api/v1/patients/:id/code-status/:entryId/entered-in-error"],
+    ["POST", "/api/v1/messaging/death-notifications/:notificationId/ack"],
+    ["POST", "/api/v1/supplies/comfort-kit-dispatches/:dispatchId/deploy-at-patient"],
+    ["POST", "/api/v1/evv/check-out"],
+    ["POST", "/api/v1/evv/offline-sync"],
+    ["POST", "/api/v1/evv/offline-sync/v2"],
+    ["POST", "/api/v1/breakglass/:id/cosign"],
+    ["POST", "/api/v1/breakglass/:id/revoke"],
   ])("%s %s exists and stays open: it closes the note or protects a patient", (method, path) => {
     expect(registered.has(`${method} ${path}`), "the route must be real").toBe(true);
     expect(allowed(method, path)).toBe(true);
   });
 
-  it("no administrative, billing, platform or reporting root is on the list", () => {
+  it("no administrative, billing, platform or reporting root is on the list, except the reviewed safety-duty carve-outs", () => {
     const forbiddenRoots = [
       "/api/v1/admin",
       "/api/admin",
@@ -513,7 +556,26 @@ describe("the note-closure allowlist against the registered route table", () => 
       "/api/v1/audit",
     ];
     for (const entry of NOTE_CLOSURE_ALLOWED_ROUTES) {
+      if (FORBIDDEN_ROOT_CARVE_OUTS.includes(entry)) continue;
       expect(under(pathOf(entry), forbiddenRoots), entry).toBe(false);
+    }
+  });
+
+  it("the carve-outs are exactly the reporter's three quality routes and the bedside comfort-kit deployment, and are all allowed", () => {
+    expect(
+      [...NOTE_CLOSURE_ALLOWED_ROUTES].filter((e) => under(pathOf(e), ["/api/v1/quality"])).sort(),
+    ).toEqual(
+      [
+        "PATCH /api/v1/quality/incidents/:incidentId",
+        "POST /api/v1/quality/incidents",
+        "POST /api/v1/quality/incidents/:incidentId/submit",
+      ].sort(),
+    );
+    expect(
+      [...NOTE_CLOSURE_ALLOWED_ROUTES].filter((e) => under(pathOf(e), ["/api/v1/supplies"])),
+    ).toEqual(["POST /api/v1/supplies/comfort-kit-dispatches/:dispatchId/deploy-at-patient"]);
+    for (const entry of FORBIDDEN_ROOT_CARVE_OUTS) {
+      expect(NOTE_CLOSURE_ALLOWED_ROUTES.has(entry), entry).toBe(true);
     }
   });
 });

@@ -6,7 +6,7 @@
 // `clinical_lead` are the legacy/alias keys. Same four-key set as migration 1103_m36_review_queue.sql.
 // packages/messaging cannot import from apps/backend, so the cosignature alert seed rules
 // (packages/messaging/src/seed/alert-rules.ts) carry a literal copy — keep the two in step
-// (alert-rules-seed.test.ts pins it).
+// (apps/backend/__tests__/m8-supervisor-role-keys-one-set.test.ts asserts the copies equal this set).
 export const SUPERVISOR_ROLE_KEYS = [
   "clinical_supervisor",
   "director_of_nursing",

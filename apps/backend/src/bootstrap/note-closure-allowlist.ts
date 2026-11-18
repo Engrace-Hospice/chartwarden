@@ -12,13 +12,19 @@
 //     clock). A blocked supervisor also keeps the closure-status / overdue-notes reads and the override grant / revoke routes, so
 //     they can unblock OTHERS.
 //   * patient safety: eMAR, orders and verbal orders, standing orders, triage calls and on-call, escalations, field-safety SOS /
-//     incidents / check-ins, emergency messaging and its acknowledgment, break-glass, the alert inbox.
+//     incidents / check-ins, emergency messaging and its acknowledgment, break-glass (grant, cosign, revoke), the alert inbox.
+//   * regulatory and patient-safety DUTIES that cannot wait for a note: reporting a patient incident or an abuse allegation (the
+//     reporter's own three routes only), recording a death and acknowledging its notification, changing or correcting a code
+//     status, deploying a comfort kit at the patient's bedside, and finishing a visit that is ALREADY in progress (EVV check-out and
+//     the offline syncs, which carry the closing events of visits started before the block).
 //   * what the app chrome and those screens read: session plumbing, feature flags, name / terminology lookups, the read-only
-//     patient chart.
+//     patient chart, and the patient / admission / document / order lists those screens and pickers call (`GET /patients`,
+//     `GET /admissions`, `GET /documents`, `GET /orders/pending-signature`, `GET /orders/cosign-pending` ...).
 //
 // WHAT IS DELIBERATELY NOT HERE: voiding a note (`.../void`), reading or writing the closure policy (a blocked administrator must not
-// release themselves), starting or scheduling visits (a new visit is new work), HOPE / admission / billing / referral / quality /
-// reporting / messaging administration, and every organization-wide worklist or dashboard.
+// release themselves), starting or scheduling visits and checking IN to one (a new visit is new work), the triage, investigation,
+// resolution and closure of a quality incident (only the reporter's routes are here), admission revocation, HOPE / billing /
+// referral / reporting / messaging administration, and the organization-wide dashboards, KPIs and compliance trackers.
 import { SESSION_PLUMBING_ROUTES } from "./onboarding-org-gate";
 
 /** M8: close the note, create an ad-hoc one, and the supervisor's closure-status / override routes. NOT `void`, NOT closure-policy. */
@@ -195,7 +201,8 @@ const FIELD_SAFETY_ROUTES: readonly string[] = [
 /**
  * Emergency messaging and its acknowledgment, the urgent SBAR send, and the message-send route an emergency attaches to (an emergency
  * is DECLARED on an already-sent message, so the send, the channel list and the thread read must stay open; they cannot be told
- * apart from ordinary chat at the route level). Break-glass is the emergency chart access for a restricted patient.
+ * apart from ordinary chat at the route level). Break-glass is the emergency chart access for a restricted patient: its grant, the
+ * cosignature that reviews it and the revocation that ends it.
  */
 const EMERGENCY_ROUTES: readonly string[] = [
   "GET /api/v1/messaging/channels",
@@ -210,6 +217,27 @@ const EMERGENCY_ROUTES: readonly string[] = [
   "GET /api/v1/messaging/emergencies/mine",
   "POST /api/v1/messaging/emergencies/:emergencyId/ack",
   "POST /api/v1/breakglass",
+  "POST /api/v1/breakglass/:id/cosign",
+  "POST /api/v1/breakglass/:id/revoke",
+];
+
+/**
+ * Regulatory and patient-safety duties that cannot wait for a note. The quality routes are the REPORTER's only (create, edit the draft,
+ * submit: each is gated on ownership of the incident); triage, investigation, resolution and closure stay refused. EVV check-out and
+ * the offline syncs finish visits that were already in progress when the block began; EVV check-in (starting a new visit) stays refused.
+ */
+const SAFETY_DUTY_ROUTES: readonly string[] = [
+  "POST /api/v1/quality/incidents",
+  "PATCH /api/v1/quality/incidents/:incidentId",
+  "POST /api/v1/quality/incidents/:incidentId/submit",
+  "POST /api/v1/patients/:id/deceased",
+  "POST /api/v1/patients/:id/code-status",
+  "POST /api/v1/patients/:id/code-status/:entryId/entered-in-error",
+  "POST /api/v1/messaging/death-notifications/:notificationId/ack",
+  "POST /api/v1/supplies/comfort-kit-dispatches/:dispatchId/deploy-at-patient",
+  "POST /api/v1/evv/check-out",
+  "POST /api/v1/evv/offline-sync",
+  "POST /api/v1/evv/offline-sync/v2",
 ];
 
 /** The alert inbox: the closure alert itself arrives here, so a confined clinician must keep reading and clearing it. */
@@ -235,8 +263,9 @@ const SHELL_ROUTES: readonly string[] = [
 ];
 
 /**
- * The read-only patient chart: one patient's clinical record, which a clinician needs at the bedside or to write the note. An
- * organization-wide worklist, dashboard or KPI, and an administrative, billing or compliance-tracking read, is NOT here.
+ * The read-only patient chart: one patient's clinical record, which a clinician needs at the bedside or to write the note, plus the
+ * patient / admission / document lists the chart screens and pickers call. An organization-wide dashboard or KPI, and an
+ * administrative, billing or compliance-tracking read, is NOT here.
  */
 const CHART_READ_ROUTES: readonly string[] = [
   "GET /api/v1/patients",
@@ -311,6 +340,7 @@ export const NOTE_CLOSURE_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
   ...TRIAGE_ROUTES,
   ...FIELD_SAFETY_ROUTES,
   ...EMERGENCY_ROUTES,
+  ...SAFETY_DUTY_ROUTES,
   ...ALERT_INBOX_ROUTES,
   ...SHELL_ROUTES,
   ...CHART_READ_ROUTES,

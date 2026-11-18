@@ -333,12 +333,14 @@ const m8Id = Type.String({ minLength: 1 });
 
 /**
  * One schema for the three stages (the stage field says which). `providerEntityId` is nullable because an encounter's site is
- * (legitimately) unset on some drafts; the escalation rule then falls back to the org-wide supervisors.
+ * (legitimately) unset on some drafts; the escalation rule then falls back to the org-wide supervisors. `authorUserId` is nullable
+ * because the recipient resolver accepts only ACTIVE members' user ids on a payload: for an author who is no longer one, the sweep
+ * emits only the escalation, with no author on it, so the supervisors still hear.
  */
 export const M8_CLOSURE_ALERT_PAYLOAD_SCHEMA = Type.Object({
   obligationKind: Type.Literal("visit_note"),
   encounterId: m8Id,
-  authorUserId: m8Id,
+  authorUserId: Type.Union([m8Id, Type.Null()]),
   providerEntityId: Type.Union([m8Id, Type.Null()]),
   stage: Type.Union([Type.Literal("at_risk"), Type.Literal("overdue"), Type.Literal("escalated")]),
   deadlineAt: Type.String({ minLength: 1 }),

@@ -9,9 +9,6 @@
 import { type NoteClosureStage, decideNoteClosure } from "./note-clock";
 import type { ClosurePolicy } from "./policy-service";
 
-/** A note is open (not yet closed for its author) while it is in one of these statuses; signed / cosign_pending / cosigned are closed. */
-export const MY_NOTE_OPEN_STATUSES = ["draft", "finalized"] as const;
-
 /** One note's position on its closure clock, as it goes on the wire. */
 export interface NoteClosureView {
   /** When the clock started; null for a legacy note that has none. */

@@ -3,7 +3,10 @@
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
-import { listOverdueNotes } from "../src/modules/08-encounters/closure/overdue-board";
+import {
+  closureLocationScope,
+  listOverdueNotes,
+} from "../src/modules/08-encounters/closure/overdue-board";
 import type { ClosurePolicy } from "../src/modules/08-encounters/closure/policy-service";
 import { fakeTx } from "./_closure-fake-tx";
 
@@ -88,9 +91,45 @@ describe("listOverdueNotes", () => {
     expect(whereParams(fake.calls)).toContain(SITE);
   });
 
+  it("a site-scoped supervisor also sees a note that has no location (the alert falls back org-wide for it)", async () => {
+    const fake = fakeTx([[row("e1", 30)]]);
+    await listOverdueNotes(fake.tx, { ...base, locationIds: [SITE], policy: policy("warn") });
+    const where = fake.calls.find((c) => c.op === "where")?.args[0] as SQL;
+    const rendered = new PgDialect().sqlToQuery(where).sql;
+    expect(rendered).toMatch(/"location_id" in \(\$\d+\) or "encounter"\."location_id" is null/i);
+    // the organization filter stays outside the OR, so a null-location note of another tenant is never matched
+    expect(rendered).toMatch(/"organization_id" = \$1/);
+  });
+
+  it("spells the open statuses as a literal list so the partial index can serve the board", async () => {
+    const fake = fakeTx([[]]);
+    await listOverdueNotes(fake.tx, { ...base, policy: policy("warn") });
+    const where = fake.calls.find((c) => c.op === "where")?.args[0] as SQL;
+    expect(new PgDialect().sqlToQuery(where).sql).toContain("IN ('draft', 'finalized')");
+  });
+
   it("an org-wide scope adds no location predicate", async () => {
     const fake = fakeTx([[row("e1", 30)]]);
     await listOverdueNotes(fake.tx, { ...base, locationIds: null, policy: policy("warn") });
     expect(whereParams(fake.calls)).not.toContain(SITE);
+  });
+});
+
+describe("closureLocationScope", () => {
+  const render = (scope: SQL | undefined) =>
+    scope === undefined ? null : new PgDialect().sqlToQuery(scope);
+
+  it("is no predicate at all for an org-wide caller", () => {
+    expect(closureLocationScope(null)).toBeUndefined();
+  });
+
+  it("matches the caller's locations or no location", () => {
+    const query = render(closureLocationScope([SITE]));
+    expect(query?.sql).toMatch(/"location_id" in \(\$1\) or "encounter"\."location_id" is null/i);
+    expect(query?.params).toEqual([SITE]);
+  });
+
+  it("matches nothing for an empty scope, null-location notes included (fail closed)", () => {
+    expect(render(closureLocationScope([]))?.sql).toBe("false");
   });
 });

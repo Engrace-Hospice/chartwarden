@@ -1,10 +1,12 @@
 // apps/backend/__tests__/note-closure-sweep.test.ts — the visit-note closure ALERT sweep (ADR-0113 D5).
 //
 // The `encounter.attention` cron now emits `m8.encounter.closure_at_risk | closure_overdue | closure_escalated`. These tests cover
-// (1) the pure plan: which notes alert at which stage, the lookback, the off/warn/block modes and the true-stage rule; (2) every emitted
+// (1) the pure plan: which notes alert at which stage (no time window), the off/warn/block modes, the true-stage rule and the
+// inactive-author rule; (2) every emitted
 // payload against the REAL alert-payload registry (never a no-op validator) and through the REAL emitter + seeded alert rules
-// to the right recipients; (3) the per-org fan-out (isolation, aggregate failure); (4) the SQL the adapter issues (no overdue
-// predicate, no legacy clockless draft); (5) the cron wiring. No database is touched.
+// to the right recipients; (3) the per-org fan-out (isolation, per-alert isolation, the batched "already alerted?" pre-filter,
+// aggregate failure); (4) the SQL the adapter issues (no overdue predicate, no legacy clockless draft); (5) the cron wiring. No
+// database is touched.
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import {
   type AlertEmitter,
@@ -16,7 +18,6 @@ import { Value } from "@sinclair/typebox/value";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CLOSURE_ALERT_DEEP_LINK,
-  CLOSURE_ALERT_LOOKBACK_MS,
   type ClosureSweepNote,
   type OrgClosureScan,
   planClosureAlerts,
@@ -88,18 +89,21 @@ describe("planClosureAlerts: which notes alert at which stage", () => {
     expect(planAt(36.5).map((a) => a.payload.stage)).toEqual(["escalated"]);
   });
 
-  it("stops emitting a stage once it began more than the lookback ago", () => {
-    const lookbackHours = CLOSURE_ALERT_LOOKBACK_MS / MS_PER_HOUR;
-
-    expect(planAt(18 + lookbackHours)).toHaveLength(1); // exactly at the lookback: still emitted
-    expect(planAt(18 + lookbackHours + 1 / 3600)).toEqual([]); // one second past it: skipped
-    expect(planAt(24 + lookbackHours + 1 / 3600)).toEqual([]);
-    expect(planAt(36 + lookbackHours + 1 / 3600)).toEqual([]);
-    expect(planAt(1000)).toEqual([]); // a note escalated long ago raises nothing new
+  it("has NO time window: a stage that began long ago is still planned (the already-alerted filter, not a lookback, keeps it quiet)", () => {
+    // a worker outage, a late EVV instant or a lowered threshold can all make a stage old by the time it is first seen
+    expect(planAt(18 + 3).map((a) => a.payload.stage)).toEqual(["at_risk"]);
+    expect(planAt(24 + 3).map((a) => a.payload.stage)).toEqual(["overdue"]);
+    expect(planAt(36 + 3).map((a) => a.payload.stage)).toEqual(["escalated"]);
+    expect(planAt(1000).map((a) => a.payload.stage)).toEqual(["escalated"]); // a note escalated long ago, never alerted
   });
 
-  it("names the lookback as two hours", () => {
-    expect(CLOSURE_ALERT_LOOKBACK_MS).toBe(2 * MS_PER_HOUR);
+  it("plans a lowered threshold's stage at once: a note 30h old under a new 24h threshold is overdue now", () => {
+    const lowered: ClosurePolicy = {
+      mode: "block",
+      thresholdHours: 24,
+      enforceFrom: hoursAfterStart(29),
+    };
+    expect(planAt(30, lowered).map((a) => a.payload.stage)).toEqual(["overdue"]);
   });
 
   it("never raises anything for a mode-off tenant", () => {
@@ -196,6 +200,25 @@ describe("planClosureAlerts: payload content (ids and instants only)", () => {
   });
 });
 
+describe("planClosureAlerts: an author who is no longer an active member", () => {
+  const gone = note({ authorUserId: null });
+
+  it.each([18.5, 24.5])(
+    "raises nothing at %sh: the author-only stages have nobody to tell",
+    (elapsed) => {
+      expect(planAt(elapsed, WARN_24, gone)).toEqual([]);
+    },
+  );
+
+  it("still raises the escalation, with no author on the payload, so the supervisors are told", () => {
+    const [alert] = planAt(36.5, WARN_24, gone);
+    expect(alert).toMatchObject({
+      eventType: "m8.encounter.closure_escalated",
+      payload: { authorUserId: null, stage: "escalated" },
+    });
+  });
+});
+
 describe("emitted payloads validate against the REAL alert-payload registry", () => {
   const registry = createAlertPayloadRegistry();
   registry.register(M8_CLOSURE_ALERT_PAYLOADS);
@@ -227,6 +250,14 @@ describe("emitted payloads validate against the REAL alert-payload registry", ()
       }
     },
   );
+
+  it("accepts a null authorUserId (an escalation for an author who left) and still refuses an empty one", () => {
+    const entry = catalog.get("m8.encounter.closure_escalated")!;
+    const [alert] = planAt(36.5, WARN_24, note({ authorUserId: null }));
+    expect(alert?.payload.authorUserId).toBeNull();
+    expect(Value.Check(entry.payloadSchema, alert?.payload)).toBe(true);
+    expect(Value.Check(entry.payloadSchema, { ...alert?.payload, authorUserId: "" })).toBe(false);
+  });
 
   it("rejects a payload that carries an unregistered shape (the validator is not a no-op)", () => {
     const entry = catalog.get("m8.encounter.closure_overdue")!;
@@ -306,6 +337,12 @@ describe("emitted alerts reach the right people through the REAL emitter and the
     expect(recorded.severity).toBe("warn"); // never critical
   });
 
+  it("escalated for an author who left reaches the supervisors alone (nobody else, and no author id on the payload)", async () => {
+    const recorded = await emitFirst(36.5, note({ authorUserId: null }), [SUPERVISOR_USER]);
+
+    expect(recipientsOf(recorded)).toEqual([SUPERVISOR_USER]);
+  });
+
   it("escalated falls back to the org-wide supervisors when nobody is assigned to the entity", async () => {
     const recorded = await emitFirst(36.5, note(), []);
 
@@ -321,9 +358,15 @@ describe("emitted alerts reach the right people through the REAL emitter and the
 });
 
 /** Run the sweep over `scans` (org id -> scan or error) at `now`, recording what it emitted. */
-function sweepOver(scans: Record<string, OrgClosureScan | Error>, now: Date) {
+function sweepOver(
+  scans: Record<string, OrgClosureScan | Error>,
+  now: Date,
+  options: { alreadyAlerted?: ReadonlySet<string> | "unwired" } = {},
+) {
   const emits: { organizationId: string; correlationId: string; eventType: string }[] = [];
   const failingEmitOrgs = new Set<string>();
+  const failingCorrelationIds = new Set<string>();
+  const lookups: { organizationId: string; correlationIds: readonly string[] }[] = [];
   const run = () =>
     runNoteClosureSweep({
       listActiveOrgs: async () => Object.keys(scans).map((organizationId) => ({ organizationId })),
@@ -332,8 +375,24 @@ function sweepOver(scans: Record<string, OrgClosureScan | Error>, now: Date) {
         if (scan instanceof Error) throw scan;
         return scan!;
       },
+      ...(options.alreadyAlerted === "unwired"
+        ? {}
+        : {
+            existingCorrelations: async (
+              organizationId: string,
+              correlationIds: readonly string[],
+            ) => {
+              lookups.push({ organizationId, correlationIds });
+              const alerted: ReadonlySet<string> =
+                options.alreadyAlerted === undefined || options.alreadyAlerted === "unwired"
+                  ? new Set<string>()
+                  : options.alreadyAlerted;
+              return new Set(correlationIds.filter((id) => alerted.has(id)));
+            },
+          }),
       emit: async (organizationId, input) => {
         if (failingEmitOrgs.has(organizationId)) throw new Error("emit failed");
+        if (failingCorrelationIds.has(input.correlationId)) throw new Error("emit failed");
         emits.push({
           organizationId,
           correlationId: input.correlationId,
@@ -343,7 +402,7 @@ function sweepOver(scans: Record<string, OrgClosureScan | Error>, now: Date) {
       },
       now: () => now,
     });
-  return { run, emits, failingEmitOrgs };
+  return { run, emits, failingEmitOrgs, failingCorrelationIds, lookups };
 }
 
 describe("runNoteClosureSweep: per-org isolation", () => {
@@ -420,51 +479,195 @@ describe("runNoteClosureSweep: per-org isolation", () => {
   });
 });
 
-describe("a 15-minute cron with the 2h lookback alerts every stage exactly once", () => {
-  it("emits one distinct correlation id per stage across the note's whole life, none skipped", async () => {
-    const seen = new Set<string>();
-    const emittedStages: string[] = [];
-    const scan: OrgClosureScan = { policy: WARN_24, notes: [note()] };
+describe("runNoteClosureSweep: a failing alert does not shadow the rest of its organization", () => {
+  const older = note({ encounterId: "00000000-0000-4000-8000-0000000000f1" });
+  const younger = note({ encounterId: "00000000-0000-4000-8000-0000000000f2" });
+  const scan: OrgClosureScan = { policy: WARN_24, notes: [older, younger] };
+  const overdueOf = (n: ClosureSweepNote) => `m8:closure:visit_note:${n.encounterId}:overdue`;
 
-    for (
-      let at = CLOCK_START.getTime();
-      at <= CLOCK_START.getTime() + 60 * MS_PER_HOUR;
-      at += TICK_MS
-    ) {
-      const { run, emits } = sweepOver({ [ORG_A]: scan }, new Date(at));
+  it("keeps emitting after one emit throws, then rejects with every failure collected", async () => {
+    const { run, emits, failingCorrelationIds } = sweepOver(
+      { [ORG_A]: scan },
+      hoursAfterStart(24.5),
+    );
+    failingCorrelationIds.add(overdueOf(older)); // the oldest note fails deterministically, every tick
+
+    const failure = (await run().catch((e: unknown) => e)) as AggregateError;
+
+    expect(emits.map((e) => e.correlationId)).toEqual([overdueOf(younger)]);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.message).toContain(ORG_A);
+    const [orgFailure] = failure.errors as AggregateError[];
+    expect(orgFailure).toBeInstanceOf(AggregateError);
+    expect(orgFailure?.errors).toHaveLength(1);
+    expect(orgFailure?.message).toContain("1 of 2");
+  });
+
+  it("still lets the other organizations run after one organization's alerts fail", async () => {
+    const { run, emits, failingEmitOrgs } = sweepOver(
+      { [ORG_A]: scan, [ORG_B]: scan },
+      hoursAfterStart(24.5),
+    );
+    failingEmitOrgs.add(ORG_A);
+
+    await expect(run()).rejects.toBeInstanceOf(AggregateError);
+    expect(emits.map((e) => e.organizationId)).toEqual([ORG_B, ORG_B]);
+  });
+});
+
+describe("runNoteClosureSweep: the batched already-alerted pre-filter", () => {
+  const scan: OrgClosureScan = { policy: WARN_24, notes: [note()] };
+  const overdueId = `m8:closure:visit_note:${ENCOUNTER}:overdue`;
+
+  it("asks once per organization for every candidate correlation id, and emits only the ones with no alert yet", async () => {
+    const second = note({ encounterId: "00000000-0000-4000-8000-0000000000f2" });
+    const { run, emits, lookups } = sweepOver(
+      { [ORG_A]: { policy: WARN_24, notes: [note(), second] } },
+      hoursAfterStart(24.5),
+      { alreadyAlerted: new Set([overdueId]) },
+    );
+
+    await expect(run()).resolves.toEqual({ orgs: 1, emitted: 1 });
+
+    expect(lookups).toEqual([
+      {
+        organizationId: ORG_A,
+        correlationIds: [overdueId, `m8:closure:visit_note:${second.encounterId}:overdue`],
+      },
+    ]);
+    expect(emits.map((e) => e.correlationId)).toEqual([
+      `m8:closure:visit_note:${second.encounterId}:overdue`,
+    ]);
+  });
+
+  it("emits nothing, and resolves no recipients, when every due alert already exists", async () => {
+    const { run, emits } = sweepOver({ [ORG_A]: scan }, hoursAfterStart(24.5), {
+      alreadyAlerted: new Set([overdueId]),
+    });
+
+    await expect(run()).resolves.toEqual({ orgs: 1, emitted: 0 });
+    expect(emits).toEqual([]);
+  });
+
+  it("does not ask at all when nothing is due (an organization with no overdue notes, or mode off)", async () => {
+    const off: OrgClosureScan = { policy: { ...WARN_24, mode: "off" }, notes: [note()] };
+    const { run, lookups } = sweepOver({ [ORG_A]: scan, [ORG_B]: off }, hoursAfterStart(1));
+
+    await run();
+
+    expect(lookups).toEqual([]);
+  });
+
+  it("without the pre-filter wired it emits every due alert (the emitter's own de-duplication is then the only guard)", async () => {
+    const { run, emits } = sweepOver({ [ORG_A]: scan }, hoursAfterStart(24.5), {
+      alreadyAlerted: "unwired",
+    });
+
+    await expect(run()).resolves.toEqual({ orgs: 1, emitted: 1 });
+    expect(emits).toHaveLength(1);
+  });
+
+  it("a failing lookup fails that organization (not silently re-emitting everything) and spares the others", async () => {
+    const emits: string[] = [];
+    const run = () =>
+      runNoteClosureSweep({
+        listActiveOrgs: async () => [{ organizationId: ORG_A }, { organizationId: ORG_B }],
+        scanOrg: async () => scan,
+        existingCorrelations: async (organizationId) => {
+          if (organizationId === ORG_A) throw new Error("alert table unavailable");
+          return new Set<string>();
+        },
+        emit: async (organizationId) => {
+          emits.push(organizationId);
+          return { alertId: "a", resolvedRecipientCount: 1 };
+        },
+        now: () => hoursAfterStart(24.5),
+      });
+
+    const failure = (await run().catch((e: unknown) => e)) as AggregateError;
+
+    expect(failure.message).toContain(ORG_A);
+    expect(emits).toEqual([ORG_B]);
+  });
+});
+
+describe("a 15-minute cron with no lookback alerts every stage exactly once", () => {
+  /** Tick the sweep every 15 minutes over `hours`; the alert store remembers what was emitted, as the real alert table does. */
+  async function ticks(from: Date, hours: number, scan: OrgClosureScan, store: Set<string>) {
+    const emitted: string[] = [];
+    let lookupCount = 0;
+    for (let at = from.getTime(); at <= from.getTime() + hours * MS_PER_HOUR; at += TICK_MS) {
+      const { run, emits, lookups } = sweepOver({ [ORG_A]: scan }, new Date(at), {
+        alreadyAlerted: store,
+      });
       await run();
+      lookupCount += lookups.length;
       for (const e of emits) {
-        if (seen.has(e.correlationId)) continue; // the emitter's (org, correlationId) dedupe
-        seen.add(e.correlationId);
-        emittedStages.push(e.eventType);
+        store.add(e.correlationId);
+        emitted.push(e.eventType);
       }
     }
+    return { emitted, lookupCount };
+  }
 
-    expect(emittedStages).toEqual([
+  it("emits one distinct alert per stage across the note's whole life, none skipped and none repeated", async () => {
+    const { emitted } = await ticks(
+      CLOCK_START,
+      60,
+      { policy: WARN_24, notes: [note()] },
+      new Set(),
+    );
+
+    expect(emitted).toEqual([
       "m8.encounter.closure_at_risk",
       "m8.encounter.closure_overdue",
       "m8.encounter.closure_escalated",
     ]);
   });
 
-  it("re-emits a stage on every tick inside the lookback with the SAME correlation id (so the emitter dedupes)", async () => {
-    const ids = new Set<string>();
+  it("a worker outage of 20 hours does not skip a stage: the first tick back emits the current one", async () => {
+    // ticks at the note's 0h..17h (nothing due), then the worker is down until 38h: the escalation is still raised
+    const store = new Set<string>();
     const scan: OrgClosureScan = { policy: WARN_24, notes: [note()] };
-    let ticks = 0;
+    await ticks(CLOCK_START, 17, scan, store);
+    const { emitted } = await ticks(hoursAfterStart(38), 1, scan, store);
 
-    for (
-      let at = hoursAfterStart(24).getTime();
-      at < hoursAfterStart(26).getTime();
-      at += TICK_MS
-    ) {
-      const { run, emits } = sweepOver({ [ORG_A]: scan }, new Date(at));
-      await run();
-      ticks += emits.length;
-      for (const e of emits) ids.add(e.correlationId);
-    }
+    expect(emitted).toEqual(["m8.encounter.closure_escalated"]);
+  });
 
-    expect(ticks).toBe(8);
-    expect(ids).toEqual(new Set([`m8:closure:visit_note:${ENCOUNTER}:overdue`]));
+  it("a late EVV instant (the clock is first seen when the note is already 30h old) still gets its overdue alert, once", async () => {
+    // the sweep never saw this note at at_risk; the stage it is in NOW is raised, and not again
+    const store = new Set<string>();
+    const lateClock = note({ clockStartedAt: hoursAfterStart(-30) });
+    const { emitted } = await ticks(CLOCK_START, 3, { policy: WARN_24, notes: [lateClock] }, store);
+
+    expect(emitted).toEqual(["m8.encounter.closure_overdue"]);
+  });
+
+  it("a lowered threshold alerts the notes it newly makes overdue, once", async () => {
+    const store = new Set<string>();
+    const lowered: OrgClosureScan = {
+      policy: { mode: "block", thresholdHours: 12, enforceFrom: hoursAfterStart(20) },
+      notes: [note()],
+    };
+    const { emitted } = await ticks(hoursAfterStart(20), 2, lowered, store);
+
+    expect(emitted).toEqual(["m8.encounter.closure_overdue"]);
+  });
+
+  it("asks the alert table once per tick, never once per note", async () => {
+    const many = Array.from({ length: 30 }, (_, i) =>
+      note({ encounterId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}` }),
+    );
+    const { run, lookups } = sweepOver(
+      { [ORG_A]: { policy: WARN_24, notes: many } },
+      hoursAfterStart(24.5),
+    );
+
+    await run();
+
+    expect(lookups).toHaveLength(1);
+    expect(lookups[0]?.correlationIds).toHaveLength(30);
   });
 });
 
@@ -514,6 +717,7 @@ describe("scanOrgClosureState: the SQL the sweep issues", () => {
           encounterId: ENCOUNTER,
           clockStartedAt: CLOCK_START,
           authorUserId: AUTHOR_USER,
+          authorStatus: "active",
           providerEntityId: PROVIDER_ENTITY,
         },
       ],
@@ -535,12 +739,42 @@ describe("scanOrgClosureState: the SQL the sweep issues", () => {
     expect(notesSql).toContain('"encounter"."clock_started_at" is not null');
     expect(notesSql).toContain('inner join "membership"');
     expect(notesSql).toContain('"membership"."user_id"');
+    expect(notesSql).toContain('"membership"."status"');
     expect(notesSql).toContain('"encounter"."organization_id" =');
     // The pure clock decides; the SQL carries no time bound at all.
     expect(notesSql).not.toContain("now()");
     expect(notesSql).not.toContain("interval");
     expect(notesSql).not.toMatch(/clock_started_at"\s*(<|>|<=|>=)/);
   });
+
+  it.each(["suspended", "departed", "invited"])(
+    "reports a %s author as no recipient (null user id) but keeps the note, so its escalation can still reach the supervisors",
+    async (authorStatus) => {
+      const { db } = recordingDb([
+        [],
+        [
+          {
+            encounterId: ENCOUNTER,
+            clockStartedAt: CLOCK_START,
+            authorUserId: AUTHOR_USER,
+            authorStatus,
+            providerEntityId: PROVIDER_ENTITY,
+          },
+        ],
+      ]);
+
+      const scan = await (await actualSweep()).scanOrgClosureState(db, ORG_A);
+
+      expect(scan.notes).toEqual([
+        {
+          encounterId: ENCOUNTER,
+          clockStartedAt: CLOCK_START,
+          authorUserId: null,
+          providerEntityId: PROVIDER_ENTITY,
+        },
+      ]);
+    },
+  );
 
   it("reads no notes at all for a mode-off tenant", async () => {
     const { db, statements } = recordingDb([
@@ -564,6 +798,7 @@ describe("scanOrgClosureState: the SQL the sweep issues", () => {
           encounterId: ENCOUNTER,
           clockStartedAt: null,
           authorUserId: AUTHOR_USER,
+          authorStatus: "active",
           providerEntityId: null,
         },
       ],

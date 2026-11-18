@@ -4,7 +4,11 @@ import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { CosignatureStatus } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
-import { runNoteClosureSweep, scanOrgClosureState } from "../closure/closure-sweep";
+import {
+  type ExistingAlertCorrelations,
+  runNoteClosureSweep,
+  scanOrgClosureState,
+} from "../closure/closure-sweep";
 import { transitionCosignature } from "../cosignature/cosignature";
 import { decideCosignatureSlaStage, hoursBetween } from "../cosignature/sla-clock";
 import type { EncounterWriteOutboxPort } from "../encounters-route-service-db";
@@ -21,6 +25,8 @@ export interface M8WorkerDeps {
   readonly outbox: EncounterWriteOutboxPort;
   readonly activeOrgs?: ActiveOrgListPort;
   readonly alerts?: AlertEmitter;
+  /** The closure sweep's batched "already alerted?" read (M36 owns the alert table; the composition root injects it). */
+  readonly existingAlertCorrelations?: ExistingAlertCorrelations;
   now?: () => Date;
 }
 
@@ -42,6 +48,7 @@ export function buildM8WorkerDeps(deps: {
   outbox: EncounterWriteOutboxPort;
   activeOrgs?: ActiveOrgListPort;
   alerts?: AlertEmitter;
+  existingAlertCorrelations?: ExistingAlertCorrelations;
 }): M8WorkerDeps {
   return { ...deps, now: () => new Date() };
 }
@@ -82,7 +89,9 @@ async function supervisorMembershipId(
 /**
  * The `encounter.attention` tick (every 15 minutes): the visit-note closure alerts (ADR-0113 D5), `m8.encounter.closure_at_risk |
  * closure_overdue | closure_escalated`, one stream replacing the old age-less unsigned / documentation-late sweep. The logic lives in
- * closure/closure-sweep.ts; a failing organization never stops the others and is rethrown together after the last one.
+ * closure/closure-sweep.ts: it has no time window (a due stage is emitted until its alert exists, found through the injected batched
+ * "already alerted?" read); a failing organization never stops the others, nor a failing alert its organization, and every failure
+ * is rethrown together after the last one.
  */
 export async function runEncounterAttentionCron(deps: M8WorkerDeps): Promise<void> {
   const alerts = alertEmitterOf(deps);
@@ -90,6 +99,9 @@ export async function runEncounterAttentionCron(deps: M8WorkerDeps): Promise<voi
     listActiveOrgs: () => activeOrgsOf(deps).listActiveOrgs(),
     scanOrg: (organizationId) => scanOrgClosureState(deps.db, organizationId),
     emit: (organizationId, input) => alerts.emit(organizationId, input),
+    ...(deps.existingAlertCorrelations
+      ? { existingCorrelations: deps.existingAlertCorrelations }
+      : {}),
     now: deps.now ?? (() => new Date()),
   });
 }

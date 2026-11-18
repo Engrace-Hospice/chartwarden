@@ -42,12 +42,3 @@ export const DOCUMENTATION_OBLIGATION_MAX_THRESHOLD_HOURS = 168;
 export const CLOSURE_OVERRIDE_MIN_REASON_CHARS = 40;
 export const CLOSURE_OVERRIDE_MAX_HOURS = 24;
 export const CLOSURE_OVERRIDE_DEFAULT_HOURS = 4;
-
-/** A tenant's effective policy for one obligation kind, after the absent-row default is applied. */
-export interface DocumentationObligationPolicy {
-  readonly obligationKind: DocumentationObligationKind;
-  readonly mode: DocumentationObligationMode;
-  readonly thresholdHours: number;
-  /** Set whenever the mode moves to `block`: notes already overdue get a fresh window from this instant. */
-  readonly enforceFrom: string | null;
-}

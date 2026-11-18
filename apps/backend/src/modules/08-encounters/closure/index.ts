@@ -7,3 +7,4 @@ export * from "./override-service";
 export * from "./closure-reader";
 export * from "./overdue-board";
 export * from "./closure-route-service";
+export * from "./closure-alert-catalog";

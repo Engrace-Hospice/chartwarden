@@ -55,6 +55,12 @@ export interface ClosureOverrideWire {
   readonly revokedAt: string | null;
 }
 
+/** A revoked grant on the wire, plus whether another supervisor's grant still lifts the same clinician. */
+export interface ClosureOverrideRevokedWire extends ClosureOverrideWire {
+  /** The latest expiry of any OTHER active grant for the same clinician; null when the revoke re-blocks them. */
+  readonly remainingActiveUntil: string | null;
+}
+
 export interface ClosurePolicyWire {
   readonly obligationKind: "visit_note";
   readonly mode: NoteClosureMode;
@@ -66,6 +72,8 @@ export interface GrantClosureOverrideRequest {
   readonly subjectMembershipId: string;
   readonly reason: string;
   readonly hours?: number;
+  /** The grantor's location scope, as the board reads it: `null` = org-wide, otherwise their sites. */
+  readonly locationIds: readonly string[] | null;
   /** The request's audit context for the explicit audit event. */
   readonly audit: AuditContext;
 }
@@ -82,12 +90,17 @@ export interface ClosureRouteService {
     actor: ClosureActor,
     request: GrantClosureOverrideRequest,
   ): Promise<ClosureOverrideWire>;
-  revokeOverride(actor: ClosureActor, overrideId: string): Promise<ClosureOverrideWire>;
+  revokeOverride(
+    actor: ClosureActor,
+    overrideId: string,
+    audit: AuditContext,
+  ): Promise<ClosureOverrideRevokedWire>;
   getPolicy(organizationId: string): Promise<ClosurePolicyWire>;
-  /** Upserts the policy and invalidates the gate's cache for the organization. */
+  /** Upserts the policy, records the explicit audit event and invalidates the gate's cache for the organization. */
   putPolicy(
     actor: ClosureActor,
     body: { mode: NoteClosureMode; thresholdHours: number },
+    audit: AuditContext,
   ): Promise<ClosurePolicyWire>;
 }
 
@@ -192,6 +205,7 @@ export function createDbClosureRouteService(deps: ClosureRouteServiceDeps): Clos
           obligationKind: VISIT_NOTE,
           reason: request.reason,
           ...(request.hours === undefined ? {} : { hours: request.hours }),
+          locationIds: request.locationIds,
           audit: request.audit,
           now: clock(),
         }),
@@ -199,16 +213,20 @@ export function createDbClosureRouteService(deps: ClosureRouteServiceDeps): Clos
       return overrideWire(view);
     },
 
-    async revokeOverride(actor, overrideId) {
-      const view = await inOrg(actor, (tx) =>
+    async revokeOverride(actor, overrideId, audit) {
+      const revoked = await inOrg(actor, (tx) =>
         revokeClosureOverride(tx, {
           organizationId: actor.organizationId,
           overrideId,
           revokedByMembershipId: actor.membershipId,
+          audit,
           now: clock(),
         }),
       );
-      return overrideWire(view);
+      return {
+        ...overrideWire(revoked.override),
+        remainingActiveUntil: iso(revoked.remainingActiveUntil),
+      };
     },
 
     async getPolicy(organizationId) {
@@ -219,7 +237,7 @@ export function createDbClosureRouteService(deps: ClosureRouteServiceDeps): Clos
       return policyWire(policy);
     },
 
-    async putPolicy(actor, body) {
+    async putPolicy(actor, body, audit) {
       const written = await inOrg(actor, (tx) =>
         putClosurePolicy(tx, {
           organizationId: actor.organizationId,
@@ -227,6 +245,7 @@ export function createDbClosureRouteService(deps: ClosureRouteServiceDeps): Clos
           mode: body.mode,
           thresholdHours: body.thresholdHours,
           actorUserId: actor.userId,
+          audit,
           now: clock(),
         }),
       );

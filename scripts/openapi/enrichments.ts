@@ -2151,6 +2151,7 @@ import {
 // ADR-0113 visit-note closure clock (M8).
 import {
   ClosureOverrideResponseSchema as M8ClosureOverrideResponseSchema,
+  ClosureOverrideRevokedResponseSchema as M8ClosureOverrideRevokedResponseSchema,
   ClosurePolicyResponseSchema as M8ClosurePolicyResponseSchema,
   ClosureStatusResponseSchema as M8ClosureStatusResponseSchema,
   GrantClosureOverrideSchema as M8GrantClosureOverrideSchema,
@@ -5777,13 +5778,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/encounters/overdue-notes": {
     summary:
-      "Supervisor board: at-risk, overdue and escalated clocked open notes, oldest first (org-wide scope sees every site, otherwise the caller's sites; encounter.closure_override)",
+      "Supervisor board: at-risk, overdue and escalated clocked open notes, oldest first (org-wide scope sees every site; otherwise the caller's sites plus any note with no site; encounter.closure_override). Read-audited as a multi-patient read: one `encounter.viewed` event per distinct patient on the page; an empty page writes none",
     query: M8OverdueNotesQuerySchema,
     response: M8OverdueNotesResponseSchema,
   },
   "POST /api/v1/encounters/closure-overrides": {
     summary:
-      "Grant a supervisor override that lifts the closure BLOCK for one clinician for 1-24 hours (default 4). Needs a fresh step-up; the reason (>= 40 chars) is audited, never echoed",
+      "Grant a supervisor override that lifts the closure BLOCK for one clinician for 1-24 hours (default 4). Needs a fresh step-up. The reason (>= 40 characters) is free text: it is screened and refused with a 422 VALIDATION_FAILED (details[0].field `reason`, details[0].code EVIDENCE_LOOKS_LIKE_PHI, nothing written, the text never echoed) when it looks like an SSN or Medicare number; it is stored on the override row and carried, as `context.justification`, in the `m8.encounter.closure_override_granted` audit event, and no route returns it. Refused with 403 NOTE_CLOSURE_GRANTOR_BLOCKED when the granting supervisor is themselves blocked right now (close your own overdue notes first; one who is overridden or clear may grant), 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED when the clinician is not blocked (clear, warn-only or already overridden), 403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE when the clinician's oldest open note is outside the caller's sites (a note with no site is in scope for every supervisor; org-wide roles see every site), and 403 FORBIDDEN for an override of oneself",
     body: M8GrantClosureOverrideSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
@@ -5791,8 +5792,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/encounters/closure-overrides/:overrideId/revoke": {
     summary:
-      "Revoke a closure override early (idempotent; needs a fresh step-up). The grant row is never deleted",
-    response: M8ClosureOverrideResponseSchema,
+      "Revoke a closure override early (idempotent; needs a fresh step-up). The grant row is never deleted and a revoked grant can never be un-revoked. The response is the stored grant plus `remainingActiveUntil`: the latest expiry of any OTHER active override for the same clinician (another supervisor's grant keeps them unblocked), or null when the revoke re-blocks them. The first revoke writes an `m8.encounter.closure_override_revoked` audit event (ids and instants, never the reason); a repeat writes none",
+    response: M8ClosureOverrideRevokedResponseSchema,
   },
   "GET /api/v1/encounters/closure-policy": {
     summary:

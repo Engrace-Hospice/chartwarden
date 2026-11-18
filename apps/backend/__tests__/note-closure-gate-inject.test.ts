@@ -158,6 +158,28 @@ describe("note-closure gate through the real authenticate hook", () => {
     expect(res.json().error.code).toBe("NOTE_CLOSURE_REQUIRED");
   });
 
+  it("HEAD on an allowlisted GET route is refused: the allowlist is METHOD + template, and HEAD is not GET", async () => {
+    const { app, evaluate } = serverFor({ actor: staffActor(BLOCKED_MEMBERSHIP) });
+    const head = await app.inject({ method: "HEAD", url: ALLOWED_URL });
+    expect(head.statusCode, head.body).toBe(403);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect((await app.inject({ method: "GET", url: ALLOWED_URL })).statusCode).toBe(200);
+  });
+
+  it("a trailing slash on an allowlisted path matches no template, so it is refused, not waved through", async () => {
+    const { app } = serverFor({ actor: staffActor(BLOCKED_MEMBERSHIP) });
+    const res = await app.inject({ method: "GET", url: `${ALLOWED_URL}/` });
+    expect(res.statusCode, res.body).toBe(403);
+    expect(res.json().error.code).toBe("NOTE_CLOSURE_REQUIRED");
+  });
+
+  it("an unknown path under an allowlisted prefix (a 404) is refused for a blocked clinician", async () => {
+    const { app } = serverFor({ actor: staffActor(BLOCKED_MEMBERSHIP) });
+    const res = await app.inject({ method: "GET", url: `${ALLOWED_URL}/no-such-child` });
+    expect(res.statusCode, res.body).toBe(403);
+    expect(res.json().error.code).toBe("NOTE_CLOSURE_REQUIRED");
+  });
+
   it("a non-staff session never reaches the gate", async () => {
     const { app, evaluate, policyGet } = serverFor({ actor: portalActor });
     expect((await app.inject({ method: "GET", url: REFUSED_URL })).statusCode).toBe(200);

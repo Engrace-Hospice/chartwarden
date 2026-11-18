@@ -662,6 +662,7 @@ import {
   encounterVisitIdsForOrg,
   evaluateMemberClosure,
   mountEncounterRoutes,
+  registerClosureAlertCatalog,
   registerEncounterAbacPredicates,
   registerEncounterErasers,
   registerEncounterRoutes,
@@ -670,6 +671,7 @@ import {
   scheduleM8Jobs,
   signedEncounterNoteForOrg,
   signedEncounterSnapshotsInRangeForOrg,
+  withClosureAlertCatalog,
 } from "./modules/08-encounters/index";
 import { visitCountsByDisciplineForOrg } from "./modules/08-encounters/seams/visit-counts-by-discipline-for-org";
 import {
@@ -1919,6 +1921,7 @@ import {
   createBreakGlassReviewSweep,
   createBullmqTimerPort,
   createDbAckQueueStatsReader,
+  createDbAlertCorrelationReader,
   createDbMessagingProvider,
   createDbMessagingRouteService,
   createDlqAuditRecorder,
@@ -4335,7 +4338,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     : undefined;
   // ADR-0113 D6 - the visit-note closure gate. ONE policy cache serves the gate and `mountEncounterRoutes` (below), so a policy PUT
   // invalidates what the gate reads. The gate runs the one shared evaluator inside the caller's org context; a failure is logged with
-  // the organization id only and the request is refused 503 (the gate fails closed).
+  // the organization id only and the request is refused 503 (the gate fails closed; the one exception is a failed policy refresh for an
+  // organization whose last known mode was off / warn, read under 60s ago, which is served instead).
   const closurePolicyCache = dbHandle ? createDbClosurePolicyCache(dbHandle.db) : undefined;
   const noteClosureGate =
     dbHandle && closurePolicyCache
@@ -4350,8 +4354,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 policy,
               }),
             ),
-          onFailure: ({ organizationId, error }) =>
-            app.log.error({ err: error, organizationId }, "note-closure gate read failed"),
+          // Throttled by the gate to one line per organization per 30s; `suppressed` counts the failures it swallowed since the last.
+          onFailure: ({ organizationId, error, servedStale, suppressed }) =>
+            app.log.error(
+              { err: error, organizationId, servedStale, suppressed },
+              "note-closure gate read failed",
+            ),
         })
       : undefined;
   const tenantClearinghouse = dbHandle
@@ -12503,7 +12511,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       outbox: m8OutboxPublisher,
       activeOrgs: m8ActiveOrgs,
-      alerts: getSeam("AlertEmitter") as AlertEmitter,
+      // ADR-0113 D5 - M8's closure alert payloads are registered on the Foundation registry and asserted valid HERE, at boot, and every
+      // closure alert the workers emit is checked against that catalog first (other alert types pass through; the M14 alerts' shape).
+      alerts: withClosureAlertCatalog(
+        getSeam("AlertEmitter") as AlertEmitter,
+        registerClosureAlertCatalog(createAlertPayloadRegistry()),
+      ),
+      // ADR-0113 D5 - the closure sweep skips the alerts that already exist instead of re-emitting them every tick.
+      existingAlertCorrelations: createDbAlertCorrelationReader(dbHandle.db),
     });
     const m8Workers = registerM8CronWorkers(m8WorkerDeps);
     attachDlqAlertsToAll(m8Workers, "m8");

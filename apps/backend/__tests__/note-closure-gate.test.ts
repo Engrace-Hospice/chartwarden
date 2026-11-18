@@ -1,12 +1,15 @@
 // The visit-note closure gate's decision order (ADR-0113 D6), with a fake policy cache and a fake evaluator so every branch is
 // reachable and every IO is countable: an allowlisted route does no IO; `off` / `warn` refuse nothing; `block` refuses a `blocked`
 // verdict with 403 NOTE_CLOSURE_REQUIRED, caches only `clear` (5s, never past the block instant), never caches a block; and any
-// failure on a non-allowlisted route is 503 NOTE_CLOSURE_UNAVAILABLE rather than a pass.
+// failure on a non-allowlisted route is 503 NOTE_CLOSURE_UNAVAILABLE rather than a pass, except that a failed policy REFRESH for an
+// organization whose last known mode was off / warn serves that policy for a bounded time. Concurrent evaluations share one call.
 import { ChartWardenError, type DocumentationObligationMode } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
   NOTE_CLOSURE_CLEAR_CACHE_MAX_ENTRIES,
   NOTE_CLOSURE_CLEAR_TTL_MS,
+  NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS,
+  NOTE_CLOSURE_POLICY_STALE_MS,
   NOTE_CLOSURE_REQUIRED_CODE,
   NOTE_CLOSURE_UNAVAILABLE_CODE,
   type NoteClosureGateEvaluation,
@@ -272,7 +275,12 @@ describe("the gate - step 4: failures close", () => {
     const error = await refusalOf(h.gate.assertMayCall(request()));
     expect(error.code).toBe(NOTE_CLOSURE_UNAVAILABLE_CODE);
     expect(error.statusCode).toBe(503);
-    expect(h.onFailure).toHaveBeenCalledWith({ organizationId: ORG, error: cause });
+    expect(h.onFailure).toHaveBeenCalledWith({
+      organizationId: ORG,
+      error: cause,
+      servedStale: false,
+      suppressed: 0,
+    });
   });
 
   it("an evaluator that throws is 503, a RangeError from the pure clock included", async () => {
@@ -310,5 +318,193 @@ describe("the gate - step 4: failures close", () => {
     await refusalOf(h.gate.assertMayCall(request()));
     fail = false;
     await expect(h.gate.assertMayCall(request())).resolves.toBeUndefined();
+  });
+});
+
+describe("the gate - a failed policy refresh (stale-if-error)", () => {
+  /** A policy source that answers `mode` until `fail()` is called, then throws. */
+  function flakyPolicy(mode: DocumentationObligationMode | "bogus") {
+    const state = { failing: false, mode };
+    return {
+      state,
+      read: async () => {
+        if (state.failing) throw new Error("policy store down");
+        return { mode: state.mode as DocumentationObligationMode };
+      },
+    };
+  }
+
+  it.each(["warn", "off"] as const)(
+    "serves the last known %s policy when the refresh fails (no 503), and reports it as served stale",
+    async (mode) => {
+      const source = flakyPolicy(mode);
+      const h = harness({ policy: source.read });
+      await h.gate.assertMayCall(request());
+      source.state.failing = true;
+      h.advance(NOTE_CLOSURE_POLICY_STALE_MS);
+      await expect(h.gate.assertMayCall(request())).resolves.toBeUndefined();
+      expect(h.evaluate).not.toHaveBeenCalled();
+      expect(h.onFailure).toHaveBeenCalledTimes(1);
+      expect(h.onFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: ORG, servedStale: true, suppressed: 0 }),
+      );
+    },
+  );
+
+  it("fails closed (503) when the last known mode was block, even a moment after it was read", async () => {
+    const source = flakyPolicy("block");
+    const h = harness({ policy: source.read, evaluation: async () => clear() });
+    await h.gate.assertMayCall(request());
+    source.state.failing = true;
+    h.advance(1);
+    const error = await refusalOf(h.gate.assertMayCall(request()));
+    expect(error.code).toBe(NOTE_CLOSURE_UNAVAILABLE_CODE);
+    expect(error.statusCode).toBe(503);
+    expect(h.onFailure).toHaveBeenCalledWith(expect.objectContaining({ servedStale: false }));
+  });
+
+  it("fails closed (503) when nothing is known for the organization, even if another organization is known", async () => {
+    const source = flakyPolicy("warn");
+    const h = harness({ policy: source.read });
+    await h.gate.assertMayCall(request({ organizationId: OTHER_ORG }));
+    source.state.failing = true;
+    const error = await refusalOf(h.gate.assertMayCall(request()));
+    expect(error.code).toBe(NOTE_CLOSURE_UNAVAILABLE_CODE);
+    await expect(
+      h.gate.assertMayCall(request({ organizationId: OTHER_ORG })),
+    ).resolves.toBeUndefined();
+  });
+
+  it("stops serving the stale policy once it is older than the bound (503 from there on)", async () => {
+    const source = flakyPolicy("warn");
+    const h = harness({ policy: source.read });
+    await h.gate.assertMayCall(request());
+    source.state.failing = true;
+    h.advance(NOTE_CLOSURE_POLICY_STALE_MS);
+    await expect(h.gate.assertMayCall(request())).resolves.toBeUndefined();
+    h.advance(1);
+    const error = await refusalOf(h.gate.assertMayCall(request()));
+    expect(error.code).toBe(NOTE_CLOSURE_UNAVAILABLE_CODE);
+  });
+
+  it("a successful read refreshes the bound, and a recovered store is believed over the stale copy", async () => {
+    const source = flakyPolicy("warn");
+    const h = harness({ policy: source.read, evaluation: async () => blocked });
+    await h.gate.assertMayCall(request());
+    h.advance(NOTE_CLOSURE_POLICY_STALE_MS - 1);
+    await h.gate.assertMayCall(request()); // a successful read at +59.999s resets the bound
+    source.state.failing = true;
+    h.advance(NOTE_CLOSURE_POLICY_STALE_MS - 1);
+    await expect(h.gate.assertMayCall(request())).resolves.toBeUndefined();
+    source.state.failing = false;
+    source.state.mode = "block"; // the tenant moved to block while the store was down: the fresh read wins
+    const error = await refusalOf(h.gate.assertMayCall(request()));
+    expect(error.code).toBe(NOTE_CLOSURE_REQUIRED_CODE);
+  });
+
+  it("an allowlisted route still does no IO while the store is down", async () => {
+    const source = flakyPolicy("warn");
+    const h = harness({ policy: source.read });
+    source.state.failing = true;
+    await h.gate.assertMayCall(request({ ...ALLOWED_ROUTE, rawUrl: ALLOWED_ROUTE.routeTemplate }));
+    expect(h.get).not.toHaveBeenCalled();
+  });
+});
+
+describe("the gate - failure reporting is throttled per organization", () => {
+  const failingPolicy = async (): Promise<{ mode: DocumentationObligationMode }> => {
+    throw new Error("connection refused");
+  };
+
+  it("reports the first failure, counts the ones inside the interval, and reports the count on the next line", async () => {
+    const h = harness({ policy: failingPolicy });
+    for (let i = 0; i < 5; i++) await refusalOf(h.gate.assertMayCall(request()));
+    expect(h.onFailure).toHaveBeenCalledTimes(1);
+    expect(h.onFailure).toHaveBeenLastCalledWith(
+      expect.objectContaining({ organizationId: ORG, suppressed: 0 }),
+    );
+    h.advance(NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS);
+    await refusalOf(h.gate.assertMayCall(request()));
+    expect(h.onFailure).toHaveBeenCalledTimes(2);
+    expect(h.onFailure).toHaveBeenLastCalledWith(
+      expect.objectContaining({ organizationId: ORG, suppressed: 4 }),
+    );
+  });
+
+  it("throttles per organization: another organization's first failure is still reported", async () => {
+    const h = harness({ policy: failingPolicy });
+    await refusalOf(h.gate.assertMayCall(request()));
+    await refusalOf(h.gate.assertMayCall(request({ organizationId: OTHER_ORG })));
+    expect(h.onFailure).toHaveBeenCalledTimes(2);
+  });
+
+  it("still refuses every request with 503 while the log line is suppressed", async () => {
+    const h = harness({ policy: failingPolicy });
+    for (let i = 0; i < 3; i++) {
+      const error = await refusalOf(h.gate.assertMayCall(request()));
+      expect(error.code).toBe(NOTE_CLOSURE_UNAVAILABLE_CODE);
+    }
+  });
+});
+
+describe("the gate - concurrent evaluations are single-flight", () => {
+  function deferredEvaluation() {
+    let resolve: (value: NoteClosureGateEvaluation) => void = () => {};
+    let reject: (reason: unknown) => void = () => {};
+    const promise = new Promise<NoteClosureGateEvaluation>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("N concurrent requests for one member share ONE evaluator call, and every one of them is refused", async () => {
+    const pending = deferredEvaluation();
+    const h = harness({ evaluation: () => pending.promise });
+    const calls = Array.from({ length: 25 }, () => refusalOf(h.gate.assertMayCall(request())));
+    await vi.waitFor(() => expect(h.evaluate).toHaveBeenCalledTimes(1));
+    pending.resolve(blocked);
+    const errors = await Promise.all(calls);
+    expect(h.evaluate).toHaveBeenCalledTimes(1);
+    expect(errors.map((e) => e.code)).toEqual(Array(25).fill(NOTE_CLOSURE_REQUIRED_CODE));
+  });
+
+  it("does not reuse a SETTLED result: the next request evaluates again (a block is never cached)", async () => {
+    const h = harness({});
+    await refusalOf(h.gate.assertMayCall(request()));
+    await refusalOf(h.gate.assertMayCall(request()));
+    expect(h.evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces per organization + member only: another member, or another organization, evaluates on its own", async () => {
+    const pending = deferredEvaluation();
+    const h = harness({ evaluation: () => pending.promise });
+    const calls = [
+      request(),
+      request({ membershipId: OTHER_MEMBER }),
+      request({ organizationId: OTHER_ORG }),
+    ].map((r) => refusalOf(h.gate.assertMayCall(r)));
+    await vi.waitFor(() => expect(h.evaluate).toHaveBeenCalledTimes(3));
+    pending.resolve(blocked);
+    await Promise.all(calls);
+  });
+
+  it("a failing shared evaluation answers 503 to every waiter and the next request retries it", async () => {
+    const pending = deferredEvaluation();
+    let first = true;
+    const h = harness({
+      evaluation: () => {
+        if (!first) return Promise.resolve(clear());
+        first = false;
+        return pending.promise;
+      },
+    });
+    const calls = Array.from({ length: 4 }, () => refusalOf(h.gate.assertMayCall(request())));
+    await vi.waitFor(() => expect(h.evaluate).toHaveBeenCalledTimes(1));
+    pending.reject(new Error("db down"));
+    const errors = await Promise.all(calls);
+    expect(errors.map((e) => e.code)).toEqual(Array(4).fill(NOTE_CLOSURE_UNAVAILABLE_CODE));
+    await expect(h.gate.assertMayCall(request())).resolves.toBeUndefined();
+    expect(h.evaluate).toHaveBeenCalledTimes(2);
   });
 });
