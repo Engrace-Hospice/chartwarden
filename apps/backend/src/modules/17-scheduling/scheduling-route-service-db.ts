@@ -1827,26 +1827,40 @@ export function createDbSchedulingBackend(
             policy.patientId,
             occurrence.scheduledStartedAt,
           );
-          await withOrgContext(db, orgContextFor(orgId, userId), async (tx) => {
-            await insertAndPublish(
-              tx as DbClient,
-              orgId,
-              userId,
-              {
-                patientId: policy.patientId,
-                admissionId: policy.admissionId,
-                patientAddressId: policy.patientAddressId,
-                externalFacilityId: policy.externalFacilityId,
-                assignedMembershipId: policy.assignedMembershipId,
-                visitPurpose: policy.visitPurpose as VisitPurpose,
-                visitSetting: policy.visitSetting as VisitSetting,
-                scheduledStartedAt: occurrence.scheduledStartedAt,
-                scheduledEndedAt: occurrence.scheduledEndedAt,
-              },
-              { parentRecurringVisitId: policy.id, parentProposalId: null },
-              seamFacts,
-            );
-          });
+          try {
+            await withOrgContext(db, orgContextFor(orgId, userId), async (tx) => {
+              await insertAndPublish(
+                tx as DbClient,
+                orgId,
+                userId,
+                {
+                  patientId: policy.patientId,
+                  admissionId: policy.admissionId,
+                  patientAddressId: policy.patientAddressId,
+                  externalFacilityId: policy.externalFacilityId,
+                  assignedMembershipId: policy.assignedMembershipId,
+                  visitPurpose: policy.visitPurpose as VisitPurpose,
+                  visitSetting: policy.visitSetting as VisitSetting,
+                  scheduledStartedAt: occurrence.scheduledStartedAt,
+                  scheduledEndedAt: occurrence.scheduledEndedAt,
+                },
+                { parentRecurringVisitId: policy.id, parentProposalId: null },
+                seamFacts,
+              );
+            });
+          } catch (err) {
+            // The M8 §2.2 pair refusal is a permanent property of this policy's (purpose, clinician), not a
+            // transient gate miss: skip its occurrences (the tx rolled back, nothing was written) rather than
+            // abort every other policy in the org's pass.
+            if (
+              err instanceof SchedulingStateError &&
+              err.code === "VISIT_ENCOUNTER_TYPE_UNSUPPORTED"
+            ) {
+              occurrencesSkipped += 1;
+              continue;
+            }
+            throw err;
+          }
           visitsCreated += 1;
         }
       }
