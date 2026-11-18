@@ -21,6 +21,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -62,7 +63,6 @@ import {
   toneOf,
 } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Field,
@@ -239,7 +239,12 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
       </FilterRow>
 
       {latest ? (
-        <Card title="Most recent score" actions={<RiskTierPill tier={latest.tier} />}>
+        <Panel
+          stack
+          headingLevel={3}
+          title="Most recent score"
+          action={<RiskTierPill tier={latest.tier} />}
+        >
           <SummaryGrid>
             <Field label="Scope" value={nameOf(latest.contactId)} />
             <Field label="Assessed" value={dateTime(latest.assessedAt)} />
@@ -286,18 +291,20 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
               not an empty rubric.
             </span>
           )}
-        </Card>
+        </Panel>
       ) : (
-        <Card title="Most recent score">
+        <Panel stack headingLevel={3} title="Most recent score">
           <span style={mutedStyle}>
             No risk score has been computed for this plan yet. The rubric runs on the survivors'
             factors plus what Modules 9 and 15 publish; recomputing it here appends the first ledger
             row.
           </span>
-        </Card>
+        </Panel>
       )}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title={
           tasks === null || tasksWithheld
             ? "Assessment checkpoints"
@@ -369,9 +376,13 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
           score at plan opening does not complete one. A missed checkpoint can still be completed
           late.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title={`Score ledger (${countLabel(scores.length, scoresHasMore)})`}>
+      <Panel
+        stack
+        headingLevel={3}
+        title={`Score ledger (${countLabel(scores.length, scoresHasMore)})`}
+      >
         {scores.length === 0 ? (
           <span style={mutedStyle}>The append-only ledger is empty.</span>
         ) : (
@@ -430,7 +441,7 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
           The ledger is append-only — the database refuses UPDATE on a score row outright. A
           correction is a new row, never an edit.
         </span>
-      </Card>
+      </Panel>
 
       {completing ? (
         <CompleteAssessmentModal

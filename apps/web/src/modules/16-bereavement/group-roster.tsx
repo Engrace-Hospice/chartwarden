@@ -2,13 +2,12 @@
 // session holding `bereavement.group.run` (oversight, the staff facilitator, or a volunteer facilitator who passes the 418.78 gates): without
 // the key it is never requested, and a 403 renders nothing. A volunteer gets the reduced projection: no relationship and no plan, shown as
 // "Not shown to you", never guessed.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, Panel, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { humanize } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   linkStyle,
   mutedStyle,
@@ -47,7 +46,7 @@ export function GroupRosterCard({
   const failure = state.kind === "error" ? state.message : state.notice;
   const entries = state.kind === "ready" ? state.data.entries : [];
   return (
-    <Card title="Roster">
+    <Panel stack headingLevel={3} title="Roster">
       {failure ? (
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           <ErrorText>{failure}</ErrorText>
@@ -103,6 +102,6 @@ export function GroupRosterCard({
           </tbody>
         </table>
       ) : null}
-    </Card>
+    </Panel>
   );
 }

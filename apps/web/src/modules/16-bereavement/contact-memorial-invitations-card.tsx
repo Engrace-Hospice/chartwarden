@@ -5,14 +5,20 @@
 // renders, and a 403 renders nothing either. An answer can be recorded only while the service is published (afterwards the RSVP is closed).
 // The write carries one Idempotency-Key per attempt; the row is replaced by the server's answer. A refusal (409: closed, full) is said in
 // place and the list is read again.
-import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import {
+  Button,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
 import { errorMessage, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Modal,
   SelectField,
@@ -63,7 +69,7 @@ function InvitationsPanel({ contactId }: { contactId: string }): JSX.Element | n
   const rows = state.kind === "ready" ? state.data : [];
   const failure = state.kind === "error" ? state.message : state.notice;
   return (
-    <Card title="Memorial invitations">
+    <Panel stack headingLevel={3} title="Memorial invitations">
       {region}
       {failure ? (
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
@@ -132,7 +138,7 @@ function InvitationsPanel({ contactId }: { contactId: string }): JSX.Element | n
           }}
         />
       ) : null}
-    </Card>
+    </Panel>
   );
 }
 

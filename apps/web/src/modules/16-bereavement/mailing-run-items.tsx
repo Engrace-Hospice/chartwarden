@@ -4,14 +4,13 @@
 //
 // A 403 renders nothing. Any other failure is announced and keeps the rows on screen. `refreshKey` changes whenever the run moved
 // (generated, confirmed, cancelled): the items reload, and the rows already shown stay until the new ones arrive.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, Panel, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { type MailingItem, type MailingItemStatus, listMailingItems } from "./bereavement-api";
 import { countLabel, humanize, shortId, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   FilterRow,
   SelectField,
@@ -70,7 +69,7 @@ export function MailingRunItems({
   const busy = state.kind === "ready" && state.busy;
   const hasMore = state.kind === "ready" && state.hasMore;
   return (
-    <Card title="Families in this run">
+    <Panel stack headingLevel={3} title="Families in this run">
       <FilterRow>
         <SelectField
           label="Item status"
@@ -150,6 +149,6 @@ export function MailingRunItems({
           </div>
         </>
       ) : null}
-    </Card>
+    </Panel>
   );
 }

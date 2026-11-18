@@ -10,7 +10,14 @@
 // and the server is the only place that knows the tenant's configuration — so this screen states the floor
 // and then reports what the server ACTUALLY materialized, rather than drawing a preview it would have had
 // to invent.
-import { Button, EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  Panel,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -25,7 +32,6 @@ import {
 } from "./bereavement-api";
 import { RELATIONSHIP_CODES, humanize, shortDate, shortId } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Field,
@@ -154,16 +160,16 @@ export function BereavementRosterSeed(): JSX.Element {
 
       {actionError ? <ErrorText>{actionError}</ErrorText> : null}
 
-      <Card title="Plan">
+      <Panel stack headingLevel={3} title="Plan">
         <SummaryGrid>
           <Field label="Death date" value={shortDate(plan.deathDate)} />
           <Field label="Window ends" value={shortDate(plan.windowEndsAt)} />
           <Field label="Counselor" value={shortId(plan.assignedCounselorUserId)} mono />
           <Field label="Contacts already on roster" value={plan.contacts.length} />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
-      <Card title="Seed from the patient's caregivers">
+      <Panel stack headingLevel={3} title="Seed from the patient's caregivers">
         <CheckboxField
           label="Seed bereaved contacts from the M5 caregiver roster"
           checked={seedFromCaregivers}
@@ -173,11 +179,13 @@ export function BereavementRosterSeed(): JSX.Element {
           Seeded contacts land in `proposed`. Each one is confirmed individually, which is where the
           M39 bereavement-outreach consent verdict is resolved — fail-CLOSED.
         </span>
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Additional contacts"
-        actions={
+        action={
           <Button tone="secondary" type="button" onClick={addDraft}>
             Add a contact
           </Button>
@@ -230,9 +238,9 @@ export function BereavementRosterSeed(): JSX.Element {
             </div>
           ))
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Platform-floor schedule (§D4)">
+      <Panel stack headingLevel={3} title="Platform-floor schedule (§D4)">
         <table style={tableStyle}>
           <thead>
             <tr>
@@ -255,7 +263,7 @@ export function BereavementRosterSeed(): JSX.Element {
           but may never drop a floor item or push it past its scheduled date. What is actually
           materialized is reported above once the plan opens.
         </span>
-      </Card>
+      </Panel>
 
       <div>
         <Button

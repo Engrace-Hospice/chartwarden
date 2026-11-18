@@ -17,6 +17,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -70,7 +71,6 @@ import {
   touchpointLabel,
 } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Field,
@@ -321,9 +321,11 @@ function ContactForPlan({
         </Notice>
       ) : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Survivor"
-        actions={
+        action={
           <StatusPill
             label={humanize(contact.status)}
             tone={toneOf(CONTACT_STATUS_TONE, contact.status)}
@@ -367,9 +369,9 @@ function ContactForPlan({
           Email, phone and mailing address are envelope-encrypted at rest and are not returned on
           this read surface — the allowed CHANNELS are, because those drive what may be sent.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title="Outreach preferences">
+      <Panel stack headingLevel={3} title="Outreach preferences">
         <span style={mutedStyle}>
           {contact.allowedOutreachKinds.length === 0
             ? "No channels are allowed. No scheduled touchpoint can be delivered to this survivor."
@@ -380,16 +382,16 @@ function ContactForPlan({
             Edit channels
           </Button>
         </div>
-      </Card>
+      </Panel>
 
-      <Card title="Care plan">
+      <Panel stack headingLevel={3} title="Care plan">
         <CarePlanGoals
           contact={contact}
           onSaved={() => acted("Care goals saved.")}
           onStale={() => void load()}
         />
         <ContactSchedule schedule={schedule} onRetry={() => void load()} />
-      </Card>
+      </Panel>
 
       {/* ADR-0109 D10 — touchpoints and program activities (mailings, sessions); renders nothing for a reader the server refuses. */}
       <ProgramActivityCard contactId={contactId} refreshKey={timelineTick} />
@@ -397,7 +399,7 @@ function ContactForPlan({
       <ContactSupportGroupsCard contactId={contactId} />
       <ContactMemorialInvitationsCard contactId={contactId} />
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {contact.status === "proposed" ? (
             <Button tone="primary" type="button" onClick={() => setCeremony("confirm")}>
@@ -435,7 +437,7 @@ function ContactForPlan({
           required. Marking unreachable accepts the nightly three-strikes proposal — the machine
           enforces the threshold, so firing this early is refused rather than silently trusted.
         </span>
-      </Card>
+      </Panel>
 
       {ceremony === "confirm" ? (
         <ConfirmModal contact={contact} onClose={() => setCeremony(null)} onDone={refresh} />

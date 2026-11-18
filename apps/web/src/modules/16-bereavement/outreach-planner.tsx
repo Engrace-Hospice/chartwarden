@@ -19,6 +19,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -57,7 +58,6 @@ import {
   toneOf,
 } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   FilterRow,
@@ -211,7 +211,7 @@ export function BereavementOutreachPlanner(): JSX.Element {
         />
       </FilterRow>
 
-      <Card title={`Touchpoints (${rows.length})`}>
+      <Panel stack headingLevel={3} title={`Touchpoints (${rows.length})`}>
         {rows.length === 0 ? (
           <span style={mutedStyle}>No touchpoints match this filter.</span>
         ) : (
@@ -331,7 +331,7 @@ export function BereavementOutreachPlanner(): JSX.Element {
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
 
       {ceremony?.kind === "complete" ? (
         <CompleteModal

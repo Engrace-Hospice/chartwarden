@@ -27,6 +27,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   linkLifetimeMs,
   safeMintedUrl,
@@ -54,7 +55,6 @@ import {
 } from "./bereavement-api";
 import { dateTime, humanize, shortDate, toneOf } from "./bereavement-status";
 import {
-  Card,
   CountGrid,
   ErrorText,
   Field,
@@ -455,7 +455,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
         </Notice>
       ) : null}
 
-      <Card title="Summary">
+      <Panel stack headingLevel={3} title="Summary">
         <SummaryGrid>
           <Field label="Mailing" value={mailingLabel(run.mailingKey)} />
           <Field label="For" value={shortDate(run.scheduledFor)} />
@@ -473,9 +473,9 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             { label: "Left out after printing", value: counts.excludedAfterRender },
           ]}
         />
-      </Card>
+      </Panel>
 
-      <Card title="Wording">
+      <Panel stack headingLevel={3} title="Wording">
         {hasWording ? (
           <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
             <strong>{wording.title || "(no title)"}</strong>
@@ -494,9 +494,9 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             and at least one paragraph before generating.
           </span>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         {noActions ? (
           <span style={mutedStyle}>Your role can view this run but not change or send it.</span>
         ) : !Object.values(offers).some(Boolean) ? (
@@ -585,7 +585,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           </span>
         ) : null}
         {actionError && !confirmOpen ? <ErrorText>{actionError}</ErrorText> : null}
-      </Card>
+      </Panel>
 
       <MailingRunItems runId={run.runId} refreshKey={`${run.status}:${run.version}`} />
 

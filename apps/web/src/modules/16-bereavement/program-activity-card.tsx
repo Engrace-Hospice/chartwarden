@@ -8,7 +8,7 @@
 // A bereavement volunteer sees WHEN each touchpoint happened and its kind but never its outcome (what was said on a call is clinical):
 // the field is absent from the response, and that is shown as "Not shown to you", never as a guess. A 403 renders nothing; any other
 // failure is announced and keeps the entries on screen; "Load more" appends.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, Panel, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef } from "react";
 import type { JSX } from "react";
 import {
@@ -17,7 +17,7 @@ import {
   listContactTimeline,
 } from "./bereavement-api";
 import { dateTime, outreachKindLabel, redactionLabel } from "./bereavement-status";
-import { Card, ErrorText, mutedStyle, rowLine, tableStyle, td, th } from "./bereavement-ui";
+import { ErrorText, mutedStyle, rowLine, tableStyle, td, th } from "./bereavement-ui";
 import { usePagedList } from "./mailing-load";
 import { activityLabel, timelineOutcomeLabel } from "./mailing-status";
 
@@ -71,7 +71,7 @@ export function ProgramActivityCard({
   const redaction =
     state.kind === "ready" ? redactionLabel(state.last.redactedCategories ?? []) : null;
   return (
-    <Card title="Program activity">
+    <Panel stack headingLevel={3} title="Program activity">
       <span style={mutedStyle}>
         Touchpoints and program activities such as mailings, newest first. A program activity is not
         a touchpoint: it does not count toward the outreach schedule.
@@ -134,6 +134,6 @@ export function ProgramActivityCard({
           </Button>
         </div>
       ) : null}
-    </Card>
+    </Panel>
   );
 }

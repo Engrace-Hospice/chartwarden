@@ -16,6 +16,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -48,7 +49,6 @@ import {
   toneOf,
 } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Field,
@@ -179,7 +179,7 @@ export function BereavementCloseoutView(): JSX.Element {
         </Notice>
       )}
 
-      <Card title="Program">
+      <Panel stack headingLevel={3} title="Program">
         <SummaryGrid>
           <Field label="Death date" value={shortDate(plan.deathDate)} />
           <Field label="Window ends" value={shortDate(plan.windowEndsAt)} />
@@ -189,12 +189,14 @@ export function BereavementCloseoutView(): JSX.Element {
           <Field label="Active survivors" value={plan.stats.contactsActiveCount} />
           <Field label="Opted out" value={plan.stats.contactsOptedOutCount} />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
       {closure ? (
-        <Card
+        <Panel
+          stack
+          headingLevel={3}
           title="Closure record"
-          actions={
+          action={
             <StatusPill
               label={humanize(closure.reason)}
               tone={toneOf(CLOSURE_REASON_TONE, closure.reason)}
@@ -227,17 +229,17 @@ export function BereavementCloseoutView(): JSX.Element {
               a surveyor reads.
             </span>
           ) : null}
-        </Card>
+        </Panel>
       ) : (
-        <Card title="Closure record">
+        <Panel stack headingLevel={3} title="Closure record">
           <span style={mutedStyle}>
             No closure record exists yet. It is written when the plan closes — by the month-13 job
             for a completed program, or by the cosigned early-close path.
           </span>
-        </Card>
+        </Panel>
       )}
 
-      <Card title="Final contact">
+      <Panel stack headingLevel={3} title="Final contact">
         {activeContacts.length === 0 ? (
           <span style={mutedStyle}>
             No survivors on this plan are still active, so there is no final contact to compose.
@@ -260,7 +262,7 @@ export function BereavementCloseoutView(): JSX.Element {
           The closeout letter is rendered by Module 22 from the document artifact this contact log
           references. Attach the rendered document id when it exists.
         </span>
-      </Card>
+      </Panel>
 
       {composing ? (
         <FinalContactModal

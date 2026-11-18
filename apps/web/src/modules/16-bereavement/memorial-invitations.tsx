@@ -1,14 +1,20 @@
 // apps/web/src/modules/16-bereavement — a memorial service's INVITATIONS (ADR-0109 D10, routes 73 / 75). The list names every invited family,
 // so it is oversight only: the parent mounts this card only for `bereavement.memorial.manage`, and a 403 still renders nothing. Once the
 // service has started (and was not cancelled), each row can be marked attended or not; the row takes the server's answer.
-import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import {
+  Button,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { errorMessage } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   linkStyle,
   mutedStyle,
@@ -82,7 +88,7 @@ export function MemorialInvitations({
   const rows = state.kind === "ready" ? state.data : [];
   const failure = state.kind === "error" ? state.message : state.notice;
   return (
-    <Card title="Invitations">
+    <Panel stack headingLevel={3} title="Invitations">
       {failure ? (
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           <ErrorText>{failure}</ErrorText>
@@ -166,6 +172,6 @@ export function MemorialInvitations({
         </table>
       ) : null}
       {error ? <ErrorText>{error}</ErrorText> : null}
-    </Card>
+    </Panel>
   );
 }

@@ -19,6 +19,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -36,7 +37,6 @@ import {
 } from "./bereavement-api";
 import { CONTACT_STATUS_TONE, humanize, shortId, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Field,
   Modal,
@@ -141,9 +141,11 @@ export function BereavementGriefScreen(): JSX.Element {
         }
       />
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Survivor"
-        actions={
+        action={
           <StatusPill
             label={humanize(contact.status)}
             tone={toneOf(CONTACT_STATUS_TONE, contact.status)}
@@ -155,11 +157,13 @@ export function BereavementGriefScreen(): JSX.Element {
           <Field label="Current tier" value={<RiskTierPill tier={contact.currentRiskTier} />} />
           <Field label="Version" value={contact.version} />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="PG-13 (bereavement-adapted)"
-        actions={
+        action={
           <StatusPill
             label={`Total ${total} / 52`}
             tone={met ? "error" : total >= PG13_THRESHOLD - 6 ? "warning" : "success"}
@@ -195,9 +199,9 @@ export function BereavementGriefScreen(): JSX.Element {
           Scored on this screen and sent as a total: the route records `pg13Score`, and Module 16
           keeps no per-item store, so nothing here pretends the individual responses are retained.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title="IPGR (optional)">
+      <Panel stack headingLevel={3} title="IPGR (optional)">
         <TextField
           label="IPGR total (0–200)"
           type="number"
@@ -208,7 +212,7 @@ export function BereavementGriefScreen(): JSX.Element {
         <span id="ipgr-hint" style={mutedStyle}>
           Recorded alongside the PG-13 total when a second instrument was administered.
         </span>
-      </Card>
+      </Panel>
 
       {met ? (
         <Notice tone="error" live>
@@ -219,7 +223,7 @@ export function BereavementGriefScreen(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card title="Outcome">
+      <Panel stack headingLevel={3} title="Outcome">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           <Button tone="secondary" type="button" onClick={() => setCeremony("refer")}>
             Log an external referral (program continues)
@@ -233,7 +237,7 @@ export function BereavementGriefScreen(): JSX.Element {
           external resource; a referral leaves the program running. They are separate records
           because they are separate clinical facts.
         </span>
-      </Card>
+      </Panel>
 
       {ceremony === "refer" ? (
         <ReferralModal

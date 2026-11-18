@@ -9,7 +9,14 @@
 // list (a session whose permission list is stale) hides it too: no heading, no empty state, no hint that letters exist. Any other failure is
 // said plainly, with a retry. Approval and decline carry the version the list READ in `If-Match`; a 409/404 means another reviewer moved
 // first, which is said and the list reloaded. A reload keeps the list on screen: only the first load shows a placeholder.
-import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import {
+  Button,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -25,7 +32,6 @@ import {
 } from "./bereavement-api";
 import { countLabel, shortDate, shortId } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Modal,
   Notice,
@@ -136,7 +142,9 @@ export function PhysicianLetterReview(): JSX.Element | null {
     load.kind === "error" ? load.message : load.kind === "ready" ? load.refreshError : undefined;
   return (
     <>
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title={
           load.kind === "ready"
             ? `Physician condolence letters awaiting review (${countLabel(letters.length, load.hasMore)})`
@@ -226,7 +234,7 @@ export function PhysicianLetterReview(): JSX.Element | null {
             )}
           </>
         ) : null}
-      </Card>
+      </Panel>
 
       {action?.mode === "approve" ? (
         <ApproveModal

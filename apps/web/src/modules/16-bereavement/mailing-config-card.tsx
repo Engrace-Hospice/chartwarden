@@ -6,7 +6,7 @@
 // discards the unsaved edits, so it is never done for the reader. While the write is in flight every control is inert and the
 // button shows it; an unsaved edit is flagged, can be discarded, and the browser warns before the tab is closed over it. The card reports
 // "unsaved" or "saving" to the settings page, which holds the one in-app navigation blocker (a router supports one blocker at a time).
-import { Button, StatusPill, t, useAttemptKey } from "@chartwarden/ui";
+import { Button, Panel, StatusPill, t, useAttemptKey } from "@chartwarden/ui";
 import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -19,7 +19,6 @@ import {
 } from "./bereavement-api";
 import { humanize } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Notice,
@@ -127,9 +126,11 @@ export function MailingConfigCard({
 
   return (
     <section aria-label={`${label} settings`}>
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title={label}
-        actions={
+        action={
           <StatusPill
             label={!config.configured ? "Not configured" : config.enabled ? "Enabled" : "Disabled"}
             tone={config.configured && config.enabled ? "success" : "neutral"}
@@ -254,7 +255,7 @@ export function MailingConfigCard({
             ) : null}
           </div>
         )}
-      </Card>
+      </Panel>
     </section>
   );
 }

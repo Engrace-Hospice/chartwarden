@@ -18,6 +18,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -43,7 +44,6 @@ import {
   riskFactorLabel,
 } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Notice,
   SelectField,
@@ -238,7 +238,7 @@ function PredeathForAdmission({ admissionId }: { admissionId: string | undefined
 
       {refreshError ? <ErrorText>{refreshError}</ErrorText> : null}
 
-      <Card title="Risk factors">
+      <Panel stack headingLevel={3} title="Risk factors">
         {!draft.exists ? (
           <span style={mutedStyle}>
             Nothing has been recorded yet for this admission. Every factor starts as unknown.
@@ -280,7 +280,7 @@ function PredeathForAdmission({ admissionId }: { admissionId: string | undefined
         ) : null}
         <StatusLine message={statusMessage} tone={draft.locked ? "warning" : "success"} />
         {saveError ? <ErrorText>{saveError}</ErrorText> : null}
-      </Card>
+      </Panel>
     </div>
   );
 }

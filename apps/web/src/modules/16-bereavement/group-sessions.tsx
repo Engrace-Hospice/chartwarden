@@ -3,13 +3,19 @@
 // The schedule, oldest first. `bereavement.group.manage` adds a session and cancels a scheduled one (the cancel carries that session's
 // version in `If-Match`); `bereavement.group.run` records who came, and only once a session has started (the server refuses earlier). Every
 // write carries one `Idempotency-Key` per attempt; a refused stale write closes its dialog, reloads the sessions and says why.
-import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import {
+  Button,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Modal,
@@ -96,9 +102,11 @@ export function GroupSessions({
   };
 
   return (
-    <Card
+    <Panel
+      stack
+      headingLevel={3}
       title="Sessions"
-      actions={
+      action={
         mayAdd ? (
           <Button size="sm" tone="secondary" onClick={() => setCeremony({ kind: "add" })}>
             Add session
@@ -211,7 +219,7 @@ export function GroupSessions({
           }}
         />
       ) : null}
-    </Card>
+    </Panel>
   );
 }
 

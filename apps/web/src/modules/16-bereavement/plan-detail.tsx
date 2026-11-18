@@ -18,6 +18,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -62,7 +63,6 @@ import {
   toneOf,
 } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Field,
   Modal,
@@ -201,9 +201,11 @@ export function BereavementPlanDetail(): JSX.Element {
 
       {actionError ? <ErrorText>{actionError}</ErrorText> : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Plan"
-        actions={
+        action={
           <StatusPill label={humanize(plan.status)} tone={toneOf(PLAN_STATUS_TONE, plan.status)} />
         }
       >
@@ -236,10 +238,10 @@ export function BereavementPlanDetail(): JSX.Element {
             </Link>
           </Notice>
         ) : null}
-      </Card>
+      </Panel>
 
       {plan.externalSource ? (
-        <Card title="External source (HL7 ADT)">
+        <Panel stack headingLevel={3} title="External source (HL7 ADT)">
           <SummaryGrid>
             <Field
               label="Source facility"
@@ -262,12 +264,14 @@ export function BereavementPlanDetail(): JSX.Element {
               value={dateTime(String(plan.externalSource.cosignedAt ?? "") || null)}
             />
           </SummaryGrid>
-        </Card>
+        </Panel>
       ) : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Actions"
-        actions={
+        action={
           <span style={mutedStyle}>
             Every action carries the plan version read above (`If-Match`).
           </span>
@@ -322,11 +326,13 @@ export function BereavementPlanDetail(): JSX.Element {
             </Button>
           ) : null}
         </div>
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Bereaved contacts"
-        actions={
+        action={
           <span style={mutedStyle}>
             {plan.stats.contactsActiveCount} active · {plan.stats.contactsOptedOutCount} opted out
           </span>
@@ -392,9 +398,9 @@ export function BereavementPlanDetail(): JSX.Element {
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Touchpoints">
+      <Panel stack headingLevel={3} title="Touchpoints">
         <SummaryGrid>
           <Field label="Completed" value={plan.stats.completedCount} />
           <Field label="Missed" value={plan.stats.missedCount} />
@@ -402,7 +408,7 @@ export function BereavementPlanDetail(): JSX.Element {
         <Link to={`/bereavement/plans/${planId}/outreach`} style={linkStyle}>
           Open the outreach planner
         </Link>
-      </Card>
+      </Panel>
 
       {ceremony === "add-contact" ? (
         <AddContactModal

@@ -5,7 +5,14 @@
 // server renders nothing either. Enrolling picks from the OPEN groups; a withdrawal records why (the family asked, or staff removed them).
 // Every write carries one Idempotency-Key per attempt; a stale refusal (409: full, closed, already enrolled or withdrawn) closes the dialog,
 // is said in the panel and the list is read again; any other failure is said in the dialog, which stays open.
-import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import {
+  Button,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useId, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -13,7 +20,6 @@ import { useSession } from "../../shell/session";
 import { errorMessage, isStaleWrite } from "./bereavement-api";
 import { humanize, shortDate, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Modal,
   SelectField,
@@ -61,9 +67,11 @@ function SupportGroupsPanel({ contactId }: { contactId: string }): JSX.Element |
   const failure = state.kind === "error" ? state.message : state.notice;
   const enrolledIds = new Set(rows.filter((r) => r.status === "enrolled").map((r) => r.groupId));
   return (
-    <Card
+    <Panel
+      stack
+      headingLevel={3}
       title="Support groups"
-      actions={
+      action={
         <Button size="sm" tone="secondary" onClick={() => setEnrolling(true)}>
           Enroll in a group
         </Button>
@@ -159,7 +167,7 @@ function SupportGroupsPanel({ contactId }: { contactId: string }): JSX.Element |
           }}
         />
       ) : null}
-    </Card>
+    </Panel>
   );
 }
 

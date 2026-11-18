@@ -9,6 +9,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -21,7 +22,6 @@ import { useSession } from "../../shell/session";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, shortDate, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Field,
   Modal,
@@ -179,7 +179,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
         </div>
       ) : null}
 
-      <Card title="Details">
+      <Panel stack headingLevel={3} title="Details">
         {group.description ? <span>{group.description}</span> : null}
         <SummaryGrid>
           <Field label="Format" value={humanize(group.format)} />
@@ -207,10 +207,10 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
             />
           ) : null}
         </SummaryGrid>
-      </Card>
+      </Panel>
 
       {mayManage ? (
-        <Card title="Actions">
+        <Panel stack headingLevel={3} title="Actions">
           {!Object.values(offers).some(Boolean) ? (
             <span style={mutedStyle}>No actions are available for this group.</span>
           ) : (
@@ -261,7 +261,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
             </div>
           )}
           {actionError && ceremony === null ? <ErrorText>{actionError}</ErrorText> : null}
-        </Card>
+        </Panel>
       ) : null}
 
       <GroupSessions

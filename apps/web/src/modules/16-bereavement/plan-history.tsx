@@ -13,7 +13,14 @@
 // The honest gap is stated on the screen rather than papered over: the M4 audit trail carries entries this
 // reconstruction cannot — a read that was refused, a break-glass access, the exact actor on a cascade —
 // and a surveyor who needs those goes to the audit surface that owns them.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  Panel,
+  StatusPill,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -39,7 +46,6 @@ import {
   toneOf,
 } from "./bereavement-status";
 import {
-  Card,
   Notice,
   columnStyle,
   ghostButtonStyle,
@@ -128,7 +134,7 @@ export function BereavementPlanHistory(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card title={`Timeline (${entries.length})`}>
+      <Panel stack headingLevel={3} title={`Timeline (${entries.length})`}>
         {entries.length === 0 ? (
           <span style={mutedStyle}>Nothing dated has happened on this plan yet.</span>
         ) : (
@@ -153,7 +159,7 @@ export function BereavementPlanHistory(): JSX.Element {
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
     </div>
   );
 }
