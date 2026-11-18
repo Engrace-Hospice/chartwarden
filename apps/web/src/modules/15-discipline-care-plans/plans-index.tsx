@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PatientWorkspaceLayout,
@@ -24,12 +25,16 @@ import {
   PatientSummaryPanel,
   useChartIdentity,
 } from "../../shell/patient-context";
-import { type PlanListItem, errorMessage, listPlans } from "./discipline-api";
+import { useSession } from "../../shell/session";
+import { type PlanListItem, errorMessage, listPlans, openPlanVersion } from "./discipline-api";
+import {
+  disciplinePlanPath,
+  openVersionIntent,
+  overviewPresentation,
+} from "./discipline-navigation";
 import {
   CADENCE_STATUS_TONE,
-  PLAN_STATUS_TONE,
   dueLabel,
-  humanize,
   kindLabel,
   kindRegulation,
   shortDate,
@@ -49,20 +54,15 @@ import {
 /** The §5.1 grid order — the three admission-bootstrapped plans, then the assignment-bootstrapped one. */
 const KINDS = ["aide_poc", "msw_plan", "spiritual_plan", "volunteer_plan"] as const;
 
-/** Each kind's own screen route (the §5.1 #2 / #6 / #8 / #9 views). */
-const KIND_ROUTE: Record<string, string> = {
-  aide_poc: "aide-poc",
-  msw_plan: "msw-plan",
-  spiritual_plan: "spiritual-plan",
-  volunteer_plan: "volunteer-plan",
-};
-
 export function DisciplinePlansIndex(): JSX.Element {
   const client = useApiClient();
   const { patientId } = useParams<{ patientId: string }>();
   const [rows, setRows] = useState<PlanListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [openingPlanId, setOpeningPlanId] = useState<string | null>(null);
+  const canAuthor = useSession()?.permissions?.includes("discipline_plan.author") === true;
 
   const load = useCallback(async () => {
     if (!patientId) return;
@@ -84,6 +84,23 @@ export function DisciplinePlansIndex(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const openVersion = async (plan: PlanListItem): Promise<void> => {
+    const kind = openVersionIntent(plan);
+    if (!kind || openingPlanId !== null) return;
+    setOpeningPlanId(plan.planId);
+    setActionError(null);
+    const result = await openPlanVersion(client, plan.planId, plan.version, { kind });
+    if (result.error) {
+      setActionError(
+        errorMessage(result.error, "The plan version could not be opened. Reload and try again."),
+      );
+      setOpeningPlanId(null);
+      return;
+    }
+    await load();
+    setOpeningPlanId(null);
+  };
 
   // The shared chart banner and Patient Summary rail, so this tab shows the same identity header as
   // every other chart tab (Plan of care, Assessments, ...).
@@ -135,7 +152,8 @@ export function DisciplinePlansIndex(): JSX.Element {
       >
         <ChartModuleRail patientId={patientId ?? ""} current="discipline-plans" />
 
-        <main
+        <section
+          aria-labelledby="discipline-plans-title"
           style={{
             ...columnStyle,
             flex: 1,
@@ -145,7 +163,9 @@ export function DisciplinePlansIndex(): JSX.Element {
           }}
         >
           <div>
-            <h1 style={pageTitleStyle}>Discipline plans</h1>
+            <h1 id="discipline-plans-title" style={pageTitleStyle}>
+              Discipline plans
+            </h1>
             <span style={mutedStyle}>
               The Aide, MSW, Spiritual and Volunteer plans of care for this patient.
             </span>
@@ -159,27 +179,29 @@ export function DisciplinePlansIndex(): JSX.Element {
             </Notice>
           ) : null}
 
+          {actionError ? <Notice tone="error">{actionError}</Notice> : null}
+
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(20rem, 1fr))",
+              gridTemplateColumns: "repeat(auto-fill, minmax(min(20rem, 100%), 1fr))",
               gap: t.space4,
             }}
           >
             {KINDS.map((kind) => {
               const plan = byKind.get(kind);
+              const presentation = overviewPresentation(kind, plan);
+              const versionIntent = plan ? openVersionIntent(plan) : null;
               return (
                 <Card
                   key={kind}
                   title={kindLabel(kind)}
+                  headingLevel={2}
                   actions={
                     plan ? (
-                      <StatusPill
-                        label={humanize(plan.status)}
-                        tone={toneOf(PLAN_STATUS_TONE, plan.status)}
-                      />
+                      <StatusPill label={presentation.statusLabel} tone={presentation.statusTone} />
                     ) : (
-                      <StatusPill label="Not started" tone="neutral" />
+                      <StatusPill label={presentation.statusLabel} tone={presentation.statusTone} />
                     )
                   }
                 >
@@ -222,6 +244,34 @@ export function DisciplinePlansIndex(): JSX.Element {
                             value={`declined ${shortDate(plan.spiritualCareDeclinedAt)}`}
                           />
                         ) : null}
+                        <Field label="Next action" value={presentation.nextAction} />
+                        <Field
+                          label="Latest signed version"
+                          value={
+                            plan.actionSummary.latestSignedVersion
+                              ? `v${plan.actionSummary.latestSignedVersion.sequence} · ${shortDate(plan.actionSummary.latestSignedVersion.signedAt)}`
+                              : "none"
+                          }
+                        />
+                        <Field
+                          label="Assigned team"
+                          value={
+                            plan.actionSummary.ownerMembershipIds.length > 0
+                              ? `${plan.actionSummary.ownerMembershipIds.length} assigned`
+                              : "not assigned"
+                          }
+                        />
+                        {plan.actionSummary.missingSignerRoles.length > 0 ? (
+                          <Field
+                            label="Signatures still needed"
+                            value={plan.actionSummary.missingSignerRoles
+                              .map((role) => role.replaceAll("_", " "))
+                              .join(", ")}
+                          />
+                        ) : null}
+                        {plan.actionSummary.idgDecisionId ? (
+                          <Field label="IDG provenance" value="Decision linked" />
+                        ) : null}
                         <Field label="Last updated" value={shortDate(plan.updatedAt)} />
                       </SummaryGrid>
                       <div
@@ -231,11 +281,8 @@ export function DisciplinePlansIndex(): JSX.Element {
                           flexWrap: "wrap",
                         }}
                       >
-                        <Link
-                          to={`/patients/${patientId}/discipline-plans/${KIND_ROUTE[kind]}`}
-                          style={linkStyle}
-                        >
-                          Open plan
+                        <Link to={disciplinePlanPath(patientId ?? "", kind)} style={linkStyle}>
+                          Open {kindLabel(kind)}
                         </Link>
                         <Link
                           to={`/patients/${patientId}/discipline-plans/${kind}/versions`}
@@ -243,20 +290,29 @@ export function DisciplinePlansIndex(): JSX.Element {
                         >
                           Version history
                         </Link>
+                        {canAuthor && versionIntent ? (
+                          <Button
+                            size="sm"
+                            loading={openingPlanId === plan.planId}
+                            disabled={openingPlanId !== null}
+                            onClick={() => void openVersion(plan)}
+                          >
+                            {versionIntent === "initial" ? "Start plan" : "Start revision"}
+                          </Button>
+                        ) : null}
                       </div>
                     </>
                   ) : (
-                    <span style={mutedStyle}>
-                      {kind === "volunteer_plan"
-                        ? "A volunteer plan is created with the first volunteer assignment (§2.2.1)."
-                        : "This plan is created when the admission is activated. It is not on this patient's record yet."}
-                    </span>
+                    <div style={columnStyle}>
+                      <Field label="Next action" value={presentation.nextAction} />
+                      <span style={mutedStyle}>{presentation.description}</span>
+                    </div>
                   )}
                 </Card>
               );
             })}
           </div>
-        </main>
+        </section>
       </div>
     </PatientWorkspaceLayout>
   );

@@ -913,7 +913,7 @@
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.assessment",
-      "path": "/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId",
+      "path": "/patients/:patientId/discipline-plans/:kind/:planId/assessments/:assessmentId",
       "permission": "discipline_assessment.author"
     },
     {

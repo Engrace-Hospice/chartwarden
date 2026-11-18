@@ -45,6 +45,7 @@ export function m23RouteClasses(isVoidClaim?: IsVoidClaim): readonly RouteClassR
     // Provider and payer routing are configuration; they do not start a claim or eligibility transaction.
     { cls: "open", method: "*", path: "/api/v1/billing/medicare-provider-routing/*" },
     { cls: "open", method: "*", path: "/api/v1/billing/claimmd-medicare-routing/*" },
+    { cls: "open", method: "*", path: "/api/v1/billing/medicare-notice-issues/*" },
     // ADR-0053 amendment 2026-11-06: choosing the clearinghouse is configuration, never new claims work.
     { cls: "open", method: "*", path: "/api/v1/tenant/clearinghouse/*" },
     { cls: "open", method: "*", path: "/api/v1/billing/rate-tables/*" },

@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -20,6 +21,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import {
   type PlanDetail,
   type VersionDetail,
@@ -32,6 +34,7 @@ import {
 import {
   GOAL_STATUS_TONE,
   INTERVENTION_STATUS_TONE,
+  PLAN_FINALIZE_PERMISSION,
   VERSION_STATUS_TONE,
   dateTime,
   goalSourceLabel,
@@ -45,12 +48,12 @@ import {
   Field,
   Notice,
   SummaryGrid,
+  TableScroll,
   alertStyle,
   columnStyle,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -70,6 +73,8 @@ export function IdgRevisionReview(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
+  const canFinalize = useSession()?.permissions?.includes(PLAN_FINALIZE_PERMISSION) === true;
 
   const load = useCallback(async () => {
     if (!patientId || !kind || !versionId) return;
@@ -98,7 +103,8 @@ export function IdgRevisionReview(): JSX.Element {
 
   /** Finalize the reviewed revision — seals its snapshot and freezes the D11 quorum. */
   async function finalize(): Promise<void> {
-    if (!plan || !version) return;
+    if (!plan || !version || finalizing) return;
+    setFinalizing(true);
     setActionError(null);
     const res = await client.POST(
       "/api/v1/discipline-plans/{planId}/versions/{versionId}/finalize",
@@ -112,6 +118,7 @@ export function IdgRevisionReview(): JSX.Element {
     );
     if (res.error) {
       setActionError(errorMessage(res.error, "This revision could not be finalized."));
+      setFinalizing(false);
       return;
     }
     navigate(`/patients/${patientId}/discipline-plans/${(kind ?? "").replace(/_/g, "-")}`);
@@ -151,7 +158,11 @@ export function IdgRevisionReview(): JSX.Element {
         here confirms the record before the revision is finalized and signed — it does not re-decide
         it.
       </Notice>
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? (
+        <p role="alert" aria-live="assertive" style={alertStyle}>
+          {actionError}
+        </p>
+      ) : null}
 
       <Card
         title={`Version ${version.sequence}`}
@@ -165,13 +176,22 @@ export function IdgRevisionReview(): JSX.Element {
         <SummaryGrid>
           <Field label="Version kind" value={humanize(version.kind)} />
           <Field label="IDG meeting" value={shortId(version.idgMeetingId)} mono />
+          <Field
+            label="Latest applied IDG decision"
+            value={shortId(plan.actionSummary.idgDecisionId)}
+            mono
+          />
           <Field label="Finalized" value={dateTime(version.finalizedAt)} />
           <Field label="Signed" value={dateTime(version.signedAt)} />
         </SummaryGrid>
-        {version.status === "draft" ? (
-          <button type="button" style={primaryButtonStyle} onClick={() => void finalize()}>
+        {version.status === "draft" && canFinalize ? (
+          <Button loading={finalizing} onClick={() => void finalize()}>
             Finalize revision
-          </button>
+          </Button>
+        ) : version.status === "draft" ? (
+          <span style={mutedStyle}>
+            You can review this draft, but finalizing requires the plan-finalize permission.
+          </span>
         ) : (
           <span style={mutedStyle}>
             This revision is {humanize(version.status).toLowerCase()} — its snapshot is sealed.
@@ -192,31 +212,33 @@ export function IdgRevisionReview(): JSX.Element {
         {recentGoals.length === 0 ? (
           <span style={mutedStyle}>No goals on this plan.</span>
         ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Goal</th>
-                <th style={th}>Source</th>
-                <th style={th}>Added</th>
-                <th style={th}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentGoals.map((g) => (
-                <tr key={g.goalId} style={rowLine}>
-                  <td style={td}>{g.revisedText ?? g.originalText}</td>
-                  <td style={td}>{goalSourceLabel(g.source)}</td>
-                  <td style={td}>{dateTime(g.addedAt)}</td>
-                  <td style={td}>
-                    <StatusPill
-                      label={humanize(g.status)}
-                      tone={toneOf(GOAL_STATUS_TONE, g.status)}
-                    />
-                  </td>
+          <TableScroll label="Recently authored goals table">
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={th}>Goal</th>
+                  <th style={th}>Source</th>
+                  <th style={th}>Added</th>
+                  <th style={th}>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {recentGoals.map((g) => (
+                  <tr key={g.goalId} style={rowLine}>
+                    <td style={td}>{g.revisedText ?? g.originalText}</td>
+                    <td style={td}>{goalSourceLabel(g.source)}</td>
+                    <td style={td}>{dateTime(g.addedAt)}</td>
+                    <td style={td}>
+                      <StatusPill
+                        label={humanize(g.status)}
+                        tone={toneOf(GOAL_STATUS_TONE, g.status)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
         )}
       </Card>
 
@@ -224,31 +246,33 @@ export function IdgRevisionReview(): JSX.Element {
         {recentInterventions.length === 0 ? (
           <span style={mutedStyle}>No interventions on this plan.</span>
         ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Scope</th>
-                <th style={th}>Frequency</th>
-                <th style={th}>Added</th>
-                <th style={th}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentInterventions.map((iv) => (
-                <tr key={iv.interventionId} style={rowLine}>
-                  <td style={td}>{iv.scopeText}</td>
-                  <td style={td}>{iv.frequencyText}</td>
-                  <td style={td}>{dateTime(iv.addedAt)}</td>
-                  <td style={td}>
-                    <StatusPill
-                      label={humanize(iv.status)}
-                      tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
-                    />
-                  </td>
+          <TableScroll label="Recently authored interventions table">
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={th}>Scope</th>
+                  <th style={th}>Frequency</th>
+                  <th style={th}>Added</th>
+                  <th style={th}>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {recentInterventions.map((iv) => (
+                  <tr key={iv.interventionId} style={rowLine}>
+                    <td style={td}>{iv.scopeText}</td>
+                    <td style={td}>{iv.frequencyText}</td>
+                    <td style={td}>{dateTime(iv.addedAt)}</td>
+                    <td style={td}>
+                      <StatusPill
+                        label={humanize(iv.status)}
+                        tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
         )}
         <span style={{ ...mutedStyle, color: t.onSurfaceVariant }}>
           Ordered by authorship time; the plan read carries no per-mutation IDG attribution.

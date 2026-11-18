@@ -135,7 +135,7 @@
 | web | 15-discipline-care-plans | `discipline-plan.aide-poc` | `/patients/:patientId/discipline-plans/aide-poc` | `discipline_plan.read` | ✅ |
 | web | 15-discipline-care-plans | `discipline-plan.aide-poc.edit` | `/patients/:patientId/discipline-plans/aide-poc/:versionId/edit` | `discipline_plan.author` | ✅ |
 | web | 15-discipline-care-plans | `discipline-plan.msw` | `/patients/:patientId/discipline-plans/msw-plan` | `discipline_plan.read` | ✅ |
-| web | 15-discipline-care-plans | `discipline-plan.assessment` | `/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId` | `discipline_assessment.author` | ✅ |
+| web | 15-discipline-care-plans | `discipline-plan.assessment` | `/patients/:patientId/discipline-plans/:kind/:planId/assessments/:assessmentId` | `discipline_assessment.author` | ✅ |
 | web | 15-discipline-care-plans | `discipline-plan.spiritual` | `/patients/:patientId/discipline-plans/spiritual-plan` | `discipline_plan.read` | ✅ |
 | web | 15-discipline-care-plans | `discipline-plan.volunteer` | `/patients/:patientId/discipline-plans/volunteer-plan` | `discipline_plan.read` | ✅ |
 | web | 15-discipline-care-plans | `discipline-plan.summary` | `/patients/:patientId/discipline-plans/summary` | `discipline_plan.read_summary` | ✅ |

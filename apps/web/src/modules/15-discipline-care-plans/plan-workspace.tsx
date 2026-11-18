@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PatientWorkspaceLayout,
@@ -16,7 +17,8 @@ import {
 //
 // Confidentiality (§7.8 / §7.9) is SERVER-side: a SUD or family-violence row the caller is not cleared for
 // is excluded in SQL and reported through `redacted_categories`. This screen therefore renders the marker
-// honestly — "content is withheld" — and never hides a row it received. There is no frontend authz here.
+// honestly — "content is withheld" — and never hides a row it received. Permission-aware links only shape
+// navigation; the server remains the authorization boundary for every read and write.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -37,10 +39,13 @@ import {
   normalizeSignerSet,
   writeHeaders,
 } from "./discipline-api";
+import { disciplineAssessmentPath } from "./discipline-navigation";
 import {
   ASSESSMENT_STATUS_TONE,
   GOAL_STATUS_TONE,
   INTERVENTION_STATUS_TONE,
+  PLAN_FINALIZE_PERMISSION,
+  PLAN_SIGN_PERMISSION,
   PLAN_STATUS_TONE,
   VERSION_STATUS_TONE,
   assessmentKindLabel,
@@ -59,9 +64,9 @@ import {
   Field,
   Notice,
   SummaryGrid,
+  TableScroll,
   alertStyle,
   columnStyle,
-  ghostButtonStyle,
   linkStyle,
   mutedStyle,
   pageTitleStyle,
@@ -69,6 +74,7 @@ import {
   tableStyle,
   td,
   th,
+  visuallyHidden,
 } from "./discipline-ui";
 import { SignVersionModal } from "./sign-version-modal";
 
@@ -96,6 +102,7 @@ export function DisciplinePlanWorkspace({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"finalize" | "sign" | null>(null);
   const [signing, setSigning] = useState<{
     version: VersionDetail;
     signerSet: RequiredSignerSlot[];
@@ -121,7 +128,8 @@ export function DisciplinePlanWorkspace({
 
   /** Finalize a draft version: seals the snapshot + the D11 quorum (`draft → in_review`). */
   async function finalize(versionId: string, rowVersion: number): Promise<void> {
-    if (!plan) return;
+    if (!plan || busyAction) return;
+    setBusyAction("finalize");
     setActionError(null);
     const res = await client.POST(
       "/api/v1/discipline-plans/{planId}/versions/{versionId}/finalize",
@@ -135,21 +143,26 @@ export function DisciplinePlanWorkspace({
     );
     if (res.error) {
       setActionError(errorMessage(res.error, "This version could not be finalized."));
+      setBusyAction(null);
       return;
     }
     await load();
+    setBusyAction(null);
   }
 
   /** Open the §5.1 #4 sign ceremony — needs the SEALED quorum, which only route 5 carries. */
   async function openSign(versionId: string): Promise<void> {
-    if (!plan) return;
+    if (!plan || busyAction) return;
+    setBusyAction("sign");
     setActionError(null);
     const { version, error: err } = await getVersion(client, plan.planId, versionId);
     if (err || !version) {
       setActionError(errorMessage(err, "This version could not be opened for signing."));
+      setBusyAction(null);
       return;
     }
     setSigning({ version, signerSet: normalizeSignerSet(version.requiredSignerSet) });
+    setBusyAction(null);
   }
 
   // The shared chart banner and Patient Summary rail, so this tab shows the same identity header as
@@ -185,8 +198,12 @@ export function DisciplinePlanWorkspace({
   }
 
   const redaction = redactionLabel(plan.redacted_categories ?? []);
-  const signedVersion = plan.versions.find((v) => v.status === "signed") ?? null;
-  const openVersion = plan.versions.find((v) => v.status === "draft" || v.status === "in_review");
+  const signedVersion = plan.actionSummary.latestSignedVersion;
+  const openVersion = plan.actionSummary.openVersion
+    ? (plan.versions.find((v) => v.versionId === plan.actionSummary.openVersion?.versionId) ?? null)
+    : null;
+  const canFinalize = permissions?.includes(PLAN_FINALIZE_PERMISSION) === true;
+  const canSign = permissions?.includes(PLAN_SIGN_PERMISSION) === true;
 
   return (
     <PatientWorkspaceLayout
@@ -205,12 +222,17 @@ export function DisciplinePlanWorkspace({
     >
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <ChartModuleRail patientId={patientId ?? ""} current="discipline-plans" />
-        <div className="wx-kit-column" style={{ ...columnStyle, flex: 1, overflow: "auto" }}>
+        <section
+          aria-label={`${kindLabel(kind)} workspace`}
+          className="wx-kit-column"
+          style={{ ...columnStyle, flex: 1, overflow: "auto" }}
+        >
           <div
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
+              flexWrap: "wrap",
               gap: t.space4,
             }}
           >
@@ -237,153 +259,179 @@ export function DisciplinePlanWorkspace({
 
           {redaction ? <Notice tone="warning">{redaction}</Notice> : null}
           {renderNotice?.(plan)}
-          {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+          {actionError ? (
+            <p role="alert" aria-live="assertive" style={alertStyle}>
+              {actionError}
+            </p>
+          ) : null}
 
           {renderExtras?.(plan, load)}
 
-          <Card title="Goals">
+          <Card title="Goals" headingLevel={2}>
             {plan.goals.length === 0 ? (
               <span style={mutedStyle}>No goals on this plan.</span>
             ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={th}>Goal</th>
-                    <th style={th}>Source</th>
-                    <th style={th}>Frequency</th>
-                    <th style={th}>Target</th>
-                    <th style={th}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.goals.map((g) => (
-                    <tr key={g.goalId} style={rowLine}>
-                      <td style={td}>
-                        {g.revisedText ?? g.originalText}
-                        {g.revisedText ? (
-                          <div style={mutedStyle}>originally: {g.originalText}</div>
-                        ) : null}
-                        {g.measurableOutcome ? (
-                          <div style={mutedStyle}>outcome: {g.measurableOutcome}</div>
-                        ) : null}
-                      </td>
-                      <td style={td}>{goalSourceLabel(g.source)}</td>
-                      <td style={td}>{g.frequencyText ?? "—"}</td>
-                      <td style={td}>{shortDate(g.targetAt)}</td>
-                      <td style={td}>
-                        <StatusPill
-                          label={humanize(g.status)}
-                          tone={toneOf(GOAL_STATUS_TONE, g.status)}
-                        />
-                      </td>
+              <TableScroll label="Goals table">
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Goal</th>
+                      <th style={th}>Source</th>
+                      <th style={th}>Frequency</th>
+                      <th style={th}>Target</th>
+                      <th style={th}>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {plan.goals.map((g) => (
+                      <tr key={g.goalId} style={rowLine}>
+                        <td style={td}>
+                          {g.revisedText ?? g.originalText}
+                          {g.revisedText ? (
+                            <div style={mutedStyle}>originally: {g.originalText}</div>
+                          ) : null}
+                          {g.measurableOutcome ? (
+                            <div style={mutedStyle}>outcome: {g.measurableOutcome}</div>
+                          ) : null}
+                        </td>
+                        <td style={td}>{goalSourceLabel(g.source)}</td>
+                        <td style={td}>{g.frequencyText ?? "—"}</td>
+                        <td style={td}>{shortDate(g.targetAt)}</td>
+                        <td style={td}>
+                          <StatusPill
+                            label={humanize(g.status)}
+                            tone={toneOf(GOAL_STATUS_TONE, g.status)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
             )}
           </Card>
 
-          <Card title="Interventions">
+          <Card title="Interventions" headingLevel={2}>
             {plan.interventions.length === 0 ? (
               <span style={mutedStyle}>No interventions on this plan.</span>
             ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={th}>Scope</th>
-                    <th style={th}>Frequency</th>
-                    <th style={th}>Discipline</th>
-                    <th style={th}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.interventions.map((iv) => (
-                    <tr key={iv.interventionId} style={rowLine}>
-                      <td style={td}>
-                        {iv.scopeText}
-                        {iv.discontinuationReason ? (
-                          <div style={mutedStyle}>discontinued: {iv.discontinuationReason}</div>
-                        ) : null}
-                      </td>
-                      <td style={td}>{iv.frequencyText}</td>
-                      <td style={td}>{humanize(iv.discipline)}</td>
-                      <td style={td}>
-                        <StatusPill
-                          label={humanize(iv.status)}
-                          tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
-                        />
-                      </td>
+              <TableScroll label="Interventions table">
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Scope</th>
+                      <th style={th}>Frequency</th>
+                      <th style={th}>Discipline</th>
+                      <th style={th}>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {plan.interventions.map((iv) => (
+                      <tr key={iv.interventionId} style={rowLine}>
+                        <td style={td}>
+                          {iv.scopeText}
+                          {iv.discontinuationReason ? (
+                            <div style={mutedStyle}>discontinued: {iv.discontinuationReason}</div>
+                          ) : null}
+                        </td>
+                        <td style={td}>{iv.frequencyText}</td>
+                        <td style={td}>{humanize(iv.discipline)}</td>
+                        <td style={td}>
+                          <StatusPill
+                            label={humanize(iv.status)}
+                            tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
             )}
           </Card>
 
-          <Card title="Assessments">
+          <Card title="Assessments" headingLevel={2}>
             {plan.assessments.length === 0 ? (
               <span style={mutedStyle}>No assessments captured on this plan.</span>
             ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={th}>Kind</th>
-                    <th style={th}>Captured</th>
-                    <th style={th}>Initial</th>
-                    <th style={th}>Signed</th>
-                    <th style={th}>Status</th>
-                    <th style={th}>&nbsp;</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.assessments.map((a) => (
-                    <tr key={a.assessmentId} style={rowLine}>
-                      <td style={td}>{assessmentKindLabel(a.kind)}</td>
-                      <td style={td}>{dateTime(a.capturedAt)}</td>
-                      <td style={td}>{a.isInitial ? "Yes" : "—"}</td>
-                      <td style={td}>{dateTime(a.signedAt)}</td>
-                      <td style={td}>
-                        <StatusPill
-                          label={humanize(a.status)}
-                          tone={toneOf(ASSESSMENT_STATUS_TONE, a.status)}
-                        />
-                      </td>
-                      <td style={td}>
-                        <Link
-                          to={`/patients/${patientId}/discipline-plans/msw-plan/${plan.planId}/assessments/${a.assessmentId}`}
-                          style={linkStyle}
-                        >
-                          Open
-                        </Link>
-                      </td>
+              <TableScroll label="Assessments table">
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Kind</th>
+                      <th style={th}>Captured</th>
+                      <th style={th}>Initial</th>
+                      <th style={th}>Signed</th>
+                      <th style={th}>Status</th>
+                      <th style={th}>
+                        <span style={visuallyHidden}>Actions</span>
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {plan.assessments.map((a) => (
+                      <tr key={a.assessmentId} style={rowLine}>
+                        <td style={td}>{assessmentKindLabel(a.kind)}</td>
+                        <td style={td}>{dateTime(a.capturedAt)}</td>
+                        <td style={td}>{a.isInitial ? "Yes" : "—"}</td>
+                        <td style={td}>{dateTime(a.signedAt)}</td>
+                        <td style={td}>
+                          <StatusPill
+                            label={humanize(a.status)}
+                            tone={toneOf(ASSESSMENT_STATUS_TONE, a.status)}
+                          />
+                        </td>
+                        <td style={td}>
+                          {permissions?.includes("discipline_assessment.author") ? (
+                            <Link
+                              to={disciplineAssessmentPath(
+                                patientId ?? "",
+                                plan.kind,
+                                plan.planId,
+                                a.assessmentId,
+                              )}
+                              style={linkStyle}
+                            >
+                              Open assessment
+                            </Link>
+                          ) : (
+                            <span style={mutedStyle}>Read only</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
             )}
           </Card>
 
           <Card
             title="Version chain"
+            headingLevel={2}
             actions={
-              openVersion ? (
+              openVersion &&
+              ((openVersion.status === "draft" && canFinalize) ||
+                (openVersion.status === "in_review" && canSign)) ? (
                 <div style={{ display: "flex", gap: t.space2 }}>
                   {openVersion.status === "draft" ? (
-                    <button
-                      type="button"
-                      style={ghostButtonStyle}
+                    <Button
+                      tone="secondary"
+                      loading={busyAction === "finalize"}
+                      disabled={busyAction !== null}
                       onClick={() => void finalize(openVersion.versionId, openVersion.version)}
                     >
                       Finalize v{openVersion.sequence}
-                    </button>
+                    </Button>
                   ) : (
-                    <button
-                      type="button"
-                      style={ghostButtonStyle}
+                    <Button
+                      tone="secondary"
+                      loading={busyAction === "sign"}
+                      disabled={busyAction !== null}
                       onClick={() => void openSign(openVersion.versionId)}
                     >
                       Sign v{openVersion.sequence}
-                    </button>
+                    </Button>
                   )}
                 </div>
               ) : null
@@ -400,60 +448,64 @@ export function DisciplinePlanWorkspace({
             {plan.versions.length === 0 ? (
               <span style={mutedStyle}>No versions yet.</span>
             ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={th}>Version</th>
-                    <th style={th}>Kind</th>
-                    <th style={th}>Finalized</th>
-                    <th style={th}>Signed</th>
-                    <th style={th}>Status</th>
-                    <th style={th}>&nbsp;</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.versions.map((v) => {
-                    const actions = versionRowActions(kind, v, permissions);
-                    return (
-                      <tr key={v.versionId} style={rowLine}>
-                        <td style={td}>v{v.sequence}</td>
-                        <td style={td}>{humanize(v.kind)}</td>
-                        <td style={td}>{dateTime(v.finalizedAt)}</td>
-                        <td style={td}>{dateTime(v.signedAt)}</td>
-                        <td style={td}>
-                          <StatusPill
-                            label={humanize(v.status)}
-                            tone={toneOf(VERSION_STATUS_TONE, v.status)}
-                          />
-                        </td>
-                        <td style={td}>
-                          <div style={{ display: "flex", gap: t.space3 }}>
-                            {actions.edit ? (
-                              <Link
-                                to={`/patients/${patientId}/discipline-plans/aide-poc/${v.versionId}/edit`}
-                                style={linkStyle}
-                              >
-                                Edit v{v.sequence}
-                              </Link>
-                            ) : null}
-                            {actions.review ? (
-                              <Link
-                                to={`/patients/${patientId}/discipline-plans/${kind}/idg-revisions/${v.versionId}`}
-                                style={linkStyle}
-                              >
-                                Review v{v.sequence}
-                              </Link>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <TableScroll label="Version chain table">
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Version</th>
+                      <th style={th}>Kind</th>
+                      <th style={th}>Finalized</th>
+                      <th style={th}>Signed</th>
+                      <th style={th}>Status</th>
+                      <th style={th}>
+                        <span style={visuallyHidden}>Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plan.versions.map((v) => {
+                      const actions = versionRowActions(kind, v, permissions);
+                      return (
+                        <tr key={v.versionId} style={rowLine}>
+                          <td style={td}>v{v.sequence}</td>
+                          <td style={td}>{humanize(v.kind)}</td>
+                          <td style={td}>{dateTime(v.finalizedAt)}</td>
+                          <td style={td}>{dateTime(v.signedAt)}</td>
+                          <td style={td}>
+                            <StatusPill
+                              label={humanize(v.status)}
+                              tone={toneOf(VERSION_STATUS_TONE, v.status)}
+                            />
+                          </td>
+                          <td style={td}>
+                            <div style={{ display: "flex", gap: t.space3 }}>
+                              {actions.edit ? (
+                                <Link
+                                  to={`/patients/${patientId}/discipline-plans/aide-poc/${v.versionId}/edit`}
+                                  style={linkStyle}
+                                >
+                                  Edit v{v.sequence}
+                                </Link>
+                              ) : null}
+                              {actions.review ? (
+                                <Link
+                                  to={`/patients/${patientId}/discipline-plans/${kind}/idg-revisions/${v.versionId}`}
+                                  style={linkStyle}
+                                >
+                                  Review v{v.sequence}
+                                </Link>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableScroll>
             )}
           </Card>
-        </div>
+        </section>
       </div>
 
       {signing ? (

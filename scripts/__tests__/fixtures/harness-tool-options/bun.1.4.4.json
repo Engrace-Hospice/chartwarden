@@ -1,0 +1,563 @@
+{
+  "tool": "bun",
+  "version": "1.4.4",
+  "command": "bun",
+  "method": "echo-hit",
+  "options": [
+    {
+      "name": "--bun",
+      "short": "-b",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--check",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--conditions",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--config",
+      "short": "-c",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--console-depth",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--cpu-prof",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpu-prof-dir",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--cpu-prof-interval",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--cpu-prof-md",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpu-prof-name",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--cron-period",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--cron-title",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--cwd",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--define",
+      "short": "-d",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--disable-warning",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--dns-result-order",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--drop",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--elide-lines",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--env-file",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--eval",
+      "short": "-e",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--experimental-http2-fetch",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--experimental-http3-fetch",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--experimental-stream-iter",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--expose-gc",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--extension-order",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--feature",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--fetch-preconnect",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--filter",
+      "short": "-F",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--heap-prof",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--heap-prof-dir",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--heap-prof-interval",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--heap-prof-md",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--heap-prof-name",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--help",
+      "short": "-h",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--hot",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--if-present",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--ignore-dce-annotations",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--import",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--insecure-http-parser",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--inspect",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--inspect-brk",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--inspect-wait",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--install",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--interactive",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--jsx-factory",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--jsx-fragment",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--jsx-import-source",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--jsx-runtime",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--jsx-side-effects",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--loader",
+      "short": "-l",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--main-fields",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--max-http-header-size",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--no-addons",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-clear-screen",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-deprecation",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-env-file",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-exit-on-error",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-ffi-cc",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-install",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-macros",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-orphans",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-warnings",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--parallel",
+      "takesValue": false,
+      "evidence": "help",
+      "runsOperandAsCommand": true
+    },
+    {
+      "name": "--pending-deprecation",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--port",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--prefer-latest",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--prefer-offline",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--preload",
+      "short": "-r",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--preserve-symlinks",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--preserve-symlinks-main",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--print",
+      "short": "-p",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--redirect-warnings",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--redis-preconnect",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--require",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--revision",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sequential",
+      "takesValue": false,
+      "evidence": "help",
+      "runsOperandAsCommand": true
+    },
+    {
+      "name": "--shell",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--silent",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--smol",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sql-preconnect",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--throw-deprecation",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--title",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--tls-max-v1.2",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tls-max-v1.3",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tls-min-v1.0",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tls-min-v1.1",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tls-min-v1.2",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tls-min-v1.3",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--trace-deprecation",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--trace-warnings",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tsconfig-override",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--unhandled-rejections",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--use-bundled-ca",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--use-openssl-ca",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--use-system-ca",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--user-agent",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--version",
+      "short": "-v",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--watch",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--watch-kill-signal",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--workspaces",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--zero-fill-buffers",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-i",
+      "takesValue": false,
+      "evidence": "probe"
+    }
+  ],
+  "rejected": [],
+  "commands": [
+    "a",
+    "add",
+    "audit",
+    "build",
+    "c",
+    "check",
+    "create",
+    "dedupe",
+    "exec",
+    "fmt",
+    "i",
+    "info",
+    "init",
+    "install",
+    "link",
+    "outdated",
+    "patch",
+    "pm",
+    "prune",
+    "publish",
+    "remove",
+    "repl",
+    "rm",
+    "run",
+    "test",
+    "unlink",
+    "update",
+    "upgrade",
+    "why",
+    "x"
+  ]
+}

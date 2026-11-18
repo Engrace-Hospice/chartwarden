@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 2097,
-    "enriched": 2097,
+    "routes": 2098,
+    "enriched": 2098,
     "deficit": 0,
-    "mutating": 1204,
+    "mutating": 1205,
     "mutatingNoBody": 1,
     "gets": 840,
     "getsNoResponse": 9
@@ -141,10 +141,10 @@
     },
     {
       "module": "15-discipline-care-plans",
-      "routes": 28,
-      "enriched": 28,
+      "routes": 29,
+      "enriched": 29,
       "deficit": 0,
-      "mutating": 17,
+      "mutating": 18,
       "mutatingNoBody": 0,
       "gets": 11,
       "getsNoResponse": 0

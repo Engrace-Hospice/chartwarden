@@ -18,9 +18,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { ISSUED_SSN } from "./_fixtures";
+import { scrubbedGitEnv } from "./helpers/scrubbed-env";
 
-// Fixture values are assembled at runtime so this file does not trip the scanner it tests.
-const ISSUED_SSN = ["524", "71", "3388"].join("-");
 const AWS_KEY = ["AKIA", "Z".repeat(16)].join("");
 const ROOT = join(__dirname, "../..");
 const GUARD = join(ROOT, "scripts/harness/pre-tool-guard.ts");
@@ -202,7 +202,8 @@ describe("the root in --codex mode is where the guard's own script lives (the pi
   /** A temp git repo holding its own copy of scripts/harness, so the script's location IS the repo. */
   function makeRepo(): { repo: string; sub: string } {
     const repo = scratch("cw-repo-");
-    spawnSync("git", ["init", "-q"], { cwd: repo });
+    // Wave 12 (R9-COMP-10): no GIT_DIR from a hook, no developer git configuration.
+    spawnSync("git", ["init", "-q"], { cwd: repo, env: scrubbedGitEnv(scratch("cw-githome-")) });
     cpSync(join(ROOT, "scripts/harness"), join(repo, "scripts/harness"), { recursive: true });
     const sub = join(repo, "sub/dir");
     mkdirSync(sub, { recursive: true });

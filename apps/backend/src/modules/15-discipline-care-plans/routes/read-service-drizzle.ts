@@ -20,7 +20,7 @@ import {
 } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { FiscalYear, IsoInstant, MembershipId, ProviderEntityId } from "@chartwarden/types";
-import { and, asc, desc, eq, gt, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt, lte, or, sql } from "drizzle-orm";
 import {
   evaluateSupervisoryCadence,
   hoursOverdue,
@@ -50,6 +50,7 @@ import type {
   DisciplineAssessmentView,
   DisciplineGoalView,
   DisciplineInterventionView,
+  DisciplinePlanActionSummary,
   DisciplinePlanDetail,
   DisciplinePlanListItem,
   DisciplinePlanSummary,
@@ -92,6 +93,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
   const VA = schema.volunteerAssignment;
   const GATE = schema.volunteerComplianceGate;
   const LEDGER = schema.volunteerHourLedger;
+  const IDG_APP = schema.disciplinePlanIdgDecisionApplication;
 
   const now = deps.now ?? (() => new Date().toISOString() as IsoInstant);
   const disclosurePort = deps.disclosure ?? seamDisclosurePort;
@@ -102,7 +104,10 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     userId: actor.userId,
   });
 
-  const toPlanRow = (r: typeof P.$inferSelect): DisciplinePlanListItem => ({
+  const toPlanRow = (
+    r: typeof P.$inferSelect,
+    actionSummary: DisciplinePlanActionSummary,
+  ): DisciplinePlanListItem => ({
     planId: r.id,
     patientId: r.patientId,
     admissionId: r.admissionId,
@@ -116,7 +121,121 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     spiritualCareDeclinedAt: isoN(r.spiritualCareDeclinedAt),
     updatedAt: iso(r.updatedAt),
     version: r.version,
+    actionSummary,
   });
+
+  const signerSlots = (raw: unknown): { role: string; count: number }[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((entry) => {
+      if (typeof entry === "string") return [{ role: entry, count: 1 }];
+      const slot = entry as { role?: unknown; count?: unknown };
+      if (typeof slot.role !== "string") return [];
+      return [
+        {
+          role: slot.role,
+          count:
+            typeof slot.count === "number" && Number.isInteger(slot.count) && slot.count > 0
+              ? slot.count
+              : 1,
+        },
+      ];
+    });
+  };
+
+  /** One bounded, M15-owned metadata projection for all plan cards in a page. */
+  const actionSummariesFor = async (
+    tx: DbClient,
+    plans: readonly (typeof P.$inferSelect)[],
+  ): Promise<ReadonlyMap<string, DisciplinePlanActionSummary>> => {
+    if (plans.length === 0) return new Map();
+    const planIds = plans.map((plan) => plan.id);
+    const versions = await tx
+      .select()
+      .from(V)
+      .where(inArray(V.planId, planIds))
+      .orderBy(desc(V.sequence), desc(V.id));
+    const openVersions = versions.filter(
+      (version) => version.status === "draft" || version.status === "in_review",
+    );
+    const openVersionIds = openVersions.map((version) => version.id);
+    const signatures =
+      openVersionIds.length === 0
+        ? []
+        : await tx.select().from(SIG).where(inArray(SIG.versionId, openVersionIds));
+    const applications = await tx
+      .select({
+        planId: IDG_APP.planId,
+        versionId: IDG_APP.versionId,
+        idgDecisionId: IDG_APP.idgDecisionId,
+      })
+      .from(IDG_APP)
+      .where(and(inArray(IDG_APP.planId, planIds), eq(IDG_APP.status, "applied")));
+
+    const result = new Map<string, DisciplinePlanActionSummary>();
+    for (const plan of plans) {
+      const planVersions = versions.filter((version) => version.planId === plan.id);
+      const open = planVersions.find(
+        (
+          version,
+        ): version is typeof version & {
+          status: "draft" | "in_review";
+          kind: "initial" | "interim_revision" | "idg_review";
+        } =>
+          (version.status === "draft" || version.status === "in_review") &&
+          version.kind !== "discharge",
+      );
+      const latestSigned = planVersions.find(
+        (version) => version.status === "signed" && version.signedAt !== null,
+      );
+      const remainingSignedRoles = open
+        ? signatures
+            .filter((signature) => signature.versionId === open.id)
+            .map((signature) => signature.signerRole)
+        : [];
+      const missingSignerRoles: string[] = [];
+      if (open) {
+        for (const slot of signerSlots(open.requiredSignerSet)) {
+          let need = slot.count;
+          for (let index = remainingSignedRoles.length - 1; index >= 0 && need > 0; index--) {
+            if (remainingSignedRoles[index] === slot.role) {
+              remainingSignedRoles.splice(index, 1);
+              need--;
+            }
+          }
+          for (let index = 0; index < need; index++) missingSignerRoles.push(slot.role);
+        }
+      }
+      const owners = [plan.aideMembershipId, plan.supervisingRnMembershipId].filter(
+        (membershipId): membershipId is string => membershipId !== null,
+      );
+      const idgApplication = open
+        ? applications.find(
+            (application) => application.planId === plan.id && application.versionId === open.id,
+          )
+        : undefined;
+      result.set(plan.id, {
+        openVersion: open
+          ? {
+              versionId: open.id,
+              sequence: open.sequence,
+              status: open.status,
+              kind: open.kind,
+            }
+          : null,
+        latestSignedVersion: latestSigned
+          ? {
+              versionId: latestSigned.id,
+              sequence: latestSigned.sequence,
+              signedAt: iso(latestSigned.signedAt),
+            }
+          : null,
+        missingSignerRoles,
+        ownerMembershipIds: [...new Set(owners)],
+        idgDecisionId: idgApplication?.idgDecisionId ?? null,
+      });
+    }
+    return result;
+  };
 
   const toGoal = (r: typeof G.$inferSelect): DisciplineGoalView => ({
     goalId: r.id,
@@ -303,12 +422,15 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
       for (const row of rows) {
         if (await actorMayReadPatient(actor, row.patientId, caseloadPort)) visible.push(row);
       }
+      const actionSummaries = await withOrgContext(db, scope(actor), (tx) =>
+        actionSummariesFor(tx, visible),
+      );
       return toCursorPage(
         actor.organizationId,
         visible,
         limit,
         (r) => ({ a: iso(r.updatedAt), id: r.id }),
-        toPlanRow,
+        (row) => toPlanRow(row, actionSummaries.get(row.id)!),
       ) satisfies CursorPage<DisciplinePlanListItem>;
     },
 
@@ -360,9 +482,10 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
           .from(V)
           .where(eq(V.planId, planId))
           .orderBy(asc(V.sequence), asc(V.id));
+        const actionSummaries = await actionSummariesFor(tx, [plan]);
 
         const detail: DisciplinePlanDetail = {
-          ...toPlanRow(plan),
+          ...toPlanRow(plan, actionSummaries.get(plan.id)!),
           aideMembershipId: plan.aideMembershipId ?? null,
           supervisingRnMembershipId: plan.supervisingRnMembershipId ?? null,
           supervisoryCadenceDaysOverride: plan.supervisoryCadenceDaysOverride ?? null,

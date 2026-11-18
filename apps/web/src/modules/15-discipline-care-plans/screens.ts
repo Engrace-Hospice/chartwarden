@@ -87,7 +87,7 @@ export const disciplinePlanScreens: ScreenRegistryModule<ComponentType> = {
     },
     {
       id: "discipline-plan.assessment",
-      path: "/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId",
+      path: "/patients/:patientId/discipline-plans/:kind/:planId/assessments/:assessmentId",
       title: "Discipline Assessment",
       requiredPermission: "discipline_assessment.author",
       screen: AssessmentEditor,

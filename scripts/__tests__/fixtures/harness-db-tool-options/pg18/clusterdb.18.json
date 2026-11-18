@@ -1,0 +1,183 @@
+{
+  "tool": "clusterdb",
+  "version": "18.4",
+  "command": "clusterdb --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "all",
+      "short": "a",
+      "takesValue": false
+    },
+    {
+      "name": "dbname",
+      "short": "d",
+      "takesValue": true,
+      "role": "string"
+    },
+    {
+      "name": "echo",
+      "short": "e",
+      "takesValue": false
+    },
+    {
+      "name": "quiet",
+      "short": "q",
+      "takesValue": false
+    },
+    {
+      "name": "table",
+      "short": "t",
+      "takesValue": true
+    },
+    {
+      "name": "verbose",
+      "short": "v",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "no-password",
+      "short": "w",
+      "takesValue": false
+    },
+    {
+      "name": "password",
+      "short": "W",
+      "takesValue": false
+    },
+    {
+      "name": "maintenance-db",
+      "takesValue": true,
+      "role": "string"
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "al",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "d",
+      "outcome": "string"
+    },
+    {
+      "prefix": "db",
+      "outcome": "string"
+    },
+    {
+      "prefix": "e",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ec",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "h",
+      "outcome": "host"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "m",
+      "outcome": "string"
+    },
+    {
+      "prefix": "ma",
+      "outcome": "string"
+    },
+    {
+      "prefix": "n",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "q",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "qu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "t",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ta",
+      "outcome": "value"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    },
+    {
+      "prefix": "v",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ve",
+      "outcome": "flag"
+    }
+  ]
+}

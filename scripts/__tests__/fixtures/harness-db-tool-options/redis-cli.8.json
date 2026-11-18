@@ -1,0 +1,311 @@
+{
+  "tool": "redis-cli",
+  "version": "8.10.0",
+  "command": "redis-cli --help; behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "short": "t",
+      "takesValue": true
+    },
+    {
+      "short": "s",
+      "takesValue": true
+    },
+    {
+      "short": "a",
+      "takesValue": true
+    },
+    {
+      "name": "user",
+      "takesValue": true
+    },
+    {
+      "name": "pass",
+      "takesValue": true
+    },
+    {
+      "name": "askpass",
+      "takesValue": false
+    },
+    {
+      "short": "u",
+      "takesValue": true,
+      "role": "string"
+    },
+    {
+      "short": "r",
+      "takesValue": true
+    },
+    {
+      "short": "i",
+      "takesValue": true
+    },
+    {
+      "short": "n",
+      "takesValue": true
+    },
+    {
+      "name": "name",
+      "takesValue": true
+    },
+    {
+      "short": "2",
+      "takesValue": false
+    },
+    {
+      "short": "3",
+      "takesValue": false
+    },
+    {
+      "short": "x",
+      "takesValue": false
+    },
+    {
+      "short": "X",
+      "takesValue": true
+    },
+    {
+      "short": "d",
+      "takesValue": true
+    },
+    {
+      "short": "D",
+      "takesValue": true
+    },
+    {
+      "short": "c",
+      "takesValue": false
+    },
+    {
+      "short": "e",
+      "takesValue": false
+    },
+    {
+      "short": "4",
+      "takesValue": false
+    },
+    {
+      "short": "6",
+      "takesValue": false
+    },
+    {
+      "name": "tls",
+      "takesValue": false
+    },
+    {
+      "name": "sni",
+      "takesValue": true
+    },
+    {
+      "name": "cacert",
+      "takesValue": true
+    },
+    {
+      "name": "cacertdir",
+      "takesValue": true
+    },
+    {
+      "name": "insecure",
+      "takesValue": false
+    },
+    {
+      "name": "cert",
+      "takesValue": true
+    },
+    {
+      "name": "key",
+      "takesValue": true
+    },
+    {
+      "name": "tls-ciphers",
+      "takesValue": true
+    },
+    {
+      "name": "tls-ciphersuites",
+      "takesValue": true
+    },
+    {
+      "name": "raw",
+      "takesValue": false
+    },
+    {
+      "name": "no-raw",
+      "takesValue": false
+    },
+    {
+      "name": "quoted-input",
+      "takesValue": false
+    },
+    {
+      "name": "csv",
+      "takesValue": false
+    },
+    {
+      "name": "json",
+      "takesValue": false
+    },
+    {
+      "name": "quoted-json",
+      "takesValue": false
+    },
+    {
+      "name": "show-pushes",
+      "takesValue": true
+    },
+    {
+      "name": "stat",
+      "takesValue": false
+    },
+    {
+      "name": "latency",
+      "takesValue": false
+    },
+    {
+      "name": "latency-history",
+      "takesValue": false
+    },
+    {
+      "name": "latency-percentiles",
+      "takesValue": true
+    },
+    {
+      "name": "latency-dist",
+      "takesValue": false
+    },
+    {
+      "name": "vset-recall",
+      "takesValue": true
+    },
+    {
+      "name": "vset-recall-count",
+      "takesValue": true
+    },
+    {
+      "name": "vset-recall-ef",
+      "takesValue": true
+    },
+    {
+      "name": "vset-recall-ele",
+      "takesValue": true
+    },
+    {
+      "name": "lru-test",
+      "takesValue": true
+    },
+    {
+      "name": "replica",
+      "takesValue": false
+    },
+    {
+      "name": "rdb",
+      "takesValue": true
+    },
+    {
+      "name": "functions-rdb",
+      "takesValue": true
+    },
+    {
+      "name": "pipe",
+      "takesValue": false
+    },
+    {
+      "name": "pipe-timeout",
+      "takesValue": true
+    },
+    {
+      "name": "bigkeys",
+      "takesValue": false
+    },
+    {
+      "name": "memkeys",
+      "takesValue": false
+    },
+    {
+      "name": "memkeys-samples",
+      "takesValue": true
+    },
+    {
+      "name": "keystats",
+      "takesValue": false
+    },
+    {
+      "name": "keystats-samples",
+      "takesValue": true
+    },
+    {
+      "name": "cursor",
+      "takesValue": true
+    },
+    {
+      "name": "top",
+      "takesValue": true
+    },
+    {
+      "name": "hotkeys",
+      "takesValue": false
+    },
+    {
+      "name": "scan",
+      "takesValue": false
+    },
+    {
+      "name": "pattern",
+      "takesValue": true
+    },
+    {
+      "name": "count",
+      "takesValue": true
+    },
+    {
+      "name": "quoted-pattern",
+      "takesValue": true
+    },
+    {
+      "name": "intrinsic-latency",
+      "takesValue": true
+    },
+    {
+      "name": "eval",
+      "takesValue": true
+    },
+    {
+      "name": "ldb",
+      "takesValue": false
+    },
+    {
+      "name": "ldb-sync-mode",
+      "takesValue": false
+    },
+    {
+      "name": "cluster",
+      "takesValue": true
+    },
+    {
+      "name": "verbose",
+      "takesValue": false
+    },
+    {
+      "name": "no-auth-warning",
+      "takesValue": false
+    },
+    {
+      "name": "help",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "takesValue": false
+    }
+  ],
+  "abbreviations": [],
+  "exactLong": true
+}

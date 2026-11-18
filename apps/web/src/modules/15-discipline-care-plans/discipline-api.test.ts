@@ -16,6 +16,13 @@ const row = (over: Partial<PlanListItem> & Pick<PlanListItem, "planId">): PlanLi
   spiritualCareDeclinedAt: null,
   updatedAt: "2026-01-02T00:00:00.000Z",
   version: 1,
+  actionSummary: {
+    openVersion: null,
+    latestSignedVersion: null,
+    missingSignerRoles: [],
+    ownerMembershipIds: [],
+    idgDecisionId: null,
+  },
   ...over,
 });
 

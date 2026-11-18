@@ -1,4 +1,6 @@
 /**
+ * (Over the 800-line soft ceiling on purpose: one gate, one pass over the register and the harness pins, so a check cannot be skipped by a split.)
+ *
  * ChartWarden — compliance register + agent-harness integrity gate (`arch:compliance`)
  * -----------------------------------------------------------------------------------
  * Two things that otherwise rot silently:
@@ -24,7 +26,10 @@
  *         ignore the local ledger/cache;
  *      9. `AGENTS.md` is a verbatim copy of `CLAUDE.md` (a standing rule in CLAUDE.md, now enforced);
  *     10. the PreToolUse hook covers Bash and every editing tool, is synchronous and has a timeout (an
- *         async or mis-matched hook is a guard that advises nothing);
+ *         async or mis-matched hook is a guard that advises nothing); a second PreToolUse group, with the
+ *         pinned {@link CLAUDE_MCP_GUARD_MATCHER}, runs the same pinned command for the path- and
+ *         exfil-capable MCP tools, and no group may also match a tool with no path in its input (`mcp__.*`,
+ *         `*`);
  *     11. no allow rule is a prefix glob that also matches a mutating sibling (`git diff*` matches
  *         `git difftool`; write `git diff` and `git diff *`);
  *     12. `.gitignore` is an allow-list for `.claude/` (new local state stays out of git) and ignores `.env`;
@@ -65,6 +70,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEADLINE_MS } from "./harness/hard-deadline";
+import {
+  CLAUDE_MCP_GUARD_MATCHER,
+  claudeGuardMatcherViolations,
+  matcherCovers,
+} from "./harness/hook-matcher";
+import { hookObjectViolations } from "./harness/hook-pin";
 
 export const MAX_REVIEW_DAYS = 180;
 const STATUSES = new Set(["implemented", "partial", "gap", "not-applicable"]);
@@ -233,11 +245,18 @@ interface Settings {
  * would apply it to every developer.
  */
 export const FORBIDDEN_ENV = [
+  "ECC_GATEGUARD",
+  // The doc's ECC table says it is deliberately not set: it writes detections and approvals to ECC's own state store,
+  // outside this repo's retention and review, and the `ECC_` prefix would admit it.
+  "ECC_GOVERNANCE_CAPTURE",
   "CW_HARNESS_FAIL_OPEN",
   "CW_AGENT_LEDGER",
   "CW_STOP_GATE",
   "CLAUDE_PROJECT_DIR",
   "CW_HARNESS_ROOT_FOR_TESTS",
+  // Test seams of the guard's hard deadline: one forces a hang, crash or exit in the worker, the other shortens the deadline.
+  "CW_HARNESS_TEST_FAULT",
+  "CW_HARNESS_DEADLINE_MS_FOR_TESTS",
   // bun reads it for every run, and `--preload x.ts` in it runs x.ts before the hook script (verified).
   "BUN_OPTIONS",
   // Re-point an agent at a configuration directory that has no hooks.
@@ -251,8 +270,23 @@ export const FORBIDDEN_ENV = [
   "PATH",
 ] as const;
 
-/** The Claude guard's `timeout` (seconds): an integer in this range. The pinned value is 10. */
-const CLAUDE_GUARD_TIMEOUT_RANGE = [5, 30] as const;
+/**
+ * The only shared-settings `env` variables allowed: ECC's own switches (a prefix: `ECC_GATEGUARD` and the other switches
+ * a human flips are refused by name above) and the one Claude Code variable the repo sets. Claude Code's are NOT a
+ * prefix: `CLAUDE_CODE_SHELL_PREFIX` and kin change what runs around every command. A deny-list names what
+ * someone thought of (and the list above still gives those a specific message); everything else a committed `env`
+ * entry could set (`ZDOTDIR`, `NODE_OPTIONS`, `HOME`, `SHELL`, an `LD_*` loader variable) changes what runs before
+ * the hook, so it fails the gate by default, with its name in the message.
+ */
+export const ALLOWED_ENV_PREFIXES = ["ECC_"] as const;
+export const ALLOWED_ENV_NAMES = ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] as const;
+
+/**
+ * The Claude guard's `timeout` (seconds): an integer in this range. The pinned value is 10. The lower bound is the first
+ * whole second ABOVE the guard's own in-process deadline (`DEADLINE_MS`, 6.5 s): a hook killed by Claude Code before the
+ * guard has answered is an allow, so a 5 s or 6 s timeout would put the kill ahead of the guard's own refusal.
+ */
+const CLAUDE_GUARD_TIMEOUT_RANGE = [Math.floor(DEADLINE_MS / 1000) + 1, 30] as const;
 /** The ledger's and the Stop gate's `timeout` (seconds), when one is set: a sane integer. The pinned values are 10 and 300. */
 const CLAUDE_OTHER_HOOK_TIMEOUT_RANGE = [5, 600] as const;
 /** Upper bound for the Codex guard's `timeout` (seconds); the lower bound is the perl alarm plus one. */
@@ -270,17 +304,32 @@ const commandsFor = (s: Settings, event: string): string[] =>
 export const CODEX_GUARD_MATCHER = "Bash|write_stdin|apply_patch|mcp__.*";
 
 /**
+ * The matcher of Claude's second PreToolUse group, for the path- and exfil-capable MCP tools only (file uploads,
+ * `navigate`, page JavaScript, the screenshot and trace tools that write a path); never `mcp__.*`, which would hand
+ * free-text connectors to a guard that reads path words. Pinned byte for byte, like {@link CODEX_GUARD_MATCHER}.
+ */
+export { CLAUDE_MCP_GUARD_MATCHER };
+
+/**
  * Claude's three hook commands, pinned byte for byte like {@link CODEX_GUARD_COMMAND}. `--config=/dev/null
  * --no-env-file`: a `preload` in a `bunfig.toml` in the session directory would otherwise run BEFORE the hook
  * script and could silence it. `--tsconfig-override=/dev/null`: bun applies `compilerOptions.paths` from the
  * `tsconfig.json` (or `jsconfig.json`) in the session directory, and the one it extends, to the script's OWN
  * imports, so `"paths": {"*": ["./evil.ts"]}` made the guard exit 0 without reading its input; an empty
- * override leaves no `paths` to apply. Deliberately no perl alarm and no `|| exit 2` wrapper (Codex needs
- * them, Claude does not): a missing `perl` would lock out every Claude tool call, and Claude Code has its own
- * timeout.
+ * override leaves no `paths` to apply.
+ *
+ * The GUARD command alone ends in {@link FAIL_CLOSED_TAIL}. Claude Code reads every exit code other than 2 as
+ * ALLOW, so a guard that cannot run (a corrupted entry module: exit 1; no `bun`: 127; an OOM kill: 137) let every
+ * later call through. The tail is plain shell: no perl and no alarm (a missing perl would lock out every call; the
+ * in-process deadline of `hard-deadline.ts` already answers before Claude Code's own timeout). The price is a
+ * lockout: a broken guard refuses every Claude tool call until a human repairs it outside Claude Code. The ledger
+ * and the Stop gate keep the bare form: their failure blocks nothing the guard decides. An exit 0 (an allow, or a
+ * `CW_HARNESS_FAIL_OPEN=1` bypass) never reaches the tail.
  */
 const BUN_HARDENED = "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null";
-export const CLAUDE_GUARD_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts`;
+const FAIL_CLOSED_TAIL =
+  "|| { echo '[chartwarden-harness] the guard failed to run, so the call is refused' >&2; exit 2; }";
+export const CLAUDE_GUARD_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts ${FAIL_CLOSED_TAIL}`;
 export const CLAUDE_LEDGER_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/post-tool-ledger.ts`;
 export const CLAUDE_STOP_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/stop-gate.ts`;
 
@@ -306,15 +355,29 @@ const PINNED_CLAUDE_HOOKS = [
  * - `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`: a `bunfig.toml` `preload` in the session
  *   directory would otherwise run before the guard and could silence it, and a `tsconfig.json` `paths` map
  *   would replace the guard's own imports (see {@link BUN_HARDENED});
- * - `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs the call when a hook times out (its limit here
- *   is 10 s, which {@link checkCodexHooks} requires to exceed the alarm), so the guard is killed first; and a
- *   failed `exec` (no `bun` on the hook's PATH) would otherwise fall off the end of the script and exit 0,
- *   which is an ALLOW;
+ * - `env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB perl …`: perl is the first process, and it reads those four
+ *   variables BEFORE the `-e` body: `PERL5OPT=-Mstrict;BEGIN{exit(0)}`, or a `Cwd.pm` that exits in BEGIN found
+ *   through `PERL5LIB`/`PERLLIB`, ended the wrapper with exit 0 before bun ran, which Codex reads as an allow
+ *   (`env -u` rather than `perl -T`: taint mode ignores them too but then refuses to `exec` bun, "Insecure
+ *   $ENV{PATH}"; if `env` itself cannot start, the `|| exit 2` below still refuses the call);
+ * - `perl -e 'alarm 8; ...'`: Codex runs the call when a hook times out (its limit here is 10 s, which
+ *   {@link checkCodexHooks} requires to exceed the alarm), so the guard is killed first; and a failed `exec` (no
+ *   `bun` on the hook's PATH) would otherwise fall off the end of the script and exit 0, which is an ALLOW;
+ * - the script is found by walking up from the session directory (`Cwd::getcwd`, the real path) to the nearest
+ *   directory that holds `.git`, `.codex/hooks.json` AND `scripts/harness/pre-tool-guard.ts`, and NOT with
+ *   `git rev-parse --show-toplevel`: that follows `core.worktree`, so `git config core.worktree /tmp/x` (or a
+ *   line appended to `.git/config`) made the hook run `/tmp/x/scripts/harness/pre-tool-guard.ts` and two allowed
+ *   commands switched the Codex guard off. Reading no git configuration at all leaves nothing to redirect; a
+ *   nested `git init` below the session directory must also plant the hook config and the script (both
+ *   protected paths at any depth) to win; nothing found means exit 127, and the wrapper below refuses the call;
  * - `|| { ...; exit 2; }`: exit 2 with a message BLOCKS in Codex; any other failure (bun not on the hook's
  *   PATH, a crash, the alarm) is "failed, and the call proceeds".
  */
 export const CODEX_ALARM_SECONDS = 8;
-export const CODEX_GUARD_COMMAND = `perl -e 'alarm ${CODEX_ALARM_SECONDS}; exec @ARGV or exit 127' ${BUN_HARDENED} "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
+const CODEX_PERL_ENV_STRIP = "env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB";
+const CODEX_FIND_ROOT_AND_EXEC =
+  'use Cwd; defined($_ = getcwd) or exit 127; until (-e "$_/.git" && -f "$_/.codex/hooks.json" && -f "$_/scripts/harness/pre-tool-guard.ts") { exit 127 if $_ eq "/"; s{/[^/]*$}{}; $_ = "/" if $_ eq "" } exec @ARGV, "$_/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127';
+export const CODEX_GUARD_COMMAND = `${CODEX_PERL_ENV_STRIP} perl -e 'alarm ${CODEX_ALARM_SECONDS}; ${CODEX_FIND_ROOT_AND_EXEC}' ${BUN_HARDENED} || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
 
 /** PURE — `.codex/hooks.json` must hold exactly the one guard hook, and nothing that could shadow it. */
 export function checkCodexHooks(text: string | undefined): string[] {
@@ -403,6 +466,13 @@ export const SHARED_PROBE_PATHS: readonly string[] = [
   ".claude/agents/x.md",
   ".claude/skills/x/SKILL.md",
   ".env.example",
+  // The guard, the register and what reviews them: an ignored one is never committed, and a clone has no control.
+  "scripts/harness/pre-tool-guard.ts",
+  "compliance/controls.yaml",
+  ".githooks/pre-commit",
+  ".github/CODEOWNERS",
+  "CLAUDE.md",
+  "AGENTS.md",
 ];
 /** Local state git MUST ignore: a path that is not ignored can be committed by `git add -A`. */
 export const LOCAL_PROBE_PATHS: readonly string[] = [
@@ -416,6 +486,8 @@ export const LOCAL_PROBE_PATHS: readonly string[] = [
   ".claude/plans/x.md",
   ".claude/settings.local.json",
   ".env",
+  ".env.local",
+  "apps/backend/.env.local",
   "apps/backend/.env.production",
 ];
 
@@ -589,6 +661,40 @@ export interface HarnessFiles {
   codexHooks?: string | undefined;
   /** What `git check-ignore` says about the `.gitignore` text ({@link probeGitignore}). Judged when present. */
   gitignoreProbe?: IgnoreProbe | undefined;
+  /** `package.json` text, `undefined` when the file is missing. Checked only when the key is present. */
+  packageJson?: string | undefined;
+}
+
+/**
+ * `bun --no-env-file`, which every pinned hook command passes, is a silent no-op on bun 1.3.0 to 1.3.2 (verified
+ * against each release; 1.3.3 and later honour it), so a session directory's environment file would be loaded
+ * before the guard. `engines.bun` must therefore promise at least this version.
+ */
+export const MIN_BUN: readonly [number, number, number] = [1, 3, 3];
+
+const bunVersionNumber = (major: number, minor: number, patch: number): number =>
+  major * 1_000_000 + minor * 1_000 + patch;
+
+/** PURE: `package.json` must declare `engines.bun` as a range whose floor is {@link MIN_BUN} or higher. */
+export function checkBunEngine(text: string | undefined): string[] {
+  const need = `engines.bun in package.json must be a range that starts at ${MIN_BUN.join(".")} or later (bun --no-env-file is a silent no-op before it, so the hooks would load a session environment file)`;
+  if (text === undefined) return [`package.json is missing; ${need}`];
+  let range: unknown;
+  try {
+    range = (JSON.parse(text) as { engines?: { bun?: unknown } }).engines?.bun;
+  } catch (e) {
+    return [`package.json does not parse: ${String(e)}`];
+  }
+  if (typeof range !== "string") return [`package.json declares no engines.bun; ${need}`];
+  // A floor: `>=1.3.3`, `^1.3.3`, `~1.3.3` or an exact version. Anything else (`*`, `<2`, `latest`, `1.3`) names no floor.
+  const floor = /^\s*(?:>=|\^|~)?\s*v?(\d+)\.(\d+)\.(\d+)(?:[-+][\w.-]+)?\s*(?:<[^|]*)?$/.exec(
+    range,
+  );
+  const atLeast =
+    floor !== null &&
+    bunVersionNumber(Number(floor[1]), Number(floor[2]), Number(floor[3])) >=
+      bunVersionNumber(...MIN_BUN);
+  return atLeast ? [] : [`package.json engines.bun is \`${range}\`; ${need}`];
 }
 
 /** PURE over file contents. */
@@ -606,19 +712,26 @@ export function checkHarness(files: HarnessFiles): string[] {
   const ask = new Set(s.permissions?.ask ?? []);
   for (const d of REQUIRED_READ_DENIES)
     if (!deny.has(d)) v.push(`.claude/settings.json: permissions.deny is missing \`${d}\``);
+  // The whole hook object, not only its command and timeout (wave 8, ADV6-11): no `if`, `shell`, `once`, `asyncRewake`, another type, a stray hook.
+  v.push(...hookObjectViolations(s, PINNED_CLAUDE_HOOKS));
   for (const p of PINNED_CLAUDE_HOOKS) {
     const script = `scripts/harness/${p.script}.ts`;
     const commands = commandsFor(s, p.event).filter((c) => c.includes(script));
     if (commands.length === 0) v.push(`.claude/settings.json: ${p.event} does not run ${script}`);
     else if (commands.some((c) => c !== p.command))
       v.push(
-        `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`${BUN_HARDENED}\`: a bunfig.toml preload or a tsconfig.json paths map would otherwise run or replace code before it)`,
+        `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`${BUN_HARDENED}\`: a bunfig.toml preload or a tsconfig.json paths map would otherwise run or replace code before it${p.event === "PreToolUse" ? "; the guard also keeps its `|| { …; exit 2; }` tail: Claude Code reads every other exit code as allow" : ""})`,
       );
     // The guard's own timeout is checked below; the ledger and the Stop gate may take longer, but a 0 or negative
     // one kills them before they run.
     if (p.event === "PreToolUse") continue;
     const [min, max] = CLAUDE_OTHER_HOOK_TIMEOUT_RANGE;
     for (const h of hooksFor(s, p.event).filter((x) => (x.command ?? "").includes(script))) {
+      // The Stop gate blocks the end of a turn; run async it blocks nothing.
+      if (p.event === "Stop" && h.async === true)
+        v.push(
+          `.claude/settings.json: the Stop gate (${script}) must not be async: it would no longer hold the turn`,
+        );
       if (h.timeout === undefined) continue;
       if (!Number.isInteger(h.timeout) || h.timeout < min || h.timeout > max)
         v.push(
@@ -640,11 +753,19 @@ export function checkHarness(files: HarnessFiles): string[] {
       .filter((x) => (x.command ?? "").includes("scripts/harness/pre-tool-guard.ts"))
       .map((x) => ({ matcher: h.matcher ?? "", ...x })),
   );
+  if (guard.length > 0) {
+    v.push(...claudeGuardMatcherViolations(guard.map((g) => g.matcher)));
+    // The MCP group must not stand in for the group that guards the shell and the editing tools.
+    if (guard.every((g) => g.matcher === CLAUDE_MCP_GUARD_MATCHER))
+      v.push(
+        ".claude/settings.json: PreToolUse does not run scripts/harness/pre-tool-guard.ts for Bash and the editing tools; only the MCP group does",
+      );
+  }
   for (const g of guard) {
-    const tools = new Set(g.matcher.split("|").map((t) => t.trim()));
-    if (!tools.has("*"))
+    // The MCP group covers MCP tools only; every other guard group must cover the shell and the editing tools.
+    if (g.matcher !== CLAUDE_MCP_GUARD_MATCHER)
       for (const t of REQUIRED_GUARD_TOOLS)
-        if (!tools.has(t))
+        if (!matcherCovers(g.matcher, t))
           v.push(`.claude/settings.json: the PreToolUse guard matcher does not cover \`${t}\``);
     if (g.async === true) v.push(".claude/settings.json: the PreToolUse guard must not be async");
     const [minTimeout, maxTimeout] = CLAUDE_GUARD_TIMEOUT_RANGE;
@@ -667,6 +788,15 @@ export function checkHarness(files: HarnessFiles): string[] {
     if (Object.hasOwn(s.env ?? {}, key))
       v.push(
         `.claude/settings.json: env.${key} must not be set in the shared settings (a human's per-session switch, or the guard's test seam: it would apply to every developer)`,
+      );
+  for (const key of Object.keys(s.env ?? {}))
+    if (
+      !(FORBIDDEN_ENV as readonly string[]).includes(key) &&
+      !ALLOWED_ENV_PREFIXES.some((prefix) => key.startsWith(prefix)) &&
+      !(ALLOWED_ENV_NAMES as readonly string[]).includes(key)
+    )
+      v.push(
+        `.claude/settings.json: env.${key} is not allowed in the shared settings (only ${[...ALLOWED_ENV_PREFIXES.map((x) => `${x}*`), ...ALLOWED_ENV_NAMES].join(" and ")} are: an env entry reaches every developer's session, and one such as PATH, BASH_ENV, ZDOTDIR, NODE_OPTIONS, HOME or SHELL changes what runs before the hook)`,
       );
   const disabled = new Set((s.env?.ECC_DISABLED_HOOKS ?? "").split(",").map((x) => x.trim()));
   for (const h of REQUIRED_DISABLED_ECC_HOOKS)
@@ -742,6 +872,7 @@ export function checkHarness(files: HarnessFiles): string[] {
     v.push("AGENTS.md is not a verbatim copy of CLAUDE.md");
   if (files.mirror) v.push(...checkMirror(files.mirror.claude, files.mirror.agents));
   if ("codexHooks" in files) v.push(...checkCodexHooks(files.codexHooks));
+  if ("packageJson" in files) v.push(...checkBunEngine(files.packageJson));
   return v;
 }
 
@@ -784,6 +915,7 @@ export function readHarnessInputs(root: string): HarnessFiles {
     registry: read("compliance/synthetic-identifiers.json"),
     mirror: { claude: readMirrorTree(root, ".claude"), agents: readMirrorTree(root, ".agents") },
     codexHooks: read(".codex/hooks.json"),
+    packageJson: read("package.json"),
   };
 }
 

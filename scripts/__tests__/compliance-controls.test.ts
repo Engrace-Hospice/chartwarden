@@ -19,15 +19,19 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   CLAUDE_GUARD_COMMAND,
   CLAUDE_LEDGER_COMMAND,
+  CLAUDE_MCP_GUARD_MATCHER,
   CLAUDE_STOP_COMMAND,
   CODEX_ALARM_SECONDS,
   CODEX_GUARD_COMMAND,
   CODEX_GUARD_MATCHER,
+  FORBIDDEN_ENV,
   type HarnessFiles,
   LOCAL_PROBE_PATHS,
+  MIN_BUN,
   type Register,
   type RepoView,
   SHARED_PROBE_PATHS,
+  checkBunEngine,
   checkCodexHooks,
   checkHarness,
   checkMirror,
@@ -37,6 +41,7 @@ import {
   readMirrorTree,
   registryFingerprint,
 } from "../check-compliance-controls";
+import { DEADLINE_MS } from "../harness/hard-deadline";
 
 const ROOT = join(__dirname, "../..");
 const TODAY = new Date("2026-10-27T00:00:00Z");
@@ -289,7 +294,7 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
   it("runs the Codex guard through `bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null`", () => {
     const command = JSON.parse(codexHooks).hooks.PreToolUse[0].hooks[0].command;
     expect(command).toContain(
-      ' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$(git rev-parse',
+      "' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null || {",
     );
   });
   it("fails when .codex/hooks.json is missing or unparsable", () => {
@@ -313,6 +318,13 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
         "--tsconfig-override=./tsconfig.json",
       ),
       CODEX_GUARD_COMMAND.replace("alarm 8; ", ""),
+      // perl reads these before its `-e` body: dropping the `env -u` or any one of the four lets a poisoned
+      // environment end the wrapper with exit 0 (an allow) before bun runs.
+      CODEX_GUARD_COMMAND.replace("env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB ", ""),
+      CODEX_GUARD_COMMAND.replace(" -u PERL5OPT", ""),
+      CODEX_GUARD_COMMAND.replace(" -u PERL5LIB", ""),
+      CODEX_GUARD_COMMAND.replace(" -u PERLLIB", ""),
+      CODEX_GUARD_COMMAND.replace(" -u PERL5DB", ""),
       CODEX_GUARD_COMMAND.replace(" or exit 127", ""),
       CODEX_GUARD_COMMAND.replace("exit 2", "exit 0"),
       CODEX_GUARD_COMMAND.replace("--codex", ""),
@@ -447,13 +459,60 @@ describe("the Claude hooks are pinned like the Codex one (a bunfig.toml preload 
     }
     expect(run(settings)).toEqual([]);
   });
-  it("keeps the timeout and async settings the hooks had (no perl alarm or `|| exit 2` for Claude)", () => {
+  it("pins the guard command with its fail-closed tail, spelled out (T0: Claude reads every exit code but 2 as allow)", () => {
+    expect(CLAUDE_GUARD_COMMAND).toBe(
+      `bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts || { echo '[chartwarden-harness] the guard failed to run, so the call is refused' >&2; exit 2; }`,
+    );
+    const groups: Array<{ hooks: Array<{ command: string }> }> =
+      JSON.parse(settings).hooks.PreToolUse;
+    for (const g of groups) expect(g.hooks[0]?.command).toBe(CLAUDE_GUARD_COMMAND);
+  });
+  it("keeps the timeout and async settings the hooks had; only the guard has the tail, and no perl alarm", () => {
     const parsed = JSON.parse(settings);
     expect(parsed.hooks.PreToolUse[0].hooks[0]).toMatchObject({ timeout: 10 });
     expect(parsed.hooks.PostToolUse[0].hooks[0]).toMatchObject({ async: true, timeout: 10 });
     expect(parsed.hooks.Stop[0].hooks[0]).toMatchObject({ timeout: 300 });
     for (const h of hooks) {
-      expect(h.command).not.toMatch(/perl|exit 2|\|\|/);
+      expect(h.command).not.toMatch(/perl|alarm/);
+      // The ledger and the Stop gate stay bare: only the guard decides whether a call runs.
+      if (h.event === "PreToolUse") expect(h.command).toMatch(/ \|\| \{ echo .*; exit 2; \}$/);
+      else expect(h.command).not.toMatch(/exit 2|\|\|/);
+    }
+  });
+  it.each([
+    ["dropped", (c: string) => c.replace(/ \|\| \{.*$/, "")],
+    ["exit 2 changed to exit 0", (c: string) => c.replace("exit 2", "exit 0")],
+    ["exit 2 changed to exit 1", (c: string) => c.replace("exit 2", "exit 1")],
+    ["no exit at all", (c: string) => c.replace("; exit 2;", ";")],
+    ["`||` changed to `&&`", (c: string) => c.replace(" || {", " && {")],
+    ["`||` changed to `;`", (c: string) => c.replace(" || {", " ; {")],
+    ["message reworded", (c: string) => c.replace("failed to run", "had a problem")],
+    ["message sent to stdout", (c: string) => c.replace(" >&2", "")],
+    ["`|| true`", (c: string) => c.replace(/ \|\| \{.*$/, " || true")],
+    ["`|| :`", (c: string) => c.replace(/ \|\| \{.*$/, " || :")],
+    ["a trailing comment", (c: string) => `${c} #`],
+    ["a second tail", (c: string) => `${c} || true`],
+  ])("fails when the guard's fail-closed tail is %s", (_name, mutate) => {
+    const guard = hooks[0];
+    expect(guard.event).toBe("PreToolUse");
+    const parsed = JSON.parse(settings);
+    const original: string = parsed.hooks.PreToolUse[0].hooks[0].command;
+    const changed = mutate(original);
+    expect(changed).not.toBe(original);
+    // the core group alone, then the MCP group alone: each of the two commands is pinned
+    for (const group of [0, 1]) {
+      const copy = JSON.parse(settings);
+      copy.hooks.PreToolUse[group].hooks[0].command = changed;
+      expect(run(JSON.stringify(copy)).join("\n"), `group ${group}`).toMatch(
+        /must be exactly CLAUDE_GUARD_COMMAND/,
+      );
+    }
+  });
+  it("the tail is not required of (and not accepted on) the ledger or the Stop gate", () => {
+    const tail = CLAUDE_GUARD_COMMAND.slice(CLAUDE_GUARD_COMMAND.indexOf(" || {"));
+    for (const h of hooks.filter((x) => x.event !== "PreToolUse")) {
+      const v = run(withCommand(h.event, `${h.command}${tail}`)).join("\n");
+      expect(v, h.event).toMatch(/must be exactly CLAUDE_(LEDGER|STOP)_COMMAND/);
     }
   });
   it.each(hooks)(
@@ -672,8 +731,10 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       // whatever the constant is, and the 9 s timeout floor below is derived from that same constant.
       expect(CODEX_ALARM_SECONDS).toBe(8);
       expect(CODEX_GUARD_COMMAND).toBe(
-        `perl -e 'alarm 8; exec @ARGV or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`,
+        `env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB perl -e 'alarm 8; use Cwd; defined($_ = getcwd) or exit 127; until (-e "$_/.git" && -f "$_/.codex/hooks.json" && -f "$_/scripts/harness/pre-tool-guard.ts") { exit 127 if $_ eq "/"; s{/[^/]*$}{}; $_ = "/" if $_ eq "" } exec @ARGV, "$_/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`,
       );
+      // The script is found without reading git configuration: `core.worktree` redirected `rev-parse --show-toplevel`.
+      expect(CODEX_GUARD_COMMAND).not.toMatch(/rev-parse|git -|git config/);
     });
     it.each([1, 5, 8])(
       "fails a timeout of %s: Codex's own timeout would fire first and let the call run",
@@ -690,13 +751,20 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
   });
 
   describe("(b) the Claude guard timeout is a sane integer", () => {
-    it.each([0, 0.001, -1, 4, 31, 300, 9.5, "10", null])("fails a timeout of %j", (t) => {
+    it.each([0, 0.001, -1, 4, 5, 6, 31, 300, 9.5, "10", null])("fails a timeout of %j", (t) => {
       expect(withGuardTimeout(t)).toMatch(
         /PreToolUse guard needs (an integer timeout|an explicit timeout)/,
       );
     });
-    it.each([5, 10, 30])("accepts a timeout of %s", (t) => {
+    it.each([7, 10, 30])("accepts a timeout of %s", (t) => {
       expect(withGuardTimeout(t)).toBe("");
+    });
+    // CR-M2 (round 4): a hook that Claude Code kills before the guard has answered is an ALLOW, so the timeout must
+    // be above the guard's own 6.5 s deadline; 5 s and 6 s used to pass.
+    it("refuses a timeout at or under the guard's own deadline, in the words the doc uses", () => {
+      expect(DEADLINE_MS).toBe(6500);
+      expect(withGuardTimeout(5)).toMatch(/integer timeout of 7 to 30 seconds/);
+      expect(withGuardTimeout(6)).toMatch(/integer timeout of 7 to 30 seconds/);
     });
     it("leaves the Stop gate's 300 and the async ledger's 10 alone", () => {
       const parsed = JSON.parse(settings);
@@ -761,6 +829,8 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       ["CW_STOP_GATE", "off"],
       ["CLAUDE_PROJECT_DIR", "/tmp/elsewhere"],
       ["CW_HARNESS_ROOT_FOR_TESTS", "/tmp/elsewhere"],
+      ["CW_HARNESS_TEST_FAULT", "hang"],
+      ["CW_HARNESS_DEADLINE_MS_FOR_TESTS", "50"],
       ["BUN_OPTIONS", "--preload ./evil.ts"],
       ["CODEX_HOME", "/tmp/codex-without-hooks"],
       ["CLAUDE_CONFIG_DIR", "/tmp/claude-without-hooks"],
@@ -775,12 +845,79 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       }).join("\n");
       expect(v).toMatch(new RegExp(`env\\.${key} must not be set`));
     });
-    it("accepts an unrelated env entry", () => {
+    // The `env` block is an ALLOW-list: ECC_* and the one CLAUDE_CODE_ variable the repo sets, and nothing else. A deny-list
+    // of names only ever holds the ones somebody thought of.
+    it.each([
+      "ZDOTDIR",
+      "NODE_OPTIONS",
+      "HOME",
+      "SHELL",
+      "TMPDIR",
+      "XDG_CONFIG_HOME",
+      "GIT_CONFIG_GLOBAL",
+      "CHARTWARDEN_DEMO",
+      "DEBUG",
+    ])("fails an env entry for %s, naming it, because it is not on the allow-list", (key) => {
+      const v = withSettings((s) => {
+        s.env[key] = "x";
+      }).join("\n");
+      expect(v).toMatch(new RegExp(`env\\.${key} is not allowed`));
+    });
+    it("fails ECC_GATEGUARD even though ECC_ variables are allowed: it switches a guard off", () => {
+      const v = withSettings((s) => {
+        s.env.ECC_GATEGUARD = "off";
+      }).join("\n");
+      expect(v).toMatch(/env\.ECC_GATEGUARD must not be set/);
+    });
+    // Wave 7, T4 (round-5 compliance review): the doc's ECC table says ECC_GOVERNANCE_CAPTURE is "deliberately not set" (it writes
+    // detections and approvals to ECC's own state store, outside this repo's retention), but the `ECC_` prefix admitted it.
+    it.each(["1", "true", "on"])(
+      "fails ECC_GOVERNANCE_CAPTURE=%s even though ECC_ variables are allowed: the doc says it is deliberately not set",
+      (value) => {
+        const v = withSettings((s) => {
+          s.env.ECC_GOVERNANCE_CAPTURE = value;
+        }).join("\n");
+        expect(v).toMatch(/env\.ECC_GOVERNANCE_CAPTURE must not be set/);
+      },
+    );
+    it("the committed settings do not set ECC_GOVERNANCE_CAPTURE, and the doc still says so", () => {
+      expect(Object.keys(JSON.parse(settings).env)).not.toContain("ECC_GOVERNANCE_CAPTURE");
+      expect(FORBIDDEN_ENV).toContain("ECC_GOVERNANCE_CAPTURE");
+    });
+    it("accepts the env entries the committed settings carry, and other ECC_ variables", () => {
+      expect(Object.keys(JSON.parse(settings).env).length).toBeGreaterThan(0);
+      expect(run()).toEqual([]);
       expect(
         withSettings((s) => {
-          s.env.CHARTWARDEN_DEMO = "1";
+          s.env.ECC_SESSION_RETENTION_DAYS = "7";
+          s.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
         }),
       ).toEqual([]);
+    });
+    // CR-L3 (round 4): `CLAUDE_CODE_` was an allowed PREFIX, which admitted CLAUDE_CODE_SHELL_PREFIX (a command put in front
+    // of every shell command Claude runs) and kin. Only the one variable the repo sets is allowed.
+    it.each([
+      "CLAUDE_CODE_SHELL_PREFIX",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_DISABLE_TERMINAL_TITLE",
+      "CLAUDE_CODE_",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC_X",
+    ])("fails %s: only the one Claude Code variable the repo sets is on the allow-list", (key) => {
+      const v = withSettings((s) => {
+        s.env[key] = "x";
+      }).join("\n");
+      expect(v).toMatch(new RegExp(`env\\.${key} is not allowed`));
+    });
+  });
+
+  describe("(c2) the Stop gate holds the turn", () => {
+    it("fails an async Stop gate, and still allows the async ledger", () => {
+      const v = withSettings((s) => {
+        s.hooks.Stop[0].hooks[0].async = true;
+      }).join("\n");
+      expect(v).toMatch(/Stop gate .*must not be async/);
+      expect(JSON.parse(settings).hooks.PostToolUse[0].hooks[0].async).toBe(true);
+      expect(run()).toEqual([]);
     });
   });
 
@@ -857,6 +994,38 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
         "`.codex/hooks.json` ignored again",
         [".codex/hooks.json"],
         /ignores `\.codex\/hooks\.json`/,
+      ],
+      [
+        "`scripts/harness/` is ignored, so the guard itself is never committed",
+        ["scripts/harness/"],
+        /ignores `scripts\/harness\/pre-tool-guard\.ts`/,
+      ],
+      [
+        "`compliance/` is ignored, so the register is never committed",
+        ["compliance/"],
+        /ignores `compliance\/controls\.yaml`/,
+      ],
+      [
+        "`.githooks/` is ignored, so the pre-commit scan is never committed",
+        [".githooks/"],
+        /ignores `\.githooks\/pre-commit`/,
+      ],
+      ["`CLAUDE.md` is ignored", ["CLAUDE.md"], /ignores `CLAUDE\.md`/],
+      ["`AGENTS.md` is ignored", ["AGENTS.md"], /ignores `AGENTS\.md`/],
+      [
+        "`.github/CODEOWNERS` is ignored, so nobody must review the harness",
+        [".github/CODEOWNERS"],
+        /ignores `\.github\/CODEOWNERS`/,
+      ],
+      [
+        "`!**/.env.local` makes a live env file committable",
+        ["!**/.env.local"],
+        /does not ignore `\.env\.local`/,
+      ],
+      [
+        "`!apps/backend/.env.local` makes the backend's live env file committable",
+        ["!apps/backend/.env.local"],
+        /does not ignore `apps\/backend\/\.env\.local`/,
       ],
     ])("fails when %s", (_name, extra, re) => {
       expect(verdict(withLines(...extra))).toMatch(re);
@@ -958,5 +1127,156 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
     it("still answers with the real git and the default bounds", () => {
       expect(probeGitignore(gitignore)).toHaveProperty("paths");
     });
+  });
+});
+
+// bun 1.3.0 to 1.3.2 ignore `--no-env-file` (verified against each release), so the hooks' environment-file
+// protection needs bun 1.3.3 or later. The PR claimed `engines.bun` pins that; nothing checked it.
+describe("engines.bun promises a bun that honours --no-env-file", () => {
+  const pkg = (bun: unknown) => JSON.stringify({ engines: bun === undefined ? {} : { bun } });
+  const root = join(__dirname, "../..");
+
+  it("floors the version at 1.3.3", () => {
+    expect(MIN_BUN).toEqual([1, 3, 3]);
+  });
+  it.each([
+    ">=1.3.3",
+    ">=1.3.5",
+    "^1.3.3",
+    "~1.3.3",
+    "1.3.5",
+    ">=1.4.0",
+    ">=2.0.0",
+    ">=1.3.3 <2",
+    "v1.3.3",
+  ])("accepts %s", (range) => {
+    expect(checkBunEngine(pkg(range))).toEqual([]);
+  });
+  it.each([
+    ">=1.3.2",
+    ">=1.3.0",
+    ">=1.2.9",
+    "^1.3.2",
+    "1.3.0",
+    "*",
+    "<2",
+    "latest",
+    ">=1.3",
+    "1.3",
+    "",
+    "x",
+  ])("rejects %j", (range) => {
+    expect(checkBunEngine(pkg(range)).join()).toMatch(/engines\.bun/);
+  });
+  it.each([[undefined], [123], [null], [["1.3.3"]]])(
+    "rejects a missing or non-string engines.bun (%j)",
+    (value) => {
+      expect(checkBunEngine(pkg(value)).join()).toMatch(/no engines\.bun|engines\.bun is/);
+    },
+  );
+  it("rejects a missing or unparsable package.json", () => {
+    expect(checkBunEngine(undefined).join()).toMatch(/package\.json is missing/);
+    expect(checkBunEngine("{").join()).toMatch(/does not parse/);
+    expect(checkBunEngine("{}").join()).toMatch(/no engines\.bun/);
+  });
+  it("is part of checkHarness when package.json is supplied, and the committed package.json passes", () => {
+    const inputs = readHarnessInputs(root);
+    expect(inputs).toHaveProperty("packageJson");
+    expect(checkHarness(inputs)).toEqual([]);
+    const lowered = JSON.parse(inputs.packageJson as string);
+    lowered.engines.bun = ">=1.3.2";
+    expect(checkHarness({ ...inputs, packageJson: JSON.stringify(lowered) }).join("\n")).toMatch(
+      /engines\.bun is `>=1\.3\.2`/,
+    );
+    expect(checkHarness({ ...inputs, packageJson: undefined }).join("\n")).toMatch(
+      /package\.json is missing/,
+    );
+  });
+  it("the committed package.json floor is the one the docs state (1.3.3)", () => {
+    const committed = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    expect(committed.engines.bun).toBe(">=1.3.3");
+  });
+});
+
+describe("the Claude MCP guard matcher is pinned like CODEX_GUARD_MATCHER (wave 5, M1)", () => {
+  const settings = readFileSync(join(ROOT, ".claude/settings.json"), "utf8");
+  const gitignore = readFileSync(join(ROOT, ".gitignore"), "utf8");
+  const codeowners = readFileSync(join(ROOT, ".github/CODEOWNERS"), "utf8");
+  const codexHooks = readFileSync(join(ROOT, ".codex/hooks.json"), "utf8");
+  const CORE_MATCHER = "Bash|Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit";
+  type Group = { matcher: string; hooks: Array<Record<string, unknown>> };
+  const run = (s: string) => checkHarness({ settings: s, gitignore, codeowners, codexHooks });
+  /** The committed settings with their PreToolUse groups replaced by `edit(groups)`. */
+  const withGroups = (edit: (groups: Group[]) => Group[]): string => {
+    const parsed = JSON.parse(settings);
+    return JSON.stringify({
+      ...parsed,
+      hooks: { ...parsed.hooks, PreToolUse: edit(parsed.hooks.PreToolUse) },
+    });
+  };
+  const onMcpGroup =
+    (change: (g: Group) => Group) =>
+    (groups: Group[]): Group[] =>
+      groups.map((g) => (g.matcher === CORE_MATCHER ? g : change(g)));
+  const matcherOf = (matcher: string) => (g: Group) => ({ ...g, matcher });
+  const hookWith = (patch: Record<string, unknown>) => (g: Group) => ({
+    ...g,
+    hooks: g.hooks.map((h) => ({ ...h, ...patch })),
+  });
+
+  it("pins the literal, and the committed settings run the same pinned guard command under it", () => {
+    expect(CLAUDE_MCP_GUARD_MATCHER).toBe(
+      "^mcp__claude-in-chrome__(file_upload|upload_image|javascript_tool|navigate|browser_batch)$|^mcp__plugin_ecc_chrome-devtools__(upload_file|evaluate_script|navigate_page|new_page|take_screenshot|take_snapshot|take_heapsnapshot|performance_start_trace|performance_stop_trace|get_network_request|lighthouse_audit)$",
+    );
+    const groups: Group[] = JSON.parse(settings).hooks.PreToolUse;
+    expect(groups.map((g) => g.matcher)).toEqual([CORE_MATCHER, CLAUDE_MCP_GUARD_MATCHER]);
+    expect(groups[1]?.hooks).toEqual(groups[0]?.hooks);
+    expect(groups[1]?.hooks[0]?.command).toBe(CLAUDE_GUARD_COMMAND);
+    expect(run(settings)).toEqual([]);
+  });
+  it("fails when the MCP group is dropped", () => {
+    expect(run(withGroups((g) => g.slice(0, 1))).join("\n")).toMatch(/pinned MCP matcher/);
+  });
+  it.each(["mcp__.*", "*", "", ".*", "mcp__claude-in-chrome__.*", "^mcp__"])(
+    "fails when the MCP group is widened to %j",
+    (wide) => {
+      const v = run(withGroups(onMcpGroup(matcherOf(wide)))).join("\n");
+      expect(v).toMatch(/pinned MCP matcher/);
+      expect(v).toMatch(/also matches `mcp__/);
+    },
+  );
+  it("fails when a tool is dropped from the MCP group", () => {
+    const fewer = CLAUDE_MCP_GUARD_MATCHER.replace("|navigate", "");
+    const v = run(withGroups(onMcpGroup(matcherOf(fewer)))).join("\n");
+    expect(v).toMatch(/pinned MCP matcher/);
+    expect(v).toMatch(/covers `mcp__claude-in-chrome__navigate`/);
+  });
+  it("fails when the core group is widened to `*` (it would send every connector's prose to the guard)", () => {
+    const v = run(withGroups((groups) => groups.map((g, i) => (i === 0 ? matcherOf("*")(g) : g))));
+    expect(v.join("\n")).toMatch(/also matches `mcp__/);
+  });
+  it("fails when only the MCP group runs the guard, or it runs a different command", () => {
+    const coreEchoes = withGroups((groups) =>
+      groups.map((g, i) => (i === 0 ? hookWith({ command: "echo nothing" })(g) : g)),
+    );
+    expect(run(coreEchoes).join("\n")).toMatch(/does not run scripts\/harness\/pre-tool-guard\.ts/);
+    const echoes = withGroups(onMcpGroup(hookWith({ command: "echo nothing" })));
+    expect(run(echoes).join("\n")).toMatch(/pinned MCP matcher/);
+    const orTrue = withGroups(onMcpGroup(hookWith({ command: `${CLAUDE_GUARD_COMMAND} || true` })));
+    expect(run(orTrue).join("\n")).toMatch(/must be exactly CLAUDE_GUARD_COMMAND/);
+  });
+  it("fails when the MCP group is async or has no timeout", () => {
+    expect(run(withGroups(onMcpGroup(hookWith({ async: true })))).join("\n")).toMatch(
+      /must not be async/,
+    );
+    expect(run(withGroups(onMcpGroup(hookWith({ timeout: undefined })))).join("\n")).toMatch(
+      /needs an explicit timeout/,
+    );
+  });
+  it("still requires the core group to cover Bash and the editing tools", () => {
+    const v = run(
+      withGroups((groups) => groups.map((g, i) => (i === 0 ? matcherOf("Read|Edit|Write")(g) : g))),
+    );
+    expect(v.join("\n")).toMatch(/matcher does not cover `Bash`/);
   });
 });

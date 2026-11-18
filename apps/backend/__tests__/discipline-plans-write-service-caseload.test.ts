@@ -55,6 +55,7 @@ const actor = (userId: string, roles: readonly string[] = ["rn_case_manager"]): 
 type AnyCall = (s: ReturnType<typeof service>, a: M15WriteActor) => Promise<unknown>;
 const ANY = {} as never;
 const PLAN_BEARING: ReadonlyArray<readonly [string, AnyCall]> = [
+  ["openVersion", (s, a) => s.openVersion(a, PLAN, ANY)],
   ["finalizeVersion", (s, a) => s.finalizeVersion(a, PLAN, "v", ANY)],
   ["signVersion", (s, a) => s.signVersion(a, PLAN, "v", ANY)],
   ["createGoal", (s, a) => s.createGoal(a, PLAN, ANY)],

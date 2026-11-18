@@ -203,6 +203,20 @@ describe("Aide POC editor — goal source", () => {
     expect(await screen.findByRole("cell", { name: "Clinician authored" })).toBeTruthy();
     expect(screen.queryByRole("cell", { name: "Clinical" })).toBeNull();
   });
+
+  it("warns before a reload only while authored changes are unsaved", async () => {
+    renderEditor();
+    const input = await screen.findByRole("textbox", { name: "Goal text" });
+
+    const clean = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+
+    fireEvent.change(input, { target: { value: GOAL_TEXT } });
+    const dirty = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirty);
+    expect(dirty.defaultPrevented).toBe(true);
+  });
 });
 
 describe("goalSourceLabel", () => {

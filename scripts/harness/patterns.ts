@@ -18,289 +18,167 @@
  *
  * Never put a matched value into a reason or a ledger line: findings carry a REDACTED sample only.
  */
+import { userInfo } from "node:os";
 
-export interface SyntheticRegistry {
-  readonly ssn: ReadonlySet<string>;
-  readonly mbi: ReadonlySet<string>;
-}
+import { hasBareBraceGroup } from "./bare-braces";
+import { ASSIGNMENT, program, unescapeWord, words } from "./command-words";
+import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
+import { DOWNLOAD_SCRIPT_REASON, downloadsScript } from "./download-script";
+import { environmentDumpReason } from "./env-dump";
+import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
+import { listedFiles } from "./file-list-options";
+import {
+  SAFE_SOURCE_NAME,
+  execCommandWrites,
+  findActions,
+  narrowsToSourceFiles,
+} from "./find-expr";
+import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
+import {
+  GIT_CLONE_CONFIG_REASON,
+  GIT_EXT_URL_REASON,
+  GIT_REROOT_OPTION_REASON,
+  GIT_TEMPLATE_OPTION_REASON,
+  assignmentWords,
+  envCommandStrings,
+  envWriteTargets,
+  gitCommandStrings,
+  gitEnvVerdict,
+  gitSubcommandConfigs,
+  isExtUrl,
+  isGitRerootOption,
+  usesGitTemplate,
+} from "./git-exec-strings";
+import {
+  GIT_GREP_VALUE_LETTERS,
+  GIT_GREP_VALUE_LONG,
+  gitGrepIgnoresGitignore,
+} from "./git-grep-sweep";
+import { hasWildcard, isMagicPathspec, wholeTreeWriterReason } from "./git-tree-rules";
+import { globMatches, globTokens } from "./glob";
+import { switchesHarness } from "./harness-switch";
+import {
+  SHELL_PROGRAM,
+  inlineScriptText,
+  mayWriteFileOperands,
+  printedTexts,
+  readsScriptFromStdin,
+  runsInlineCode,
+} from "./inline-code";
+import { launchctlReason } from "./launchctl-rules";
+import { type Listed, asListing } from "./listing";
+import { runsLiveSuite } from "./live-suite";
+import { nestedTexts } from "./nested-texts";
+import { programOptionReason } from "./option-commands";
+import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
+import { setPackageScriptsReader } from "./package-scripts";
+import { aliasNormalise, fold, relativeTo } from "./path-alias";
+import { SPELLING_ASK_REASON, askedBySpelling } from "./permission-asks";
+import { persistenceReason } from "./persistence-commands";
+import { expandedProgramWord, shellsBehindWord } from "./program-words";
+import {
+  protectedDirectories,
+  protectedNameSamples,
+  protectedNamesComplete,
+} from "./protected-names";
+import { backstopPlan, localFunctionNames } from "./protected-operands";
+import {
+  PROTECTED_FRAGMENT,
+  PROTECTED_SAMPLES,
+  isProtectedPath,
+  protectedPathPattern,
+} from "./protected-paths";
+import { engineVariableWords, remoteAccessReason } from "./remote-access";
+import {
+  GUARDED_REASON,
+  GUARDED_VARIABLE_REFERENCE,
+  SECRET_VARIABLE_REFERENCE,
+  environmentLeak,
+  globReachesLiveEnv,
+  holdsLiveEnvDirectly,
+  reachesLiveEnv,
+  setListedLiveEnvFiles,
+  storedSecretVerdict,
+} from "./secret-reads";
+import { literalValues, withKnownVariables } from "./shell-assignments";
+import { shellCommandStrings } from "./shell-command-string";
+import {
+  BARE,
+  COMMENT,
+  CONT,
+  type Segment,
+  type SplitCommand,
+  substitutions as lexSubstitutions,
+  scanShell,
+  splitCommand,
+} from "./shell-lex";
+import { EXEC_SWEEP_READER, siblingCommands } from "./sibling-sweeps";
+import { STDIN_SCRIPT_TOOL_REASON, stdinScriptTool } from "./stdin-script-tools";
+import {
+  type FeedReaders,
+  PIPE_FEED_REASON,
+  type PipelineStdin,
+  type StdinFeed,
+  type StdinStage,
+  allTexts,
+  pipelineStdin,
+  scriptsHandedToShell,
+  withStdin,
+} from "./stdin-texts";
+import { readTar } from "./tar-grammar";
+import { isToolchainPath } from "./toolchain-paths";
+import { type SweepDepth, diffSweepOperands, gitDiffSweepOperands } from "./tree-sweep";
+import { reboundNames } from "./variable-rebinding";
+import { type Bindings, MAX_READINGS, NO_BINDINGS, bindAfter, readingsOf } from "./word-readings";
+import {
+  MAX_COMMAND_JUDGE_MS,
+  baseName,
+  expandBraces,
+  halted,
+  refillWork,
+  setBareBraces,
+  spendJudgedChars,
+  spendResolution,
+  trimSlashes,
+  work,
+} from "./work-budget";
+import { shellQuote, sshHost } from "./wrappers";
+import { extraOutputFiles, localPath } from "./writers";
+import { moreGitWrites, moreWriterTargets } from "./writers-more";
+import { fileRuns, heredocCount, isScriptText, writtenTexts } from "./written-scripts";
+import { xargsRuns } from "./xargs-feed";
 
-export function registryFrom(json: {
-  ssn?: readonly string[];
-  mbi?: readonly string[];
-}): SyntheticRegistry {
-  return {
-    ssn: new Set((json.ssn ?? []).map((s) => s.replace(/-/g, ""))),
-    mbi: new Set((json.mbi ?? []).map((s) => s.replace(/-/g, "").toUpperCase())),
-  };
-}
-
-export const EMPTY_REGISTRY: SyntheticRegistry = { ssn: new Set(), mbi: new Set() };
-
-// ---------------------------------------------------------------------------------------------------
-// 1. Secret paths
-// ---------------------------------------------------------------------------------------------------
-
-/** Committed templates that merely LOOK like secret files. */
-const TEMPLATE_SUFFIX = /\.(example|sample|template|dist)$/i;
-
-const SECRET_PATH_RULES: ReadonlyArray<readonly [RegExp, string]> = [
-  [
-    /(^|\/)\.env(\.[^/]*)?$/i,
-    "a live environment file (database URLs, BETTER_AUTH_SECRET, vendor keys)",
-  ],
-  // `deploy/production/backend.env`-style files; not `env.ts`.
-  [
-    /(^|\/)[^/]+\.env(\.(local|development|staging|production|tenant))?$/i,
-    "a live environment file",
-  ],
-  [/\.(pem|key|p12|pfx|jks|keystore)$/i, "a private key or keystore"],
-  [/(^|\/)id_(rsa|ecdsa|ed25519|dsa)(\.pub)?$/i, "an SSH key"],
-  [/(^|\/)\.(pgpass|netrc|npmrc|pypirc)$/i, "a credentials file"],
-  // `/i`: macOS and Windows resolve `.SSH/config` and `.AWS/credentials` to the same files.
-  [/(^|\/)\.ssh\//i, "the SSH configuration directory"],
-  [/(^|\/)\.aws\/credentials$/i, "cloud credentials"],
-  [/(^|\/)\.docker\/config\.json$/i, "registry credentials"],
-  [
-    /(^|\/)(\.codex\/auth\.json|\.claude\/\.credentials\.json|\.config\/gh\/hosts\.yml|\.git-credentials|\.kube\/config)$/i,
-    "a coding-agent, GitHub, git or cluster credentials file",
-  ],
-  // A secrets/ directory — but source files that merely live under a `secrets/` module are code.
-  [/(^|\/)\.?secrets?\/(?!.*\.(ts|tsx|js|mjs|cjs|md)$)/i, "a secrets directory"],
-  [/\.(dump|sql\.gz|sql\.zst|backup|bak)$/i, "a database dump or backup (may hold PHI)"],
-  [/(^|\/)(pgbackrest|backups?)\/.*\.(gz|zst|lz4|tar)$/i, "a backup archive (may hold PHI)"],
-  [/\.env\.bak(\.|$)/i, "a backup of a live environment file"],
-];
-
-/** Returns why `path` is off-limits to an agent, or null when it is fine. */
-export function secretPathReason(path: string): string | null {
-  const p = path.replace(/\\/g, "/");
-  if (TEMPLATE_SUFFIX.test(p)) return null;
-  for (const [re, why] of SECRET_PATH_RULES) if (re.test(p)) return why;
-  return null;
-}
-
-// ---------------------------------------------------------------------------------------------------
-// 2. Content: PHI-shaped identifiers and credentials
-// ---------------------------------------------------------------------------------------------------
-
-export type FindingKind =
-  | "ssn"
-  | "mbi"
-  | "private-key"
-  | "cloud-key"
-  | "vendor-token"
-  | "db-url-password"
-  | "high-entropy-secret"
-  /** Larger than {@link MAX_SCAN_CHARS}: not scanned, so it is not vouched for either. */
-  | "unscannable";
-
-export interface Finding {
-  readonly kind: FindingKind;
-  readonly line: number;
-  /** Length only — no characters of the value, not even a prefix (an SSN's last four are the sensitive part). */
-  readonly sample: string;
-}
-
-const redact = (v: string): string => `${v.length} chars`;
-
-const SSN_DASHED = /\b(\d{3})-(\d{2})-(\d{4})\b/g;
-const SSN_KEYED = /\bssn\b[^0-9\n]{0,6}(\d{3}[- ]?\d{2}[- ]?\d{4})\b/gi;
-// CMS MBI format: C A AN N A AN N A A N N — letters exclude S L O I B Z. Upper-case only (MBIs are
-// upper-case by spec, and a case-insensitive match would trip on hex hashes).
-const MBI_L = "[AC-HJKMNP-RT-Y]";
-const MBI_AN = "[AC-HJKMNP-RT-Y0-9]";
-const MBI = new RegExp(
-  `(?<![A-Za-z0-9])[1-9]${MBI_L}${MBI_AN}[0-9]-?${MBI_L}${MBI_AN}[0-9]-?${MBI_L}${MBI_L}[0-9]{2}(?![A-Za-z0-9])`,
-  "g",
-);
-
-/** SSA never issues area 000, 666 or 900-999, group 00 or serial 0000 — those are synthetic by definition. */
-export function ssnNeverIssued(area: string, group: string, serial: string): boolean {
-  return (
-    area === "000" || area === "666" || area.startsWith("9") || group === "00" || serial === "0000"
-  );
-}
-
-const CREDENTIAL_RULES: ReadonlyArray<readonly [RegExp, FindingKind]> = [
-  // A real key body is hundreds of base64 characters; a test's `-----BEGIN PRIVATE KEY-----\nMIIB\n-----END`
-  // stub is not a credential.
-  [
-    /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[A-Za-z0-9+/=\s\\n]{200,}/g,
-    "private-key",
-  ],
-  // AWS's own documentation key (…EXAMPLE) is excluded.
-  [/\b(?:AKIA|ASIA)(?![0-9A-Z]{9}EXAMPLE)[0-9A-Z]{16}\b/g, "cloud-key"],
-  [/\bgh[pousr]_[A-Za-z0-9]{36,}\b/g, "vendor-token"],
-  [/\bgithub_pat_[A-Za-z0-9_]{60,}\b/g, "vendor-token"],
-  [/\bxox[abprs]-[A-Za-z0-9-]{20,}\b/g, "vendor-token"],
-  [/\b(?:sk|rk)_live_[A-Za-z0-9]{20,}\b/g, "vendor-token"],
-  [/\bsk-ant-[A-Za-z0-9_-]{30,}\b/g, "vendor-token"],
-  [/\bsk-(?:proj-)?[A-Za-z0-9_-]{40,}\b/g, "vendor-token"],
-];
-
-/** A postgres URL carrying an inline password for a host that is not local/compose-internal. */
-// Every quantifier is bounded: an unbounded `[^@\s]+` backtracks to the end of the text from each
-// `postgres://x:` start (quadratic), and the guard fails OPEN on a timeout.
-const DB_URL = /\bpostgres(?:ql)?:\/\/[^:\s/@]{1,64}:([^@\s]{1,256})@([^/:\s?#'"`]{1,255})/g;
-// Local means loopback, the Docker host alias, or a service this repo's docker-compose.yml names. A bare
-// single-label name or a `*.internal` suffix is NOT local: production hosts look exactly like that.
-const LOCAL_HOST_RE =
-  /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?|0\.0\.0\.0|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
-/** Service names in docker-compose.yml (reachable only on the private compose network). */
-export const COMPOSE_SERVICES: ReadonlySet<string> = new Set([
-  "postgres",
-  "redis",
-  "minio",
-  "clamav",
-  "migrate",
-  "api",
-  "worker",
-  "docling-worker",
-  "provision-gateway",
-]);
-const LOCAL_HOST = {
-  test: (h: string): boolean => LOCAL_HOST_RE.test(h) || COMPOSE_SERVICES.has(h.toLowerCase()),
-};
-const PLACEHOLDER =
-  /^(\$\{?[A-Z_]+\}?|<[^>]+>|\*+|x+|\.{1,3}|\u2026|.{1,3}|password|postgres|changeme|secret|pass|chartwarden(-(local|dev|test|ci|e2e)[A-Za-z0-9_-]*)?)$/i;
-
-/** `SECRET=...`-style assignment with a long, high-entropy literal. Applied to non-test paths only. */
-const KEYED_SECRET =
-  /\b[A-Z0-9_]{0,64}(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY)[A-Z0-9_]{0,64}\s{0,8}[:=]\s{0,8}["'`]?([A-Za-z0-9+/=_.-]{32,})["'`]?/g;
-
-export function shannonEntropy(s: string): number {
-  const counts = new Map<string, number>();
-  for (const c of s) counts.set(c, (counts.get(c) ?? 0) + 1);
-  let h = 0;
-  for (const n of counts.values()) {
-    const p = n / s.length;
-    h -= p * Math.log2(p);
-  }
-  return h;
-}
-
-/** Paths whose content is never scanned (lockfiles, binary-ish corpora, the registry itself). */
-const UNSCANNED =
-  /(^|\/)(bun\.lock|package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$|\.(pdf|png|jpe?g|gif|webp|ico|woff2?|ttf|zip|gz|pen)$|^HOPE Data Spec|(^|\/)compliance\/synthetic-identifiers\.json$/i;
-const TESTISH =
-  /(__tests__|__fixtures__|\.test\.|\.spec\.|\/fixtures?\/|\.stories\.|\.example$|^e2e\/)/;
-
-export function isScannable(path: string): boolean {
-  return !UNSCANNED.test(path.replace(/\\/g, "/"));
-}
-
-// ponytail: one memo for the text being scanned; the hook is a one-shot process. Counting newlines from the
-// start for every finding made a 1 MB patch of findings take 14 s, and the guard fails OPEN past Codex's timeout.
-let lineStarts: { readonly text: string; readonly starts: readonly number[] } | undefined;
-function lineOf(text: string, index: number): number {
-  if (lineStarts?.text !== text) {
-    const starts = [0];
-    for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) starts.push(i + 1);
-    lineStarts = { text, starts };
-  }
-  const { starts } = lineStarts;
-  let lo = 0;
-  let hi = starts.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if ((starts[mid] ?? 0) <= index) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo + 1;
-}
-
-/**
- * Largest text one scan will take. Every rule here is linear in the input (the keyed-secret rule bounds
- * its prefix and suffix), so this is a second line, not the first: content past it is REFUSED by the
- * callers that write (the guard) and reported as skipped by the ones that read (phi-scan, Stop gate).
- */
-export const MAX_SCAN_CHARS = 8_000_000;
-
-export function scanContent(text: string, registry: SyntheticRegistry, path = ""): Finding[] {
-  if (path && !isScannable(path)) return [];
-  if (text.length > MAX_SCAN_CHARS) {
-    return [{ kind: "unscannable", line: 1, sample: redact(text) }];
-  }
-  const out: Finding[] = [];
-  const push = (kind: FindingKind, index: number, value: string) =>
-    out.push({ kind, line: lineOf(text, index), sample: redact(value) });
-
-  for (const m of text.matchAll(SSN_DASHED)) {
-    const [whole, a = "", g = "", s = ""] = m;
-    if (ssnNeverIssued(a, g, s) || registry.ssn.has(a + g + s)) continue;
-    push("ssn", m.index ?? 0, whole);
-  }
-  for (const m of text.matchAll(SSN_KEYED)) {
-    if (/^\d{3}-\d{2}-\d{4}$/.test(m[1] ?? "")) continue; // the dashed rule above already judged it
-    const v = (m[1] ?? "").replace(/\D/g, "");
-    if (ssnNeverIssued(v.slice(0, 3), v.slice(3, 5), v.slice(5)) || registry.ssn.has(v)) continue;
-    push("ssn", m.index ?? 0, v);
-  }
-  for (const m of text.matchAll(MBI)) {
-    const v = m[0].replace(/-/g, "");
-    if (registry.mbi.has(v)) continue;
-    push("mbi", m.index ?? 0, v);
-  }
-  for (const [re, kind] of CREDENTIAL_RULES)
-    for (const m of text.matchAll(re)) push(kind, m.index ?? 0, m[0]);
-  for (const m of text.matchAll(DB_URL)) {
-    const pw = m[1] ?? "";
-    const host = m[2] ?? "";
-    if (LOCAL_HOST.test(host) || PLACEHOLDER.test(pw)) continue;
-    // A short dummy in a test file (`p@ss`) is a fixture; a real-length password is flagged everywhere.
-    if (TESTISH.test(path) && pw.length < 8) continue;
-    push("db-url-password", m.index ?? 0, pw);
-  }
-  if (!TESTISH.test(path)) {
-    for (const m of text.matchAll(KEYED_SECRET)) {
-      const v = m[1] ?? "";
-      if (PLACEHOLDER.test(v) || shannonEntropy(v) < 4.0) continue;
-      push("high-entropy-secret", m.index ?? 0, v);
-    }
-  }
-  return out;
-}
-
-const CHUNK_CHARS = 4_000_000;
-
-/**
- * {@link scanContent} for FILES that may exceed one scan's limit (a generated 12 MB OpenAPI document):
- * scanned in line-aligned chunks so size alone never exempts a file. A single line past the limit is
- * still reported as `unscannable`.
- */
-export function scanLarge(text: string, registry: SyntheticRegistry, path = ""): Finding[] {
-  if (text.length <= MAX_SCAN_CHARS) return scanContent(text, registry, path);
-  const out: Finding[] = [];
-  let start = 0;
-  let lineBase = 0;
-  while (start < text.length) {
-    let end = Math.min(start + CHUNK_CHARS, text.length);
-    if (end < text.length) {
-      const nl = text.indexOf("\n", end);
-      end = nl < 0 ? text.length : nl + 1;
-    }
-    const chunk = text.slice(start, end);
-    for (const f of scanContent(chunk, registry, path)) out.push({ ...f, line: f.line + lineBase });
-    for (let i = chunk.indexOf("\n"); i >= 0; i = chunk.indexOf("\n", i + 1)) lineBase++;
-    start = end;
-  }
-  return out;
-}
-
-export function describeFindings(path: string, findings: readonly Finding[]): string {
-  const kinds = [...new Set(findings.map((f) => f.kind))];
-  const where = findings
-    .slice(0, 5)
-    .map((f) => `${path}:${f.line} (${f.kind}, ${f.sample})`)
-    .join("; ");
-  const phi = kinds.some((k) => k === "ssn" || k === "mbi");
-  const advice = phi
-    ? "Use a value from compliance/synthetic-identifiers.json, or an SSN with area 000/666/9xx. Adding a new synthetic value to that file is a human decision."
-    : kinds.includes("unscannable")
-      ? "This content is too large to scan, so it cannot be vouched for. Write it in smaller pieces, or keep it out of the repo."
-      : "Credentials never go in the repo: read them from the environment (OpenBao in production) and put a placeholder in the .example template.";
-  return `${kinds.join(", ")} found — ${where}. ${advice}`;
-}
+// Re-exported from `content-scan.ts`: the names this file used to define.
+export type { Finding, FindingKind, SyntheticRegistry } from "./content-scan";
+export {
+  registryFrom,
+  EMPTY_REGISTRY,
+  secretPathReason,
+  ssnNeverIssued,
+  COMPOSE_SERVICES,
+  shannonEntropy,
+  isScannable,
+  MAX_SCAN_CHARS,
+  scanContent,
+  scanLarge,
+  describeFindings,
+} from "./content-scan";
+import { LOCAL_HOST, MBI, scanContent, secretPathReason } from "./content-scan";
+import { anyProgramTarget } from "./db-any-program";
+import { connectTargetOf } from "./db-connect-commands";
+import { type DatabaseTarget, databaseTarget, databaseTargetReason } from "./db-target";
+import { TARGET_CLIENTS } from "./db-target-clients";
+import {
+  expandVariables,
+  unplacedBindingWords,
+  valuesByName,
+  variableStatementWords,
+} from "./db-variables";
+import { forcedAdd } from "./git-add-force";
+import { pushDecision, pushFacts, pushFinding } from "./git-push-refs";
+import { leakCheckText, secretFlowReason } from "./secret-flows";
+import { type SourceReaders, sourcedStatements } from "./source-carry";
+import { AWK_UNPLACED_REASON, awkCommandStrings } from "./text-programs";
 
 // ---------------------------------------------------------------------------------------------------
 // 3. Shell commands
@@ -324,93 +202,27 @@ export interface BashContext {
   readonly cwd?: string;
   /** The user's home directory, so `~`, `$HOME` and the expanded `/Users/me/...` agree. Default: `$HOME`. */
   readonly home?: string;
-}
-
-/** One simple command, and the operator (`&&`, `||`, `;`, a newline, `|`, `&`) that joined it to the one before. */
-interface Segment {
-  readonly text: string;
-  readonly joiner: string;
-}
-
-interface SplitCommand {
-  readonly parts: Segment[];
+  /** Wall-clock budget for judging one command, in ms (default 1000); past it the answer is ask. A test seam. */
+  readonly judgeTimeLimitMs?: number;
   /**
-   * True when the line holds only `;`, `&&`, `||` and newlines between commands: no `( … )` group, pipe or
-   * `&`. Then every command runs in the shell itself, and `&&` really means "the one before it succeeded".
-   * Otherwise a `cd` may have run in a subshell or a pipeline and never applied to what follows.
+   * The live env files that exist in the tree (repo-relative; `live-env-files.ts`), asked for once and only when a
+   * recursive read needs them. Without it the usual ones in `secret-reads.ts` are the whole list.
    */
-  readonly sequential: boolean;
+  readonly liveEnvFiles?: () => Listed;
+  /** The live suite files that exist (`live-suite-files.ts`), asked for only when a vitest runner has a filter. */
+  readonly liveSuiteFiles?: () => Listed;
+  /** The scripts of the package the command runs in (`package-scripts.ts`), asked for only when `bun run X` needs them. */
+  readonly packageScripts?: () => ReadonlySet<string>;
 }
 
-/** Split a command line into simple commands on `;`, `&&`, `||`, `|` and newlines, outside quotes. */
-function splitSegments(cmd: string): SplitCommand {
-  const raw: Segment[] = [];
-  let cur = "";
-  let joiner = "";
-  let sequential = true;
-  let quote: string | null = null;
-  const cut = (next: string): void => {
-    raw.push({ text: cur, joiner });
-    cur = "";
-    joiner = next;
-  };
-  for (let i = 0; i < cmd.length; i++) {
-    const ch = cmd[i] as string;
-    if (quote) {
-      if (ch === quote) quote = null;
-      cur += ch;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      cur += ch;
-      continue;
-    }
-    const two = cmd.slice(i, i + 2);
-    if (two === "&&" || two === "||") {
-      cut(two);
-      i++;
-      continue;
-    }
-    if (ch === "(" || ch === ")") sequential = false;
-    // `>|` (clobber) and `&>` / `>&` / `2>&1` (redirections) are not separators; a lone `&` is.
-    const prev = cmd[i - 1] ?? "";
-    const pipe = ch === "|" && prev !== ">";
-    const background = ch === "&" && cmd[i + 1] !== ">" && !/[<>&|]/.test(prev);
-    if (ch === ";" || ch === "\n" || pipe || background) {
-      if (pipe || background) sequential = false;
-      cut(ch);
-      continue;
-    }
-    cur += ch;
-  }
-  cut("");
-  // A subshell group's parentheses are not part of the command; they only end the line's `sequential` run.
-  const parts = raw
-    .map((p) => ({ text: ungroup(p.text), joiner: p.joiner }))
-    .filter((p) => p.text !== "");
-  return { parts, sequential };
-}
+/**
+ * Split a command line into simple commands on `;`, `&&`, `||`, `|`, `&` and newlines, outside quotes,
+ * escapes, comments, substitutions and heredoc bodies. The lexer is `shell-lex.ts`; a heredoc body is data
+ * unless what it feeds runs it as a script (a shell, `eval`, `source`, or a pipeline into one).
+ */
+const splitSegments = (cmd: string): SplitCommand => splitCommand(cmd, readsShellScript);
 
 const segments = (cmd: string): string[] => splitSegments(cmd).parts.map((p) => p.text);
-
-const count = (text: string, ch: string): number => text.split(ch).length - 1;
-
-/** Drop a leading `(`/`{`, and trailing `)`/`}` that close a group opened elsewhere (not `$(date)` or `{a,b}`). */
-function ungroup(segment: string): string {
-  const t = segment.replace(/^[\s({]+/, "");
-  let paren = count(t, ")") - count(t, "(");
-  let brace = count(t, "}") - count(t, "{");
-  let end = t.length;
-  for (;;) {
-    while (end > 0 && /\s/.test(t[end - 1] as string)) end--;
-    const last = t[end - 1];
-    if (last === ")" && paren > 0) paren--;
-    else if (last === "}" && brace > 0) brace--;
-    else return t.slice(0, end);
-    end--;
-  }
-}
 
 /**
  * The text inside every `$( … )`, `<( … )`, `>( … )` and backtick pair that the shell would actually run
@@ -418,212 +230,11 @@ function ungroup(segment: string): string {
  * the `cat`.
  */
 function substitutions(cmd: string): string[] {
-  const out: string[] = [];
-  let single = false;
-  for (let i = 0; i < cmd.length && out.length <= MAX_SUBSTITUTIONS; i++) {
-    const ch = cmd[i] as string;
-    if (ch === "'") single = !single;
-    if (single) continue;
-    if (ch === "`") {
-      const end = cmd.indexOf("`", i + 1);
-      if (end < 0) break;
-      out.push(cmd.slice(i + 1, end));
-      i = end;
-      continue;
-    }
-    // `$( … )`, and the process substitutions `<( … )` / `>( … )`, which also run their text as a command.
-    if ((ch === "$" || ch === "<" || ch === ">") && cmd[i + 1] === "(" && cmd[i + 2] !== "(") {
-      let depth = 1;
-      let j = i + 2;
-      for (; j < cmd.length && depth > 0; j++) {
-        if (cmd[j] === "(") depth++;
-        else if (cmd[j] === ")") depth--;
-      }
-      out.push(cmd.slice(i + 2, j - 1));
-      i += 1; // keep scanning inside, so nested substitutions are found too
-    }
-  }
-  return out;
+  return lexSubstitutions(cmd, MAX_SUBSTITUTIONS + 1);
 }
 
 /** `bash -c "…"`, `sh -c '…'`, `eval …`: the quoted string is itself a command line. */
-const NESTED_SHELL = /^(bash|sh|zsh|dash|ksh|fish)$/;
-
-/**
- * Shell words, keeping a quoted string as one word (quotes stripped), also INSIDE a word: in
- * `FOO='a b' git push` the value is one word, so the program is still `git`. Splitting at the space
- * inside the quotes read `b'` as the program and let the whole command through unchecked.
- */
-// A `$( … )` or backtick substitution stays INSIDE its word (`cat $(printf '.%s' env)` is one `cat` with
-// one argument), and bash's `$'\x2eenv'` is decoded, because the shell would.
-const ANSI_ESCAPES: Readonly<Record<string, string>> = { n: "\n", t: "\t", r: "\r" };
-
-/** The text bash makes of the body of `$'…'`: `\x2e`, `\056`, `.` and the common one-letter escapes. */
-function ansiC(body: string): string {
-  return body.replace(
-    /\\(?:x([0-9a-fA-F]{1,2})|([0-7]{1,3})|u([0-9a-fA-F]{1,4})|U([0-9a-fA-F]{1,8})|(.))/gs,
-    (_m, x?: string, o?: string, u?: string, big?: string, ch?: string) => {
-      const hex = x ?? u ?? big;
-      const code = hex !== undefined ? Number.parseInt(hex, 16) : Number.parseInt(o ?? "", 8);
-      if (hex !== undefined || o !== undefined) {
-        return Number.isFinite(code) && code <= 0x10ffff ? String.fromCodePoint(code) : "";
-      }
-      return ANSI_ESCAPES[ch ?? ""] ?? ch ?? "";
-    },
-  );
-}
-
-/** Index of the next unescaped `'` at or after `from` (the end of a `$'…'` body), or the text length. */
-function closingQuote(text: string, from: number): number {
-  for (let i = from; i < text.length; i++) {
-    if (text[i] === "\\") i++;
-    else if (text[i] === "'") return i;
-  }
-  return text.length;
-}
-
-function words(seg: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let started = false;
-  let quote: string | null = null;
-  let depth = 0; // inside `$( … )`
-  let tick = false; // inside `…`
-  for (let i = 0; i < seg.length; i++) {
-    const ch = seg[i] as string;
-    if (tick || depth > 0) {
-      cur += ch;
-      if (tick) tick = ch !== "`";
-      else if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-      continue;
-    }
-    if (quote === "'") {
-      if (ch === "'") quote = null;
-      else cur += ch;
-      continue;
-    }
-    if (ch === "`" || (ch === "$" && seg[i + 1] === "(")) {
-      started = true;
-      if (ch === "`") tick = true;
-      else {
-        depth = 1;
-        cur += "$";
-        i++;
-      }
-      cur += seg[i];
-      continue;
-    }
-    if (quote === '"') {
-      if (ch === '"') quote = null;
-      else if (ch === "\\" && i + 1 < seg.length) cur += ch + seg[++i];
-      else cur += ch;
-      continue;
-    }
-    if (ch === "$" && seg[i + 1] === "'") {
-      const end = closingQuote(seg, i + 2);
-      cur += ansiC(seg.slice(i + 2, end));
-      started = true;
-      i = end;
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-      started = true;
-    } else if (/\s/.test(ch)) {
-      if (started) out.push(cur);
-      cur = "";
-      started = false;
-    } else if (ch === "\\" && i + 1 < seg.length) {
-      cur += ch + seg[++i];
-      started = true;
-    } else {
-      cur += ch;
-      started = true;
-    }
-  }
-  if (started) out.push(cur);
-  return out;
-}
-
-const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
-// Words that run the NEXT word as the command. Each takes its own value-carrying flags (`sudo -u root`,
-// `nice -n 5`, `xargs -I{}`), which must not be read as the program. Shell keywords (`then`, `do`) are in
-// the list because `if x; then rm …; fi` splits into a `then rm …` segment.
-const NO_FLAG_VALUE = /^$/;
-const WRAPPER_FLAG_VALUE: ReadonlyMap<string, RegExp> = new Map([
-  ["sudo", /^-[ughpCDRTU]$/],
-  ["env", /^-[uCS]$/],
-  ["nice", /^-n$/],
-  ["ionice", /^-[cnp]$/],
-  ["xargs", /^-[InPLsdEa]$/],
-  ...[
-    "time",
-    "command",
-    "builtin",
-    "exec",
-    "nohup",
-    "setsid",
-    "stdbuf",
-    "then",
-    "do",
-    "else",
-    "elif",
-    "if",
-    "while",
-    "until",
-    "!",
-  ].map((w): [string, RegExp] => [w, NO_FLAG_VALUE]),
-]);
-
-/** The program a simple command runs, skipping `VAR=value` prefixes and wrapper commands (`sudo`, `env`, `then`). */
-function program(seg: string): { prog: string; args: string[]; assigns: string[] } {
-  const w = words(seg);
-  let k = 0;
-  let lastWrapper = "";
-  while (k < w.length) {
-    const word = w[k] ?? "";
-    if (word.replace(/^.*\//, "") === "timeout") {
-      lastWrapper = "timeout";
-      k++;
-      while (k < w.length) {
-        const option = w[k] ?? "";
-        if (option === "--") {
-          k++;
-          break;
-        }
-        if (/^(?:-s|-k|--signal|--kill-after)$/.test(option)) {
-          k += 2;
-          continue;
-        }
-        if (/^--(?:signal|kill-after)=/.test(option) || /^-/.test(option)) {
-          k++;
-          continue;
-        }
-        break;
-      }
-      // GNU and BSD timeout both place one duration operand before the child command.
-      if (k < w.length) k++;
-      continue;
-    }
-    const takesValue = WRAPPER_FLAG_VALUE.get(word);
-    if (ASSIGNMENT.test(word)) k++;
-    else if (takesValue && k + 1 < w.length) {
-      lastWrapper = word;
-      k++;
-      while (k < w.length && /^-/.test(w[k] ?? "") && (w[k] ?? "") !== "--") {
-        k += takesValue.test(w[k] ?? "") ? 2 : 1;
-      }
-      // `sudo -- rm x`: `--` ends the wrapper's options, and the command follows it.
-      if (w[k] === "--") k++;
-    } else break;
-  }
-  // `env -u X` with no command prints the environment: it is still `env`.
-  const prog = k >= w.length && lastWrapper === "env" ? "env" : (w[k] ?? "").replace(/^.*\//, "");
-  return {
-    prog,
-    args: prog === "env" && k >= w.length ? [] : w.slice(k + 1),
-    assigns: w.slice(0, k).filter((x) => ASSIGNMENT.test(x)),
-  };
-}
+const NESTED_SHELL = SHELL_PROGRAM;
 
 /** The redirections of one simple command, pulled out so they are not mistaken for its arguments. */
 interface Redirects {
@@ -635,30 +246,22 @@ interface Redirects {
   readonly ins: string[];
   /** Here-doc delimiters and here-string words: input the command is handed inline. */
   readonly docs: string[];
+  /** The here-string words alone (`<<< 'text'`). */
+  readonly strings: string[];
+  /** The same words as the command is handed them (an escaped quote is the quote), for a text a shell or a client reads (R9-CR-2). */
+  readonly handedStrings: string[];
 }
 
 const REDIRECT_OPERATOR = /(?:>>|>\||>&|<<<|<<-?|<&|<>|>|<)/y;
 const FD_DUP = /\d+-?|-/y;
 
-/** Read one shell word starting at `from` (quotes and `$( )` respected); returns its raw text and end. */
-function readWord(text: string, from: number): { word: string; end: number } {
+/** Read one shell word starting at `from` (the lexer's mask says what is quoted); returns its raw text and end. */
+function readWord(text: string, from: number, kind: Uint8Array): { word: string; end: number } {
   let i = from;
   while (i < text.length && /\s/.test(text[i] as string)) i++;
   const start = i;
-  let quote: string | null = null;
-  let depth = 0;
   for (; i < text.length; i++) {
-    const ch = text[i] as string;
-    if (quote) {
-      if (ch === quote) quote = null;
-    } else if (depth > 0) {
-      if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-    } else if (ch === '"' || ch === "'") quote = ch;
-    else if (ch === "$" && text[i + 1] === "(") {
-      depth = 1;
-      i++;
-    } else if (/[\s;|&<>()]/.test(ch)) break;
+    if (kind[i] === BARE && /[\s;|&<>()]/.test(text[i] as string)) break;
   }
   return { word: text.slice(start, i), end: i };
 }
@@ -673,151 +276,133 @@ function fdPrefixLength(seg: string, at: number): number {
 }
 
 function splitRedirects(seg: string): Redirects {
-  if (!/[<>]/.test(seg)) return { rest: seg, outs: [], ins: [], docs: [] };
+  if (!/[<>]/.test(seg)) {
+    return { rest: seg, outs: [], ins: [], docs: [], strings: [], handedStrings: [] };
+  }
+  // The segment has its heredoc body taken out already, so `<<` reads as an ordinary operator here.
+  const { kind } = scanShell(seg, false);
   let rest = "";
   const outs: string[] = [];
   const ins: string[] = [];
   const docs: string[] = [];
-  let quote: string | null = null;
-  let depth = 0;
-  let tick = false;
+  const strings: string[] = [];
+  const handedStrings: string[] = [];
   for (let i = 0; i < seg.length; i++) {
     const ch = seg[i] as string;
-    if (quote || tick || depth > 0) {
+    const k = kind[i];
+    if (k === COMMENT || k === CONT) continue;
+    // Only a bare `<` or `>` is a redirection: a quoted, escaped or substituted one is part of a word.
+    if (k !== BARE || (ch !== ">" && ch !== "<")) {
       rest += ch;
-      if (quote) quote = ch === quote ? null : quote;
-      else if (tick) tick = ch !== "`";
-      else if (ch === "(") depth++;
-      else if (ch === ")") depth--;
       continue;
     }
-    if (ch === "\\" && i + 1 < seg.length) {
-      rest += ch + seg[++i];
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-      rest += ch;
-    } else if (ch === "`") {
-      tick = true;
-      rest += ch;
-    } else if (ch === "$" && seg[i + 1] === "(") {
-      depth = 1;
-      rest += "$(";
-      i++;
-    } else if ((ch === ">" || ch === "<") && seg[i + 1] !== "(") {
-      REDIRECT_OPERATOR.lastIndex = i;
-      const op = REDIRECT_OPERATOR.exec(seg)?.[0] ?? ch;
-      const fd = fdPrefixLength(seg, i);
-      i += op.length - 1;
-      rest = `${fd > 0 ? rest.slice(0, rest.length - fd) : rest} `;
-      if (op.endsWith("&")) {
-        FD_DUP.lastIndex = i + 1;
-        const dup = FD_DUP.exec(seg)?.[0];
-        if (dup !== undefined) {
-          i += dup.length;
-          continue;
-        }
+    REDIRECT_OPERATOR.lastIndex = i;
+    const op = REDIRECT_OPERATOR.exec(seg)?.[0] ?? ch;
+    const fd = fdPrefixLength(seg, i);
+    i += op.length - 1;
+    rest = `${fd > 0 ? rest.slice(0, rest.length - fd) : rest} `;
+    if (op.endsWith("&")) {
+      FD_DUP.lastIndex = i + 1;
+      const dup = FD_DUP.exec(seg)?.[0];
+      if (dup !== undefined) {
+        i += dup.length;
+        continue;
       }
-      const { word, end } = readWord(seg, i + 1);
-      i = end - 1;
-      const target = words(word)[0] ?? "";
-      (op.startsWith("<<") ? docs : op.startsWith(">") ? outs : ins).push(target);
-    } else rest += ch;
+    }
+    const { word, end } = readWord(seg, i + 1, kind);
+    i = end - 1;
+    const target = words(word)[0] ?? "";
+    if (op === "<<<") {
+      strings.push(target);
+      handedStrings.push(words(word, true)[0] ?? "");
+    }
+    // `<>` opens its file for reading AND writing.
+    if (op === "<>") outs.push(target);
+    (op.startsWith("<<") ? docs : op.startsWith(">") ? outs : ins).push(target);
   }
-  return { rest, outs, ins, docs };
+  return { rest, outs, ins, docs, strings, handedStrings };
 }
 
 interface Parsed {
   readonly prog: string;
+  /** The program as typed (`./x.sh`), where `prog` is only its last component. */
+  readonly word: string;
+  /** The directory a wrapper (`env -C`, `sudo -D`) runs the command in, as written. */
+  readonly chdir?: string;
+  /** Wrapper words the option tables could not place (an unknown option): where the command starts is a guess. */
+  readonly unplaced?: string;
+  /** Command lines a wrapper runs in addition to the command (`parallel cmd ::: data`). */
+  readonly lines?: string[];
   readonly args: string[];
+  /**
+   * The program and arguments as the program is HANDED them (a backslash is read once: an escaped quote inside double quotes is
+   * the quote), where that differs from `word` and `args`: a string it runs as a command line is judged from these (R7-CR-1).
+   */
+  readonly handed?: {
+    readonly prog: string;
+    readonly word: string;
+    readonly args: string[];
+    readonly lines?: string[];
+  };
   readonly assigns: string[];
   readonly outs: string[];
   readonly ins: string[];
+  /** The files a wrapper's own options name and the wrapper reads (`xargs -a F`, `sshpass -f F`): read whatever program it runs. */
+  readonly wrapperReads: string[];
   readonly docs: string[];
+  readonly strings: string[];
+  /** The here-string words as the command is handed them (`Redirects.handedStrings`). */
+  readonly handedStrings: string[];
 }
 
 /** Program, arguments and redirections of one simple command. */
 function parseSegment(seg: string): Parsed {
-  const { rest, outs, ins, docs } = splitRedirects(seg);
-  return { ...program(rest), outs, ins, docs };
-}
-
-const MAX_BRACE_ALTERNATIVES = 256;
-const MAX_BRACE_GROUPS = 16;
-
-/**
- * What ONE command may spend. The 64 KB cap bounds the text, not the work: 1,300 words that each expand to 256
- * brace alternatives, judged against 16 candidate directories, are five million path resolutions (12 s), and
- * the hook is killed at 10 s and the call then runs. So brace alternatives and path resolutions draw on a
- * budget that `classifyBash` refills for each command and that every nested `$( )` and `bash -c` shares. Past
- * it nothing more is expanded or resolved (a resolution answers "unknown directory"), and the command asks.
- */
-const MAX_COMMAND_BRACE_ALTERNATIVES = 4096;
-const MAX_COMMAND_PATH_RESOLUTIONS = 16_384;
-const WORK_BUDGET_REASON =
-  "This command has too many brace alternatives or path targets for the guard to check in time (the work grows with each word times each directory a `cd` may have left it in). Split it into smaller commands, or let a human run it.";
-let work = {
-  braces: MAX_COMMAND_BRACE_ALTERNATIVES,
-  resolutions: MAX_COMMAND_PATH_RESOLUTIONS,
-  spent: false,
-};
-const refillWork = (): void => {
-  work = {
-    braces: MAX_COMMAND_BRACE_ALTERNATIVES,
-    resolutions: MAX_COMMAND_PATH_RESOLUTIONS,
-    spent: false,
+  const { rest, outs, ins, docs, strings, handedStrings } = splitRedirects(seg);
+  const { writes, reads, ...command } = program(rest);
+  const handed = /\\/.test(rest) ? program(rest, true) : undefined;
+  return {
+    ...command,
+    ...(handed === undefined
+      ? {}
+      : {
+          handed: {
+            prog: handed.prog,
+            word: handed.word,
+            args: handed.args,
+            ...(handed.lines === undefined ? {} : { lines: handed.lines }),
+          },
+        }),
+    outs: [...outs, ...writes],
+    ins: [...ins, ...reads],
+    wrapperReads: reads,
+    docs,
+    strings,
+    handedStrings,
   };
-};
+}
 
 /**
- * The first `{a,b}` group in `word` that has no brace inside it, split into the text before, its body and
- * the text after; null when there is none. One pass: a regex for this backtracks quadratically on `{,,,,`.
+ * Does this command run text it is handed on stdin (a heredoc, or a pipe) as a shell script? A shell, `eval`,
+ * `source`/`.`, `at`/`batch`, or any of those named as an argument (`docker exec -i c sh <<EOF`). Such a
+ * heredoc body is a script to judge line by line; every other body is text (`git commit -F - <<EOF`).
+ * Interpreters (`python3 -`, `node -`) are not here: their body is read as text by `scriptTextVerdict`.
  */
-function firstBraceGroup(word: string): { pre: string; body: string; post: string } | null {
-  let open = -1;
-  let comma = false;
-  for (let i = 0; i < word.length; i++) {
-    const ch = word[i];
-    if (ch === "{") {
-      open = i;
-      comma = false;
-    } else if (ch === ",") comma ||= open >= 0;
-    else if (ch === "}") {
-      if (open >= 0 && comma) {
-        return { pre: word.slice(0, open), body: word.slice(open + 1, i), post: word.slice(i + 1) };
-      }
-      open = -1;
-      comma = false;
-    }
-  }
-  return null;
+const SCRIPT_READER = /^(eval|source|\.|at|batch)$/;
+function readsShellScript(segment: string): boolean {
+  const parsed = parseSegment(segment);
+  // `$SHELL <<EOF`, `$(which sh) <<EOF`: a program the guard cannot name may be a shell.
+  if (/[$`]/.test(parsed.prog)) return true;
+  return [parsed.prog, ...parsed.args].some((word) => {
+    const name = word.replace(/^.*\//, "").toLowerCase();
+    return NESTED_SHELL.test(name) || SCRIPT_READER.test(name);
+  });
 }
 
-/** Bash brace expansion of one word: `.en{v,}` is `.env` and `.en`. Bounded, so it cannot be made to blow up. */
-function expandBraces(word: string): string[] {
-  let out = [word];
-  for (let round = 0; round < MAX_BRACE_GROUPS; round++) {
-    const next: string[] = [];
-    let changed = false;
-    for (const w of out) {
-      const group = next.length >= MAX_BRACE_ALTERNATIVES ? null : firstBraceGroup(w);
-      if (group && work.braces <= 0) work.spent = true; // a group is left unexpanded
-      if (!group || work.braces <= 0) {
-        next.push(w);
-        continue;
-      }
-      changed = true;
-      const alternatives = group.body.split(",");
-      work.braces -= alternatives.length;
-      for (const alt of alternatives) next.push(`${group.pre}${alt}${group.post}`);
-    }
-    out = next;
-    if (!changed) break;
-  }
-  return out;
-}
+const UNPLACED_WRAPPER_REASON = (words: string): string =>
+  `The guard cannot tell where the command starts after \`${words}\`: that option is not one it knows, so a word it takes for the command may be the option's value. Write the option in a form the guard reads, or let a human decide.`;
 
-/** What the shell does to a word before the program sees it: remove backslashes, expand braces. */
-const unescapeWord = (t: string): string => t.replace(/\\(.)/gs, "$1");
+const WORK_BUDGET_REASON =
+  "This command has too many brace alternatives, path targets or nested commands, or is too big, for the guard to check in time (the work grows with each word times each directory a `cd` may have left it in, and with every command nested in another). Split it into smaller commands, or let a human run it.";
 
 const isQuote = (ch: string | undefined): boolean => ch === "'" || ch === '"' || ch === "`";
 
@@ -836,6 +421,11 @@ function trimQuotes(t: string): string {
  * the name tests below look only at how the word ends, and {@link globReachesSecret} judges the wildcards.
  */
 function fileArgs(args: readonly string[]): string[] {
+  return fileArgGroups(args).flat();
+}
+
+/** The same words as {@link fileArgs}, one group per argument: a brace word is one argument that expands to several files. */
+function fileArgGroups(args: readonly string[]): string[][] {
   return args
     .map((t) =>
       unescapeWord(
@@ -845,7 +435,7 @@ function fileArgs(args: readonly string[]): string[] {
       ),
     )
     .filter((t) => t && !t.startsWith("-"))
-    .flatMap(expandBraces);
+    .map(expandBraces);
 }
 
 /** Names a live secret file can have; a wildcard that expands onto any of them reads one. */
@@ -864,75 +454,6 @@ const SECRET_NAME_SAMPLES = [
   "tls.key",
   "server.pem",
 ];
-
-/** One unit of a shell wildcard: `*`, `?`, a `[set]` or a literal character. */
-type GlobToken =
-  | { readonly kind: "star" | "any" }
-  | { readonly kind: "set"; readonly negated: boolean; readonly body: string }
-  | { readonly kind: "char"; readonly ch: string };
-
-const GLOB_STAR: GlobToken = { kind: "star" };
-const GLOB_ANY: GlobToken = { kind: "any" };
-
-/** The tokens of a wildcard word; an unclosed `[` is a literal, as in the shell. Linear, and a run of `*` is one. */
-function globTokens(word: string): GlobToken[] {
-  const out: GlobToken[] = [];
-  const lastClose = word.lastIndexOf("]");
-  for (let i = 0; i < word.length; i++) {
-    const ch = word[i] as string;
-    if (ch === "*") {
-      if (out.at(-1) !== GLOB_STAR) out.push(GLOB_STAR);
-    } else if (ch === "?") out.push(GLOB_ANY);
-    else if (ch === "[" && lastClose > i) {
-      const end = word.indexOf("]", i + 1);
-      const body = word.slice(i + 1, end);
-      const negated = body.startsWith("!") || body.startsWith("^");
-      out.push({ kind: "set", negated, body: negated ? body.slice(1) : body });
-      i = end;
-    } else out.push({ kind: "char", ch });
-  }
-  return out;
-}
-
-function inGlobSet(body: string, negated: boolean, c: string): boolean {
-  let hit = false;
-  for (let k = 0; k < body.length; k++) {
-    if (body[k + 1] === "-" && k + 2 < body.length) {
-      hit ||= c >= (body[k] as string) && c <= (body[k + 2] as string);
-      k += 2;
-    } else hit ||= body[k] === c;
-  }
-  return hit !== negated;
-}
-
-function globUnitMatches(token: GlobToken, c: string): boolean {
-  if (token.kind === "any") return true;
-  if (token.kind === "set") return inGlobSet(token.body, token.negated, c);
-  return token.kind === "char" && token.ch === c;
-}
-
-/** Does the wildcard match the whole of `name`? The classic two-pointer match: no regex, no backtracking blow-up. */
-function globMatches(tokens: readonly GlobToken[], name: string): boolean {
-  let t = 0;
-  let n = 0;
-  let star = -1;
-  let resume = 0;
-  while (n < name.length) {
-    const token = tokens[t];
-    if (token === GLOB_STAR) {
-      star = t++;
-      resume = n;
-    } else if (token && globUnitMatches(token, name[n] as string)) {
-      t++;
-      n++;
-    } else if (star >= 0) {
-      t = star + 1;
-      n = ++resume;
-    } else return false;
-  }
-  while (tokens[t] === GLOB_STAR) t++;
-  return t === tokens.length;
-}
 
 /** Does the wildcard word `t` expand onto a secret file name? (`.e*`, `.env?*`, `.[e]nv`, `*.env`). */
 export function globReachesSecret(t: string): boolean {
@@ -958,8 +479,7 @@ const SECRET_BY_NAME =
   /(^|\/)(\.env(\.[^/]*)?|[^/]+\.env(\.(local|development|staging|production|tenant))?|\.pgpass|\.netrc)$/i;
 
 const isLocalHost = (h: string) => LOCAL_HOST.test(h.replace(/^.*@/, "").replace(/:\d+$/, ""));
-const SECRET_VAR =
-  /\$\{?[A-Z0-9_]*(DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|_KEY)\b/;
+const SECRET_VAR = SECRET_VARIABLE_REFERENCE;
 const READ_ONLY_CHECK = /^(ls|test|\[|stat|file)$/;
 const COMPOSE_SAFE = /^(up|down|start|stop|restart|run|exec|ps|logs|build|pull|rm)$/;
 
@@ -1001,36 +521,38 @@ function gitInvocation(args: readonly string[]): {
   configs: string[];
   dirs: string[];
   unknownGlobal: string | null;
+  /** The first global option that re-points git at another repository or helper directory, as written. */
+  rerooted: string | null;
 } {
   const configs: string[] = [];
   const dirs: string[] = [];
   let unknownGlobal: string | null = null;
+  let rerooted: string | null = null;
   for (let k = 0; k < args.length; k++) {
     const a = args[k] ?? "";
+    if (isGitRerootOption(a)) rerooted ??= a;
     if (GIT_GLOBAL_VALUE.test(a)) {
       if (a === "-c" || a === "--config-env") configs.push(args[k + 1] ?? "");
-      if (a === "-C") dirs.push(args[k + 1] ?? "");
+      if (a === "-C" || a === "--work-tree") dirs.push(args[k + 1] ?? "");
       k++;
       continue;
     }
     if (a.startsWith("--config-env=")) configs.push(a.slice("--config-env=".length));
+    // `--work-tree=DIR` names the tree a write lands in, as `-C DIR` names where git runs.
+    if (a.startsWith("--work-tree=")) dirs.push(a.slice("--work-tree=".length));
     if (GIT_GLOBAL_EQ.test(a) || GIT_GLOBAL_FLAG.test(a)) continue;
     if (a.startsWith("-")) {
       unknownGlobal ??= a;
       continue;
     }
-    return { sub: a, rest: args.slice(k + 1), configs, dirs, unknownGlobal };
+    return { sub: a, rest: args.slice(k + 1), configs, dirs, unknownGlobal, rerooted };
   }
-  return { sub: "", rest: [], configs, dirs, unknownGlobal };
+  return { sub: "", rest: [], configs, dirs, unknownGlobal, rerooted };
 }
 
 /** `-c` keys that only change presentation. Any other key is a decision for the human. */
 const GIT_SAFE_CONFIG =
   /^(color\.[a-z0-9.-]+|advice\.[a-z0-9.-]+|core\.(quotepath|abbrev|precomposeunicode)|log\.date)$/i;
-/** `-c` keys that switch off the repo's hooks or make git run a program of the caller's choosing. */
-const GIT_EXEC_CONFIG =
-  /^(core\.(hookspath|fsmonitor|sshcommand|pager|editor|askpass)|alias\.|credential\.helper|diff\.external|protocol\.ext)/i;
-const configKey = (kv: string): string => kv.split("=")[0] ?? "";
 
 /** Environment overrides that change what git runs or which config it reads. */
 const GIT_ENV_OVERRIDE = /^GIT_/;
@@ -1070,66 +592,41 @@ const echo = (token: string): string => {
 const deny = (reason: string): BashVerdict => ({ decision: "deny", reason: scrub(reason) });
 const ask = (reason: string): BashVerdict => ({ decision: "ask", reason: scrub(reason) });
 
-/** Variables that disable or redirect an agent guard, its ledger, or the tree whose controls it judges. */
-const HARNESS_SWITCH_NAMES =
-  "CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR";
-/** A shell word that assigns one: `NAME=value`. */
-const HARNESS_SWITCH = new RegExp(`^(${HARNESS_SWITCH_NAMES})=`);
-/** The name and `=` ANYWHERE in a command's text, quotes and nested strings included (`ssh h 'NAME=x cmd'`). */
-const HARNESS_SWITCH_TEXT = new RegExp(`\\b(${HARNESS_SWITCH_NAMES})=`);
-/** Programs whose own arguments assign variables (`export NAME=value`, `env NAME=value cmd`). */
-const VARIABLE_SETTER = /^(export|declare|typeset|readonly|local|env)$/;
-/** Programs that only print or search what they are handed, so a switch's name in their arguments is text. */
-const PRINTS_OR_SEARCHES = /^(rg|grep|egrep|fgrep|ag|ack|echo|printf|cat|less|head|tail|wc)$/;
-/** What a print or search may be piped into without the text going anywhere: another filter. */
-const FILTERS = /^(sort|uniq|cut|tr|nl|column)$/;
-/** `git` subcommands whose arguments are text or a message: a search, a print, a commit message. */
-const GIT_TEXT_ARGUMENTS = /^(log|grep|show|diff|commit)$/;
-
-/** Does this command only print or search, with nothing assigned in front of it and nothing written by it? */
-function printsOrSearches(p: Parsed): boolean {
-  if (p.outs.some((out) => out !== "/dev/null") || p.assigns.length > 0) return false;
-  if (PRINTS_OR_SEARCHES.test(p.prog)) return true;
-  if (p.prog === "git") return GIT_TEXT_ARGUMENTS.test(gitInvocation(p.args).sub);
-  // `sed -n '/NAME=/p'` prints; `sed -i` and a plain `sed s///` into a redirect are writers handled elsewhere.
-  return p.prog === "sed" && p.args.some((a) => clusterHas(a, "n")) && !p.args.some(isInPlace);
-}
-
-/**
- * Does one command line SWITCH the harness: assign a harness variable as a `NAME=value` prefix (also behind
- * `sudo`, `env`, `time`…) or as an argument of `export`/`declare`/`env`, or carry the name and `=` anywhere in its
- * text (inside `$( )`, `ssh h '…'`, `script -c '…'`, `watch '…'`, `xargs`, a value an assignment builds)? Only a
- * command that prints or searches, and whose output goes nowhere but a filter, may MENTION the name
- * (`rg CODEX_HOME= docs`, `echo CODEX_HOME=x`): that text sets nothing. A `NAME` with no `=` sets nothing either.
- */
-function switchesHarness(parts: readonly Segment[], parsed: readonly Parsed[]): boolean {
-  return parts.some((part, i) => {
-    const p = parsed[i] as Parsed;
-    const words = [...p.assigns, ...(VARIABLE_SETTER.test(p.prog) ? p.args : [])];
-    if (words.some((w) => HARNESS_SWITCH.test(w))) return true;
-    if (!HARNESS_SWITCH_TEXT.test(part.text)) return false;
-    // The mention is harmless only when this command and every filter after it in the pipeline just print.
-    if (!printsOrSearches(p)) return true;
-    for (let j = i + 1; parts[j]?.joiner === "|"; j++) {
-      const next = parsed[j] as Parsed;
-      if (!printsOrSearches(next) && !(FILTERS.test(next.prog) && next.outs.length === 0))
-        return true;
-    }
-    return false;
-  });
-}
-
-const MAX_NESTING = 4;
+const MAX_NESTING = 8;
 
 // Every `$( … )` is judged as a command line of its own, so a few thousand nested ones fan out without
-// bound, and the guard fails OPEN when the hook times out. One budget for the whole call keeps it bounded.
+// bound, and a guard that runs out of time refuses the call (the 6.5 s deadline of `hard-deadline.ts`; before it the
+// hook was killed at its own timeout and Claude Code let the call run). One budget for the whole call keeps it bounded.
 const MAX_JUDGED_COMMAND_LINES = 300;
 let judgeBudget = MAX_JUDGED_COMMAND_LINES;
+/**
+ * Does the whole command text (every nesting level) assign a variable that picks an agent's hook binary? Set by
+ * `classifyBash` at depth 0 and read at every level, so `PATH=… bash -c 'claude -p x'` asks (one-shot process state, like
+ * `judgeBudget`).
+ */
+let hookVariableInCommand = false;
+/** The variables the command line sets to a plain literal (`D=.`), so a sweep operand `$D` is placed (one-shot state, as above). */
+let knownVariables: ReadonlyMap<string, string> = new Map();
+/**
+ * The `NAME=value` words the variable statements of the text being judged, and of the texts around it, assign: every one,
+ * a rebound name included (`db-variables.ts`). Set by `judge` for each text and restored after it (one-shot state, as above).
+ */
+let variableStatements: readonly string[] = [];
+/** The functions the command line defines (`mk() { … }`): called with prose as often as with code (one-shot state, as above). */
+let localFunctions: ReadonlySet<string> = new Set();
+/** Has this command's view of the live env files been asked of the caller yet? (one-shot state, as above) */
+let liveEnvListed = false;
+/** The live suite files this command's runners were asked about, listed at most once (one-shot state, as above). */
+let liveSuiteCache: Listed | null = null;
+const liveSuiteFilesOnce = (ctx: BashContext): Listed => {
+  liveSuiteCache ??= ctx.liveSuiteFiles?.() ?? [];
+  return liveSuiteCache;
+};
 const MAX_SUBSTITUTIONS = 32;
 
 /**
- * Longest command the guard will parse. Every rule below is linear in the command, but the hook is killed at
- * its timeout and Claude Code then lets the call run, so size is bounded before any work is done. A real
+ * Longest command the guard will parse. Every rule below is linear in the command, but a guard that runs out of
+ * time refuses the call (`hard-deadline.ts`) and a refusal costs a rephrase, so size is bounded before any work is done. A real
  * command, even one with a here-doc, is far shorter. Nothing in an oversize command is read, so it is REFUSED:
  * asking would let padding turn a command that is denied on its own (`cat .env` and 64 KB of spaces) into a
  * prompt a human might approve.
@@ -1144,12 +641,624 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
   }
   if (depth === 0) {
     judgeBudget = MAX_JUDGED_COMMAND_LINES;
-    refillWork();
+    refillWork(ctx.judgeTimeLimitMs ?? MAX_COMMAND_JUDGE_MS);
+    hookVariableInCommand = assignsHookVariable(cmd);
+    knownVariables = literalAssignmentsOf(cmd);
+    variableStatements = [];
+    localFunctions = localFunctionNames(cmd);
+    liveEnvListed = false;
+    setListedLiveEnvFiles([]);
+    liveSuiteCache = null;
+    setPackageScriptsReader(ctx.packageScripts);
   }
   const start = startingDir(ctx);
   const verdict = judge(cmd, ctx, depth, [start]);
   // A deny found before the budget ran out stands; anything else is no better than "too big to check".
   return work.spent && verdict.decision !== "deny" ? ask(WORK_BUDGET_REASON) : verdict;
+}
+
+/**
+ * The command lines a `find` runs: each `-exec CMD … ;` / `-ok CMD … +`, re-quoted so it reads as one command
+ * line. `-execdir` and `-okdir` run in the directory of each file found, which is not one the guard knows.
+ */
+function findExecCommands(args: readonly string[]): Array<{ command: string; inFileDir: boolean }> {
+  const runs: Array<{ command: string; inFileDir: boolean }> = [];
+  for (let i = 0; i < args.length; i++) {
+    const action = /^-(?:exec|ok)(dir)?$/.exec(args[i] ?? "");
+    if (!action) continue;
+    let end = i + 1;
+    // `\;` and `;` end the command, `+` batches it; a lone `\` is a `\;` the line splitter cut at the `;`.
+    while (end < args.length && !/^(?:\\?;|\+|\\)$/.test(args[end] ?? "")) end++;
+    const words = args.slice(i + 1, end);
+    if (words.length > 0)
+      runs.push({ command: words.map(shellQuote).join(" "), inFileDir: action[1] !== undefined });
+    i = end;
+  }
+  return runs;
+}
+
+/** The text of the command at `index` and of every stage before it in its pipeline: what it may be handed. */
+function pipelineTexts(parts: readonly Segment[], index: number): string[] {
+  const texts = [parts[index]?.text ?? ""];
+  for (let j = index; parts[j]?.joiner === "|"; j--) texts.push(parts[j - 1]?.text ?? "");
+  return texts;
+}
+
+/** The files `source` reads standard input from. */
+const SOURCE_STDIN = /^(?:\/dev\/stdin|\/dev\/fd\/0|\/proc\/self\/fd\/0)$/;
+
+const UNREADABLE_SCRIPT_REASON =
+  "A shell is handed a script that the guard cannot read (`curl … | sh`, `cat f | bash`). Read the script first, then run it as a file or as `bash -c '…'`. A human decides.";
+
+/** Verdicts for the script text handed to the shell at `index`, read as command lines. */
+function handedScriptVerdicts(
+  parts: readonly Segment[],
+  stages: readonly StdinStage[],
+  stdin: PipelineStdin,
+  index: number,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const p = stages[index] as StdinStage;
+  const texts: string[] = [];
+  const out: BashVerdict[] = [];
+  let unreadable = false;
+  if (SOURCES.test(p.prog)) {
+    // `source <(echo '…')`: the substitution's output is the script (read as typed and as handed, R9-CR-2).
+    for (const inner of substitutions(parts[index]?.text ?? "")) {
+      for (const printed of printedReadings(inner)) if (printed !== null) texts.push(...printed);
+      // `source <(curl …)` runs a download, as `bash <(curl …)` does (wave 13, B9)
+      if (downloadsScript(inner)) out.push(ask(DOWNLOAD_SCRIPT_REASON));
+    }
+    // `source /dev/stdin <<< '…'` runs what it is fed (its heredoc body is read by the lexer already).
+    if (p.args.some((a) => SOURCE_STDIN.test(a))) {
+      const feed = stdin.feed(index);
+      texts.push(...feed.own, ...feed.upstream);
+      unreadable = feed.unseen || feed.overflow;
+    }
+  } else if (SHELL_PROGRAM.test(p.prog)) {
+    const handed = scriptsHandedToShell(stages, index, stdin);
+    texts.push(...handed.texts);
+    unreadable = handed.unreadable;
+  }
+  out.push(...texts.map((text) => judge(text, ctx, depth + 1, here)));
+  if (unreadable) out.push(ask(UNREADABLE_SCRIPT_REASON));
+  return out;
+}
+
+const ENV_WRITE_REASON =
+  "A git trace or redirect variable (GIT_TRACE*, GIT_REDIRECT_*, GIT_INDEX_FILE) makes git append to, or rewrite, the file it names, so git can corrupt a file the guard protects: a trace line in the hook's entry file makes it exit 1, which Claude Code reads as allow.";
+
+/** Each file a git trace variable in `words` names, judged like a redirect target onto the harness or a startup file. */
+function envWriteVerdicts(
+  words: readonly string[],
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict[] {
+  const out: BashVerdict[] = [];
+  for (const target of envWriteTargets(words)) {
+    const hit = writesProtectedPath({ ...NO_COMMAND, outs: [target] }, here, ctx);
+    if (hit) out.push(ask(`${ENV_WRITE_REASON} ${writeHitReason(hit)}`));
+  }
+  return out;
+}
+
+/** A database target the guard found: a remote or unreadable one is refused, one that waits on a human asks. */
+function databaseTargetVerdict(target: DatabaseTarget): BashVerdict {
+  const reason = databaseTargetReason(target, echo);
+  const refused =
+    (target.kind === "remote" || target.kind === "unparsed") && target.advisory !== true;
+  return refused ? deny(reason) : ask(reason);
+}
+
+const DB_SHELL_REASON =
+  "A database client's own command (`.shell`, `.system`, `\\!`, `system`, a pipe target) runs an operating-system command from inside the client, and the guard cannot see what it runs: it can overwrite the guard or any file the guard protects. A human decides.";
+const DB_WRITE_REASON =
+  "A database client command (`.output`, `\\o`, `\\copy … to`, `tee`, `writefile()`) writes a file the guard protects.";
+
+/**
+ * What a SQL client's own command language does with the text it is handed (`db-client-escapes.ts`): a shell escape
+ * asks, a file it writes is judged like a redirect target, and a secret file it reads is refused.
+ */
+function dbClientVerdicts(
+  stages: readonly StdinStage[],
+  stdin: PipelineStdin,
+  index: number,
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict[] {
+  const client = stages[index] as StdinStage;
+  if (!isDbClient(client.prog)) return [];
+  const feed = stdin.feed(index);
+  const texts = clientTexts(client.args, feed);
+  const found = clientFindings(client.prog, texts, client.args);
+  if (found === null) return [];
+  // A reconnection from inside the client (`\c host=H`, `dblink_connect('...')`, `connect("H")`) is a target too.
+  const reconnect = connectTargetOf(client.prog, texts);
+  // A pipeline longer than the guard reads back hides the text the client is fed: ask, never read it as nothing (R9-ADV-5).
+  const out: BashVerdict[] = feed.overflow ? [ask(PIPE_FEED_REASON)] : [];
+  if (reconnect !== null) out.push(databaseTargetVerdict(reconnect));
+  out.push(...found.shell.slice(0, 1).map((what) => ask(`${DB_SHELL_REASON} (${what})`)));
+  for (const target of found.writes) {
+    const hit = writesProtectedPath({ ...NO_COMMAND, outs: [target] }, here, ctx);
+    if (hit) out.push(ask(`${DB_WRITE_REASON} ${writeHitReason(hit)}`));
+  }
+  for (const target of found.reads) {
+    const why = secretPathReason(target);
+    if (why)
+      out.push(
+        deny(
+          `\`${echo(target)}\` is ${why}. A database client that reads it prints it. Agents do not read secrets or dumps.`,
+        ),
+      );
+  }
+  return out;
+}
+
+/**
+ * A sibling of a whole-tree sweep (`ack`, `ag -u`, `fd -x`, `find … | cpio -p`, `pax -rw`) is judged as the command it
+ * is a sibling of (`sibling-sweeps.ts`); the nested answer keeps its decision and says which sibling it was.
+ */
+function siblingSweepVerdicts(
+  parts: readonly Segment[],
+  parsed: readonly Parsed[],
+  index: number,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const p = parsed[index] as Parsed;
+  const before = parts[index]?.joiner === "|" ? parsed[index - 1] : undefined;
+  const feeder = before ? { prog: before.prog, args: before.args } : null;
+  return siblingCommands(p.prog, p.args, feeder, p.strings).map(({ text, label }) => {
+    const v = judge(text, ctx, depth + 1, here);
+    return v.decision === "allow"
+      ? v
+      : { ...v, reason: `\`${p.prog}\` is judged as \`${label}\`. ${v.reason}` };
+  });
+}
+
+/**
+ * Command lines git and the variables it honours hand to a shell (`git rebase -x '…'`, `git bisect run …`,
+ * `EDITOR='…' git commit`), each judged as a command line; and what the git-related variables set, or a global
+ * option that re-points git, call for (`git-exec-strings.ts`).
+ */
+function gitExecVerdicts(
+  parsed: Parsed,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const words = assignmentWords(parsed.prog, parsed.args, parsed.assigns);
+  const out: BashVerdict[] = [];
+  const env = gitEnvVerdict(words, parsed.prog === "git" ? variableStatements : null);
+  if (env) out.push(env.decision === "deny" ? deny(env.reason) : ask(env.reason));
+  out.push(...envWriteVerdicts(words, here, ctx));
+  for (const text of envCommandStrings(words)) out.push(judge(text, ctx, depth + 1, here));
+  if (parsed.prog !== "git") return out;
+  const git = gitInvocation(parsed.args);
+  if (git.rerooted !== null) out.push(ask(GIT_REROOT_OPTION_REASON));
+  if (git.rest.some(isExtUrl)) out.push(ask(GIT_EXT_URL_REASON));
+  if (usesGitTemplate(git.sub, git.rest)) out.push(ask(GIT_TEMPLATE_OPTION_REASON));
+  if (gitSubcommandConfigs(git.sub, git.rest).some((kv) => GIT_EXEC_CONFIG.test(configKey(kv)))) {
+    out.push(deny(GIT_CLONE_CONFIG_REASON));
+  }
+  // `git -C dir rebase -x 'cmd'` runs `cmd` in `dir`.
+  const inside =
+    git.dirs.length > MAX_GIT_DIR_OPERANDS
+      ? here
+      : git.dirs.reduce((dirs, dir) => runIn(dirs, dir, ctx), here);
+  for (const text of gitCommandStrings(git.sub, git.rest)) {
+    if (text.trim() !== "") out.push(judge(text, ctx, depth + 1, inside));
+  }
+  return out;
+}
+
+/** Each command's own here-doc bodies: the lexer lists the bodies in order, each command says how many it opens. */
+function heredocBodiesByPart(cmd: string, parsed: readonly Parsed[]): string[][] {
+  if (!parsed.some((p) => heredocCount(p) > 0)) return parsed.map(() => []);
+  const bodies = scanShell(cmd)
+    .docs.filter((doc) => !doc.nested)
+    .map((doc) => doc.body);
+  let next = 0;
+  return parsed.map((p) => {
+    const mine = bodies.slice(next, next + heredocCount(p));
+    next += heredocCount(p);
+    return mine;
+  });
+}
+
+/** Where a path is, from each directory the command may run in: the same normalisation every path check uses. */
+const pathKeys = (raw: string, here: readonly Cwd[], ctx: BashContext): string[] =>
+  here.map((dir) => {
+    const rel = resolvePath(raw, dir, ctx);
+    // Folded, so `/tmp/x.sh`, `/private/tmp/x.sh`, `/TMP/x.sh` and the firmlink spelling are one file.
+    return rel === null ? `?${dir ?? ""}|${raw}` : fold(rel);
+  });
+
+/**
+ * `cat > F <<'EOF' … EOF; bash F`: the text this command line wrote to a file, by file (see `written-scripts.ts`).
+ * One entry per path key; a file written twice reads as both texts.
+ */
+type WrittenScripts = Map<string, string>;
+
+/** Judge what the command at `index` runs from a file this line wrote earlier, then record what it writes itself. */
+function writeThenRun(
+  parts: readonly Segment[],
+  parsed: readonly Parsed[],
+  index: number,
+  bodies: readonly string[],
+  written: WrittenScripts,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const p = parsed[index] as Parsed;
+  const out: BashVerdict[] = [];
+  const texts = new Set<string>();
+  for (const run of fileRuns(p.prog, p.word, p.args, p.ins)) {
+    for (const key of pathKeys(run.path, here, ctx)) {
+      const text = written.get(key);
+      if (text === undefined || texts.has(`${run.kind}|${text}`)) continue;
+      texts.add(`${run.kind}|${text}`);
+      const asScript = run.kind === "script" || (run.kind === "direct" && isScriptText(text));
+      const verdict = asScript ? scriptTextVerdict(text) : judge(text, ctx, depth + 1, here);
+      if (verdict) out.push(verdict);
+    }
+  }
+  const previous = parts[index]?.joiner === "|" ? parsed[index - 1] : undefined;
+  const piped = previous === undefined ? null : (printedTexts(previous)?.join("\n") ?? null);
+  for (const file of writtenTexts(p, bodies, piped)) {
+    for (const key of pathKeys(file.target, here, ctx)) {
+      written.set(key, `${written.get(key) ?? ""}\n${file.text}`);
+    }
+  }
+  return out;
+}
+
+/** The commands a simple command runs INSIDE itself: `bash -c '…'`, `eval …`, `find -exec …`, a wrapper's string, git's, a container's. */
+function nestedCommandVerdicts(
+  parsed: Parsed,
+  stdinOf: () => readonly string[],
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const verdicts: BashVerdict[] = [];
+  // A string the command runs as a command line is read from the words it is HANDED (an escaped quote is the quote).
+  const { prog, args } = parsed.handed ?? parsed;
+  for (const line of (parsed.handed ?? parsed).lines ?? [])
+    if (line.trim() !== "") verdicts.push(judge(line, ctx, depth + 1, here));
+  if (prog === "find") {
+    // The command `find` runs reads the stdin `find` is fed (`find -exec psql \; <<< '\c host=H'`, R9-ADV-14).
+    for (const run of findExecCommands(args)) {
+      const fed = withStdin(run.command, stdinOf());
+      verdicts.push(judge(fed, ctx, depth + 1, run.inFileDir ? [null] : here));
+    }
+  }
+  // `bash -c '…'`, `eval …`, a wrapper's string, the command behind a container (`nested-texts.ts`).
+  const variables = (): ReadonlyMap<string, readonly string[]> => valuesByName(variableStatements);
+  for (const nested of nestedTexts(prog, args, stdinOf, isLocalHost, variables)) {
+    const inside = nested.workdir === undefined ? here : runIn(here, nested.workdir, ctx);
+    if (nested.text !== "") verdicts.push(judge(nested.text, ctx, depth + 1, inside));
+    if (nested.unplaced !== undefined) verdicts.push(ask(UNPLACED_WRAPPER_REASON(nested.unplaced)));
+    if (nested.question !== undefined) verdicts.push(ask(nested.question));
+    if (nested.asks !== undefined) verdicts.push(ask(nested.asks));
+  }
+  verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
+  verdicts.push(...awkProgramVerdicts(prog, args, ctx, depth, here));
+  return verdicts;
+}
+
+/** The command lines an awk program runs (`system("…")`, `"…" | getline`, `print | "…"`), judged like a `bash -c` string; an unreadable one asks. */
+function awkProgramVerdicts(
+  prog: string,
+  args: readonly string[],
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const { commands, unplaced } = awkCommandStrings(prog, args);
+  const out = commands.map((command) => judge(command, ctx, depth + 1, here));
+  return unplaced ? [...out, ask(AWK_UNPLACED_REASON)] : out;
+}
+
+/** The commands a simple command runs inside itself, with the variables it was started with in scope (`PGHOST=H bash -c 'psql'`). */
+function nestedWithInlineVariables(
+  parsed: Parsed,
+  stdinOf: () => readonly string[],
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const outer = variableStatements;
+  variableStatements = [...outer, ...parsed.assigns];
+  const verdicts = nestedCommandVerdicts(parsed, stdinOf, ctx, depth, here);
+  variableStatements = outer;
+  return verdicts;
+}
+
+/**
+ * `$(true)git push --no-verify`: the program's name is built at run time, so it is a command the guard cannot name. The
+ * literal rest of the word is judged as the program it would be (a deny stands), and a human decides. A word that is one
+ * substitution and nothing else is the `eval "$(ssh-agent -s)"` idiom (no arguments) or an array run as a command
+ * (`"${DC[@]}" build`); only a lone `$( )` or backtick with arguments is a command. A `{a,b}` or `{a..b}` group in the
+ * program word builds the name too (`env GIT_TRACE{2..2}=x git status`).
+ */
+function dynamicProgramVerdicts(
+  text: string,
+  parsed: Parsed,
+  ctx: BashContext,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const verdicts: BashVerdict[] = [];
+  const guess = dynamicName(parsed.prog) ? withoutExpansions(parsed.prog) : null;
+  if (
+    guess !== null &&
+    (guess !== "" || (parsed.args.length > 0 && /^[$`][(`]|^`/.test(parsed.prog)))
+  ) {
+    const named =
+      guess === "" ? null : classifySegment(text, { ...parsed, prog: guess }, ctx, here);
+    verdicts.push(named ?? ask(DYNAMIC_PROGRAM_REASON));
+  }
+  if (BRACE_GROUP_WORD.test(parsed.word)) verdicts.push(ask(DYNAMIC_PROGRAM_REASON));
+  // zsh `=psql -h H` and `psql${IFS}-h${IFS}H`: the program word stands for words of its own (`program-words.ts`).
+  const stood = expandedProgramWord(parsed.word);
+  if (stood !== null) {
+    const as = {
+      ...parsed,
+      prog: stood.prog,
+      word: stood.prog,
+      args: [...stood.args, ...parsed.args],
+    };
+    const named = classifySegment(text, as, ctx, here);
+    if (named) verdicts.push(named);
+    if (stood.ifs) verdicts.push(ask(DYNAMIC_PROGRAM_REASON));
+  }
+  return verdicts;
+}
+
+/**
+ * `$SHELL -c 'CMD'`, `S=bash; $S -c 'CMD'`, `=bash -c 'CMD'` (zsh): the program word stands for a shell the guard names (`program-words.ts`), so the string it
+ * runs is judged as that shell's; a word built from a variable asks too (R9-ADV-12).
+ */
+function shellWordVerdicts(
+  parsed: Parsed,
+  stdinOf: () => readonly string[],
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const { shells, dynamic } = shellsBehindWord(parsed.word, valuesByName(variableStatements));
+  const as = (shell: string): Parsed => ({
+    ...parsed,
+    prog: shell,
+    word: shell,
+    ...(parsed.handed === undefined
+      ? {}
+      : { handed: { ...parsed.handed, prog: shell, word: shell } }),
+  });
+  const judged = shells.flatMap((shell) =>
+    nestedWithInlineVariables(as(shell), stdinOf, ctx, depth, here),
+  );
+  return dynamic && shells.length > 0 ? [...judged, ask(DYNAMIC_PROGRAM_REASON)] : judged;
+}
+
+/** What one `judge` call walks: where the next command runs, and what it has found so far. */
+interface Walk {
+  after: readonly Cwd[]; // where the next command runs when the one before it succeeded
+  anywhere: readonly Cwd[]; // everywhere any later command could run
+  readonly verdicts: BashVerdict[];
+  readonly scriptTexts: string[]; // what an interpreter or a shell is handed on stdin
+  readonly written: WrittenScripts;
+  bindings: Bindings; // what the statements before the next command bound (`word-readings.ts`)
+}
+
+/** The parts of one `judge` call that do not change while it walks. */
+interface WalkInput {
+  readonly parts: readonly Segment[];
+  readonly parsedParts: readonly Parsed[];
+  readonly bodiesByPart: readonly string[][];
+  /** The commands with their joiners, texts and heredoc bodies, and what each is fed on stdin (`stdin-texts.ts`). */
+  readonly stages: readonly StdinStage[];
+  readonly stdin: PipelineStdin;
+  /** The container-engine variables the text's own statements set, uncapped (`remote-access.ts`). */
+  readonly engineVariables: readonly string[];
+  /** `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named. */
+  readonly cdpath: boolean;
+  readonly ctx: BashContext;
+  readonly depth: number;
+}
+
+/**
+ * Why this command opens a session on another machine, or null (`remote-access.ts`). The engine's variables count whether the command sets them or
+ * an earlier statement exported them (`export DOCKER_HOST=ssh://H; docker exec …`).
+ */
+function remoteSessionReason(parsed: Parsed, engineVariables: readonly string[]): string | null {
+  return remoteAccessReason(
+    parsed.prog,
+    parsed.args,
+    [...variableStatements, ...engineVariables, ...parsed.assigns],
+    isLocalHost,
+  );
+}
+
+/** What a wrapper hands to the command it runs; a pipeline longer than the guard reads hides it, so it asks (R9-ADV-5). */
+function fedTexts(walk: Walk, stdin: PipelineStdin, index: number): string[] {
+  const feed = stdin.feed(index);
+  if (feed.overflow) walk.verdicts.push(ask(PIPE_FEED_REASON));
+  return allTexts(feed);
+}
+
+/** Judge the simple command at `index`, in the directories the ones before it may have left the shell in. */
+function judgePart(index: number, walk: Walk, input: WalkInput): void {
+  const { parts, parsedParts, bodiesByPart, stages, stdin, cdpath, ctx, depth } = input;
+  const part = parts[index] as Segment;
+  if (halted()) return;
+  // A word the brace budget cuts asks only if THIS command holds a group the shell would expand (the lexer's reading).
+  setBareBraces(hasBareBraceGroup(part.text));
+  const parsed = parsedParts[index] as Parsed;
+  // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
+  const shellIn = part.chained && part.joiner === "&&" ? walk.after : walk.anywhere;
+  // `env -C DIR cmd` runs `cmd` in DIR, not the shell around it.
+  const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
+  const v = classifySegment(part.text, parsed, ctx, here);
+  if (v) walk.verdicts.push(v);
+  // A command the permission rules ask about, spelled so they do not match it (`GH pr merge`): asks here (wave 13, A1).
+  const spelled = askedBySpelling(
+    parsed.prog,
+    parsed.args,
+    parsed.prog === "git" ? gitInvocation(parsed.args).sub : "",
+    parsed.word.replace(/^.*\//, "") === parsed.prog,
+  );
+  if (spelled !== null) walk.verdicts.push(ask(SPELLING_ASK_REASON(spelled)));
+  // The words the shell builds at run time (an option spliced with an empty expansion, or held in a variable) are read as the command they make (wave 13, A2/A3).
+  walk.verdicts.push(...readingVerdicts(part.text, walk.bindings, ctx, depth, here));
+  walk.bindings = bindAfter(walk.bindings, part.text, variableStatementWords([parsed]));
+  if (parsed.unplaced !== undefined)
+    walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
+  const remote = remoteSessionReason(parsed, input.engineVariables);
+  if (remote !== null) walk.verdicts.push(ask(remote));
+  const stdinOf = (): readonly string[] => fedTexts(walk, stdin, index);
+  // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
+  walk.verdicts.push(
+    ...dbClientVerdicts(stages, stdin, index, here, ctx),
+    ...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here),
+    ...dynamicProgramVerdicts(part.text, parsed, ctx, here),
+    ...nestedWithInlineVariables(parsed, stdinOf, ctx, depth, here),
+    ...shellWordVerdicts(parsed, stdinOf, ctx, depth, here),
+  );
+  walk.verdicts.push(...xargsVerdicts(part.text, stdin.feed(index), ctx, depth, here));
+  // A script fed on stdin to make, awk, expect or osascript runs commands the guard cannot read as a shell script (wave 13, B10).
+  const scriptTool = stdinScriptTool(parsed.prog, parsed.args);
+  const fedStdin =
+    part.joiner === "|" || parsed.ins.length + parsed.docs.length + parsed.strings.length > 0;
+  if (scriptTool !== null && fedStdin)
+    walk.verdicts.push(ask(STDIN_SCRIPT_TOOL_REASON(scriptTool)));
+  if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
+  // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command
+  // line; a script piped in from anything else cannot be read. A script this line wrote (a heredoc, `echo '…' > F`) and
+  // runs: the text is judged as the script it is.
+  walk.verdicts.push(
+    ...handedScriptVerdicts(parts, stages, stdin, index, ctx, depth, here),
+    ...writeThenRun(
+      parts,
+      parsedParts,
+      index,
+      bodiesByPart[index] ?? [],
+      walk.written,
+      ctx,
+      depth,
+      here,
+    ),
+  );
+  const moved = nextDirs(shellIn, parsed, part.text, ctx, cdpath);
+  // `A || cd X && W`: the `cd` runs only when A failed. When A succeeds W runs where A did, so after a `cd`
+  // that follows `||` the next `&&` command may be in the old directory as well as in X.
+  walk.after = moved ? (part.joiner === "||" ? joinDirs(shellIn, moved) : moved) : shellIn;
+  if (moved) walk.anywhere = joinDirs(walk.anywhere, moved);
+}
+
+/** A command the guard refuses before it reads any of it: a gate bypass, or a switch of the harness itself. */
+function refusedOutright(
+  c: string,
+  parts: readonly Segment[],
+  parsedParts: readonly Parsed[],
+): BashVerdict | null {
+  // --- Gate bypasses: always refused. The pre-push hook and CI are the change-management control.
+  if (/\b(SKIP_FITNESS=(1|true|yes)|CW_SKIP_PHI_SCAN=(1|true|yes))\b/.test(c)) {
+    return deny("Skipping the fitness gate or PHI scan is a human decision, not an agent one.");
+  }
+  // --- Switching the harness itself off is the human's call, however it is spelled. `CODEX_HOME` and
+  // `CLAUDE_CONFIG_DIR` re-point an agent at a config directory that has no hooks; `CLAUDE_PROJECT_DIR` and
+  // `CW_HARNESS_ROOT_FOR_TESTS` re-point the guard at another tree, so protected-path matching runs there.
+  if (switchesHarness(parts, parsedParts, gitInvocation)) {
+    return ask(
+      "That variable switches off or re-points part of the agent harness (Stop gate, ledger, guard fail-closed, its project root, an ECC hook, or the hook configuration an agent loads). A human decides.",
+    );
+  }
+  return null;
+}
+
+const LEADING_PIPE_REASON =
+  "The command line starts with a pipe, so what feeds the first command is unknown and a shell would refuse it. A human decides.";
+
+/** What a command line asks before any simple command is read: a loader variable, a leading pipe, and a text that ends inside a quote. */
+function preambleVerdicts(
+  parts: readonly Segment[],
+  parsedParts: readonly Parsed[],
+  incomplete: string | null,
+): BashVerdict[] {
+  const verdicts: BashVerdict[] = [];
+  // A pipe with nothing before it is no shell the guard can place (R9-CR-15): the shell refuses it or reads it its own way.
+  if (parts[0]?.joiner === "|") verdicts.push(ask(LEADING_PIPE_REASON));
+  // A variable bun or perl reads at start (`BUN_OPTIONS=--preload=…`, `PERL5OPT`, `LD_PRELOAD`), or one that picks a
+  // nested agent's hook binary: set anywhere in this command line, so a later or earlier statement counts too.
+  const loaderReason = loaderEnvReason(
+    parsedParts.map((p) => ({
+      prog: p.prog,
+      args: p.args,
+      words: assignmentWords(p.prog, p.args, p.assigns),
+    })),
+    hookVariableInCommand,
+  );
+  if (loaderReason) verdicts.push(ask(loaderReason));
+  // The text ends inside a quote, substitution or heredoc: the shell would wait for more, so what ran is unknown.
+  if (incomplete !== null) {
+    verdicts.push(
+      ask(
+        `The command has ${incomplete}, so the guard cannot tell what the shell would run. A human decides.`,
+      ),
+    );
+  }
+  return verdicts;
+}
+
+/** What the whole command line holds beyond its simple commands: `$( )` and backtick bodies, and a script fed to an interpreter. */
+function trailingVerdicts(c: string, walk: Walk, ctx: BashContext, depth: number): BashVerdict[] {
+  const verdicts: BashVerdict[] = [];
+  setBareBraces(true); // outside a simple command nothing says which braces are quoted: the conservative reading
+  // `$( … )` and backticks run wherever the command around them runs.
+  const inners = substitutions(c);
+  if (inners.length > MAX_SUBSTITUTIONS) {
+    verdicts.push(ask("Too many command substitutions to check; a human decides."));
+  } else for (const inner of inners) verdicts.push(judge(inner, ctx, depth + 1, walk.anywhere));
+  // A script fed to an interpreter on stdin is only text to us: judge all of it (heredoc body included).
+  if (walk.scriptTexts.length > 0) {
+    const bodies = scanShell(c).docs.map((doc) => doc.body);
+    const v = scriptTextVerdict([...walk.scriptTexts, ...bodies].join("\n"));
+    if (v) verdicts.push(v);
+  }
+  return verdicts;
+}
+
+/** The parts of one `judge` call that do not change while it walks; what each command is fed is read lazily, after its statements are set. */
+function walkInputOf(
+  c: string,
+  parts: readonly Segment[],
+  parsedParts: readonly Parsed[],
+  ctx: BashContext,
+  depth: number,
+): WalkInput {
+  const bodiesByPart = heredocBodiesByPart(c, parsedParts);
+  const stages = parsedParts.map((q, i) => ({
+    ...q,
+    joiner: parts[i]?.joiner ?? "",
+    text: parts[i]?.text ?? "",
+    bodies: bodiesByPart[i] ?? [],
+  }));
+  return {
+    parts,
+    parsedParts,
+    bodiesByPart,
+    stages,
+    stdin: pipelineStdin(stages, FEED_READERS),
+    engineVariables: engineVariableWords(parsedParts),
+    cdpath: /\bCDPATH\b/.test(c),
+    ctx,
+    depth,
+  };
 }
 
 function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd[]): BashVerdict {
@@ -1159,83 +1268,167 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
       "Command substitutions or `bash -c` nested too deeply, or too many to check; a human decides.",
     );
   }
-  const { parts, sequential } = splitSegments(c);
+  // Every nested text is judged whole, and one that holds the next level holds nearly the whole command again, so
+  // the TEXT judged is budgeted, not only the number of judgings.
+  spendJudgedChars(c.length);
+  if (halted()) return ask(WORK_BUDGET_REASON);
+  const { parts, incomplete } = splitSegments(c);
   const parsedParts = parts.map((part) => parseSegment(part.text));
-
-  // --- Gate bypasses: always refused. The pre-push hook and CI are the change-management control.
-  if (/\b(SKIP_FITNESS=(1|true|yes)|CW_SKIP_PHI_SCAN=(1|true|yes))\b/.test(c)) {
-    return deny("Skipping the fitness gate or PHI scan is a human decision, not an agent one.");
-  }
-  // --- Switching the harness itself off is the human's call, however it is spelled. `CODEX_HOME` and
-  // `CLAUDE_CONFIG_DIR` re-point an agent at a config directory that has no hooks; `CLAUDE_PROJECT_DIR` and
-  // `CW_HARNESS_ROOT_FOR_TESTS` re-point the guard at another tree, so protected-path matching runs there.
-  if (switchesHarness(parts, parsedParts)) {
-    return ask(
-      "That variable switches off or re-points part of the agent harness (Stop gate, ledger, guard fail-closed, its project root, an ECC hook, or the hook configuration an agent loads). A human decides.",
-    );
-  }
+  const refused = refusedOutright(c, parts, parsedParts);
+  if (refused) return refused;
 
   // Every simple command is judged, in order; any deny wins, else the first ask, else allow. Writes are
   // judged against every directory the command could be running in (see `Cwd`), and so are the whole-tree reads.
-  const verdicts: BashVerdict[] = [];
-  let after = start; // where the next command runs when the one before it succeeded
-  let anywhere = start; // everywhere any later command could run
-  let scriptOnStdin = false;
-  parts.forEach((part, index) => {
-    const parsed = parsedParts[index] as Parsed;
-    // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
-    const here = sequential && part.joiner === "&&" ? after : anywhere;
-    const v = classifySegment(part.text, parsed, ctx, here);
-    if (v) verdicts.push(v);
-    // Commands the shell runs INSIDE this one: `bash -c '…'`, `eval …`.
-    if (parsed.prog === "eval") {
-      verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, here));
-    } else if (NESTED_SHELL.test(parsed.prog)) {
-      const k = parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a));
-      if (k >= 0) verdicts.push(judge(parsed.args[k + 1] ?? "", ctx, depth + 1, here));
-    }
-    scriptOnStdin ||= readsScriptFromStdin(parsed, index);
-    const moved = nextDirs(here, parsed.prog, parsed.args, ctx);
-    // `A || cd X && W`: the `cd` runs only when A failed. When A succeeds W runs where A did, so after a `cd`
-    // that follows `||` the next `&&` command may be in the old directory as well as in X.
-    after = moved ? (part.joiner === "||" ? joinDirs(here, moved) : moved) : here;
-    if (moved) anywhere = joinDirs(anywhere, moved);
-  });
-  // `$( … )` and backticks run wherever the command around them runs.
-  const inners = substitutions(c);
-  if (inners.length > MAX_SUBSTITUTIONS) {
-    verdicts.push(ask("Too many command substitutions to check; a human decides."));
-  } else for (const inner of inners) verdicts.push(judge(inner, ctx, depth + 1, anywhere));
-  // A script fed to an interpreter on stdin is only text to us: judge all of it (heredoc body included).
-  if (scriptOnStdin) {
-    const v = scriptTextVerdict(c);
-    if (v) verdicts.push(v);
-  }
+  const verdicts = preambleVerdicts(parts, parsedParts, incomplete);
+  const walk: Walk = {
+    after: start,
+    anywhere: start,
+    verdicts,
+    scriptTexts: [],
+    written: new Map(),
+    bindings: NO_BINDINGS,
+  };
+  const input = walkInputOf(c, parts, parsedParts, ctx, depth);
+  // The variables this text sets are in scope for the commands in it and for every text nested in it.
+  const outerStatements = variableStatements;
+  walk.bindings = bindAfter(NO_BINDINGS, "", outerStatements);
+  const statements = textVariableStatements(c, parts, input, outerStatements);
+  variableStatements = statements.words;
+  verdicts.push(...statements.verdicts);
+  const flow = secretFlowReason(
+    parsedParts,
+    input.bodiesByPart,
+    variableStatements,
+    parts.map((part) => part.text),
+  );
+  if (flow !== null) verdicts.push(ask(flow));
+  parts.forEach((_part, index) => judgePart(index, walk, input));
+  verdicts.push(...trailingVerdicts(c, walk, ctx, depth));
+  variableStatements = outerStatements;
   return (
     verdicts.find((v) => v.decision === "deny") ??
     verdicts.find((v) => v.decision === "ask") ?? { decision: "allow", reason: "" }
   );
 }
 
-const INTERPRETER = /^(python[0-9.]*|node|bun|deno|perl|ruby|php|awk|gawk|lua)$/;
-const INLINE_CODE = /\s(-c|-e|-p|-E|--eval|--print)\b/;
-/** awk always takes its program inline; the others only behind -c/-e/-p/--eval. */
-const runsInlineCode = (prog: string, args: readonly string[]): boolean =>
-  INTERPRETER.test(prog) && (/^g?awk$/.test(prog) || INLINE_CODE.test(` ${args.join(" ")}`));
+/** Is a reading of a command being judged? A reading is not read again (one-shot state, as above). */
+let judgingReading = false;
+const READING_REASON = (reason: string): string =>
+  `Once the shell expands its words, this command is judged: ${reason}`;
+const READING_CAP_REASON = `A word of this command holds a variable with more than ${MAX_READINGS} values, so the guard cannot read every command it may run. A human decides.`;
+
+/**
+ * Judges the other readings of a simple command (`word-readings.ts`): its known variables, array and positional parameters written in, a
+ * backslash removed, and an expansion spliced into a word removed. A reading the command itself determines keeps its verdict; one that
+ * removed an expansion is a guess and asks at most (wave 13, A2/A3: R10-ADV-2, R10-ADV-3).
+ */
+function readingVerdicts(
+  text: string,
+  bindings: Bindings,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  if (judgingReading || halted()) return [];
+  const { list, overCap } = readingsOf(text, bindings);
+  const verdicts: BashVerdict[] = overCap ? [ask(READING_CAP_REASON)] : [];
+  judgingReading = true;
+  try {
+    for (const reading of list) {
+      const read = parseSegment(reading.text);
+      const sub = read.prog === "git" ? gitInvocation(read.args).sub : "";
+      const spelled = askedBySpelling(read.prog, read.args, sub, false);
+      if (spelled !== null) verdicts.push(ask(SPELLING_ASK_REASON(spelled)));
+      const v = judge(reading.text, ctx, depth + 1, here);
+      judgeBudget++; // a reading is not a command line of its own: it must not use up the budget of a long script
+      if (v.decision === "allow") continue;
+      const decision = reading.exact ? v.decision : "ask";
+      verdicts.push({ decision, reason: scrub(READING_REASON(v.reason)) });
+    }
+  } finally {
+    judgingReading = false;
+  }
+  return verdicts;
+}
+
+const XARGS_REASON =
+  "`xargs` hands the text it is fed to a shell, `ssh`, `eval` or another program as the command to run (`… | xargs -I{} sh -c '{}'`), and the guard cannot see that text. Write the command out, or let a human decide.";
+
+/** The command lines `xargs` makes of the text it is fed (`xargs-feed.ts`), judged like any other; one that runs data it cannot see asks (wave 13, A9). */
+function xargsVerdicts(
+  text: string,
+  feed: StdinFeed,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  if (!text.includes("xargs")) return [];
+  const run = xargsRuns(words(text), allTexts(feed), feed.unseen || feed.overflow);
+  if (run === null) return [];
+  const verdicts = run.lines.map((line) => judge(line, ctx, depth + 1, here));
+  if (run.question) verdicts.push(ask(XARGS_REASON));
+  return verdicts;
+}
+
+/** What each simple command of a text prints when it only prints, typed and as handed (R9-CR-2); null for any other command. */
+const printedReadings = (text: string): Array<string[] | null> =>
+  segments(text).map((seg) => printedTexts(parseSegment(seg)));
+
+/** What a command is fed on stdin is read through the statements of the line being judged (`stdin-texts.ts`). */
+const FEED_READERS: FeedReaders = {
+  substitutions,
+  printedLines: printedReadings,
+  expand: (text) => expandVariables(text, valuesByName(variableStatements)).texts,
+  isFunction: (name) => localFunctions.has(name),
+};
+
+const SOURCE_READERS: SourceReaders = {
+  substitutions,
+  printedLines: (text) => printedReadings(text).flatMap((printed) => printed ?? [null]),
+  statementsOf: (text) => variableStatementWords(segments(text).map(parseSegment)),
+};
+
+const SOURCED_UNREADABLE_REASON =
+  "A database client is in the same command line as a `source <( … )` whose text the guard cannot read: the sourced text may have set the host (PGHOST, DATABASE_URL) the client reads. A human decides.";
+
+/**
+ * The variable statements in scope for a text: those around it, its own, those a `source <( … )` / `source /dev/stdin` text sets
+ * (`source-carry.ts`, R8-ADV-12), and the names it binds by a form that puts an unknown value there. When a sourced text cannot be read
+ * (`source <(curl …)`), ANY database client in the same text asks, whether it stands before or after the `source`: the statements are tracked for
+ * the whole text without order, and a function body defined before the `source` runs after it (R9-CR-16: the comment said "after").
+ */
+function textVariableStatements(
+  c: string,
+  parts: readonly Segment[],
+  input: WalkInput,
+  outer: readonly string[],
+): { words: readonly string[]; verdicts: BashVerdict[] } {
+  const { parsedParts, bodiesByPart } = input;
+  const sourced = sourcedStatements(
+    parsedParts,
+    parts.map((part) => part.text),
+    bodiesByPart,
+    SOURCE_READERS,
+  );
+  const words = [
+    ...outer,
+    ...variableStatementWords(parsedParts),
+    ...sourced.words,
+    ...unplacedBindingWords(c),
+  ];
+  const clientAfter = parsedParts.some((p) => TARGET_CLIENTS.has(p.prog));
+  return {
+    words,
+    verdicts: sourced.unreadable && clientAfter ? [ask(SOURCED_UNREADABLE_REASON)] : [],
+  };
+}
+
 // A secret file named inside inline code. `process.env.X` is a property, not a file: the dot must not
 // follow a letter, `)` or `]`.
 const SECRET_MENTION =
   /(?:^|[^A-Za-z0-9_$)\]])\.(?:env(?!\.example)(?:\.[A-Za-z]+)?|pgpass|netrc)(?![A-Za-z0-9_])|['"/][\w-]+\.env(?:\.(?:local|development|staging|production|tenant))?['"]|id_(?:rsa|ed25519|ecdsa)|\.ssh\/|\.aws\/credentials|['"/][\w.-]*\.(?:pem|key|p12|pfx)['"]/;
 
-/** The agent's own guard, ledger, approved lists and the compliance record. */
-// `/i`: macOS and Windows resolve `.CLAUDE/`, `Compliance/` and `.CODEX/HOOKS.JSON` to the real files, so a
-// case-sensitive match is a bypass. The repo-root-anchored directories come first; the settings, hook and
-// instruction files that an agent (or `bun`) loads from ANY directory — nested, or under `~` — are matched
-// at any depth. `bunfig.toml` is one: a `preload` line in it runs before the guard itself does.
-const PROTECTED_PATH =
-  /^(\.\/)?(\.claude\/(audit|\.cache|rules|agents|skills)(\/|$)|\.agents\/(rules|agents|skills|plugins)(\/|$)|scripts\/harness(\/|$)|compliance(\/|$)|\.githooks(\/|$)|\.github\/workflows(\/|$)|deploy\/production(\/|$)|\.gitleaks\.toml$|\.trivyignore\.yaml$|AGENTS\.md$|CLAUDE\.md$|scripts\/check-compliance-controls\.ts$|\.github\/CODEOWNERS$)|(^|\/)(\.claude\/settings(\.local)?\.json|\.codex\/(hooks\.json|config\.toml)|\.?bunfig\.toml|AGENTS\.override\.md)$|(^|\/)\.codex\/(hooks|rules)\//i;
-/** A repo-relative path the harness protects: guard, ledger, rules, compliance record, Codex hook config. */
-export const isProtectedPath = (rel: string): boolean => PROTECTED_PATH.test(rel);
+export { isProtectedPath };
 
 // What is typed into an interactive process later reaches it through Codex's `write_stdin`, which does
 // NOT fire PreToolUse. Login, quiet and connection flags do not make a process terminate: require a real
@@ -1366,6 +1559,31 @@ function interactiveInvocation(p: Parsed): boolean {
 export const isInteractiveShell = (cmd: string): boolean =>
   segments(cmd).some((seg) => interactiveInvocation(parseSegment(seg)));
 
+const CODEX_COMMAND_STRING_REASON =
+  "Codex refuses a shell command string (`bash -c '…'`, `sh -c`, and the wrappers that hand one to a shell: `xargs … sh -c`, `watchexec -- bash -c`), because the string can expand variables and run substitutions after the guard has read it. Run the command directly or put it in a script file.";
+const CODEX_STDIN_SCRIPT_REASON =
+  "Codex refuses a shell or interpreter that reads its script from stdin (`echo '…' | bash`, `bash <<< '…'`, `… | bash -o pipefail`): the guard judges the text, but Codex must run a command directly or from a reviewable script file.";
+
+/**
+ * Why Codex refuses this command as an interactive shell, when the real reason is not a bare shell (wave 13, L3: `echo hi | bash -o pipefail`, `… | xargs -I{} sh -c '{}'` and
+ * `watchexec -- bash -c '…'` were all refused as "a bare interactive shell or REPL", which hid the reason a reader needs); null for a bare shell or REPL (the caller's text).
+ */
+export function interactiveShellReason(cmd: string): string | null {
+  for (const part of splitSegments(cmd).parts) {
+    const p = parseSegment(part.text);
+    if (!interactiveInvocation(p)) continue;
+    if (
+      SHELL.test(p.prog) &&
+      p.args.some((a) => a === "-c" || /^-[A-Za-z]*c/.test(a) || a.startsWith("--command"))
+    )
+      return CODEX_COMMAND_STRING_REASON;
+    if (part.joiner === "|" || p.strings.length + p.docs.length + p.ins.length > 0)
+      return CODEX_STDIN_SCRIPT_REASON;
+    return null;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Paths: where a write lands once `cd`, `..`, `~`, `$HOME` and `$PWD` are accounted for
 // ---------------------------------------------------------------------------------------------------
@@ -1373,8 +1591,16 @@ export const isInteractiveShell = (cmd: string): boolean =>
 /** The directory a command runs in: repo-relative (`""` = the root), `~/…`, an absolute path, or unknown. */
 type Cwd = string | null;
 
-const trimSlashes = (p: string): string => p.replace(/\/+$/, "");
-const homeOf = (ctx: BashContext): string => trimSlashes(ctx.home ?? process.env.HOME ?? "");
+/** The account's home directory from the user database, for when `$HOME` is unset or empty. */
+function accountHome(): string {
+  try {
+    return userInfo().homedir;
+  } catch {
+    return "";
+  }
+}
+const homeOf = (ctx: BashContext): string =>
+  trimSlashes(ctx.home || process.env.HOME || accountHome());
 
 /** Collapse `.`, `..` and `//`; keeps a leading `/` or `~`, and the leading `..` of a relative path. */
 function collapse(p: string): string {
@@ -1391,15 +1617,27 @@ function collapse(p: string): string {
   return head === "~" ? (body ? `~/${body}` : "~") : body;
 }
 
-/** An absolute path inside the repo or the home directory, written relative to it (`~/…`). */
+/**
+ * An absolute path inside the repo or the home directory, written relative to it (`~/…`). A path is inside
+ * whatever its spelling: upper case, the `/System/Volumes/Data` firmlink, `/tmp` for `/private/tmp`.
+ */
 function relativise(norm: string, ctx: BashContext): string {
   if (!norm.startsWith("/")) return norm;
   const root = ctx.root ? collapse(trimSlashes(ctx.root)) : "";
-  if (root && norm === root) return "";
-  if (root && norm.startsWith(`${root}/`)) return norm.slice(root.length + 1);
+  const inRoot = root ? relativeTo(norm, root) : null;
+  if (inRoot !== null) return inRoot;
   const home = homeOf(ctx);
-  if (home && norm === home) return "~";
-  return home && norm.startsWith(`${home}/`) ? `~/${norm.slice(home.length + 1)}` : norm;
+  const inHome = home ? relativeTo(norm, home) : null;
+  if (inHome === null) return norm;
+  return inHome === "" ? "~" : `~/${inHome}`;
+}
+
+/** Is this resolved path the repo root's parent, or any directory above it (`..`, `~/Apps`, `/`)? */
+function isRootAncestor(rel: string, ctx: BashContext): boolean {
+  const root = ctx.root ? collapse(trimSlashes(ctx.root)) : "";
+  if (!root) return false;
+  const abs = rel === "~" || rel.startsWith("~/") ? `${homeOf(ctx)}${rel.slice(1)}` : rel;
+  return abs === "/" || relativeTo(root, abs) !== null;
 }
 
 const HERE = /^(?:\$\{?PWD\}?|\$\(pwd\)|`pwd`)(?=\/|$)/;
@@ -1414,11 +1652,9 @@ const REPO_ROOT = /^\$\(git rev-parse --show-toplevel\)(?=\/|$)/;
  * it resolves against at most {@link MAX_CWD_CANDIDATES} directories, and a chain of them stays linear.
  */
 function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): string | null {
-  if (!strict && --work.resolutions < 0) {
-    work.spent = true;
-    return null;
-  }
-  let t = unescapeWord(raw)
+  if (!spendResolution(raw.length + (cwd?.length ?? 0), strict)) return null;
+  // The spellings the file system folds into one name (`hoo<KELVIN SIGN>s`, `harne<SHARP S>`) read as the ASCII name.
+  let t = aliasNormalise(unescapeWord(raw))
     .replace(/^\$\{?CODEX_HOME\}?(?=\/|$)/, "~/.codex")
     .replace(/^\$\{?HOME\}?(?=\/|$)/, "~");
   let base = cwd;
@@ -1426,6 +1662,8 @@ function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): s
     t = t.replace(REPO_ROOT, ".");
     base = "";
   } else t = t.replace(HERE, ".");
+  // Only `~` and `~/…` name the home directory. `~user`, `~+`, `~-` and `~1` name one the guard cannot place.
+  if (/^~[^/]/.test(t)) return null;
   if (strict && /[$`*?[]/.test(t)) return null;
   // `~` is the home directory: spell it out, or a repo that lives under it (`cd ~/Apps/x/repo`) is never
   // recognised as the repo.
@@ -1453,6 +1691,8 @@ const startingDir = (ctx: BashContext): Cwd =>
 /** More possible directories than this means the guard has lost the thread: treat the directory as unknown. */
 const MAX_CWD_CANDIDATES = 16;
 const MAX_CWD_CHARS = 1024;
+/** A directory path longer than `MAX_CWD_CHARS` is not followed: it becomes the unknown directory. */
+const capLength = (dir: Cwd): Cwd => (dir !== null && dir.length > MAX_CWD_CHARS ? null : dir);
 
 const capDirs = (dirs: readonly Cwd[]): readonly Cwd[] =>
   dirs.length > MAX_CWD_CANDIDATES ? [null] : dirs;
@@ -1465,60 +1705,65 @@ const joinDirs = (a: readonly Cwd[], b: readonly Cwd[]): readonly Cwd[] =>
 const cdTarget = (args: readonly string[]): string =>
   args.find((a) => !/^-[LPe@]+$/.test(a) && a !== "--") ?? "~";
 
-/** The directory after a simple command: `cd`/`pushd` move it, `popd` and anything dynamic lose it. */
-function nextDir(cwd: Cwd, prog: string, args: readonly string[], ctx: BashContext): Cwd {
+/**
+ * The directory after a simple command: `cd` and `pushd DIR` move it; `popd`, a `pushd` that rotates or keeps
+ * the stack (`pushd`, `pushd +1`, `pushd -n DIR`), a `cd` that `CDPATH` may redirect, and anything dynamic lose it.
+ */
+function nextDir(
+  cwd: Cwd,
+  prog: string,
+  args: readonly string[],
+  ctx: BashContext,
+  cdpath: boolean,
+): Cwd {
   if (prog === "popd") return null;
   if (prog !== "cd" && prog !== "pushd") return cwd;
+  if (cdpath || (prog === "pushd" && (args.length !== 1 || /^[-+]/.test(args[0] ?? ""))))
+    return null;
   const target = cdTarget(args);
   if (target === "-") return null;
   const dir = resolvePath(target, cwd, ctx, true);
-  return dir !== null && dir.length > MAX_CWD_CHARS ? null : dir;
+  return capLength(dir);
+}
+
+/** Programs that run a script in THIS shell, which may `cd` anywhere. */
+const SOURCES = /^(source|\.)$/;
+/** A construct the guard does not parse (a loop, a `case`, a function definition) that holds a directory change. */
+const COMPOUND_START =
+  /^\s*(case|for|while|until|select|function)\b|^\s*[A-Za-z_][\w.-]*\s*\(\s*\)/;
+const MENTIONS_CD = /\b(cd|pushd|popd)\b/;
+
+/**
+ * Can this command change the directory of the shell around it without the guard seeing a `cd` it models? A
+ * script it sources, an `eval` of text that names a `cd` or that is built at run time, and a function or `case`
+ * whose body holds one. The directory is then unknown, and a relative write from it asks.
+ */
+function hidesDirectoryChange(p: Parsed, text: string): boolean {
+  if (SOURCES.test(p.prog)) return true;
+  if (p.prog === "eval") {
+    const body = p.args.join(" ");
+    return MENTIONS_CD.test(body) || /[$`]/.test(body);
+  }
+  return COMPOUND_START.test(text) && MENTIONS_CD.test(text);
 }
 
 /** {@link nextDir} for each possible directory; undefined when the command does not move at all. */
 function nextDirs(
   dirs: readonly Cwd[],
-  prog: string,
-  args: readonly string[],
+  p: Parsed,
+  text: string,
   ctx: BashContext,
+  cdpath: boolean,
 ): readonly Cwd[] | undefined {
-  if (prog !== "cd" && prog !== "pushd" && prog !== "popd") return undefined;
-  return capDirs([...new Set(dirs.map((dir) => nextDir(dir, prog, args, ctx)))]);
+  if (p.prog === "cd" || p.prog === "pushd" || p.prog === "popd") {
+    return capDirs([...new Set(dirs.map((dir) => nextDir(dir, p.prog, p.args, ctx, cdpath)))]);
+  }
+  return hidesDirectoryChange(p, text) ? [null] : undefined;
 }
 
-/** Representative protected files, lower-case: a directory that holds one of them is an ancestor. */
-const PROTECTED_SAMPLES: readonly string[] = [
-  ".claude/settings.json",
-  ".claude/settings.local.json",
-  ".claude/rules/x",
-  ".claude/agents/x",
-  ".claude/skills/x",
-  ".claude/audit/x",
-  ".claude/.cache/x",
-  ".agents/rules/x",
-  ".agents/agents/x",
-  ".agents/skills/x",
-  ".agents/plugins/x",
-  ".codex/hooks.json",
-  ".codex/config.toml",
-  ".codex/hooks/x",
-  ".codex/rules/x",
-  "scripts/harness/x",
-  "scripts/check-compliance-controls.ts",
-  "compliance/x",
-  ".githooks/x",
-  ".github/codeowners",
-  ".github/workflows/x",
-  "deploy/production/x",
-  ".trivyignore.yaml",
-  "agents.md",
-  "claude.md",
-  "~/.codex/hooks.json",
-  "~/.codex/config.toml",
-  "~/.claude/settings.json",
-  "~/.claude/settings.local.json",
-  "~/.bunfig.toml",
-];
+/** Where `env -C DIR cmd` and `sudo -D DIR cmd` run `cmd`: DIR, from each directory the command may be in. */
+const runIn = (dirs: readonly Cwd[], target: string, ctx: BashContext): readonly Cwd[] =>
+  capDirs([...new Set(dirs.map((dir) => nextDir(dir, "cd", [target], ctx, false)))]);
 
 /** What one command writes to. `anc`: a directory that CONTAINS a protected path counts; `merge`: the repo root does too. */
 interface WriteTarget {
@@ -1529,20 +1774,19 @@ interface WriteTarget {
 const wt = (raw: string, anc = false, merge = false): WriteTarget => ({ raw, anc, merge });
 
 function protectedTouch(rel: string, t: WriteTarget): boolean {
-  if (PROTECTED_PATH.test(rel)) return true;
+  if (protectedPathPattern.test(rel)) return true;
   if (!t.anc) return false;
   const dir = trimSlashes(rel).toLowerCase();
   return dir === "" ? t.merge : PROTECTED_SAMPLES.some((s) => s.startsWith(`${dir}/`));
 }
 
-const baseName = (p: string): string => p.replace(/\/+\.?$/, "").replace(/^.*\//, "");
 /** `src/.`, `src/` and `.` copy a directory's CONTENTS onto the destination. */
 const isContentsSource = (s: string): boolean => /(^|\/)\.?$/.test(s);
 
 const SHORT_FLAGS = /^-[A-Za-z]+$/;
 /**
  * Is `arg` a short-flag cluster (`-rf`) holding one of `letters`? Two `[A-Za-z]*` around the letter backtrack
- * quadratically on a long word, and the hook fails OPEN at its timeout, so this is one anchored test and a scan.
+ * quadratically on a long word, and a guard that runs out of time refuses the call, so this is one anchored test and a scan.
  */
 function clusterHas(arg: string, letters: string, cluster: RegExp = SHORT_FLAGS): boolean {
   if (!cluster.test(arg)) return false;
@@ -1550,67 +1794,49 @@ function clusterHas(arg: string, letters: string, cluster: RegExp = SHORT_FLAGS)
   return false;
 }
 const isRecursive = (arg: string): boolean =>
-  clusterHas(arg, "rRa") || arg === "--recursive" || arg === "--archive";
+  clusterHas(arg, "rRa") || isLongOption(arg, "recursive", 3) || isLongOption(arg, "archive", 3);
 const RG_SHORT_FLAGS = /^-[A-Za-z.]+$/;
 /** `-ec`, `-xc`: a short cluster with `c` after its first letter (a bare `-c` is matched on its own). */
 const isShortClusterWithC = (arg: string): boolean =>
   arg.startsWith("-") && !arg.includes("-", 1) && arg.indexOf("c", 2) >= 2;
-/** GNU getopt takes any unambiguous prefix of a long option, and `--in-place` is the only sed option that starts `--i`. */
-function isLongInPlace(arg: string): boolean {
-  if (!arg.startsWith("--i")) return false;
-  const eq = arg.indexOf("=");
-  return "in-place".startsWith(arg.slice(2, eq < 0 ? undefined : eq));
-}
 /** `sed -i`, `-ni`, `-i.bak`, `--in-place`, `--in-p`: edits its files where they are. */
 const isInPlace = (arg: string): boolean =>
   (/^-([A-Za-z]*)/.exec(arg)?.[1] ?? "").includes("i") || isLongInPlace(arg);
-const FIND_WRITER = /^(rm|truncate|mv|cp|tee|chmod|chown|shred|unlink|ln|install|touch|dd|rsync)$/;
 
-/** Destination and sources of cp/mv/ln/install/rsync, honouring `-t DIR` / `--target-directory=DIR`. */
+/**
+ * Destination and sources of cp/mv/ln/install/rsync, honouring `-t DIR`, `-tDIR`, `-at DIR` and `--target-directory=DIR`
+ * (GNU takes any prefix of the long name: `--target=DIR`). rsync's `-t` is `--times`, not a destination.
+ */
 function splitDest(
   args: readonly string[],
-  files: readonly string[],
-): { dest: string | undefined; srcs: string[] } {
-  const k = args.findIndex((a) => a === "-t" || a === "--target-directory");
-  const dest =
-    args.find((a) => a.startsWith("--target-directory="))?.slice("--target-directory=".length) ??
-    (k >= 0 ? args[k + 1] : undefined);
-  if (dest !== undefined) return { dest, srcs: files.filter((f) => f !== dest) };
-  return { dest: files.at(-1), srcs: files.slice(0, -1) };
+  groups: ReadonlyArray<readonly string[]>,
+  targetOption = true,
+): { dests: string[]; srcs: string[] } {
+  const dest = targetOption ? optionValues(args, "t", [["target-directory", 1]])[0] : undefined;
+  if (dest !== undefined) return { dests: [dest], srcs: groups.flat().filter((f) => f !== dest) };
+  // The destination is the last ARGUMENT, and a brace word in it is several destinations (`cp x .claude/{a,b}`).
+  return { dests: [...(groups.at(-1) ?? [])], srcs: groups.slice(0, -1).flat() };
 }
 
 /** The destination, and `dest/<name>` for each source: `cp x scripts/` writes `scripts/x`. */
 function copyTargets(
   args: readonly string[],
-  files: readonly string[],
+  groups: ReadonlyArray<readonly string[]>,
   recursive: boolean,
+  targetOption = true,
 ): WriteTarget[] {
-  const { dest, srcs } = splitDest(args, files);
-  if (dest === undefined) return [];
+  const { dests, srcs } = splitDest(args, groups, targetOption);
   const contents = recursive || srcs.some(isContentsSource);
-  return [wt(dest, contents, contents), ...srcs.map((s) => wt(`${dest}/${baseName(s)}`))];
+  return dests.flatMap((dest) => [
+    wt(dest, contents, contents),
+    ...srcs.map((s) => wt(`${dest}/${baseName(s)}`)),
+  ]);
 }
 
-const FIND_NARROWING = /^-(i?name|i?path|i?wholename|i?regex)$/;
-
-/**
- * Is the `find` action at `rest[action]` (`-delete`, `-exec rm`) limited to files whose name or path matches
- * a pattern? Reads back from the action to the start of its `-o` branch: a name test there narrows it, a
- * negated one (`! -name x`) does not, and an `-o` before any test means it runs on everything.
- */
-function findActionIsNarrowed(rest: readonly string[], action: number): boolean {
-  let depth = 0;
-  for (let j = action - 1; j >= 0; j--) {
-    const a = rest[j] ?? "";
-    if (a === ")" || a === "\\)") depth++;
-    else if (a === "(" || a === "\\(") depth = Math.max(0, depth - 1);
-    else if (depth === 0 && (a === "-o" || a === "-or")) return false;
-    else if (FIND_NARROWING.test(a)) {
-      if (rest[j - 1] === "!" || rest[j - 1] === "-not") j--;
-      else return true;
-    }
-  }
-  return false;
+/** Does an `-exec` command (its words, wrappers and all) write the files it is handed? */
+function execWritesWords(words: readonly string[]): boolean {
+  const { prog, args } = parseSegment(words.map(shellQuote).join(" "));
+  return execCommandWrites(prog, args, isInPlace);
 }
 
 /**
@@ -1619,24 +1845,34 @@ function findActionIsNarrowed(rest: readonly string[], action: number): boolean 
  * limits it (`find . -name '*.tmp' -delete` stays an everyday cleanup).
  */
 function findWrites(args: readonly string[]): WriteTarget[] {
+  // `-fprint F`, `-fprint0 F`, `-fprintf F FORMAT` and `-fls F` write the file F.
+  const printed = targetsOf(
+    args.flatMap((a, i) =>
+      /^-f(?:print0?|printf|ls)$/.test(a) && args[i + 1] !== undefined
+        ? [args[i + 1] as string]
+        : [],
+    ),
+  );
   let k = 0;
   while (/^-[HLP]$/.test(args[k] ?? "")) k++;
   const starts: string[] = [];
   for (; k < args.length && !/^(-|\\?\(|!)/.test(args[k] ?? ""); k++) starts.push(args[k] ?? "");
   const rest = args.slice(k);
-  const actions = rest.flatMap((a, i) => {
-    if (a === "-delete") return [i];
-    if (!/^-(exec|execdir|ok|okdir)$/.test(a)) return [];
-    const next = rest[i + 1] ?? "";
-    const writes = FIND_WRITER.test(next) || (next === "sed" && rest.slice(i + 2).some(isInPlace));
-    return writes ? [i] : [];
-  });
-  if (actions.length === 0) return [];
-  const wholeTree = actions.some((i) => !findActionIsNarrowed(rest, i));
-  return fileArgs(starts.length > 0 ? starts : ["."]).map((s) => wt(s, true, wholeTree));
+  const actions = findActions(rest, execWritesWords);
+  if (actions.length === 0) return printed;
+  const wholeTree = actions.some((a) => !a.narrowed);
+  return [
+    ...printed,
+    ...fileArgs(starts.length > 0 ? starts : ["."]).map((s) => wt(s, true, wholeTree)),
+  ];
 }
 
-/** `tar x…` and `unzip` unpack into `-C dir` / `-d dir`, or the current directory: a merge into it. */
+/** The tar family: GNU tar installed as `gtar`, and `bsdtar` (macOS's own). */
+const TAR = /^(?:tar|gtar|gnutar|bsdtar)$/;
+/** Programs that unpack an archive into a directory: `tar x`, `unzip`, `7z x`, `cpio -i`. */
+const UNPACKER = /^(?:tar|gtar|gnutar|bsdtar|unzip|7z[a-z]?|cpio)$/;
+
+/** `tar x…`, `unzip`, `7z x` and `cpio -i` unpack into `-C dir` / `-d dir` / `-oDIR`, or the current directory: a merge into it. */
 function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
   const flagValue = (short: string, long: string): string | undefined => {
     const k = args.indexOf(short);
@@ -1647,72 +1883,91 @@ function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
     const listing = args.some((a) => clusterHas(a, "ltZpv"));
     return listing ? [] : [wt(flagValue("-d", "--directory") ?? ".", true, true)];
   }
+  if (/^7z[a-z]?$/.test(prog)) {
+    // `7z x a.7z -oDIR`: the command word comes first, and `-o` carries its directory with no space.
+    if (!/^[xe]$/.test(args[0] ?? "")) return [];
+    return [wt(args.find((a) => a.startsWith("-o"))?.slice(2) || ".", true, true)];
+  }
+  if (prog === "cpio") {
+    const extracting = args.some(
+      (a) => a === "--extract" || (/^-[A-Za-z]+$/.test(a) && a.includes("i")),
+    );
+    return extracting ? [wt(flagValue("-D", "--directory") ?? ".", true, true)] : [];
+  }
   const extract = args.some(
     (a, i) =>
       /^--(extract|get)$/.test(a) ||
       (/^-?[A-Za-z]+$/.test(a) && (i === 0 || a.startsWith("-")) && a.includes("x")),
   );
-  return extract ? [wt(flagValue("-C", "--directory") ?? ".", true, true)] : [];
+  // The directory the archive unpacks into: the last `-C`, in any spelling (`-cCf`, `-Capps`, `--dir=apps`).
+  return extract ? [wt(readTar(args).dirs.at(-1) ?? ".", true, true)] : [];
 }
 
 /**
- * A long option and the fewest characters of it (after `--`) that GNU getopt still reads as it: the shortest
- * prefix no other option of the same tool starts with. A shorter prefix is ambiguous and the tool refuses it.
- */
-type LongOption = readonly [name: string, minChars: number];
-
-/**
- * The values of one option: `-o FILE`, `-oFILE`, `-sSo FILE` (a letter in a cluster takes the rest of the word,
- * or the next word), `--output FILE`, `--output=FILE` and an unambiguous abbreviation of it (`--out FILE`).
- * One pass over the arguments.
- */
-function optionValues(
-  args: readonly string[],
-  short: string,
-  long: readonly LongOption[],
-): string[] {
-  const out: string[] = [];
-  for (let k = 0; k < args.length; k++) {
-    const a = args[k] ?? "";
-    let value: string | undefined;
-    if (a.startsWith("--")) {
-      const eq = a.indexOf("=");
-      const given = a.slice(2, eq < 0 ? undefined : eq);
-      if (long.some(([name, min]) => given.length >= min && name.startsWith(given)))
-        value = eq < 0 ? args[++k] : a.slice(eq + 1);
-    } else if (a.startsWith("-")) {
-      for (let p = 1; p < a.length && /[A-Za-z]/.test(a[p] as string); p++) {
-        if (a[p] !== short) continue;
-        value = p + 1 < a.length ? a.slice(p + 1) : args[++k];
-        break;
-      }
-    }
-    if (value) out.push(value);
-  }
-  return out;
-}
-
-/**
- * Programs that write the file an option names: `curl -o`, `wget -O`/`-o`/`-a`, `sort -o`, `base64 -o`, each with
- * its short letter and its long spelling. curl's `--output` shares every shorter prefix with `--output-dir`, and
- * wget's `--output-document` and `--output-file` share `--output-`, so those are ambiguous until the last letter.
+ * Programs that write the file an option names: `wget -O`/`-o`/`-a`/`-P`, `sort -o`, `base64 -o`, each with its
+ * short letter and its long spelling (`curl` is {@link curlWrites}). wget's `--output-document` and `--output-file`
+ * share `--output-`, so those are ambiguous until the last letter.
  */
 const OUTPUT_OPTIONS: ReadonlyMap<
   string,
   ReadonlyArray<readonly [string, readonly LongOption[]]>
 > = new Map([
-  ["curl", [["o", [["output", 6]]]]],
   [
     "wget",
     [
       ["O", [["output-document", 8]]],
       ["o", [["output-file", 8]]],
       ["a", [["append-output", 2]]],
+      // The directory a download is saved in; `--dir` is ambiguous with `--directories`, `--directory` is not.
+      ["P", [["directory-prefix", 9]]],
     ],
   ],
   ["sort", [["o", [["output", 1]]]]],
   ["base64", [["o", [["output", 1]]]]],
 ]);
+
+/** The write targets named by words, brace-expanded and unescaped as the shell would. */
+const targetsOf = (words: readonly string[]): WriteTarget[] => fileArgs(words).map((f) => wt(f));
+
+/**
+ * What `curl` writes: the `-o`/`--output` file, and, with `--output-dir DIR`, the directory a relative `-o` file or
+ * a `-O` name lands in. `-O` alone writes the URL's name into the current directory (`.`). With no `-o` and no `-O`
+ * curl writes to stdout, and `--output-dir` alone writes nothing. curl takes no abbreviated long options.
+ */
+function curlWrites(args: readonly string[]): WriteTarget[] {
+  const files = optionValues(args, "o", [["output", 6]]);
+  const dirs = optionValues(args, "", [["output-dir", 10]]);
+  const remoteName = args.some(
+    (a) => a === "--remote-name" || a === "--remote-name-all" || clusterHas(a, "O"),
+  );
+  if (files.length === 0 && !remoteName) return [];
+  const into = dirs.length > 0 ? dirs : remoteName ? ["."] : [];
+  return targetsOf([...files, ...into]);
+}
+
+/**
+ * The files a `sed` script writes: the `w FILE` command (`sed -n 'w out'`, `1,3w out`) and the `w` flag of `s///w
+ * out`. The file name runs to the end of the line, so the whole rest of the line and its first word are both
+ * named. Read as text: the `w` might be a letter inside a pattern, and that costs nothing unless what follows it
+ * resolves onto a protected path.
+ */
+function sedWriteTargets(args: readonly string[]): WriteTarget[] {
+  const names: string[] = [];
+  for (const arg of args) {
+    const script = arg.startsWith("--expression=")
+      ? arg.slice("--expression=".length)
+      : /^-[A-Za-z]*e./.test(arg)
+        ? arg.slice(arg.indexOf("e") + 1)
+        : arg.startsWith("-")
+          ? ""
+          : arg;
+    for (const m of script.matchAll(/(?<![A-Za-z_])[wW][ \t]*([^\n]+)/g)) {
+      const rest = (m[1] ?? "").trim();
+      names.push(rest, rest.split(/[\s;}]/)[0] ?? "");
+    }
+  }
+  return targetsOf(names);
+}
 
 /** Compressors that replace their input with the compressed (or decompressed) file unless told to print it. */
 const COMPRESSOR =
@@ -1726,29 +1981,79 @@ function compressorWrites(args: readonly string[], files: readonly string[]): Wr
   return files.flatMap((f) => [wt(f), wt(f.replace(COMPRESSED_SUFFIX, ""))]);
 }
 
+const isAbsoluteWord = (w: string): boolean => w.startsWith("/") || w.startsWith("~");
+
+/** `file` as written for a git that runs in the directory the `-C` operands lead to (an absolute one starts over). */
+function underGitDirs(dirs: readonly string[], file: string): string {
+  const base = dirs.reduce(
+    (at, dir) => (isAbsoluteWord(dir) || at === "" ? dir : `${at}/${dir}`),
+    "",
+  );
+  return isAbsoluteWord(file) || base === "" ? file : `${base}/${file}`;
+}
+
 /** Every path one simple command writes, deletes, moves or re-modes (redirections are added by the caller). */
 function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
-  const files = fileArgs(args);
+  return [
+    ...mainWrites(prog, args),
+    ...targetsOf(extraOutputFiles(prog, args)),
+    ...targetsOf(moreWriterTargets(prog, args)),
+  ];
+}
+
+function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
+  const groups = fileArgGroups(args);
+  const files = groups.flat();
   const recursive = args.some(isRecursive);
   if (prog === "rm") {
-    const tree = args.some((a) => clusterHas(a, "rR") || a === "--recursive");
+    const tree = args.some((a) => clusterHas(a, "rR") || isLongOption(a, "recursive", 1));
     return files.map((f) => wt(f, true, tree));
   }
   if (/^(unlink|shred|rmdir)$/.test(prog)) return files.map((f) => wt(f, true));
   if (prog === "mv") {
     return [
-      ...splitDest(args, files).srcs.map((s) => wt(s, true)),
-      ...copyTargets(args, files, false),
+      // Moving the root, or a directory the root is in, takes everything under it away.
+      ...splitDest(args, groups).srcs.map((s) => wt(s, true, true)),
+      ...copyTargets(args, groups, false),
     ];
   }
-  if (/^(cp|install|ln)$/.test(prog)) return copyTargets(args, files, recursive);
-  if (prog === "rsync") return copyTargets(args, files, true);
-  if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nano)$/.test(prog)) return files.map((f) => wt(f));
-  if (/^(chmod|chown)$/.test(prog)) return files.map((f) => wt(f, recursive, recursive));
-  if (/^(sed|perl)$/.test(prog)) {
-    return args.some(isInPlace) ? files.map((f) => wt(f)) : [];
+  if (/^(cp|install|ln)$/.test(prog)) return copyTargets(args, groups, recursive);
+  if (prog === "ditto") return copyTargets(args, groups, true);
+  // rsync and scp name a remote side `host:path`; one that names this machine is a local path.
+  if (/^(rsync|scp)$/.test(prog))
+    return copyTargets(
+      args,
+      groups.map((g) => g.map(localPath)),
+      true,
+      false,
+    );
+  if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nvim|nano)$/.test(prog))
+    return files.map((f) => wt(f));
+  if (/^(chmod|chown|chgrp|setfacl|chflags|xattr)$/.test(prog)) {
+    return files.map((f) => wt(f, recursive, recursive));
   }
+  if (/^(sed|perl)$/.test(prog)) {
+    const inPlace = args.some(isInPlace) ? files.map((f) => wt(f)) : [];
+    return prog === "sed" ? [...inPlace, ...sedWriteTargets(args)] : inPlace;
+  }
+  return toolWrites(prog, args, files);
+}
+
+/** The files the named tools write: curl, dd, git, the output-option programs, openssl, compressors, find, unpackers. */
+function toolWrites(
+  prog: string,
+  args: readonly string[],
+  files: readonly string[],
+): WriteTarget[] {
+  if (prog === "curl") return curlWrites(args);
   if (prog === "dd") return args.filter((a) => a.startsWith("of=")).map((a) => wt(a.slice(3)));
+  if (prog === "git") {
+    const { sub, rest, dirs } = gitInvocation(args);
+    // git writes `--output=F` relative to where it runs: `git -C DIR … --output=F` writes DIR/F.
+    return [...gitFileWrites(sub, rest), ...moreGitWrites(sub, rest)].map((f) =>
+      wt(underGitDirs(dirs, f)),
+    );
+  }
   const outputOptions = OUTPUT_OPTIONS.get(prog);
   if (outputOptions) {
     return outputOptions
@@ -1762,7 +2067,7 @@ function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
   }
   if (COMPRESSOR.test(prog)) return compressorWrites(args, files);
   if (prog === "find") return findWrites(args);
-  return /^(tar|unzip)$/.test(prog) ? unpackWrites(prog, args) : [];
+  return UNPACKER.test(prog) ? unpackWrites(prog, args) : [];
 }
 
 interface WriteHit {
@@ -1770,12 +2075,26 @@ interface WriteHit {
   readonly path: string | null;
 }
 
+/** A command that is nothing but the files it writes: what a variable assignment is judged as. */
+const NO_COMMAND: Parsed = {
+  prog: "",
+  word: "",
+  args: [],
+  assigns: [],
+  outs: [],
+  ins: [],
+  wrapperReads: [],
+  docs: [],
+  strings: [],
+  handedStrings: [],
+};
+
 /** A protected path quoted inside an inline-code argument, e.g. `open('.claude/settings.json','w')`. */
 function findProtectedIn(arg: string, dirs: readonly Cwd[], ctx: BashContext): string | null {
   for (const m of arg.matchAll(/['"]([^'"\s]+)['"]/g)) {
     for (const dir of dirs) {
       const rel = resolvePath(m[1] ?? "", dir, ctx);
-      if (rel !== null && PROTECTED_PATH.test(rel)) return rel;
+      if (rel !== null && protectedPathPattern.test(rel)) return rel;
     }
   }
   return null;
@@ -1787,15 +2106,20 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
   const targets: WriteTarget[] = [
     ...p.outs.flatMap(expandBraces).map((raw) => wt(raw)),
     ...commandWrites(p.prog, p.args),
-    ...(inline ? fileArgs(p.args).map((raw) => wt(raw)) : []),
+    ...(inline && mayWriteFileOperands(p.prog, p.args)
+      ? fileArgs(p.args).map((raw) => wt(raw))
+      : []),
   ];
   let unknownDir = false;
   for (const t of targets) {
-    if (work.spent) return { path: null };
+    // The budget is spent: stop resolving. The command asks (`classifyBash`) unless something in it is denied, so
+    // answering here would only hide a deny that a later check in this same command line finds.
+    if (work.spent) break;
     for (const dir of dirs) {
       const rel = resolvePath(t.raw, dir, ctx);
       if (rel === null) unknownDir = true;
-      else if (protectedTouch(rel, t)) return { path: rel };
+      else if (protectedTouch(rel, t) || isToolchainPath(rel)) return { path: rel };
+      else if (t.merge && isRootAncestor(rel, ctx)) return { path: "" };
     }
   }
   if (inline) {
@@ -1804,7 +2128,8 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
       if (found) return { path: found };
     }
   }
-  return unknownDir ? { path: null } : null;
+  // An "unknown directory" that the spent budget made (a resolution answers null once it is out) is no finding.
+  return unknownDir && !work.spent ? { path: null } : null;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -1813,43 +2138,30 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
 
 /** Quotes, `+`, backslashes and whitespace removed: `'scripts/'+'harness/x'` reads as `scripts/harness/x`. */
 const squash = (s: string): string => s.replace(/['"`+\\\s]/g, "");
-// A protected path as it reads once squashed. Directories anchored at the repo root must not be preceded
-// by a path component (`docs/compliance/` is a docs page); settings and hook files count at any depth.
-const PROTECTED_FRAGMENT = new RegExp(
-  [
-    String.raw`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_-]\/)(?:\.claude\/(?:audit|\.cache|rules|agents|skills)|\.agents\/(?:rules|agents|skills|plugins)|scripts\/harness|compliance\/|\.githooks|\.github\/workflows|deploy\/production|\.gitleaks\.toml|\.trivyignore\.yaml|agents\.md|claude\.md|scripts\/check-compliance-controls|\.github\/codeowners)`,
-    String.raw`(?<![A-Za-z0-9_-])(?:\.claude\/settings(?:\.local)?\.json|\.codex\/(?:hooks|config\.toml|rules)|\.?bunfig\.toml|agents\.override\.md)`,
-  ].join("|"),
-  "i",
-);
-
 /** A script (inline `-c` code, or a heredoc/stdin body) naming a secret file (deny) or a protected one (ask). */
-function scriptTextVerdict(text: string): BashVerdict | null {
+function scriptTextVerdict(given: string): BashVerdict | null {
+  const text = aliasNormalise(given);
   const flat = squash(text);
   if (SECRET_MENTION.test(text) || SECRET_MENTION.test(flat)) {
     return deny(
       "Inline code that opens a live secret file is the same read as `cat`. Agents do not read secrets or dumps.",
     );
   }
-  if (PROTECTED_FRAGMENT.test(flat)) {
+  // Tested as written too: squashing puts the word before a path against it (`rm scripts/harness` reads
+  // `rmscripts/harness`), and the fragment's lookbehind then takes that word for a parent directory.
+  const leak = environmentLeak(text);
+  if (leak === "guarded") return ask(GUARDED_REASON);
+  if (leak !== null) {
+    return deny(
+      "Inline code that reads the whole environment, or a secret variable by name, puts credentials into the transcript. Check presence, not the value.",
+    );
+  }
+  if (PROTECTED_FRAGMENT.test(text) || PROTECTED_FRAGMENT.test(flat)) {
     return ask(
       "Script text the guard can only read as a string names the agent harness or the compliance record. Changing those through a script skips the edit prompt, so a human approves it here.",
     );
   }
   return null;
-}
-
-/** An interpreter whose script arrives on stdin: `python3 -`, `node <<EOF`, `… | python3`. */
-function readsScriptFromStdin(p: Parsed, index: number): boolean {
-  if (!INTERPRETER.test(p.prog) || /^g?awk$/.test(p.prog) || runsInlineCode(p.prog, p.args)) {
-    return false;
-  }
-  const positional = p.args.filter((a) => !a.startsWith("-") || a === "-");
-  if (p.args.some((a) => /^(-v|-V|-h|--version|--help)$/.test(a))) return false;
-  return (
-    positional[0] === "-" ||
-    (positional.length === 0 && (index > 0 || p.ins.length + p.docs.length > 0))
-  );
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -1859,10 +2171,18 @@ function readsScriptFromStdin(p: Parsed, index: number): boolean {
 const UNKNOWN_DIR_REASON =
   "A `cd` the guard cannot resolve comes before this write, so it could land in the agent harness or the compliance record. A human approves it here.";
 const protectedReason = (path: string): string =>
-  `\`${echo(path)}\` is part of the agent harness or the compliance record. Changing it through the shell skips the edit prompt, so a human approves it here.`;
+  isToolchainPath(path)
+    ? `\`${echo(path)}\` is the bun the agent hooks run on, a program the hooks call by name (bun, perl, env, sh, node, git, python3), a shell startup file, or a user-level git, launchd or agent file: a write there switches the guard off or makes it run something else for every later command. A human approves it here.`
+    : `\`${echo(path)}\` is part of the agent harness or the compliance record. Changing it through the shell skips the edit prompt, so a human approves it here.`;
 const WHOLE_TREE: WriteTarget = { raw: "", anc: true, merge: true };
 const ROOT_WIDE_REASON =
   "This recursive delete, permission change or tree merge takes in the whole repo root, and with it the agent harness and the compliance record. A human decides.";
+const writeHitReason = (hit: WriteHit): string =>
+  hit.path === null
+    ? UNKNOWN_DIR_REASON
+    : hit.path === ""
+      ? ROOT_WIDE_REASON
+      : protectedReason(hit.path);
 
 /** Pathspecs a `git checkout|restore|rm|mv` writes, by the git rules for each (`--`, `--source X`, `-b`). */
 function gitPathspecs(sub: string, rest: readonly string[], ctx: BashContext, dir: Cwd): string[] {
@@ -1888,9 +2208,40 @@ function gitPathspecs(sub: string, rest: readonly string[], ctx: BashContext, di
   const one = positional[0] ?? "";
   const rel = resolvePath(one, dir, ctx);
   const isPath = rel === null || protectedTouch(rel, WHOLE_TREE);
-  return isPath && (ctx.exists?.(one) ?? true) ? [one] : [];
+  return isPath && existsFrom(one, rel, ctx) ? [one] : [];
 }
 
+/**
+ * Does `word` name a file where the command runs? `rel` is where it lands (null: unknown), so a `cd scripts/harness
+ * && git checkout pre-tool-guard.ts` is judged against that directory, not the one the shell started in.
+ */
+function existsFrom(word: string, rel: string | null, ctx: BashContext): boolean {
+  const root = ctx.root ? trimSlashes(ctx.root) : "";
+  if (rel === null || rel.startsWith("~") || !root) return ctx.exists?.(word) ?? true;
+  return ctx.exists?.(rel.startsWith("/") ? rel : `${root}/${rel}`) ?? true;
+}
+
+/** `git format-patch -o DIR` writes its patch files into DIR. */
+function formatPatchVerdict(
+  rest: readonly string[],
+  cwds: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict | null {
+  const dirs = fileArgs(optionValues(rest, "o", [["output-directory", 8]]));
+  for (const cwd of cwds) {
+    for (const d of dirs) {
+      const rel = resolvePath(d, cwd, ctx);
+      if (rel === null) return ask(UNKNOWN_DIR_REASON);
+      if (protectedTouch(rel, wt(d))) return ask(protectedReason(rel));
+    }
+  }
+  return null;
+}
+
+/** More `git -C` operands than this is not a command anyone types: the guard asks instead of following them. */
+const MAX_GIT_DIR_OPERANDS = 8;
+const TOO_MANY_GIT_DIRS_REASON =
+  "This git command has more than 8 `-C` operands, too many for the guard to follow; a human decides.";
 /** `git apply`/`am` (a diff we cannot read), `clean`, and checkout/restore/rm/mv onto protected paths. */
 function gitWriteVerdict(
   sub: string,
@@ -1911,29 +2262,73 @@ function gitWriteVerdict(
       "`git clean` deletes untracked files, and with -x the ignored ones too (the audit ledger, .claude/.cache). A human decides.",
     );
   }
-  if (!/^(checkout|restore|rm|mv)$/.test(sub)) return null;
+  if (sub === "format-patch") return formatPatchVerdict(rest, cwds, ctx);
+  // `git -C a -C a ...` thousands of times, after a few `cd`s, was a minute of path resolution; no real command has more.
+  if (gitDirs.length > MAX_GIT_DIR_OPERANDS) return ask(TOO_MANY_GIT_DIRS_REASON);
+  const treeWriter = wholeTreeWriterReason(sub, rest);
+  const writesPaths = /^(checkout|restore|rm|mv)$/.test(sub);
+  if (!treeWriter && !writesPaths) return null;
   for (const cwd of cwds) {
     let dir = cwd;
-    for (const d of gitDirs) dir = dir === null ? null : resolvePath(d, dir, ctx, true);
+    for (const d of gitDirs) dir = dir === null ? null : capLength(resolvePath(d, dir, ctx, true));
+    if (treeWriter && treeHoldsRepo(dir, ctx))
+      return ask(
+        `${treeWriter}, the guard and the compliance record included, and can put an older version back. A human decides.`,
+      );
+    if (!writesPaths) continue;
     for (const p of gitPathspecs(sub, rest, ctx, dir)) {
+      if (isMagicPathspec(p)) return ask(MAGIC_PATHSPEC_REASON);
       const rel = resolvePath(p, dir, ctx);
       if (rel === null) return ask(UNKNOWN_DIR_REASON);
-      if (protectedTouch(rel, WHOLE_TREE)) return ask(protectedReason(rel));
+      // The literal part of a wildcard pathspec counts too (`scripts/harness/hard-dead*`), then what the wildcard can match.
+      if (touchesProtectedTree(rel)) {
+        return ask(protectedReason(rel));
+      }
     }
   }
   return null;
+}
+
+const MAGIC_PATHSPEC_REASON =
+  "A magic pathspec (`:/`, `:(top)`, `:(glob)`) names files from the top of the tree whatever directory this runs in, so it can reach the guard and the compliance record. A human decides.";
+
+/**
+ * Does a pathspec wildcard (`*`, `scripts/h*`, `.*`) expand onto any protected path? Tried against the protected names the
+ * tree holds (`protected-names.ts`) and the named samples; when that listing is incomplete, any wildcard may.
+ */
+function wildcardReachesProtected(spec: string): boolean {
+  if (!protectedNamesComplete()) return true;
+  const tokens = globTokens(spec.toLowerCase());
+  return protectedNameSamples().some((sample) => globMatches(tokens, sample));
+}
+
+/**
+ * Can a wildcard's directory part (`scripts/h?rness` of `scripts/h?rness/new.ts`) match a directory in which every file is protected?
+ * Then the file it names may not exist yet, and `wildcardReachesProtected` (the names the tree holds) cannot see it.
+ */
+function wildcardMayGainProtected(spec: string): boolean {
+  const slash = spec.lastIndexOf("/");
+  if (slash < 0) return false;
+  const tokens = globTokens(spec.slice(0, slash).toLowerCase());
+  return protectedDirectories().some((dir) => globMatches(tokens, dir));
+}
+
+/** Does the working tree this git command acts on hold the repo (and so the guard)? An unknown directory may. */
+function treeHoldsRepo(dir: Cwd, ctx: BashContext): boolean {
+  if (dir === null || !ctx.root) return true;
+  return !dir.startsWith("/") && !dir.startsWith("~");
 }
 
 // A coding agent started with its approval prompts, sandbox or hook configuration switched off is an agent
 // the guard no longer watches.
 const AGENT_BYPASS_FLAG =
   /^--(dangerously-skip-permissions|allow-dangerously-skip-permissions|dangerously-bypass-approvals-and-sandbox|yolo)$/;
-const AGENT_CLI = /(^|\/)(codex|claude(-code)?)(@[\w.-]+)?$/;
 
 function nestedAgentVerdict(
   prog: string,
   args: readonly string[],
   assigns: readonly string[],
+  here: readonly Cwd[],
 ): BashVerdict | null {
   const switchedOff = (what: string): BashVerdict =>
     ask(
@@ -1941,8 +2336,7 @@ function nestedAgentVerdict(
     );
   const bypass = args.find((a) => AGENT_BYPASS_FLAG.test(a));
   if (bypass) return switchedOff(`\`${echo(bypass)}\``);
-  const agent = [prog, ...args.slice(0, 3)].some((w) => AGENT_CLI.test(w));
-  if (!agent) return null;
+  if (!isAgentSpawn(prog, args)) return null;
   const mode = args.findIndex(
     (a) => a === "--permission-mode" || a.startsWith("--permission-mode="),
   );
@@ -1960,8 +2354,55 @@ function nestedAgentVerdict(
   if (assigns.some((a) => /^(HOME|XDG_CONFIG_HOME)=/.test(a))) {
     return switchedOff("Re-pointing `HOME`");
   }
+  // `claude --bare` skips hooks; `codex --disable codex_hooks` switches them off; `-C DIR` / `--cd DIR` starts it in
+  // another tree, and so does a `cd` before it: the repo's project hooks load only from the repo.
+  if (args.includes("--bare")) return switchedOff("`--bare`");
+  if (
+    args.some((a, k) => /^--disable(?:=|$)/.test(a) && /hook/i.test(`${a} ${args[k + 1] ?? ""}`))
+  ) {
+    return switchedOff("`--disable` of the hooks");
+  }
+  if (args.some((a) => a === "-C" || a === "--cd" || a.startsWith("--cd="))) {
+    return switchedOff("A different working directory (`-C`, `--cd`)");
+  }
+  const onlyHelp = args.every((a) => /^(-h|--help|-v|-V|--version|version|help)$/.test(a));
+  if (!onlyHelp && here.some((dir) => dir === null || dir.startsWith("/") || dir.startsWith("~"))) {
+    return switchedOff(
+      "A nested agent started outside the repo, where the repo's hooks do not load,",
+    );
+  }
   return null;
 }
+
+/**
+ * Does the bare word name a file in any directory the command may be running in? `cd deploy/production/tls &&
+ * cat server.key` reads a key the start directory does not hold, so each candidate is asked, not only the first.
+ * A directory the guard cannot resolve counts as a hit for a program that reads files: a key-looking name there
+ * is not worth the doubt.
+ */
+function namesFileIn(
+  word: string,
+  dirs: readonly Cwd[],
+  ctx: BashContext,
+  readsFiles: boolean,
+): boolean {
+  if (ctx.exists?.(word)) return true;
+  const root = ctx.root ? trimSlashes(ctx.root) : "";
+  for (const dir of dirs) {
+    if (dir === null) {
+      if (readsFiles) return true;
+      continue;
+    }
+    const rel = resolvePath(word, dir, ctx);
+    if (rel === null) continue;
+    const abs = rel.startsWith("/") ? rel : rel.startsWith("~") ? null : `${root}/${rel}`;
+    if (abs !== null && root && (ctx.exists?.(abs) ?? false)) return true;
+  }
+  return false;
+}
+
+/** A host or user@host word built by an expansion: `$(echo h)`, `` `echo h` ``, `$HOST`, `${HOST}`. */
+const DYNAMIC_HOST = /\$\(|`|\$\{?[A-Za-z_]/;
 
 // A secret file named by something the guard cannot evaluate: `cat $(printf '.%s' env)`.
 const FILE_READER =
@@ -1980,6 +2421,19 @@ const VALUE_FLAGS: ReadonlyMap<string, RegExp> = new Map([
 const DYNAMIC_WORD = /\$\(|`|\$\{[^}]*[^A-Za-z0-9_}]/;
 const DYNAMIC_PART = /\$\([^()]*\)|`[^`]*`|\$\{[^{}]*\}/g;
 const MAX_MASK_PASSES = 5;
+
+/** The word with every `$( )`, backtick pair and `${ }` taken out: what is written literally. */
+function withoutExpansions(word: string): string {
+  let rest = word;
+  for (let i = 0; i < MAX_MASK_PASSES; i++) rest = rest.replace(DYNAMIC_PART, "");
+  return rest;
+}
+
+/** A `{a,b}` or `{a..b}` group in a program word: the shell expands it into the name the guard would have judged. */
+const BRACE_GROUP_WORD = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
+
+const DYNAMIC_PROGRAM_REASON =
+  "The command's name is built by a substitution or an expansion, so the guard cannot tell which program runs. Name the program. A human decides.";
 
 /** Is the FILE NAME part of this word built by an expansion (so the guard cannot know which file it is)? */
 function dynamicName(word: string): boolean {
@@ -2017,8 +2471,7 @@ const GREP_VALUE_LONG =
   /^--(regexp|file|max-count|include|exclude|exclude-dir|exclude-from|context|after-context|before-context|label|devices|directories)$/;
 const RG_VALUE_LONG =
   /^--(regexp|file|glob|iglob|type|type-not|type-add|max-count|max-depth|maxdepth|threads|encoding|max-filesize|context|after-context|before-context|sort|sortr|colors|replace|path-separator|pre|pre-glob|ignore-file|engine|max-columns)$/;
-const SAFE_INCLUDE =
-  /\.(ts|tsx|js|jsx|mjs|cjs|json|md|mdx|sql|ya?ml|css|html|py|sh|toml|txt|rs|go)$/i;
+const SAFE_INCLUDE = SAFE_SOURCE_NAME;
 
 /** The path operands of grep/rg: positionals after the pattern (or all of them when -e/-f gave it). */
 function searchPaths(args: readonly string[], shortValue: string, longValue: RegExp): string[] {
@@ -2041,17 +2494,213 @@ function searchPaths(args: readonly string[], shortValue: string, longValue: Reg
   return patternFlag ? positional : positional.slice(1);
 }
 
+/** Does this repo-relative live env file exist here? Without a way to look (a unit test), none does. */
+const liveEnvExists = (ctx: BashContext): ((file: string) => boolean) => {
+  if (!liveEnvListed) {
+    liveEnvListed = true;
+    const { files, complete } = asListing(ctx.liveEnvFiles?.() ?? []);
+    setListedLiveEnvFiles(files, complete);
+  }
+  return (file) => ctx.exists?.(ctx.root ? `${trimSlashes(ctx.root)}/${file}` : file) ?? false;
+};
+
+const COPY_OUT_REASON =
+  "Copying a directory that holds live env files puts them where the guard does not look (and `cp -r` ignores .gitignore). Copy the files you need.";
+
+/** `cp -r deploy/production /tmp/x`, `rsync -a …`, `ditto …`: a tree with live env files in it is copied out. */
+function copyOutVerdict(
+  prog: string,
+  args: readonly string[],
+  cwd: Cwd,
+  ctx: BashContext,
+): BashVerdict | null {
+  if (!/^(?:cp|rsync|ditto)$/.test(prog)) return null;
+  if (prog !== "ditto" && !args.some(isRecursive)) return null;
+  const { srcs } = splitDest(args, fileArgGroups(args), prog !== "rsync");
+  // The same reading of "reaches a live env file" as `grep -r`: wildcards, ancestors, an operand that cannot be placed.
+  return srcs.some((src) => treeOperandReaches(src, cwd, ctx, "tree"))
+    ? ask(COPY_OUT_REASON)
+    : null;
+}
+
+const isFileReader = (program: string): boolean =>
+  FILE_READER.test(program) || EXEC_SWEEP_READER.test(program);
+
+/** Does the command a `find -exec` runs read (or carry out) the file it is handed: a reader, or a shell whose string holds one? */
+function execReadsFiles(words: readonly string[]): boolean {
+  const parsed = parseSegment(words.map(shellQuote).join(" "));
+  if (isFileReader(parsed.prog)) return true;
+  if (!SHELL_PROGRAM.test(parsed.prog)) return false;
+  return shellCommandStrings(parsed.prog, parsed.args).some((script) =>
+    segments(script).some((seg) => isFileReader(parseSegment(seg).prog)),
+  );
+}
+
+/** `find . -type f -exec cat {} +`: every file under the start paths is read, live env files included. */
+function findReadVerdict(
+  prog: string,
+  args: readonly string[],
+  cwd: Cwd,
+  ctx: BashContext,
+): BashVerdict | null {
+  if (prog !== "find") return null;
+  // The expression is read as a boolean one (find-expr.ts): a name test for a source-file type limits a reader only when
+  // it is ANDed in front of it, and `-o` narrows nothing (`find . -name '*.ts' -o -type f -exec cat {} +`).
+  const readers = findActions(args, execReadsFiles, narrowsToSourceFiles).filter(
+    (action) => action.kind === "exec" && !action.narrowed,
+  );
+  if (readers.length === 0) return null;
+  let k = 0;
+  while (/^-[HLP]$/.test(args[k] ?? "")) k++;
+  const starts: string[] = [];
+  for (; k < args.length && !/^(-|\\?\(|!)/.test(args[k] ?? ""); k++) starts.push(args[k] ?? "");
+  const reaches = (starts.length > 0 ? starts : ["."]).some((start) =>
+    treeOperandReaches(start, cwd, ctx, "tree"),
+  );
+  return reaches
+    ? ask(
+        "`find … -exec cat|grep {}` reads every file under it, live env files included. Name the files you need, or limit it with -name '*.ts'.",
+      )
+    : null;
+}
+
+/**
+ * Can this wildcard operand reach a live env file? A repo-relative one by what it can match; one above the repo or
+ * in the home directory by its literal directory part (`/Users/*` holds the repo, `/tmp/*` does not).
+ */
+function wildcardReachesLiveEnv(rel: string, ctx: BashContext): boolean {
+  if (!rel.startsWith("/") && !rel.startsWith("~") && !rel.startsWith("..")) {
+    return globReachesLiveEnv(rel, liveEnvExists(ctx));
+  }
+  const dir = rel.slice(0, Math.max(rel.search(/[*?[]/), 0)).replace(/\/[^/]*$/, "");
+  return isRootAncestor(dir === "" ? "/" : dir, ctx);
+}
+
+/**
+ * Does a command that reads the tree (`tree`) or the direct children (`children`) of the directory this operand names,
+ * run from `cwd`, reach a live env file? Yes for the repo root, a directory above it, a directory that holds an existing
+ * one, a wildcard that can match such a directory, and an operand that cannot be placed (an unresolvable `cd`, git
+ * pathspec magic such as `:/apps` or `:(glob)**`). A `children` read of an operand that cannot be placed is not asked
+ * about: it names no more than two files in most uses.
+ */
+function treeOperandReaches(
+  raw: string,
+  cwd: Cwd,
+  ctx: BashContext,
+  depth: SweepDepth,
+  pathspec = false,
+): boolean {
+  if (pathspec && isMagicPathspec(raw)) return true;
+  // `{apps,docs}` is two operands: every sweep reads the shell's expansion, not the word.
+  const alternatives = expandBraces(raw);
+  if (alternatives.length > 1) {
+    return alternatives.some((alt) => treeOperandReaches(alt, cwd, ctx, depth, pathspec));
+  }
+  const rel = resolvePath(withKnownVariables(raw, knownVariables), cwd, ctx);
+  // An operand that still holds a variable or a substitution after the placements the guard knows (`$PWD`, `$HOME`,
+  // `$(pwd)`) is unplaceable, like an unresolvable `cd`: `D=.; grep -r x $D` is the repo root.
+  if (rel === null || /[$`]/.test(rel)) return depth === "tree";
+  if (hasWildcard(rel)) return wildcardReachesLiveEnv(rel, ctx);
+  if (depth === "children") return holdsLiveEnvDirectly(rel, liveEnvExists(ctx));
+  // `~` is the whole home directory (`~/.aws`, `~/.ssh` too), whether or not the repo is under it.
+  if (rel === "" || rel === "~" || isRootAncestor(rel, ctx)) return true;
+  return !rel.startsWith("/") && !rel.startsWith("~") && reachesLiveEnv(rel, liveEnvExists(ctx));
+}
+
+const FORCED_ADD_REASON =
+  "A forced `git add` (`-f`, `--force`, `update-index --add`) stages a file `.gitignore` keeps out of the object store; staged, a live env file is in `.git` for good and one `git show :FILE` from the transcript.";
+
+const PATHSPEC_FILE_REASON =
+  "`git add --pathspec-from-file` reads the names it stages from standard input, a device, a variable or (with `-f`) a file, which the guard cannot read: they could name a live env file `.gitignore` keeps out of the object store. A human decides.";
+
+/** A forced add of a secret file is refused like a read of it; a forced add of a whole tree that holds a live env file asks (`git-add-force.ts`, R8-ADV-12). */
+function forcedAddVerdict(
+  sub: string,
+  rest: readonly string[],
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict | null {
+  const forced = forcedAdd(sub, rest);
+  if (forced === null) return null;
+  const named = forced.pathspecSource === undefined ? [] : [forced.pathspecSource];
+  for (const operand of forced.unforced ? named : [...forced.operands, ...named]) {
+    if (secretPathReason(operand))
+      return deny(`\`${echo(operand)}\` is a secret file. ${FORCED_ADD_REASON}`);
+  }
+  if (forced.pathspecSource !== undefined) return ask(PATHSPEC_FILE_REASON);
+  const reaches = forced.operands.some((operand) =>
+    here.some((cwd) => treeOperandReaches(operand, cwd, ctx, "tree", true)),
+  );
+  return reaches
+    ? ask(`${FORCED_ADD_REASON} The pathspec reaches a directory that holds one.`)
+    : null;
+}
+
+const DIFF_SWEEP_REASON =
+  "`diff -r`, `colordiff -r` and `git diff --no-index` print every file under a directory, ignoring .gitignore, and a plain `diff DIR DIR` compares the files directly under both, so over the repo root, a directory above it or one that holds a live .env file they print that file. Compare the files you need.";
+
+/** `git diff A B` is `--no-index` when one of the two paths is outside the working tree. */
+const outsideTree = (rel: string | null): boolean =>
+  rel !== null && (rel.startsWith("/") || rel.startsWith("~") || /^\.\.(?:\/|$)/.test(rel));
+
+/** `git diff --no-index`, `diff -r`, `colordiff -r`, a plain `diff DIR DIR`: the directories they print the files of. */
+function diffSweepVerdict(
+  prog: string,
+  args: readonly string[],
+  cwd: Cwd,
+  ctx: BashContext,
+): BashVerdict | null {
+  let base: Cwd = cwd;
+  let operands: readonly string[];
+  let depth: SweepDepth = "tree";
+  if (prog === "git") {
+    const git = gitInvocation(args);
+    const found = git.sub === "diff" ? gitDiffSweepOperands(git.rest) : null;
+    if (found === null) return null;
+    for (const d of git.dirs.slice(0, MAX_GIT_DIR_OPERANDS)) {
+      base = base === null ? null : capLength(resolvePath(d, base, ctx, true));
+    }
+    // Two operands and no `--no-index`: a plain pathspec diff, unless one of them is outside the working tree.
+    if (!found.noIndex && !found.operands.some((o) => outsideTree(resolvePath(o, base, ctx)))) {
+      return null;
+    }
+    operands = found.operands;
+  } else {
+    const found = diffSweepOperands(prog, args);
+    if (found === null) return null;
+    operands = found.operands;
+    depth = found.mode;
+  }
+  return operands.some((o) => treeOperandReaches(o, base, ctx, depth))
+    ? ask(DIFF_SWEEP_REASON)
+    : null;
+}
+
 function recursiveSearchVerdict(
   prog: string,
   args: readonly string[],
   cwd: Cwd,
   ctx: BashContext,
 ): BashVerdict | null {
+  // `git grep --no-index` (and `--untracked --no-exclude-standard`) apply no .gitignore either.
+  const git = prog === "git" ? gitInvocation(args) : null;
+  const gitGrep = git?.sub === "grep" && gitGrepIgnoresGitignore(git.rest) ? git : null;
   const grep = /^(grep|egrep|fgrep)$/.test(prog);
-  if (!grep && prog !== "rg") return null;
-  if (grep) {
+  if (!grep && prog !== "rg" && gitGrep === null) return null;
+  // `git -C dir grep …` searches from `dir`.
+  let base: Cwd = cwd;
+  if (gitGrep !== null) {
+    for (const d of gitGrep.dirs.slice(0, MAX_GIT_DIR_OPERANDS)) {
+      base = base === null ? null : capLength(resolvePath(d, base, ctx, true));
+    }
+  } else if (grep) {
     const recursive = args.some(
-      (a) => clusterHas(a, "rR") || a === "--recursive" || a === "--dereference-recursive",
+      (a, k) =>
+        clusterHas(a, "rR") ||
+        isLongOption(a, "recursive", 3) ||
+        isLongOption(a, "dereference-recursive", 3) ||
+        a === "--directories=recurse" ||
+        (a === "-d" && args[k + 1] === "recurse"),
     );
     const globs = args.flatMap((a, k) =>
       a.startsWith("--include=")
@@ -2069,55 +2718,206 @@ function recursiveSearchVerdict(
   ) {
     return null;
   }
-  const paths = grep
-    ? searchPaths(args, GREP_VALUE_LETTERS, GREP_VALUE_LONG)
-    : searchPaths(args, RG_VALUE_LETTERS, RG_VALUE_LONG);
+  const paths = gitGrep
+    ? searchPaths(gitGrep.rest, GIT_GREP_VALUE_LETTERS, GIT_GREP_VALUE_LONG)
+    : grep
+      ? searchPaths(args, GREP_VALUE_LETTERS, GREP_VALUE_LONG)
+      : searchPaths(args, RG_VALUE_LETTERS, RG_VALUE_LONG);
+  // The root, a directory above it, one the guard cannot place (a glob, pathspec magic, an unresolvable `cd`), or one
+  // that holds a live env file (`deploy/production`, `apps`).
   const atRoot =
     paths.length === 0
-      ? cwd === "" || cwd === null
-      : paths.some((p) => [null, ""].includes(resolvePath(p, cwd, ctx)));
+      ? base === null || base === "" || reachesLiveEnv(base, liveEnvExists(ctx))
+      : paths.some((p) => treeOperandReaches(p, base, ctx, "tree", gitGrep !== null));
   if (!atRoot) return null;
   return ask(
-    grep
-      ? "`grep -r` ignores .gitignore, so over the repo root it reads every live .env file under it. Search the directory you need, or use `rg` (which skips ignored files)."
-      : "`rg` with -u, --no-ignore or --hidden stops skipping ignored files, so over the repo root it reads every live .env file under it. Search the directory you need, or drop the flag.",
+    gitGrep
+      ? "`git grep --no-index` (or `--untracked --no-exclude-standard`) applies no .gitignore, so over the repo root it reads every live .env file under it. Search the directory you need, or add --exclude-standard."
+      : grep
+        ? "`grep -r` ignores .gitignore, so over the repo root it reads every live .env file under it. Search the directory you need, or use `rg` (which skips ignored files)."
+        : "`rg` with -u, --no-ignore or --hidden stops skipping ignored files, so over the repo root it reads every live .env file under it. Search the directory you need, or drop the flag.",
   );
 }
 
-/** `tar c`/`zip` of the repo root packs every live .env into one blob that can be piped anywhere. */
+/** `tar c`/`zip` of the repo root packs every live env file into one blob that can be piped anywhere. */
 function archiveRootVerdict(
   prog: string,
   args: readonly string[],
   cwd: Cwd,
   ctx: BashContext,
 ): BashVerdict | null {
-  if (prog !== "tar" && prog !== "zip") return null;
-  let creating = prog === "zip";
-  let dir: string | undefined;
-  const operands: string[] = [];
-  for (let k = 0; k < args.length; k++) {
-    const a = args[k] ?? "";
-    const cluster =
-      prog === "tar" && /^-?[A-Za-z]+$/.test(a) && (k === 0 || a.startsWith("-"))
-        ? a.replace(/^-/, "")
-        : "";
-    if (prog === "tar" && (a === "-C" || a === "--directory")) dir = args[++k];
-    else if (a === "--create") creating = true;
-    else if (cluster) {
-      creating ||= cluster.includes("c");
-      if (cluster.includes("f")) k++;
-    } else if (!a.startsWith("-")) operands.push(a);
-  }
-  const base = dir === undefined ? cwd : resolvePath(dir, cwd, ctx);
-  const names = prog === "zip" ? operands.slice(1) : operands;
-  const root = names.some((o) => {
-    const rel = base === null ? (/^\.\/?$/.test(o) ? "" : undefined) : resolvePath(o, base, ctx);
-    return rel === "";
+  if (!TAR.test(prog) && prog !== "zip") return null;
+  const reading = TAR.test(prog)
+    ? readTar(args)
+    : {
+        creating: true,
+        filesFrom: false,
+        members: fileArgs(args)
+          .slice(1)
+          .map((name) => ({ name, dirs: [] })),
+      };
+  if (!reading.creating) return null;
+  // Each member is relative to the `-C` directories before it, each relative to the one before.
+  const reaches = reading.members.some((m) => {
+    const base = m.dirs.reduce<Cwd>(
+      (at, dir) => (at === null ? null : resolvePath(dir, at, ctx)),
+      cwd,
+    );
+    return treeOperandReaches(m.name, base, ctx, "tree");
   });
-  if (!creating || !root) return null;
+  if (!reaches && !reading.filesFrom) return null;
   return ask(
-    "Archiving the repo root packs every live .env file in it into one blob. Archive the directory you need.",
+    "Archiving the repo root, or a directory that holds live env files, packs them into one blob. Archive the files you need.",
   );
+}
+
+const unmodelledWriterReason = (prog: string, path: string): string =>
+  `\`${echo(prog)}\` is not a program the guard knows to be read-only, and its command line names a protected path (${protectedReason(path)}). It may write there, and the guard has no model of it. A human decides.`;
+
+/** Does this resolved path name a protected file, a directory above one, or a wildcard that can match one? */
+const touchesProtectedTree = (rel: string, rootCounts = true): boolean =>
+  protectedTouch(rel, rootCounts ? WHOLE_TREE : { ...WHOLE_TREE, merge: false }) ||
+  // A wildcard with no `/` (`*`, `*.ts`, `.*`) is a pattern for the tool as often as a path, unless a write flag says so.
+  (hasWildcard(rel) &&
+    (rel.includes("/") || rootCounts) &&
+    (wildcardReachesProtected(rel) || wildcardMayGainProtected(rel)));
+
+/**
+ * The protected path a word names from some directory the command may run in, or null. The word is placed like every
+ * other operand: its brace alternatives, the variables the command line sets to a literal, then the same predicate the
+ * write rules use (the path itself, a directory above it, a wildcard that can match it). A word that still holds a
+ * variable or a substitution is a computed name and stays unseen.
+ */
+function protectedNamedBy(
+  raw: string,
+  here: readonly Cwd[],
+  ctx: BashContext,
+  rootCounts: boolean,
+): string | null {
+  for (const alternative of expandBraces(raw)) {
+    const word = withKnownVariables(alternative, knownVariables);
+    for (const dir of here) {
+      if (work.spent) return null;
+      const rel = resolvePath(word, dir, ctx);
+      if (rel !== null && !/[$`]/.test(rel) && touchesProtectedTree(rel, rootCounts)) return rel;
+    }
+  }
+  return null;
+}
+
+const RECURSIVE_READ_REASON = (prog: string): string =>
+  `\`${echo(prog)}\` is not a program the guard knows to only read, and it is asked to read recursively (\`-r\`, \`-a\`, \`--hidden\`) a directory that holds a live env file, which it would read and may print. Name the files you need, or use a search the guard knows (\`rg\`, \`grep\` with an include).`;
+
+/** Does this word name a placed directory (not the root, not a wildcard) that holds a live env file? */
+function heldLiveEnvDirectory(raw: string, here: readonly Cwd[], ctx: BashContext): boolean {
+  return expandBraces(raw).some((alternative) => {
+    const word = withKnownVariables(alternative, knownVariables);
+    return here.some((dir) => {
+      if (work.spent) return false;
+      const rel = resolvePath(word, dir, ctx);
+      const placed =
+        rel !== null &&
+        rel !== "" &&
+        !/[$`*?[]/.test(rel) &&
+        !rel.startsWith("/") &&
+        !rel.startsWith("~");
+      return placed && reachesLiveEnv(rel, liveEnvExists(ctx));
+    });
+  });
+}
+
+/**
+ * The backstop for writers nobody modelled (`protected-operands.ts`): a program that is not known to only read (or that
+ * carries one of its write flags), handed a word that resolves onto a protected path from a directory the command may run
+ * in, or an inline program or command text that names one or a secret file. A directory the guard cannot resolve is no
+ * finding here (it would make every unknown program ask).
+ */
+function unmodelledWriterVerdict(
+  prog: string,
+  args: readonly string[],
+  strings: readonly string[],
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict | null {
+  const plan = backstopPlan(prog, args, localFunctions.has(prog), strings);
+  if (plan === null) return null;
+  for (const word of plan.words) {
+    const rel = protectedNamedBy(word, here, ctx, plan.rootCounts);
+    if (rel !== null) return ask(unmodelledWriterReason(prog, rel));
+  }
+  if (plan.recursiveRead && plan.words.some((word) => heldLiveEnvDirectory(word, here, ctx))) {
+    return ask(RECURSIVE_READ_REASON(prog));
+  }
+  for (const name of plan.names) {
+    // Only a name that looks like a path is a secret file here: a SQL column such as `r.key`, or a property chain, is not.
+    const secret = /[/~]|^\./.test(name) && !/[$]/.test(name) ? secretPathReason(name) : null;
+    if (secret !== null) {
+      return deny(
+        `\`${echo(prog)}\` is handed code or text that names \`${echo(name)}\`, which is ${secret}. A program that reads it prints it. Agents do not read secrets or dumps.`,
+      );
+    }
+    const rel = protectedNamedBy(name, here, ctx, plan.rootCounts);
+    if (rel !== null) return ask(unmodelledWriterReason(prog, rel));
+  }
+  return null;
+}
+
+/** The variables a whole command line sets to a plain literal (`D=.; …`, `export S=/tmp/x`), read once per command. */
+function literalAssignmentsOf(cmd: string): ReadonlyMap<string, string> {
+  const words = segments(cmd).flatMap((seg) => {
+    const p = parseSegment(seg);
+    return assignmentWords(p.prog, p.args, p.assigns);
+  });
+  // A variable the command binds more than once, or by `read`, `printf -v`, `for`, `eval`, `+=`, … is no longer its first literal.
+  const rebound = reboundNames(cmd);
+  return new Map([...literalValues(words)].filter(([name]) => !rebound.has(name)));
+}
+
+/**
+ * The first live secret file among the file words `files`: a wildcard that reaches one, or a name or path that is one. A bare word is a
+ * file only if one of that name exists where the command runs; a path or a dot-env name is judged as written. `skipByName`: a compose
+ * lifecycle command's `--env-file` value.
+ */
+function secretFileVerdict(
+  files: readonly string[],
+  skipByName: boolean,
+  prog: string,
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict | null {
+  for (const t of files) {
+    if (skipByName && SECRET_BY_NAME.test(t)) continue; // --env-file value for a lifecycle command
+    if (globReachesSecret(t)) {
+      return deny(
+        `\`${echo(t)}\` expands onto a live secret file (.env, key material). Name the file you need, and not a secret one.`,
+      );
+    }
+    const why = secretPathReason(t);
+    if (!why) continue;
+    const pathLike =
+      SECRET_BY_NAME.test(t) ||
+      t.includes("/") ||
+      namesFileIn(t, here, ctx, FILE_READER.test(prog));
+    if (pathLike) {
+      return deny(
+        `\`${echo(t)}\` is ${why}. Agents do not read secrets or dumps; use .env.example for shape, and ask the human for any value you truly need.`,
+      );
+    }
+  }
+  return null;
+}
+
+/** A file a program reads LINE BY LINE as names or code (`file -f F`, `wc --files0-from=F`) prints the lines it cannot use: a secret one is a read (`file-list-options.ts`). */
+function listedFileVerdict(prog: string, args: readonly string[]): BashVerdict | null {
+  for (const listed of listedFiles(prog, args)) {
+    const why = secretPathReason(listed);
+    if (why) {
+      return deny(
+        `\`${echo(listed)}\` is ${why}. \`${echo(prog)}\` reads it line by line and prints the lines it cannot use. Agents do not read secrets or dumps.`,
+      );
+    }
+  }
+  return null;
 }
 
 function classifySegment(
@@ -2160,7 +2960,7 @@ function classifySegment(
     }
     if (
       (sub === "diff" || sub === "log" || sub === "show") &&
-      rest.some((a) => /^--(output|ext-diff)\b/.test(a))
+      rest.some((a) => /^--(?:output(?:=|$)|ext-diff$)/.test(a))
     ) {
       return deny(
         "`--output` writes a file and `--ext-diff` runs an external program; neither is the read-only diff/log/show the allow-list is for.",
@@ -2190,33 +2990,19 @@ function classifySegment(
         }
       }
     }
-    if (
-      sub === "config" &&
-      /core\.hooksPath/.test(argline) &&
-      !/(--get|--list|-l)\b/.test(argline) &&
-      !/core\.hooksPath\s+\.githooks\b/.test(argline)
-    ) {
-      return deny("Re-pointing core.hooksPath disables the repo's git hooks.");
-    }
+    const configDenial = sub === "config" ? gitConfigDenial(rest) : null;
+    if (configDenial) return deny(configDenial);
+    const stagedByForce = forcedAddVerdict(sub, rest, here, ctx);
+    if (stagedByForce) return stagedByForce;
     if (sub === "push") {
-      const refs = rest.filter((a) => !a.startsWith("-")); // remote, then refspecs
-      const remoteRefs = refs.slice(1);
-      const targetsMain =
-        remoteRefs.some((r) => /^\+?([^:]*:)?(refs\/heads\/)?main$/.test(r)) ||
-        (ctx.branch === "main" &&
-          (remoteRefs.length === 0 || remoteRefs.some((r) => /^\+?HEAD$/.test(r))));
-      const forced =
-        /\s(--force|-f|--force-with-lease)\b/.test(` ${argline}`) ||
-        remoteRefs.some((r) => r.startsWith("+"));
-      if (targetsMain && forced) {
-        return deny(
-          "Force-pushing main rewrites the change record (see audit/FORCE_PUSH_RECOVERY_AUDIT_2026-09-25.md).",
-        );
-      }
-      if (targetsMain) {
-        return ask(
-          "Pushing to main auto-deploys and costs a CI matrix run. Confirm the human has approved this push, and that rounds are batched.",
-        );
+      // The refspecs are compared decoded (`ma\in`, `main$EMPTY`); `git-push-refs.ts` reads the command line.
+      const found = pushFinding(
+        pushFacts(rest, (text) => withKnownVariables(text, knownVariables)),
+        ctx.branch,
+      );
+      if (found !== null) {
+        const { decision, reason } = pushDecision(found);
+        return decision === "deny" ? deny(reason) : ask(reason);
       }
     }
     const writer = gitWriteVerdict(sub, rest, dirs, here, ctx);
@@ -2225,24 +3011,32 @@ function classifySegment(
   }
 
   // --- Nested agents started with the guard off.
-  const nested = nestedAgentVerdict(prog, args, assigns);
+  const nested = nestedAgentVerdict(prog, args, assigns, here);
   if (nested) return nested;
 
+  const launchd = launchctlReason(prog, args);
+  if (launchd !== null) return ask(launchd);
+  const persists = persistenceReason(prog, args, parsed.strings);
+  if (persists !== null) return ask(persists);
+  const optionProgram = programOptionReason(prog, args);
+  if (optionProgram !== null) return ask(optionProgram);
+
+  // --- The keychain, a CLI's stored token, `printenv SECRET`, `docker inspect`.
+  const stored = storedSecretVerdict(prog, args);
+  if (stored) return stored.decision === "deny" ? deny(stored.reason) : ask(stored.reason);
+
   // --- Environment dumps and secret variables echoed into the transcript.
-  if (
-    /^(printenv|env|set|export|declare)$/.test(prog) &&
-    (args.length === 0 || /^(-p|-x)$/.test(args[0] ?? ""))
-  ) {
-    return deny(
-      "Dumping the environment would put DATABASE_URL and vendor secrets into the transcript. Print the one non-secret variable you need, by name.",
-    );
-  }
+  const dumped = environmentDumpReason(prog, args);
+  if (dumped !== null) return deny(dumped);
   if (/\/proc\/[^\s]*\/environ/.test(seg))
     return deny("Reading a process environment exposes its secrets.");
   if (/^(echo|printf|cat)$/.test(prog) && SECRET_VAR.test(argline)) {
     return deny(
       'Echoing a secret-bearing variable puts it in the transcript. Check presence with `[ -n "$VAR" ] && echo set` instead.',
     );
+  }
+  if (/^(echo|printf|cat)$/.test(prog) && GUARDED_VARIABLE_REFERENCE.test(argline)) {
+    return ask(GUARDED_REASON);
   }
 
   // --- docker compose: lifecycle commands may use --env-file; `config` prints resolved secrets.
@@ -2253,9 +3047,9 @@ function classifySegment(
         (a, k) => !a.startsWith("-") && !/^-/.test(args[k - 1] ?? "") && a !== "compose",
       )[0] ?? "";
     if (/(^|\s)--env-file\b/.test(argline) && !COMPOSE_SAFE.test(sub)) {
-      return deny(
-        `\`docker compose ${echo(sub)}\` with --env-file can print resolved secrets (\`config\` does). Lifecycle commands (up, down, run, exec, logs…) are fine.`,
-      );
+      const reason = `\`docker compose ${echo(sub)}\` with --env-file can print resolved secrets (\`config\` does). Lifecycle commands (up, down, run, exec, logs…) are fine.`;
+      // `"$@"`: a wrapper script's own arguments name the subcommand, so it is not known here: a human decides.
+      return /[$`]/.test(sub) ? ask(reason) : deny(reason);
     }
     // `config` prints the file with every ${VAR} resolved, secrets included; the name-only forms do not.
     const namesOnly = /^(-q|--quiet|--services|--images|--profiles|--volumes|--hash)(=|$)/;
@@ -2270,41 +3064,44 @@ function classifySegment(
   const indirect = dynamicReaderVerdict(prog, args, ins);
   if (indirect) return indirect;
 
+  // --- A file whose lines a program reads as names or code and prints in an error (`file -f F`, `wc --files0-from=F`).
+  const listed = listedFileVerdict(prog, args);
+  if (listed) return listed;
+
   // --- Secret files read through the shell (the Read tool is blocked separately).
   if (
     !READ_ONLY_CHECK.test(prog) &&
     !(prog === "git" && /^(status|check-ignore|ls-files|add|rm|mv)$/.test(args[0] ?? ""))
   ) {
-    for (const t of [...fileArgs(args), ...fileArgs(ins), ...fileArgs(outs)]) {
-      if (isCompose && SECRET_BY_NAME.test(t)) continue; // --env-file value for a lifecycle command
-      if (globReachesSecret(t)) {
-        return deny(
-          `\`${echo(t)}\` expands onto a live secret file (.env, key material). Name the file you need, and not a secret one.`,
-        );
-      }
-      const byName = SECRET_BY_NAME.test(t);
-      const pathLike = t.includes("/") || (ctx.exists?.(t) ?? false);
-      if (!byName && !pathLike) continue;
-      const why = secretPathReason(t);
-      if (why) {
-        return deny(
-          `\`${echo(t)}\` is ${why}. Agents do not read secrets or dumps; use .env.example for shape, and ask the human for any value you truly need.`,
-        );
-      }
-    }
+    const secret = secretFileVerdict(
+      [...fileArgs(args), ...fileArgs(ins), ...fileArgs(outs)],
+      isCompose,
+      prog,
+      here,
+      ctx,
+    );
+    if (secret) return secret;
   }
+  // The file a wrapper's own option reads (`xargs -a F`, `sshpass -f F`) is read whatever the program behind it is: `ls` and the other
+  // read-only names do not print F, but the wrapper hands its lines to them as arguments and they print those in errors (R8-CR-11).
+  const wrapped = secretFileVerdict(fileArgs(parsed.wrapperReads), isCompose, prog, here, ctx);
+  if (wrapped) return wrapped;
 
   // --- Whole-tree reads that go around .gitignore, and archives of the repo root: from every directory the
   // command may be in, so a `cd` that may not have applied cannot move the sweep off the root.
   for (const dir of here) {
     const sweep =
-      recursiveSearchVerdict(prog, args, dir, ctx) ?? archiveRootVerdict(prog, args, dir, ctx);
+      recursiveSearchVerdict(prog, args, dir, ctx) ??
+      diffSweepVerdict(prog, args, dir, ctx) ??
+      archiveRootVerdict(prog, args, dir, ctx) ??
+      copyOutVerdict(prog, args, dir, ctx) ??
+      findReadVerdict(prog, args, dir, ctx);
     if (sweep) return sweep;
   }
 
   // --- Inline interpreter code that names a secret file: `python -c "open('.env').read()"`.
   if (runsInlineCode(prog, args)) {
-    const code = scriptTextVerdict(argline);
+    const code = scriptTextVerdict(leakCheckText(prog, args));
     if (code?.decision === "deny") return code;
   }
 
@@ -2315,47 +3112,36 @@ function classifySegment(
     );
   }
   const protectedHit = writesProtectedPath(parsed, here, ctx);
-  if (protectedHit) {
-    return ask(
-      protectedHit.path === null
-        ? UNKNOWN_DIR_REASON
-        : protectedHit.path === ""
-          ? ROOT_WIDE_REASON
-          : protectedReason(protectedHit.path),
-    );
-  }
+  if (protectedHit) return ask(writeHitReason(protectedHit));
   if (runsInlineCode(prog, args)) {
-    const code = scriptTextVerdict(argline);
+    const code = scriptTextVerdict(leakCheckText(prog, args));
     if (code) return code;
   }
 
-  // --- Production data access. An agent session connecting to a non-local database is PHI access.
-  if (/^(psql|pg_dump|pg_dumpall|pg_restore|pgcli)$/.test(prog)) {
-    const hostFlag = /(?:^|\s)(?:-h\s*|--host[=\s])([^\s'"]+)/.exec(argline)?.[1];
-    const urlHost = /postgres(?:ql)?:\/\/[^@\s]*@([^/:\s?'"]+)/.exec(argline)?.[1];
-    const envHost = assigns.map((a) => /^PGHOST=(.*)$/.exec(a)?.[1]).find(Boolean);
-    const host = hostFlag ?? urlHost ?? envHost;
-    if (host && !isLocalHost(host)) {
-      return deny(
-        `Connecting to database host \`${echo(host)}\` from an agent session is access to PHI. Agents work against local or private-container databases with synthetic data only.`,
-      );
-    }
-    if (!host && /\$\{?[A-Z_]*DATABASE_URL/.test(argline)) {
-      return ask(
-        "`$DATABASE_URL` could point anywhere. Confirm it is a local or private-container database with synthetic data.",
-      );
-    }
-  }
+  // --- Production data access. An agent session connecting to a non-local database is PHI access (`db-target.ts`).
+  const dbTarget = databaseTarget(prog, args, assigns, variableStatements);
+  if (dbTarget) return databaseTargetVerdict(dbTarget);
+  // A program the table does not name, started with a database variable or URL that names a remote host (`db-any-program.ts`).
+  const anyTarget = anyProgramTarget(prog, args, assigns, variableStatements);
+  if (anyTarget) return databaseTargetVerdict(anyTarget);
 
-  // --- Remote shells: production access must be a human decision every time.
-  if (/^(ssh|scp|sftp|rsync)$/.test(prog)) {
-    const target = fileArgs(args).find((a) => a.includes("@") || a.includes(":") || prog === "ssh");
+  // --- Remote shells: production access must be a human decision every time. (scp and rsync name a remote side in EVERY operand: `remote-operands.ts`.)
+  if (/^(ssh|sftp)$/.test(prog)) {
+    const target =
+      prog === "ssh"
+        ? fileArgs(sshHost(args) === undefined ? [] : [sshHost(args) as string])[0]
+        : fileArgs(args).find((a) => a.includes("@") || a.includes(":"));
     // Drop `user:password@` first: the userinfo is not the host, and must not be echoed as one.
     const m =
       /(?:^|\s)(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9.-]+\.[A-Za-z]{2,}|\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9_-]+)(?::|\s|$)/.exec(
         (target ?? "").replace(/^[^/]*@/, ""),
       );
     const host = m?.[1] ?? "";
+    if (prog === "ssh" && target !== undefined && DYNAMIC_HOST.test(target)) {
+      return ask(
+        "`ssh` to a host that a variable or command substitution builds, so the guard cannot tell whether it is production. Name the host.",
+      );
+    }
     if (host && !isLocalHost(host)) {
       return ask(
         `Remote access to \`${echo(host)}\`. Production hosts hold PHI; confirm this is intended and that no PHI will enter the session.`,
@@ -2407,13 +3193,10 @@ function classifySegment(
   }
 
   // --- Live suites drop cluster roles: they must run against a private container (CLAUDE.md).
-  if (
-    (prog === "bun" && /^run\s+test:[^\s]*:live\b/.test(argline)) ||
-    (/^(vitest|bunx|npx)$/.test(prog) && /\.live\.test/.test(argline))
-  ) {
+  if (runsLiveSuite(prog, args, ctx.liveSuiteFiles && (() => liveSuiteFilesOnce(ctx)))) {
     return ask(
       "Live suites DROP ROLE chartwarden_app. Confirm DATABASE_URL points at a private chartwarden-postgres:dev container (own port, fresh database), never the shared Docker cluster.",
     );
   }
-  return null;
+  return unmodelledWriterVerdict(prog, args, parsed.strings, here, ctx);
 }

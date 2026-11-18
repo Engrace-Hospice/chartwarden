@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "perl -e 'alarm 8; exec @ARGV or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts\" --codex || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }",
+            "command": "env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB perl -e 'alarm 8; use Cwd; defined($_ = getcwd) or exit 127; until (-e \"$_/.git\" && -f \"$_/.codex/hooks.json\" && -f \"$_/scripts/harness/pre-tool-guard.ts\") { exit 127 if $_ eq \"/\"; s{/[^/]*$}{}; $_ = \"/\" if $_ eq \"\" } exec @ARGV, \"$_/scripts/harness/pre-tool-guard.ts\", \"--codex\" or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }",
             "timeout": 10,
             "statusMessage": "ChartWarden guard"
           }

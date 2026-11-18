@@ -57,6 +57,9 @@ describe("isProtectedPath", () => {
     "sub/.claude/settings.local.json",
     "/Users/dev/.codex/config.toml",
     "../../home/.codex/hooks.json",
+    // An instruction file an agent loads from the directory it works in (2026-11-10 review, ADV-H2).
+    "docs/AGENTS.md",
+    "apps/web/CLAUDE.md",
   ])("protects %s at any depth, nested or outside the repo", (p) =>
     expect(isProtectedPath(p)).toBe(true),
   );
@@ -66,8 +69,6 @@ describe("isProtectedPath", () => {
     "docs/scripts/harness-notes.md",
     "src/bunfig.ts",
     "apps/backend/src/index.ts",
-    "docs/AGENTS.md",
-    "apps/web/CLAUDE.md",
     ".codex/sessions/x.jsonl",
   ])("leaves %s alone", (p) => expect(isProtectedPath(p)).toBe(false));
 });

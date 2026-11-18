@@ -5,14 +5,17 @@ import type { ApiClient } from "@chartwarden/ui";
 // route: the Aide POC editor (`/aide-poc/:versionId/edit`, `discipline_plan.author`) and the IDG revision
 // review (`/:kind/idg-revisions/:versionId`, `discipline_plan.idg_revise`). Each link must appear for the
 // right version and only for an actor holding the permission its `screens.ts` entry declares.
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import axe from "axe-core";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
 import {
   AIDE_POC_EDIT_PERMISSION,
   IDG_REVISION_REVIEW_PERMISSION,
+  PLAN_FINALIZE_PERMISSION,
+  PLAN_SIGN_PERMISSION,
   versionRowActions,
 } from "../discipline-status";
 import { DisciplinePlanWorkspace } from "../plan-workspace";
@@ -33,6 +36,8 @@ const sessionWith = (...permissions: string[]): Session => ({
   permissions: ["discipline_plan.read", ...permissions],
 });
 
+afterEach(cleanup);
+
 const version = (over: Record<string, unknown>) => ({
   versionId: "v-x",
   planId: PLAN,
@@ -47,7 +52,16 @@ const version = (over: Record<string, unknown>) => ({
   ...over,
 });
 
-function planDetail(kind: string, versions: unknown[]) {
+function planDetail(kind: string, versions: unknown[], assessments: unknown[] = []) {
+  const rows = versions as Array<{
+    versionId: string;
+    sequence: number;
+    status: string;
+    kind: string;
+    signedAt: string | null;
+  }>;
+  const latestSigned = [...rows].reverse().find((row) => row.status === "signed") ?? null;
+  const open = rows.find((row) => row.status === "draft" || row.status === "in_review") ?? null;
   return {
     planId: PLAN,
     patientId: PATIENT,
@@ -62,13 +76,33 @@ function planDetail(kind: string, versions: unknown[]) {
     spiritualCareDeclinedAt: null,
     updatedAt: "2026-01-02T00:00:00.000Z",
     version: 4,
+    actionSummary: {
+      openVersion: open
+        ? {
+            versionId: open.versionId,
+            sequence: open.sequence,
+            status: open.status,
+            kind: open.kind,
+          }
+        : null,
+      latestSignedVersion: latestSigned
+        ? {
+            versionId: latestSigned.versionId,
+            sequence: latestSigned.sequence,
+            signedAt: latestSigned.signedAt,
+          }
+        : null,
+      missingSignerRoles: [],
+      ownerMembershipIds: [],
+      idgDecisionId: null,
+    },
     aideMembershipId: null,
     supervisingRnMembershipId: null,
     supervisoryCadenceDaysOverride: null,
     spiritualCareDeclined: null,
     goals: [],
     interventions: [],
-    assessments: [],
+    assessments,
     supervisoryVisits: [],
     volunteerAssignments: [],
     versions,
@@ -83,8 +117,13 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function renderWorkspace(kind: string, versions: unknown[], session: Session): void {
-  const detail = planDetail(kind, versions);
+function renderWorkspace(
+  kind: string,
+  versions: unknown[],
+  session: Session,
+  assessments: unknown[] = [],
+): void {
+  const detail = planDetail(kind, versions, assessments);
   const client = {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/discipline-plans") return ok({ data: [detail], nextCursor: null });
@@ -144,6 +183,32 @@ const hrefOf = (name: RegExp): string | null =>
   screen.queryByRole("link", { name })?.getAttribute("href") ?? null;
 
 describe("plan workspace — links to the Aide POC editor and the IDG revision review", () => {
+  it("keeps a spiritual assessment inside the spiritual plan route", async () => {
+    renderWorkspace("spiritual_plan", [signed], sessionWith("discipline_assessment.author"), [
+      {
+        assessmentId: "assessment-1",
+        planId: PLAN,
+        kind: "chaplain_spiritual",
+        status: "draft",
+        capturedAt: "2026-01-01T00:00:00.000Z",
+        capturedByMembershipId: "member-1",
+        isInitial: true,
+        sudFlag: false,
+        familyViolenceFlag: false,
+        sourceEncounterId: null,
+        data: {},
+        signedAt: null,
+        amendsAssessmentId: null,
+        amendmentReason: null,
+        version: 1,
+      },
+    ]);
+    await waitFor(() => expect(screen.getByRole("link", { name: "Open assessment" })).toBeTruthy());
+    expect(hrefOf(/^Open assessment$/)).toBe(
+      `/patients/${PATIENT}/discipline-plans/spiritual-plan/${PLAN}/assessments/assessment-1`,
+    );
+  });
+
   it("links an open draft Aide POC version to its editor for an author", async () => {
     renderWorkspace("aide_poc", [signed, aideDraft], sessionWith(AIDE_POC_EDIT_PERMISSION));
     await waitFor(() => expect(screen.getByRole("link", { name: "Edit v2" })).toBeTruthy());
@@ -179,6 +244,54 @@ describe("plan workspace — links to the Aide POC editor and the IDG revision r
     );
     await waitFor(() => expect(screen.getByText("v3")).toBeTruthy());
     expect(screen.queryByRole("link", { name: /^(Edit|Review) v\d/ })).toBeNull();
+  });
+});
+
+describe("plan workspace — version actions and current signed projection", () => {
+  it("fails closed for finalize and sign actions without their route permissions", async () => {
+    renderWorkspace("aide_poc", [signed, aideDraft], baseSession);
+    await waitFor(() => expect(screen.getByText("v2")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Finalize v2" })).toBeNull();
+
+    renderWorkspace("msw_plan", [signed, { ...idgDraft, status: "in_review" }], baseSession);
+    await waitFor(() => expect(screen.getAllByText("v3").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("button", { name: "Sign v3" })).toBeNull();
+  });
+
+  it("shows each transition only with its matching route permission", async () => {
+    renderWorkspace("aide_poc", [signed, aideDraft], sessionWith(PLAN_FINALIZE_PERMISSION));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Finalize v2" })).toBeTruthy());
+
+    renderWorkspace(
+      "msw_plan",
+      [signed, { ...idgDraft, status: "in_review" }],
+      sessionWith(PLAN_SIGN_PERMISSION),
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sign v3" })).toBeTruthy());
+  });
+
+  it("labels the server-projected latest signed version rather than the first signed row", async () => {
+    const laterSigned = version({
+      versionId: "v-signed-later",
+      sequence: 4,
+      signedAt: "2026-01-04T00:00:00.000Z",
+    });
+    renderWorkspace("spiritual_plan", [signed, laterSigned], baseSession);
+    await waitFor(() => expect(screen.getByText("Current signed version")).toBeTruthy());
+    expect(screen.getAllByText("v4").length).toBeGreaterThan(0);
+  });
+
+  it("has no automated accessibility violations in the populated shared workspace", async () => {
+    renderWorkspace(
+      "aide_poc",
+      [signed, aideDraft],
+      sessionWith(AIDE_POC_EDIT_PERMISSION, PLAN_FINALIZE_PERMISSION),
+    );
+    await waitFor(() => expect(screen.getByText("Version chain")).toBeTruthy());
+    expect(
+      (await axe.run(screen.getByRole("region", { name: "Aide Plan of Care workspace" })))
+        .violations,
+    ).toEqual([]);
   });
 });
 

@@ -490,6 +490,11 @@
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
+      "id": "discipline-plan.assessment",
+      "path": "/patients/:patientId/discipline-plans/:kind/:planId/assessments/:assessmentId",
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
+    },
+    {
       "id": "discipline-plan.idg-revision",
       "path": "/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId",
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
@@ -502,11 +507,6 @@
     {
       "id": "discipline-plan.aide-poc.edit",
       "path": "/patients/:patientId/discipline-plans/aide-poc/:versionId/edit",
-      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "discipline-plan.assessment",
-      "path": "/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId",
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {

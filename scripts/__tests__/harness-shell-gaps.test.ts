@@ -6,7 +6,8 @@
  * runtime where they could look like a credential.
  */
 import { describe, expect, it } from "vitest";
-import { classifyBash } from "../harness/patterns";
+import { MAX_COMMAND_CHARS, classifyBash } from "../harness/patterns";
+import { FULL_BUDGET, measure, netMs } from "./helpers/work-counters";
 
 const ROOT = "/repo";
 const HOME = "/Users/dev";
@@ -513,28 +514,69 @@ describe("must stay allowed — Claude Code's ordinary workflow", () => {
   });
 });
 
-// The guard fails OPEN when the hook times out, so no input may make the classifier slow.
+// The guard fails OPEN when the hook times out, so no input may make the classifier slow. Wave 12 (G-1, R9-COMP-9):
+// the bound was 1.5 s, then 5 s, measured on a single cold run. Five of these payloads are older than the 64 KB cap
+// and are refused before a character is judged (so they proved nothing about the lexer: the in-cap rows below are the
+// same shapes at 60 KB); every row now asserts what the classifier SPENT (`work-counters.ts`), with the clock as a safety
+// net at twice the worst loaded best-of-three.
 describe("pathological input is bounded", () => {
-  const MAX_MS = 1500;
+  const NESTED_SLACK = 16;
   it.each([
     ["trailing parens", `echo ${")".repeat(200_000)}`],
     ["redirect operators", `echo ${">".repeat(100_000)}`],
     ["here-string operators", `echo ${"<".repeat(100_000)}`],
-    ["brace groups", `cat ${"{a,b}".repeat(50)}`],
-    ["a huge brace group", `cat {${Array.from({ length: 3000 }, (_, i) => `a${i}`).join(",")}}`],
-    ["chained cd", `${"cd .. && ".repeat(5000)} rm x`],
     ["wrapper words", `${"sudo ".repeat(50_000)} rm -r scripts/harness`],
     ["userinfo URLs", `echo ${"http://u:p@".repeat(20_000)}`],
-  ])("judges %s quickly", (_name, cmd) => {
-    const started = performance.now();
-    classifyBash(cmd, ctx);
-    expect(performance.now() - started).toBeLessThan(MAX_MS);
+  ])("refuses %s at the cap, before a character is judged", (_name, cmd) => {
+    expect(cmd.length).toBeGreaterThan(MAX_COMMAND_CHARS);
+    const m = measure(cmd, ctx);
+    expect(m.verdict.decision).toBe("deny");
+    expect(m.verdict.reason).toMatch(/longer than 64 KB/);
+    expect(m.spent).toEqual({
+      chars: 0,
+      braces: 0,
+      braceChars: 0,
+      resolutions: 0,
+      resolutionChars: 0,
+    });
+    expect(m.ms).toBeLessThan(netMs(0.1));
   });
 
+  // `exhausted`: a budget ran out, so the command asks (a redirect target is resolved at most 16,384 times).
+  // A 60 KB chain of wrappers costs about 0.5 s (the wrapper peel is quadratic, 2,000 of them take 21 ms): that is
+  // reported in the wave-12 part G notes, not asserted here.
+  it.each([
+    ["trailing parens", `echo ${")".repeat(60_000)}`, 51.4, false],
+    ["redirect operators", `echo ${">".repeat(60_000)}`, 56.1, true],
+    ["here-string operators", `echo ${"<".repeat(60_000)}`, 46.6, false],
+    ["brace groups", `cat ${"{a,b}".repeat(50)}`, 20.7, true],
+    [
+      "a huge brace group",
+      `cat {${Array.from({ length: 3000 }, (_, i) => `a${i}`).join(",")}}`,
+      5.8,
+      true,
+    ],
+    ["chained cd", `${"cd .. && ".repeat(5000)} rm x`, 67.2, false],
+    ["wrapper words", `${"sudo ".repeat(2_000)} rm -r scripts/harness`, 65, false],
+    ["userinfo URLs", `echo ${"http://u:p@".repeat(5_000)}`, 10.5, false],
+  ])(
+    "judges %s quickly: each character once, inside its safety net",
+    (_name, cmd, worstMs, cut) => {
+      expect(cmd.length).toBeLessThanOrEqual(MAX_COMMAND_CHARS);
+      const m = measure(cmd, ctx);
+      expect(m.spent.chars).toBeLessThanOrEqual(cmd.length + NESTED_SLACK);
+      expect(m.spent.braces).toBeLessThanOrEqual(FULL_BUDGET.braces);
+      expect(m.spent.resolutions).toBeLessThanOrEqual(FULL_BUDGET.resolutions + 1);
+      expect(m.exhausted).toBe(cut);
+      expect(m.ms).toBeLessThan(netMs(worstMs));
+    },
+  );
+
   it("does not pass a deep stack of command substitutions quietly", () => {
-    const started = performance.now();
-    const verdict = v(`echo ${"$(".repeat(5000)}`);
-    expect(performance.now() - started).toBeLessThan(MAX_MS);
-    expect(verdict.decision).toBe("ask");
+    const cmd = `echo ${"$(".repeat(5000)}`;
+    const m = measure(cmd, ctx);
+    expect(m.verdict.decision).toBe("ask");
+    expect(m.spent.chars).toBeLessThanOrEqual(cmd.length + NESTED_SLACK);
+    expect(m.ms).toBeLessThan(netMs(0.1));
   });
 });

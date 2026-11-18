@@ -1,0 +1,374 @@
+{
+  "tool": "awk",
+  "flavour": "bwk",
+  "version": "20200816",
+  "probe": "awk OPTION 'BEGIN{print \"HIT\"}'",
+  "options": [
+    {
+      "option": "-a",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-b",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-c",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-d",
+      "takesValue": false,
+      "ignored": false,
+      "exits": false
+    },
+    {
+      "option": "-e",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-f",
+      "takesValue": true,
+      "ignored": false,
+      "exits": false
+    },
+    {
+      "option": "-g",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-h",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-i",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-j",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-k",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-l",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-m",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-n",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-o",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-p",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-q",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-r",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-s",
+      "takesValue": false,
+      "ignored": false,
+      "exits": false
+    },
+    {
+      "option": "-t",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-u",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-v",
+      "takesValue": true,
+      "ignored": false,
+      "exits": false
+    },
+    {
+      "option": "-w",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-x",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-y",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-z",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-A",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-B",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-C",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-D",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-E",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-F",
+      "takesValue": true,
+      "ignored": false,
+      "exits": false
+    },
+    {
+      "option": "-G",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-H",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-I",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-J",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-K",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-L",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-M",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-N",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-O",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-P",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-Q",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-R",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-S",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-T",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-U",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-V",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-W",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-X",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-Y",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "-Z",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "--version",
+      "takesValue": false,
+      "ignored": false,
+      "exits": true
+    },
+    {
+      "option": "-version",
+      "takesValue": false,
+      "ignored": false,
+      "exits": true
+    },
+    {
+      "option": "--csv",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "--help",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "--source",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "--include",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "--load",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "--exec",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    },
+    {
+      "option": "--file",
+      "takesValue": false,
+      "ignored": true,
+      "exits": false
+    }
+  ]
+}

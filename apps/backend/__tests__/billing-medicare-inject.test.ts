@@ -206,6 +206,7 @@ function createM23TestBackend(): {
       notrId: null,
       transferNoticeId: null,
       claimControlNumber: "CCN0000001",
+      externalPatientControlNumber: "SYNTHETIC00000001",
       attemptIndex: 1,
       outcome: "queued",
       dispatchState: "pending",
@@ -683,6 +684,7 @@ function createM23TestBackend(): {
         jobId: "job-submit-1",
         attemptIndex: 1,
         claimControlNumber: row?.claimControlNumber ?? "CCN0000001",
+        externalPatientControlNumber: "SYNTHETIC00000001",
       };
     },
     async replaceClaim(_actor, claimId, args) {

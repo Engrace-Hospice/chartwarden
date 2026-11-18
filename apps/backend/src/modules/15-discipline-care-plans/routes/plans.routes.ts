@@ -15,6 +15,7 @@ import {
   ifMatchVersionOf,
   rejectOffsetPagination,
   requireIdempotencyKey,
+  requireIfMatch,
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
@@ -30,6 +31,7 @@ import {
   FinalizeVersionBody,
   GoalParams,
   InterventionParams,
+  OpenVersionBody,
   PlanListQuerySchema,
   PlanParams,
   SignVersionBody,
@@ -52,6 +54,7 @@ export interface PlanRouteDeps {
 }
 
 const IDEMPOTENT = requireIdempotencyKey();
+const IF_MATCH = requireIfMatch();
 const NO_OFFSET = rejectOffsetPagination();
 
 /** Nothing confidential may be seen: what a lookup that failed or found no plan resolves to (fail closed). */
@@ -153,7 +156,30 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
     },
   );
 
-  // 6 — finalize a draft version (`draft → in_review`; seals the snapshot + the D11 quorum).
+  // 6 — open the first draft version or the next clinician-authored interim revision.
+  app.post(
+    "/api/v1/discipline-plans/:planId/versions",
+    {
+      preHandler: [
+        P("discipline_plan.author"),
+        ...scope("discipline_plan.author"),
+        IF_MATCH,
+        IDEMPOTENT,
+      ],
+    },
+    async (request, reply) => {
+      const { planId } = parse(PlanParams, request.params);
+      const body = parse(OpenVersionBody, request.body);
+      const created = await writeService.openVersion(writeActorOf(request), planId, {
+        expectedVersion: ifMatchVersionOf(request),
+        kind: body.kind,
+        reason: body.reason,
+      });
+      return reply.code(201).send(created);
+    },
+  );
+
+  // 7 — finalize a draft version (`draft → in_review`; seals the snapshot + the D11 quorum).
   app.post(
     "/api/v1/discipline-plans/:planId/versions/:versionId/finalize",
     {

@@ -10,11 +10,8 @@ import {
   secretPathReason,
   ssnNeverIssued,
 } from "../harness/patterns";
+import { ISSUED_SSN, ISSUED_SSN_RAW } from "./_fixtures";
 
-// Fixture values are assembled at runtime so this file does not trip the very scanner it tests
-// (the Stop gate and harness:phi-scan read test files too).
-const ISSUED_SSN = ["524", "71", "3388"].join("-");
-const ISSUED_SSN_RAW = ISSUED_SSN.replace(/-/g, "");
 const MBI_PARTS = ["2TW7", "HD4", "KC61"];
 const PEM_BEGIN = ["-----BEGIN", "PRIVATE KEY-----"].join(" ");
 const PEM_END = ["-----END", "PRIVATE KEY-----"].join(" ");
@@ -33,13 +30,39 @@ describe("secretPathReason", () => {
     "db/prod.dump",
     "~/.ssh/config",
     "a/secrets/x.json",
+    // wave 8 (T7(c), ADV6-14): direnv, env scripts, secrets files, cloud and mysql credentials, editor copies of an env file
+    ".envrc",
+    "apps/portal/.envrc",
+    "env.sh",
+    "scripts/env.sh",
+    "packages/foo/secrets.json",
+    "config/secrets.yaml",
+    "config/secrets.yml",
+    "~/.config/gcloud/application_default_credentials.json",
+    "~/.my.cnf",
+    "~/.mylogin.cnf",
+    "~/.pgpass",
+    "~/.netrc",
+    ".env~",
+    ".env.swp",
+    "apps/backend/.env.bak",
   ])("refuses %s", (p) => expect(secretPathReason(p)).not.toBeNull());
   it.each([
     ".env.example",
     "deploy/production/.env.production.example",
     "deploy/production/.env.tenant.example",
-    ".envrc",
+    ".envrc.example",
+    "env.sh.example",
+    // the agent's own scratch scripts: an absolute path or one behind a variable is not a repo file (corpus: 16 commands)
+    "/private/tmp/scratch/env.sh",
+    "/tmp/x/env.sh",
+    "$S/env.sh",
+    "${D:?}/env.sh",
+    "~/env.sh",
     "src/environment.ts",
+    "src/secrets.ts",
+    "packages/auth/src/secrets.json.ts",
+    "docs/my.cnf.md",
     "packages/auth/src/keys.ts",
   ])("allows %s", (p) => expect(secretPathReason(p)).toBeNull());
 });
@@ -241,11 +264,12 @@ describe("classifyBash — review regressions (2026-10-27)", () => {
   });
   it("asks when a GIT_* environment override precedes git", () => {
     expect(d("GIT_SSH_COMMAND='sh x' git fetch")).toBe("ask");
+    // Wave 4: an exec-capable key injected through the environment is denied, exactly as `git -c` is.
     expect(
       d(
         "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x",
       ),
-    ).toBe("ask");
+    ).toBe("deny");
     expect(d("GIT_EXTERNAL_DIFF=./x git diff")).toBe("ask");
     expect(d("FOO=1 git status")).toBe("allow");
   });

@@ -14,6 +14,24 @@ import type { CursorPage, PageSizePolicy } from "@chartwarden/shared/route-kit";
 import type { M15ReadActor } from "./actor";
 import type { RedactedCategory } from "./disclosure";
 
+/** Server-derived workflow metadata for the plan overview; no clinical narrative is exposed here. */
+export interface DisciplinePlanActionSummary {
+  readonly openVersion: {
+    readonly versionId: string;
+    readonly sequence: number;
+    readonly status: "draft" | "in_review";
+    readonly kind: "initial" | "interim_revision" | "idg_review";
+  } | null;
+  readonly latestSignedVersion: {
+    readonly versionId: string;
+    readonly sequence: number;
+    readonly signedAt: string;
+  } | null;
+  readonly missingSignerRoles: readonly string[];
+  readonly ownerMembershipIds: readonly string[];
+  readonly idgDecisionId: string | null;
+}
+
 /** §4.1 route 1 — a plan as the worklist sees it. */
 export interface DisciplinePlanListItem {
   readonly planId: string;
@@ -29,6 +47,7 @@ export interface DisciplinePlanListItem {
   readonly spiritualCareDeclinedAt: string | null;
   readonly updatedAt: string;
   readonly version: number;
+  readonly actionSummary: DisciplinePlanActionSummary;
 }
 
 /** A `discipline_goal` row on the full-plan read (SUD-flagged rows are filtered upstream, §7.8). */

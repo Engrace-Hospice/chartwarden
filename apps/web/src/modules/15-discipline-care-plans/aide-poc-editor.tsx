@@ -46,6 +46,7 @@ import {
   Notice,
   SelectField,
   SummaryGrid,
+  TableScroll,
   TextAreaField,
   TextField,
   alertStyle,
@@ -59,6 +60,7 @@ import {
   tableStyle,
   td,
   th,
+  useUnsavedChangesWarning,
 } from "./discipline-ui";
 
 /** `discipline_goal_source` values this form may send (`agent_stated` needs an acting consent this form does
@@ -94,6 +96,14 @@ export function AidePocEditor(): JSX.Element {
   const [goalText, setGoalText] = useState("");
   const [goalSource, setGoalSource] = useState("clinical");
   const [goalProblemId, setGoalProblemId] = useState("");
+  const dirty =
+    scopeText.trim() !== "" ||
+    frequencyText.trim() !== "" ||
+    frequencyValue.trim() !== "" ||
+    goalText.trim() !== "" ||
+    goalProblemId.trim() !== "" ||
+    goalSource !== "clinical";
+  const confirmDiscard = useUnsavedChangesWarning(dirty);
 
   const load = useCallback(async () => {
     if (!patientId) return;
@@ -235,7 +245,13 @@ export function AidePocEditor(): JSX.Element {
       <PageHeader
         title={<span style={pageTitleStyle}>Aide Plan of Care — editor</span>}
         actions={
-          <Link to={`/patients/${patientId}/discipline-plans/aide-poc`} style={ghostButtonStyle}>
+          <Link
+            to={`/patients/${patientId}/discipline-plans/aide-poc`}
+            style={ghostButtonStyle}
+            onClick={(event) => {
+              if (!confirmDiscard()) event.preventDefault();
+            }}
+          >
             Back to plan
           </Link>
         }
@@ -247,7 +263,11 @@ export function AidePocEditor(): JSX.Element {
           sealed. Edits made now belong to the next draft version, not to this one.
         </Notice>
       ) : null}
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? (
+        <p role="alert" aria-live="assertive" style={alertStyle}>
+          {actionError}
+        </p>
+      ) : null}
 
       <Card title="Assignment">
         <SummaryGrid>
@@ -268,44 +288,46 @@ export function AidePocEditor(): JSX.Element {
         {plan.interventions.length === 0 ? (
           <span style={mutedStyle}>No tasks on this plan yet.</span>
         ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Task</th>
-                <th style={th}>Frequency</th>
-                <th style={th}>Status</th>
-                <th style={th}>&nbsp;</th>
-              </tr>
-            </thead>
-            <tbody>
-              {plan.interventions.map((iv) => (
-                <tr key={iv.interventionId} style={rowLine}>
-                  <td style={td}>{iv.scopeText}</td>
-                  <td style={td}>
-                    {iv.frequencyText}
-                    <div style={mutedStyle}>{iv.frequencyValue}</div>
-                  </td>
-                  <td style={td}>
-                    <StatusPill
-                      label={humanize(iv.status)}
-                      tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
-                    />
-                  </td>
-                  <td style={td}>
-                    {iv.status === "active" ? (
-                      <button
-                        type="button"
-                        style={ghostButtonStyle}
-                        onClick={() => void discontinueIntervention(iv)}
-                      >
-                        Discontinue
-                      </button>
-                    ) : null}
-                  </td>
+          <TableScroll label="Aide tasks table">
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={th}>Task</th>
+                  <th style={th}>Frequency</th>
+                  <th style={th}>Status</th>
+                  <th style={th}>&nbsp;</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {plan.interventions.map((iv) => (
+                  <tr key={iv.interventionId} style={rowLine}>
+                    <td style={td}>{iv.scopeText}</td>
+                    <td style={td}>
+                      {iv.frequencyText}
+                      <div style={mutedStyle}>{iv.frequencyValue}</div>
+                    </td>
+                    <td style={td}>
+                      <StatusPill
+                        label={humanize(iv.status)}
+                        tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
+                      />
+                    </td>
+                    <td style={td}>
+                      {iv.status === "active" ? (
+                        <button
+                          type="button"
+                          style={ghostButtonStyle}
+                          onClick={() => void discontinueIntervention(iv)}
+                        >
+                          Discontinue
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
         )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: t.space3, alignItems: "flex-end" }}>
           <TextField label="New task" value={scopeText} onChange={setScopeText} />
@@ -336,45 +358,47 @@ export function AidePocEditor(): JSX.Element {
         {plan.goals.length === 0 ? (
           <span style={mutedStyle}>No goals on this plan yet.</span>
         ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Goal</th>
-                <th style={th}>Source</th>
-                <th style={th}>Target</th>
-                <th style={th}>Status</th>
-                <th style={th}>Change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {plan.goals.map((g) => (
-                <tr key={g.goalId} style={rowLine}>
-                  <td style={td}>
-                    {g.revisedText ?? g.originalText}
-                    {g.revisedText ? (
-                      <div style={mutedStyle}>originally: {g.originalText}</div>
-                    ) : null}
-                  </td>
-                  <td style={td}>{goalSourceLabel(g.source)}</td>
-                  <td style={td}>{shortDate(g.targetAt)}</td>
-                  <td style={td}>
-                    <StatusPill
-                      label={humanize(g.status)}
-                      tone={toneOf(GOAL_STATUS_TONE, g.status)}
-                    />
-                  </td>
-                  <td style={td}>
-                    <SelectField
-                      label={`Status change for goal ${g.goalId.slice(0, 8)}`}
-                      value=""
-                      options={GOAL_EVENTS}
-                      onChange={(v) => void applyGoalEvent(g, v)}
-                    />
-                  </td>
+          <TableScroll label="Aide goals table">
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={th}>Goal</th>
+                  <th style={th}>Source</th>
+                  <th style={th}>Target</th>
+                  <th style={th}>Status</th>
+                  <th style={th}>Change</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {plan.goals.map((g) => (
+                  <tr key={g.goalId} style={rowLine}>
+                    <td style={td}>
+                      {g.revisedText ?? g.originalText}
+                      {g.revisedText ? (
+                        <div style={mutedStyle}>originally: {g.originalText}</div>
+                      ) : null}
+                    </td>
+                    <td style={td}>{goalSourceLabel(g.source)}</td>
+                    <td style={td}>{shortDate(g.targetAt)}</td>
+                    <td style={td}>
+                      <StatusPill
+                        label={humanize(g.status)}
+                        tone={toneOf(GOAL_STATUS_TONE, g.status)}
+                      />
+                    </td>
+                    <td style={td}>
+                      <SelectField
+                        label={`Status change for goal ${g.goalId.slice(0, 8)}`}
+                        value=""
+                        options={GOAL_EVENTS}
+                        onChange={(v) => void applyGoalEvent(g, v)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
         )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: t.space3, alignItems: "flex-end" }}>
           <TextField
@@ -415,7 +439,13 @@ export function AidePocEditor(): JSX.Element {
       </Card>
 
       <StickyFooterActions>
-        <Link to={`/patients/${patientId}/discipline-plans/aide-poc`} style={linkStyle}>
+        <Link
+          to={`/patients/${patientId}/discipline-plans/aide-poc`}
+          style={linkStyle}
+          onClick={(event) => {
+            if (!confirmDiscard()) event.preventDefault();
+          }}
+        >
           Done editing — return to the plan to finalize and sign
         </Link>
       </StickyFooterActions>

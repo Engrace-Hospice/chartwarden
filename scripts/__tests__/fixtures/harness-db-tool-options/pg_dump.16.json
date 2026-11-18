@@ -1,0 +1,1053 @@
+{
+  "tool": "pg_dump",
+  "version": "16.13",
+  "command": "pg_dump --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "file",
+      "short": "f",
+      "takesValue": true
+    },
+    {
+      "name": "format",
+      "short": "F",
+      "takesValue": true
+    },
+    {
+      "name": "jobs",
+      "short": "j",
+      "takesValue": true
+    },
+    {
+      "name": "verbose",
+      "short": "v",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false
+    },
+    {
+      "name": "compress",
+      "short": "Z",
+      "takesValue": true
+    },
+    {
+      "name": "lock-wait-timeout",
+      "takesValue": true
+    },
+    {
+      "name": "no-sync",
+      "takesValue": false
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false
+    },
+    {
+      "name": "data-only",
+      "short": "a",
+      "takesValue": false
+    },
+    {
+      "name": "large-objects",
+      "short": "b",
+      "takesValue": false
+    },
+    {
+      "name": "blobs",
+      "takesValue": false
+    },
+    {
+      "name": "no-large-objects",
+      "short": "B",
+      "takesValue": false
+    },
+    {
+      "name": "no-blobs",
+      "takesValue": false
+    },
+    {
+      "name": "clean",
+      "short": "c",
+      "takesValue": false
+    },
+    {
+      "name": "create",
+      "short": "C",
+      "takesValue": false
+    },
+    {
+      "name": "extension",
+      "short": "e",
+      "takesValue": true
+    },
+    {
+      "name": "encoding",
+      "short": "E",
+      "takesValue": true
+    },
+    {
+      "name": "schema",
+      "short": "n",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-schema",
+      "short": "N",
+      "takesValue": true
+    },
+    {
+      "name": "no-owner",
+      "short": "O",
+      "takesValue": false
+    },
+    {
+      "name": "schema-only",
+      "short": "s",
+      "takesValue": false
+    },
+    {
+      "name": "superuser",
+      "short": "S",
+      "takesValue": true
+    },
+    {
+      "name": "table",
+      "short": "t",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-table",
+      "short": "T",
+      "takesValue": true
+    },
+    {
+      "name": "no-privileges",
+      "short": "x",
+      "takesValue": false
+    },
+    {
+      "name": "binary-upgrade",
+      "takesValue": false
+    },
+    {
+      "name": "column-inserts",
+      "takesValue": false
+    },
+    {
+      "name": "disable-dollar-quoting",
+      "takesValue": false
+    },
+    {
+      "name": "disable-triggers",
+      "takesValue": false
+    },
+    {
+      "name": "enable-row-security",
+      "takesValue": false
+    },
+    {
+      "name": "exclude-table-and-children",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-table-data",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-table-data-and-children",
+      "takesValue": true
+    },
+    {
+      "name": "extra-float-digits",
+      "takesValue": true
+    },
+    {
+      "name": "if-exists",
+      "takesValue": false
+    },
+    {
+      "name": "include-foreign-data",
+      "takesValue": true
+    },
+    {
+      "name": "inserts",
+      "takesValue": false
+    },
+    {
+      "name": "load-via-partition-root",
+      "takesValue": false
+    },
+    {
+      "name": "no-comments",
+      "takesValue": false
+    },
+    {
+      "name": "no-publications",
+      "takesValue": false
+    },
+    {
+      "name": "no-security-labels",
+      "takesValue": false
+    },
+    {
+      "name": "no-subscriptions",
+      "takesValue": false
+    },
+    {
+      "name": "no-table-access-method",
+      "takesValue": false
+    },
+    {
+      "name": "no-tablespaces",
+      "takesValue": false
+    },
+    {
+      "name": "no-toast-compression",
+      "takesValue": false
+    },
+    {
+      "name": "no-unlogged-table-data",
+      "takesValue": false
+    },
+    {
+      "name": "on-conflict-do-nothing",
+      "takesValue": false
+    },
+    {
+      "name": "quote-all-identifiers",
+      "takesValue": false
+    },
+    {
+      "name": "restrict-key",
+      "takesValue": true
+    },
+    {
+      "name": "rows-per-insert",
+      "takesValue": true
+    },
+    {
+      "name": "section",
+      "takesValue": true
+    },
+    {
+      "name": "serializable-deferrable",
+      "takesValue": false
+    },
+    {
+      "name": "snapshot",
+      "takesValue": true
+    },
+    {
+      "name": "strict-names",
+      "takesValue": false
+    },
+    {
+      "name": "table-and-children",
+      "takesValue": true
+    },
+    {
+      "name": "use-set-session-authorization",
+      "takesValue": false
+    },
+    {
+      "name": "dbname",
+      "short": "d",
+      "takesValue": true,
+      "role": "string"
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "no-password",
+      "short": "w",
+      "takesValue": false
+    },
+    {
+      "name": "password",
+      "short": "W",
+      "takesValue": false
+    },
+    {
+      "name": "role",
+      "takesValue": true
+    },
+    {
+      "name": "attribute-inserts",
+      "takesValue": false,
+      "hidden": true
+    },
+    {
+      "name": "no-acl",
+      "takesValue": false,
+      "hidden": true
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "at",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "b",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "bi",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "bin",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "bl",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "blo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "c",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "cl",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "cle",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "co",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "col",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "colu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "com",
+      "outcome": "value"
+    },
+    {
+      "prefix": "comp",
+      "outcome": "value"
+    },
+    {
+      "prefix": "cr",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "cre",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "d",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "da",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "dat",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "db",
+      "outcome": "string"
+    },
+    {
+      "prefix": "dbn",
+      "outcome": "string"
+    },
+    {
+      "prefix": "di",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "dis",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "disa",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "disab",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "disabl",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "disable",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "disable-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "disable-d",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "disable-do",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "disable-t",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "disable-tr",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "e",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "en",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ena",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "enab",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "enc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "enco",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ex",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exc",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "excl",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclu",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclud",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-s",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-sc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-t",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-ta",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-tab",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-tabl",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-table-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-table-a",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-table-an",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-table-d",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-table-da",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-table-dat",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-table-data-",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-table-data-a",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ext",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exte",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exten",
+      "outcome": "value"
+    },
+    {
+      "prefix": "extr",
+      "outcome": "value"
+    },
+    {
+      "prefix": "extra",
+      "outcome": "value"
+    },
+    {
+      "prefix": "f",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "fi",
+      "outcome": "value"
+    },
+    {
+      "prefix": "fil",
+      "outcome": "value"
+    },
+    {
+      "prefix": "fo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "for",
+      "outcome": "value"
+    },
+    {
+      "prefix": "h",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "he",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "hel",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "hos",
+      "outcome": "host"
+    },
+    {
+      "prefix": "i",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "if",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "if-",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "in",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "inc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "incl",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ins",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "inse",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "j",
+      "outcome": "value"
+    },
+    {
+      "prefix": "jo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "l",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "la",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "lar",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "lo",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "loa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "load",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "loc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "lock",
+      "outcome": "value"
+    },
+    {
+      "prefix": "n",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-ac",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-b",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-bl",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-c",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-co",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-l",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-la",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-o",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-ow",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pr",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pri",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pub",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-se",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-sec",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-su",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-sub",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-sy",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-syn",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-t",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-ta",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-tab",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-tabl",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-table",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-table-",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-table-a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-tables",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-tablesp",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-to",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-toa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-u",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-un",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "o",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "on",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "q",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "qu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "r",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "re",
+      "outcome": "value"
+    },
+    {
+      "prefix": "res",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ro",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "rol",
+      "outcome": "value"
+    },
+    {
+      "prefix": "row",
+      "outcome": "value"
+    },
+    {
+      "prefix": "rows",
+      "outcome": "value"
+    },
+    {
+      "prefix": "s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sc",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sch",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sche",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "schem",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "schema-",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "schema-o",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "se",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sec",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sect",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ser",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "seri",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "sn",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sna",
+      "outcome": "value"
+    },
+    {
+      "prefix": "st",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "str",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "su",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sup",
+      "outcome": "value"
+    },
+    {
+      "prefix": "t",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ta",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "tab",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "tabl",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "table-",
+      "outcome": "value"
+    },
+    {
+      "prefix": "table-a",
+      "outcome": "value"
+    },
+    {
+      "prefix": "u",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "us",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "use",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "use-",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "use-s",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "user",
+      "outcome": "value"
+    },
+    {
+      "prefix": "usern",
+      "outcome": "value"
+    },
+    {
+      "prefix": "v",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ve",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ver",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "verb",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "verbo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "vers",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "versi",
+      "outcome": "flag"
+    }
+  ]
+}

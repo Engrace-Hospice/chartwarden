@@ -9,6 +9,7 @@ import {
   TextField,
   type operations,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, JSX } from "react";
@@ -234,6 +235,7 @@ function Readiness({ item }: { item: WorkItem }): JSX.Element {
 
 export function MedicareNoticesWorkspace(): JSX.Element {
   const client = useApiClient();
+  const attempt = useAttemptKey();
   const navigate = useNavigate();
   const session = useSession();
   const permissions = session?.permissions ?? [];
@@ -706,16 +708,20 @@ export function MedicareNoticesWorkspace(): JSX.Element {
                                   onClick={() => {
                                     setIssueActionPending(issue.id);
                                     setIssueActionError(null);
-                                    void client
-                                      .POST(
-                                        "/api/v1/billing/medicare-notice-issues/{id}/acknowledge",
-                                        {
-                                          params: {
-                                            path: { id: issue.id },
-                                            header: { "Idempotency-Key": crypto.randomUUID() },
-                                          },
-                                          body: { expectedVersion: issue.version },
-                                        },
+                                    void attempt
+                                      .run(
+                                        `notice-issue:${issue.id}:acknowledge:${issue.version}`,
+                                        (key) =>
+                                          client.POST(
+                                            "/api/v1/billing/medicare-notice-issues/{id}/acknowledge",
+                                            {
+                                              params: {
+                                                path: { id: issue.id },
+                                                header: { "Idempotency-Key": key },
+                                              },
+                                              body: { expectedVersion: issue.version },
+                                            },
+                                          ),
                                       )
                                       .then(({ error }) => {
                                         if (error)
@@ -744,17 +750,24 @@ export function MedicareNoticesWorkspace(): JSX.Element {
                                   onClick={() => {
                                     setIssueActionPending(issue.id);
                                     setIssueActionError(null);
-                                    void client
-                                      .POST("/api/v1/billing/medicare-notice-issues/{id}/assign", {
-                                        params: {
-                                          path: { id: issue.id },
-                                          header: { "Idempotency-Key": crypto.randomUUID() },
-                                        },
-                                        body: {
-                                          expectedVersion: issue.version,
-                                          assignedMembershipId: currentMembershipId,
-                                        },
-                                      })
+                                    void attempt
+                                      .run(
+                                        `notice-issue:${issue.id}:assign:${currentMembershipId}:${issue.version}`,
+                                        (key) =>
+                                          client.POST(
+                                            "/api/v1/billing/medicare-notice-issues/{id}/assign",
+                                            {
+                                              params: {
+                                                path: { id: issue.id },
+                                                header: { "Idempotency-Key": key },
+                                              },
+                                              body: {
+                                                expectedVersion: issue.version,
+                                                assignedMembershipId: currentMembershipId,
+                                              },
+                                            },
+                                          ),
+                                      )
                                       .then(({ error }) => {
                                         if (error)
                                           setIssueActionError(
@@ -781,17 +794,24 @@ export function MedicareNoticesWorkspace(): JSX.Element {
                                   onClick={() => {
                                     setIssueActionPending(issue.id);
                                     setIssueActionError(null);
-                                    void client
-                                      .POST("/api/v1/billing/medicare-notice-issues/{id}/assign", {
-                                        params: {
-                                          path: { id: issue.id },
-                                          header: { "Idempotency-Key": crypto.randomUUID() },
-                                        },
-                                        body: {
-                                          expectedVersion: issue.version,
-                                          assignedMembershipId: null,
-                                        },
-                                      })
+                                    void attempt
+                                      .run(
+                                        `notice-issue:${issue.id}:unassign:${issue.version}`,
+                                        (key) =>
+                                          client.POST(
+                                            "/api/v1/billing/medicare-notice-issues/{id}/assign",
+                                            {
+                                              params: {
+                                                path: { id: issue.id },
+                                                header: { "Idempotency-Key": key },
+                                              },
+                                              body: {
+                                                expectedVersion: issue.version,
+                                                assignedMembershipId: null,
+                                              },
+                                            },
+                                          ),
+                                      )
                                       .then(({ error }) => {
                                         if (error)
                                           setIssueActionError(

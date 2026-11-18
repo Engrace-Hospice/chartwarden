@@ -1,0 +1,315 @@
+{
+  "tool": "createdb",
+  "version": "18.4",
+  "command": "createdb --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "tablespace",
+      "short": "D",
+      "takesValue": true
+    },
+    {
+      "name": "echo",
+      "short": "e",
+      "takesValue": false
+    },
+    {
+      "name": "encoding",
+      "short": "E",
+      "takesValue": true
+    },
+    {
+      "name": "locale",
+      "short": "l",
+      "takesValue": true
+    },
+    {
+      "name": "lc-collate",
+      "takesValue": true
+    },
+    {
+      "name": "lc-ctype",
+      "takesValue": true
+    },
+    {
+      "name": "builtin-locale",
+      "takesValue": true
+    },
+    {
+      "name": "icu-locale",
+      "takesValue": true
+    },
+    {
+      "name": "icu-rules",
+      "takesValue": true
+    },
+    {
+      "name": "locale-provider",
+      "takesValue": true
+    },
+    {
+      "name": "owner",
+      "short": "O",
+      "takesValue": true
+    },
+    {
+      "name": "strategy",
+      "short": "S",
+      "takesValue": true
+    },
+    {
+      "name": "template",
+      "short": "T",
+      "takesValue": true
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "no-password",
+      "short": "w",
+      "takesValue": false
+    },
+    {
+      "name": "password",
+      "short": "W",
+      "takesValue": false
+    },
+    {
+      "name": "maintenance-db",
+      "takesValue": true,
+      "role": "string"
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "b",
+      "outcome": "value"
+    },
+    {
+      "prefix": "bu",
+      "outcome": "value"
+    },
+    {
+      "prefix": "e",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ec",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ech",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "en",
+      "outcome": "value"
+    },
+    {
+      "prefix": "enc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "h",
+      "outcome": "host"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "i",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ic",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "icu",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "icu-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "icu-l",
+      "outcome": "value"
+    },
+    {
+      "prefix": "icu-lo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "icu-r",
+      "outcome": "value"
+    },
+    {
+      "prefix": "icu-ru",
+      "outcome": "value"
+    },
+    {
+      "prefix": "l",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "lc",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "lc-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "lc-c",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "lc-co",
+      "outcome": "value"
+    },
+    {
+      "prefix": "lc-col",
+      "outcome": "value"
+    },
+    {
+      "prefix": "lc-ct",
+      "outcome": "value"
+    },
+    {
+      "prefix": "lc-cty",
+      "outcome": "value"
+    },
+    {
+      "prefix": "lo",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "loc",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "loca",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "local",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "locale-",
+      "outcome": "value"
+    },
+    {
+      "prefix": "locale-p",
+      "outcome": "value"
+    },
+    {
+      "prefix": "m",
+      "outcome": "string"
+    },
+    {
+      "prefix": "ma",
+      "outcome": "string"
+    },
+    {
+      "prefix": "n",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "o",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ow",
+      "outcome": "value"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "s",
+      "outcome": "value"
+    },
+    {
+      "prefix": "st",
+      "outcome": "value"
+    },
+    {
+      "prefix": "t",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ta",
+      "outcome": "value"
+    },
+    {
+      "prefix": "tab",
+      "outcome": "value"
+    },
+    {
+      "prefix": "te",
+      "outcome": "value"
+    },
+    {
+      "prefix": "tem",
+      "outcome": "value"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    }
+  ]
+}

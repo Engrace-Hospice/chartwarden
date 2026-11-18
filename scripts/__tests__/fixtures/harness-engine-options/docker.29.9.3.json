@@ -1,0 +1,17 @@
+{
+  "tool": "docker",
+  "version": "29.9.3",
+  "lines": [
+    "      --config string      Location of client config files (default",
+    "  -c, --context string     Name of the context to use to connect to the",
+    "  -D, --debug              Enable debug mode",
+    "  -H, --host string        Daemon socket to connect to",
+    "  -l, --log-level string   Set the logging level (\"debug\", \"info\",",
+    "      --tls                Use TLS; implied by --tlsverify",
+    "      --tlscacert string   Trust certs signed only by this CA (default",
+    "      --tlscert string     Path to TLS certificate file (default",
+    "      --tlskey string      Path to TLS key file (default",
+    "      --tlsverify          Use TLS and verify the remote",
+    "  -v, --version            Print version information and quit"
+  ]
+}

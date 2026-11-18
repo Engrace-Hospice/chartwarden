@@ -20,6 +20,7 @@ import {
   BillingRuleRegistry,
   claimTotalMatchesLines,
   deriveControlNumber,
+  generateExternalPatientControlNumber,
   levelOfCareCoherence,
   placeOfServiceConsistency,
   type repositories,
@@ -118,7 +119,12 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     attemptIndex: number;
     /** When true, the latest validation run carries one un-overridden blocking (error) failure. */
     withBlockingFailure: boolean;
-  }): Promise<{ claimId: string; submissionId: string; ccn: string }> {
+  }): Promise<{
+    claimId: string;
+    submissionId: string;
+    ccn: string;
+    externalPatientControlNumber: string;
+  }> {
     const placeholderCcn = `pending-${opts.patient}`;
     // `patient_status_code` (migration 0371): a validated claim always carries its derived discharge
     // status, and the 837I claim document refuses to send one without it.
@@ -143,6 +149,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       claimId: claimId as never,
       attemptIndex: opts.attemptIndex,
     });
+    const externalPatientControlNumber = generateExternalPatientControlNumber();
     await admin.query("UPDATE claim SET claim_control_number = $1 WHERE id = $2", [ccn, claimId]);
 
     const runId = (
@@ -174,13 +181,21 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     const submissionId = (
       await admin.query(
         `INSERT INTO claim_submission (organization_id, provider_entity_id, kind, claim_id, claim_control_number,
-         attempt_index, outcome, reviewed_source_fingerprint)
-       VALUES ($1,$2,'claim_837i',$3,$4,$5,'queued',$6) RETURNING id`,
-        [ORG, PE, claimId, ccn, opts.attemptIndex, REVIEWED_SOURCE_FINGERPRINT],
+         external_patient_control_number, attempt_index, outcome, reviewed_source_fingerprint)
+       VALUES ($1,$2,'claim_837i',$3,$4,$5,$6,'queued',$7) RETURNING id`,
+        [
+          ORG,
+          PE,
+          claimId,
+          ccn,
+          externalPatientControlNumber,
+          opts.attemptIndex,
+          REVIEWED_SOURCE_FINGERPRINT,
+        ],
       )
     ).rows[0].id as string;
 
-    return { claimId, submissionId, ccn };
+    return { claimId, submissionId, ccn, externalPatientControlNumber };
   }
 
   async function submissionRow(submissionId: string): Promise<{
@@ -263,6 +278,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     claimId: string;
     submissionId: string;
     ccn: string;
+    externalPatientControlNumber: string;
   }> {
     const now = new Date("2025-11-10T00:00:00.000Z");
     const registry = new BillingRuleRegistry();
@@ -389,6 +405,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       claimId: assembled.claimId,
       submissionId: accepted.submissionId,
       ccn: accepted.claimControlNumber,
+      externalPatientControlNumber: accepted.externalPatientControlNumber,
     };
   }
 
@@ -428,7 +445,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
 
   it("a clean claim goes READY -> SUBMITTED through the clearinghouse, never the legacy portal", async () => {
     const clearinghouse = new InMemoryClearinghouse();
-    const { claimId, submissionId, ccn } = await seedReadyClaim({
+    const { claimId, submissionId, ccn, externalPatientControlNumber } = await seedReadyClaim({
       patient: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       attemptIndex: 0,
       withBlockingFailure: false,
@@ -438,6 +455,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       claimId,
       submissionId,
       claimControlNumber: ccn,
+      externalPatientControlNumber,
       attemptIndex: 0,
       reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
     };
@@ -485,7 +503,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
 
   it("a loader gap fails the attempt as failed_worker naming the gaps, and nothing is sent", async () => {
     const clearinghouse = new InMemoryClearinghouse();
-    const { claimId, submissionId, ccn } = await seedReadyClaim({
+    const { claimId, submissionId, ccn, externalPatientControlNumber } = await seedReadyClaim({
       patient: "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1",
       attemptIndex: 0,
       withBlockingFailure: false,
@@ -495,6 +513,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       claimId,
       submissionId,
       claimControlNumber: ccn,
+      externalPatientControlNumber,
       attemptIndex: 0,
       reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
     };
@@ -588,7 +607,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         binding: { vendor: "in_memory", transport: inDoubt },
       },
     };
-    const { claimId, submissionId, ccn } = await seedReadyClaim({
+    const { claimId, submissionId, ccn, externalPatientControlNumber } = await seedReadyClaim({
       patient: "dddddddd-dddd-dddd-dddd-dddddddddddd",
       attemptIndex: 0,
       withBlockingFailure: false,
@@ -599,6 +618,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         claimId,
         submissionId,
         claimControlNumber: ccn,
+        externalPatientControlNumber,
         attemptIndex: 0,
         reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
       }),
@@ -628,7 +648,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     const clearinghouse = new InMemoryClearinghouse();
     const upload = vi.spyOn(clearinghouse, "submitClaim");
     const deps = depsFor(clearinghouse);
-    const { claimId, submissionId, ccn } = await seedReadyClaim({
+    const { claimId, submissionId, ccn, externalPatientControlNumber } = await seedReadyClaim({
       patient: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
       attemptIndex: 0,
       withBlockingFailure: false,
@@ -639,6 +659,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         claimId,
         submissionId,
         claimControlNumber: ccn,
+        externalPatientControlNumber,
         attemptIndex: 0,
         reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
       }),
@@ -663,7 +684,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
   it("the ack crons pull both stages from the vendor: clearinghouse accept -> ACK_PENDING, payer accept -> ACK_ACCEPTED", async () => {
     const clearinghouse = new InMemoryClearinghouse();
     const deps = depsFor(clearinghouse);
-    const { claimId, submissionId, ccn } = await seedReadyClaim({
+    const { claimId, submissionId, ccn, externalPatientControlNumber } = await seedReadyClaim({
       patient: "cccccccc-cccc-cccc-cccc-cccccccccccc",
       attemptIndex: 0,
       withBlockingFailure: false,
@@ -674,6 +695,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         claimId,
         submissionId,
         claimControlNumber: ccn,
+        externalPatientControlNumber,
         attemptIndex: 0,
         reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
       }),
@@ -707,13 +729,14 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
   it("S01 (#708): submit -> clearinghouse ack -> payer ack -> 835 matched by CLP01 -> posted exactly once; claim state and ledger agree", async () => {
     const clearinghouse = new InMemoryClearinghouse();
     const deps = depsFor(clearinghouse);
-    const { claimId, submissionId, ccn } = await assembleReadyClaim();
+    const { claimId, submissionId, ccn, externalPatientControlNumber } = await assembleReadyClaim();
     await runInOrg((tx) =>
       runClaimSubmit(tx, deps, {
         organizationId: ORG,
         claimId,
         submissionId,
         claimControlNumber: ccn,
+        externalPatientControlNumber,
         attemptIndex: 0,
         reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
       }),
@@ -887,6 +910,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         claimId: seeded.claimId,
         submissionId: seeded.submissionId,
         claimControlNumber: seeded.ccn,
+        externalPatientControlNumber: seeded.externalPatientControlNumber,
         attemptIndex: 0,
         reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
       };
