@@ -77,7 +77,12 @@ import {
   promotionHasDraft,
   requireReview,
 } from "./chart-promotion";
-import { clampClockStart, localDayStart, stampClockIfNull } from "./closure/clock-stamp";
+import {
+  clampClockStart,
+  isValidServiceDate,
+  localDayStart,
+  stampClockIfNull,
+} from "./closure/clock-stamp";
 import { myNotesOf } from "./closure/my-notes";
 import { OPEN_NOTE_STATUS_LIST_SQL } from "./closure/open-status";
 import { readClosurePolicy } from "./closure/policy-service";
@@ -134,16 +139,6 @@ import {
   evvTimesAtSign,
   planDeliveryAtSign,
 } from "./visit-delivery";
-
-/** A real `YYYY-MM-DD` calendar date: the shape `localDayStart` accepts (it throws on anything else). */
-function isRealIsoDate(value: string): boolean {
-  const midnight = new Date(`${value}T00:00:00.000Z`);
-  return (
-    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-    !Number.isNaN(midnight.getTime()) &&
-    midnight.toISOString().startsWith(value)
-  );
-}
 
 const ENC = schema.encounters;
 const LINK = schema.encounterCarePlanLinks;
@@ -528,7 +523,7 @@ export function createDbEncounterRouteService(
       if (Number.isNaN(startedAt.getTime())) return { kind: "at_creation" };
       // The lower bound is the VISIT's service day: a request's own `serviceDate` is the clinician's to type, and using it would let
       // a late note claim today and start its clock days after the arrival. An unreadable date falls back to the creation instant.
-      if (!isRealIsoDate(visit.serviceDate)) return { kind: "at_creation" };
+      if (!isValidServiceDate(visit.serviceDate)) return { kind: "at_creation" };
       const source = visit.evvBracketState === "evv_present" ? "evv_check_in" : "visit_started";
       return { kind: "arrived", startedAt, source, visitServiceDate: visit.serviceDate };
     } catch {

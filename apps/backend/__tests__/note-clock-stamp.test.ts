@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampClockStart,
   clockStampWhere,
+  isValidServiceDate,
   localDayStart,
   stampClockIfNull,
 } from "../src/modules/08-encounters/closure/clock-stamp";
@@ -89,6 +90,35 @@ describe("localDayStart", () => {
   it("rejects a malformed service date", () => {
     expect(() => localDayStart("17/11/2026", "UTC")).toThrow(RangeError);
     expect(() => localDayStart("2026-13-40", "UTC")).toThrow(RangeError);
+  });
+});
+
+describe("isValidServiceDate (the one rule a pre-check shares with localDayStart)", () => {
+  // `Date.UTC` maps a year of 0-99 to 19xx and rolls 02-30 over to March: both must be refused, exactly as localDayStart refuses them
+  const dates = [
+    "2026-11-17",
+    "2028-02-29",
+    "2026-02-30",
+    "2026-13-01",
+    "0050-01-01",
+    "17/11/2026",
+    "",
+  ];
+  it.each(dates)("agrees with localDayStart about %j", (value) => {
+    const accepted = (() => {
+      try {
+        localDayStart(value, "UTC");
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    expect(isValidServiceDate(value)).toBe(accepted);
+  });
+
+  it("accepts a real date and refuses a year Date.UTC would map to 19xx", () => {
+    expect(isValidServiceDate("2026-11-17")).toBe(true);
+    expect(isValidServiceDate("0050-01-01")).toBe(false);
   });
 });
 

@@ -41,6 +41,21 @@ export function clampClockStart(
   return new Date(Math.min(lifted, upperBound.getTime()));
 }
 
+/** UTC midnight of a real `YYYY-MM-DD` calendar date, `NaN` for anything else (a rolled-over day such as 2026-02-30, or a year `Date.UTC` maps to 19xx). */
+function utcMidnightOf(serviceDate: string): number {
+  const parts = ISO_DATE.exec(serviceDate);
+  if (!parts) return Number.NaN;
+  const midnightUtc = Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
+  const isRealDate =
+    !Number.isNaN(midnightUtc) && new Date(midnightUtc).toISOString().slice(0, 10) === serviceDate;
+  return isRealDate ? midnightUtc : Number.NaN;
+}
+
+/** Whether `localDayStart` accepts `value`: the ONE rule for a service date, so a caller's pre-check cannot disagree with the throw. */
+export function isValidServiceDate(value: string): boolean {
+  return !Number.isNaN(utcMidnightOf(value));
+}
+
 /**
  * The instant an org-local calendar day (`YYYY-MM-DD`) begins in IANA `timeZone`: the earliest minute whose
  * org-local date is `serviceDate` (DST-safe, and still right for a zone whose midnight does not exist).
@@ -48,13 +63,10 @@ export function clampClockStart(
  * timezone rule exists to drift from the one the late-entry tiers use.
  */
 export function localDayStart(serviceDate: string, timeZone: string): Date {
-  const parts = ISO_DATE.exec(serviceDate);
-  const midnightUtc = parts
-    ? Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]))
-    : Number.NaN;
-  const isRealDate =
-    !Number.isNaN(midnightUtc) && new Date(midnightUtc).toISOString().slice(0, 10) === serviceDate;
-  if (!isRealDate) throw new RangeError(`localDayStart: '${serviceDate}' is not a YYYY-MM-DD date`);
+  const midnightUtc = utcMidnightOf(serviceDate);
+  if (Number.isNaN(midnightUtc)) {
+    throw new RangeError(`localDayStart: '${serviceDate}' is not a YYYY-MM-DD date`);
+  }
   const reachesDay = (minute: number): boolean =>
     localDateInTimeZone(new Date(midnightUtc + minute * MS_PER_MINUTE), timeZone) >= serviceDate;
   // Invariant: the local date is before `serviceDate` at `before`, and on/after it at `onOrAfter`.
