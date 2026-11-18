@@ -33,7 +33,7 @@ import { formatClosureInstant } from "../../shell/closure-instant";
 import { usePatientNames } from "../../shell/patient-names";
 import type { PatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
-import { clearStepUpDraft } from "../../shell/step-up-redirect";
+import { clearStepUpDraft, stashStepUpDraft } from "../../shell/step-up-redirect";
 import { useRefreshCues } from "../../shell/use-refresh-cues";
 import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
 import {
@@ -53,11 +53,12 @@ import {
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   CLOSURE_DRAFT_ACTIONS,
+  type HeldGrants,
   type NoteBoardState,
   OverrideGrantDrawer,
   grantDraftKey,
   revokeDraftKey,
-  stashedGrant,
+  stashedGrants,
 } from "./override-grant-drawer";
 import { useIsMounted } from "./use-is-mounted";
 import { useNow } from "./use-now";
@@ -83,7 +84,7 @@ const COUNTDOWN_TICK_MS = 60_000;
  */
 export const OVERDUE_BOARD_REFRESH_MS = 5 * 60_000;
 
-type Grants = Readonly<Record<string, HeldOverride>>;
+type Grants = HeldGrants;
 
 const patientLabelOf = (names: PatientNames, patientId: string): string =>
   names[patientId]?.name ?? "Patient";
@@ -102,12 +103,11 @@ export function OverdueBoard(): JSX.Element {
   const [announcement, setAnnouncement] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  // The grants this session knows of live only here (no list route). A revoke that went to step-up stashed its grant, so back from
-  // /step-up the drawer still offers Revoke for it.
-  const [grants, setGrants] = useState<Grants>(() => {
-    const held = returning ? stashedGrant(owner, params.get(NOTE_PARAM) ?? "") : null;
-    return held ? { [held.subjectMembershipId]: held } : {};
-  });
+  // The grants this session knows of live only here (no list route). A revoke that went to step-up stashed them all, so back from
+  // /step-up a drawer still offers Revoke for each.
+  const [grants, setGrants] = useState<Grants>(() =>
+    returning ? stashedGrants(owner, params.get(NOTE_PARAM) ?? "") : {},
+  );
   const [kept, setKept] = useState<OverdueNote | null>(null);
   const staffNames = useStaffNames();
   const now = useNow(COUNTDOWN_TICK_MS);
@@ -215,6 +215,14 @@ export function OverdueBoard(): JSX.Element {
   };
   const keepGrant = (grant: HeldOverride): void =>
     setGrants((previous) => ({ ...previous, [grant.subjectMembershipId]: grant }));
+  // A revoke that needs a fresh sign-in leaves for /step-up and this board unmounts: the grants it holds go in the step-up stash.
+  const keepGrantsForStepUp = (): void =>
+    stashStepUpDraft(revokeDraftKey(owner, noteParam), grants);
+  // The revoke landed: what the stash held is spent.
+  const keepRevoked = (grant: HeldOverride): void => {
+    clearStepUpDraft(revokeDraftKey(owner, noteParam));
+    keepGrant(grant);
+  };
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -327,7 +335,8 @@ export function OverdueBoard(): JSX.Element {
           resume={returning}
           onClose={deselect}
           onGranted={keepGrant}
-          onRevoked={keepGrant}
+          onRevoked={keepRevoked}
+          onRevokeStepUp={keepGrantsForStepUp}
           onStale={refresh}
         />
       ) : null}

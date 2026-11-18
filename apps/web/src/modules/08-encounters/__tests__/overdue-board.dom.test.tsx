@@ -495,6 +495,72 @@ describe("step-up", () => {
       expect(reasonBox(fresh).value).toBe("");
       expect(stepUpDraftKeys().length).toBe(0);
     });
+
+    it("keeps every grant the board held, not only the one being revoked", async () => {
+      const entryB = `${PATH}?note=${NOTE_B_ID}`;
+      const grant: Responder = (call) => ({
+        status: 201,
+        body: overrideView({
+          subjectMembershipId: (call.body as { subjectMembershipId: string }).subjectMembershipId,
+        }),
+      });
+      ceremonyDone = false;
+      mount({ grant, revoke });
+      const first = await openDrawer("Rowan Test");
+      typeReason(first, LONG_REASON);
+      submitGrant(first);
+      await within(first).findByRole("button", { name: "Revoke override" });
+      fireEvent.click(
+        within(await region()).getByRole("button", { name: /^Grant override for Sage Example/ }),
+      );
+      const second = await drawerFor("Sage Example");
+      typeReason(second, LONG_REASON);
+      submitGrant(second);
+      fireEvent.click(await within(second).findByRole("button", { name: "Revoke override" }));
+      await screen.findByText("elsewhere");
+      cleanup();
+
+      ceremonyDone = true;
+      markStepUpReturn(entryB);
+      mount({ entry: entryB, grant, revoke });
+      const back = await drawerFor("Sage Example");
+      expect(within(back).getByRole("button", { name: "Revoke override" })).toBeTruthy();
+      fireEvent.click(
+        within(await region()).getByRole("button", { name: /^Manage override for Rowan Test/ }),
+      );
+      const other = await drawerFor("Rowan Test");
+      expect(within(other).getByRole("button", { name: "Revoke override" })).toBeTruthy();
+    });
+
+    it("forgets the stashed grants when the supervisor closes the drawer", async () => {
+      await revokeSentToStepUp();
+      ceremonyDone = true;
+      markStepUpReturn(entry);
+      mount({ entry, revoke });
+      const back = await drawerFor("Rowan Test");
+      expect(stepUpDraftKeys().length).toBe(1);
+      fireEvent.click(within(back).getByRole("button", { name: "Close override panel" }));
+      expect(stepUpDraftKeys().length).toBe(0);
+    });
+
+    it("forgets the stashed grants when the board is refused", async () => {
+      await revokeSentToStepUp();
+      ceremonyDone = true;
+      markStepUpReturn(entry);
+      let reads = 0;
+      const board: Responder = () => {
+        reads += 1;
+        return reads === 1
+          ? { body: boardBody([noteRow(), atRiskNote]) }
+          : { status: 403, body: { error: { code: "FORBIDDEN" } } };
+      };
+      mount({ entry, board, revoke });
+      await drawerFor("Rowan Test");
+      expect(stepUpDraftKeys().length).toBe(1);
+      fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+      expect(await screen.findByText("Not available")).toBeTruthy();
+      expect(stepUpDraftKeys().length).toBe(0);
+    });
   });
 });
 
