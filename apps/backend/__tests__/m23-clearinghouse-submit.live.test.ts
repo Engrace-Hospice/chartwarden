@@ -23,7 +23,7 @@ import {
   generateExternalPatientControlNumber,
   levelOfCareCoherence,
   placeOfServiceConsistency,
-  type repositories,
+  repositories,
   visitLinesReportable,
 } from "@chartwarden/billing";
 import { type DbClient, createDbClient } from "@chartwarden/db";
@@ -119,6 +119,8 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     attemptIndex: number;
     /** When true, the latest validation run carries one un-overridden blocking (error) failure. */
     withBlockingFailure: boolean;
+    /** When true, the attempt is a historical one (sent before external patient control numbers): none is stored. */
+    historical?: boolean;
   }): Promise<{
     claimId: string;
     submissionId: string;
@@ -188,7 +190,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
           PE,
           claimId,
           ccn,
-          externalPatientControlNumber,
+          opts.historical ? null : externalPatientControlNumber,
           opts.attemptIndex,
           REVIEWED_SOURCE_FINGERPRINT,
         ],
@@ -466,7 +468,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     const sub = await submissionRow(submissionId);
     expect(sub.outcome).toBe("submitted");
     expect(sub.generated_file_uri).toMatch(/^clearinghouse:in_memory:/);
-    const status = await clearinghouse.fetchClaimStatus(CTX, ccn);
+    const status = await clearinghouse.fetchClaimStatus(CTX, externalPatientControlNumber);
     expect(status).toMatchObject({ ok: true, data: { state: "received" } });
   });
 
@@ -524,7 +526,9 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     const sub = await submissionRow(submissionId);
     expect(sub.outcome).toBe("failed_worker");
     expect(sub.outcome_reason).toBe("CLAIM_PREPARATION_FAILED");
-    expect(await clearinghouse.fetchClaimStatus(CTX, ccn)).not.toMatchObject({
+    expect(
+      await clearinghouse.fetchClaimStatus(CTX, externalPatientControlNumber),
+    ).not.toMatchObject({
       data: { state: "received" },
     });
   });
@@ -681,6 +685,30 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     expect(await claimState(claimId)).toBe("SUBMITTED");
   });
 
+  it("an acknowledgment finds its attempt by the transmitted external control number, or by the claim control number when the attempt has none (historical)", async () => {
+    const current = await seedReadyClaim({
+      patient: "a7a7a7a7-a7a7-a7a7-a7a7-a7a7a7a7a7a7",
+      attemptIndex: 0,
+      withBlockingFailure: false,
+    });
+    const historical = await seedReadyClaim({
+      patient: "a8a8a8a8-a8a8-a8a8-a8a8-a8a8a8a8a8a8",
+      attemptIndex: 0,
+      withBlockingFailure: false,
+      historical: true,
+    });
+    const find = (controlNumber: string) =>
+      runInOrg((tx) =>
+        new repositories.ClaimSubmissionRepository(tx).findLatestAttempt(PE, controlNumber),
+      );
+
+    expect((await find(current.externalPatientControlNumber))?.id).toBe(current.submissionId);
+    // the internal number does not identify an attempt that was transmitted under an external one
+    expect(await find(current.ccn)).toBeNull();
+    expect((await find(historical.ccn))?.id).toBe(historical.submissionId);
+    expect(await find("NO-SUCH-CONTROL-NUMBER")).toBeNull();
+  });
+
   it("the ack crons pull both stages from the vendor: clearinghouse accept -> ACK_PENDING, payer accept -> ACK_ACCEPTED", async () => {
     const clearinghouse = new InMemoryClearinghouse();
     const deps = depsFor(clearinghouse);
@@ -701,7 +729,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       }),
     );
 
-    await clearinghouse.control.clearinghouseAccepts(ccn, SCOPE);
+    await clearinghouse.control.clearinghouseAccepts(externalPatientControlNumber, SCOPE);
     await runAckPull999(deps);
     expect(await claimState(claimId)).toBe("ACK_PENDING");
 
@@ -709,7 +737,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     await runAckPull277ca(deps);
     expect(await claimState(claimId)).toBe("ACK_PENDING");
 
-    await clearinghouse.control.payerAccepts(ccn, "ICN-LIVE-1", SCOPE);
+    await clearinghouse.control.payerAccepts(externalPatientControlNumber, "ICN-LIVE-1", SCOPE);
     await runAckPull277ca(deps);
     expect(await claimState(claimId)).toBe("ACK_ACCEPTED");
     // Re-pulling from the start is a no-op (the ack row is unique per event).
@@ -741,9 +769,9 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         reviewedSourceFingerprint: REVIEWED_SOURCE_FINGERPRINT,
       }),
     );
-    await clearinghouse.control.clearinghouseAccepts(ccn, SCOPE);
+    await clearinghouse.control.clearinghouseAccepts(externalPatientControlNumber, SCOPE);
     await runAckPull999(deps);
-    await clearinghouse.control.payerAccepts(ccn, "ICN-CYCLE-1", SCOPE);
+    await clearinghouse.control.payerAccepts(externalPatientControlNumber, "ICN-CYCLE-1", SCOPE);
     await runAckPull277ca(deps);
     expect(await claimState(claimId)).toBe("ACK_ACCEPTED");
 
@@ -1002,14 +1030,14 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       await runInOrg((tx) => runClaimSubmitRetry(tx, r.deps(), c.retry));
       expect(await claimState(c.claimId)).toBe("SUBMITTED");
       expect(r.uploads).toHaveLength(1);
-      expect(r.uploads[0]).not.toBe(c.ccn);
+      expect(r.uploads[0]).not.toBe(c.externalPatientControlNumber);
     });
 
     it("killed after the send, before the response: surfaced, not resent; 'filed' completes the claim without a second upload", async () => {
       const r = rig({ dropAfterLanding: true });
       const c = await seed("f2f2f2f2-f2f2-f2f2-f2f2-f2f2f2f2f2f2");
       await expect(runThenKill(r.deps(), c.job)).rejects.toThrow(KILLED);
-      expect(r.uploads).toEqual([c.ccn]);
+      expect(r.uploads).toEqual([c.externalPatientControlNumber]);
       expect(r.anomalies).toHaveLength(1);
       await expectSurfacedNotResent(r, c, 1);
 
@@ -1024,7 +1052,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
 
       await runInOrg((tx) => runClaimSubmitRetry(tx, r.deps(), c.retry));
       expect(await claimState(c.claimId)).toBe("SUBMITTED");
-      expect(r.uploads).toEqual([c.ccn]);
+      expect(r.uploads).toEqual([c.externalPatientControlNumber]);
       const rows = await admin.query(
         "SELECT outcome::text AS outcome, generated_file_uri FROM claim_submission WHERE claim_id = $1 AND outcome = 'submitted'",
         [c.claimId],
@@ -1080,7 +1108,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
           eventId: "ev-ch-754",
           stage: "clearinghouse",
           disposition: "accepted",
-          controlNumber: c.ccn,
+          controlNumber: c.externalPatientControlNumber,
           reasonCodes: [],
           occurredAt: at,
         },
@@ -1088,7 +1116,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
           eventId: "ev-pay-754",
           stage: "payer",
           disposition: "accepted",
-          controlNumber: c.ccn,
+          controlNumber: c.externalPatientControlNumber,
           reasonCodes: [],
           occurredAt: at,
           payerClaimNumber: "ICN-754",
@@ -1112,7 +1140,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       expect(await failedEventCount(c.claimId)).toBe(failedBefore);
       expect(await submissionRows(c.claimId)).toEqual(afterRetry);
       expect(await claimState(c.claimId)).toBe("ACK_ACCEPTED");
-      expect(r.uploads).toEqual([c.ccn]);
+      expect(r.uploads).toEqual([c.externalPatientControlNumber]);
     });
 
     it("retry without the attempt store stays blocked even after the operator settled the attempt (fail closed, #754)", async () => {
@@ -1134,7 +1162,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       };
       await runInOrg((tx) => runClaimSubmitRetry(tx, blind, c.retry));
       expect(await claimState(c.claimId)).toBe("READY");
-      expect(r.uploads).toEqual([c.ccn]);
+      expect(r.uploads).toEqual([c.externalPatientControlNumber]);
       // With the store bound the same settlement lets the retry through (the block was the missing store, not the data).
       await runInOrg((tx) => runClaimSubmitRetry(tx, r.deps(), c.retry));
       expect(await claimState(c.claimId)).toBe("SUBMITTED");
@@ -1157,7 +1185,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       expect(released.rowCount).toBe(1);
       await runInOrg((tx) => runClaimSubmitRetry(tx, r.deps(), c.retry));
       expect(await claimState(c.claimId)).toBe("READY");
-      expect(r.uploads).toEqual([c.ccn]);
+      expect(r.uploads).toEqual([c.externalPatientControlNumber]);
       expect(await submissionRows(c.claimId)).toHaveLength(1);
     });
 
@@ -1165,7 +1193,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       const r = rig();
       const c = await seed("f3f3f3f3-f3f3-f3f3-f3f3-f3f3f3f3f3f3");
       await expect(runThenKill(r.deps(), c.job)).rejects.toThrow(KILLED);
-      expect(r.uploads).toEqual([c.ccn]);
+      expect(r.uploads).toEqual([c.externalPatientControlNumber]);
       expect(await attemptStatus(c.ccn)).toEqual(["sent"]);
       expect(await claimState(c.claimId)).toBe("SUBMITTED");
       expect((await submissionRow(c.submissionId)).outcome).toBe("submitted");
@@ -1173,7 +1201,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       await runInOrg((tx) => runClaimSubmit(tx, r.deps(), c.job));
       expect(await claimState(c.claimId)).toBe("SUBMITTED");
       expect((await submissionRow(c.submissionId)).outcome).toBe("submitted");
-      expect(r.uploads).toEqual([c.ccn]);
+      expect(r.uploads).toEqual([c.externalPatientControlNumber]);
     });
 
     describe("ISA13 (the interchange number) is remembered per submission", () => {
@@ -1249,7 +1277,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
 
         expect(renders).toHaveLength(1);
         expect((await submissionRow(c.submissionId)).outcome).toBe("submitted");
-        expect(r.uploads).toEqual([c.ccn]); // replayed, not re-filed or conflicted
+        expect(r.uploads).toEqual([c.externalPatientControlNumber]); // replayed, not re-filed or conflicted
         const [row] = (
           await admin.query(
             "SELECT rendered_at FROM clearinghouse_interchange_number WHERE idempotency_key = $1",
