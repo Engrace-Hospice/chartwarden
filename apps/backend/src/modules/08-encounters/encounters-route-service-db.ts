@@ -135,6 +135,16 @@ import {
   planDeliveryAtSign,
 } from "./visit-delivery";
 
+/** A real `YYYY-MM-DD` calendar date: the shape `localDayStart` accepts (it throws on anything else). */
+function isRealIsoDate(value: string): boolean {
+  const midnight = new Date(`${value}T00:00:00.000Z`);
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(midnight.getTime()) &&
+    midnight.toISOString().startsWith(value)
+  );
+}
+
 const ENC = schema.encounters;
 const LINK = schema.encounterCarePlanLinks;
 const COSIGN = schema.cosignatureRequests;
@@ -494,6 +504,8 @@ export function createDbEncounterRouteService(
         readonly kind: "arrived";
         readonly startedAt: Date;
         readonly source: EncounterClockStartSource;
+        /** The VISIT's own service day (never the request's): the earliest the arrival may be held to. */
+        readonly visitServiceDate: string;
       };
 
   async function creationClockPlan(
@@ -514,21 +526,24 @@ export function createDbEncounterRouteService(
       if (visit.actualStartedAt === null) return { kind: "await_arrival" };
       const startedAt = new Date(visit.actualStartedAt);
       if (Number.isNaN(startedAt.getTime())) return { kind: "at_creation" };
+      // The lower bound is the VISIT's service day: a request's own `serviceDate` is the clinician's to type, and using it would let
+      // a late note claim today and start its clock days after the arrival. An unreadable date falls back to the creation instant.
+      if (!isRealIsoDate(visit.serviceDate)) return { kind: "at_creation" };
       const source = visit.evvBracketState === "evv_present" ? "evv_check_in" : "visit_started";
-      return { kind: "arrived", startedAt, source };
+      return { kind: "arrived", startedAt, source, visitServiceDate: visit.serviceDate };
     } catch {
       return { kind: "at_creation" };
     }
   }
 
   /**
-   * The clock columns for the INSERT. An `arrived` instant is bounded like the consumer's: no earlier than the note's service day (in
-   * the organization's own timezone) and never after now, so a skewed device instant on the visit cannot back-date or post-date it.
+   * The clock columns for the INSERT. An `arrived` instant is held between the VISIT's service day (in the organization's own
+   * timezone) and now, so a skewed device instant on the visit cannot back-date or post-date it. The upper bound is the creation
+   * instant because the visit row carries no "recorded at" instant (the M17 consumer, which has the event, caps at that instead).
    */
   async function creationClockColumns(
     t: DbClient,
     organizationId: string,
-    serviceDate: string,
     plan: CreationClockPlan,
   ): Promise<{ clockStartedAt?: Date; clockStartSource?: EncounterClockStartSource }> {
     if (plan.kind === "await_arrival") return {};
@@ -539,7 +554,7 @@ export function createDbEncounterRouteService(
     return {
       clockStartedAt: clampClockStart(
         plan.startedAt,
-        localDayStart(serviceDate, timeZone),
+        localDayStart(plan.visitServiceDate, timeZone),
         created,
       ),
       clockStartSource: plan.source,
@@ -1623,7 +1638,7 @@ export function createDbEncounterRouteService(
               // Only a telephonic encounter type implies a modality at creation; confirmed_at stays NULL.
               visitModality: seedModalityFor({ encounterType: args.encounterType }),
               // ADR-0113: the clock columns by plan (at creation, at the visit's arrival, or left to the M17 start event), in this INSERT.
-              ...(await creationClockColumns(t, organizationId, args.serviceDate, clockPlan)),
+              ...(await creationClockColumns(t, organizationId, clockPlan)),
             })
             .returning(),
           "encounter insert returned no row",

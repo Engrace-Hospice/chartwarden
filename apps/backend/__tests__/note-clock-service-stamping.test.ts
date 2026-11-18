@@ -42,6 +42,7 @@ const visitRow = (over: Record<string, unknown> = {}) => ({
   id: VISIT,
   organizationId: ORG,
   assignedMembershipId: MEMBERSHIP,
+  serviceDate: "2026-11-01",
   actualStartedAt: null,
   ...over,
 });
@@ -117,6 +118,10 @@ describe("createDraft", () => {
     ["the visit belongs to another organization", visitRow({ organizationId: "other-org" })],
     ["the visit seam cannot answer", "throw" as const],
     ["the visit has an unreadable start instant", visitRow({ actualStartedAt: "not-an-instant" })],
+    [
+      "the visit has an unreadable service date",
+      visitRow({ actualStartedAt: EARLIER.toISOString(), serviceDate: "2026-02-30" }),
+    ],
   ])(
     "starts the clock at creation (draft_created) when %s, so a typed visitId can neither defer it nor move it",
     async (_why, visit) => {
@@ -147,13 +152,31 @@ describe("createDraft", () => {
       expect(values).toMatchObject({ clockStartedAt: NOW, clockStartSource: "evv_check_in" });
     });
 
-    it("never before the note's service day: an earlier instant is lifted to that day's start", async () => {
+    it("never before the VISIT's service day: an earlier instant is lifted to that day's start", async () => {
       const values = await created(
         visitRow({ actualStartedAt: "2026-10-20T12:00:00.000Z", evvBracketState: null }),
       );
       expect(values).toMatchObject({
         clockStartedAt: new Date("2026-11-01T04:00:00.000Z"), // 00:00 EDT, the organization default zone America/New_York
         clockStartSource: "visit_started",
+      });
+    });
+
+    it("the REQUEST's serviceDate never moves the clock: typing today for a visit that started days ago still clocks at the arrival", async () => {
+      visitSeam.visit = visitRow({
+        serviceDate: "2026-11-15",
+        actualStartedAt: "2026-11-15T14:00:00.000Z",
+        evvBracketState: "evv_present",
+      });
+      const { service, rec } = serviceOver({ encounter: [encounterRow({ visitId: VISIT })] });
+      await service.createDraft(ORG, MEMBERSHIP, {
+        ...(draftArgs as object),
+        visitId: VISIT,
+        serviceDate: "2026-11-17", // the clinician's own claim: today
+      } as never);
+      expect(rec.inserts[0]?.values).toMatchObject({
+        clockStartedAt: new Date("2026-11-15T14:00:00.000Z"),
+        clockStartSource: "evv_check_in",
       });
     });
 
