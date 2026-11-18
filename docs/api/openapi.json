@@ -182889,6 +182889,21 @@
                         },
                         "adviceId": {
                           "type": "string"
+                        },
+                        "heldSets": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "LEGACY_IDENTITY_AMBIGUOUS",
+                                "type": "string"
+                              },
+                              {
+                                "const": "CLAIMMD_ERA_STAGE_MATCH",
+                                "type": "string"
+                              }
+                            ]
+                          }
                         }
                       }
                     },
@@ -182905,6 +182920,21 @@
                         },
                         "existingAdviceId": {
                           "type": "string"
+                        },
+                        "heldSets": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "LEGACY_IDENTITY_AMBIGUOUS",
+                                "type": "string"
+                              },
+                              {
+                                "const": "CLAIMMD_ERA_STAGE_MATCH",
+                                "type": "string"
+                              }
+                            ]
+                          }
                         }
                       }
                     },
@@ -182962,6 +182992,21 @@
                         },
                         "reason": {
                           "type": "string"
+                        },
+                        "heldSets": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "LEGACY_IDENTITY_AMBIGUOUS",
+                                "type": "string"
+                              },
+                              {
+                                "const": "CLAIMMD_ERA_STAGE_MATCH",
+                                "type": "string"
+                              }
+                            ]
+                          }
                         }
                       }
                     },
@@ -182987,6 +183032,21 @@
                         "reason": {
                           "const": "LEGACY_IDENTITY_AMBIGUOUS",
                           "type": "string"
+                        },
+                        "heldSets": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "LEGACY_IDENTITY_AMBIGUOUS",
+                                "type": "string"
+                              },
+                              {
+                                "const": "CLAIMMD_ERA_STAGE_MATCH",
+                                "type": "string"
+                              }
+                            ]
+                          }
                         }
                       }
                     }

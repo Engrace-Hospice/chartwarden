@@ -24,10 +24,31 @@ export const ReceiveAdviceRequestSchema = Type.Object({
   rawEdi: Type.String({ minLength: 1 }),
 });
 
+/**
+ * A multi-set 835 answers with ONE outcome; when some of its sets were held (not posted, waiting for an operator)
+ * `heldSets` names every held set's reason code, in file order. Absent when no set was held. Codes only.
+ */
+const HeldSetsField = Type.Optional(
+  Type.Array(
+    Type.Union([
+      Type.Literal("LEGACY_IDENTITY_AMBIGUOUS"),
+      Type.Literal("CLAIMMD_ERA_STAGE_MATCH"),
+    ]),
+  ),
+);
+
 /** POST /internal/remittance/advices — the 202/409/422 receive outcome (route #32, WX-PR-012). */
 export const ReceiveAdviceResponseSchema = Type.Union([
-  Type.Object({ outcome: Type.Literal("queued"), adviceId: Type.String() }),
-  Type.Object({ outcome: Type.Literal("duplicate"), existingAdviceId: Type.String() }),
+  Type.Object({
+    outcome: Type.Literal("queued"),
+    adviceId: Type.String(),
+    heldSets: HeldSetsField,
+  }),
+  Type.Object({
+    outcome: Type.Literal("duplicate"),
+    existingAdviceId: Type.String(),
+    heldSets: HeldSetsField,
+  }),
   Type.Object({ outcome: Type.Literal("malformed"), reason: Type.String() }),
   Type.Object({
     outcome: Type.Literal("unsupported"),
@@ -38,12 +59,14 @@ export const ReceiveAdviceResponseSchema = Type.Union([
     outcome: Type.Literal("review_required"),
     stageId: Type.String(),
     reason: Type.String(),
+    heldSets: HeldSetsField,
   }),
   Type.Object({
     outcome: Type.Literal("held_duplicate"),
     adviceId: Type.String(),
     existingAdviceId: Type.String(),
     reason: Type.Literal("LEGACY_IDENTITY_AMBIGUOUS"),
+    heldSets: HeldSetsField,
   }),
 ]);
 

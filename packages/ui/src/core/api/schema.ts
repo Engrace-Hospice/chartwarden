@@ -75456,10 +75456,12 @@ export interface operations {
                         /** @constant */
                         outcome: "queued";
                         adviceId: string;
+                        heldSets?: ("LEGACY_IDENTITY_AMBIGUOUS" | "CLAIMMD_ERA_STAGE_MATCH")[];
                     } | {
                         /** @constant */
                         outcome: "duplicate";
                         existingAdviceId: string;
+                        heldSets?: ("LEGACY_IDENTITY_AMBIGUOUS" | "CLAIMMD_ERA_STAGE_MATCH")[];
                     } | {
                         /** @constant */
                         outcome: "malformed";
@@ -75475,6 +75477,7 @@ export interface operations {
                         outcome: "review_required";
                         stageId: string;
                         reason: string;
+                        heldSets?: ("LEGACY_IDENTITY_AMBIGUOUS" | "CLAIMMD_ERA_STAGE_MATCH")[];
                     } | {
                         /** @constant */
                         outcome: "held_duplicate";
@@ -75482,6 +75485,7 @@ export interface operations {
                         existingAdviceId: string;
                         /** @constant */
                         reason: "LEGACY_IDENTITY_AMBIGUOUS";
+                        heldSets?: ("LEGACY_IDENTITY_AMBIGUOUS" | "CLAIMMD_ERA_STAGE_MATCH")[];
                     };
                 };
             };
