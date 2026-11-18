@@ -43,6 +43,8 @@ import {
 } from "./global-response-signal";
 import { AppLayout } from "./layout";
 import { LiveFeatureFlagProvider } from "./live-feature-flags";
+import { NoteClosureProvider } from "./note-closure";
+import { noteClosureRedirectFor } from "./note-closure-screens";
 import { OfflineBanner } from "./offline-banner";
 import { ONBOARDING_HOME, isOnboardingScreen } from "./onboarding-stage";
 import { RedirectRememberingLink } from "./redirect-remembering-link";
@@ -156,6 +158,8 @@ function withSuspense(element: ReactNode): JSX.Element {
  * into a dead end (both caught live-testing TASK-033). A fresh "authenticated" status (a real
  * sign-in) clears the ref so a later, genuine mid-session expiry still redirects.
  * A 503 has no such caveat — the service is down regardless of who's asking.
+ * A 403 NOTE_CLOSURE_REQUIRED (ADR-0113) moves a signed-in clinician to My notes unless they are already on a screen the visit-note gate
+ * still allows (see note-closure-screens.ts); it never navigates for the gate's 503 NOTE_CLOSURE_UNAVAILABLE (that is no outage).
  */
 function GlobalResponseWatcher(): null {
   const navigate = useNavigate();
@@ -204,6 +208,12 @@ function GlobalResponseWatcher(): null {
       ) {
         navigate(ONBOARDING_HOME, { replace: true });
       }
+    } else if (signal.kind === "note-closure-required") {
+      // ADR-0113: the visit-note gate refused a route. The banner (fed by the closure-status poll, refreshed by this same signal) says
+      // why; here the person is moved to My notes ONLY when they are not on a screen the gate still allows: leaving one would throw
+      // away the form they are filling in, and from My notes itself there is nowhere to go, so a refused background call cannot loop.
+      const target = noteClosureRedirectFor(pathname, status === "authenticated");
+      if (target) navigate(target, { replace: true });
     } else if (signal.kind === "tenant-unavailable") {
       // Already there (the page's own requests may be refused too): re-navigating would only churn history/state.
       if (pathname !== "/tenant-unavailable") {
@@ -313,7 +323,9 @@ export function AppShell({
               <SystemStatusProvider components={systemStatus}>
                 <ToastProvider>
                   <AlertInboxProvider>
-                    <RouterProvider router={router} />
+                    <NoteClosureProvider>
+                      <RouterProvider router={router} />
+                    </NoteClosureProvider>
                   </AlertInboxProvider>
                 </ToastProvider>
               </SystemStatusProvider>

@@ -517,12 +517,13 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
       const res = await client.GET("/api/v1/encounters/my-drafts");
       if (res.error) throw res.error;
       return {
+        // The server returns the author's open notes nearest deadline first (ADR-0113); a legacy note has no deadline.
         tasks: (res.data?.encounters ?? []).slice(0, 10).map((e) => ({
           id: `note-${e.id}`,
           category: "other" as const,
           title: `Finish ${stateLabel(e.encounterType).toLowerCase()} note`,
           patientId: e.patientId,
-          dueAt: null,
+          dueAt: e.closure.deadlineAt,
           href: `/patients/${e.patientId}/encounters/${e.id}`,
         })),
       };

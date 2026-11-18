@@ -16,6 +16,17 @@ export type GlobalResponseSignal =
   | { kind: "org-not-selected" }
   /** A route outside onboarding was refused because the organization is not live yet: the wizard is where to go. */
   | { kind: "organization-onboarding" }
+  /**
+   * ADR-0113: the visit-note gate refused a route (403 NOTE_CLOSURE_REQUIRED) because the clinician's oldest open note is past its block
+   * instant. The three facts come from the refusal's `details`; each but the count can be absent. The shell shows the closure banner
+   * and, unless the person is on a screen the gate still allows, sends them to My notes.
+   */
+  | {
+      kind: "note-closure-required";
+      encounterId?: string;
+      deadlineAt?: string;
+      overdueCount: number;
+    }
   | null;
 
 type Listener = () => void;
@@ -74,13 +85,52 @@ export function mayCarryTenantRefusal(status: number, url?: string): boolean {
 /** The 403 a session on an organization that is not live yet gets from any route outside onboarding, go-live, account and sign-in. */
 const ORGANIZATION_ONBOARDING_CODE = "ORGANIZATION_ONBOARDING";
 
-/** The tenant-unavailable (or organization-onboarding) signal for a refusal body `{ error: { code } }`, or null for any other body. Reads a clone. */
+/** The 403 the visit-note gate answers for a clinician whose oldest open note is past its block instant (ADR-0113). */
+const NOTE_CLOSURE_REQUIRED_CODE = "NOTE_CLOSURE_REQUIRED";
+/** The visit-note gate's fail-closed 503 (the closure status could not be read): it refuses ONE action, it is not an outage. */
+const NOTE_CLOSURE_UNAVAILABLE_CODE = "NOTE_CLOSURE_UNAVAILABLE";
+
+/** One entry of the refusal's `details` (`{ field, code, message }[]`): the value of each fact rides in `message`. */
+type RefusalDetail = { field?: unknown; message?: unknown };
+
+function detailMessage(details: readonly RefusalDetail[], field: string): string | undefined {
+  const message = details.find((d) => d.field === field)?.message;
+  return typeof message === "string" && message !== "" ? message : undefined;
+}
+
+/**
+ * The `note-closure-required` signal for a refusal body's `error.details`. Only the overdue count is always present; the oldest note
+ * and its deadline are left out when the gate did not send them. A missing or unreadable count falls back to 1: the refusal itself
+ * means at least one note is overdue.
+ */
+export function noteClosureSignalFromDetails(details: unknown): GlobalResponseSignal {
+  const list = (Array.isArray(details) ? details : []) as RefusalDetail[];
+  const encounterId = detailMessage(list, "encounterId");
+  const deadlineAt = detailMessage(list, "deadlineAt");
+  const count = Number.parseInt(detailMessage(list, "overdueCount") ?? "", 10);
+  return {
+    kind: "note-closure-required",
+    ...(encounterId === undefined ? {} : { encounterId }),
+    ...(deadlineAt === undefined ? {} : { deadlineAt }),
+    overdueCount: Number.isFinite(count) && count > 0 ? count : 1,
+  };
+}
+
+/**
+ * The tenant-unavailable, organization-onboarding or note-closure-required signal for a refusal body `{ error: { code, details } }`,
+ * or null for any other body. The note-closure signal is only ever read off a 403. Reads a clone.
+ */
 export async function tenantSignalFromResponse(response: Response): Promise<GlobalResponseSignal> {
   try {
     if (!response.headers.get("content-type")?.includes("json")) return null;
-    const body = (await response.clone().json()) as { error?: { code?: unknown } } | null;
+    const body = (await response.clone().json()) as {
+      error?: { code?: unknown; details?: unknown };
+    } | null;
     const code = body?.error?.code;
     if (code === ORGANIZATION_ONBOARDING_CODE) return { kind: "organization-onboarding" };
+    if (code === NOTE_CLOSURE_REQUIRED_CODE && response.status === 403) {
+      return noteClosureSignalFromDetails(body?.error?.details);
+    }
     const reason = typeof code === "string" ? TENANT_ERROR_CODES[code] : undefined;
     return reason ? { kind: "tenant-unavailable", reason } : null;
   } catch {
@@ -100,8 +150,9 @@ export async function isOrgNotSelectedResponse(response: Response): Promise<bool
 /**
  * ADR-0110 — the claims-billing gate's fail-closed 503 (`BILLING_ENTITLEMENT_UNAVAILABLE`) refuses one action; the rest
  * of the app works. It is not an outage, so it must not navigate to /maintenance and lose the form the user is on.
+ * ADR-0113 — the visit-note gate's `NOTE_CLOSURE_UNAVAILABLE` is the same kind of refusal: one action, not an outage.
  */
-const NOT_AN_OUTAGE_ON_503 = ["BILLING_ENTITLEMENT_UNAVAILABLE"];
+const NOT_AN_OUTAGE_ON_503 = ["BILLING_ENTITLEMENT_UNAVAILABLE", NOTE_CLOSURE_UNAVAILABLE_CODE];
 
 /** The envelope's `error.code`, read from a clone; undefined for a non-JSON or unreadable body. */
 async function errorCodeOf(response: Response): Promise<string | undefined> {

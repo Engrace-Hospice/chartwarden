@@ -1,0 +1,377 @@
+// @vitest-environment jsdom
+// ADR-0113 in the shell: the closure-status poll (authors only, silent on failure), the banner states it feeds, and the watcher's
+// reaction to a 403 NOTE_CLOSURE_REQUIRED observed through the real API client (move to My notes off a refused screen, stay on an
+// allowed one, never route the gate's 503 to /maintenance).
+import { type ApiClient, ApiClientProvider, createApiClient, useApiClient } from "@chartwarden/ui";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { useEffect } from "react";
+import type { JSX } from "react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AppShell } from "./app";
+import {
+  getGlobalResponseSignal,
+  handleObservedResponse,
+  setGlobalResponseSignal,
+} from "./global-response-signal";
+import {
+  NOTE_CLOSURE_BLOCKED_POLL_INTERVAL_MS,
+  NOTE_CLOSURE_MIN_REFRESH_GAP_MS,
+  NOTE_CLOSURE_POLL_INTERVAL_MS,
+  NoteClosureProvider,
+  type NoteClosureStatus,
+} from "./note-closure";
+import { NoteClosureBanner } from "./note-closure-banner";
+import { createScreenRegistry } from "./screen-registry";
+import { type Session, SessionProvider } from "./session";
+import { systemScreens } from "./system-pages";
+
+const OLDEST = "e0000000-0000-4000-8000-000000000001";
+const PATIENT = "11111111-1111-4111-8111-111111111111";
+
+const author: Session = {
+  userId: "user-1",
+  organizationId: "org-1",
+  membershipId: "membership-1",
+  displayName: "Test User",
+  organizationName: "Test Organization",
+  roles: ["rn"],
+  isAdmin: false,
+  permissions: ["encounter.author"],
+};
+
+const status = (over: Partial<NoteClosureStatus> = {}): NoteClosureStatus => ({
+  mode: "warn",
+  thresholdHours: 24,
+  verdict: "clear",
+  stage: "ok",
+  encounterId: null,
+  deadlineAt: null,
+  hoursOverdue: 0,
+  overdueCount: 0,
+  overrideExpiresAt: null,
+  ...over,
+});
+const BLOCKED = status({
+  mode: "block",
+  verdict: "blocked",
+  stage: "overdue",
+  encounterId: OLDEST,
+  deadlineAt: "2026-11-17T06:00:00.000Z",
+  hoursOverdue: 6,
+  overdueCount: 2,
+});
+
+type Call = { path: string; headers?: Record<string, string> };
+
+/** A stand-in client: `closure-status` answers from `answers` (the last repeats), the encounter read answers its patient. */
+function mockClient(answers: (NoteClosureStatus | "fail")[]) {
+  const calls: Call[] = [];
+  let closureReads = 0;
+  const GET = vi.fn(async (path: string, init?: { headers?: Record<string, string> }) => {
+    calls.push({ path, headers: init?.headers });
+    if (path === "/api/v1/encounters/closure-status") {
+      const answer = answers[Math.min(closureReads, answers.length - 1)];
+      closureReads += 1;
+      if (answer === "fail") throw new TypeError("Failed to fetch");
+      return { data: answer, error: undefined, response: new Response() };
+    }
+    if (path === "/api/v1/encounters/{encounterId}") {
+      return { data: { patientId: PATIENT }, error: undefined, response: new Response() };
+    }
+    return { data: { alerts: [] }, error: undefined, response: new Response() };
+  });
+  const client = { GET, POST: vi.fn() } as unknown as ApiClient;
+  const closureCalls = (): Call[] =>
+    calls.filter((c) => c.path === "/api/v1/encounters/closure-status");
+  return { client, closureCalls };
+}
+
+function mountBanner(client: ApiClient, session: Session = author) {
+  return render(
+    <ApiClientProvider client={client}>
+      <SessionProvider session={session}>
+        <MemoryRouter>
+          <NoteClosureProvider>
+            <NoteClosureBanner />
+          </NoteClosureProvider>
+        </MemoryRouter>
+      </SessionProvider>
+    </ApiClientProvider>,
+  );
+}
+
+const statusRegion = (): HTMLElement => screen.getAllByRole("status")[0] as HTMLElement;
+
+beforeEach(() => setGlobalResponseSignal(null));
+afterEach(() => {
+  setGlobalResponseSignal(null);
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("closure banner states", () => {
+  it("renders nothing for mode off and for an ok stage", async () => {
+    const { client, closureCalls } = mockClient([
+      status({ mode: "off", stage: "overdue", verdict: "warn" }),
+    ]);
+    mountBanner(client);
+    await waitFor(() => expect(closureCalls()).toHaveLength(1));
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("alert")?.textContent ?? "").toBe("");
+    expect(statusRegion().textContent).toBe("");
+  });
+
+  it("at risk: a polite info notice that never mentions limits", async () => {
+    const { client } = mockClient([
+      status({ stage: "at_risk", encounterId: OLDEST, deadlineAt: "2026-11-17T18:00:00.000Z" }),
+    ]);
+    mountBanner(client);
+    expect(await within(statusRegion()).findByText(/A visit note is due soon/)).toBeTruthy();
+    expect(statusRegion().textContent).not.toMatch(/limit|block|refus/i);
+    expect(
+      within(statusRegion()).getByRole("link", { name: "Open My notes" }).getAttribute("href"),
+    ).toBe("/work/drafts");
+  });
+
+  it("overdue in warn mode: a warning that does not claim access is limited", async () => {
+    const { client } = mockClient([
+      status({ stage: "overdue", verdict: "warn", overdueCount: 2, encounterId: OLDEST }),
+    ]);
+    mountBanner(client);
+    expect(await within(statusRegion()).findByText(/2 visit notes are overdue/)).toBeTruthy();
+    expect(statusRegion().textContent).not.toMatch(/limit|block|refus|access/i);
+  });
+
+  it("blocked: the assertive region says access is limited, links to the oldest note and points to a supervisor", async () => {
+    const { client } = mockClient([BLOCKED]);
+    mountBanner(client);
+    const alert = await screen.findByRole("alert");
+    expect(await within(alert).findByText(/your access is limited/i)).toBeTruthy();
+    expect(alert.textContent).toMatch(/ask a supervisor for a temporary override/i);
+    const link = within(alert).getByRole("link", { name: "Open the oldest note" });
+    await waitFor(() =>
+      expect(link.getAttribute("href")).toBe(`/patients/${PATIENT}/encounters/${OLDEST}/compose`),
+    );
+  });
+
+  it("an active override shows its expiry", async () => {
+    const { client } = mockClient([
+      status({
+        mode: "block",
+        verdict: "warn",
+        stage: "overdue",
+        overdueCount: 1,
+        encounterId: OLDEST,
+        overrideExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      }),
+    ]);
+    mountBanner(client);
+    expect(await within(statusRegion()).findByText(/temporarily lifted/i)).toBeTruthy();
+    expect(statusRegion().textContent).toMatch(/Until /);
+  });
+});
+
+describe("closure status polling", () => {
+  it("asks nothing for a session without encounter.author", async () => {
+    const { client, closureCalls } = mockClient([BLOCKED]);
+    mountBanner(client, { ...author, permissions: ["encounter.read"] });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(closureCalls()).toHaveLength(0);
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("asks nothing while the organization is still onboarding", async () => {
+    const { client, closureCalls } = mockClient([BLOCKED]);
+    mountBanner(client, { ...author, organizationStage: "onboarding" });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(closureCalls()).toHaveLength(0);
+  });
+
+  it("a failed refresh is silent: the last answer stays and no error appears", async () => {
+    const { client, closureCalls } = mockClient([
+      status({ stage: "overdue", verdict: "warn", overdueCount: 1 }),
+      "fail",
+    ]);
+    mountBanner(client);
+    expect(await within(statusRegion()).findByText(/A visit note is overdue/)).toBeTruthy();
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(closureCalls()).toHaveLength(2));
+
+    expect(within(statusRegion()).getByText(/A visit note is overdue/)).toBeTruthy();
+    expect(screen.queryByText(/could not|failed|error/i)).toBeNull();
+  });
+
+  it("polls in the background, faster while blocked", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const { client, closureCalls } = mockClient([
+      status({ stage: "overdue", verdict: "warn", overdueCount: 1 }),
+      BLOCKED,
+    ]);
+    mountBanner(client);
+    await waitFor(() => expect(closureCalls()).toHaveLength(1));
+    expect(closureCalls()[0]?.headers).toBeUndefined(); // the first read is a normal request
+
+    await act(async () => {
+      vi.advanceTimersByTime(NOTE_CLOSURE_POLL_INTERVAL_MS);
+    });
+    await waitFor(() => expect(closureCalls()).toHaveLength(2));
+    expect(closureCalls()[1]?.headers).toEqual({ "x-chartwarden-background": "1" }); // maintenance polling must not extend an idle session
+    await screen.findByRole("alert"); // now blocked: the status poll quickens
+
+    await act(async () => {
+      vi.advanceTimersByTime(NOTE_CLOSURE_BLOCKED_POLL_INTERVAL_MS);
+    });
+    await waitFor(() => expect(closureCalls()).toHaveLength(3));
+  });
+
+  it("a gate refusal refreshes the status at once, but only once per refresh gap", async () => {
+    const { client, closureCalls } = mockClient([status(), BLOCKED]);
+    mountBanner(client);
+    await waitFor(() => expect(closureCalls()).toHaveLength(1));
+
+    // Inside the gap (the first read just ran): a refusal must not trigger another read, or a refused status read would loop.
+    act(() => {
+      setGlobalResponseSignal({ kind: "note-closure-required", overdueCount: 2 });
+    });
+    expect(closureCalls()).toHaveLength(1);
+
+    const later = Date.now() + NOTE_CLOSURE_MIN_REFRESH_GAP_MS + 1_000;
+    vi.spyOn(Date, "now").mockReturnValue(later);
+    act(() => {
+      setGlobalResponseSignal({ kind: "note-closure-required", overdueCount: 2 });
+    });
+    await waitFor(() => expect(closureCalls()).toHaveLength(2));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+  });
+});
+
+// ── the watcher, through the real client and the whole shell ─────────────────────────────────────────────────────────────────
+const SETTLE = { timeout: 5000 };
+
+function Probe({ label, call }: { label: string; call: string }): JSX.Element {
+  const client = useApiClient();
+  useEffect(() => {
+    void client.GET(call as never, {} as never);
+  }, [client, call]);
+  return <h1>{label}</h1>;
+}
+
+const probeScreens = {
+  moduleId: 8,
+  slug: "closure-probes",
+  screens: [
+    {
+      id: "probe.scheduling",
+      path: "/scheduling/visits/v-1",
+      title: "Visit",
+      screen: () => <Probe label="Visit screen" call="/api/v1/scheduling/visits" />,
+    },
+    {
+      id: "probe.compose",
+      path: "/patients/:patientId/encounters/:encounterId/compose",
+      title: "Compose",
+      screen: () => <Probe label="Compose screen" call="/api/v1/scheduling/visits" />,
+    },
+    {
+      id: "probe.my-drafts",
+      path: "/work/drafts",
+      title: "My Notes",
+      screen: () => <Probe label="My notes screen" call="/api/v1/scheduling/visits" />,
+    },
+  ],
+};
+
+function mountShell(at: string, refusal: { status: number; code: string }) {
+  const json = (status: number, body: unknown, url: string): Response => {
+    const res = new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+    Object.defineProperty(res, "url", { value: url }); // a constructed Response has none; the shell decides by path
+    return res;
+  };
+  const fetchStub = async (request: Request): Promise<Response> => {
+    const url = request.url;
+    if (url.includes("/closure-status")) return json(200, BLOCKED, url);
+    if (url.includes("/api/v1/encounters/")) return json(200, { patientId: PATIENT }, url);
+    if (url.includes("/scheduling/")) {
+      return json(
+        refusal.status,
+        {
+          error: {
+            code: refusal.code,
+            message: "x",
+            details: [
+              { field: "encounterId", code: "OLDEST_OPEN_NOTE", message: OLDEST },
+              { field: "overdueCount", code: "OVERDUE_COUNT", message: "2" },
+            ],
+          },
+        },
+        url,
+      );
+    }
+    return json(200, { alerts: [] }, url);
+  };
+  const registry = createScreenRegistry();
+  registry.register(systemScreens);
+  registry.register(probeScreens);
+  window.history.pushState({}, "", at);
+  render(
+    <AppShell
+      registry={registry}
+      client={createApiClient({
+        baseUrl: "http://localhost",
+        fetch: fetchStub,
+        onResponseStatus: handleObservedResponse,
+      })}
+      session={author}
+    />,
+  );
+}
+
+describe("the shell's reaction to a 403 NOTE_CLOSURE_REQUIRED", () => {
+  it("moves a clinician off a screen the gate refuses to My notes and shows the blocking banner", async () => {
+    mountShell("/scheduling/visits/v-1", { status: 403, code: "NOTE_CLOSURE_REQUIRED" });
+    await waitFor(() => expect(window.location.pathname).toBe("/work/drafts"), SETTLE);
+    expect(await screen.findByRole("heading", { name: "My notes screen" }, SETTLE)).toBeTruthy();
+    expect(
+      await within(await screen.findByRole("alert", {}, SETTLE)).findByText(
+        /your access is limited/i,
+      ),
+    ).toBeTruthy();
+    // My notes is allowed: its own refused call does not move it again and the signal is consumed.
+    await waitFor(() => expect(getGlobalResponseSignal()).toBeNull(), SETTLE);
+    expect(window.location.pathname).toBe("/work/drafts");
+  });
+
+  it("never navigates away from an allowed screen (it would lose the form), but still shows the banner", async () => {
+    const compose = `/patients/${PATIENT}/encounters/${OLDEST}/compose`;
+    mountShell(compose, { status: 403, code: "NOTE_CLOSURE_REQUIRED" });
+    expect(await screen.findByRole("heading", { name: "Compose screen" }, SETTLE)).toBeTruthy();
+    expect(
+      await within(await screen.findByRole("alert", {}, SETTLE)).findByText(
+        /your access is limited/i,
+      ),
+    ).toBeTruthy();
+    await waitFor(() => expect(getGlobalResponseSignal()).toBeNull(), SETTLE);
+    expect(window.location.pathname).toBe(compose);
+  });
+
+  it("does not route the gate's 503 NOTE_CLOSURE_UNAVAILABLE to /maintenance", async () => {
+    mountShell("/scheduling/visits/v-1", { status: 503, code: "NOTE_CLOSURE_UNAVAILABLE" });
+    expect(await screen.findByRole("heading", { name: "Visit screen" }, SETTLE)).toBeTruthy();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(window.location.pathname).toBe("/scheduling/visits/v-1");
+    expect(getGlobalResponseSignal()).toBeNull();
+  });
+});

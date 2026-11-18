@@ -30,6 +30,7 @@ import { resolveBreadcrumbs } from "./breadcrumb-navigation";
 import { clearAllDrafts } from "./ceremony-drafts";
 import { filterIpuNavigation, useIpuNavigationAvailability } from "./ipu-navigation";
 import { ModuleNavigationTabs } from "./module-navigation-tabs";
+import { NoteClosureBanner } from "./note-closure-banner";
 import { NotificationBell } from "./notification-bell";
 import { clearPendingNotificationLink } from "./pending-deep-link";
 import { type NavEntry, type NavScreen, activeEntryKey, buildPrimaryNav } from "./primary-nav";
@@ -205,6 +206,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
       </aside>
       <div className="wx-shell-column">
         <DegradedBanner />
+        <NoteClosureBanner />
         <header ref={headerRef} className="wx-header">
           <button
             ref={toggleRef}

@@ -12,19 +12,33 @@ import {
   interactiveRowProps,
   useApiClient,
 } from "@chartwarden/ui";
-// apps/web/src/modules/08-encounters — My Drafts (M8 §5.1, Track B / ADR-0030).
+// apps/web/src/modules/08-encounters — My notes (M8 §5.1, Track B / ADR-0030; the screen id stays `encounter.my-drafts`, route /work/drafts).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
-// The author's open encounter drafts: one row per in-flight draft with its type · discipline · service
-// date · late-entry tier. Reconciled to Lantern (R1): the §2.5 late-entry tier is a §6.6 StatusPill
-// (normal calm, escalating tiers warn/alert), ids mono, table No-Line. A row opens the Encounter Read
-// view. Reads GET /api/v1/encounters/my-drafts via the typed client; the server scopes to the calling
-// author (ADR-0030 — no authz on the frontend). Imports only leaves (@chartwarden/ui).
+// The author's OPEN visit notes: one row per note not yet signed (a finalized note still counts), with its type · discipline · service
+// date · status · closure stage and deadline · late-entry tier. The closure stage and deadline are the SERVER's (ADR-0113: the same
+// clock the request gate and the alerts use): a note with no clock is a LEGACY note, shown as "Legacy", never alerting. Nearest
+// deadline first, Legacy last. Reconciled to Lantern (R1): stage and late-entry tier are §6.6 StatusPills, ids mono, table No-Line.
+// A draft opens the composer, a finalized note the read screen where it is signed. Reads GET /api/v1/encounters/my-drafts via the
+// typed client; the server scopes to the calling author (ADR-0030 — no authz on the frontend). Imports only leaves (@chartwarden/ui).
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { NameLabel, patientNameOf } from "../../shell/name-display";
+import { useNoteClosure } from "../../shell/note-closure";
 import { usePatientNames } from "../../shell/patient-names";
 import { lateEntryTone, stateLabel } from "./encounter-status";
+import {
+  type ClosureFilter,
+  type NoteClosure,
+  closureCounts,
+  closureLabel,
+  closureTone,
+  deadlineText,
+  matchesClosureFilter,
+  noteHref,
+  openNoteLabel,
+  sortByDeadline,
+} from "./my-notes-model";
 
 interface EncounterRow {
   id: string;
@@ -35,13 +49,20 @@ interface EncounterRow {
   serviceDate: string;
   status: string;
   lateEntryTier: string;
+  closure: NoteClosure;
 }
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
-/** A draft's home is the composer (#91): this queue lists notes that still need writing. */
-const draftHref = (patientId: string, encounterId: string): string =>
-  `/patients/${patientId}/encounters/${encounterId}/compose`;
+const CLOSURE_FILTER_OPTIONS: readonly { value: ClosureFilter; label: string }[] = [
+  { value: "", label: "All" },
+  { value: "overdue", label: "Overdue" },
+  { value: "at_risk", label: "At risk" },
+  { value: "legacy", label: "Legacy" },
+];
+
+const isClosureFilter = (value: string): value is ClosureFilter =>
+  CLOSURE_FILTER_OPTIONS.some((o) => o.value === value);
 
 export function MyDrafts(): JSX.Element {
   const client = useApiClient();
@@ -49,6 +70,7 @@ export function MyDrafts(): JSX.Element {
   const [items, setItems] = useState<EncounterRow[]>([]);
   const [disciplineFilter, setDisciplineFilter] = useState("");
   const [lateFilter, setLateFilter] = useState("");
+  const [closureFilter, setClosureFilter] = useState<ClosureFilter>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -63,7 +85,7 @@ export function MyDrafts(): JSX.Element {
       const { data, error: err } = await client.GET("/api/v1/encounters/my-drafts");
       if (!active) return;
       if (err) {
-        setError("Could not load your drafts.");
+        setError("Could not load your notes.");
         setLoading(false);
         return;
       }
@@ -75,12 +97,19 @@ export function MyDrafts(): JSX.Element {
     };
   }, [client]);
 
+  // The banner's own poll can lag a signature by up to a minute: re-read it once this list is fresh so the two agree.
+  const { refresh: refreshClosureStatus } = useNoteClosure();
+  useEffect(() => {
+    if (!loading && !error) refreshClosureStatus();
+  }, [loading, error, refreshClosureStatus]);
+
   // §2.5 D4 tiers are normal | late_entry | significant_late_entry | administrative_override —
   // anything but `normal` is a late entry. (Was compared to a non-existent "on_time" tier.)
   const lateCount = items.filter((e) => e.lateEntryTier !== "normal").length;
   const adminOverrideCount = items.filter(
     (e) => e.lateEntryTier === "administrative_override",
   ).length;
+  const { overdue: overdueCount, atRisk: atRiskCount } = closureCounts(items);
   const disciplineOptions = useMemo(
     () => [
       { value: "", label: "Any discipline" },
@@ -93,36 +122,44 @@ export function MyDrafts(): JSX.Element {
   const patientNames = usePatientNames(items.map((e) => e.patientId));
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return items
-      .filter((e) => {
-        const matchesDiscipline = !disciplineFilter || e.discipline === disciplineFilter;
-        const matchesLate =
-          !lateFilter ||
-          (lateFilter === "normal" ? e.lateEntryTier === "normal" : e.lateEntryTier !== "normal");
-        const matchesSearch =
-          !q ||
-          [
-            e.id,
-            e.patientId,
-            patientNames[e.patientId]?.name ?? "",
-            e.encounterType,
-            e.discipline,
-            e.serviceDate,
-            e.status,
-            e.lateEntryTier,
-          ].some((value) => value.toLowerCase().includes(q));
-        return matchesDiscipline && matchesLate && matchesSearch;
-      })
-      .sort((a, b) => b.serviceDate.localeCompare(a.serviceDate));
-  }, [disciplineFilter, items, lateFilter, patientNames, searchQuery]);
+    const filtered = items.filter((e) => {
+      const matchesDiscipline = !disciplineFilter || e.discipline === disciplineFilter;
+      const matchesLate =
+        !lateFilter ||
+        (lateFilter === "normal" ? e.lateEntryTier === "normal" : e.lateEntryTier !== "normal");
+      const matchesSearch =
+        !q ||
+        [
+          e.id,
+          e.patientId,
+          patientNames[e.patientId]?.name ?? "",
+          e.encounterType,
+          e.discipline,
+          e.serviceDate,
+          e.status,
+          e.lateEntryTier,
+          closureLabel(e.closure),
+        ].some((value) => value.toLowerCase().includes(q));
+      return (
+        matchesDiscipline &&
+        matchesLate &&
+        matchesSearch &&
+        matchesClosureFilter(e.closure, closureFilter)
+      );
+    });
+    // Nearest deadline first, Legacy last; the server's order (service date, newest) breaks ties.
+    return sortByDeadline(filtered);
+  }, [closureFilter, disciplineFilter, items, lateFilter, patientNames, searchQuery]);
   const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const activePage = Math.min(page, pageCount);
   const pagedItems = filteredItems.slice((activePage - 1) * pageSize, activePage * pageSize);
-  const hasActiveFilters = searchQuery !== "" || disciplineFilter !== "" || lateFilter !== "";
+  const hasActiveFilters =
+    searchQuery !== "" || disciplineFilter !== "" || lateFilter !== "" || closureFilter !== "";
   const clearFilters = (): void => {
     setSearchQuery("");
     setDisciplineFilter("");
     setLateFilter("");
+    setClosureFilter("");
     setPage(1);
   };
 
@@ -130,21 +167,45 @@ export function MyDrafts(): JSX.Element {
     <WorkQueueLayout
       fullPageScroll
       header={
-        <PageHeader title="My drafts">
+        <PageHeader title="My notes">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Resume open encounter documentation, with late-entry risk and administrative override
-            cues surfaced before signing.
+            Your visit notes that are not signed yet, nearest deadline first. A finalized note stays
+            open until you sign it. Legacy notes began before closure deadlines and have none.
           </div>
         </PageHeader>
       }
       kpis={
         <KpiStrip>
           <KpiCard
-            label="Open Drafts"
+            label="Open Notes"
             value={loading || error ? "—" : items.length}
-            detail="In-flight encounters"
+            detail="Not signed yet"
             tone="info"
             accentColor="var(--color-primary)"
+          />
+          <KpiCard
+            label="Overdue"
+            value={loading || error ? "—" : overdueCount}
+            detail="Past the closing deadline"
+            tone={overdueCount > 0 ? "danger" : "neutral"}
+            accentColor={overdueCount > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+            selected={closureFilter === "overdue"}
+            onSelect={() => {
+              setClosureFilter("overdue");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="At Risk"
+            value={loading || error ? "—" : atRiskCount}
+            detail="Deadline is close"
+            tone={atRiskCount > 0 ? "warning" : "neutral"}
+            accentColor={atRiskCount > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
+            selected={closureFilter === "at_risk"}
+            onSelect={() => {
+              setClosureFilter("at_risk");
+              setPage(1);
+            }}
           />
           <KpiCard
             label="Late Entry"
@@ -182,13 +243,13 @@ export function MyDrafts(): JSX.Element {
               <Glyph name="search" size={16} />
               <input
                 type="search"
-                placeholder="Search encounter, patient, discipline..."
+                placeholder="Search note, patient, discipline, stage..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
                   setPage(1);
                 }}
-                aria-label="Search drafts"
+                aria-label="Search notes"
               />
             </label>
             <label style={filterLabelStyle}>
@@ -203,6 +264,24 @@ export function MyDrafts(): JSX.Element {
                 style={selectStyle}
               >
                 {disciplineOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={filterLabelStyle}>
+              <span style={mutedStyle}>Closure</span>
+              <select
+                aria-label="Filter by closure stage"
+                value={closureFilter}
+                onChange={(e) => {
+                  if (isClosureFilter(e.target.value)) setClosureFilter(e.target.value);
+                  setPage(1);
+                }}
+                style={selectStyle}
+              >
+                {CLOSURE_FILTER_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -231,7 +310,7 @@ export function MyDrafts(): JSX.Element {
               </Button>
             ) : null}
             <span style={mutedStyle}>
-              {filteredItems.length} of {items.length} drafts
+              {filteredItems.length} of {items.length} notes
             </span>
           </div>
         </div>
@@ -248,11 +327,11 @@ export function MyDrafts(): JSX.Element {
         ) : filteredItems.length === 0 ? (
           <div style={{ padding: "2rem 1.5rem" }}>
             <EmptyState
-              title="No drafts"
+              title="No open notes"
               description={
                 hasActiveFilters
-                  ? "No draft matches these filters."
-                  : "You have no open encounter drafts."
+                  ? "No note matches these filters."
+                  : "You have no unsigned visit notes. Nothing is waiting on you."
               }
               action={
                 hasActiveFilters ? (
@@ -266,25 +345,29 @@ export function MyDrafts(): JSX.Element {
         ) : (
           <>
             <section
-              aria-label="Draft notes"
+              aria-label="Open notes"
               // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
               tabIndex={0}
               style={tableViewportStyle}
             >
               <table style={tableStyle}>
                 <colgroup>
-                  <col style={{ width: "34%" }} />
-                  <col style={{ width: "18%" }} />
-                  <col style={{ width: "16%" }} />
-                  <col style={{ width: "18%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "15%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "12%" }} />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th>Encounter</th>
+                    <th>Note</th>
                     <th>Discipline</th>
                     <th>Service date</th>
+                    <th>Status</th>
+                    <th>Closure</th>
                     <th>Late-entry</th>
                     <th>Patient</th>
                     <th>Action</th>
@@ -297,11 +380,8 @@ export function MyDrafts(): JSX.Element {
                       // #91 — a DRAFT opens in the composer, not the read screen. This queue's whole
                       // reason to exist is the note that is not finished yet; until the composer existed
                       // every row led to a read-only view of the thing the author came here to write.
-                      {...interactiveRowProps(
-                        () => navigate(draftHref(e.patientId, e.id)),
-                        false,
-                        true,
-                      )}
+                      // A FINALIZED note is finished writing: it opens the read screen, where it is signed.
+                      {...interactiveRowProps(() => navigate(noteHref(e)), false, true)}
                       style={{ cursor: "pointer" }}
                     >
                       <td>
@@ -317,6 +397,16 @@ export function MyDrafts(): JSX.Element {
                       </td>
                       <td>{stateLabel(e.discipline)}</td>
                       <td className="tabular-nums">{e.serviceDate}</td>
+                      <td>{stateLabel(e.status)}</td>
+                      <td>
+                        <div style={primaryCellStyle}>
+                          <StatusPill
+                            label={closureLabel(e.closure)}
+                            tone={closureTone(e.closure)}
+                          />
+                          <span style={metaInlineStyle}>{deadlineText(e.closure)}</span>
+                        </div>
+                      </td>
                       <td>
                         <StatusPill
                           label={stateLabel(e.lateEntryTier)}
@@ -332,10 +422,10 @@ export function MyDrafts(): JSX.Element {
                           tone="secondary"
                           onClick={(event) => {
                             event.stopPropagation();
-                            navigate(`/patients/${e.patientId}/encounters/${e.id}`);
+                            navigate(noteHref(e));
                           }}
                         >
-                          Continue Documentation
+                          {openNoteLabel(e.status)}
                         </Button>
                       </td>
                     </tr>
@@ -353,7 +443,7 @@ export function MyDrafts(): JSX.Element {
                 setPage(1);
               }}
               pageSizeOptions={PAGE_SIZES}
-              noun="drafts"
+              noun="notes"
             />
           </>
         )
@@ -415,7 +505,7 @@ const tableViewportStyle: CSSProperties = {
 
 const tableStyle: CSSProperties = {
   width: "100%",
-  minWidth: "58rem",
+  minWidth: "72rem",
   borderCollapse: "collapse",
   tableLayout: "fixed",
   fontSize: "0.875rem",

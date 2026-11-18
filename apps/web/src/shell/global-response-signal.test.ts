@@ -13,6 +13,7 @@ import {
   getGlobalResponseSignal,
   handleObservedResponse,
   mayCarryTenantRefusal,
+  noteClosureSignalFromDetails,
   onSessionExpired,
   setGlobalResponseSignal,
   signalForStatus,
@@ -195,6 +196,101 @@ describe("503 BILLING_ENTITLEMENT_UNAVAILABLE", () => {
     expect(getGlobalResponseSignal()).toEqual({ kind: "service-unavailable" });
     setGlobalResponseSignal(null);
     handleObservedResponse(503, url, new Response("down", { status: 503 }));
+    await settle();
+    expect(getGlobalResponseSignal()).toEqual({ kind: "service-unavailable" });
+  });
+});
+
+// ADR-0113 — the visit-note gate: a 403 NOTE_CLOSURE_REQUIRED is the shell's cue to show the closure banner and (off an allowed screen)
+// open My notes; its 503 twin NOTE_CLOSURE_UNAVAILABLE refuses ONE action and must never route to /maintenance.
+describe("403 NOTE_CLOSURE_REQUIRED (ADR-0113)", () => {
+  const url = `${ORIGIN}/api/v1/scheduling/visits`;
+  const DETAILS = [
+    {
+      field: "encounterId",
+      code: "OLDEST_OPEN_NOTE",
+      message: "e0000000-0000-4000-8000-000000000001",
+    },
+    { field: "deadlineAt", code: "DEADLINE", message: "2026-11-17T10:00:00.000Z" },
+    { field: "overdueCount", code: "OVERDUE_COUNT", message: "3" },
+  ];
+  const refusal = (status: number, code: string, details?: unknown): Response =>
+    new Response(
+      JSON.stringify({ error: { code, message: "x", ...(details ? { details } : {}) } }),
+      {
+        status,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  beforeEach(() => setGlobalResponseSignal(null));
+  afterEach(() => setGlobalResponseSignal(null));
+
+  it("parses the oldest note, its deadline and the overdue count out of the refusal's details", () => {
+    expect(noteClosureSignalFromDetails(DETAILS)).toEqual({
+      kind: "note-closure-required",
+      encounterId: "e0000000-0000-4000-8000-000000000001",
+      deadlineAt: "2026-11-17T10:00:00.000Z",
+      overdueCount: 3,
+    });
+  });
+
+  it("leaves out an absent oldest note or deadline, and never invents one", () => {
+    const signal = noteClosureSignalFromDetails([DETAILS[2]]);
+    expect(signal).toEqual({ kind: "note-closure-required", overdueCount: 3 });
+    expect(signal).not.toHaveProperty("encounterId");
+    expect(signal).not.toHaveProperty("deadlineAt");
+  });
+
+  it.each([
+    ["no details at all", undefined],
+    ["details that are not a list", { field: "overdueCount", message: "4" }],
+    ["a count that is not a number", [{ field: "overdueCount", message: "many" }]],
+    ["a count of zero", [{ field: "overdueCount", message: "0" }]],
+  ])(
+    "falls back to one overdue note for %s (the refusal itself says one is overdue)",
+    (_label, details) => {
+      expect(noteClosureSignalFromDetails(details)).toEqual({
+        kind: "note-closure-required",
+        overdueCount: 1,
+      });
+    },
+  );
+
+  it("signals note-closure-required for a 403 with that code", async () => {
+    handleObservedResponse(403, url, refusal(403, "NOTE_CLOSURE_REQUIRED", DETAILS));
+    await settle();
+    expect(getGlobalResponseSignal()).toEqual({
+      kind: "note-closure-required",
+      encounterId: "e0000000-0000-4000-8000-000000000001",
+      deadlineAt: "2026-11-17T10:00:00.000Z",
+      overdueCount: 3,
+    });
+  });
+
+  it("does not signal for any other 403, nor for that code on another status", async () => {
+    handleObservedResponse(403, url, refusal(403, "FORBIDDEN"));
+    handleObservedResponse(404, url, refusal(404, "NOTE_CLOSURE_REQUIRED", DETAILS));
+    handleObservedResponse(409, url, refusal(409, "NOTE_CLOSURE_REQUIRED", DETAILS));
+    await settle();
+    expect(getGlobalResponseSignal()).toBeNull();
+  });
+
+  it("reads a clone, so the caller still gets the refusal body", async () => {
+    const response = refusal(403, "NOTE_CLOSURE_REQUIRED", DETAILS);
+    handleObservedResponse(403, url, response);
+    await settle();
+    expect(response.bodyUsed).toBe(false);
+  });
+
+  it("does not route NOTE_CLOSURE_UNAVAILABLE (503) to /maintenance: it refuses one action, it is not an outage", async () => {
+    handleObservedResponse(503, url, refusal(503, "NOTE_CLOSURE_UNAVAILABLE"));
+    await settle();
+    expect(getGlobalResponseSignal()).toBeNull();
+  });
+
+  it("still routes any other 503 to service-unavailable", async () => {
+    handleObservedResponse(503, url, refusal(503, "DEGRADED"));
     await settle();
     expect(getGlobalResponseSignal()).toEqual({ kind: "service-unavailable" });
   });
