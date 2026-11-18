@@ -264,3 +264,19 @@ describe("active SOS board — nothing outlives a dismissed form", () => {
     expect(within(again).queryByText(/was not recorded/)).toBeNull();
   });
 });
+
+describe("active SOS board — opening a form that is already open", () => {
+  it("keeps the account typed when the same alert's Acknowledge is clicked again", async () => {
+    mount();
+    const drawer = await ackOf("Maya");
+    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+      target: { value: ACTION },
+    });
+    fireEvent.click(await rowButton("Maya"));
+    // The opener re-reads the alert before it resets anything: let that settle before looking.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect((within(drawer).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
+      ACTION,
+    );
+  });
+});

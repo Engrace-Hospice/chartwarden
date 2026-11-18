@@ -6,7 +6,8 @@
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import type { JSX } from "react";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IncidentDetailScreen } from "./incident-detail";
 import type { SafetyIncidentView } from "./safety-api";
@@ -63,6 +64,16 @@ const offline = async (): Promise<never> => {
   throw new TypeError("Failed to fetch");
 };
 
+// Stands in for any navigation from this incident's page to another incident's.
+function GoToAnotherIncident(): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/safety/incidents/inc-2")}>
+      Go to another incident
+    </button>
+  );
+}
+
 function mount(
   state: SafetyIncidentView["lifecycleState"],
   opts: { post?: () => Promise<unknown>; patch?: () => Promise<unknown> } = {},
@@ -73,11 +84,23 @@ function mount(
 } {
   const patch = vi.fn(opts.patch ?? (async () => ok({})));
   const post = vi.fn(opts.post ?? (async () => ok({})));
-  const get = vi.fn(async () => ok(incident(state)));
+  const get = vi.fn(async (_path: string, init?: { params?: { path?: { incidentId?: string } } }) =>
+    ok(
+      init?.params?.path?.incidentId === "inc-2"
+        ? {
+            ...incident(state),
+            id: "22222222-2222-4222-8222-222222222222",
+            locationDescription: "Garage door",
+            version: 9,
+          }
+        : incident(state),
+    ),
+  );
   const client = { GET: get, PATCH: patch, POST: post } as unknown as ApiClient;
   render(
     <MemoryRouter initialEntries={["/safety/incidents/inc-1"]}>
       <ApiClientProvider client={client}>
+        <GoToAnotherIncident />
         <Routes>
           <Route path="/safety/incidents/:incidentId" element={<IncidentDetailScreen />} />
         </Routes>
@@ -317,5 +340,57 @@ describe("incident detail — nothing outlives a dismissed ceremony", () => {
       (within(again).getByLabelText("Anything to add before it goes?") as HTMLTextAreaElement)
         .value,
     ).toBe("");
+  });
+});
+
+describe("incident detail — another incident, and opening a form that is already open", () => {
+  it("does not carry an open drawer or its draft over to another incident", async () => {
+    const { patch } = mount("draft");
+    const drawer = await open("Edit draft", "Edit this draft");
+    fireEvent.change(within(drawer).getByLabelText("Where"), { target: { value: "Back steps" } });
+    fireEvent.click(screen.getByRole("button", { name: "Go to another incident" }));
+    // The other incident arrives with no drawer open, and its own values, not the first one's draft.
+    expect(await screen.findByText("Garage door")).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: "Edit this draft" })).toBeNull();
+    const again = await open("Edit draft", "Edit this draft");
+    expect((within(again).getByLabelText("Where") as HTMLInputElement).value).toBe("Garage door");
+    fireEvent.click(within(again).getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const call = patch.mock.calls[0] as unknown as [
+      string,
+      { body: Record<string, unknown>; headers: Record<string, string> },
+    ];
+    expect(call[1].headers["If-Match"]).toBe("9");
+    expect(call[1].body).toMatchObject({ locationDescription: "Garage door" });
+  });
+
+  it("keeps what was typed when the same form's opener is clicked again", async () => {
+    mount("draft");
+    const edit = await open("Edit draft", "Edit this draft");
+    fireEvent.change(within(edit).getByLabelText("Where"), { target: { value: "Back steps" } });
+    fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
+    expect((within(edit).getByLabelText("Where") as HTMLInputElement).value).toBe("Back steps");
+  });
+
+  it("keeps the OSHA sign-off's draft and choice when its opener is clicked again", async () => {
+    mount("submitted");
+    const drawer = await open("OSHA sign-off", "OSHA-equivalent sign-off");
+    fireEvent.change(within(drawer).getByLabelText(/^Reason/), { target: { value: RULE } });
+    const reportable = within(drawer).getByLabelText(
+      "This incident IS OSHA-equivalent reportable",
+    ) as HTMLInputElement;
+    fireEvent.click(reportable);
+    const choice = reportable.checked;
+    fireEvent.click(screen.getByRole("button", { name: "OSHA sign-off" }));
+    expect((within(drawer).getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe(RULE);
+    expect(reportable.checked).toBe(choice);
+  });
+
+  it("keeps the state change's reason when its opener is clicked again", async () => {
+    mount("submitted");
+    const drawer = await open("Change state", "Change this incident's state");
+    fireEvent.change(within(drawer).getByLabelText("Why"), { target: { value: REASON } });
+    fireEvent.click(screen.getByRole("button", { name: "Change state" }));
+    expect((within(drawer).getByLabelText("Why") as HTMLTextAreaElement).value).toBe(REASON);
   });
 });

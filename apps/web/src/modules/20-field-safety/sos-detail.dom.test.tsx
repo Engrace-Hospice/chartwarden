@@ -88,16 +88,20 @@ function GoToAnotherAlert(): JSX.Element {
 
 function mount(
   alert: SafetySosAlertView,
-  opts: { post?: () => Promise<unknown>; streamRead?: () => Promise<unknown> } = {},
+  opts: {
+    post?: () => Promise<unknown>;
+    streamRead?: () => Promise<unknown>;
+    alertRead?: (sosAlertId: string) => Promise<unknown>;
+  } = {},
 ): {
   get: ReturnType<typeof vi.fn>;
   post: ReturnType<typeof vi.fn>;
 } {
   const post = vi.fn(opts.post ?? (async () => ok({})));
-  const get = vi.fn(async (path: string) =>
+  const get = vi.fn(async (path: string, init?: { params?: { path?: { sosAlertId?: string } } }) =>
     path === "/api/v1/safety/sos/{sosAlertId}/location-stream"
       ? (opts.streamRead?.() ?? ok(stream))
-      : ok(alert),
+      : (opts.alertRead?.(init?.params?.path?.sosAlertId ?? "") ?? ok(alert)),
   );
   const client = { GET: get, POST: post } as unknown as ApiClient;
   render(
@@ -380,5 +384,85 @@ describe("SOS detail — a write in flight and a write that fails", () => {
       (within(again).getByLabelText("What happened, and how did it end?") as HTMLTextAreaElement)
         .value,
     ).toBe("");
+  });
+});
+
+describe("SOS detail — another alert, a slower read, and opening a form that is already open", () => {
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  const other = { ...alertIn("escalation_tier_1", false), id: OTHER, version: 7 };
+
+  it("keeps the alert the route is on when an earlier alert's slow read lands last", async () => {
+    const slow = deferred<unknown>();
+    const { post } = mount(alertIn("escalation_tier_1", false), {
+      alertRead: (id) => (id === "sos-1" ? slow.promise : Promise.resolve(ok(other))),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Go to another alert" }));
+    expect(await screen.findByRole("heading", { name: /SOS 22222222/ })).toBeTruthy();
+    slow.resolve(ok(alertIn("escalation_tier_1", false)));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByRole("heading", { name: /SOS 22222222/ })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /SOS 11111111/ })).toBeNull();
+    // And an acknowledgment acts on the alert on screen.
+    const drawer = await open("Acknowledge", "Acknowledge this SOS");
+    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+      target: { value: ACTION },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    const call = post.mock.calls[0] as unknown as [
+      string,
+      { params: { path: { sosAlertId: string } }; headers: Record<string, string> },
+    ];
+    expect(call[1].params.path.sosAlertId).toBe(OTHER);
+    expect(call[1].headers["If-Match"]).toBe("7");
+  });
+
+  it("ignores an earlier read when a newer one has already answered", async () => {
+    const slow = deferred<unknown>();
+    const stale = { GET: vi.fn(() => slow.promise), POST: vi.fn() } as unknown as ApiClient;
+    const fresh = {
+      GET: vi.fn(async () => ok(other)),
+      POST: vi.fn(),
+    } as unknown as ApiClient;
+    const screenWith = (client: ApiClient) => (
+      <MemoryRouter initialEntries={["/safety/sos/sos-1"]}>
+        <ApiClientProvider client={client}>
+          <Routes>
+            <Route path="/safety/sos/:sosAlertId" element={<SosDetailScreen />} />
+          </Routes>
+        </ApiClientProvider>
+      </MemoryRouter>
+    );
+    const { rerender } = render(screenWith(stale));
+    rerender(screenWith(fresh));
+    expect(await screen.findByRole("heading", { name: /SOS 22222222/ })).toBeTruthy();
+    slow.resolve(ok(alertIn("escalation_tier_1", false)));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByRole("heading", { name: /SOS 22222222/ })).toBeTruthy();
+  });
+
+  it("keeps the acknowledgment typed when its opener is clicked again", async () => {
+    mount(alertIn("escalation_tier_1", false));
+    const drawer = await open("Acknowledge", "Acknowledge this SOS");
+    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+      target: { value: ACTION },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
+    expect((within(drawer).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
+      ACTION,
+    );
+  });
+
+  it("keeps the audit reason typed when the coordinate opener is clicked again", async () => {
+    mount(alertIn("resolved", true));
+    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
+    const reason = "Reviewing the response for the quality committee meeting on Friday.";
+    fireEvent.change(within(drawer).getByLabelText(/Why do you need this/), {
+      target: { value: reason },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Request coordinate access" }));
+    expect(
+      (within(drawer).getByLabelText(/Why do you need this/) as HTMLTextAreaElement).value,
+    ).toBe(reason);
   });
 });

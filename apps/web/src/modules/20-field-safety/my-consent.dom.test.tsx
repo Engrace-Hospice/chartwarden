@@ -285,3 +285,29 @@ describe("my safety consent — nothing outlives a dismissed form", () => {
     );
   });
 });
+
+describe("my safety consent — opening a form that is already open", () => {
+  it("keeps a typed contact when its Give is clicked again", async () => {
+    mount();
+    const drawer = await give();
+    fireEvent.change(within(drawer).getByLabelText("Their name"), {
+      target: { value: "Sam Rivera" },
+    });
+    fireEvent.click(within(await rowOf(CONTACT)).getByRole("button", { name: "Give" }));
+    expect((within(drawer).getByLabelText("Their name") as HTMLInputElement).value).toBe(
+      "Sam Rivera",
+    );
+  });
+
+  it("keeps a typed withdrawal reason when its Withdraw is clicked again", async () => {
+    mount();
+    const drawer = await withdraw();
+    fireEvent.change(within(drawer).getByLabelText("Reason (optional)"), {
+      target: { value: "Changed my mind about sharing this." },
+    });
+    fireEvent.click(within(await rowOf(COORDS)).getByRole("button", { name: "Withdraw" }));
+    expect((within(drawer).getByLabelText("Reason (optional)") as HTMLTextAreaElement).value).toBe(
+      "Changed my mind about sharing this.",
+    );
+  });
+});

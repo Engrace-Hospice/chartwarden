@@ -88,7 +88,14 @@ type Ceremony = "none" | "edit" | "submit" | "transition" | "osha";
 
 const CLOSED_STATES = INCIDENT_CLOSED_STATES;
 
+/** Keyed on the incident: another incident starts from scratch, so an open drawer and its drafts never follow the
+ *  route to a record they were not written for (Save would stamp `incident.version` of the NEW one). */
 export function IncidentDetailScreen(): JSX.Element {
+  const { incidentId = "" } = useParams();
+  return <IncidentDetailBody key={incidentId} />;
+}
+
+function IncidentDetailBody(): JSX.Element {
   const client = useApiClient();
   const { incidentId = "" } = useParams();
 
@@ -137,7 +144,7 @@ export function IncidentDetailScreen(): JSX.Element {
   }, [load]);
 
   // Nothing typed or refused in a ceremony outlives it: a reason, a state code or a narrative is written fresh each
-  // time (this screen also stays mounted across a change of incident).
+  // time.
   const resetDrafts = useCallback(() => {
     setCategory("");
     setSeverity("");
@@ -159,10 +166,12 @@ export function IncidentDetailScreen(): JSX.Element {
 
   const openCeremony = useCallback(
     (next: Exclude<Ceremony, "none">) => {
+      // Already open (the drawer is not modal while idle): opening again must not wipe what was typed.
+      if (ceremony === next) return;
       resetDrafts();
       setCeremony(next);
     },
-    [resetDrafts],
+    [ceremony, resetDrafts],
   );
 
   const closeCeremony = useCallback(() => {
@@ -171,7 +180,7 @@ export function IncidentDetailScreen(): JSX.Element {
   }, [resetDrafts]);
 
   const openEdit = useCallback(() => {
-    if (!incident) return;
+    if (!incident || ceremony === "edit") return;
     resetDrafts();
     setCategory(incident.category);
     setSeverity(incident.severity);
@@ -183,7 +192,7 @@ export function IncidentDetailScreen(): JSX.Element {
     setWcInitiated(incident.workersCompClaimInitiated);
     setWcReference(incident.workersCompClaimReference ?? "");
     setCeremony("edit");
-  }, [incident, resetDrafts]);
+  }, [ceremony, incident, resetDrafts]);
 
   // A write's success closes only the ceremony it submitted, never whichever one is open by then.
   const closeIfStill = useCallback((submitted: Ceremony) => {
@@ -381,6 +390,7 @@ export function IncidentDetailScreen(): JSX.Element {
                 size="lg"
                 type="button"
                 onClick={() => {
+                  if (ceremony === "osha") return;
                   openCeremony("osha");
                   setOshaReportable(!incident.oshaReportable);
                 }}

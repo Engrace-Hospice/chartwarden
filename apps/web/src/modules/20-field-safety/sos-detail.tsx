@@ -35,7 +35,7 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { FormDrawer } from "../../shell/form-drawer";
@@ -86,7 +86,14 @@ import { TerminusPanel } from "./terminus-panel";
 
 type Ceremony = "none" | "acknowledge" | "resolve" | "coordinates";
 
+/** Keyed on the alert: another alert starts from scratch, so a revealed stream, an open ceremony and its drafts never
+ *  follow the route to a record they were not for. */
 export function SosDetailScreen(): JSX.Element {
+  const { sosAlertId = "" } = useParams();
+  return <SosDetailBody key={sosAlertId} />;
+}
+
+function SosDetailBody(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { sosAlertId = "" } = useParams();
@@ -110,9 +117,13 @@ export function SosDetailScreen(): JSX.Element {
   const [stream, setStream] = useState<SosLocationStreamPage | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
 
+  // Only the newest read may write state: a slower earlier one (or a write's post-reload) must not land on top of it.
+  const latestRead = useRef(0);
   const load = useCallback(async () => {
+    const readId = ++latestRead.current;
     setLoading(true);
     const res = await getSosAlert(client, sosAlertId);
+    if (readId !== latestRead.current) return;
     if (res.error || !res.alert) {
       setError(errorMessage(res.error, "That alert could not be read."));
       setAlert(null);
@@ -141,24 +152,18 @@ export function SosDetailScreen(): JSX.Element {
 
   const openCeremony = useCallback(
     (next: Exclude<Ceremony, "none">) => {
+      // Already open (the drawer is not modal while idle): opening again must not wipe what was typed.
+      if (ceremony === next) return;
       resetDrafts();
       setCeremony(next);
     },
-    [resetDrafts],
+    [ceremony, resetDrafts],
   );
 
   const closeCeremony = useCallback(() => {
     resetDrafts();
     setCeremony("none");
   }, [resetDrafts]);
-
-  // Another alert is another disclosure: nothing opened, typed or revealed for the previous one carries over.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `sosAlertId` is the trigger that restarts this screen's state.
-  useEffect(() => {
-    setStream(null);
-    resetDrafts();
-    setCeremony("none");
-  }, [sosAlertId, resetDrafts]);
 
   // A write's success closes only the ceremony it submitted, never whichever one is open by then.
   const closeIfStill = useCallback((submitted: Ceremony) => {

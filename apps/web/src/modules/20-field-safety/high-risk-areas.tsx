@@ -128,6 +128,8 @@ export function HighRiskAreasScreen(): JSX.Element {
   }, []);
 
   const openNew = useCallback(() => {
+    // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
+    if (editing === "new") return;
     setRiskCategory(DEFAULT_HIGH_RISK_CATEGORY);
     setAdvisoryMessage("");
     setRingText("");
@@ -136,18 +138,23 @@ export function HighRiskAreasScreen(): JSX.Element {
     setEffectiveTo("");
     setModalError(null);
     setEditing("new");
-  }, []);
+  }, [editing]);
 
-  const openEdit = useCallback((area: SafetyHighRiskAreaView) => {
-    setRiskCategory(area.riskCategory);
-    setAdvisoryMessage(area.advisoryMessage);
-    setRingText(ringsToText(area.polygon));
-    setAreaPolicy(area.policyForVisitsToArea);
-    setEffectiveFrom("");
-    setEffectiveTo("");
-    setModalError(null);
-    setEditing(area);
-  }, []);
+  const openEdit = useCallback(
+    (area: SafetyHighRiskAreaView) => {
+      // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
+      if (editing !== null && editing !== "new" && editing.id === area.id) return;
+      setRiskCategory(area.riskCategory);
+      setAdvisoryMessage(area.advisoryMessage);
+      setRingText(ringsToText(area.polygon));
+      setAreaPolicy(area.policyForVisitsToArea);
+      setEffectiveFrom("");
+      setEffectiveTo("");
+      setModalError(null);
+      setEditing(area);
+    },
+    [editing],
+  );
 
   const save = useCallback(async () => {
     const parsed = parseRings(ringText);

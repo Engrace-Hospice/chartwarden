@@ -187,3 +187,17 @@ describe("supervisor subscriptions — nothing outlives a dismissed form", () =>
     expect(within(again).queryByText(/No answer came back/)).toBeNull();
   });
 });
+
+describe("supervisor subscriptions — opening a form that is already open", () => {
+  it("keeps what was picked when Add subscription is clicked again", async () => {
+    mount();
+    const drawer = await openDrawer();
+    await pick(drawer, /^Supervisor/, /Sam Supervisor/);
+    const picked = (within(drawer).getByLabelText(/^Supervisor/) as HTMLInputElement).value;
+    expect(picked).not.toBe("");
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Add subscription" }))[0] as HTMLElement,
+    );
+    expect((within(drawer).getByLabelText(/^Supervisor/) as HTMLInputElement).value).toBe(picked);
+  });
+});

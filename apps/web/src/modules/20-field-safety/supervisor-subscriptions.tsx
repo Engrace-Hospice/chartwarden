@@ -225,6 +225,8 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
                 type="button"
                 tone="primary"
                 onClick={() => {
+                  // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
+                  if (adding) return;
                   resetForm();
                   setAdding(true);
                 }}

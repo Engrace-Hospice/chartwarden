@@ -77,6 +77,8 @@ export function MyCheckInsScreen(): JSX.Element {
 
   const openAmend = useCallback(
     async (row: SafetyCheckInView) => {
+      // Already open (the drawer is not modal while idle): opening again must not wipe the reason typed.
+      if (amending?.id === row.id) return;
       setChecking(row.id);
       setGraceClosed(null);
       setModalError(null);
@@ -95,7 +97,7 @@ export function MyCheckInsScreen(): JSX.Element {
       setReason("");
       setAmending(res.checkIn);
     },
-    [client],
+    [amending, client],
   );
 
   // Nothing typed or refused in the form outlives it: a correction's reason is written fresh each time.

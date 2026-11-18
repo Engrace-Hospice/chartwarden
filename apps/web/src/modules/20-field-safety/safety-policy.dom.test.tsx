@@ -328,3 +328,23 @@ describe("safety policy — nothing outlives a dismissed editor", () => {
     expect(within(again).queryByText(/No answer came back/)).toBeNull();
   });
 });
+
+describe("safety policy — opening the editor that is already open", () => {
+  it("keeps what was typed when Edit policy is clicked again", async () => {
+    mount();
+    const drawer = await openEditor();
+    fireEvent.change(within(drawer).getByLabelText("Why are you changing this?"), {
+      target: { value: REASON },
+    });
+    fireEvent.change(within(drawer).getByLabelText(/^Mid-visit cadence/), {
+      target: { value: "50" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
+    expect(
+      (within(drawer).getByLabelText("Why are you changing this?") as HTMLTextAreaElement).value,
+    ).toBe(REASON);
+    expect((within(drawer).getByLabelText(/^Mid-visit cadence/) as HTMLInputElement).value).toBe(
+      "50",
+    );
+  });
+});

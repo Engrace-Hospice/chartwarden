@@ -143,7 +143,8 @@ export function SafetyPolicyScreen(): JSX.Element {
   }, [load]);
 
   const openEditor = useCallback(() => {
-    if (!policy || !editable) return;
+    // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
+    if (!policy || !editable || editing) return;
     const next: Record<string, string> = {};
     for (const k of Object.keys(BANDS)) next[k] = String(policy[k as keyof SafetyPolicyView] ?? "");
     setDraft(next);
@@ -156,7 +157,7 @@ export function SafetyPolicyScreen(): JSX.Element {
     setEditReason("");
     setModalError(null);
     setEditing(true);
-  }, [editable, policy]);
+  }, [editable, editing, policy]);
 
   const closeEditor = useCallback(() => {
     setEditing(false);

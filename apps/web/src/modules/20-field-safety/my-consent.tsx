@@ -228,6 +228,8 @@ export function MyConsentScreen(): JSX.Element {
                     consent={consent}
                     // One form beside the list at a time: opening one closes the other.
                     onGrant={() => {
+                      // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
+                      if (granting === purpose) return;
                       setModalError(null);
                       setRevoking(null);
                       setContactName("");
@@ -236,6 +238,7 @@ export function MyConsentScreen(): JSX.Element {
                       setGranting(purpose);
                     }}
                     onRevoke={() => {
+                      if (revoking === purpose) return;
                       setRevokeReason("");
                       setModalError(null);
                       setGranting(null);

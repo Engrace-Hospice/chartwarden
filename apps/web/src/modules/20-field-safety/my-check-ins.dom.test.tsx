@@ -230,3 +230,21 @@ describe("my check-ins — nothing outlives a dismissed form", () => {
     expect(within(again).queryByText(/No answer came back/)).toBeNull();
   });
 });
+
+describe("my check-ins — opening a form that is already open", () => {
+  it("keeps the reason typed when the same check-in's Amend is clicked again", async () => {
+    mount(OPEN_WINDOW);
+    const [firstAmend] = await screen.findAllByRole("button", { name: "Amend" });
+    fireEvent.click(firstAmend as HTMLElement);
+    const drawer = await drawerNamed("Amend this check-in");
+    fireEvent.change(within(drawer).getByLabelText("Why the correction?"), {
+      target: { value: "Tapped the wrong button on the first try" },
+    });
+    fireEvent.click(firstAmend as HTMLElement);
+    // The opener re-reads the check-in before it resets anything: let that settle before looking.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(
+      (within(drawer).getByLabelText("Why the correction?") as HTMLTextAreaElement).value,
+    ).toBe("Tapped the wrong button on the first try");
+  });
+});

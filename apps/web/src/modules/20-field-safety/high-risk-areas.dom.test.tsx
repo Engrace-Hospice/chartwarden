@@ -248,3 +248,33 @@ describe("high-risk areas — nothing outlives a dismissed form", () => {
     expect(within(again).queryByText(/No answer came back/)).toBeNull();
   });
 });
+
+describe("high-risk areas — opening a form that is already open", () => {
+  it("keeps the draft when Draw area is clicked again", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Loose dogs near the east entrance." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Draw area" }));
+    expect(
+      (within(drawer).getByLabelText("Advisory message (<=200 characters)") as HTMLInputElement)
+        .value,
+    ).toBe("Loose dogs near the east entrance.");
+  });
+
+  it("keeps the edit when the same area's Edit is clicked again", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const drawer = await drawerNamed("Edit this area");
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Edited advisory for the east block." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(
+      (within(drawer).getByLabelText("Advisory message (<=200 characters)") as HTMLInputElement)
+        .value,
+    ).toBe("Edited advisory for the east block.");
+  });
+});

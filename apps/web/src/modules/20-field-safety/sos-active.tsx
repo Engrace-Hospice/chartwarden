@@ -94,6 +94,8 @@ export function ActiveSosScreen(): JSX.Element {
 
   const openAck = useCallback(
     async (id: string, who: string) => {
+      // Already open (the drawer is not modal while idle): opening again must not wipe the account typed.
+      if (ackFor?.id === id) return;
       setAckOpening(id);
       setModalError(null);
       setOpenError(null);
@@ -112,7 +114,7 @@ export function ActiveSosScreen(): JSX.Element {
       setPhoneMasked("");
       setAckFor({ id, who, version: res.alert.version });
     },
-    [client],
+    [ackFor, client],
   );
 
   // Nothing typed or refused in the form outlives it: an account is written fresh each time.
