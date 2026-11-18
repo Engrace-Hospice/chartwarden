@@ -120,6 +120,7 @@ export function MyVisits(): JSX.Element {
         (patientNames[v.patientId]?.name ?? "").toLowerCase().includes(q) ||
         v.assignedMembershipId.toLowerCase().includes(q) ||
         v.visitPurpose.toLowerCase().includes(q) ||
+        purposeLabel(v.visitPurpose).toLowerCase().includes(q) ||
         v.status.toLowerCase().includes(q);
       return matchesDate && matchesStatus && matchesPurpose && matchesSearch;
     });
@@ -287,7 +288,7 @@ export function MyVisits(): JSX.Element {
                     <option value="">All</option>
                     {purposeOptions.map((option) => (
                       <option key={option} value={option}>
-                        {stateLabel(option)}
+                        {purposeLabel(option)}
                       </option>
                     ))}
                   </select>
