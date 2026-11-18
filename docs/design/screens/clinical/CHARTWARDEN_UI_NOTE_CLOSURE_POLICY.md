@@ -12,8 +12,9 @@ The tenant's note-closure policy: how long clinicians have to close a visit note
 (1 to 168 hours, default 24) and what happens when they do not. The screen is offered to, and the route
 answers, exactly the holders of `encounter.closure_policy_admin`: the director of nursing (`director_of_nursing`,
 `don`), the organization administrators (`org_admin`, `administrator`) and platform `superadmin`. Clinical
-supervisors and clinical leads do not hold it: they are the field supervisors the clock binds, and they do not
-set the deadline they are held to (ADR-0113 D7). A mistaken `block` is undone here; if every holder is
+supervisors and clinical leads do not hold it: the policy is set by the tenant-level owners, not by the field
+supervisors (ADR-0113 D7). The director of nursing is bound by the clock like any supervisor and still holds it, on
+purpose; a director of nursing or administrator who sets `off` is guarded by step-up and an audit event, not by a second person. A mistaken `block` is undone here; if every holder is
 blocked themselves, see the runbook `docs/runbooks/m8-note-closure-policy-reset.md`.
 
 ---

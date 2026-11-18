@@ -22,7 +22,8 @@
 -- DEV DATABASES: this file was edited in place before it was ever released, so a database that applied an EARLIER copy of 1510 (the
 -- runner records the ordinal, not the content) does not have the later pieces (the write-once clock trigger, the override org guard, the
 -- board index, the 500-character reason cap). Reset such a database, or hand-apply the missing statements from this file. Nothing
--- released ever carried an earlier copy.
+-- released ever carried an earlier copy. The same goes for a dev database that ran `db:sync:permissions` before it skipped
+-- `encounter.closure_override`: its org_admin / administrator keep that grant (the sync only ever adds), so remove it by hand or reset.
 -- Lock behaviour (accepted, not restructured): ADD COLUMN ... CHECK on encounter scans the table once under ACCESS EXCLUSIVE, and
 -- each CREATE INDEX (not CONCURRENTLY) holds a SHARE lock for its build (both indexes are partial: they hold only open clocked notes). Both columns are NULL for every existing row and the previous
 -- release never writes them, so the change is expand-safe; encounter is small relative to the deploy window and the runner is

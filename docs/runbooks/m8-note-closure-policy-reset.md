@@ -20,7 +20,7 @@ administrators (`org_admin`, `administrator`) and platform `superadmin`. NOT `cl
 2. Set the mode to `warn` (the banner and alerts stay, nothing is refused) or `off` (the engine is disabled for the tenant), and
    save. Saving asks for a fresh step-up: re-authenticate when asked and the save completes.
 3. The same change by API: `PUT /api/v1/encounters/closure-policy` with `{ "mode": "warn", "thresholdHours": 24 }`, a fresh step-up
-   and an `Idempotency-Key`; an AI principal is refused. Leaving `block` clears `enforce_from`; moving to `block` again later starts a
+   (an `Idempotency-Key` is optional on this route); an AI principal is refused. Leaving `block` clears `enforce_from`; moving to `block` again later starts a
    fresh grace window from that moment, so notes that are already overdue are not blocked by the switch itself.
 
 **When it takes effect.** On the replica that served the PUT at once (its policy cache is invalidated); on every other replica within the

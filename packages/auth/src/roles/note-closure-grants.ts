@@ -7,8 +7,9 @@
 //                                    clinical supervisor): the key is in FULL_CATALOG_EXCLUDED_KEYS.
 //   encounter.closure_policy_admin   setting the tenant's closure mode (off | warn | block) and threshold. The director of nursing
 //                                    (`director_of_nursing`, `don`) AND the tenant administrators (`org_admin`, `administrator`, and
-//                                    `superadmin` through the full-catalog rule). NOT `clinical_supervisor` or `clinical_lead`: they are
-//                                    the field supervisors the clock binds, and they must not set the deadline they are held to.
+//                                    `superadmin` through the full-catalog rule). NOT `clinical_supervisor` or `clinical_lead`: the
+//                                    policy is set by the tenant-level owners, not by the field supervisors. (The DON is bound by the
+//                                    clock like any supervisor and still holds it: deliberate, guarded by step-up and an audit event.)
 //
 // Three paths deliver them, all pinned to this file:
 //   - an existing tenant: migration `1511` grants the keys to whichever of those roles the tenant already created (and the policy key

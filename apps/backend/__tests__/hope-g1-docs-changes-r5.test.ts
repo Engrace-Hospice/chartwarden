@@ -38,7 +38,8 @@ describe("CHANGES.md: the retry bullet does not narrate a release that never shi
   it("matches the code: the idempotency plugin releases M10_RECORD_BUSY (a retryable outcome), it does not cache it", () => {
     const plugin = read("apps/backend/src/bootstrap/plugins/idempotency.ts");
     expect(plugin).toMatch(
-      /RETRYABLE_CONFLICT_CODES[^=]*=\s*new Set\(\[\s*"CONCURRENT_UPDATE",\s*"M10_RECORD_BUSY",?\s*\]\)/,
+      // the two codes this bullet narrates must stay in the set; another module's retryable 409 (M8's NOTE_CLOSURE_SUBJECT_NOT_BLOCKED) may join it
+      /RETRYABLE_CONFLICT_CODES[^=]*=\s*new Set\(\[\s*"CONCURRENT_UPDATE",\s*"M10_RECORD_BUSY"(?:,\s*"[A-Z0-9_]+")*,?\s*\]\)/,
     );
   });
 });
