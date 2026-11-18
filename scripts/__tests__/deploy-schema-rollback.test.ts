@@ -423,6 +423,28 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
     expect(o.previousReleaseSaved).toBe(false);
   });
 
+  it("the held banner names the hand-apply command: the NEW release's image, the migrate service, no --hold-contract", () => {
+    const o = deploy({ migrateExit: 75 });
+    const banner = o.out.split("\n").filter((l) => l.startsWith("!!"));
+    // the env file is put back on the previous image right after, so the command must carry the new one explicitly
+    const apply = banner.join("\n");
+    expect(apply).toContain("CHARTWARDEN_IMAGE='");
+    expect(apply).toContain(
+      "run --rm --no-deps migrate bun run scripts/db/migrate.ts --strict --schema-only",
+    );
+    const commandLines = banner.filter((l) => /docker compose|migrate\.ts/.test(l)).join(" ");
+    expect(commandLines).not.toContain("--hold-contract"); // the point of applying by hand
+    expect(apply).not.toMatch(/db:migrate:deploy/); // production uses the Docker migrate job, never host db:migrate
+  });
+
+  it("the compose migrate service defaults to --hold-contract, so a plain `docker compose up` cannot apply a held migration", () => {
+    const compose = readFileSync(join(REPO, "deploy/production/compose.yml"), "utf8");
+    const migrate = /^ {2}migrate:\n([\s\S]*?)\n {2}provision:/m.exec(compose)?.[1] ?? "";
+    expect(migrate).toMatch(
+      /command: \["bun", "run", "scripts\/db\/migrate\.ts", "--strict", "--hold-contract"\]/,
+    );
+  });
+
   it("failure before migrating (new-release env validation) -> clean rollback, migrate never ran", () => {
     const o = deploy({ envExit: 1 });
     expectRolledBack(o, false);
@@ -675,6 +697,21 @@ describe.skipIf(BUN === "")("deploy.sh object-store credential names", () => {
 // deploy's outcome, and never leaks the (secret) URL.
 describe.skipIf(BUN === "")("deploy.sh failure alert (#866)", () => {
   const alert = { via: "env", url: WEBHOOK } as const;
+
+  it("a hold before any schema change alerts as a HOLD (nothing applied, previous release untouched), not as a refused rollback", () => {
+    const o = deploy({ migrateExit: 75, alert });
+    expect(o.code, o.out).toBe(75);
+    expect(o.alertBody).toMatchObject({
+      step: "migrate",
+      exit_code: 75,
+      operator_decision_required: true,
+      applied_migrations: [],
+    });
+    const text = String(o.alertBody?.text);
+    expect(text).toContain("HELD before any schema change");
+    expect(text).toContain("nothing applied");
+    expect(text).not.toContain("automatic rollback refused");
+  });
 
   it("fires on exit 75 naming the operator decision, with sha, step, code and migration filenames only", () => {
     const o = deploy({ applied: ["1291_m1_drop_legacy.sql"], smokeExit: 1, alert });

@@ -1,8 +1,10 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * scripts/db/migrate.ts — the production migration path — LIVE Postgres proof (TASK-040E, OPS-016).
  *
@@ -26,6 +28,7 @@ import { dropLiveRoles } from "../../packages/db/migrations/__tests__/_live-role
 import { MIGRATIONS_DIR, applyMigrations, ensureLedger } from "../db/migrate";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 // Every CREATE ROLE across the migration corpus (`grep -rh "CREATE ROLE" packages/db/migrations`),
 // so resetSchema() can drop them all before each fresh-database assertion below.
@@ -276,6 +279,65 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       await rm(migrationsDir, { force: true, recursive: true });
     }
   }, 60_000);
+
+  it.skipIf(spawnSync("bun", ["--version"]).status !== 0)(
+    "the real CLI exits 75 (what deploy.sh keys on) and changes nothing when 1508 is pending",
+    async () => {
+      // deploy.sh and migrate.ts share the number only by convention (two constants), and the runner function is
+      // proven above; this runs the actual process so a drift between them fails here, not on a production deploy.
+      const held = "1508_m25_835_group_identity_dates.sql";
+      const { rows: ledgerRow } = await db.query<{
+        filename: string;
+        checksum: string;
+        applied_at: Date;
+      }>("SELECT filename, checksum, applied_at FROM _chartwarden_migration WHERE filename = $1", [
+        held,
+      ]);
+      expect(ledgerRow).toHaveLength(1); // the full chain was applied by the first test of this block
+      const ledgerCount = async () =>
+        (await db.query<{ n: number }>("SELECT count(*)::int AS n FROM _chartwarden_migration"))
+          .rows[0]!.n;
+      // The drift test above leaves one ledger row corrupted on purpose, and the CLI runs --strict exactly as deploy.sh
+      // does, so a corrupted checksum would (correctly) stop it before the hold. Put the real checksum back first.
+      const { rows: corrupted } = await db.query<{ filename: string }>(
+        "SELECT filename FROM _chartwarden_migration WHERE checksum = 'deliberately-corrupted'",
+      );
+      for (const { filename } of corrupted)
+        await db.query("UPDATE _chartwarden_migration SET checksum = $2 WHERE filename = $1", [
+          filename,
+          createHash("sha256")
+            .update(readFileSync(join(MIGRATIONS_DIR, filename), "utf8"))
+            .digest("hex"),
+        ]);
+      const before = await ledgerCount();
+      await db.query("DELETE FROM _chartwarden_migration WHERE filename = $1", [held]);
+      try {
+        const run = spawnSync(
+          "bun",
+          ["run", "scripts/db/migrate.ts", "--strict", "--schema-only", "--hold-contract"],
+          {
+            cwd: REPO_ROOT,
+            env: { ...process.env, DATABASE_ADMIN_URL: DB_URL },
+            encoding: "utf8",
+            timeout: 120_000,
+          },
+        );
+        expect(run.status, run.stderr).toBe(75);
+        expect(run.stderr).toContain("DEPLOY HOLD");
+        expect(run.stderr).toContain(held);
+        expect(run.stdout).not.toContain("migrations complete");
+        // refused before any DDL: the ledger is exactly as the operator left it (1508 still not recorded)
+        expect(await ledgerCount()).toBe(before - 1);
+      } finally {
+        await db.query(
+          "INSERT INTO _chartwarden_migration (filename, checksum, applied_at) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+          [ledgerRow[0]!.filename, ledgerRow[0]!.checksum, ledgerRow[0]!.applied_at],
+        );
+      }
+      expect(await ledgerCount()).toBe(before);
+    },
+    180_000,
+  );
 
   it("--hold-contract exempts a database with an empty ledger (a fresh environment has no old writers)", async () => {
     // Last test of this block: it empties the schema, which the later tests do not depend on.

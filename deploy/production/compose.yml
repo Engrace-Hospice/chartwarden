@@ -303,7 +303,11 @@ services:
     mem_limit: 1g
     cpus: 2
     env_file: .env.production
-    command: ["bun", "run", "scripts/db/migrate.ts", "--strict"]
+    # --hold-contract: a pending migration that is not a verified `expand` is refused BEFORE any DDL (exit 75), so a plain
+    # `docker compose up` (which runs this service as provision's dependency) cannot apply one while the old writers still run.
+    # An empty ledger (a first deploy) is exempt. An operator applies a held migration by running this service with its
+    # command overridden and without the flag (deploy/production/README.md, "A deploy held BEFORE any schema change").
+    command: ["bun", "run", "scripts/db/migrate.ts", "--strict", "--hold-contract"]
     environment:
       NODE_ENV: production
       DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}

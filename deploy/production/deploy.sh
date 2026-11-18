@@ -89,7 +89,9 @@ deploy_alert() {
   if [ -n "${schema_applied:-}" ]; then
     alert_files=$(printf '%s\n' "$schema_applied" | grep -E '^[0-9]{4}_[a-z0-9_.]+\.sql$' | sed 's/.*/"&"/' | paste -sd, - || true)
   fi
-  if [ "$alert_rc" -eq "$HOLD_EXIT" ]; then
+  if [ "$alert_rc" -eq "$HOLD_EXIT" ] && [ -n "${held_before_schema_change:-}" ]; then
+    alert_what="HELD before any schema change (exit $alert_rc): nothing applied, previous release untouched, a pending migration needs an operator"
+  elif [ "$alert_rc" -eq "$HOLD_EXIT" ]; then
     alert_what="operator decision required (exit $alert_rc), automatic rollback refused"
   else
     alert_what="failed (exit $alert_rc)"
@@ -691,10 +693,14 @@ else
       echo ""
       echo "!! DEPLOY HELD BEFORE ANY SCHEMA CHANGE: a pending migration is not proven expand-compatible."
       echo "!! Nothing was applied and the running release is untouched. Drain whatever the migration's header and"
-      echo "!! runbook name (1508: docs/runbooks/m25-835-deployment.md), apply it by hand with"
-      echo "!! 'bun run db:migrate:deploy' (no --hold-contract), then re-run this deploy."
+      echo "!! runbook name (1508: docs/runbooks/m25-835-deployment.md), then apply it by hand with the NEW release's"
+      echo "!! image (this script is about to put .env.production back on the previous one) and WITHOUT --hold-contract:"
+      echo "!!   cd $deploy_dir && CHARTWARDEN_IMAGE='$backend_ref' docker compose --env-file .env.production -f compose.yml \\"
+      echo "!!     run --rm --no-deps migrate bun run scripts/db/migrate.ts --strict --schema-only"
+      echo "!! then re-run this deploy."
       echo ""
     } >&2
+    held_before_schema_change=1
     restore_previous_release
     exit "$HOLD_EXIT"
   fi
