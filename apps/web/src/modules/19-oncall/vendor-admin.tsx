@@ -33,6 +33,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { FormDrawer } from "../../shell/form-drawer";
+import { runDrawerWrite } from "./drawer-write";
 import {
   type MinimizationProfile,
   type VendorBindingView,
@@ -113,42 +114,60 @@ export function ExternalVendorAdminScreen(): JSX.Element {
     baaInEffect &&
     !busy;
 
-  async function commitCreate(): Promise<void> {
-    setBusy(true);
+  // At most one form drawer is open. Opening either (or closing) drops a refused write's message.
+  const openCreate = (): void => {
     setActionError(null);
-    const res = await createVendorBinding(client, {
-      mdmVendorId,
-      name,
-      adapterKey,
-      rnCoverageAttested: rnAttested,
-      baaInEffect,
-      ...(baaExpiresOn ? { baaExpiresOn } : {}),
-      // `profile` is always one of MINIMIZATION_PROFILES — the SelectField below offers no other value.
-      defaultMinimizationPolicy: { profile: profile as MinimizationProfile },
-    });
-    setBusy(false);
-    if (res.error) {
-      setActionError(errorMessage(res.error, "The vendor binding could not be created."));
-      return;
-    }
+    setRenewing(null);
+    setCreating(true);
+  };
+  const openRenew = (binding: VendorBindingView): void => {
+    setActionError(null);
+    setCreating(false);
+    setRenewing(binding);
+    setRenewBaa(binding.baaInEffect);
+    setRenewRn(binding.rnCoverageAttested);
+    setRenewExpiry(binding.baaExpiresOn ?? "");
+  };
+  const closeForm = (): void => {
+    setActionError(null);
+    setCreating(false);
+    setRenewing(null);
+  };
+
+  async function commitCreate(): Promise<void> {
+    const saved = await runDrawerWrite(
+      { setBusy, setError: setActionError },
+      () =>
+        createVendorBinding(client, {
+          mdmVendorId,
+          name,
+          adapterKey,
+          rnCoverageAttested: rnAttested,
+          baaInEffect,
+          ...(baaExpiresOn ? { baaExpiresOn } : {}),
+          // `profile` is always one of MINIMIZATION_PROFILES — the SelectField below offers no other value.
+          defaultMinimizationPolicy: { profile: profile as MinimizationProfile },
+        }),
+      "The vendor binding could not be created.",
+    );
+    if (!saved) return;
     setCreating(false);
     await load();
   }
 
   async function commitRenew(): Promise<void> {
     if (!renewing) return;
-    setBusy(true);
-    setActionError(null);
-    const res = await patchVendorBinding(client, renewing.id, {
-      baaInEffect: renewBaa,
-      rnCoverageAttested: renewRn,
-      baaExpiresOn: renewExpiry === "" ? null : renewExpiry,
-    });
-    setBusy(false);
-    if (res.error) {
-      setActionError(errorMessage(res.error, "The binding could not be updated."));
-      return;
-    }
+    const saved = await runDrawerWrite(
+      { setBusy, setError: setActionError },
+      () =>
+        patchVendorBinding(client, renewing.id, {
+          baaInEffect: renewBaa,
+          rnCoverageAttested: renewRn,
+          baaExpiresOn: renewExpiry === "" ? null : renewExpiry,
+        }),
+      "The binding could not be updated.",
+    );
+    if (!saved) return;
     setRenewing(null);
     await load();
   }
@@ -160,14 +179,7 @@ export function ExternalVendorAdminScreen(): JSX.Element {
           title="External triage vendors"
           actions={
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                style={primaryButtonCompactStyle}
-                onClick={() => {
-                  setRenewing(null);
-                  setCreating(true);
-                }}
-              >
+              <button type="button" style={primaryButtonCompactStyle} onClick={openCreate}>
                 Bind a vendor
               </button>
               <Link to="/triage/policy" style={linkButtonStyle}>
@@ -194,11 +206,6 @@ export function ExternalVendorAdminScreen(): JSX.Element {
               configured and inert — it cannot carry a call.
             </Notice>
           ) : null}
-          {actionError ? (
-            <div role="alert" style={errorBannerStyle}>
-              {actionError}
-            </div>
-          ) : null}
         </div>
       }
       table={
@@ -213,7 +220,7 @@ export function ExternalVendorAdminScreen(): JSX.Element {
           ) : (
             <table>
               <thead>
-                <tr style={tableHeadRowStyle}>
+                <tr>
                   <th>Vendor</th>
                   <th>Canonical entity</th>
                   <th>Adapter</th>
@@ -253,13 +260,7 @@ export function ExternalVendorAdminScreen(): JSX.Element {
                         type="button"
                         style={busy ? disabledButtonCompactStyle : linkButtonStyle}
                         disabled={busy}
-                        onClick={() => {
-                          setCreating(false);
-                          setRenewing(b);
-                          setRenewBaa(b.baaInEffect);
-                          setRenewRn(b.rnCoverageAttested);
-                          setRenewExpiry(b.baaExpiresOn ?? "");
-                        }}
+                        onClick={() => openRenew(b)}
                       >
                         BAA renewal
                       </button>
@@ -281,7 +282,8 @@ export function ExternalVendorAdminScreen(): JSX.Element {
           <FormDrawer
             title="Bind an external triage vendor"
             busy={busy}
-            onClose={() => setCreating(false)}
+            onClose={closeForm}
+            error={actionError}
             save={
               <Button
                 tone="primary"
@@ -348,7 +350,8 @@ export function ExternalVendorAdminScreen(): JSX.Element {
             key={renewing.id}
             title={`BAA renewal — ${renewing.name}`}
             busy={busy}
-            onClose={() => setRenewing(null)}
+            onClose={closeForm}
+            error={actionError}
             save={
               <Button
                 tone="primary"
@@ -397,11 +400,6 @@ const tableShellStyle: CSSProperties = {
   padding: "0 1.5rem 1.5rem",
 };
 
-const tableHeadRowStyle: CSSProperties = {
-  background: "var(--color-surface-low)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-};
-
 const tableFootnoteStyle: CSSProperties = {
   marginTop: "0.85rem",
   color: "var(--color-on-surface-variant)",
@@ -410,15 +408,6 @@ const tableFootnoteStyle: CSSProperties = {
 
 const emptyShellStyle: CSSProperties = {
   padding: "2rem 1.5rem",
-};
-
-const errorBannerStyle: CSSProperties = {
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  color: "var(--color-error)",
-  fontSize: "0.85rem",
 };
 
 const linkButtonStyle: CSSProperties = {

@@ -35,6 +35,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { FormDrawer } from "../../shell/form-drawer";
+import { runDrawerWrite } from "./drawer-write";
 import {
   type EscalationTier,
   type ShiftDiscipline,
@@ -133,24 +134,32 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
 
   const canCreate = KEY_RE.test(key) && label.trim().length >= 3 && SNOMED_RE.test(snomed) && !busy;
 
-  async function commitCreate(): Promise<void> {
-    setBusy(true);
+  const openCreate = (): void => {
     setActionError(null);
-    const res = await createProtocol(client, {
-      key,
-      chiefComplaintLabel: label,
-      snomedCode: snomed,
-      // `required`/`tier` are always one of SHIFT_DISCIPLINES / ESCALATION_TIERS — the SelectFields below
-      // offer no other value.
-      disciplineRequired: required as ShiftDiscipline,
-      requiresMandatoryEscalation: mandatory,
-      ...(mandatory ? { mandatoryEscalationTier: tier as EscalationTier } : {}),
-    });
-    setBusy(false);
-    if (res.error) {
-      setActionError(errorMessage(res.error, "The protocol could not be created."));
-      return;
-    }
+    setCreating(true);
+  };
+  const closeCreate = (): void => {
+    setActionError(null);
+    setCreating(false);
+  };
+
+  async function commitCreate(): Promise<void> {
+    const saved = await runDrawerWrite(
+      { setBusy, setError: setActionError },
+      () =>
+        createProtocol(client, {
+          key,
+          chiefComplaintLabel: label,
+          snomedCode: snomed,
+          // `required`/`tier` are always one of SHIFT_DISCIPLINES / ESCALATION_TIERS — the SelectFields below
+          // offer no other value.
+          disciplineRequired: required as ShiftDiscipline,
+          requiresMandatoryEscalation: mandatory,
+          ...(mandatory ? { mandatoryEscalationTier: tier as EscalationTier } : {}),
+        }),
+      "The protocol could not be created.",
+    );
+    if (!saved) return;
     setCreating(false);
     setKey("");
     setLabel("");
@@ -165,11 +174,7 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
           title="Triage protocols"
           actions={
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                style={primaryButtonCompactStyle}
-                onClick={() => setCreating(true)}
-              >
+              <button type="button" style={primaryButtonCompactStyle} onClick={openCreate}>
                 Author a protocol
               </button>
               <Link to="/triage/policy" style={linkButtonStyle}>
@@ -197,12 +202,6 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
                 More than {CATALOG_PAGE} protocols match; the KPI counts above use the fetched page.
               </span>
             </output>
-          ) : null}
-          {actionError ? (
-            <div role="alert" style={errorBannerStyle}>
-              <Glyph name="alert" size={16} />
-              <span>{actionError}</span>
-            </div>
           ) : null}
           <div style={toolbarStyle}>
             <label className="wx-filter-field">
@@ -260,7 +259,7 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
           ) : (
             <table>
               <thead>
-                <tr style={tableHeadRowStyle}>
+                <tr>
                   <th>Chief complaint</th>
                   <th>Key</th>
                   <th>SNOMED</th>
@@ -326,7 +325,8 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
           <FormDrawer
             title="Author a tenant protocol"
             busy={busy}
-            onClose={() => setCreating(false)}
+            onClose={closeCreate}
+            error={actionError}
             save={
               <Button
                 tone="primary"
@@ -410,26 +410,10 @@ const toolbarStyle: CSSProperties = {
   gap: "0.5rem",
 };
 
-const selectControlStyle: CSSProperties = {
-  minHeight: "2.25rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
-  background: "var(--color-surface-low)",
-  color: "var(--color-on-surface)",
-  cursor: "pointer",
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.65rem",
-};
-
 const tableShellStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
   padding: "0 1.5rem 1.5rem",
-};
-
-const tableHeadRowStyle: CSSProperties = {
-  background: "var(--color-surface-low)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
 };
 
 const tableFootnoteStyle: CSSProperties = {
@@ -451,18 +435,6 @@ const infoBannerStyle: CSSProperties = {
   border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
   background: "var(--color-primary-tint)",
   color: "var(--color-on-surface)",
-  fontSize: "0.85rem",
-};
-
-const errorBannerStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  color: "var(--color-error)",
   fontSize: "0.85rem",
 };
 

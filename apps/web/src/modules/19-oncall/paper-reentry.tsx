@@ -30,6 +30,7 @@ import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { AdmissionLookupField, PatientLookupField } from "../../shell/entity-lookups";
 import { FormDrawer } from "../../shell/form-drawer";
+import { runDrawerWrite } from "./drawer-write";
 import {
   type PaperReentryWorklistView,
   type TriageCallerKind,
@@ -118,32 +119,41 @@ export function PaperReentryWorklistScreen(): JSX.Element {
     (UUID_RE.test(patientId) && UUID_RE.test(admissionId));
   const canEnter = entering !== null && openedAt !== "" && anchorValid && !busy;
 
-  async function commit(): Promise<void> {
-    if (!entering) return;
-    setBusy(true);
+  // Opening a worklist row, switching to another, or closing (`null`) starts from a blank form: a draft typed for
+  // one outage window must never ride into another window's filing, and a refused write's message is not carried over.
+  function openFor(row: PaperReentryWorklistView | null): void {
+    setEntering(row);
     setActionError(null);
-    const res = await reenterPaperCall(client, {
-      worklistId: entering.id,
-      providerEntityId: entering.providerEntityId,
-      paperOriginalOpenedAt: toInstant(openedAt),
-      // Always one of HUMAN_INBOUND_CHANNELS / HUMAN_CALLER_KINDS — the SelectFields below offer no
-      // other value.
-      inboundChannel: inboundChannel as TriageInboundChannel,
-      callerKind: callerKind as TriageCallerKind,
-      ...(callerDisplayName ? { callerDisplayName } : {}),
-      ...(patientId ? { patientId, admissionId } : {}),
-      ...(chiefComplaint ? { chiefComplaintText: chiefComplaint } : {}),
-    });
-    setBusy(false);
-    if (res.error) {
-      setActionError(errorMessage(res.error, "The paper call could not be re-entered."));
-      return;
-    }
-    setEntering(null);
-    setChiefComplaint("");
+    setOpenedAt(row ? isoToLocalInput(row.shiftStartsAt) : "");
+    setInboundChannel(DEFAULT_INBOUND_CHANNEL);
+    setCallerKind(DEFAULT_CALLER_KIND);
     setCallerDisplayName("");
     setPatientId("");
     setAdmissionId("");
+    setChiefComplaint("");
+  }
+
+  async function commit(): Promise<void> {
+    if (!entering) return;
+    const saved = await runDrawerWrite(
+      { setBusy, setError: setActionError },
+      () =>
+        reenterPaperCall(client, {
+          worklistId: entering.id,
+          providerEntityId: entering.providerEntityId,
+          paperOriginalOpenedAt: toInstant(openedAt),
+          // Always one of HUMAN_INBOUND_CHANNELS / HUMAN_CALLER_KINDS — the SelectFields below offer no
+          // other value.
+          inboundChannel: inboundChannel as TriageInboundChannel,
+          callerKind: callerKind as TriageCallerKind,
+          ...(callerDisplayName ? { callerDisplayName } : {}),
+          ...(patientId ? { patientId, admissionId } : {}),
+          ...(chiefComplaint ? { chiefComplaintText: chiefComplaint } : {}),
+        }),
+      "The paper call could not be re-entered.",
+    );
+    if (!saved) return;
+    openFor(null);
     await load();
   }
 
@@ -177,11 +187,6 @@ export function PaperReentryWorklistScreen(): JSX.Element {
               for those; the outage is now a documented gap.
             </Notice>
           ) : null}
-          {actionError ? (
-            <div role="alert" style={errorBannerStyle}>
-              {actionError}
-            </div>
-          ) : null}
         </div>
       }
       table={
@@ -196,7 +201,7 @@ export function PaperReentryWorklistScreen(): JSX.Element {
           ) : (
             <table>
               <thead>
-                <tr style={tableHeadRowStyle}>
+                <tr>
                   <th>Window</th>
                   <th>Provider entity</th>
                   <th>Shift</th>
@@ -248,10 +253,7 @@ export function PaperReentryWorklistScreen(): JSX.Element {
                             type="button"
                             style={busy ? disabledButtonCompactStyle : primaryButtonCompactStyle}
                             disabled={busy}
-                            onClick={() => {
-                              setEntering(r);
-                              setOpenedAt(isoToLocalInput(r.shiftStartsAt));
-                            }}
+                            onClick={() => openFor(r)}
                           >
                             Re-enter a call
                           </button>
@@ -272,7 +274,8 @@ export function PaperReentryWorklistScreen(): JSX.Element {
             key={entering.id}
             title="Re-enter a call taken on paper"
             busy={busy}
-            onClose={() => setEntering(null)}
+            onClose={() => openFor(null)}
+            error={actionError}
             save={
               <Button
                 tone="primary"
@@ -361,22 +364,8 @@ const tableShellStyle: CSSProperties = {
   padding: "0 1.5rem 1.5rem",
 };
 
-const tableHeadRowStyle: CSSProperties = {
-  background: "var(--color-surface-low)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-};
-
 const emptyShellStyle: CSSProperties = {
   padding: "2rem 1.5rem",
-};
-
-const errorBannerStyle: CSSProperties = {
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  color: "var(--color-error)",
-  fontSize: "0.85rem",
 };
 
 const linkButtonStyle: CSSProperties = {

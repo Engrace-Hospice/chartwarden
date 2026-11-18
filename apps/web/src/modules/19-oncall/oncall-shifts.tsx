@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { FormDrawer } from "../../shell/form-drawer";
 import { SelectField, TextField } from "../../shell/value-fields";
+import { runDrawerWrite } from "./drawer-write";
 import {
   type CurrentOnCallView,
   type OnCallActor,
@@ -175,29 +176,37 @@ export function OnCallShiftsScreen(): JSX.Element {
     (isExternal ? UUID_RE.test(externalActorId) : UUID_RE.test(primaryMembership)) &&
     !busy;
 
-  async function commitCreate(): Promise<void> {
-    setBusy(true);
+  const openCreate = (): void => {
     setActionError(null);
-    const res = await createShift(client, {
-      providerEntityId,
-      shiftStartsAt: toInstant(startsAt),
-      shiftEndsAt: toInstant(endsAt),
-      discipline: newDiscipline as ShiftDiscipline,
-      ...(isExternal
-        ? {
-            externalActorId,
-            ...(externalActorLabel ? { externalActorLabel } : {}),
-          }
-        : {
-            primaryOnCallMembershipId: primaryMembership,
-            ...(UUID_RE.test(backupMembership) ? { backupMembershipId: backupMembership } : {}),
-          }),
-    });
-    setBusy(false);
-    if (res.error) {
-      setActionError(errorMessage(res.error, "The shift could not be created."));
-      return;
-    }
+    setCreating(true);
+  };
+  const closeCreate = (): void => {
+    setActionError(null);
+    setCreating(false);
+  };
+
+  async function commitCreate(): Promise<void> {
+    const saved = await runDrawerWrite(
+      { setBusy, setError: setActionError },
+      () =>
+        createShift(client, {
+          providerEntityId,
+          shiftStartsAt: toInstant(startsAt),
+          shiftEndsAt: toInstant(endsAt),
+          discipline: newDiscipline as ShiftDiscipline,
+          ...(isExternal
+            ? {
+                externalActorId,
+                ...(externalActorLabel ? { externalActorLabel } : {}),
+              }
+            : {
+                primaryOnCallMembershipId: primaryMembership,
+                ...(UUID_RE.test(backupMembership) ? { backupMembershipId: backupMembership } : {}),
+              }),
+        }),
+      "The shift could not be created.",
+    );
+    if (!saved) return;
     setCreating(false);
     await load();
   }
@@ -219,7 +228,7 @@ export function OnCallShiftsScreen(): JSX.Element {
           title="On-call roster"
           actions={
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <Button tone="primary" onClick={() => setCreating(true)}>
+              <Button tone="primary" onClick={openCreate}>
                 Add shift
               </Button>
               <Link to="/triage/policy" style={linkButtonStyle}>
@@ -256,12 +265,6 @@ export function OnCallShiftsScreen(): JSX.Element {
               <span>The live coverage verdict could not be read.</span>
             </output>
           )}
-          {actionError ? (
-            <div role="alert" style={errorBannerStyle}>
-              <Glyph name="alert" size={16} />
-              <span>{actionError}</span>
-            </div>
-          ) : null}
           {error ? (
             <div role="alert" style={errorBannerStyle}>
               <Glyph name="alert" size={16} />
@@ -372,7 +375,7 @@ export function OnCallShiftsScreen(): JSX.Element {
                     Clear filters
                   </Button>
                 ) : (
-                  <Button tone="primary" size="sm" onClick={() => setCreating(true)}>
+                  <Button tone="primary" size="sm" onClick={openCreate}>
                     Add shift
                   </Button>
                 )
@@ -381,32 +384,32 @@ export function OnCallShiftsScreen(): JSX.Element {
           </div>
         ) : (
           <div style={tableWrapStyle}>
-            <table>
+            <table className="tabular-nums">
               <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "12%" }}>Shift</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Provider</th>
-                  <th style={{ ...thStyle, width: "20%" }}>Window</th>
-                  <th style={{ ...thStyle, width: "13%" }}>Discipline</th>
-                  <th style={{ ...thStyle, width: "15%" }}>Primary</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Source</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                <tr>
+                  <th style={{ width: "12%" }}>Shift</th>
+                  <th style={{ width: "14%" }}>Provider</th>
+                  <th style={{ width: "20%" }}>Window</th>
+                  <th style={{ width: "13%" }}>Discipline</th>
+                  <th style={{ width: "15%" }}>Primary</th>
+                  <th style={{ width: "12%" }}>Source</th>
+                  <th style={{ width: "14%" }}>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleShifts.map((shift) => (
-                  <tr key={shift.id} style={rowStyle}>
-                    <td style={tdStyle}>
+                  <tr key={shift.id}>
+                    <td>
                       <Link to={`/triage/shifts/${shift.id}`} style={callLinkStyle}>
                         {shortId(shift.id)}
                       </Link>
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <code className="wx-data-md" style={codeStyle}>
                         {shortId(shift.providerEntityId)}
                       </code>
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <div style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
                         {shortDate(shift.shiftStartsAt)} {clockTime(shift.shiftStartsAt)}
                       </div>
@@ -417,8 +420,8 @@ export function OnCallShiftsScreen(): JSX.Element {
                           : `${shortDate(shift.shiftEndsAt)} ${clockTime(shift.shiftEndsAt)}`}
                       </div>
                     </td>
-                    <td style={tdStyle}>{disciplineLabel(shift.discipline)}</td>
-                    <td style={tdStyle}>
+                    <td>{disciplineLabel(shift.discipline)}</td>
+                    <td>
                       {shift.externalActorId
                         ? (shift.externalActorLabel ?? "External vendor")
                         : shortId(shift.primaryOnCallMembershipId)}
@@ -428,8 +431,8 @@ export function OnCallShiftsScreen(): JSX.Element {
                         </div>
                       ) : null}
                     </td>
-                    <td style={tdStyle}>{sourceLabel(shift)}</td>
-                    <td style={tdStyle}>
+                    <td>{sourceLabel(shift)}</td>
+                    <td>
                       <StatusPill
                         label={humanize(shift.status)}
                         tone={toneOf(SHIFT_STATUS_TONE, shift.status)}
@@ -463,6 +466,7 @@ export function OnCallShiftsScreen(): JSX.Element {
         creating ? (
           <CreateShiftDrawer
             busy={busy}
+            error={actionError}
             canCreate={canCreate}
             isExternal={isExternal}
             providerEntityId={providerEntityId}
@@ -481,7 +485,7 @@ export function OnCallShiftsScreen(): JSX.Element {
             onBackupMembershipChange={setBackupMembership}
             onExternalActorIdChange={setExternalActorId}
             onExternalActorLabelChange={setExternalActorLabel}
-            onClose={() => setCreating(false)}
+            onClose={closeCreate}
             onSubmit={() => void commitCreate()}
           />
         ) : undefined
@@ -492,6 +496,7 @@ export function OnCallShiftsScreen(): JSX.Element {
 
 function CreateShiftDrawer({
   busy,
+  error,
   canCreate,
   isExternal,
   providerEntityId,
@@ -514,6 +519,7 @@ function CreateShiftDrawer({
   onSubmit,
 }: {
   busy: boolean;
+  error: string | null;
   canCreate: boolean;
   isExternal: boolean;
   providerEntityId: string;
@@ -540,6 +546,7 @@ function CreateShiftDrawer({
       title="Add an on-call shift"
       busy={busy}
       onClose={onClose}
+      error={error}
       save={
         <Button type="button" tone="primary" disabled={!canCreate} onClick={onSubmit}>
           {busy ? "Creating..." : "Create shift"}
@@ -553,7 +560,6 @@ function CreateShiftDrawer({
         label="Provider entity"
         value={providerEntityId}
         onChange={onProviderEntityIdChange}
-        appearance="modal"
       />
       <TextField
         label="Starts at"
@@ -632,47 +638,10 @@ const coverageRowStyle: CSSProperties = {
   background: "var(--color-surface-low)",
 };
 
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
   padding: "0 1.5rem 1.5rem",
-};
-
-const tableStyle: CSSProperties = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.875rem",
-  fontVariantNumeric: "tabular-nums",
-};
-
-const headerRowStyle: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-
-const thStyle: CSSProperties = {
-  padding: "0.75rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-
-const tdStyle: CSSProperties = {
-  padding: "0.875rem 1rem",
-  verticalAlign: "middle",
-  color: "var(--color-on-surface-variant)",
-};
-
-const rowStyle: CSSProperties = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 
 const footerStyle: CSSProperties = {

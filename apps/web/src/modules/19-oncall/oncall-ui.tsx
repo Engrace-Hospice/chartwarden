@@ -7,7 +7,6 @@
 // Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens` stays green and the twilight dark
 // mode is automatic.
 import { Button, Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
-import type { StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import {
   CALL_STATE_TONE,
@@ -21,19 +20,6 @@ import {
 // column only right-aligns and sets tabular figures ───────────────────────────────────────────────────
 export const thNum: CSSProperties = { textAlign: "right" };
 export const tdNum: CSSProperties = { textAlign: "right", fontVariantNumeric: "tabular-nums" };
-
-/** Screen-reader-only text — keeps a control labelled without occupying visual space (§5.4 WCAG AA). */
-export const visuallyHidden: CSSProperties = {
-  position: "absolute",
-  width: "1px",
-  height: "1px",
-  padding: 0,
-  margin: "-1px",
-  overflow: "hidden",
-  clip: "rect(0 0 0 0)",
-  whiteSpace: "nowrap",
-  border: 0,
-};
 
 // ── section chrome ─────────────────────────────────────────────────────────────────────────────────────
 export const pageTitleStyle: CSSProperties = {
@@ -96,7 +82,7 @@ export const disabledButtonStyle: CSSProperties = {
 };
 
 // ── modal chrome (the §5 ceremonies: identify, apply protocol, disposition, escalate, resolve) ─────────
-export const modalTitleStyle: CSSProperties = {
+const modalTitleStyle: CSSProperties = {
   margin: 0,
   fontFamily: t.fontDisplay,
   fontSize: "1.1rem",
@@ -272,51 +258,6 @@ export function CallStatePill({ state }: { state: string }): JSX.Element {
 /** The escalation-tier badge — the ladder rung, spelled out. */
 export function TierPill({ tier }: { tier: string }): JSX.Element {
   return <StatusPill label={tierLabel(tier)} tone={toneOf(ESCALATION_TIER_TONE, tier)} />;
-}
-
-/** A count chip row — the §5 KPI tiles. COUNTS, never rates: a rate computed from one fetched page reads
- *  like a census, and M19 publishes no aggregate route (see the metrics screen's own notice). */
-export function CountGrid({
-  entries,
-}: {
-  entries: readonly { label: string; value: number | string; tone?: StatusTone }[];
-}): JSX.Element {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(11rem, 1fr))",
-        gap: t.space3,
-      }}
-    >
-      {entries.map((e) => (
-        <div
-          key={e.label}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.15rem",
-            padding: `${t.space3} ${t.space4}`,
-            border: `1px solid ${t.cardBorder}`,
-            borderRadius: t.radiusLg,
-            background: t.surfaceLowest,
-          }}
-        >
-          <span style={{ fontSize: "0.8125rem", color: t.muted }}>{e.label}</span>
-          <span
-            style={{
-              fontSize: "1.375rem",
-              fontWeight: 700,
-              fontVariantNumeric: "tabular-nums",
-              color: e.tone === "error" ? t.error : t.onSurface,
-            }}
-          >
-            {e.value}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 /**

@@ -1,15 +1,23 @@
 // @vitest-environment jsdom
 // Binding a vendor and renewing a BAA are record forms on a list screen, so they open as a drawer in the detail rail
-// beside the bindings (the redesign's pattern), not as a dialog over them. Only one is open at a time; Cancel sends nothing.
+// beside the bindings (the redesign's pattern), not as a dialog over them. Only one is open at a time; Cancel sends
+// nothing; Bind stays disabled until the binding is valid and then sends it; Save sends the renewal; a refused or lost
+// write is announced in the drawer and never leaves it stuck; while a write is in flight the bindings beside it are inert.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NO_ANSWER_MESSAGE } from "./drawer-write";
 import type { VendorBindingView } from "./oncall-api";
 import { ExternalVendorAdminScreen } from "./vendor-admin";
 
 afterEach(cleanup);
+
+const VENDOR_ENTITY = "77777777-aaaa-4aaa-8aaa-777777777777";
+const REFUSAL = "A binding needs a BAA in force.";
+const BIND = "Bind an external triage vendor";
+const RENEW = "BAA renewal — Northwind After-Hours";
 
 const binding: VendorBindingView = {
   id: "v1",
@@ -28,14 +36,26 @@ const ok = (data: unknown) => ({
   error: undefined,
   response: new Response(null, { status: 200 }),
 });
+const refused = {
+  data: undefined,
+  error: { error: { code: "BAA_REQUIRED", message: REFUSAL, correlationId: "c" } },
+  response: new Response(null, { status: 422 }),
+};
+const lost = async (): Promise<never> => {
+  throw new TypeError("Failed to fetch");
+};
 
-function mount(): { write: ReturnType<typeof vi.fn> } {
-  const write = vi.fn(async () => ok({}));
+function mount(writes: { post?: () => Promise<unknown>; patch?: () => Promise<unknown> } = {}): {
+  post: ReturnType<typeof vi.fn>;
+  patch: ReturnType<typeof vi.fn>;
+} {
+  const post = vi.fn(writes.post ?? (async (..._args: unknown[]) => ok({})));
+  const patch = vi.fn(writes.patch ?? (async (..._args: unknown[]) => ok({})));
   const client = {
     GET: vi.fn(async () => ok([binding])),
-    POST: write,
-    PATCH: write,
-    PUT: write,
+    POST: post,
+    PATCH: patch,
+    PUT: vi.fn(),
   } as unknown as ApiClient;
   render(
     <MemoryRouter>
@@ -44,16 +64,59 @@ function mount(): { write: ReturnType<typeof vi.fn> } {
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { write };
+  return { post, patch };
+}
+
+async function openBind(): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole("button", { name: "Bind a vendor" }));
+  return screen.findByRole("complementary", { name: BIND });
+}
+
+async function openRenew(): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole("button", { name: "BAA renewal" }));
+  return screen.findByRole("complementary", { name: RENEW });
+}
+
+const bindButton = (drawer: HTMLElement) =>
+  within(drawer).getByRole("button", { name: "Bind" }) as HTMLButtonElement;
+const saveButton = (drawer: HTMLElement) =>
+  within(drawer).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+const cancelButton = (drawer: HTMLElement) =>
+  within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+
+function fillValidBinding(drawer: HTMLElement): void {
+  fireEvent.change(within(drawer).getByLabelText("Canonical vendor entity id"), {
+    target: { value: VENDOR_ENTITY },
+  });
+  fireEvent.change(within(drawer).getByLabelText("Display name"), {
+    target: { value: "Harbor Night Triage" },
+  });
+  fireEvent.change(within(drawer).getByLabelText("Adapter key"), { target: { value: "harbor" } });
+  fireEvent.click(within(drawer).getByLabelText("A BAA is in force (required)"));
+}
+
+function pending(): { promise: Promise<unknown>; finish: () => void } {
+  let finish: () => void = () => undefined;
+  const promise = new Promise<unknown>((resolve) => {
+    finish = () => resolve(ok({}));
+  });
+  return { promise, finish };
+}
+
+function expectPageInert(): void {
+  for (const name of ["Bind a vendor", "BAA renewal"]) {
+    const control = screen.getByRole("button", { name, hidden: true });
+    expect(control.closest("[inert]")).not.toBeNull();
+  }
+  expect(
+    screen.getByRole("link", { name: "On-call policy", hidden: true }).closest("[inert]"),
+  ).not.toBeNull();
 }
 
 describe("external triage vendors — bind and renew", () => {
   it("opens Bind as a drawer beside the bindings, not a dialog over them", async () => {
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Bind a vendor" }));
-    const drawer = await screen.findByRole("complementary", {
-      name: "Bind an external triage vendor",
-    });
+    const drawer = await openBind();
     expect(within(drawer).getByLabelText("Display name")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     // The bindings stay on the page while the form is open.
@@ -62,39 +125,164 @@ describe("external triage vendors — bind and renew", () => {
 
   it("opens the BAA renewal for the chosen binding as a drawer", async () => {
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: "BAA renewal" }));
-    const drawer = await screen.findByRole("complementary", {
-      name: "BAA renewal — Northwind After-Hours",
-    });
+    const drawer = await openRenew();
     expect(within(drawer).getByLabelText("BAA expiry")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("keeps one form drawer open at a time", async () => {
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: "BAA renewal" }));
-    await screen.findByRole("complementary", { name: "BAA renewal — Northwind After-Hours" });
+    await openRenew();
     fireEvent.click(screen.getByRole("button", { name: "Bind a vendor" }));
-    expect(
-      await screen.findByRole("complementary", { name: "Bind an external triage vendor" }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("complementary", { name: "BAA renewal — Northwind After-Hours" }),
-    ).toBeNull();
+    expect(await screen.findByRole("complementary", { name: BIND })).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: RENEW })).toBeNull();
   });
 
   it("closes from Cancel without sending anything", async () => {
-    const { write } = mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Bind a vendor" }));
-    const drawer = await screen.findByRole("complementary", {
-      name: "Bind an external triage vendor",
+    const { post, patch } = mount();
+    const drawer = await openBind();
+    fireEvent.click(cancelButton(drawer));
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: BIND })).toBeNull());
+    expect(post).not.toHaveBeenCalled();
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  describe("Bind", () => {
+    it("stays disabled until the id, name, adapter key and a BAA in force are given, then sends the binding and closes", async () => {
+      const { post } = mount();
+      const drawer = await openBind();
+      expect(bindButton(drawer).disabled).toBe(true);
+
+      fillValidBinding(drawer);
+      expect(bindButton(drawer).disabled).toBe(false);
+
+      fireEvent.click(within(drawer).getByLabelText("A BAA is in force (required)"));
+      expect(bindButton(drawer).disabled).toBe(true);
+      fireEvent.click(within(drawer).getByLabelText("A BAA is in force (required)"));
+      fireEvent.change(within(drawer).getByLabelText("Canonical vendor entity id"), {
+        target: { value: "not-a-uuid" },
+      });
+      expect(bindButton(drawer).disabled).toBe(true);
+      fireEvent.change(within(drawer).getByLabelText("Canonical vendor entity id"), {
+        target: { value: VENDOR_ENTITY },
+      });
+      expect(bindButton(drawer).disabled).toBe(false);
+
+      fireEvent.click(bindButton(drawer));
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      expect(post.mock.calls[0]?.[0]).toBe("/api/v1/oncall/external-vendors");
+      const { body } = post.mock.calls[0]?.[1] as { body: Record<string, unknown> };
+      expect(body).toMatchObject({
+        mdmVendorId: VENDOR_ENTITY,
+        name: "Harbor Night Triage",
+        adapterKey: "harbor",
+        rnCoverageAttested: false,
+        baaInEffect: true,
+        defaultMinimizationPolicy: { profile: "hybrid_phi_min" },
+      });
+      expect(body).not.toHaveProperty("baaExpiresOn");
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: BIND })).toBeNull());
     });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("complementary", { name: "Bind an external triage vendor" }),
-      ).toBeNull(),
-    );
-    expect(write).not.toHaveBeenCalled();
+
+    it("shows a refused write in the drawer beside Bind, and drops it on Cancel and reopen", async () => {
+      mount({ post: async () => refused });
+      const drawer = await openBind();
+      fillValidBinding(drawer);
+      fireEvent.click(bindButton(drawer));
+      expect((await within(drawer).findByRole("alert")).textContent).toContain(REFUSAL);
+      // Only in the drawer: not also a page banner above the bindings.
+      expect(screen.getAllByText(REFUSAL)).toHaveLength(1);
+      expect(bindButton(drawer).disabled).toBe(false);
+
+      fireEvent.click(cancelButton(drawer));
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: BIND })).toBeNull());
+      await openBind();
+      expect(screen.queryByText(REFUSAL)).toBeNull();
+    });
+
+    it("frees the drawer and says so when the request is lost (the client rejects)", async () => {
+      mount({ post: lost });
+      const drawer = await openBind();
+      fillValidBinding(drawer);
+      fireEvent.click(bindButton(drawer));
+      expect((await within(drawer).findByRole("alert")).textContent).toContain(NO_ANSWER_MESSAGE);
+      expect(bindButton(drawer).disabled).toBe(false);
+      expect(cancelButton(drawer).disabled).toBe(false);
+      fireEvent.click(cancelButton(drawer));
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: BIND })).toBeNull());
+    });
+
+    it("makes the bindings inert while the write is in flight, and live again once it lands", async () => {
+      const write = pending();
+      mount({ post: () => write.promise });
+      const drawer = await openBind();
+      fillValidBinding(drawer);
+      fireEvent.click(bindButton(drawer));
+
+      await waitFor(() => expect(cancelButton(drawer).disabled).toBe(true));
+      expectPageInert();
+      expect(drawer.closest("[inert]")).toBeNull();
+
+      write.finish();
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: BIND })).toBeNull());
+      await waitFor(() => expect(document.querySelector("[inert]")).toBeNull());
+    });
+  });
+
+  describe("BAA renewal", () => {
+    it("sends the renewal for the chosen binding and closes", async () => {
+      const { patch } = mount();
+      const drawer = await openRenew();
+      fireEvent.click(within(drawer).getByLabelText("A BAA is in force"));
+      fireEvent.change(within(drawer).getByLabelText("BAA expiry"), { target: { value: "" } });
+      fireEvent.click(saveButton(drawer));
+      await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+      expect(patch.mock.calls[0]?.[0]).toBe("/api/v1/oncall/external-vendors/{vendorId}");
+      expect(patch.mock.calls[0]?.[1]).toMatchObject({
+        params: { path: { vendorId: "v1" } },
+        body: { baaInEffect: false, rnCoverageAttested: true, baaExpiresOn: null },
+      });
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: RENEW })).toBeNull());
+    });
+
+    it("shows a refused write in the drawer beside Save, and drops it on Cancel and reopen", async () => {
+      mount({ patch: async () => refused });
+      const drawer = await openRenew();
+      fireEvent.click(saveButton(drawer));
+      expect((await within(drawer).findByRole("alert")).textContent).toContain(REFUSAL);
+      expect(screen.getAllByText(REFUSAL)).toHaveLength(1);
+      expect(saveButton(drawer).disabled).toBe(false);
+
+      fireEvent.click(cancelButton(drawer));
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: RENEW })).toBeNull());
+      await openRenew();
+      expect(screen.queryByText(REFUSAL)).toBeNull();
+    });
+
+    it("frees the drawer and says so when the request is lost (the client rejects)", async () => {
+      mount({ patch: lost });
+      const drawer = await openRenew();
+      fireEvent.click(saveButton(drawer));
+      expect((await within(drawer).findByRole("alert")).textContent).toContain(NO_ANSWER_MESSAGE);
+      expect(saveButton(drawer).disabled).toBe(false);
+      expect(cancelButton(drawer).disabled).toBe(false);
+      fireEvent.click(cancelButton(drawer));
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: RENEW })).toBeNull());
+    });
+
+    it("makes the bindings inert while the write is in flight, and live again once it lands", async () => {
+      const write = pending();
+      mount({ patch: () => write.promise });
+      const drawer = await openRenew();
+      fireEvent.click(saveButton(drawer));
+
+      await waitFor(() => expect(cancelButton(drawer).disabled).toBe(true));
+      expectPageInert();
+      expect(drawer.closest("[inert]")).toBeNull();
+
+      write.finish();
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: RENEW })).toBeNull());
+      await waitFor(() => expect(document.querySelector("[inert]")).toBeNull());
+    });
   });
 });
