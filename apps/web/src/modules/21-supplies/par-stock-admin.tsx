@@ -17,7 +17,15 @@
 // not what changed since the last count, and an adjustment-shaped form drifts from the shelf every time a
 // count is missed. The server derives the delta and runs it through the §2.7 rule, so a count that would
 // drive the shelf negative is a typed refusal rather than a silent clamp.
-import { Button, EmptyState, LoadingSpinner, PageHeader, t, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  Panel,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -30,7 +38,6 @@ import {
 } from "./supplies-api";
 import { PAR_SEVERITY_RANK, dateTime, shortId } from "./supplies-status";
 import {
-  Card,
   CheckboxField,
   FilterRow,
   Modal,
@@ -185,7 +192,7 @@ export function ParStockAdmin(): JSX.Element {
         />
       </FilterRow>
 
-      <Card title={`Shelf (${visible.length})`}>
+      <Panel stack headingLevel={3} title={`Shelf (${visible.length})`}>
         {visible.length === 0 ? (
           <span style={mutedStyle}>
             No par row matches. A Location with no par rows has no monitored shelf — the nightly par
@@ -307,7 +314,7 @@ export function ParStockAdmin(): JSX.Element {
           The band filter narrows the page you fetched — M21 publishes no per-band query parameter,
           only the coarser "below reorder point".
         </span>
-      </Card>
+      </Panel>
 
       {observing ? (
         <Modal

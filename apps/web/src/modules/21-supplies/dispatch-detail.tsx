@@ -18,6 +18,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   nowLocalInput,
   t,
@@ -43,7 +44,6 @@ import {
   toneOf,
 } from "./supplies-status";
 import {
-  Card,
   Field,
   Modal,
   Notice,
@@ -170,9 +170,11 @@ export function ComfortKitDispatchDetail(): JSX.Element {
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Dispatch"
-        actions={
+        action={
           <StatusPill
             label={humanize(dispatch.dispatchStatus)}
             tone={toneOf(DISPATCH_STATUS_TONE, dispatch.dispatchStatus)}
@@ -211,11 +213,13 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             </p>
           </div>
         ) : null}
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Contents"
-        actions={
+        action={
           controlled.length > 0 ? (
             <StatusPill label={`${controlled.length} controlled line(s)`} tone="warning" />
           ) : (
@@ -267,17 +271,17 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             ))}
           </tbody>
         </table>
-      </Card>
+      </Panel>
 
-      <Card title="Chain of custody">
+      <Panel stack headingLevel={3} title="Chain of custody">
         <span style={mutedStyle}>
           The dispatch's own custody stamps. The per-lot ledger is the DEA perpetual log, behind its
           own permission.
         </span>
         <Timeline entries={timeline} />
-      </Card>
+      </Panel>
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           <Button
             tone="secondary"
@@ -308,7 +312,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
           Reconciliation is not an action here. The physical count, its witness and the disposal
           record live on the return record, which is a different authority from dispatching.
         </span>
-      </Card>
+      </Panel>
 
       {ceremony === "deploy" ? (
         <Modal

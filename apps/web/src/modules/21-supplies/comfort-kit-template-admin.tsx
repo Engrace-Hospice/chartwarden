@@ -22,6 +22,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -45,7 +46,6 @@ import {
   shortId,
 } from "./supplies-status";
 import {
-  Card,
   CheckboxField,
   Field,
   Notice,
@@ -271,7 +271,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
       <div
         style={{ display: "grid", gridTemplateColumns: "minmax(14rem, 22rem) 1fr", gap: t.space4 }}
       >
-        <Card title="Templates">
+        <Panel stack headingLevel={3} title="Templates">
           {ordered.length === 0 ? (
             <span style={mutedStyle}>No template is visible.</span>
           ) : (
@@ -311,13 +311,15 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
               ))}
             </ul>
           )}
-        </Card>
+        </Panel>
 
         <div style={{ display: "flex", flexDirection: "column", gap: t.space4, minWidth: 0 }}>
           {selected ? (
-            <Card
+            <Panel
+              stack
+              headingLevel={3}
               title={selected.name}
-              actions={
+              action={
                 <div style={{ display: "flex", gap: t.space2, alignItems: "center" }}>
                   {selected.isPlatformFloor || selected.systemLocked ? (
                     <StatusPill label="Locked" tone="neutral" />
@@ -385,17 +387,19 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                   role.
                 </span>
               ) : null}
-            </Card>
+            </Panel>
           ) : null}
 
           {editorMode !== "none" ? (
-            <Card
+            <Panel
+              stack
+              headingLevel={3}
               title={
                 editorMode === "supersede"
                   ? "Revise template (creates a new version)"
                   : "New tenant template"
               }
-              actions={
+              action={
                 <div style={{ display: "flex", gap: t.space2 }}>
                   <Button
                     tone="primary"
@@ -548,7 +552,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                 Floor validation runs on the server and names the medication it is missing.
                 Templates effective from {shortDate(floor?.effectiveFrom)} carry the current floor.
               </span>
-            </Card>
+            </Panel>
           ) : null}
         </div>
       </div>

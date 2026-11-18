@@ -26,6 +26,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   nowLocalInput,
   t,
@@ -70,7 +71,6 @@ import {
   toneOf,
 } from "./supplies-status";
 import {
-  Card,
   Field,
   Modal,
   Notice,
@@ -265,9 +265,11 @@ export function SupplyRequestDetailScreen(): JSX.Element {
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Request"
-        actions={
+        action={
           <span className="wx-coverage-actions">
             <StatusPill
               label={humanize(request.status)}
@@ -312,7 +314,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             </p>
           </div>
         ) : null}
-      </Card>
+      </Panel>
 
       {/* COP27 (42 CFR 418.24(c)) — dme / supply only; a comfort-kit drug is determined on its M12 order. */}
       {!isKit ? (
@@ -333,7 +335,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         />
       ) : null}
 
-      <Card title={`${requestKindLabel(request.kind)} payload`}>
+      <Panel stack headingLevel={3} title={`${requestKindLabel(request.kind)} payload`}>
         {/* The per-kind D1 `data` payload is rendered as data. §3.4's per-kind TypeBox is NOT published to
             the client, so a hand-written field list here would be a second, drifting copy of the contract
             the write path validates against — and would silently hide a field a kind gained. */}
@@ -355,11 +357,13 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         >
           {JSON.stringify(request.data, null, 2)}
         </pre>
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Vendor & routing"
-        actions={
+        action={
           can.assignVendor ? (
             <Button tone="primary" type="button" onClick={() => setCeremony("assign-vendor")}>
               Override vendor
@@ -443,9 +447,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             onto the row from that moment.
           </span>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Lifecycle">
+      <Panel stack headingLevel={3} title="Lifecycle">
         <span style={mutedStyle}>
           Reconstructed from this request's own timestamp columns. The immutable actor trail — who
           read it, who was refused, who broke glass — belongs to the M4 audit surface that owns it.
@@ -455,9 +459,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         ) : (
           <Timeline entries={timeline} />
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           <ActionButton
             label="Assign / override vendor"
@@ -506,7 +510,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             onClick={() => setCeremony("cancel")}
           />
         </div>
-      </Card>
+      </Panel>
 
       {ceremony === "assign-vendor" ? (
         <Modal

@@ -29,6 +29,7 @@ import {
   ErrorState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   type ReadStatus,
   StatusPill,
   settleRead,
@@ -65,7 +66,6 @@ import {
   shortId,
 } from "./supplies-status";
 import {
-  Card,
   Field,
   Notice,
   SchedulePill,
@@ -276,7 +276,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
 
       {submitError ? <p style={alertStyle}>{submitError}</p> : null}
 
-      <Card title="Supply request">
+      <Panel stack headingLevel={3} title="Supply request">
         {requests.length === 0 ? (
           <span style={mutedStyle}>
             No open comfort-kit request is available. A dispatch is always tied to one — the
@@ -306,9 +306,9 @@ export function ComfortKitDispatchCreate(): JSX.Element {
             ) : null}
           </>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Kit">
+      <Panel stack headingLevel={3} title="Kit">
         <div style={{ display: "flex", gap: t.space4, flexWrap: "wrap" }}>
           <SelectField
             label="Comfort-kit template"
@@ -368,11 +368,13 @@ export function ComfortKitDispatchCreate(): JSX.Element {
             <TextField label="Room number" value={roomNumber} onChange={setRoomNumber} />
           </div>
         ) : null}
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Manifest"
-        actions={
+        action={
           controlledCount > 0 ? (
             <StatusPill label={`${controlledCount} controlled line(s)`} tone="warning" />
           ) : undefined
@@ -462,9 +464,9 @@ export function ComfortKitDispatchCreate(): JSX.Element {
             </table>
           </>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Handling">
+      <Panel stack headingLevel={3} title="Handling">
         <TextAreaField
           label="Special handling notes"
           value={specialHandlingNotes}
@@ -472,7 +474,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
           rows={3}
           hint="Audit-denylisted free text (D13) — it is scrubbed from the M4 snapshot, so keep it operational rather than clinical."
         />
-      </Card>
+      </Panel>
 
       <div style={{ display: "flex", gap: t.space2, justifyContent: "flex-end" }}>
         <Button tone="secondary" type="button" onClick={() => navigate("/supplies")}>

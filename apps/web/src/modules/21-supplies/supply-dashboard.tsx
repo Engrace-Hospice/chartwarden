@@ -22,6 +22,7 @@ import {
   ErrorState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   type ReadStatus,
   StatusPill,
   settleRead,
@@ -62,7 +63,6 @@ import {
   toneOf,
 } from "./supplies-status";
 import {
-  Card,
   CountGrid,
   FilterRow,
   Notice,
@@ -239,7 +239,7 @@ export function SupplyTeamDashboard(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card title="Queue">
+      <Panel stack headingLevel={3} title="Queue">
         <CountGrid
           entries={[
             { label: "Awaiting vendor", value: count(reqStatus, pendingVendor) },
@@ -258,14 +258,14 @@ export function SupplyTeamDashboard(): JSX.Element {
           expected-delivery window and `m21_supply_request_status` has no undeliverable value, so
           both would have to be invented. The age-in-status column below is the real signal.
         </span>
-      </Card>
+      </Panel>
 
       <FilterRow>
         <SelectField label="Kind" value={kind} options={KIND_FILTERS} onChange={setKind} />
         <SelectField label="Status" value={status} options={STATUS_FILTERS} onChange={setStatus} />
       </FilterRow>
 
-      <Card title="Action queue">
+      <Panel stack headingLevel={3} title="Action queue">
         <ReadPanel
           status={reqStatus}
           subject="the supply worklist"
@@ -321,11 +321,13 @@ export function SupplyTeamDashboard(): JSX.Element {
             </table>
           )}
         </ReadPanel>
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Par stock below watermark"
-        actions={
+        action={
           <Link to="/supplies/par-stock" style={linkStyle}>
             Open par admin
           </Link>
@@ -371,13 +373,15 @@ export function SupplyTeamDashboard(): JSX.Element {
             </table>
           )}
         </ReadPanel>
-      </Card>
+      </Panel>
 
       {/* §4.1 publishes no standalone list SCREEN for returns or dispatches — the dashboard IS the index
           for both, which is why these two panels carry the whole open set rather than a preview. */}
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Comfort-kit returns awaiting reconciliation"
-        actions={
+        action={
           overdueReturns > 0 ? (
             <StatusPill label={`${overdueReturns} overdue`} tone="error" />
           ) : undefined
@@ -431,11 +435,13 @@ export function SupplyTeamDashboard(): JSX.Element {
             </table>
           )}
         </ReadPanel>
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Comfort kits in the field"
-        actions={
+        action={
           <Link to="/supplies/dispatches/new" style={linkStyle}>
             Dispatch a kit
           </Link>
@@ -486,9 +492,9 @@ export function SupplyTeamDashboard(): JSX.Element {
             </table>
           )}
         </ReadPanel>
-      </Card>
+      </Panel>
 
-      <Card title="Reconciled with discrepancy">
+      <Panel stack headingLevel={3} title="Reconciled with discrepancy">
         {dispStatus !== "ok" ? (
           <span style={mutedStyle}>
             Not shown: the dispatch list could not be read. See the "Comfort kits in the field"
@@ -535,7 +541,7 @@ export function SupplyTeamDashboard(): JSX.Element {
             </table>
           </>
         )}
-      </Card>
+      </Panel>
     </div>
   );
 }

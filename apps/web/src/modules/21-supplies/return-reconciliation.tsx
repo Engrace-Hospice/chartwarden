@@ -29,6 +29,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -65,7 +66,6 @@ import {
   unaccountedPreview,
 } from "./supplies-status";
 import {
-  Card,
   Field,
   Modal,
   Notice,
@@ -309,9 +309,11 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
       {manifestError ? <Notice tone="error">{manifestError}</Notice> : null}
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Return"
-        actions={
+        action={
           <StatusPill label={humanize(ret.state)} tone={toneOf(RETURN_STATE_TONE, ret.state)} />
         }
       >
@@ -362,15 +364,15 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
             </p>
           </div>
         ) : null}
-      </Card>
+      </Panel>
 
-      <Card title="Chain of custody">
+      <Panel stack headingLevel={3} title="Chain of custody">
         <Timeline entries={timeline} />
-      </Card>
+      </Panel>
 
       {/* Once reconciled, the STORED accounting replaces the worksheet: those numbers are the record. */}
       {ret.lines.length > 0 ? (
-        <Card title="Recorded accounting">
+        <Panel stack headingLevel={3} title="Recorded accounting">
           <span style={mutedStyle}>
             As stored. The unaccounted quantity and its share were computed by the database from
             dispatched − returned − disposed-at-home, and the flag is the server's, not a
@@ -419,13 +421,15 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
               ))}
             </tbody>
           </table>
-        </Card>
+        </Panel>
       ) : null}
 
       {open && contents.length > 0 ? (
-        <Card
+        <Panel
+          stack
+          headingLevel={3}
           title="Reconciliation worksheet"
-          actions={
+          action={
             anyFlagged ? (
               <StatusPill
                 label={`≥${DISCREPANCY_THRESHOLD_PCT}% on a controlled line`}
@@ -571,10 +575,10 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
               Reconcile
             </Button>
           </div>
-        </Card>
+        </Panel>
       ) : null}
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           <Button
             tone="secondary"
@@ -601,7 +605,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           Writing off a kit that held a CII solution is a different authority from counting one that
           came back, which is why it is a separate action rather than an option inside reconcile.
         </span>
-      </Card>
+      </Panel>
 
       {ceremony === "assign-retriever" ? (
         <Modal

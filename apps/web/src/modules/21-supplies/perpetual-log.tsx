@@ -21,6 +21,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -31,7 +32,6 @@ import { Link, useParams } from "react-router-dom";
 import { type PerpetualLogView, errorMessage, getPerpetualLog } from "./supplies-api";
 import { LOG_KIND_TONE, dateTime, humanize, shortDate, shortId, toneOf } from "./supplies-status";
 import {
-  Card,
   Field,
   Notice,
   SchedulePill,
@@ -123,32 +123,34 @@ export function ComfortKitPerpetualLog(): JSX.Element {
         rather than as an edit to the entry it corrects.
       </Notice>
 
-      <Card title="Kit">
+      <Panel stack headingLevel={3} title="Kit">
         <SummaryGrid>
           <Field label="Dispatch" value={shortId(log.dispatchId)} mono />
           <Field label="Kit serial" value={log.kitSerialNumber} mono />
           <Field label="Dispatched" value={dateTime(log.dispatchedAt)} />
           <Field label="Dispatched by" value={shortId(log.dispatchedByMembershipId)} mono />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
       {log.lines.length === 0 ? (
-        <Card title="Lines">
+        <Panel stack headingLevel={3} title="Lines">
           <span style={mutedStyle}>
             This kit carries no lot-tracked line. Only medications with a lot number enter the
             perpetual log; a non-controlled, non-lot-tracked item has no §1304 obligation.
           </span>
-        </Card>
+        </Panel>
       ) : null}
 
       {log.lines.map((line) => {
         const mismatches = balanceChecks(line.entries);
         const anyMismatch = mismatches.some(Boolean);
         return (
-          <Card
+          <Panel
+            stack
+            headingLevel={3}
             key={line.dispatchedContentId}
             title={line.drugName}
-            actions={
+            action={
               <div style={{ display: "flex", gap: t.space2, alignItems: "center" }}>
                 {anyMismatch ? <StatusPill label="Balance disagreement" tone="error" /> : null}
                 <SchedulePill
@@ -229,7 +231,7 @@ export function ComfortKitPerpetualLog(): JSX.Element {
                 </tbody>
               </table>
             )}
-          </Card>
+          </Panel>
         );
       })}
     </div>

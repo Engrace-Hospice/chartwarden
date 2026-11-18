@@ -20,6 +20,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -50,7 +51,6 @@ import {
   shortId,
 } from "./supplies-status";
 import {
-  Card,
   CheckboxField,
   FilterRow,
   Modal,
@@ -237,10 +237,12 @@ export function VendorRoutingAdmin(): JSX.Element {
       </FilterRow>
 
       {byScope.map(({ scope, rows }) => (
-        <Card
+        <Panel
+          stack
+          headingLevel={3}
           key={scope}
           title={`${humanize(scope)} scope`}
-          actions={
+          action={
             scope === "platform" ? <StatusPill label="Read-only" tone="neutral" /> : undefined
           }
         >
@@ -343,7 +345,7 @@ export function VendorRoutingAdmin(): JSX.Element {
               </tbody>
             </table>
           )}
-        </Card>
+        </Panel>
       ))}
 
       {creating || editing ? (

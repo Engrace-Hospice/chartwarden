@@ -24,6 +24,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -41,7 +42,6 @@ import {
 } from "./supplies-api";
 import { SKU_CLASSES, shortDate } from "./supplies-status";
 import {
-  Card,
   CheckboxField,
   FilterRow,
   Modal,
@@ -202,7 +202,7 @@ export function SupplyItemCatalog(): JSX.Element {
         />
       </FilterRow>
 
-      <Card title={`Platform catalog (${platform.length})`}>
+      <Panel stack headingLevel={3} title={`Platform catalog (${platform.length})`}>
         {platform.length === 0 ? (
           <span style={mutedStyle}>No canonical SKU matches this search.</span>
         ) : (
@@ -247,9 +247,9 @@ export function SupplyItemCatalog(): JSX.Element {
           "Unclassified" is not "No". A SKU the loader has not yet classified is treated as needing
           a decision before a controlled dispatch, not as safe.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title={`Tenant overlay (${overlay.length})`}>
+      <Panel stack headingLevel={3} title={`Tenant overlay (${overlay.length})`}>
         {overlay.length === 0 ? (
           <span style={mutedStyle}>
             Your agency has no local shelf items. These are the non-billable things that will never
@@ -302,7 +302,7 @@ export function SupplyItemCatalog(): JSX.Element {
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
 
       {creating || editing ? (
         <Modal
