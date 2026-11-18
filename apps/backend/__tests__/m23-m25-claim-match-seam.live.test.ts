@@ -191,8 +191,11 @@ describe.skipIf(!DB_URL)("WX-PR-012 M23->M25 ClaimSubmissionReader seam — LIVE
       payerProgram: "medicare",
       interchangeControlNumber: isa,
       transactionSetControlNumber: st,
+      // An 835 without TRN02 is held (no verifiable payment identity), so a posting fixture carries one.
+      checkOrEftTraceNumber: "SYNTHETIC-TRACE-901",
       paymentMethod: "eft",
       totalPaymentAmount: 450,
+      paymentEffectiveDate: "2026-02-10",
       productionDate: "2026-02-10",
       claims: [
         {

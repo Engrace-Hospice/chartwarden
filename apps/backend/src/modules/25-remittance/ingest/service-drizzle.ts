@@ -1566,6 +1566,16 @@ export function buildDrizzleM25IngestService(
             cause: "content",
           };
         }
+        // BPR16 is the date every period total (M35 percentage billing's net collections) and the appeal clock
+        // key on. A non-zero payment without it would be stored undated and drop out of every period, so the
+        // file is refused as malformed content (the Claim.MD path already requires it). A zero-dollar
+        // advice moves no money and may legitimately carry no date.
+        if (parsed.value.totalPaymentAmount !== 0 && !parsed.value.paymentEffectiveDate)
+          return {
+            outcome: "malformed",
+            reason: "a non-zero payment must carry BPR16, its payment effective date",
+            cause: "content",
+          };
         const identity = await payeeMismatch(
           actor.organizationId,
           input.providerEntityId,

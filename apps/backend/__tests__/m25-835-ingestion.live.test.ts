@@ -268,6 +268,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       checkOrEftTraceNumber: "SYNTHETIC-TRACE-991",
       paymentMethod: "eft",
       totalPaymentAmount: 12,
+      paymentEffectiveDate: "2026-03-01",
       productionDate: "2026-03-01",
       claims: [
         {
@@ -349,6 +350,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         checkOrEftTraceNumber: `SYNTHETIC-CORE-TRACE-${suffix}`,
         paymentMethod: "eft",
         totalPaymentAmount: 42,
+        paymentEffectiveDate: "2026-03-01",
         productionDate: "2026-03-01",
         claims: [claim],
       };
@@ -2015,6 +2017,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       transactionSetControlNumber: "0992",
       paymentMethod: "eft",
       totalPaymentAmount: 12,
+      paymentEffectiveDate: "2026-03-01",
       productionDate: "2026-03-01",
       claims: [
         {
@@ -2070,6 +2073,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       checkOrEftTraceNumber: "SYNTHETIC-TRACE-993",
       paymentMethod: "eft",
       totalPaymentAmount: 17,
+      paymentEffectiveDate: "2026-03-02",
       productionDate: "2026-03-02",
       claims: [
         {
@@ -2228,6 +2232,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       checkOrEftTraceNumber: "TRN-1",
       paymentMethod: "eft",
       totalPaymentAmount: 500 + 0 + 250 + 250 + 0 + 400,
+      paymentEffectiveDate: "2026-02-01",
       productionDate: "2026-02-01",
       claims: [
         claimPaid,
@@ -2385,6 +2390,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       paymentMethod: "eft",
       checkOrEftTraceNumber: "SYNTHETIC-REVERSAL-TRACE-102",
       totalPaymentAmount: 100,
+      paymentEffectiveDate: "2026-02-02",
       productionDate: "2026-02-02",
       claims: [
         {
@@ -2441,6 +2447,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       transactionSetControlNumber: st,
       paymentMethod: "check",
       totalPaymentAmount: 10,
+      paymentEffectiveDate: "2026-02-03",
       productionDate: "2026-02-03",
       claims: [],
     };
@@ -2519,6 +2526,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       paymentMethod: "check",
       checkOrEftTraceNumber: "SYNTHETIC-ROLLBACK-TRACE-301",
       totalPaymentAmount: 200,
+      paymentEffectiveDate: "2026-02-04",
       productionDate: "2026-02-04",
       claims: [
         okClaim,
@@ -2569,6 +2577,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       paymentMethod: "check",
       checkOrEftTraceNumber: "SYNTHETIC-REPLAY-TRACE-401",
       totalPaymentAmount: 5,
+      paymentEffectiveDate: "2026-02-05",
       productionDate: "2026-02-05",
       claims: [],
     };
@@ -2944,6 +2953,168 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       expect(count.rows[0].n).toBe(2);
     });
 
+    /** One ISA, then one GS..GE group per entry; every group reuses the same ST02 (legal across groups). */
+    function buildGroupedEdi(
+      isa13: string,
+      st02: string,
+      groups: readonly { gs06: string; icn: string }[],
+    ): string {
+      const isa = `${buildRawEdi(isa13, st02).split("~")[0]}~`;
+      const group = ({ gs06, icn }: { gs06: string; icn: string }): string => {
+        const body = [
+          "BPR*I*500.00*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615",
+          `TRN*1*EFT-${icn}*1512345678`,
+          "N1*PR*SYNTHETIC MAC",
+          `N1*PE*SYNTH HOSPICE*XX*${TENANT_NPI}`,
+          `CLP*PCN-${icn}*1*500.00*500.00*0.00*MC*${icn}`,
+          "SVC*HC:T1005*500.00*500.00",
+        ];
+        return (
+          `GS*HP*SENDER*RECEIVER*20250101*1200*${gs06}*X*005010X221A1~ST*835*${st02}~` +
+          `${body.map((x) => `${x}~`).join("")}SE*${body.length + 2}*${st02}~GE*1*${gs06}~`
+        );
+      };
+      return `${isa}${groups.map(group).join("")}IEA*${groups.length}*${isa13.padStart(9, "0")}~`;
+    }
+
+    it("a two-group file that reuses ST02 stores one advice per group, and its redelivery is a duplicate", async () => {
+      const actor: M25IngestActor = { organizationId: ORG_A };
+      const raw = buildGroupedEdi("000000703", "0001", [
+        { gs06: "1", icn: "ICN-G1" },
+        { gs06: "2", icn: "ICN-G2" },
+      ]);
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: createX12835Client({ readRaw: async () => raw }),
+        payeeNpi: async () => TENANT_NPI,
+      });
+
+      const first = await service.receiveAdvice(actor, input("minio/two-groups.835", raw));
+      expect(first.outcome).toBe("queued");
+      const rows = await admin.query(
+        `SELECT functional_group_control_number AS gs06, transaction_set_control_number AS st02,
+                interchange_sender_code AS isa06, interchange_receiver_code AS isa08,
+                transaction_set_position AS position
+         FROM remittance_advice WHERE interchange_control_number='000000703' ORDER BY 1`,
+      );
+      expect(rows.rows).toEqual([
+        { gs06: "1", st02: "0001", isa06: "SENDERID", isa08: "RECEIVERID", position: 1 },
+        { gs06: "2", st02: "0001", isa06: "SENDERID", isa08: "RECEIVERID", position: 1 },
+      ]);
+
+      const again = await service.receiveAdvice(actor, input("minio/two-groups.835", raw));
+      expect(again.outcome).toBe("duplicate");
+      const count = await admin.query(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE interchange_control_number='000000703'",
+      );
+      expect(count.rows[0].n).toBe(2);
+    });
+
+    describe("a legacy advice row (NULL GS06) with the same ISA13/ST02", () => {
+      const legacyParsed = (isa13: string, st02: string): ParsedRemittanceAdvice => ({
+        payerProgram: "medicare",
+        interchangeControlNumber: isa13,
+        interchangeSenderCode: "SENDERID",
+        interchangeReceiverCode: "RECEIVERID",
+        transactionSetControlNumber: st02,
+        functionalGroupControlNumber: "1",
+        checkOrEftTraceNumber: `SYNTHETIC-TRACE-${isa13}`,
+        paymentMethod: "eft",
+        totalPaymentAmount: 12,
+        paymentEffectiveDate: "2026-03-01",
+        productionDate: "2026-03-01",
+        claims: [],
+      });
+      const insertLegacy = async (isa13: string, st02: string, fileSha256: string) => {
+        const res = await admin.query<{ id: string }>(
+          `INSERT INTO remittance_advice
+            (organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
+             transaction_set_control_number, check_or_eft_trace_number, payment_method,
+             total_payment_amount, minio_object_key, file_sha256, parse_status)
+           VALUES ($1,$2,$3,'medicare',$4,$5,$6,'eft',12.00,$7,$8,'posted') RETURNING id`,
+          [ORG_A, PE_A, PAYER, isa13, st02, `SYNTHETIC-TRACE-${isa13}`, `manual/legacy-${isa13}.835`, fileSha256],
+        );
+        return res.rows[0]!.id;
+      };
+      const receive = (isa13: string, st02: string, raw: string) =>
+        buildDrizzleM25IngestService(handle.db, {
+          client: fakeClient(new Map([[`minio/legacy-${isa13}.835`, legacyParsed(isa13, st02)]])),
+          payeeNpi: PAYEE_UNCHECKED,
+        }).receiveAdvice(
+          { organizationId: ORG_A },
+          input(`minio/legacy-${isa13}.835`, raw),
+        );
+
+      it("holds a different file as LEGACY_IDENTITY_AMBIGUOUS (kept for history), and a redelivery is a duplicate", async () => {
+        const raw = buildRawEdi("000000704", "0704");
+        const legacyId = await insertLegacy("000000704", "0704", "f".repeat(64));
+
+        const held = await receive("000000704", "0704", raw);
+        expect(held).toMatchObject({
+          outcome: "held_duplicate",
+          existingAdviceId: legacyId,
+          reason: "LEGACY_IDENTITY_AMBIGUOUS",
+        });
+        const rows = await admin.query(
+          `SELECT parse_status, functional_group_control_number AS gs06
+           FROM remittance_advice WHERE interchange_control_number='000000704' ORDER BY 2 NULLS FIRST`,
+        );
+        expect(rows.rows).toEqual([
+          { parse_status: "posted", gs06: null },
+          { parse_status: "held_duplicate", gs06: "1" },
+        ]);
+
+        const redelivered = await receive("000000704", "0704", raw);
+        expect(redelivered.outcome).toBe("duplicate");
+        const count = await admin.query(
+          "SELECT count(*)::int AS n FROM remittance_advice WHERE interchange_control_number='000000704'",
+        );
+        expect(count.rows[0].n).toBe(2);
+      });
+
+      it("is a plain duplicate of the legacy row when the file hash is the same", async () => {
+        const raw = buildRawEdi("000000705", "0705");
+        const legacyId = await insertLegacy("000000705", "0705", sha256Hex(raw));
+
+        const result = await receive("000000705", "0705", raw);
+        expect(result).toEqual({ outcome: "duplicate", existingAdviceId: legacyId });
+        const count = await admin.query(
+          "SELECT count(*)::int AS n FROM remittance_advice WHERE interchange_control_number='000000705'",
+        );
+        expect(count.rows[0].n).toBe(1);
+      });
+    });
+
+    it("refuses a non-zero payment with no BPR16 as malformed content, storing nothing", async () => {
+      const actor: M25IngestActor = { organizationId: ORG_A };
+      const dated = buildFullEdi("000000706", "0706", "500.00");
+      const undated = dated.replace("*98765*20260615~", "*98765~");
+      expect(undated).not.toBe(dated);
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: createX12835Client({ readRaw: async () => undated }),
+        payeeNpi: PAYEE_UNCHECKED,
+      });
+
+      const refused = await service.receiveAdvice(actor, input("minio/no-bpr16.835", undated));
+
+      expect(refused).toMatchObject({ outcome: "malformed", cause: "content" });
+      expect((refused as { reason: string }).reason).toMatch(/BPR16/);
+      const none = await admin.query(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE interchange_control_number='000000706'",
+      );
+      expect(none.rows[0].n).toBe(0);
+
+      // The same payment with its BPR16 is accepted and stored with the date.
+      const accepted = await buildDrizzleM25IngestService(handle.db, {
+        client: createX12835Client({ readRaw: async () => dated }),
+        payeeNpi: PAYEE_UNCHECKED,
+      }).receiveAdvice(actor, input("minio/with-bpr16.835", dated));
+      expect(accepted.outcome).toBe("queued");
+      const stored = await admin.query(
+        "SELECT payment_effective_date::text AS d FROM remittance_advice WHERE interchange_control_number='000000706'",
+      );
+      expect(stored.rows).toEqual([{ d: "2026-06-15" }]);
+    });
+
     it("refuses the whole file, storing nothing, when one set is addressed to another provider", async () => {
       const actor: M25IngestActor = { organizationId: ORG_A };
       const raw = buildEdiSets("000000702", [
@@ -3292,6 +3463,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         paymentMethod: "check",
         checkOrEftTraceNumber: "SYNTHETIC-BRIDGE-TRACE-601",
         totalPaymentAmount: 450,
+        paymentEffectiveDate: "2026-03-06",
         productionDate: "2026-03-06",
         claims: [
           {
@@ -3375,6 +3547,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         paymentMethod: "check",
         checkOrEftTraceNumber: "SYNTHETIC-BRIDGE-TRACE-602",
         totalPaymentAmount: 100,
+        paymentEffectiveDate: "2026-03-06",
         productionDate: "2026-03-06",
         claims: [
           {
@@ -3524,6 +3697,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       transactionSetControlNumber: st,
       paymentMethod: "check",
       totalPaymentAmount: payment,
+      paymentEffectiveDate: "2026-02-06",
       productionDate: "2026-02-06",
       claims: [],
     });
