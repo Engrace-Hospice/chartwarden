@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SafetyConsentPurpose,
   type SafetyConsentView,
@@ -30,7 +31,7 @@ import {
   humanize,
   toneOf,
 } from "./safety-status";
-import { Modal, Notice, TextAreaField, TextField } from "./safety-ui";
+import { Notice, TextAreaField, TextField } from "./safety-ui";
 
 const CONSENT_TEXT: Record<string, string> = {
   sos_coordinates:
@@ -206,13 +207,16 @@ export function MyConsentScreen(): JSX.Element {
                     key={purpose}
                     purpose={purpose}
                     consent={consent}
+                    // One form beside the list at a time: opening one closes the other.
                     onGrant={() => {
                       setModalError(null);
+                      setRevoking(null);
                       setGranting(purpose);
                     }}
                     onRevoke={() => {
                       setRevokeReason("");
                       setModalError(null);
+                      setGranting(null);
                       setRevoking(purpose);
                     }}
                   />
@@ -243,89 +247,90 @@ export function MyConsentScreen(): JSX.Element {
               that audit list. This page names the gap instead of showing an empty list.
             </span>
           </div>
-
-          {granting ? (
-            <Modal
-              title={consentPurposeLabel(granting)}
-              onClose={() => setGranting(null)}
-              footer={
-                <Button
-                  tone="primary"
-                  size="lg"
-                  type="button"
-                  onClick={() => void doGrant()}
-                  disabled={
-                    saving ||
-                    (granting === "emergency_contact_call" &&
-                      (contactName.trim().length === 0 || contactPhone.trim().length === 0))
-                  }
-                >
-                  {saving ? "Recording..." : "I consent"}
-                </Button>
-              }
-            >
-              <p style={paragraphStyle}>{CONSENT_TEXT[granting]}</p>
-              {granting === "emergency_contact_call" ? (
-                <>
-                  <TextField label="Their name" value={contactName} onChange={setContactName} />
-                  <TextField
-                    label="Their phone number"
-                    value={contactPhone}
-                    onChange={setContactPhone}
-                    type="tel"
-                    hint="Enter a full number with area code (no extension). Stored encrypted. It is not shown back on any screen."
-                  />
-                  <TextField
-                    label="Relationship to you (optional)"
-                    value={contactRelationship}
-                    onChange={setContactRelationship}
-                  />
-                </>
-              ) : null}
-              <Notice tone="info">
-                The words above are stored with your consent exactly as written.
-              </Notice>
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
-
-          {revoking ? (
-            <Modal
-              title={`Withdraw: ${consentPurposeLabel(revoking)}`}
-              onClose={() => setRevoking(null)}
-              footer={
-                <Button
-                  tone="primary"
-                  size="lg"
-                  type="button"
-                  onClick={() => void doRevoke()}
-                  disabled={saving}
-                >
-                  {saving ? "Recording..." : "Withdraw my consent"}
-                </Button>
-              }
-            >
-              <Notice tone="info">{withdrawalCopy(revoking)}</Notice>
-              <TextAreaField
-                label="Reason (optional)"
-                value={revokeReason}
-                onChange={setRevokeReason}
-                rows={3}
-              />
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
         </div>
       }
       fullPageScroll
+      detail={
+        granting ? (
+          <FormDrawer
+            title={consentPurposeLabel(granting)}
+            busy={saving}
+            onClose={() => setGranting(null)}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void doGrant()}
+                disabled={
+                  saving ||
+                  (granting === "emergency_contact_call" &&
+                    (contactName.trim().length === 0 || contactPhone.trim().length === 0))
+                }
+              >
+                {saving ? "Recording..." : "I consent"}
+              </Button>
+            }
+          >
+            <p style={paragraphStyle}>{CONSENT_TEXT[granting]}</p>
+            {granting === "emergency_contact_call" ? (
+              <>
+                <TextField label="Their name" value={contactName} onChange={setContactName} />
+                <TextField
+                  label="Their phone number"
+                  value={contactPhone}
+                  onChange={setContactPhone}
+                  type="tel"
+                  hint="Enter a full number with area code (no extension). Stored encrypted. It is not shown back on any screen."
+                />
+                <TextField
+                  label="Relationship to you (optional)"
+                  value={contactRelationship}
+                  onChange={setContactRelationship}
+                />
+              </>
+            ) : null}
+            <Notice tone="info">
+              The words above are stored with your consent exactly as written.
+            </Notice>
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : revoking ? (
+          <FormDrawer
+            title={`Withdraw: ${consentPurposeLabel(revoking)}`}
+            busy={saving}
+            onClose={() => setRevoking(null)}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void doRevoke()}
+                disabled={saving}
+              >
+                {saving ? "Recording..." : "Withdraw my consent"}
+              </Button>
+            }
+          >
+            <Notice tone="info">{withdrawalCopy(revoking)}</Notice>
+            <TextAreaField
+              label="Reason (optional)"
+              value={revokeReason}
+              onChange={setRevokeReason}
+              rows={3}
+            />
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : undefined
+      }
     />
   );
 }
