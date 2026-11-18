@@ -5,8 +5,9 @@
 import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
+import { FormDrawer } from "../../shell/form-drawer";
 import { errorMessage } from "./bereavement-api";
-import { ErrorText, FormDrawer, SelectField, TextAreaField, TextField } from "./bereavement-ui";
+import { ErrorText, SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, orNull } from "./program-status";
 import {
   LIBRARY_UPLOAD_MIME,
