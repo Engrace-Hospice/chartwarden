@@ -23,6 +23,8 @@ export type DdeProviderReportedVendor = DdeProviderVendor | "not_wired";
 export const DDE = {
   /** No provider is bound (manual keying is the only path). */
   NOT_WIRED: "DDE_NOT_WIRED",
+  /** A provider is configured but its operation is not qualified/enabled for operational use. */
+  NOT_READY: "DDE_NOT_READY",
   /** The vendor account is not provisioned for this operation. */
   NOT_PROVISIONED: "DDE_NOT_PROVISIONED",
   /** This operator has no DDE ID with the provider (IDs are per individual, never shared). */

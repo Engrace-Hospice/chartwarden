@@ -13,6 +13,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -20,6 +21,7 @@ import { buildM23AbacPredicates } from "../src/modules/23-billing-medicare/abac-
 import type { ReadingM23AbacResolver } from "../src/modules/23-billing-medicare/abac-resolver-drizzle";
 import { registerDdeProviderStatusRoutes } from "../src/modules/23-billing-medicare/routes/dde-provider-status.routes";
 import { registerDdeQueueRoutes } from "../src/modules/23-billing-medicare/routes/dde-queue.routes";
+import { ddeProviderCapability } from "../src/modules/23-billing-medicare/services/dde-provider-capability";
 import type { DdeItemView } from "../src/modules/23-billing-medicare/services/dde-queue-service";
 import type { DdeQueueService } from "../src/modules/23-billing-medicare/services/dde-queue-service";
 
@@ -118,7 +120,7 @@ const resolver: ReadingM23AbacResolver = {
   },
 };
 
-function makeServer() {
+function makeServer(providerPreflightError?: ChartWardenError) {
   const calls: string[] = [];
   const startActors: Array<{ ddeAdmin?: boolean }> = [];
   const view = async (tag: string): Promise<DdeItemView> => {
@@ -128,7 +130,16 @@ function makeServer() {
   const service: DdeQueueService = {
     async list(_a, filter) {
       calls.push(`list:${JSON.stringify(filter)}`);
-      return { items: [VIEW], nextCursor: null, hasMore: false };
+      return {
+        items: [VIEW],
+        providerCapability: ddeProviderCapability(undefined, undefined),
+        nextCursor: null,
+        hasMore: false,
+      };
+    },
+    async assertProviderSubmissionAllowed(_actor, id, version) {
+      calls.push(`preflight:${id}:${version}`);
+      if (providerPreflightError) throw providerPreflightError;
     },
     async get() {
       calls.push("get");
@@ -343,11 +354,40 @@ describe("M23 DDE work-queue routes (ADR-0052)", () => {
     // mark_submitted is NOT the provider permission (a manual attester cannot send through the vendor).
     expect((await post(url, BILLER, true)).statusCode).toBe(403);
     expect((await post(url, PROVIDER, false)).statusCode).toBe(403);
-    expect(calls).toEqual([]);
+    expect(calls).toEqual([`preflight:${ITEM}:2`]);
     expect((await post(url, PROVIDER, true)).statusCode).toBe(200);
     expect((await post(`${BASE}/${ITEM}/sync-provider`, BILLER, false, {})).statusCode).toBe(403);
     expect((await post(`${BASE}/${ITEM}/sync-provider`, PROVIDER, false, {})).statusCode).toBe(200);
-    expect(calls).toEqual(["submit-via-provider:2", "sync-provider"]);
+    expect(calls).toEqual([
+      `preflight:${ITEM}:2`,
+      `preflight:${ITEM}:2`,
+      "submit-via-provider:2",
+      "sync-provider",
+    ]);
+    await app.close();
+  });
+
+  it("runs the provider-readiness preflight before step-up, after authorization and scope", async () => {
+    const { app, calls } = makeServer(
+      new ChartWardenError("DDE_NOT_WIRED", "manual workflow", 503),
+    );
+    const noStepUp = await app.inject({
+      method: "POST",
+      url: `${BASE}/${ITEM}/submit-via-provider`,
+      headers: { ...PROVIDER, ...idem() },
+      payload: { expectedVersion: 2 },
+    });
+    // The authorized operator reaches preflight before the missing step-up is evaluated.
+    expect(noStepUp.statusCode).toBe(503);
+    expect(calls).toContain(`preflight:${ITEM}:2`);
+    const outside = await app.inject({
+      method: "POST",
+      url: `${BASE}/${ITEM}/submit-via-provider`,
+      headers: { ...PROVIDER, "x-test-pe": PE_OUT, ...idem(), "x-test-step-up": "1" },
+      payload: { expectedVersion: 2 },
+    });
+    expect(outside.statusCode).toBe(404);
+    expect(calls.filter((c) => c.startsWith("preflight:"))).toHaveLength(1);
     await app.close();
   });
 

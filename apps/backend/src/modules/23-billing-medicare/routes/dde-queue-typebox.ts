@@ -116,6 +116,12 @@ export const RecordDdeSubmissionBodySchema = Type.Object({
   expectedVersion: ExpectedVersion,
   dcn: Type.Optional(Dcn),
   notes: Type.Optional(Notes),
+  confirmedExistingTransaction: Type.Optional(
+    Type.Boolean({
+      description:
+        "Required when resolving an uncertain provider attempt: confirms the operator verified that the transaction exists in DDE. Does not establish the submission channel.",
+    }),
+  ),
 });
 
 /** Returned / rejected outcome (an accepted outcome is `record-acceptance`: it acts on the notice and needs step-up). */
@@ -129,6 +135,7 @@ export const RecordDdeOutcomeBodySchema = Type.Object({
   dcn: Type.Optional(Dcn),
   outcomeCode: Type.Optional(ReturnedOutcomeCode),
   notes: Type.Optional(Notes),
+  confirmedExistingTransaction: Type.Optional(Type.Boolean()),
 });
 
 export const RecordDdeAcceptanceBodySchema = Type.Object({
@@ -141,6 +148,7 @@ export const RecordDdeAcceptanceBodySchema = Type.Object({
   dcn: Type.Optional(Dcn),
   outcomeCode: Type.Optional(AcceptedOutcomeCode),
   notes: Type.Optional(Notes),
+  confirmedExistingTransaction: Type.Optional(Type.Boolean()),
 });
 
 export const DdeEventViewSchema = Type.Object({
@@ -151,7 +159,10 @@ export const DdeEventViewSchema = Type.Object({
   attemptNumber: Type.Integer(),
   actorMembershipId: nullable(uuid()),
   actorKind: Type.String(),
-  detail: Type.Record(Type.String(), Type.Union([Type.String(), Type.Number(), Type.Null()])),
+  detail: Type.Record(
+    Type.String(),
+    Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Null()]),
+  ),
   occurredAt: Type.String({ format: "date-time" }),
 });
 
@@ -178,7 +189,7 @@ export const DdeItemViewSchema = Type.Object({
   macAcceptedOn: nullable(isoDate()),
   submissionMode: Type.Union([Type.Literal("manual"), Type.Literal("provider"), Type.Null()], {
     description:
-      "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+      "Submission channel when known: 'manual' means an operator reported manual keying; 'provider' means the provider returned a receipt. Null when the channel is not reliably established, before submission, or after a retry.",
   }),
   providerReference: nullable(
     Type.String({
@@ -241,8 +252,23 @@ export const DdeProviderSyncViewSchema = Type.Object({
   ),
 });
 
+export const DdeProviderCapabilitySchema = Type.Object({
+  mode: Type.Union([
+    Type.Literal("manual_only"),
+    Type.Literal("test_provider"),
+    Type.Literal("unverified"),
+    Type.Literal("qualified"),
+    Type.Literal("unknown"),
+  ]),
+  label: Type.String(),
+  submissionItemTypes: Type.Array(ITEM_TYPE),
+  statusCheckItemTypes: Type.Array(ITEM_TYPE),
+  explanation: Type.String(),
+});
+
 export const DdeItemListViewSchema = Type.Object({
   items: Type.Array(DdeItemViewSchema),
+  providerCapability: DdeProviderCapabilitySchema,
   nextCursor: nullable(Type.String()),
   hasMore: Type.Boolean(),
 });

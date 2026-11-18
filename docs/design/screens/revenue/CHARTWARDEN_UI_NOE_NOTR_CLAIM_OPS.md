@@ -47,16 +47,15 @@ Work Table (work items)  |  Right Detail Panel (selected item + actions)
 
 ## DDE Work Queue
 
-*As built 2026-10 (ADR-0052; Billing → DDE queue, `/billing/dde`).* Human work tracking for the Medicare
-Direct Data Entry (FISS) work a biller must key by hand: NOE and NOTR, claim entry, RTP corrections,
-adjustments, cancels and ADR responses. ChartWarden never connects to DDE and holds no DDE credential, so
-everything recorded here is the operator's word, and it is audited.
+*As built 2026-11 (ADR-0052, ADR-0103; Billing → DDE queue, `/billing/dde`).* Human work tracking for Medicare
+Direct Data Entry (FISS): NOE and NOTR, claim entry, RTP corrections, adjustments, cancels and ADR responses.
+Manual DDE remains the operational baseline. The generic provider port exists, but provider actions are shown only
+when the server reports an explicitly enabled operation; each action still runs authorization and scope checks.
 
 - Work table (patient · work type · deadline · status) with Overdue / At risk chips and filters for status,
   type, overdue and at risk; counts line above the table
-- Right detail panel: deadline, keyed-in-DDE time, MAC acceptance date, DCN / ICN, RTP reason code, history
-  timeline, and only the actions the server allows now (take it, start, record as keyed, record what came
-  back, reopen as a new attempt, close, cancel)
+- Right detail panel: deadline, submission channel, MAC acceptance date, DCN / ICN, RTP reason code, outcome evidence,
+  history timeline, and actions allowed by item state, provider capability and actor permissions
 - An NOE/NOTR deadline is its filing window target; it is **met only when a MAC acceptance date on or before
   it is recorded**. A keyed notice with no acceptance date stays **At risk**. Recording an accepted NOE/NOTR
   takes the notice's existing acceptance transition and stores the entered date as its payer status date
@@ -65,12 +64,16 @@ everything recorded here is the operator's word, and it is audited.
 - The screen shows no Medicare number (MBI) and accepts none: notes are capped and MBI-shaped text is refused;
   identity comes from the patient chart under its existing reveal controls
 - The NOE/NOTR window watch queues an item for a notice nearing its window, once per notice
-- **Provider send (ADR-0103, off unless a DDE provider is configured):** an extra "Send via provider" action and,
-  for an item sent that way, "Check provider". Each row carries a badge (Via provider, Keyed by hand, Mode not
-  recorded, Not sent) and the detail panel says whether the result is **Verified by the DDE provider** or **Attested
-  by the operator**. Refusals (not configured, not provisioned, unavailable, rejected) are plain language and always
-  leave manual keying available. A send whose response was lost is **in doubt**: sending again, checking, reopening
-  and cancelling are blocked until the operator verifies in DDE and records it by hand
+- **Provider actions (ADR-0103):** the queue explains the operating mode (manual, test-only, unverified or explicitly
+  enabled). State-legal actions remain separate from provider capability and actor authorization. A provider receipt is
+  not MAC acceptance. Outcome evidence is derived from the matching attempt's history; historical records without
+  reliable evidence show **Outcome source unknown**. A possibly-sent operation is **in doubt**: do not resend or key it
+  again; verify it in DDE and explicitly confirm the existing transaction before recording it or its outcome. If its
+  existence is unclear, leave the item unresolved and reconcile it. The submission channel remains unknown unless it
+  can be established from durable evidence.
+- **Qualification boundary:** Episode Alert remains unverified and unbound. The provider capability is a platform-level
+  snapshot, not proof of vendor-side DDE enrollment for the acting operator; any future real-provider activation must
+  add and enforce operator-, tenant- and provider-entity-scoped authorization before exposing provider actions.
 - A read-only provider status strip is shown to platform administrators only; it carries no credential
 - The drawer shows the hospice section of the latest Medicare eligibility check read-only; when the eligibility
   adapter gives only a Part A active/inactive answer the card says so

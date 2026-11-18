@@ -39,6 +39,21 @@ export type DdeAction =
   | "cancel"
   | "close";
 
+export type DdeProviderCapabilityMode =
+  | "manual_only"
+  | "test_provider"
+  | "unverified"
+  | "qualified"
+  | "unknown";
+
+export interface DdeProviderCapability {
+  mode: DdeProviderCapabilityMode;
+  label: string;
+  submissionItemTypes: DdeItemType[];
+  statusCheckItemTypes: DdeItemType[];
+  explanation: string;
+}
+
 export interface DdeItem {
   ddeWorkItemId: string;
   patientId: string;
@@ -78,11 +93,21 @@ export interface DdeEvent {
   fromState: string | null;
   toState: string;
   attemptNumber: number;
+  actorMembershipId?: string | null;
+  actorKind?: string;
+  detail?: Record<string, string | number | boolean | null>;
   occurredAt: string;
 }
 
 /** The detail response: the item plus its append-only history. */
 export type DdeItemDetail = DdeItem & { events: DdeEvent[]; keying?: DdeKeyingSheet };
+
+export interface DdeItemList {
+  items: DdeItem[];
+  providerCapability: DdeProviderCapability;
+  nextCursor: string | null;
+  hasMore: boolean;
+}
 
 /** What to key into DDE (ids, dates and codes only; the MBI comes from the patient chart). */
 export interface DdeKeyingSheet {
@@ -191,6 +216,7 @@ export function deadlineNote(item: DdeItem): string {
 export interface SubmissionDraft {
   dcn: string;
   notes: string;
+  confirmedExistingTransaction?: boolean;
 }
 export interface OutcomeDraft {
   outcome: "" | "accepted" | "returned";
@@ -198,6 +224,7 @@ export interface OutcomeDraft {
   rtpReasonCode: string;
   dcn: string;
   notes: string;
+  confirmedExistingTransaction?: boolean;
 }
 
 export const NOTES_MAX = 500;

@@ -718,8 +718,51 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
       expectedVersion: v2,
       outcome: "returned",
       rtpReasonCode: "T0001",
+      confirmedExistingTransaction: true,
     });
     expect(outcome.statusCode).toBe(200);
     expect(outcome.json()).toMatchObject({ providerInDoubt: false });
+    expect(await row(id)).toMatchObject({ state: "returned", submission_mode: null });
+    expect(await eventsOf(id, "return")).toMatchObject([
+      {
+        detail: {
+          outcomeSource: "operator",
+          submissionSource: "operator_verified_existing",
+          resolvedProviderInDoubt: true,
+        },
+      },
+    ]);
+  });
+
+  it("keeps the channel unknown when a confirmed acceptance resolves an in-doubt attempt", async () => {
+    const { id } = await inProgress();
+    expect(
+      (await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: 2 })).statusCode,
+    ).toBe(200);
+    await admin.query(
+      "UPDATE dde_work_item SET provider_in_doubt_at=now(), provider_operator_membership_id=$2 WHERE id=$1",
+      [id, MEMBERSHIP_A],
+    );
+
+    const accepted = await post(`/${id}/record-acceptance`, asA(stepUp), {
+      expectedVersion: 3,
+      macAcceptedOn: "2026-01-17",
+      confirmedExistingTransaction: true,
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(await row(id)).toMatchObject({
+      state: "accepted",
+      submission_mode: null,
+      provider_in_doubt_at: null,
+    });
+    expect(await eventsOf(id, "accept")).toMatchObject([
+      {
+        detail: {
+          outcomeSource: "operator",
+          submissionSource: "operator_verified_existing",
+          resolvedProviderInDoubt: true,
+        },
+      },
+    ]);
   });
 });

@@ -32,6 +32,7 @@ export const DDE_PROVIDER_CALL_TIMEOUT_MS = 30_000;
  */
 export const REFUSED_BEFORE_SEND: ReadonlySet<string> = new Set([
   DDE.NOT_WIRED,
+  DDE.NOT_READY,
   DDE.NOT_PROVISIONED,
   DDE.OPERATOR_NOT_ENROLLED,
   DDE.INVALID_REQUEST,
@@ -81,6 +82,11 @@ const REFUSALS: Readonly<Record<string, Refusal>> = {
   [DDE.NOT_WIRED]: {
     status: 503,
     message: "no DDE access provider is bound for this platform; key the item manually",
+  },
+  [DDE.NOT_READY]: {
+    status: 503,
+    message:
+      "the configured DDE provider is not qualified for this operation; key the item manually",
   },
   [DDE.NOT_PROVISIONED]: {
     status: 503,

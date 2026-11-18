@@ -7,6 +7,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SessionProvider } from "../../../shell/session";
 import { DdeQueue } from "../dde-queue";
 import {
   type DdeItem,
@@ -120,12 +121,26 @@ function Where(): JSX.Element {
 function mount(api: ApiClient, entry = `/billing/dde?item=${ITEM}`) {
   return render(
     <ApiClientProvider client={api}>
-      <MemoryRouter initialEntries={[entry]}>
-        <Routes>
-          <Route path="/billing/dde" element={<DdeQueue />} />
-          <Route path="*" element={<Where />} />
-        </Routes>
-      </MemoryRouter>
+      <SessionProvider
+        session={{
+          userId: "synthetic-user",
+          organizationId: "synthetic-org",
+          membershipId: "abababab-abab-4bab-8bab-abababababab",
+          permissions: [
+            "billing.dde.read",
+            "billing.dde.work",
+            "billing.dde.mark_submitted",
+            "billing.dde.admin",
+          ],
+        }}
+      >
+        <MemoryRouter initialEntries={[entry]}>
+          <Routes>
+            <Route path="/billing/dde" element={<DdeQueue />} />
+            <Route path="*" element={<Where />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
     </ApiClientProvider>,
   );
 }
@@ -281,7 +296,7 @@ describe("DdeQueue actions", () => {
     const { api } = setup();
     mount(api);
     const r = await rail();
-    await r.findByRole("button", { name: "Record as keyed in DDE" });
+    await r.findByRole("button", { name: "Record manual submission" });
     for (const name of [
       "Take it",
       "Start work",
@@ -303,9 +318,9 @@ describe("DdeQueue actions", () => {
     const { api } = setup({ post });
     mount(api);
     const r = await rail();
-    fireEvent.click(r.getByRole("button", { name: "Record as keyed in DDE" }));
+    fireEvent.click(r.getByRole("button", { name: "Record manual submission" }));
     fireEvent.change(r.getByLabelText(/DCN/), { target: { value: DCN } });
-    const form = r.getByRole("form", { name: "Record as keyed in DDE" });
+    const form = r.getByRole("form", { name: "Record manual submission" });
     fireEvent.submit(form);
     fireEvent.submit(form);
     expect(post).toHaveBeenCalledTimes(1);
@@ -400,9 +415,9 @@ describe("DdeQueue actions", () => {
     const { api } = setup({ post });
     const view = mount(api);
     const r = await rail();
-    fireEvent.click(r.getByRole("button", { name: "Record as keyed in DDE" }));
+    fireEvent.click(r.getByRole("button", { name: "Record manual submission" }));
     fireEvent.change(r.getByLabelText(/DCN/), { target: { value: DCN } });
-    fireEvent.submit(r.getByRole("form", { name: "Record as keyed in DDE" }));
+    fireEvent.submit(r.getByRole("form", { name: "Record manual submission" }));
     const where = await screen.findByTestId("where");
     expect(where.textContent).toContain("/step-up");
     expect(decodeURIComponent(where.textContent ?? "")).toContain(
@@ -412,7 +427,7 @@ describe("DdeQueue actions", () => {
     view.unmount();
     mount(setup().api);
     const back = await rail();
-    expect(await back.findByRole("form", { name: "Record as keyed in DDE" })).toBeTruthy();
+    expect(await back.findByRole("form", { name: "Record manual submission" })).toBeTruthy();
     expect((back.getByLabelText(/DCN/) as HTMLInputElement).value).toBe(DCN);
   });
 
@@ -560,7 +575,7 @@ describe("DdeQueue paging races and notices", () => {
     const { api } = setup();
     mount(api);
     const r = await rail();
-    fireEvent.click(r.getByRole("button", { name: "Record as keyed in DDE" }));
+    fireEvent.click(r.getByRole("button", { name: "Record manual submission" }));
     fireEvent.change(r.getByLabelText(/DCN/), { target: { value: DCN } });
     const aside = screen.getByRole("complementary");
     fireEvent.keyDown(aside, { key: "Escape" });

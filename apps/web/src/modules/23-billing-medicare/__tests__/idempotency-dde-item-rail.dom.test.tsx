@@ -4,6 +4,7 @@ import type { ApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { SessionProvider } from "../../../shell/session";
 import { DdeQueue } from "../dde-queue";
 import type { DdeItem } from "../dde-queue-model";
 import { expectNewKey, expectSameKey } from "./idempotency-test-utils";
@@ -60,11 +61,20 @@ function mount(post: ReturnType<typeof vi.fn>): void {
   });
   render(
     <ApiClientProvider client={{ GET, POST: post } as unknown as ApiClient}>
-      <MemoryRouter initialEntries={[`/billing/dde?item=${ITEM}`]}>
-        <Routes>
-          <Route path="/billing/dde" element={<DdeQueue />} />
-        </Routes>
-      </MemoryRouter>
+      <SessionProvider
+        session={{
+          userId: "synthetic-user",
+          organizationId: "synthetic-org",
+          membershipId: "abababab-abab-4bab-8bab-abababababab",
+          permissions: ["billing.dde.work", "billing.dde.mark_submitted"],
+        }}
+      >
+        <MemoryRouter initialEntries={[`/billing/dde?item=${ITEM}`]}>
+          <Routes>
+            <Route path="/billing/dde" element={<DdeQueue />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
     </ApiClientProvider>,
   );
 }
@@ -111,9 +121,9 @@ describe("DDE item rail Idempotency-Key (#821)", () => {
     const POST = vi.fn().mockRejectedValueOnce(new TypeError("net")).mockResolvedValue(ok({}));
     mount(POST);
     const r = await rail();
-    fireEvent.click(r.getByRole("button", { name: "Record as keyed in DDE" }));
+    fireEvent.click(r.getByRole("button", { name: "Record manual submission" }));
     fireEvent.change(r.getByLabelText(/DCN/), { target: { value: "2212345678901" } });
-    const form = r.getByRole("form", { name: "Record as keyed in DDE" });
+    const form = r.getByRole("form", { name: "Record manual submission" });
     fireEvent.submit(form);
     await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(within(form).getByRole("button", { name: /Record/ })).toBeTruthy());
