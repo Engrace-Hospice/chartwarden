@@ -338,10 +338,8 @@ function unwrapEnvelope(
   if (!opts.allowTestFiles && elem(isa, 15) !== "P")
     fail("interchange is not flagged production (ISA15 != P)");
   if (elem(iea, 2) !== isa13) fail("IEA02 does not match ISA13");
-  if (
-    !/^\d{1,9}$/.test(isa13) ||
-    !countMatches(elem(iea, 1), ids.filter((id) => id === "GS").length)
-  )
+  if (!/^\d{1,9}$/.test(isa13)) fail("ISA13 interchange control number is invalid");
+  if (!countMatches(elem(iea, 1), ids.filter((id) => id === "GS").length))
     fail("IEA01 functional-group count does not match");
   const sets: TransactionSet[] = [];
   let currentGroup: TransactionSet["group"] | undefined;
@@ -416,7 +414,8 @@ function unwrapEnvelope(
       const st02 = elem(st, 2);
       const transactionPosition = groupSets.length + 1;
       const context = `functional group ${currentGroup.position}, transaction ${transactionPosition}`;
-      if (!/^\d{1,9}$/.test(st02)) fail(`${context}: ST02 control number is invalid`);
+      // ST02 is an X12 AN (alphanumeric, 1-9) element, unlike the numeric ISA13 and GS06.
+      if (!/^[A-Za-z0-9]{1,9}$/.test(st02)) fail(`${context}: ST02 control number is invalid`);
       if (elem(st, 1) !== "835") fail(`${context}: transaction set is not an 835`);
       if (elem(se, 2) !== st02) fail(`${context}: SE02 does not match ST02`);
       if (!countMatches(elem(se, 1), i - transactionStart + 1))
@@ -710,15 +709,10 @@ function build(
       (functionalGroupControlNumber === undefined ||
         set.group.gs06 === functionalGroupControlNumber),
   );
-  const chosen =
-    candidates.length === 1
-      ? candidates[0]
-      : candidates.length > 1
-        ? fail(
-            "transaction-set selection is ambiguous across functional groups; select by ST02 and GS06",
-          )
-        : fail("no transaction set with that ST02/GS06 scope in the file");
-  if (!chosen) return fail("no transaction set with that ST02 in the file");
+  if (candidates.length > 1)
+    fail("transaction-set selection is ambiguous across functional groups; select by ST02 and GS06");
+  const chosen = candidates[0];
+  if (!chosen) return fail("no transaction set with that ST02/GS06 scope in the file");
   const isa = doc.segments[0] as X12Segment;
   return buildSet(doc, isa13, elem(isa, 6), elem(isa, 8), chosen, payerProgram);
 }
