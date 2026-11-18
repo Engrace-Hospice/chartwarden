@@ -1575,6 +1575,118 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       });
     });
 
+    it("holds Claim.MD staging against a legacy GS06-less advice, but answers an already-staged component from its own row", async () => {
+      const suffix = crypto.randomUUID().slice(0, 8);
+      const isa13 = String(Math.floor(Math.random() * 1e9)).padStart(9, "0");
+      const st02 = `L${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
+      const trace = `SYNTHETIC-LEGACY-HOLD-${suffix}`;
+      const key = randomBytes(32);
+      const cipher = createClaimMdProtectedPayloadCipher(
+        { activeId: "m25-legacy-hold-test", byId: new Map([["m25-legacy-hold-test", key]]) },
+        "claimmd-era-stage:v1",
+      );
+      // A historical advice row: the same ISA13/ST02, no sender/receiver/GS06 (the all-NULL identity the
+      // group-identity CHECK allows).
+      await admin.query(
+        `INSERT INTO remittance_advice
+          (organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
+           transaction_set_control_number, check_or_eft_trace_number, payment_method,
+           total_payment_amount, minio_object_key, file_sha256, parse_status)
+         VALUES ($1,$2,$3,'commercial',$4,$5,$6,'eft',42.00,$7,$8,'posted')`,
+        [
+          ORG_A,
+          PE_A,
+          PAYER,
+          isa13,
+          st02,
+          trace,
+          `manual/legacy-hold-${suffix}.835`,
+          createHash("sha256").update(`legacy-hold-file:${suffix}`).digest("hex"),
+        ],
+      );
+      const fileDigest = createHash("sha256").update(`legacy-hold-new-file:${suffix}`).digest("hex");
+      const sourceDigest = createHash("sha256").update(`legacy-hold-source:${suffix}`).digest("hex");
+      const inboxId = crypto.randomUUID();
+      const source = {
+        inboxId,
+        accountReference: "synthetic-account",
+        usage: "test" as const,
+        eraId: "9997",
+        fileIndex: 0,
+        digest: sourceDigest,
+        fileDigest,
+        resolutionId: crypto.randomUUID(),
+        resolutionVersion: 1,
+        idempotencyKey: createHash("sha256").update(`legacy-hold-key:${suffix}`).digest("hex"),
+        contentDigest: createHash("sha256").update(`legacy-hold-content:${suffix}`).digest("hex"),
+        paymentTraceDigest: createHash("sha256").update(trace).digest("hex"),
+        interchangeControlNumber: isa13,
+        interchangeSenderCode: "SYNTHSENDER",
+        interchangeReceiverCode: "SYNTHRECEIVER",
+        functionalGroupControlNumber: "942",
+        transactionSetControlNumber: st02,
+        evidenceCodes: ["EXACT_PAYEE_NPI", "SINGLE_PROVIDER_ARTIFACT"] as (
+          | "EXACT_PAYEE_NPI"
+          | "SINGLE_PROVIDER_ARTIFACT"
+        )[],
+      };
+      const stageInput = {
+        tenantDb: handle.db,
+        source,
+        owner: { organizationId: ORG_A, providerEntityId: PE_A, locationId: null },
+        duplicateFacts: {
+          paymentTrace: trace,
+          paymentAmount: "42.00",
+          contentDigest: source.contentDigest,
+        },
+        protectedDetails: {},
+        protectedCipher: cipher,
+        protectedKeyId: "m25-legacy-hold-test",
+        verifyCapturedSource: async () => true,
+        verifyProviderAndLocation: async () => true,
+      };
+
+      expect(await stageVerifiedClaimMdEra(stageInput)).toEqual({
+        outcome: "held",
+        reason: "LEGACY_IDENTITY_AMBIGUOUS",
+      });
+      const none = await admin.query(
+        "SELECT count(*)::int AS n FROM claimmd_era_m25_stage WHERE source_inbox_id=$1",
+        [inboxId],
+      );
+      expect(none.rows[0].n).toBe(0);
+
+      // The same component, already staged: its own row answers, the legacy guard is not consulted.
+      const stageId = crypto.randomUUID();
+      await admin.query(
+        `INSERT INTO claimmd_era_m25_stage
+          (id, organization_id, provider_entity_id, source_inbox_id, account_reference, usage,
+           era_id, file_index, interchange_control_number, interchange_sender_code,
+           interchange_receiver_code, functional_group_control_number, transaction_set_control_number,
+           original_835_digest, source_file_digest, resolution_id, resolution_version,
+           idempotency_key, source_evidence, content_digest, state)
+         VALUES ($1,$2,$3,$4,'synthetic-account','test','9997',0,$5,'SYNTHSENDER','SYNTHRECEIVER',
+           '942',$6,$7,$8,$9,1,$10,'{"codes":[]}'::jsonb,$11,'staged')`,
+        [
+          stageId,
+          ORG_A,
+          PE_A,
+          inboxId,
+          isa13,
+          st02,
+          sourceDigest,
+          fileDigest,
+          source.resolutionId,
+          source.idempotencyKey,
+          source.contentDigest,
+        ],
+      );
+      expect(await stageVerifiedClaimMdEra(stageInput)).toEqual({
+        outcome: "already_staged",
+        stageId,
+      });
+    });
+
     it("blocks a Claim.MD posting plan when the same financial effect was posted by legacy intake first", async () => {
       const suffix = crypto.randomUUID().slice(0, 8);
       const stageId = crypto.randomUUID();

@@ -100,6 +100,70 @@ export async function stageVerifiedClaimMdEra(input: {
         transactionSetControlNumber: input.source.transactionSetControlNumber,
       });
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${serializationKey}, 1))`);
+      // A component already staged is answered from its own row first: re-delivery of a staged (or posted)
+      // ERA must return that stage's outcome, never be held by a legacy envelope the posted advice is not.
+      const existingStage = await tx
+        .select({
+          id: STAGE.id,
+          state: STAGE.state,
+          safeReasonCode: STAGE.safeReasonCode,
+          possibleDuplicateAdviceId: STAGE.possibleDuplicateAdviceId,
+        })
+        .from(STAGE)
+        .where(
+          and(
+            eq(STAGE.sourceInboxId, input.source.inboxId),
+            eq(STAGE.fileIndex, input.source.fileIndex),
+            eq(STAGE.interchangeSenderCode, input.source.interchangeSenderCode),
+            eq(STAGE.interchangeReceiverCode, input.source.interchangeReceiverCode),
+            eq(STAGE.functionalGroupControlNumber, input.source.functionalGroupControlNumber),
+            eq(STAGE.transactionSetControlNumber, input.source.transactionSetControlNumber),
+          ),
+        )
+        .limit(1);
+      if (existingStage[0]) {
+        const [row] = await tx
+          .select({
+            organizationId: STAGE.organizationId,
+            providerEntityId: STAGE.providerEntityId,
+            original835Digest: STAGE.original835Digest,
+            resolutionVersion: STAGE.resolutionVersion,
+          })
+          .from(STAGE)
+          .where(eq(STAGE.id, existingStage[0].id))
+          .limit(1);
+        if (
+          !row ||
+          row.organizationId !== input.owner.organizationId ||
+          row.providerEntityId !== input.owner.providerEntityId ||
+          row.original835Digest !== input.source.digest ||
+          row.resolutionVersion !== input.source.resolutionVersion
+        )
+          return { outcome: "held", reason: "OWNER_UNVERIFIED" } as const;
+        if (
+          existingStage[0].state === "possible_duplicate" ||
+          existingStage[0].safeReasonCode === "POSSIBLE_CROSS_SOURCE_DUPLICATE"
+        )
+          return {
+            outcome: "possible_duplicate",
+            stageId: existingStage[0].id,
+            existingAdviceId: existingStage[0].possibleDuplicateAdviceId,
+          } as const;
+        if (existingStage[0].safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE")
+          return {
+            outcome: "exact_duplicate",
+            stageId: existingStage[0].id,
+            existingAdviceId: existingStage[0].possibleDuplicateAdviceId,
+          } as const;
+        if (existingStage[0].state === "staged")
+          return { outcome: "already_staged", stageId: existingStage[0].id } as const;
+        if (existingStage[0].safeReasonCode !== "DELIVERY_PREPARED")
+          return {
+            outcome: "held",
+            reason: existingStage[0].safeReasonCode ?? "STAGE_HELD",
+          } as const;
+        return { outcome: "already_staged", stageId: existingStage[0].id } as const;
+      }
       // Historical remittance rows predate the group-scoped identity columns. Their ISA13/ST02
       // controls cannot be safely assigned to a GS06 after the fact, so a matching legacy row
       // blocks Claim.MD staging pending manual review. This mirrors the legacy receive guard.
@@ -188,68 +252,6 @@ export async function stageVerifiedClaimMdEra(input: {
                 ),
               )
               .limit(3);
-      const existingStage = await tx
-        .select({
-          id: STAGE.id,
-          state: STAGE.state,
-          safeReasonCode: STAGE.safeReasonCode,
-          possibleDuplicateAdviceId: STAGE.possibleDuplicateAdviceId,
-        })
-        .from(STAGE)
-        .where(
-          and(
-            eq(STAGE.sourceInboxId, input.source.inboxId),
-            eq(STAGE.fileIndex, input.source.fileIndex),
-            eq(STAGE.interchangeSenderCode, input.source.interchangeSenderCode),
-            eq(STAGE.interchangeReceiverCode, input.source.interchangeReceiverCode),
-            eq(STAGE.functionalGroupControlNumber, input.source.functionalGroupControlNumber),
-            eq(STAGE.transactionSetControlNumber, input.source.transactionSetControlNumber),
-          ),
-        )
-        .limit(1);
-      if (existingStage[0]) {
-        const [row] = await tx
-          .select({
-            organizationId: STAGE.organizationId,
-            providerEntityId: STAGE.providerEntityId,
-            original835Digest: STAGE.original835Digest,
-            resolutionVersion: STAGE.resolutionVersion,
-          })
-          .from(STAGE)
-          .where(eq(STAGE.id, existingStage[0].id))
-          .limit(1);
-        if (
-          !row ||
-          row.organizationId !== input.owner.organizationId ||
-          row.providerEntityId !== input.owner.providerEntityId ||
-          row.original835Digest !== input.source.digest ||
-          row.resolutionVersion !== input.source.resolutionVersion
-        )
-          return { outcome: "held", reason: "OWNER_UNVERIFIED" } as const;
-        if (
-          existingStage[0].state === "possible_duplicate" ||
-          existingStage[0].safeReasonCode === "POSSIBLE_CROSS_SOURCE_DUPLICATE"
-        )
-          return {
-            outcome: "possible_duplicate",
-            stageId: existingStage[0].id,
-            existingAdviceId: existingStage[0].possibleDuplicateAdviceId,
-          } as const;
-        if (existingStage[0].safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE")
-          return {
-            outcome: "exact_duplicate",
-            stageId: existingStage[0].id,
-            existingAdviceId: existingStage[0].possibleDuplicateAdviceId,
-          } as const;
-        if (existingStage[0].state === "staged")
-          return { outcome: "already_staged", stageId: existingStage[0].id } as const;
-        if (existingStage[0].safeReasonCode !== "DELIVERY_PREPARED")
-          return {
-            outcome: "held",
-            reason: existingStage[0].safeReasonCode ?? "STAGE_HELD",
-          } as const;
-        return { outcome: "already_staged", stageId: existingStage[0].id } as const;
-      }
       const duplicate = classifyClaimMdEraCrossSourceDuplicate(
         {
           rawFileDigest: input.source.fileDigest,
