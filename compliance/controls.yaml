@@ -715,6 +715,69 @@ controls:
       owner: engineering
       review_by: 2027-01-31
 
+  - id: CW-PI-05
+    title: >-
+      The facts behind a Medicare hospice Service Intensity Add-on (SIA) are recorded by a person, never invented, and the claim's SIA figure keeps a history. How a visit was delivered (in person, telephonic or video) and its documented start and end are written at sign by the signing clinician, or by the M18 EVV bracket, which wins whenever M18 answers at sign and no EVV state is already stored on the encounter. A delivery mode is never defaulted to in person (a Medicare-countable discipline cannot be signed without one, 422 MODALITY_CONFIRMATION_REQUIRED; a value seeded from the M17 visit setting is stored only as an unconfirmed hint and is never counted until the clinician confirms it). A typed time is stored only when no EVV bracket exists (an explicit UTC offset, ordered, at most 8 hours, not in the future, starting on the service date and ending on it or the next day; 422 VISIT_TIME_INVALID), is refused while the M18 lookup is unreachable (503 EVV_BRACKET_UNAVAILABLE, so it cannot stand in for a bracket M18 holds at sign) and is refused when an in-person or video bracket overlaps another the same author documented (422 VISIT_TIME_OVERLAP; one author's typed signs are serialised on an advisory lock, so two racing in the same instant cannot both pass); its source is stored in time_source and carried into every SIA revision. A visit signed before this existed stays unconfirmed (NULL) until its own author confirms it once through POST /encounters/:id/visit-modality (409 MODALITY_ALREADY_CONFIRMED afterwards, the guard repeated in the UPDATE). Against a write through the application the database then holds the line: after sign a single UPDATE cannot change the documented times, their source or a confirmed delivery mode (trg_encounter_delivery_freeze, M8_ENCOUNTER_DELIVERY_FROZEN), and CHECK constraints keep the confirmation columns and time_source coherent, so an application write cannot flip a confirmed telephonic visit to in person to unlock the add-on. Claim validation compares both ways: sia_calculation_correct fails a claim whose visit lines carry more SIA units than the engine counts from confirmed in-person RN and MSW visits in the last 7 days of life, as well as one that omits units it counts. The SIA calculation is append-only and revisioned (UNIQUE claim_id + revision, appended under the claim row lock and only when the evaluation moved, an explicit zero revision when a promised add-on no longer applies); trg_sia_calculation_insert_guard accepts a revision only as the next one and only while the claim is DRAFT, VALIDATING or READY, so the add-on a claim was billed with cannot be superseded later (a validation that loses the race to a submit gets 409 CLAIM_SIA_IMMUTABLE, decided under the claim row lock), and UPDATE is always refused. The sign UPDATE carries the signer as the audit actor and the sia_calculation write-audit function (1511) scrubs visit_outcomes, and the sign ceremony asks for the attestation and the delivery choice afresh every time it opens.
+    hipaa: ["164.312(c)(1)", "164.312(b)"]
+    soc2: ["PI1.2", "PI1.3"]
+    status: partial
+    evidence:
+      # The sign flow, the one-time confirm and the lockstep with M23's discipline list and the pg enums.
+      - script: test:m8:write:live
+      - file: apps/backend/src/modules/08-encounters/visit-delivery.ts
+      - file: apps/backend/__tests__/m8-visit-delivery.test.ts
+      - file: apps/backend/__tests__/billing-discipline-lockstep.test.ts
+      - file: packages/db/migrations/1510_m8_encounter_visit_modality.sql
+      - file: packages/db/migrations/1513_m8_encounter_delivery_integrity.sql
+      # A seeded delivery mode is an unconfirmed hint and is never counted (modality_unconfirmed in the units engine); the sign
+      # ceremony asks for the attestation and the delivery choice afresh every time it opens.
+      - file: apps/backend/src/modules/08-encounters/consumers/seed-modality.ts
+      - file: packages/billing/src/sia/sia-units.ts
+      - file: packages/billing/__tests__/sia-units.test.ts
+      - file: packages/ui/src/web/system/guardrail.tsx
+      - file: apps/web/src/modules/08-encounters/__tests__/sign-delivery.dom.test.tsx
+      # The claim rule, the revisioned snapshot and what the claim lines carry, proven on a real database. The INSERT guard
+      # (late revision refused on a submitted or paid claim, no gap, no caller-chosen revision), the UNIQUE backstop and the
+      # UPDATE refusal are asserted in m23-draft-claim-delete.live.test.ts; the revision, zero-revision and concurrency logic
+      # in m23-visit-lines-assembly.live.test.ts; the freeze, CHECKs, overlap and EVV-unavailable cases in
+      # m8-encounters-write.live.test.ts.
+      - script: test:m23:visit-lines-assembly:live
+      - script: test:m23:draft-claim-delete:live
+      - file: apps/backend/__tests__/m23-draft-claim-delete.live.test.ts
+      - file: apps/backend/__tests__/m23-visit-lines-assembly.live.test.ts
+      - file: apps/backend/__tests__/m8-encounters-write.live.test.ts
+      - file: apps/backend/src/modules/08-encounters/encounters-route-service-db.ts
+      - file: packages/billing/src/rules/sia-calculation.ts
+      - file: packages/billing/__tests__/rules.test.ts
+      - file: apps/backend/src/modules/23-billing-medicare/services/claim-sia-refresh.ts
+      - file: packages/billing/src/repositories/sia-calculation.ts
+      - file: apps/backend/src/modules/23-billing-medicare/__tests__/claim-sia-snapshot.test.ts
+      - file: packages/db/migrations/1511_m23_sia_units_snapshot.sql
+      - file: packages/db/migrations/1512_m23_sia_revision_unique.sql
+      # Known limits: this control proves the inputs and the claim lines are consistent, not that Medicare pays; the tie-break,
+      # the visit dating and the wage basis are documented defaults pending compliance sign-off; a video visit still emits an
+      # in-person RN line; the unit counted for a visit comes from documented time only, so a visit with none counts nothing.
+      # The overlap rule compares one author's own in-person / video brackets at sign, for TYPED times only; it does not compare
+      # different authors (an RN and a social worker may legitimately visit together, and whether both count is a compliance
+      # question), and an EVV bracket that overlaps a typed one signed earlier is not detected (EVV is never a sign gate, and claim
+      # validation does not compare brackets either). An EVV state already stored on the encounter (for example
+      # evv_missing_documented from an earlier finalize) is not re-asked at sign, and a bracket that arrives after sign never
+      # replaces the signed times (the freeze forbids it). Confirming a legacy visit after its claim was billed is audited
+      # (trg_audit_encounter, real actor) but raises no alert to billing; the runbook has billing review those audit events.
+      # The guards are ordinary triggers and CHECK constraints: the table owner or a superuser can disable or bypass them
+      # (ALTER TABLE ... DISABLE TRIGGER, session_replication_role = replica), so the control holds against the application's
+      # own write paths, not against a database administrator. It does not hold against arbitrary SQL as the application role
+      # either: nothing in the database guards status or signed_at, so such a session could un-sign an encounter (an audited
+      # write), edit its delivery columns and sign it again. The live suites cited above run only when CI is
+      # dispatched on the branch (gh workflow run ci.yml --ref <branch>; a pull request into main does not trigger it), and
+      # while verify is waived on main (CW-CM-01) a deploy is gated by typecheck and lint only, so they gate nothing there.
+      # The test:rls:live:m23 isolation suite is not cited: this change adds no table and its assertions do not cover the
+      # revisions; it must still pass in a dispatched CI run before this merges.
+    gap:
+      reason: Documented defaults pending compliance sign-off (the 7.5-minute tie-break, visit dating by service date and the CHC labor-share wage basis); a video visit still emits an in-person RN line; nothing alerts billing when a legacy visit is confirmed after its claim was billed; cross-author overlap and an EVV bracket that overlaps an earlier typed one are not detected; a stored EVV state is not re-asked at sign; and the database guards stop a single application write, not arbitrary SQL as the application role (nothing guards status or signed_at). Each is described with its reason in the comments above.
+      owner: engineering
+      review_by: 2027-02-28
+
   - id: CW-AC-19
     title: >-
       Auditors are never billed or provisioned as staff: the role key external_auditor is reserved for the system auditor role (a tenant role under that key is refused with 422 RESERVED_ROLE at the route and by a trigger in the database; because the application role can write every column the system row's facts rest on, the trigger also requires the transaction-local marker only the auditor grant sets before it writes that row, which stops other application code paths from writing it, not a session that can run arbitrary SQL as the application role), so a real auditor always lands on the system role. An organisation that still holds a legacy tenant-created external_auditor role is refused at auditor redemption (role_over_privileged, 403 AUDITOR_ROLE_MISCONFIGURED, fail-closed): an administrator must remove that role before an auditor can be onboarded (CW-AU-02). Family-portal, auditor magic-link and ChartWarden support sessions never enter the staff meter at all: its ledger is fed by m2.session.created, which fires only when a staff session binds to an organisation at select-organization, so those sessions write no ledger row. The meter excludes the system auditor role and platform-owned operator roles (non_staff_observed), decided when each sign-in is observed, not from today's grants; and a month that spans a pseudonym-key rotation counts its busiest single epoch and flags the statement needs_review.
