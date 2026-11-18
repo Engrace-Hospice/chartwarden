@@ -978,14 +978,15 @@ export function createDbSchedulingBackend(
    *  refused here with VISIT_ENCOUNTER_TYPE_UNSUPPORTED, never stamped. The clinician qualifies if ANY discipline
    *  they hold is accepted for the purpose, and the credential check runs against that same qualifying set (a
    *  membership holding `msw` + `rn` passes an `admission_visit` on its `rn` role and `rn` licence, whichever
-   *  order the rows arrive in). `credentialed` defaults to the held set for a caller that judges credentials
-   *  later (a recurring policy: each occurrence re-checks them). */
+   *  order the rows arrive in). `credentialed` is required so a caller cannot skip the credential half of the
+   *  gate by omission: pass the clinician's active credential disciplines, or `"held"` to judge only the held
+   *  disciplines (a recurring policy: each occurrence re-checks credentials when it materializes). */
   async function stampedDisciplineOrNull(
     tx: DbClient,
     orgId: string,
     membershipId: string,
     visitPurpose: VisitPurpose,
-    credentialed?: readonly SchedulingDiscipline[],
+    credentialed: readonly SchedulingDiscipline[] | "held",
   ): Promise<SchedulingDiscipline | null> {
     const qualifying = (await resolveDisciplinesTx(tx, orgId, membershipId)).filter((d) =>
       VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(d),
@@ -993,7 +994,7 @@ export function createDbSchedulingBackend(
     const discipline = selectVisitAssignmentDiscipline(
       visitPurpose,
       qualifying,
-      credentialed ?? qualifying,
+      credentialed === "held" ? qualifying : credentialed,
     );
     if (discipline === null) return null;
     requireEncounterType(visitPurpose, discipline);
@@ -1712,6 +1713,7 @@ export function createDbSchedulingBackend(
           orgId,
           input.assignedMembershipId,
           input.visitPurpose,
+          "held",
         );
         if (stamped === null) throw new ForbiddenError("PRE_SCHEDULE_GATE_FAILED");
         const [inserted] = await tx
