@@ -19,6 +19,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import {
+  encounterClockStartSource,
   encounterDiscipline,
   encounterStatus,
   encounterType,
@@ -100,6 +101,12 @@ export const encounters = pgTable(
 
     documentId: uuid("document_id"), // back-reference to the M22-rendered PDF when M22 publishes
 
+    // The documentation clock (migration 1510, ADR-0113): when the clinician's duty to close this note began and which signal
+    // said so. Both set or both null (no backfill: a note older than the migration has no clock and never alerts or blocks).
+    // The deadline is computed from this and the tenant policy on every read, never stored.
+    clockStartedAt: timestamp("clock_started_at", { withTimezone: true }),
+    clockStartSource: encounterClockStartSource("clock_start_source"),
+
     signedAt: timestamp("signed_at", { withTimezone: true }),
     cosignedAt: timestamp("cosigned_at", { withTimezone: true }),
     voidedAt: timestamp("voided_at", { withTimezone: true }),
@@ -168,6 +175,14 @@ export const encounters = pgTable(
       "encounter_vocab_pinned_when_finalized",
       sql`(status = 'draft') OR (vocab_version_id IS NOT NULL)`,
     ),
+    clockStartConsistency: check(
+      "encounter_clock_start_consistency",
+      sql`(clock_started_at IS NULL) = (clock_start_source IS NULL)`,
+    ),
+    // The oldest clocked open note per author: what the closure gate and the alert sweep ask SQL (the pure clock decides).
+    openClockIdx: index("encounter_open_clock_idx")
+      .on(t.organizationId, t.authoredByMembershipId, t.clockStartedAt)
+      .where(sql`status IN ('draft', 'finalized') AND clock_started_at IS NOT NULL`),
   }),
 );
 

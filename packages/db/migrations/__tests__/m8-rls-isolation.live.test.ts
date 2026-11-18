@@ -4,7 +4,9 @@
  * M8's pure suites exercise the draft→signed→cosigned state machine and the HearthNote Layer-1 assembly but
  * never touch a database, so they cannot catch a wrong RLS predicate, a missing WITH CHECK, or a base-table
  * grant that leaks across tenants. This applies the real migrations to a real Postgres and drives the policies
- * as the unprivileged `chartwarden_app` role (no BYPASSRLS), covering all TEN org-scoped M8 tables.
+ * as the unprivileged `chartwarden_app` role (no BYPASSRLS), covering all TEN clinical M8 tables. The last
+ * describe block adds the two org-level closure-clock tables (`documentation_obligation_policy` / `_override`,
+ * migration 1510, ADR-0113) plus the `encounter` clock columns.
  *
  * Two of the ten carry the risk that makes this worth more than a checkbox:
  *   • `encounter` is the signed clinical visit note — the CoP-418.104 legal record CMS and surveyors read.
@@ -365,5 +367,218 @@ describe.skipIf(!DB_URL)("M8 Encounters — RLS cross-tenant denial — LIVE Pos
       "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind = 'encounter'",
     );
     expect(r.rows[0].n).toBeGreaterThan(0);
+  });
+
+  // ── migration 1510 / ADR-0113: the closure clock, tenant policy and supervisor override ──────────────────────────────
+  describe("documentation clock (migration 1510)", () => {
+    const REASON = "Clinician is mid-emergency and cannot chart; lifting the block for the shift.";
+    let subjectA: string;
+    let granterA: string;
+    let subjectB: string;
+    let granterB: string;
+    let overrideA: string;
+
+    /** An extra active membership for `org` backed by a fresh user (one active membership per user and org). */
+    async function extraMembership(org: string, email: string): Promise<string> {
+      const user = (await db.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [email]))
+        .rows[0].id as string;
+      return (
+        await db.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [user, org],
+        )
+      ).rows[0].id as string;
+    }
+
+    const insertOverride = (
+      org: string,
+      subject: string,
+      granter: string,
+      reason: string,
+      hours: number,
+    ) =>
+      db.query(
+        `INSERT INTO documentation_obligation_override
+           (organization_id, subject_membership_id, granted_by_membership_id, obligation_kind, reason, expires_at)
+         VALUES ($1,$2,$3,'visit_note',$4, now() + make_interval(hours => $5)) RETURNING id`,
+        [org, subject, granter, reason, hours],
+      );
+
+    beforeAll(async () => {
+      subjectA = await extraMembership(ORG_A, "closure-subject-a@x.test");
+      granterA = await extraMembership(ORG_A, "closure-granter-a@x.test");
+      subjectB = await extraMembership(ORG_B, "closure-subject-b@x.test");
+      granterB = await extraMembership(ORG_B, "closure-granter-b@x.test");
+      overrideA = (await insertOverride(ORG_A, subjectA, granterA, REASON, 4)).rows[0].id as string;
+      await insertOverride(ORG_B, subjectB, granterB, REASON, 4);
+      for (const org of [ORG_A, ORG_B]) {
+        await db.query(
+          `INSERT INTO documentation_obligation_policy (organization_id, obligation_kind, configured_by_user_id)
+           VALUES ($1,'visit_note',$2)`,
+          [org, USER],
+        );
+      }
+    });
+
+    it("both tables have RLS enabled AND FORCEd", async () => {
+      const { rows } = await db.query<{
+        relname: string;
+        relrowsecurity: boolean;
+        relforcerowsecurity: boolean;
+      }>(
+        `SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class
+          WHERE relname IN ('documentation_obligation_policy','documentation_obligation_override')`,
+      );
+      expect(rows).toHaveLength(2);
+      for (const row of rows)
+        expect([row.relname, row.relrowsecurity, row.relforcerowsecurity]).toEqual([
+          row.relname,
+          true,
+          true,
+        ]);
+    });
+
+    it.each(["documentation_obligation_policy", "documentation_obligation_override"])(
+      "%s: org A sees its row, org B sees only its own",
+      async (table) => {
+        const seenByA = await withOrg(ORG_A, () =>
+          db.query(`SELECT organization_id FROM ${table}`),
+        );
+        expect(seenByA.rows.map((r) => r.organization_id)).toEqual([ORG_A]);
+        const seenByB = await withOrg(ORG_B, () =>
+          db.query(`SELECT organization_id FROM ${table}`),
+        );
+        expect(seenByB.rows.map((r) => r.organization_id)).toEqual([ORG_B]);
+      },
+    );
+
+    it("a WITH CHECK refuses an override or a policy forged into another tenant", async () => {
+      await expect(
+        withOrg(ORG_B, () => insertOverride(ORG_A, subjectA, granterA, REASON, 4)),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO documentation_obligation_policy (organization_id, obligation_kind, configured_by_user_id)
+             VALUES ($1,'cti',$2)`,
+            [ORG_A, USER],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("the application role has no DELETE on either table, and the policy defaults to warn / 24", async () => {
+      for (const table of [
+        "documentation_obligation_policy",
+        "documentation_obligation_override",
+      ]) {
+        await expect(withOrg(ORG_A, () => db.query(`DELETE FROM ${table}`))).rejects.toThrow(
+          /permission denied/,
+        );
+      }
+      const row = (
+        await withOrg(ORG_A, () =>
+          db.query(
+            `SELECT mode, threshold_hours, enforce_from FROM documentation_obligation_policy`,
+          ),
+        )
+      ).rows[0];
+      expect(row).toEqual({ mode: "warn", threshold_hours: 24, enforce_from: null });
+    });
+
+    it("the override is append-only: only the two revocation columns can be updated, and only as a pair", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(`UPDATE documentation_obligation_override SET reason = $1 WHERE id = $2`, [
+            REASON,
+            overrideA,
+          ]),
+        ),
+      ).rejects.toThrow(/permission denied/);
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `UPDATE documentation_obligation_override SET revoked_at = now() WHERE id = $1`,
+            [overrideA],
+          ),
+        ),
+      ).rejects.toThrow(/revocation_pair/);
+      const revoked = await withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE documentation_obligation_override SET revoked_at = now(), revoked_by_membership_id = $2 WHERE id = $1`,
+          [overrideA, granterA],
+        ),
+      );
+      expect(revoked.rowCount).toBe(1);
+    });
+
+    it.each([
+      ["a reason shorter than 40 characters", "too short", 4, /reason_len/],
+      ["a window longer than 24 hours", REASON, 25, /expiry_window/],
+      ["an override that has already expired", REASON, -1, /expiry_window/],
+    ])("the override CHECKs refuse %s", async (_label, reason, hours, expected) => {
+      await expect(
+        withOrg(ORG_A, () => insertOverride(ORG_A, subjectA, granterA, reason, hours)),
+      ).rejects.toThrow(expected);
+    });
+
+    it("a supervisor cannot override themselves", async () => {
+      await expect(
+        withOrg(ORG_A, () => insertOverride(ORG_A, granterA, granterA, REASON, 4)),
+      ).rejects.toThrow(/not_self/);
+    });
+
+    it("the policy CHECK bounds the threshold to 1..168 hours", async () => {
+      for (const hours of [0, 169]) {
+        await expect(
+          withOrg(ORG_A, () =>
+            db.query(`UPDATE documentation_obligation_policy SET threshold_hours = $1`, [hours]),
+          ),
+        ).rejects.toThrow(/threshold/);
+      }
+    });
+
+    it("the audit trigger records an override without the free-text reason", async () => {
+      const { rows } = await db.query(
+        `SELECT after FROM audit_event WHERE resource_kind = 'documentation_obligation_override' AND event_type LIKE '%insert' AND resource_id = $1`,
+        [overrideA],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].after.reason).toBe("<changed>");
+      expect(JSON.stringify(rows[0].after)).not.toContain("mid-emergency");
+    });
+
+    it("encounter.clock_started_at and clock_start_source are set together or not at all", async () => {
+      await expect(
+        db.query(`UPDATE encounter SET clock_started_at = now() WHERE id = $1`, [a.encounter]),
+      ).rejects.toThrow(/clock_start_consistency/);
+      await expect(
+        db.query(`UPDATE encounter SET clock_start_source = 'draft_created' WHERE id = $1`, [
+          a.encounter,
+        ]),
+      ).rejects.toThrow(/clock_start_consistency/);
+      const both = await withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE encounter SET clock_started_at = now(), clock_start_source = 'evv_check_in' WHERE id = $1`,
+          [a.encounter],
+        ),
+      );
+      expect(both.rowCount).toBe(1);
+    });
+
+    it("the destruction role can read and delete only the organization it is scoped to", async () => {
+      await db.query("SET ROLE chartwarden_destruction");
+      await db.query("SELECT set_config('app.org_id', $1, false)", [ORG_B]);
+      try {
+        const removed = await db.query(`DELETE FROM documentation_obligation_override`);
+        expect(removed.rowCount).toBe(1);
+        const policies = await db.query(`DELETE FROM documentation_obligation_policy`);
+        expect(policies.rowCount).toBe(1);
+      } finally {
+        await db.query("RESET ROLE");
+      }
+      const left = await db.query(`SELECT organization_id FROM documentation_obligation_override`);
+      expect(left.rows.map((r) => r.organization_id)).toEqual([ORG_A]);
+    });
   });
 });

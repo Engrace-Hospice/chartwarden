@@ -505,6 +505,8 @@ exports.MODULES = [
       "hearthnote_selection",
       "hearthnote_assembled_output",
       "hearthnote_llm_modification",
+      "documentation_obligation_policy",
+      "documentation_obligation_override",
     ],
   },
   {
