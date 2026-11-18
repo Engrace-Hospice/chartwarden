@@ -1,7 +1,9 @@
 import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Fragment } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { NoteClosureProvider } from "../../../shell/note-closure";
 import { SessionProvider } from "../../../shell/session";
 import { EncounterRead } from "../encounter-read";
 import { PatientEncounters } from "../patient-encounters";
@@ -29,11 +31,16 @@ const encounter = {
   carePlanLinks: [],
 };
 
-function renderEncounter(client: {
-  GET: ReturnType<typeof vi.fn>;
-  PATCH: ReturnType<typeof vi.fn>;
-  POST: ReturnType<typeof vi.fn>;
-}) {
+function renderEncounter(
+  client: {
+    GET: ReturnType<typeof vi.fn>;
+    PATCH: ReturnType<typeof vi.fn>;
+    POST: ReturnType<typeof vi.fn>;
+  },
+  /** Mount the shell's closure-status provider around the screen, as the app does. */
+  withClosureStatus = false,
+) {
+  const Closure = withClosureStatus ? NoteClosureProvider : Fragment;
   render(
     <MemoryRouter initialEntries={["/patients/patient-1/encounters/enc-1"]}>
       <ApiClientProvider client={client as never}>
@@ -50,12 +57,14 @@ function renderEncounter(client: {
               ],
             }}
           >
-            <Routes>
-              <Route
-                path="/patients/:patientId/encounters/:encounterId"
-                element={<EncounterRead />}
-              />
-            </Routes>
+            <Closure>
+              <Routes>
+                <Route
+                  path="/patients/:patientId/encounters/:encounterId"
+                  element={<EncounterRead />}
+                />
+              </Routes>
+            </Closure>
           </SessionProvider>
         </ToastProvider>
       </ApiClientProvider>
@@ -144,6 +153,43 @@ describe("Encounter workspace web workflow", () => {
       expect(link.getAttribute("href")).toBe(href);
     },
   );
+
+  it("asks for the closure status again after a signature, so a lifted block's banner clears at once", async () => {
+    let closureReads = 0;
+    const get = vi.fn(async (path: string) => {
+      if (path === "/api/v1/encounters/closure-status") {
+        closureReads += 1;
+        return { data: { mode: "block", verdict: "clear", stage: "ok" }, response: new Response() };
+      }
+      if (path === "/api/v1/encounters/{encounterId}")
+        return { data: { ...encounter, status: "finalized" } };
+      if (path === "/api/v1/encounters/{encounterId}/cosignature")
+        return { data: { status: null } };
+      if (path === "/api/v1/patients/{id}")
+        return {
+          data: {
+            firstName: "Ava",
+            lastName: "Stone",
+            dob: "1950-01-01",
+            mrn: "MRN1",
+            status: "active",
+          },
+        };
+      if (path === "/api/v1/internal/care-plan/relevant-elements")
+        return { data: { problems: [], goals: [], interventions: [], redacted: false } };
+      return { data: { assessments: [] } };
+    });
+    const patch = vi.fn(async () => ({ data: { status: "ok" }, response: new Response() }));
+    const post = vi.fn(async () => ({ data: { status: "ok" }, response: new Response() }));
+    renderEncounter({ GET: get, PATCH: patch, POST: post }, true);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign encounter" }));
+    fireEvent.click(await screen.findByRole("checkbox"));
+    await waitFor(() => expect(closureReads).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "Sign & commit" }));
+    await waitFor(() => expect(closureReads).toBe(2));
+    expect(post).toHaveBeenCalledWith("/api/v1/encounters/{encounterId}/sign", expect.anything());
+  });
 
   it("explains when an active Care Plan's linkable items are privacy-restricted", async () => {
     const get = vi.fn(async (path: string) => {
