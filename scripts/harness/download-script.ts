@@ -5,11 +5,12 @@
  */
 
 /** Programs that fetch bytes from the network. */
-const DOWNLOADER = /(?:^|[|;&(]\s*|\s)(?:curl|wget|fetch|http|https|xh|aria2c|nc|ncat|socat)(?=\s|$)/;
+const DOWNLOADER =
+  /(?:^|[|;&(]\s*|\s)(?:curl|wget|fetch|http|https|xh|aria2c|nc|ncat|socat)(?=\s|$)/;
 
 /** The reason a download that is run as a script asks. */
 export const DOWNLOAD_SCRIPT_REASON =
-  "A shell is handed a script that a download produces (`eval \"$(curl …)\"`, `source <(curl …)`), so the guard cannot read what runs. Download it to a file, read it, then run it. A human decides.";
+  'A shell is handed a script that a download produces (`eval "$(curl …)"`, `source <(curl …)`), so the guard cannot read what runs. Download it to a file, read it, then run it. A human decides.';
 
 /** Does this command line (the inside of a `$( … )` or a `<( … )`) run a downloader? */
 export const downloadsScript = (inner: string): boolean => DOWNLOADER.test(inner.trim());

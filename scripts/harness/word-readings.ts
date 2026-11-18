@@ -154,8 +154,12 @@ function tokenize(text: string): Item[] | null {
   let literal = "";
   let inDouble = false;
   let count = 0;
+  const current = (): Piece[] => {
+    if (pieces === null) pieces = [];
+    return pieces;
+  };
   const flushLiteral = (): void => {
-    if (literal !== "") (pieces ??= []).push({ kind: "lit", src: literal });
+    if (literal !== "") current().push({ kind: "lit", src: literal });
     literal = "";
   };
   const endWord = (): boolean => {
@@ -166,7 +170,7 @@ function tokenize(text: string): Item[] | null {
   };
   const push = (piece: Piece): void => {
     flushLiteral();
-    (pieces ??= []).push(piece);
+    current().push(piece);
   };
   for (let i = 0; i < text.length; i++) {
     const ch = text[i] as string;
@@ -248,14 +252,14 @@ export interface Readings {
 const NONE: Readings = { list: [], overCap: false };
 
 /** The word with the quoting dropped and every expansion in `values` written in or removed: what a rule would read if the expansion were empty. */
-function skeleton(pieces: readonly Piece[], valueOf: (src: string) => string | null): string {
+function skeleton(pieces: readonly Piece[], valueFor: (src: string) => string | null): string {
   return pieces
     .map((p) =>
       p.kind === "lit"
         ? p.src.replace(/["']/g, "")
         : p.kind === "esc"
           ? p.value
-          : (valueOf(p.src) ?? ""),
+          : (valueFor(p.src) ?? ""),
     )
     .join("");
 }
@@ -285,7 +289,7 @@ function wordPlaces(items: readonly Item[]): Map<Item, number> {
 function build(
   items: readonly Item[],
   places: ReadonlyMap<Item, number>,
-  valueOf: (src: string) => string | null,
+  valueFor: (src: string) => string | null,
 ): Reading {
   let exact = true;
   let out = "";
@@ -298,7 +302,7 @@ function build(
     const redirection = first?.kind === "lit" && REDIRECTION_WORD.test(first.src);
     const content = item.pieces.filter((p) => !(p.kind === "lit" && QUOTE_ONLY.test(p.src)));
     const place = places.get(item);
-    const left = skeleton(item.pieces, valueOf);
+    const left = skeleton(item.pieces, valueFor);
     const removable =
       content.length > 1 &&
       (place === 0 || (place === 1 && PLAIN_WORD.test(left)) || readByARule(left));
@@ -306,7 +310,7 @@ function build(
       if (piece.kind === "lit" || redirection) out += piece.src;
       else if (piece.kind === "esc") out += piece.value;
       else {
-        const value = valueOf(piece.src);
+        const value = valueFor(piece.src);
         if (value !== null) out += value;
         else if (removable) exact = false;
         else out += piece.src;

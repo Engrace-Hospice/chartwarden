@@ -7,7 +7,4 @@
  * R10-ADV-1). Only the lookup folds: a word that is printed is printed as typed. Pure.
  */
 export const programName = (word: string): string =>
-  word
-    .replace(/\\(.)/gs, "$1")
-    .replace(/^.*\//s, "")
-    .toLowerCase();
+  word.replace(/\\(.)/gs, "$1").replace(/^.*\//s, "").toLowerCase();
