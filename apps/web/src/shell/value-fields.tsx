@@ -8,7 +8,7 @@ import {
   t,
 } from "@chartwarden/ui";
 import { useId } from "react";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 
 export type TextFieldType =
   | "text"
@@ -29,6 +29,8 @@ export function TextField({
   hint,
   maxLength,
   mono,
+  required,
+  error,
 }: {
   label: string;
   value: string;
@@ -37,8 +39,12 @@ export function TextField({
   placeholder?: string;
   /** An id elsewhere on the page that describes this field; kept after the hint's own id. */
   describedBy?: string;
-  hint?: string;
+  hint?: ReactNode;
   maxLength?: number;
+  /** Marks the field required (the kit adds the marker). */
+  required?: boolean;
+  /** An announced error under the field; the hint stays beside it. */
+  error?: ReactNode;
   /** An identifier or code: set in the mono face. */
   mono?: boolean;
 }): JSX.Element {
@@ -50,6 +56,8 @@ export function TextField({
       type={type}
       placeholder={placeholder}
       hint={hint}
+      error={error}
+      required={required}
       maxLength={maxLength}
       style={mono ? { fontFamily: t.fontMono } : undefined}
       aria-describedby={describedBy}
@@ -88,12 +96,18 @@ export function TextAreaField({
   rows = 4,
   hint,
   minChars,
+  placeholder,
+  required,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   rows?: number;
-  hint?: string;
+  hint?: ReactNode;
+  placeholder?: string;
+  required?: boolean;
+  error?: ReactNode;
   /**
    * The server's minimum length, shown as a live counter. It counts TRIMMED characters, because the database CHECK does
    * (length(btrim(...))): forty spaces would satisfy a naive length and be refused. A pre-flight aid, never a substitute
@@ -109,6 +123,9 @@ export function TextAreaField({
       onChange={(event) => onChange(event.target.value)}
       rows={rows}
       hint={hint}
+      error={error}
+      required={required}
+      placeholder={placeholder}
       aria-describedby={minChars === undefined ? undefined : countId}
     />
   );

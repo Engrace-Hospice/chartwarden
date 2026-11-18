@@ -161,3 +161,52 @@ describe("TextAreaField minChars counter", () => {
     expect(described[1]).toBe(out.id);
   });
 });
+
+// Forms that validate on "Continue" (the incident wizard) need the kit's required marker and its announced error text.
+describe("required and error", () => {
+  it("marks a TextField required and announces its error", () => {
+    render(
+      <TextField
+        label="Occurred at"
+        value=""
+        onChange={() => {}}
+        required
+        error="Incident date/time is required."
+      />,
+    );
+    const input = screen.getByLabelText(/Occurred at/);
+    expect((input as HTMLInputElement).required).toBe(true);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByRole("alert").textContent).toBe("Incident date/time is required.");
+  });
+
+  it("marks a TextAreaField required, shows its placeholder and announces its error", () => {
+    render(
+      <TextAreaField
+        label="Narrative"
+        value=""
+        onChange={() => {}}
+        required
+        placeholder="Names, roles, or none known."
+        error="The narrative must be at least 200 characters."
+      />,
+    );
+    const area = screen.getByLabelText(/Narrative/) as HTMLTextAreaElement;
+    expect(area.required).toBe(true);
+    expect(area.placeholder).toBe("Names, roles, or none known.");
+    expect(screen.getByRole("alert").textContent).toBe(
+      "The narrative must be at least 200 characters.",
+    );
+  });
+
+  it("accepts rich hint content on both fields", () => {
+    render(
+      <>
+        <TextField label="A" value="" onChange={() => {}} hint={<strong>text hint</strong>} />
+        <TextAreaField label="B" value="" onChange={() => {}} hint={<em>area hint</em>} />
+      </>,
+    );
+    expect(screen.getByText("text hint").tagName).toBe("STRONG");
+    expect(screen.getByText("area hint").tagName).toBe("EM");
+  });
+});
