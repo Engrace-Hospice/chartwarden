@@ -1064,7 +1064,10 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "operational",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["clinical_lead", "scheduler"] },
+    // `director_of_nursing` and `org_admin` are role-template keys every tenant has; `clinical_lead` and
+    // `scheduler` exist only where a tenant created them. This alert is the only signal for the policy, so
+    // its audience must not depend on a tenant having created those two.
+    resolverArgs: { roleKeys: ["clinical_lead", "scheduler", "director_of_nursing", "org_admin"] },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,

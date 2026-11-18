@@ -1083,7 +1083,7 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       const alerts: AlertEmitter = {
         emit: async (orgId, input) => {
           emitted.push({ orgId, ...input });
-          return { alertId: "recorded", resolvedRecipientCount: 0 };
+          return { alertId: "recorded", resolvedRecipientCount: 1 };
         },
       };
       const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M17_OUTBOX_EVENTS]));
@@ -1099,24 +1099,62 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       } as unknown as M17WorkerDeps;
 
       const legacyId = await legacyUnschedulablePolicy();
-      await runRecurringMaterializationCron(deps);
-      expect(emitted).toHaveLength(1);
-      const alert = emitted[0];
-      expect(alert).toMatchObject({
-        orgId: ORG_A,
-        eventType: "m17.recurring_policy_unschedulable",
-        severity: "warn",
-      });
-      expect(alert?.payload.policyIds).toEqual([legacyId]);
-      expect(alert?.payload.count).toBe(1);
-      expect(alert?.payload.deepLink).toBe("/scheduling/recurring");
-      // Ids and a count: never the patient, the clinician or any clinical content.
-      expect(JSON.stringify(alert?.payload)).not.toContain(PATIENT);
-      expect(JSON.stringify(alert?.payload)).not.toContain(np);
+      try {
+        await runRecurringMaterializationCron(deps);
+        expect(emitted).toHaveLength(1);
+        const alert = emitted[0];
+        expect(alert).toMatchObject({
+          orgId: ORG_A,
+          eventType: "m17.recurring_policy_unschedulable",
+          severity: "warn",
+        });
+        expect(alert?.payload.policyIds).toEqual([legacyId]);
+        expect(alert?.payload.count).toBe(1);
+        expect(alert?.payload.deepLink).toBe("/scheduling/recurring");
+        // Ids and a count: never the patient, the clinician or any clinical content.
+        expect(JSON.stringify(alert?.payload)).not.toContain(PATIENT);
+        expect(JSON.stringify(alert?.payload)).not.toContain(np);
 
-      await svc.discontinueRecurring(ORG_A, np, legacyId);
-      await runRecurringMaterializationCron(deps);
-      expect(emitted).toHaveLength(1);
+        await svc.discontinueRecurring(ORG_A, np, legacyId);
+        await runRecurringMaterializationCron(deps);
+        expect(emitted).toHaveLength(1);
+      } finally {
+        // A failed assertion must not leave the legacy policy active for the tests after this one.
+        await admin.query(
+          "UPDATE recurring_visit SET status='discontinued', discontinued_at=now() WHERE id=$1 AND status='active'",
+          [legacyId],
+        );
+      }
+    });
+
+    it("one policy failing for another reason does not stop the pass: the unschedulable and the healthy policies are still handled, and the failure is reported by id and code", async () => {
+      const healthyClinician = await clinician(["rn"], ["rn"]);
+      const healthy = await recurringPolicy(healthyClinician, "routine_visit");
+      // An rn assigned an f2f policy holds no qualifying discipline (md/np): createRecurring does not refuse it
+      // (roles and credentials change after creation), and every occurrence then misses the pre-schedule gate.
+      const noDiscipline = await recurringPolicy(await clinician(["rn"], ["rn"]), "f2f");
+      const legacyId = await legacyUnschedulablePolicy();
+      try {
+        const result = await svc.materializeRecurringVisitsForOrg(ORG_A, M17_SYSTEM_USER_ID, {
+          horizonDays: 3,
+        });
+        expect(result.unschedulablePolicyIds).toEqual([legacyId]);
+        expect(result.failedPolicies).toEqual([
+          { policyId: noDiscipline.id, code: "VISIT_PRE_SCHEDULE_GATE_UNMET" },
+        ]);
+        // Whatever order the policies were visited in, the healthy one was materialized and the other two
+        // wrote nothing.
+        expect(await childCount(healthy.id)).toBeGreaterThan(0);
+        expect(await childCount(legacyId)).toBe(0);
+        expect(await childCount(noDiscipline.id)).toBe(0);
+      } finally {
+        // The healthy policy has children: discontinue it through the service so they are cancelled too.
+        await svc.discontinueRecurring(ORG_A, healthyClinician, healthy.id);
+        await admin.query(
+          "UPDATE recurring_visit SET status='discontinued', discontinued_at=now() WHERE id = ANY($1::uuid[]) AND status='active'",
+          [[noDiscipline.id, legacyId]],
+        );
+      }
     });
 
     it("a clinician holding np and lpn (no rn) is stamped lpn on an sfv, not refused as np", async () => {

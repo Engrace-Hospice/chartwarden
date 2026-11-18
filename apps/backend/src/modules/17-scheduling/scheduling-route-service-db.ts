@@ -249,6 +249,11 @@ export interface SchedulingWriteOutboxPort {
 }
 const NOOP_OUTBOX: SchedulingWriteOutboxPort = { async publish() {} };
 
+/** The error's class name only: its message can carry bound query parameters (PHI). */
+function errorClassName(err: unknown): string {
+  return err instanceof Error ? err.constructor.name : "UnknownError";
+}
+
 export interface SchedulingAutomationService {
   materializeRecurringVisitsForOrg(
     orgId: string,
@@ -259,8 +264,12 @@ export interface SchedulingAutomationService {
     visitsCreated: number;
     /** Occurrences that already had a published child (benign, expected nightly). */
     occurrencesSkipped: number;
-    /** Policies whose clinician has no legal M8 encounter pair for the purpose: nothing was materialized. */
+    /** Policies with an occurrence whose credentialed clinician has no legal M8 encounter pair for the purpose. */
     unschedulablePolicyIds: readonly string[];
+    /** Policies an occurrence of which failed for any OTHER reason (a gate miss, PTO, a database error): the
+     *  rest of the org's policies were still processed. `code` is the typed error code or the error class name,
+     *  never a message (a database error message can carry bound parameters). */
+    failedPolicies: readonly { readonly policyId: string; readonly code: string }[];
   }>;
   generateCarePlanVisitProposals(
     orgId: string,
@@ -1671,9 +1680,11 @@ export function createDbSchedulingBackend(
           tx,
           input.assignedMembershipId,
         );
-        // A policy none of whose occurrences could ever be scheduled is refused now, not skipped every
-        // night: pair legality depends on the clinician's HELD disciplines only (credentials may change),
-        // so held is passed as both the held and the credentialed set.
+        // A policy whose clinician holds qualifying disciplines but NONE with a legal M8 pair is refused now,
+        // not skipped every night: pair legality depends on the clinician's HELD disciplines only (credentials
+        // may change), so held is passed as both the held and the credentialed set. A clinician holding no
+        // qualifying discipline at all is deliberately not refused here (roles and credentials change after
+        // creation); the nightly pass reports such a policy as failed instead.
         const held = (await resolveDisciplinesTx(tx, orgId, input.assignedMembershipId)).filter(
           (discipline) => VISIT_PURPOSE_DISCIPLINES[input.visitPurpose].includes(discipline),
         );
@@ -1817,6 +1828,7 @@ export function createDbSchedulingBackend(
       let visitsCreated = 0;
       let occurrencesSkipped = 0;
       const unschedulablePolicyIds: string[] = [];
+      const failedPolicies: { policyId: string; code: string }[] = [];
       for (const policy of policies) {
         const windowStart = localDateInTimeZone(now, policy.timeZone);
         const occurrences = materializeRecurrence(
@@ -1865,18 +1877,26 @@ export function createDbSchedulingBackend(
               );
             });
           } catch (err) {
-            // The M8 §2.2 pair refusal is a permanent property of this policy's (purpose, clinician), not a
-            // transient gate miss: every occurrence would be refused the same way (the tx rolled back,
-            // nothing was written). Record the policy for the cron to alert on and move to the next policy,
-            // rather than abort every other policy in the org's pass or retry up to 90 occurrences.
+            // One bad policy must not abandon the rest of the org's pass or lose what the pass already found
+            // (the cron alerts on the lists below AFTER the pass, then fails the job if any policy failed).
+            // The transaction rolled back, so nothing was written for this occurrence.
             if (
               err instanceof SchedulingStateError &&
               err.code === "VISIT_ENCOUNTER_TYPE_UNSUPPORTED"
             ) {
-              unschedulablePolicyIds.push(policy.id);
-              break;
+              // The M8 §2.2 pair is judged per occurrence date (credentials are dated), so go on to the next
+              // occurrence: a credential that becomes valid mid-horizon still materializes its later days.
+              if (!unschedulablePolicyIds.includes(policy.id))
+                unschedulablePolicyIds.push(policy.id);
+              continue;
             }
-            throw err;
+            // Any other error (a gate miss, PTO, a database error) is recorded once for the policy, which
+            // is then left for the next pass; the error class or code only, never its message.
+            failedPolicies.push({
+              policyId: policy.id,
+              code: err instanceof SchedulingStateError ? err.code : errorClassName(err),
+            });
+            break;
           }
           visitsCreated += 1;
         }
@@ -1886,6 +1906,7 @@ export function createDbSchedulingBackend(
         visitsCreated,
         occurrencesSkipped,
         unschedulablePolicyIds,
+        failedPolicies,
       };
     },
 
