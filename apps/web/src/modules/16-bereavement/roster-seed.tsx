@@ -42,12 +42,7 @@ import {
   columnStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./bereavement-ui";
 
 /** The §D4 platform floor, stated for the counselor. Cumulative: a high-risk survivor gets the low-tier
@@ -175,7 +170,7 @@ export function BereavementRosterSeed(): JSX.Element {
           checked={seedFromCaregivers}
           onChange={setSeedFromCaregivers}
         />
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Seeded contacts land in `proposed`. Each one is confirmed individually, which is where the
           M39 bereavement-outreach consent verdict is resolved — fail-CLOSED.
         </span>
@@ -192,7 +187,7 @@ export function BereavementRosterSeed(): JSX.Element {
         }
       >
         {drafts.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No custom contacts. Survivors the caregiver roster does not carry — a sibling in another
             state, a close friend — are added here.
           </span>
@@ -241,23 +236,23 @@ export function BereavementRosterSeed(): JSX.Element {
       </Panel>
 
       <Panel stack headingLevel={3} title="Platform-floor schedule (§D4)">
-        <table style={tableStyle}>
+        <table>
           <thead>
             <tr>
-              <th style={th}>Mark</th>
-              <th style={th}>Applies to</th>
+              <th>Mark</th>
+              <th>Applies to</th>
             </tr>
           </thead>
           <tbody>
             {FLOOR.map((f) => (
-              <tr key={f.mark} style={rowLine}>
-                <td style={td}>{f.mark}</td>
-                <td style={td}>{f.note}</td>
+              <tr key={f.mark}>
+                <td>{f.mark}</td>
+                <td>{f.note}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The floor is cumulative: a high-risk survivor receives the shared touchpoints AND the
           extra ones. Your organization may tighten this — add touchpoints, or move one earlier —
           but may never drop a floor item or push it past its scheduled date. What is actually

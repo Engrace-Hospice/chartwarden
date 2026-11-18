@@ -10,19 +10,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { type MailingItem, type MailingItemStatus, listMailingItems } from "./bereavement-api";
 import { countLabel, humanize, shortId, toneOf } from "./bereavement-status";
-import {
-  ErrorText,
-  FilterRow,
-  SelectField,
-  linkStyle,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdNum,
-  th,
-  thNum,
-} from "./bereavement-ui";
+import { ErrorText, FilterRow, SelectField, linkStyle, tdNum, thNum } from "./bereavement-ui";
 import { usePagedList } from "./mailing-load";
 import { ITEM_STATUSES, ITEM_STATUS_TONE, exclusionLabel, itemStatusLabel } from "./mailing-status";
 
@@ -90,7 +78,7 @@ export function MailingRunItems({
         </div>
       ) : null}
       {state.kind === "ready" && rows.length === 0 ? (
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           {status === ALL_ITEMS
             ? "This run has no items yet. They are listed when the batch is generated."
             : "No item has this status."}
@@ -98,26 +86,26 @@ export function MailingRunItems({
       ) : null}
       {rows.length > 0 ? (
         <>
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Families are listed by id, relationship and channel. Names and addresses appear only in
             the generated batch.
           </span>
-          <table style={tableStyle} aria-label="Run items" aria-busy={busy}>
+          <table aria-label="Run items" aria-busy={busy}>
             <thead>
               <tr>
                 <th style={thNum}>Order</th>
-                <th style={th}>Contact</th>
-                <th style={th}>Relationship</th>
-                <th style={th}>Channel</th>
-                <th style={th}>Status</th>
-                <th style={th}>Reason</th>
+                <th>Contact</th>
+                <th>Relationship</th>
+                <th>Channel</th>
+                <th>Status</th>
+                <th>Reason</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((item) => (
-                <tr key={item.itemId} style={rowLine}>
+                <tr key={item.itemId}>
                   <td style={tdNum}>{item.ordinal ?? "—"}</td>
-                  <td style={td}>
+                  <td>
                     <Link
                       to={`/bereavement/plans/${item.planId}/contacts/${item.contactId}`}
                       style={linkStyle}
@@ -126,21 +114,21 @@ export function MailingRunItems({
                       Contact {shortId(item.contactId)}
                     </Link>
                   </td>
-                  <td style={td}>{humanize(item.relationshipCode)}</td>
-                  <td style={td}>{humanize(item.channel)}</td>
-                  <td style={td}>
+                  <td>{humanize(item.relationshipCode)}</td>
+                  <td>{humanize(item.channel)}</td>
+                  <td>
                     <StatusPill
                       label={itemStatusLabel(item.status)}
                       tone={toneOf(ITEM_STATUS_TONE, item.status)}
                     />
                   </td>
-                  <td style={td}>{exclusionLabel(item.exclusionReason)}</td>
+                  <td>{exclusionLabel(item.exclusionReason)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-            <span style={mutedStyle}>{countLabel(rows.length, hasMore)} items shown</span>
+            <span className="wx-text-muted">{countLabel(rows.length, hasMore)} items shown</span>
             {hasMore ? (
               <Button size="sm" tone="secondary" loading={busy} onClick={() => void loadMore()}>
                 Load more

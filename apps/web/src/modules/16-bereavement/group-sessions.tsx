@@ -20,13 +20,8 @@ import {
   ErrorText,
   Modal,
   TextField,
-  mutedStyle,
   plainFieldset,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
   visuallyHidden,
 } from "./bereavement-ui";
@@ -123,36 +118,36 @@ export function GroupSessions({
         </div>
       ) : null}
       {state.kind === "ready" && sessions.length === 0 ? (
-        <span style={mutedStyle}>No session is scheduled.</span>
+        <span className="wx-text-muted">No session is scheduled.</span>
       ) : null}
       {sessions.length > 0 ? (
-        <table style={tableStyle} aria-label="Group sessions">
+        <table aria-label="Group sessions">
           <thead>
             <tr>
               <th style={thNum}>No.</th>
-              <th style={th}>Starts</th>
-              <th style={th}>Ends</th>
-              <th style={th}>Status</th>
+              <th>Starts</th>
+              <th>Ends</th>
+              <th>Status</th>
               <th style={thNum}>Attendees</th>
-              <th style={th}>
+              <th>
                 <span style={visuallyHidden}>Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {sessions.map((session) => (
-              <tr key={session.sessionId} style={rowLine}>
+              <tr key={session.sessionId}>
                 <td style={tdNum}>{session.sessionNo}</td>
-                <td style={td}>{dateTime(session.startsAt)}</td>
-                <td style={td}>{dateTime(session.endsAt)}</td>
-                <td style={td}>
+                <td>{dateTime(session.startsAt)}</td>
+                <td>{dateTime(session.endsAt)}</td>
+                <td>
                   <StatusPill
                     label={humanize(session.status)}
                     tone={toneOf(SESSION_STATUS_TONE, session.status)}
                   />
                 </td>
                 <td style={tdNum}>{session.attendeeCount}</td>
-                <td style={td}>
+                <td>
                   <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                     {mayRun && sessionStarted(session) ? (
                       <Button
@@ -339,7 +334,7 @@ function CancelSessionModal({
         </Button>
       }
     >
-      <span id={descId} style={mutedStyle}>
+      <span id={descId} className="wx-text-muted">
         The session on {dateTime(session.startsAt)} will not take place. A cancelled session cannot
         be restored; add a new one instead.
       </span>
@@ -409,12 +404,12 @@ function AttendanceModal({
       }
     >
       {enrolled.length === 0 ? (
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           No enrolled family to mark. Enroll families from their contact page.
         </span>
       ) : (
         <fieldset disabled={write.busy} style={{ ...plainFieldset, gap: "0.4rem" }}>
-          <legend style={mutedStyle}>Who came to this session?</legend>
+          <legend className="wx-text-muted">Who came to this session?</legend>
           {enrolled.map((entry) => (
             <CheckboxField
               key={entry.contactId}

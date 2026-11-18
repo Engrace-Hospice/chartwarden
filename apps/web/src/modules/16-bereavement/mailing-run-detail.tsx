@@ -63,7 +63,6 @@ import {
   SummaryGrid,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
   useActionStatus,
 } from "./bereavement-ui";
@@ -489,7 +488,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             {wording.signoff ? <span>{wording.signoff}</span> : null}
           </div>
         ) : (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No wording has been written for this run. Nothing is filled in for you: write a title
             and at least one paragraph before generating.
           </span>
@@ -498,9 +497,11 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
 
       <Panel stack headingLevel={3} title="Actions">
         {noActions ? (
-          <span style={mutedStyle}>Your role can view this run but not change or send it.</span>
+          <span className="wx-text-muted">
+            Your role can view this run but not change or send it.
+          </span>
         ) : !Object.values(offers).some(Boolean) ? (
-          <span style={mutedStyle}>No actions are available for this run.</span>
+          <span className="wx-text-muted">No actions are available for this run.</span>
         ) : (
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap", alignItems: "center" }}>
             {offers.edit ? (
@@ -559,7 +560,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           </div>
         )}
         {offers.generate && !wordingComplete ? (
-          <span id={reasonId} style={mutedStyle}>
+          <span id={reasonId} className="wx-text-muted">
             Generate is unavailable until the wording has a title and at least one paragraph.
           </span>
         ) : null}
@@ -578,7 +579,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             >
               Open batch
             </a>{" "}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               (opens in a new tab and is removed from this page once used; it expires at{" "}
               {dateTime(batchLink.expiresAt)})
             </span>
@@ -651,7 +652,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             </Button>
           }
         >
-          <span id={confirmDescId} style={mutedStyle}>
+          <span id={confirmDescId} className="wx-text-muted">
             Confirming records that the printed letters went out. Each of the {counts.included}{" "}
             {counts.included === 1 ? "family" : "families"} in the batch gets this mailing logged on
             their contact as a program activity; it does not count as a touchpoint.
@@ -684,7 +685,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             </Button>
           }
         >
-          <span id={cancelDescId} style={mutedStyle}>
+          <span id={cancelDescId} className="wx-text-muted">
             A cancelled run is not generated, printed or logged, and it cannot be reopened. Nothing
             is recorded on any family's contact.
           </span>

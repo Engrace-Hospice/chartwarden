@@ -22,13 +22,8 @@ import {
   SelectField,
   columnStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./bereavement-ui";
 import { GroupFormModal } from "./group-form-modal";
@@ -76,7 +71,7 @@ export function SupportGroups(): JSX.Element | null {
         title={<span style={pageTitleStyle}>Support groups</span>}
         actions={mayManage ? <Button onClick={() => setCreating(true)}>New group</Button> : null}
       />
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Grief support groups the agency runs for bereaved families. Open a group to manage its
         sessions, its roster and attendance.
       </span>
@@ -111,45 +106,45 @@ export function SupportGroups(): JSX.Element | null {
       ) : null}
       {rows.length > 0 ? (
         <>
-          <table style={tableStyle} aria-label="Support groups" aria-busy={busy}>
+          <table aria-label="Support groups" aria-busy={busy}>
             <thead>
               <tr>
-                <th style={th}>Group</th>
-                <th style={th}>Status</th>
-                <th style={th}>Format</th>
-                <th style={th}>Modality</th>
+                <th>Group</th>
+                <th>Status</th>
+                <th>Format</th>
+                <th>Modality</th>
                 <th style={thNum}>Enrolled</th>
-                <th style={th}>Next session</th>
+                <th>Next session</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((group) => (
-                <tr key={group.groupId} style={rowLine}>
-                  <td style={td}>
+                <tr key={group.groupId}>
+                  <td>
                     <Link to={`/bereavement/groups/${group.groupId}`} style={linkStyle}>
                       {group.name}
                     </Link>
                   </td>
-                  <td style={td}>
+                  <td>
                     <StatusPill
                       label={humanize(group.status)}
                       tone={toneOf(GROUP_STATUS_TONE, group.status)}
                     />
                   </td>
-                  <td style={td}>{humanize(group.format)}</td>
-                  <td style={td}>{humanize(group.modality)}</td>
+                  <td>{humanize(group.format)}</td>
+                  <td>{humanize(group.modality)}</td>
                   <td style={tdNum}>
                     {group.capacity === null
                       ? group.enrolledCount
                       : `${group.enrolledCount} / ${group.capacity}`}
                   </td>
-                  <td style={td}>{dateTime(group.nextSessionAt)}</td>
+                  <td>{dateTime(group.nextSessionAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               {countLabel(rows.length, state.kind === "ready" && state.hasMore)} groups shown
             </span>
             {state.kind === "ready" && state.hasMore ? (

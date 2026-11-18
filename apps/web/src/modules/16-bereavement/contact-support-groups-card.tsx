@@ -24,11 +24,6 @@ import {
   Modal,
   SelectField,
   linkStyle,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   useActionStatus,
   visuallyHidden,
 } from "./bereavement-ui";
@@ -87,42 +82,42 @@ function SupportGroupsPanel({ contactId }: { contactId: string }): JSX.Element |
         </div>
       ) : null}
       {state.kind === "ready" && rows.length === 0 ? (
-        <span style={mutedStyle}>This family is not in any support group.</span>
+        <span className="wx-text-muted">This family is not in any support group.</span>
       ) : null}
       {rows.length > 0 ? (
-        <table style={tableStyle} aria-label="Support group enrollments">
+        <table aria-label="Support group enrollments">
           <thead>
             <tr>
-              <th style={th}>Group</th>
-              <th style={th}>Group status</th>
-              <th style={th}>Enrollment</th>
-              <th style={th}>Since</th>
-              <th style={th}>
+              <th>Group</th>
+              <th>Group status</th>
+              <th>Enrollment</th>
+              <th>Since</th>
+              <th>
                 <span style={visuallyHidden}>Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.enrollmentId} style={rowLine}>
-                <td style={td}>
+              <tr key={row.enrollmentId}>
+                <td>
                   <Link to={`/bereavement/groups/${row.groupId}`} style={linkStyle}>
                     {row.groupName}
                   </Link>
                 </td>
-                <td style={td}>
+                <td>
                   <StatusPill
                     label={humanize(row.groupStatus)}
                     tone={toneOf(GROUP_STATUS_TONE, row.groupStatus)}
                   />
                 </td>
-                <td style={td}>
+                <td>
                   {row.status === "enrolled"
                     ? "Enrolled"
                     : `Withdrawn (${humanize(row.withdrawnReason)})`}
                 </td>
-                <td style={td}>{shortDate(row.withdrawnAt ?? row.enrolledAt)}</td>
-                <td style={td}>
+                <td>{shortDate(row.withdrawnAt ?? row.enrolledAt)}</td>
+                <td>
                   {row.status === "enrolled" ? (
                     <Button size="sm" tone="secondary" onClick={() => setWithdrawing(row)}>
                       Withdraw
@@ -237,10 +232,10 @@ function EnrollModal({
       {state.kind === "loading" ? <LoadingSpinner label="Loading open groups" /> : null}
       {state.kind === "error" ? <ErrorText>{state.message}</ErrorText> : null}
       {state.kind === "hidden" ? (
-        <span style={mutedStyle}>You cannot see the support groups.</span>
+        <span className="wx-text-muted">You cannot see the support groups.</span>
       ) : null}
       {state.kind === "ready" && groups.length === 0 ? (
-        <span style={mutedStyle}>No open group is available for this family.</span>
+        <span className="wx-text-muted">No open group is available for this family.</span>
       ) : null}
       {groups.length > 0 ? (
         <SelectField
@@ -314,7 +309,7 @@ function WithdrawModal({
         </Button>
       }
     >
-      <span id={descId} style={mutedStyle}>
+      <span id={descId} className="wx-text-muted">
         The family leaves {enrollment.groupName} and is no longer on its roster. Choose why below.
       </span>
       <SelectField

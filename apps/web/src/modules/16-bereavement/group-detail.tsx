@@ -29,7 +29,6 @@ import {
   columnStyle,
   dangerButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
   primaryButtonStyle,
   useActionStatus,
@@ -212,7 +211,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
       {mayManage ? (
         <Panel stack headingLevel={3} title="Actions">
           {!Object.values(offers).some(Boolean) ? (
-            <span style={mutedStyle}>No actions are available for this group.</span>
+            <span className="wx-text-muted">No actions are available for this group.</span>
           ) : (
             <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
               {offers.edit ? (
@@ -334,7 +333,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
             </button>
           }
         >
-          <span id={closeDescId} style={mutedStyle}>
+          <span id={closeDescId} className="wx-text-muted">
             {ceremony === "complete"
               ? "The group has finished. Its future scheduled sessions are cancelled and every enrolled family is withdrawn (the group ended). It cannot be reopened."
               : "The group will not run. Its future scheduled sessions are cancelled and every enrolled family is withdrawn. It cannot be reopened."}

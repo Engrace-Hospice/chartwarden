@@ -45,17 +45,7 @@ import {
   shortId,
   toneOf,
 } from "./bereavement-status";
-import {
-  Notice,
-  columnStyle,
-  ghostButtonStyle,
-  mutedStyle,
-  pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
-} from "./bereavement-ui";
+import { Notice, columnStyle, ghostButtonStyle, pageTitleStyle } from "./bereavement-ui";
 
 type Entry = {
   at: string;
@@ -136,24 +126,24 @@ export function BereavementPlanHistory(): JSX.Element {
 
       <Panel stack headingLevel={3} title={`Timeline (${entries.length})`}>
         {entries.length === 0 ? (
-          <span style={mutedStyle}>Nothing dated has happened on this plan yet.</span>
+          <span className="wx-text-muted">Nothing dated has happened on this plan yet.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>When</th>
-                <th style={th}>Area</th>
-                <th style={th}>Event</th>
-                <th style={th}>Detail</th>
+                <th>When</th>
+                <th>Area</th>
+                <th>Event</th>
+                <th>Detail</th>
               </tr>
             </thead>
             <tbody>
               {entries.map((e) => (
-                <tr key={`${e.at}-${e.category}-${e.what}-${e.detail}`} style={rowLine}>
-                  <td style={td}>{dateTime(e.at)}</td>
-                  <td style={td}>{e.category}</td>
-                  <td style={td}>{e.what}</td>
-                  <td style={td}>{e.detail}</td>
+                <tr key={`${e.at}-${e.category}-${e.what}-${e.detail}`}>
+                  <td>{dateTime(e.at)}</td>
+                  <td>{e.category}</td>
+                  <td>{e.what}</td>
+                  <td>{e.detail}</td>
                 </tr>
               ))}
             </tbody>

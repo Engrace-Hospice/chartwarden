@@ -18,14 +18,7 @@ import {
   putMailingConfig,
 } from "./bereavement-api";
 import { humanize } from "./bereavement-status";
-import {
-  CheckboxField,
-  ErrorText,
-  Notice,
-  TextField,
-  mutedStyle,
-  visuallyHidden,
-} from "./bereavement-ui";
+import { CheckboxField, ErrorText, Notice, TextField, visuallyHidden } from "./bereavement-ui";
 import { buildBody, draftOf, sameDraft } from "./mailing-config-draft";
 import { MailingContentEditor } from "./mailing-content-editor";
 import {
@@ -137,7 +130,7 @@ export function MailingConfigCard({
           />
         }
       >
-        <span style={mutedStyle}>{MAILING_WHEN_HINT[config.mailingKey]}</span>
+        <span className="wx-text-muted">{MAILING_WHEN_HINT[config.mailingKey]}</span>
         <fieldset
           disabled={busy || readOnly}
           aria-busy={busy}
@@ -163,7 +156,7 @@ export function MailingConfigCard({
             value={draft.leadDays}
             onChange={(leadDays) => setDraft({ ...draft, leadDays })}
           />
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             The draft run opens this many days before the mailing's date ({LEAD_DAYS_MIN} to{" "}
             {LEAD_DAYS_MAX}).
           </span>

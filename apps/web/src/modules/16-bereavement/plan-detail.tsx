@@ -76,12 +76,7 @@ import {
   disabledButtonStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./bereavement-ui";
 
 type Ceremony = "add-contact" | "pause" | "close" | "cosign" | "first-contact" | null;
@@ -272,7 +267,7 @@ export function BereavementPlanDetail(): JSX.Element {
         headingLevel={3}
         title="Actions"
         action={
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Every action carries the plan version read above (`If-Match`).
           </span>
         }
@@ -333,59 +328,61 @@ export function BereavementPlanDetail(): JSX.Element {
         headingLevel={3}
         title="Bereaved contacts"
         action={
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             {plan.stats.contactsActiveCount} active · {plan.stats.contactsOptedOutCount} opted out
           </span>
         }
       >
         {plan.contacts.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No survivors are on the roster yet. Seed the roster from the patient's caregivers to
             open the program.
           </span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Name</th>
-                <th style={th}>Relationship</th>
-                <th style={th}>Status</th>
-                <th style={th}>Risk</th>
-                <th style={th}>Channels</th>
-                <th style={th}>Portal</th>
-                <th style={th} />
+                <th>Name</th>
+                <th>Relationship</th>
+                <th>Status</th>
+                <th>Risk</th>
+                <th>Channels</th>
+                <th>Portal</th>
+                <th />
               </tr>
             </thead>
             <tbody>
               {plan.contacts.map((c) => (
-                <tr key={c.contactId} style={rowLine}>
-                  <td style={td}>{c.displayName}</td>
-                  <td style={td}>{humanize(c.relationshipCode)}</td>
-                  <td style={td}>
+                <tr key={c.contactId}>
+                  <td>{c.displayName}</td>
+                  <td>{humanize(c.relationshipCode)}</td>
+                  <td>
                     <StatusPill
                       label={humanize(c.status)}
                       tone={toneOf(CONTACT_STATUS_TONE, c.status)}
                     />
                     {c.unreachableProposed ? (
-                      <div style={mutedStyle}>unreachable proposed · 3 no-response attempts</div>
+                      <div className="wx-text-muted">
+                        unreachable proposed · 3 no-response attempts
+                      </div>
                     ) : null}
                     {c.optedOutAt ? (
-                      <div style={mutedStyle}>
+                      <div className="wx-text-muted">
                         opted out {shortDate(c.optedOutAt)}
                         {c.mayRescindOptOut ? " · rescind window open" : ""}
                       </div>
                     ) : null}
                   </td>
-                  <td style={td}>
+                  <td>
                     <RiskTierPill tier={c.currentRiskTier} />
                   </td>
-                  <td style={td}>
+                  <td>
                     {c.allowedOutreachKinds.length === 0
                       ? "—"
                       : c.allowedOutreachKinds.map(outreachKindLabel).join(", ")}
                   </td>
-                  <td style={td}>{c.portalAccountId ? "linked" : "—"}</td>
-                  <td style={td}>
+                  <td>{c.portalAccountId ? "linked" : "—"}</td>
+                  <td>
                     <Link
                       to={`/bereavement/plans/${planId}/contacts/${c.contactId}`}
                       style={linkStyle}

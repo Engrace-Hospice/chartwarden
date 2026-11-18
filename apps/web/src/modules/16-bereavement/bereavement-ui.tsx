@@ -1,8 +1,8 @@
 // apps/web/src/modules/16-bereavement — the shared Lantern presentation atoms every M16 screen reuses
-// (Track B / ADR-0030, §5 / DESIGN.md §6.7). Extracted so the eleven screens share ONE No-Line table
-// vocabulary, one card, one field and one modal chrome instead of re-declaring them per file (the M15
-// discipline-ui.tsx / M24 medicaid-ui.tsx precedent — each web slice owns its own atoms, because
-// apps/web/src/modules/* may not import a sibling module).
+// (Track B / ADR-0030, §5). Cards, fields and tables come from the kit now (`Panel`, the value-field adapters
+// re-exported below, the base table chrome and the `wx-*` text classes); what remains here is the modal chrome
+// and a few layout constants (the M15 discipline-ui.tsx / M24 medicaid-ui.tsx precedent — each web slice owns
+// its own atoms, because apps/web/src/modules/* may not import a sibling module).
 //
 // Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens` stays green and the twilight dark
 // mode is automatic.
@@ -12,32 +12,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { RISK_TIER_GLYPH, RISK_TIER_TONE, humanize, toneOf } from "./bereavement-status";
 
-// ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
-export const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.85rem",
-};
-export const th: CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  textAlign: "left",
-  fontSize: "0.7rem",
-  fontWeight: 600,
-  color: t.onSurfaceVariant,
-};
-export const thNum: CSSProperties = { ...th, textAlign: "right" };
-export const td: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  color: t.onSurface,
-  verticalAlign: "top",
-};
-export const tdMono: CSSProperties = { ...td, fontFamily: t.fontMono };
-export const tdNum: CSSProperties = {
-  ...td,
-  textAlign: "right",
-  fontVariantNumeric: "tabular-nums",
-};
-export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
+// ── numeric table cells: the table's own chrome (padding, hairlines, header weight) is the kit's; a number
+// column only right-aligns and sets tabular figures ───────────────────────────────────────────────────
+export const thNum: CSSProperties = { textAlign: "right" };
+export const tdNum: CSSProperties = { textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
 /** Screen-reader-only text — keeps a control labelled without occupying visual space (§16 WCAG AA). */
 export const visuallyHidden: CSSProperties = {
@@ -63,14 +41,7 @@ export const pageTitleStyle: CSSProperties = {
   lineHeight: 1.2,
   color: t.onSurface,
 };
-export const sectionTitleStyle: CSSProperties = {
-  margin: `0 0 ${t.space2}`,
-  fontFamily: t.fontDisplay,
-  fontSize: "1rem",
-  fontWeight: 500,
-  color: t.onSurface,
-};
-export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
+const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
 const alertStyle: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.error };
 
 /** The shared error line. `role="alert"` so a failure that appears after a click is announced, not just painted red. */
@@ -86,7 +57,6 @@ export const linkStyle: CSSProperties = {
   color: t.primary,
   textDecoration: "none",
 };
-export const linkMonoStyle: CSSProperties = { ...linkStyle, fontFamily: t.fontMono };
 export const columnStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",

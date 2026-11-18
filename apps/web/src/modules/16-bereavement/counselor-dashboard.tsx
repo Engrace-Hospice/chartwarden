@@ -44,14 +44,7 @@ import {
   shortId,
   toneOf,
 } from "./bereavement-status";
-import {
-  Field,
-  Notice,
-  RiskTierPill,
-  ghostButtonStyle,
-  linkStyle,
-  mutedStyle,
-} from "./bereavement-ui";
+import { Field, Notice, RiskTierPill, ghostButtonStyle, linkStyle } from "./bereavement-ui";
 
 const HORIZONS = [
   { value: "7", label: "next 7 days" },
@@ -514,7 +507,7 @@ function PlanTable({
                     {shortId(p.planId)}
                   </Link>
                   {p.externalSourceCosignPending ? (
-                    <span style={mutedStyle}>Pending medical-director cosign</span>
+                    <span className="wx-text-muted">Pending medical-director cosign</span>
                   ) : null}
                 </div>
               </td>
@@ -531,7 +524,7 @@ function PlanTable({
                 {p.nextOutreachDueAt ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
                     <span>{shortDate(p.nextOutreachDueAt)}</span>
-                    <span style={mutedStyle}>{dueLabel(p.nextOutreachDueAt)}</span>
+                    <span className="wx-text-muted">{dueLabel(p.nextOutreachDueAt)}</span>
                   </div>
                 ) : (
                   "—"

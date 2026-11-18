@@ -27,14 +27,9 @@ import {
   SelectField,
   columnStyle,
   dangerButtonStyle,
-  mutedStyle,
   pageTitleStyle,
   primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
   useActionStatus,
 } from "./bereavement-ui";
@@ -185,7 +180,7 @@ export function GriefLibrary(): JSX.Element | null {
         title={<span style={pageTitleStyle}>Grief library</span>}
         actions={mayManage ? <Button onClick={() => setUploading(true)}>Upload item</Button> : null}
       />
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Reading and viewing material for bereaved families. Only published items appear in the
         family portal.
       </span>
@@ -235,7 +230,7 @@ export function GriefLibrary(): JSX.Element | null {
           >
             Open preview
           </a>{" "}
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             ({preview.part === "transcript" ? "transcript of " : ""}
             {preview.title}; the file downloads, and the link expires at{" "}
             {dateTime(preview.expiresAt)})
@@ -244,37 +239,33 @@ export function GriefLibrary(): JSX.Element | null {
       ) : null}
       {actionError && confirming === null ? <ErrorText>{actionError}</ErrorText> : null}
       {rows.length > 0 ? (
-        <table
-          style={tableStyle}
-          aria-label="Grief library"
-          aria-busy={state.kind === "ready" && state.refreshing}
-        >
+        <table aria-label="Grief library" aria-busy={state.kind === "ready" && state.refreshing}>
           <thead>
             <tr>
-              <th style={th}>Title</th>
-              <th style={th}>Category</th>
-              <th style={th}>Kind</th>
-              <th style={th}>Status</th>
+              <th>Title</th>
+              <th>Category</th>
+              <th>Kind</th>
+              <th>Status</th>
               <th style={thNum}>Sort order</th>
-              <th style={th}>Published</th>
-              <th style={th}>Actions</th>
+              <th>Published</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((item) => (
-              <tr key={item.itemId} style={rowLine}>
-                <td style={td}>{item.title}</td>
-                <td style={td}>{categoryLabel(item.category)}</td>
-                <td style={td}>{item.kind === "pdf" ? "PDF" : humanize(item.kind)}</td>
-                <td style={td}>
+              <tr key={item.itemId}>
+                <td>{item.title}</td>
+                <td>{categoryLabel(item.category)}</td>
+                <td>{item.kind === "pdf" ? "PDF" : humanize(item.kind)}</td>
+                <td>
                   <StatusPill
                     label={humanize(item.status)}
                     tone={toneOf(LIBRARY_STATUS_TONE, item.status)}
                   />
                 </td>
                 <td style={tdNum}>{item.sortOrder}</td>
-                <td style={td}>{dateTime(item.publishedAt)}</td>
-                <td style={td}>
+                <td>{dateTime(item.publishedAt)}</td>
+                <td>
                   <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
                     <Button
                       size="sm"
@@ -332,7 +323,7 @@ export function GriefLibrary(): JSX.Element | null {
                                 {label}
                               </Button>
                               {blocked ? (
-                                <span id={reasonId} style={mutedStyle}>
+                                <span id={reasonId} className="wx-text-muted">
                                   {TRANSCRIPT_NEEDED}
                                 </span>
                               ) : null}
@@ -406,7 +397,7 @@ export function GriefLibrary(): JSX.Element | null {
             </button>
           }
         >
-          <span id={confirmDescId} style={mutedStyle}>
+          <span id={confirmDescId} className="wx-text-muted">
             {STATUS_CONFIRM[confirming.next]}
           </span>
           {actionError ? <ErrorText>{actionError}</ErrorText> : null}

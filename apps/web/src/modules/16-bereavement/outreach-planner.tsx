@@ -68,13 +68,7 @@ import {
   TextField,
   columnStyle,
   ghostButtonStyle,
-  linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./bereavement-ui";
 
 const STATUS_FILTERS = [
@@ -213,43 +207,43 @@ export function BereavementOutreachPlanner(): JSX.Element {
 
       <Panel stack headingLevel={3} title={`Touchpoints (${rows.length})`}>
         {rows.length === 0 ? (
-          <span style={mutedStyle}>No touchpoints match this filter.</span>
+          <span className="wx-text-muted">No touchpoints match this filter.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Due</th>
-                <th style={th}>Survivor</th>
-                <th style={th}>Kind</th>
-                <th style={th}>Mark</th>
-                <th style={th}>Status</th>
-                <th style={th}>Completed</th>
-                <th style={th}>Actions</th>
+                <th>Due</th>
+                <th>Survivor</th>
+                <th>Kind</th>
+                <th>Mark</th>
+                <th>Status</th>
+                <th>Completed</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((o) => {
                 const busy = busyId === o.outreachId;
                 return (
-                  <tr key={o.outreachId} style={rowLine}>
-                    <td style={td}>
+                  <tr key={o.outreachId}>
+                    <td>
                       {shortDate(o.dueAt)}
-                      <div style={mutedStyle}>{dueLabel(o.dueAt)}</div>
+                      <div className="wx-text-muted">{dueLabel(o.dueAt)}</div>
                     </td>
-                    <td style={td}>{nameOf(o.contactId)}</td>
-                    <td style={td}>{outreachKindLabel(o.kind)}</td>
-                    <td style={td}>
+                    <td>{nameOf(o.contactId)}</td>
+                    <td>{outreachKindLabel(o.kind)}</td>
+                    <td>
                       {cadenceMarkLabel(o.cadenceMark) ??
                         (o.anniversaryMark ? anniversaryMarkLabel(o.anniversaryMark) : "—")}
                     </td>
-                    <td style={td}>
+                    <td>
                       <StatusPill
                         label={humanize(o.status)}
                         tone={toneOf(OUTREACH_STATUS_TONE, o.status)}
                       />
                     </td>
-                    <td style={td}>{dateTime(o.completedAt)}</td>
-                    <td style={td}>
+                    <td>{dateTime(o.completedAt)}</td>
+                    <td>
                       <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
                         {o.status === "scheduled" ? (
                           <Button
@@ -318,10 +312,12 @@ export function BereavementOutreachPlanner(): JSX.Element {
                           </Button>
                         ) : null}
                         {o.renderedDocumentId ? (
-                          <span style={mutedStyle}>doc {shortId(o.renderedDocumentId)}</span>
+                          <span className="wx-text-muted">doc {shortId(o.renderedDocumentId)}</span>
                         ) : null}
                         {o.sourceEncounterId ? (
-                          <span style={mutedStyle}>encounter {shortId(o.sourceEncounterId)}</span>
+                          <span className="wx-text-muted">
+                            encounter {shortId(o.sourceEncounterId)}
+                          </span>
                         ) : null}
                       </div>
                     </td>
@@ -658,7 +654,7 @@ function RegenerateModal({
         value={fromAt}
         onChange={setFromAt}
       />
-      {summary ? <p style={mutedStyle}>{summary}</p> : null}
+      {summary ? <p className="wx-text-muted">{summary}</p> : null}
       {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );

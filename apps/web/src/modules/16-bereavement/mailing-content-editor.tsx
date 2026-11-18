@@ -9,7 +9,7 @@ import { Button, t } from "@chartwarden/ui";
 import { useId } from "react";
 import type { CSSProperties, JSX } from "react";
 import type { MailingLocaleContent } from "./bereavement-api";
-import { ErrorText, TextAreaField, TextField, mutedStyle } from "./bereavement-ui";
+import { ErrorText, TextAreaField, TextField } from "./bereavement-ui";
 import { CONTENT_LIMITS, GREETING_NAME_TOKEN, wordingProblems } from "./mailing-status";
 
 const fieldsetStyle: CSSProperties = {
@@ -43,7 +43,7 @@ export function MailingContentEditor({
 
   return (
     <fieldset style={fieldsetStyle} disabled={disabled} aria-busy={disabled}>
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Write the letter in your agency's own words. Nothing is filled in for you: a mailing cannot
         be generated until it has a title and at least one paragraph.
       </span>
@@ -58,7 +58,7 @@ export function MailingContentEditor({
         describedBy={greetingHintId}
         onChange={(greeting) => onChange({ ...value, greeting })}
       />
-      <span id={greetingHintId} style={mutedStyle}>
+      <span id={greetingHintId} className="wx-text-muted">
         Write {GREETING_NAME_TOKEN} where each family member's name should go. A greeting of "Dear{" "}
         {GREETING_NAME_TOKEN}," prints "Dear" followed by that person's name; a blank greeting
         prints just the name.
@@ -97,7 +97,7 @@ export function MailingContentEditor({
         >
           Add a paragraph
         </Button>
-        <span style={{ ...mutedStyle, marginLeft: t.space2 }}>
+        <span className="wx-text-muted" style={{ marginLeft: t.space2 }}>
           {value.paragraphs.length} of {CONTENT_LIMITS.paragraphs} paragraphs
         </span>
       </div>

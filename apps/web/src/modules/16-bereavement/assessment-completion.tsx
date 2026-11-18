@@ -27,7 +27,7 @@ import {
   riskFactorLabel,
   shortDate,
 } from "./bereavement-status";
-import { ErrorText, Modal, Notice, SelectField, TextField, mutedStyle } from "./bereavement-ui";
+import { ErrorText, Modal, Notice, SelectField, TextField } from "./bereavement-ui";
 
 const PG13_MAX = 52;
 /** The server's promotion threshold (ADR-0109 / D8): a PG-13 total at or above it is a positive complicated-grief screen. */
@@ -116,7 +116,7 @@ export function CompleteAssessmentModal({
         </Button>
       }
     >
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         {assessmentTaskKindLabel(task.taskKind)} for {contactName}, due {shortDate(task.dueAt)}.
         This appends a risk score and completes the checkpoint; a stated factor can raise a derived
         one and never lowers it.

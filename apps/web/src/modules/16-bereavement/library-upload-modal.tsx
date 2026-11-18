@@ -6,14 +6,7 @@ import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { errorMessage } from "./bereavement-api";
-import {
-  ErrorText,
-  Modal,
-  SelectField,
-  TextAreaField,
-  TextField,
-  mutedStyle,
-} from "./bereavement-ui";
+import { ErrorText, Modal, SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, orNull } from "./program-status";
 import {
   LIBRARY_UPLOAD_MIME,
@@ -125,7 +118,9 @@ export function LibraryUploadModal({
       }
     >
       <label htmlFor={fileId} style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-        <span style={mutedStyle}>File (MP4 videos up to 500 MB; PDF, PNG or JPEG up to 25 MB)</span>
+        <span className="wx-text-muted">
+          File (MP4 videos up to 500 MB; PDF, PNG or JPEG up to 25 MB)
+        </span>
         <input
           id={fileId}
           type="file"
@@ -142,7 +137,7 @@ export function LibraryUploadModal({
         options={LIBRARY_CATEGORIES.map((c) => ({ value: c, label: categoryLabel(c) }))}
       />
       <TextField label="Sort order" type="number" value={sortOrder} onChange={setSortOrder} />
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         The item is added as a draft: families see it once it is published.
       </span>
       {error ? <ErrorText>{error}</ErrorText> : null}

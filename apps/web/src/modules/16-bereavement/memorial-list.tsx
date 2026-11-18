@@ -20,13 +20,8 @@ import {
   SelectField,
   columnStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./bereavement-ui";
 import { usePagedList } from "./mailing-load";
@@ -85,7 +80,7 @@ export function MemorialServices(): JSX.Element | null {
           mayManage ? <Button onClick={() => setCreating(true)}>New memorial service</Button> : null
         }
       />
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Services of remembrance the agency holds for bereaved families. Publishing a service invites
         every eligible family.
       </span>
@@ -120,12 +115,12 @@ export function MemorialServices(): JSX.Element | null {
       ) : null}
       {rows.length > 0 ? (
         <>
-          <table style={tableStyle} aria-label="Memorial services" aria-busy={busy}>
+          <table aria-label="Memorial services" aria-busy={busy}>
             <thead>
               <tr>
-                <th style={th}>Service</th>
-                <th style={th}>Starts</th>
-                <th style={th}>Status</th>
+                <th>Service</th>
+                <th>Starts</th>
+                <th>Status</th>
                 <th style={thNum}>Invited</th>
                 <th style={thNum}>Coming</th>
                 <th style={thNum}>Maybe</th>
@@ -135,14 +130,14 @@ export function MemorialServices(): JSX.Element | null {
             </thead>
             <tbody>
               {rows.map((s) => (
-                <tr key={s.serviceId} style={rowLine}>
-                  <td style={td}>
+                <tr key={s.serviceId}>
+                  <td>
                     <Link to={`/bereavement/memorials/${s.serviceId}`} style={linkStyle}>
                       {s.title}
                     </Link>
                   </td>
-                  <td style={td}>{dateTime(s.startsAt)}</td>
-                  <td style={td}>
+                  <td>{dateTime(s.startsAt)}</td>
+                  <td>
                     <StatusPill
                       label={humanize(s.status)}
                       tone={toneOf(MEMORIAL_STATUS_TONE, s.status)}
@@ -158,7 +153,7 @@ export function MemorialServices(): JSX.Element | null {
             </tbody>
           </table>
           <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-            <span style={mutedStyle}>{countLabel(rows.length, hasMore)} services shown</span>
+            <span className="wx-text-muted">{countLabel(rows.length, hasMore)} services shown</span>
             {hasMore ? (
               <Button size="sm" tone="secondary" loading={busy} onClick={() => void loadMore()}>
                 Load more

@@ -49,7 +49,6 @@ import {
   SelectField,
   StatusLine,
   columnStyle,
-  mutedStyle,
   pageTitleStyle,
 } from "./bereavement-ui";
 
@@ -240,11 +239,11 @@ function PredeathForAdmission({ admissionId }: { admissionId: string | undefined
 
       <Panel stack headingLevel={3} title="Risk factors">
         {!draft.exists ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Nothing has been recorded yet for this admission. Every factor starts as unknown.
           </span>
         ) : (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Last edited{draft.lastEditedAt ? ` ${dateTime(draft.lastEditedAt)}` : ""}
             {draft.lastEditedDiscipline
               ? ` by ${humanize(draft.lastEditedDiscipline).toLowerCase()}`

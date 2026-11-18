@@ -7,17 +7,7 @@ import { useCallback } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { humanize } from "./bereavement-status";
-import {
-  ErrorText,
-  linkStyle,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdNum,
-  th,
-  thNum,
-} from "./bereavement-ui";
+import { ErrorText, linkStyle, tdNum, thNum } from "./bereavement-ui";
 import { type Loaded, useLoaded } from "./mailing-load";
 import { type GroupRoster, getRoster } from "./programs-api";
 
@@ -56,22 +46,22 @@ export function GroupRosterCard({
         </div>
       ) : null}
       {state.kind === "ready" && entries.length === 0 ? (
-        <span style={mutedStyle}>No family is enrolled in this group yet.</span>
+        <span className="wx-text-muted">No family is enrolled in this group yet.</span>
       ) : null}
       {entries.length > 0 ? (
-        <table style={tableStyle} aria-label="Group roster">
+        <table aria-label="Group roster">
           <thead>
             <tr>
-              <th style={th}>Name</th>
-              <th style={th}>Relationship</th>
-              <th style={th}>Enrollment</th>
+              <th>Name</th>
+              <th>Relationship</th>
+              <th>Enrollment</th>
               <th style={thNum}>Sessions attended</th>
             </tr>
           </thead>
           <tbody>
             {entries.map((entry) => (
-              <tr key={entry.contactId} style={rowLine}>
-                <td style={td}>
+              <tr key={entry.contactId}>
+                <td>
                   {entry.planId ? (
                     <Link
                       to={`/bereavement/plans/${entry.planId}/contacts/${entry.contactId}`}
@@ -83,14 +73,16 @@ export function GroupRosterCard({
                     entry.displayName
                   )}
                 </td>
-                <td style={td}>
+                <td>
                   {entry.relationshipCode ? (
                     humanize(entry.relationshipCode)
                   ) : (
-                    <span style={{ ...mutedStyle, fontStyle: "italic" }}>Not shown to you</span>
+                    <span className="wx-text-muted" style={{ fontStyle: "italic" }}>
+                      Not shown to you
+                    </span>
                   )}
                 </td>
-                <td style={td}>
+                <td>
                   <StatusPill
                     label={humanize(entry.enrollmentStatus)}
                     tone={entry.enrollmentStatus === "enrolled" ? "success" : "neutral"}

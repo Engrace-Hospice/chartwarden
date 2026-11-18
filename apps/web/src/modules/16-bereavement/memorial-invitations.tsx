@@ -14,17 +14,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { errorMessage } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
-import {
-  ErrorText,
-  linkStyle,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdNum,
-  th,
-  thNum,
-} from "./bereavement-ui";
+import { ErrorText, linkStyle, tdNum, thNum } from "./bereavement-ui";
 import { useLoaded } from "./mailing-load";
 import { INVITATION_STATUS_TONE, invitationLabel } from "./program-status";
 import {
@@ -98,29 +88,29 @@ export function MemorialInvitations({
         </div>
       ) : null}
       {state.kind === "ready" && rows.length === 0 ? (
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           {service.status === "draft"
             ? "Invitations are created when the service is published."
             : "No family was invited to this service."}
         </span>
       ) : null}
       {rows.length > 0 ? (
-        <table style={tableStyle} aria-label="Invitations">
+        <table aria-label="Invitations">
           <thead>
             <tr>
-              <th style={th}>Family member</th>
-              <th style={th}>Relationship</th>
-              <th style={th}>Delivery</th>
-              <th style={th}>Answer</th>
+              <th>Family member</th>
+              <th>Relationship</th>
+              <th>Delivery</th>
+              <th>Answer</th>
               <th style={thNum}>Guests</th>
-              <th style={th}>Answered</th>
-              {started ? <th style={th}>Attendance</th> : null}
+              <th>Answered</th>
+              {started ? <th>Attendance</th> : null}
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.invitationId} style={rowLine}>
-                <td style={td}>
+              <tr key={row.invitationId}>
+                <td>
                   <Link
                     to={`/bereavement/plans/${row.planId}/contacts/${row.contactId}`}
                     style={linkStyle}
@@ -128,22 +118,22 @@ export function MemorialInvitations({
                     {row.displayName}
                   </Link>
                 </td>
-                <td style={td}>{humanize(row.relationshipCode)}</td>
-                <td style={td}>{row.delivery === "mailing" ? "Mailed" : "Portal only"}</td>
-                <td style={td}>
+                <td>{humanize(row.relationshipCode)}</td>
+                <td>{row.delivery === "mailing" ? "Mailed" : "Portal only"}</td>
+                <td>
                   <StatusPill
                     label={invitationLabel(row.status)}
                     tone={toneOf(INVITATION_STATUS_TONE, row.status)}
                   />
                 </td>
                 <td style={tdNum}>{row.guests}</td>
-                <td style={td}>
+                <td>
                   {row.rsvpSource
                     ? `${row.rsvpSource === "portal" ? "Portal" : "By phone"}, ${dateTime(row.rsvpAt)}`
                     : "—"}
                 </td>
                 {started ? (
-                  <td style={td}>
+                  <td>
                     <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
                       <Button
                         size="sm"

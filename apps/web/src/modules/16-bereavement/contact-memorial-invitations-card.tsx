@@ -23,11 +23,6 @@ import {
   Modal,
   SelectField,
   TextField,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   useActionStatus,
   visuallyHidden,
 } from "./bereavement-ui";
@@ -80,40 +75,42 @@ function InvitationsPanel({ contactId }: { contactId: string }): JSX.Element | n
         </div>
       ) : null}
       {state.kind === "ready" && rows.length === 0 ? (
-        <span style={mutedStyle}>This family has not been invited to a memorial service.</span>
+        <span className="wx-text-muted">
+          This family has not been invited to a memorial service.
+        </span>
       ) : null}
       {rows.length > 0 ? (
-        <table style={tableStyle} aria-label="Memorial invitations">
+        <table aria-label="Memorial invitations">
           <thead>
             <tr>
-              <th style={th}>Service</th>
-              <th style={th}>When</th>
-              <th style={th}>Answer</th>
-              <th style={th}>Guests</th>
-              <th style={th}>Recorded</th>
-              <th style={th}>
+              <th>Service</th>
+              <th>When</th>
+              <th>Answer</th>
+              <th>Guests</th>
+              <th>Recorded</th>
+              <th>
                 <span style={visuallyHidden}>Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.invitationId} style={rowLine}>
-                <td style={td}>{row.serviceTitle}</td>
-                <td style={td}>{dateTime(row.startsAt)}</td>
-                <td style={td}>
+              <tr key={row.invitationId}>
+                <td>{row.serviceTitle}</td>
+                <td>{dateTime(row.startsAt)}</td>
+                <td>
                   <StatusPill
                     label={invitationLabel(row.status)}
                     tone={toneOf(INVITATION_STATUS_TONE, row.status)}
                   />
                 </td>
-                <td style={td}>{row.guests}</td>
-                <td style={td}>
+                <td>{row.guests}</td>
+                <td>
                   {row.rsvpAt
                     ? `${dateTime(row.rsvpAt)} (${row.rsvpSource === "portal" ? "family portal" : humanize(row.rsvpSource)})`
                     : "—"}
                 </td>
-                <td style={td}>
+                <td>
                   {row.serviceStatus === "published" ? (
                     <Button size="sm" tone="secondary" onClick={() => setAnswering(row)}>
                       Record phone RSVP
@@ -215,7 +212,7 @@ function RsvpModal({
         </Button>
       }
     >
-      <span style={mutedStyle}>Record the answer the family gave by phone.</span>
+      <span className="wx-text-muted">Record the answer the family gave by phone.</span>
       <SelectField
         label="Answer"
         value={response}

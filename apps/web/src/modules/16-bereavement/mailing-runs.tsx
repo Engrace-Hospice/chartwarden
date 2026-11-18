@@ -27,13 +27,8 @@ import {
   columnStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./bereavement-ui";
 import { usePagedList } from "./mailing-load";
@@ -89,7 +84,7 @@ export function MailingRuns(): JSX.Element | null {
           ) : null
         }
       />
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Each run is one mailing's batch of letters for one date. Open a run to write its wording,
         generate the batch, and confirm it was mailed.
       </span>
@@ -124,12 +119,12 @@ export function MailingRuns(): JSX.Element | null {
       ) : null}
       {rows.length > 0 ? (
         <>
-          <table style={tableStyle} aria-label="Mailing runs" aria-busy={busy}>
+          <table aria-label="Mailing runs" aria-busy={busy}>
             <thead>
               <tr>
-                <th style={th}>Mailing</th>
-                <th style={th}>For</th>
-                <th style={th}>Status</th>
+                <th>Mailing</th>
+                <th>For</th>
+                <th>Status</th>
                 <th style={thNum}>In the batch</th>
                 <th style={thNum}>Left out</th>
                 <th style={thNum}>Logged as mailed</th>
@@ -138,8 +133,8 @@ export function MailingRuns(): JSX.Element | null {
             </thead>
             <tbody>
               {rows.map((run) => (
-                <tr key={run.runId} style={rowLine}>
-                  <td style={td}>
+                <tr key={run.runId}>
+                  <td>
                     <Link
                       to={`/bereavement/mailings/runs/${run.runId}`}
                       style={linkStyle}
@@ -148,8 +143,8 @@ export function MailingRuns(): JSX.Element | null {
                       {mailingLabel(run.mailingKey)}
                     </Link>
                   </td>
-                  <td style={td}>{shortDate(run.scheduledFor)}</td>
-                  <td style={td}>
+                  <td>{shortDate(run.scheduledFor)}</td>
+                  <td>
                     <StatusPill
                       label={humanize(run.status)}
                       tone={toneOf(RUN_STATUS_TONE, run.status)}
@@ -164,7 +159,7 @@ export function MailingRuns(): JSX.Element | null {
             </tbody>
           </table>
           <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               {countLabel(rows.length, state.kind === "ready" && state.hasMore)} runs shown
             </span>
             {state.kind === "ready" && state.hasMore ? (

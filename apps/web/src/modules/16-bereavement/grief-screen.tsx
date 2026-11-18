@@ -48,12 +48,7 @@ import {
   TextField,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./bereavement-ui";
 
 /**
@@ -170,18 +165,18 @@ export function BereavementGriefScreen(): JSX.Element {
           />
         }
       >
-        <table style={tableStyle}>
+        <table>
           <thead>
             <tr>
-              <th style={th}>Item</th>
-              <th style={th}>Response</th>
+              <th>Item</th>
+              <th>Response</th>
             </tr>
           </thead>
           <tbody>
             {PG13_ITEMS.map((item, i) => (
-              <tr key={item} style={rowLine}>
-                <td style={td}>{item}</td>
-                <td style={td}>
+              <tr key={item}>
+                <td>{item}</td>
+                <td>
                   <SelectField
                     label={item}
                     value={String(responses[i])}
@@ -195,7 +190,7 @@ export function BereavementGriefScreen(): JSX.Element {
             ))}
           </tbody>
         </table>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Scored on this screen and sent as a total: the route records `pg13Score`, and Module 16
           keeps no per-item store, so nothing here pretends the individual responses are retained.
         </span>
@@ -209,7 +204,7 @@ export function BereavementGriefScreen(): JSX.Element {
           onChange={setIpgr}
           describedBy="ipgr-hint"
         />
-        <span id="ipgr-hint" style={mutedStyle}>
+        <span id="ipgr-hint" className="wx-text-muted">
           Recorded alongside the PG-13 total when a second instrument was administered.
         </span>
       </Panel>
@@ -232,7 +227,7 @@ export function BereavementGriefScreen(): JSX.Element {
             Escalate — complicated grief
           </Button>
         </div>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Escalating ends the bereavement program for this survivor and routes them to the named
           external resource; a referral leaves the program running. They are separate records
           because they are separate clinical facts.

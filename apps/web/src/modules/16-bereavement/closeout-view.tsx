@@ -60,7 +60,6 @@ import {
   TextField,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
 } from "./bereavement-ui";
 
@@ -85,7 +84,7 @@ function DischargeSummaryLink({ documentId }: { documentId: string | null }): JS
   if (documentId === null) {
     const oversight = session?.roles?.some((role) => OVERSIGHT_ROLES.includes(role)) ?? false;
     return oversight ? (
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         The internal discharge summary has not been rendered yet. Module 22 renders it after the
         plan closes.
       </span>
@@ -93,7 +92,7 @@ function DischargeSummaryLink({ documentId }: { documentId: string | null }): JS
   }
   if (!session?.permissions?.includes(DOCUMENT_HISTORY_PERMISSION)) {
     return (
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         The internal discharge summary has been rendered, but your role cannot open the document
         history it is read from.
       </span>
@@ -223,7 +222,7 @@ export function BereavementCloseoutView(): JSX.Element {
           </SummaryGrid>
           <DischargeSummaryLink documentId={closure.dischargeSummaryDocumentId} />
           {closure.reason === "thirteen_month_completion" ? (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               The 13-month obligation was met in full. Every other closure reason ended the program
               early or by cascade, which is why the reason — not merely the closed status — is what
               a surveyor reads.
@@ -232,7 +231,7 @@ export function BereavementCloseoutView(): JSX.Element {
         </Panel>
       ) : (
         <Panel stack headingLevel={3} title="Closure record">
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No closure record exists yet. It is written when the plan closes — by the month-13 job
             for a completed program, or by the cosigned early-close path.
           </span>
@@ -241,7 +240,7 @@ export function BereavementCloseoutView(): JSX.Element {
 
       <Panel stack headingLevel={3} title="Final contact">
         {activeContacts.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No survivors on this plan are still active, so there is no final contact to compose.
           </span>
         ) : (
@@ -258,7 +257,7 @@ export function BereavementCloseoutView(): JSX.Element {
             ))}
           </div>
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The closeout letter is rendered by Module 22 from the document artifact this contact log
           references. Attach the rendered document id when it exists.
         </span>

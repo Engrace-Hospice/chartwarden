@@ -83,12 +83,7 @@ import {
   TextField,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   useActionStatus,
 } from "./bereavement-ui";
 import { ContactMemorialInvitationsCard } from "./contact-memorial-invitations-card";
@@ -365,14 +360,14 @@ function ContactForPlan({
           />
           <Field label="Version" value={contact.version} />
         </SummaryGrid>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Email, phone and mailing address are envelope-encrypted at rest and are not returned on
           this read surface — the allowed CHANNELS are, because those drive what may be sent.
         </span>
       </Panel>
 
       <Panel stack headingLevel={3} title="Outreach preferences">
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           {contact.allowedOutreachKinds.length === 0
             ? "No channels are allowed. No scheduled touchpoint can be delivered to this survivor."
             : contact.allowedOutreachKinds.map(outreachKindLabel).join(" · ")}
@@ -432,7 +427,7 @@ function ContactForPlan({
           </Button>
         </div>
         {resumeError ? <ErrorText>{resumeError}</ErrorText> : null}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Marking a survivor deceased is §2.3's only terminal state, so the verification source is
           required. Marking unreachable accepts the nightly three-strikes proposal — the machine
           enforces the threshold, so firing this early is refused rather than silently trusted.
@@ -497,7 +492,7 @@ function CarePlanGoals({
 
   if (recorded === undefined) {
     return (
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Care goals are not shown in your scope. A volunteer sees the contact's name and schedule,
         not the goals a counselor recorded with the family.
       </span>
@@ -535,7 +530,7 @@ function CarePlanGoals({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Up to three goals recorded with the family, in their words. They are sealed at rest and not
         shown to volunteers.
       </span>
@@ -590,35 +585,35 @@ function ContactSchedule({
   }
   if (schedule.kind === "forbidden") {
     return (
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Your role does not include the touchpoint schedule, so it is not shown here.
       </span>
     );
   }
   const rows = schedule.rows;
   if (rows.length === 0) {
-    return <span style={mutedStyle}>No touchpoints are scheduled for this survivor.</span>;
+    return <span className="wx-text-muted">No touchpoints are scheduled for this survivor.</span>;
   }
   return (
-    <table style={tableStyle}>
+    <table>
       <thead>
         <tr>
-          <th style={th}>Touchpoint</th>
-          <th style={th}>Modality</th>
-          <th style={th}>Due</th>
-          <th style={th}>Status</th>
+          <th>Touchpoint</th>
+          <th>Modality</th>
+          <th>Due</th>
+          <th>Status</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((o) => (
-          <tr key={o.outreachId} style={rowLine}>
-            <td style={td}>{touchpointLabel(o)}</td>
-            <td style={td}>{outreachKindLabel(o.kind)}</td>
-            <td style={td}>
+          <tr key={o.outreachId}>
+            <td>{touchpointLabel(o)}</td>
+            <td>{outreachKindLabel(o.kind)}</td>
+            <td>
               {shortDate(o.dueAt)}
-              <div style={mutedStyle}>{dueLabel(o.dueAt)}</div>
+              <div className="wx-text-muted">{dueLabel(o.dueAt)}</div>
             </td>
-            <td style={td}>
+            <td>
               <StatusPill
                 label={humanize(o.status)}
                 tone={toneOf(OUTREACH_STATUS_TONE, o.status)}
