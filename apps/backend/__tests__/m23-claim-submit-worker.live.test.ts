@@ -33,11 +33,12 @@ import {
 } from "@chartwarden/billing";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { sql } from "drizzle-orm";
 import { CH, NOT_WIRED_TRANSPORT } from "@chartwarden/x12-837-client";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { MIGRATIONS_DIR, applyMigrations } from "../../../scripts/db/migrate";
 import {
   type ClaimSubmitJob,
   type ClaimSubmitRetryJob,
@@ -46,7 +47,6 @@ import {
   runClaimSubmitRetry,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
-import { MIGRATIONS_DIR, applyMigrations } from "../../../scripts/db/migrate";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const ORG = "11111111-1111-1111-1111-111111111111";
@@ -390,8 +390,12 @@ describe.skipIf(!DB_URL)(
         dispatch_state: "finished",
       });
       expect(
-        (await admin.query("SELECT external_patient_control_number FROM claim_submission WHERE id=$1", [submissionId]))
-          .rows[0].external_patient_control_number,
+        (
+          await admin.query(
+            "SELECT external_patient_control_number FROM claim_submission WHERE id=$1",
+            [submissionId],
+          )
+        ).rows[0].external_patient_control_number,
       ).toBeNull();
     });
 
@@ -737,13 +741,25 @@ describe.skipIf(!DB_URL)(
             attempt_index,outcome
           ) VALUES ($1,$2,'claim_837i',$3,'M23-CROSS-ORG-CONFIG','stedi','synthetic-foreign-config',
             'test',$4,1,$5,$6,92,'queued')`,
-          [ORG, PE, (await seedReadyClaim({
-            patient: "04040404-0404-0404-0404-040404040404",
-            attemptIndex: 0,
-            withBlockingFailure: false,
-          })).claimId, configB, "c".repeat(64), CLAIM_SUBMISSION_BINDING_FINGERPRINT],
+          [
+            ORG,
+            PE,
+            (
+              await seedReadyClaim({
+                patient: "04040404-0404-0404-0404-040404040404",
+                attemptIndex: 0,
+                withBlockingFailure: false,
+              })
+            ).claimId,
+            configB,
+            "c".repeat(64),
+            CLAIM_SUBMISSION_BINDING_FINGERPRINT,
+          ],
         ),
-      ).rejects.toMatchObject({ code: "23503", constraint: "claim_submission_clearinghouse_config_org_fk" });
+      ).rejects.toMatchObject({
+        code: "23503",
+        constraint: "claim_submission_clearinghouse_config_org_fk",
+      });
     });
 
     it("uses provider-scoped PCN uniqueness and rejects invalid PCN shape in PostgreSQL", async () => {
@@ -767,7 +783,10 @@ describe.skipIf(!DB_URL)(
            VALUES ($1,$2,'claim_837i',$3,'M23-INVALID-PCN','too-short',1)`,
           [ORG, PE, claimId],
         ),
-      ).rejects.toMatchObject({ code: "23514", constraint: "claim_submission_external_pcn_shape_ck" });
+      ).rejects.toMatchObject({
+        code: "23514",
+        constraint: "claim_submission_external_pcn_shape_ck",
+      });
       const otherProvider = await seedReadyClaim({
         patient: "bcbcbcbc-bcbc-bcbc-bcbc-bcbcbcbcbcbc",
         organizationId: ORG_B,
@@ -792,8 +811,12 @@ describe.skipIf(!DB_URL)(
         [ORG, PE, historyClaim.claimId],
       );
       expect(
-        (await admin.query("SELECT external_patient_control_number FROM claim_submission WHERE id=$1", [historical.rows[0]!.id])).rows[0]
-          .external_patient_control_number,
+        (
+          await admin.query(
+            "SELECT external_patient_control_number FROM claim_submission WHERE id=$1",
+            [historical.rows[0]!.id],
+          )
+        ).rows[0].external_patient_control_number,
       ).toBeNull();
       const bound = await seedReadyClaim({
         patient: "dededede-dede-dede-dede-dededededede",
@@ -802,7 +825,9 @@ describe.skipIf(!DB_URL)(
         withBlockingFailure: false,
       });
       await expect(
-        admin.query("UPDATE claim_submission SET clearinghouse_vendor='stedi' WHERE id=$1", [bound.submissionId]),
+        admin.query("UPDATE claim_submission SET clearinghouse_vendor='stedi' WHERE id=$1", [
+          bound.submissionId,
+        ]),
       ).rejects.toThrow(/identity is immutable/);
     });
 
@@ -823,17 +848,27 @@ describe.skipIf(!DB_URL)(
       });
       expect(await visibleSubmissionCount(ORG)).toBeGreaterThan(0);
       expect(await visibleSubmissionCount(ORG_B)).toBeGreaterThan(0);
-      const crossRead = await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, async (tx) => {
-        const result = await tx.execute(sql`SELECT id FROM claim_submission WHERE id=${b.submissionId}`);
-        return (result as unknown as { rows: unknown[] }).rows.length;
-      });
+      const crossRead = await withOrgContext(
+        handle.db,
+        { organizationId: ORG, userId: "" },
+        async (tx) => {
+          const result = await tx.execute(
+            sql`SELECT id FROM claim_submission WHERE id=${b.submissionId}`,
+          );
+          return (result as unknown as { rows: unknown[] }).rows.length;
+        },
+      );
       expect(crossRead).toBe(0);
-      const crossUpdate = await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, async (tx) => {
-        const result = await tx.execute(
-          sql`UPDATE claim_submission SET outcome='failed_worker' WHERE id=${b.submissionId} RETURNING id`,
-        );
-        return (result as unknown as { rows: unknown[] }).rows.length;
-      });
+      const crossUpdate = await withOrgContext(
+        handle.db,
+        { organizationId: ORG, userId: "" },
+        async (tx) => {
+          const result = await tx.execute(
+            sql`UPDATE claim_submission SET outcome='failed_worker' WHERE id=${b.submissionId} RETURNING id`,
+          );
+          return (result as unknown as { rows: unknown[] }).rows.length;
+        },
+      );
       expect(crossUpdate).toBe(0);
       await expect(
         withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
@@ -860,8 +895,12 @@ describe.skipIf(!DB_URL)(
       });
       expect(await visibleSubmissionCount(ORG)).toBeGreaterThan(0);
       expect(await visibleSubmissionCount(ORG_B)).toBeGreaterThan(0);
-      const unscoped = await handle.db.execute(sql`SELECT count(*)::int AS n FROM claim_submission`);
-      expect(Number((unscoped as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? -1)).toBe(0);
+      const unscoped = await handle.db.execute(
+        sql`SELECT count(*)::int AS n FROM claim_submission`,
+      );
+      expect(Number((unscoped as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? -1)).toBe(
+        0,
+      );
       expect(await visibleSubmissionCount(ORG)).toBeGreaterThan(0);
       expect(await visibleSubmissionCount(ORG_B)).toBeGreaterThan(0);
       expect(a.submissionId).not.toBe(b.submissionId);
@@ -874,7 +913,9 @@ describe.skipIf(!DB_URL)(
         bindClaimMd: true,
         withBlockingFailure: false,
       });
-      const row = (await admin.query("SELECT * FROM claim_submission WHERE id=$1", [fixture.submissionId])).rows[0];
+      const row = (
+        await admin.query("SELECT * FROM claim_submission WHERE id=$1", [fixture.submissionId])
+      ).rows[0];
       const input = {
         organizationId: ORG,
         providerEntityId: PE,
