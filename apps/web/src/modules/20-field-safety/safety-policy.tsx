@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import { type SafetyPolicyView, errorMessage, getPolicy, patchPolicy } from "./safety-api";
 import {
   INCIDENT_CATEGORIES,
@@ -387,101 +388,103 @@ export function SafetyPolicyScreen(): JSX.Element {
               determination separately.
             </span>
           </section>
-
-          {editing ? (
-            <Modal
-              title="Edit the safety policy"
-              onClose={() => setEditing(false)}
-              footer={
-                <Button
-                  tone="primary"
-                  size="lg"
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)}
-                >
-                  {saving ? "Saving..." : "Save new version"}
-                </Button>
-              }
-            >
-              <Notice tone="warning" assertive>
-                This writes a new policy version. Existing alerts and incidents keep the thresholds
-                that were active when they happened.
-              </Notice>
-              {[...CADENCE_KNOBS, ...OVERDUE_KNOBS, ...SOS_KNOBS].map(([k, label, unit]) => {
-                const band = BANDS[k];
-                return (
-                  <TextField
-                    key={k}
-                    label={`${label} (${unit})`}
-                    value={draft[k] ?? ""}
-                    onChange={(value) => setDraft((current) => ({ ...current, [k]: value }))}
-                    type="number"
-                    hint={
-                      band
-                        ? `Platform band: ${band[0]}-${band[1]}. Leave blank to keep the current value.`
-                        : undefined
-                    }
-                  />
-                );
-              })}
-              <CheckboxField
-                label="Cancelling an SOS requires a biometric check (D5)"
-                checked={biometric}
-                onChange={setBiometric}
-              />
-              <CheckboxField
-                label="Allow continuous location streaming during an active SOS (D6)"
-                checked={streamEnabled}
-                onChange={setStreamEnabled}
-              />
-              <SelectField
-                label="Default supervisor subscription model (D8)"
-                value={model}
-                options={SUBSCRIPTION_MODELS.map((value) => ({
-                  value,
-                  label: humanize(value),
-                }))}
-                onChange={setModel}
-              />
-              <TextField
-                label="After-hours starts at (hour, 0-23)"
-                value={afterHoursStart}
-                onChange={setAfterHoursStart}
-                type="number"
-              />
-              <TextField
-                label="After-hours ends at (hour, 0-23)"
-                value={afterHoursEnd}
-                onChange={setAfterHoursEnd}
-                type="number"
-                hint="Inside this window an SOS also pages M19's on-call actors in parallel with safety supervisors."
-              />
-              <ChipMultiSelect
-                label="Auto-flag these categories as OSHA-reportable candidates"
-                values={INCIDENT_CATEGORIES}
-                selected={autoFlag}
-                onChange={setAutoFlag}
-                labeller={incidentCategoryLabel}
-              />
-              <TextAreaField
-                label="Why are you changing this?"
-                value={editReason}
-                onChange={setEditReason}
-                rows={4}
-                minChars={POLICY_EDIT_REASON_MIN_CHARS}
-                hint="This reason is written with the new policy version."
-              />
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
         </div>
       }
       fullPageScroll
+      detail={
+        editing ? (
+          <FormDrawer
+            title="Edit the safety policy"
+            busy={saving}
+            onClose={() => setEditing(false)}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void save()}
+                disabled={saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)}
+              >
+                {saving ? "Saving..." : "Save new version"}
+              </Button>
+            }
+          >
+            <Notice tone="warning" assertive>
+              This writes a new policy version. Existing alerts and incidents keep the thresholds
+              that were active when they happened.
+            </Notice>
+            {[...CADENCE_KNOBS, ...OVERDUE_KNOBS, ...SOS_KNOBS].map(([k, label, unit]) => {
+              const band = BANDS[k];
+              return (
+                <TextField
+                  key={k}
+                  label={`${label} (${unit})`}
+                  value={draft[k] ?? ""}
+                  onChange={(value) => setDraft((current) => ({ ...current, [k]: value }))}
+                  type="number"
+                  hint={
+                    band
+                      ? `Platform band: ${band[0]}-${band[1]}. Leave blank to keep the current value.`
+                      : undefined
+                  }
+                />
+              );
+            })}
+            <CheckboxField
+              label="Cancelling an SOS requires a biometric check (D5)"
+              checked={biometric}
+              onChange={setBiometric}
+            />
+            <CheckboxField
+              label="Allow continuous location streaming during an active SOS (D6)"
+              checked={streamEnabled}
+              onChange={setStreamEnabled}
+            />
+            <SelectField
+              label="Default supervisor subscription model (D8)"
+              value={model}
+              options={SUBSCRIPTION_MODELS.map((value) => ({
+                value,
+                label: humanize(value),
+              }))}
+              onChange={setModel}
+            />
+            <TextField
+              label="After-hours starts at (hour, 0-23)"
+              value={afterHoursStart}
+              onChange={setAfterHoursStart}
+              type="number"
+            />
+            <TextField
+              label="After-hours ends at (hour, 0-23)"
+              value={afterHoursEnd}
+              onChange={setAfterHoursEnd}
+              type="number"
+              hint="Inside this window an SOS also pages M19's on-call actors in parallel with safety supervisors."
+            />
+            <ChipMultiSelect
+              label="Auto-flag these categories as OSHA-reportable candidates"
+              values={INCIDENT_CATEGORIES}
+              selected={autoFlag}
+              onChange={setAutoFlag}
+              labeller={incidentCategoryLabel}
+            />
+            <TextAreaField
+              label="Why are you changing this?"
+              value={editReason}
+              onChange={setEditReason}
+              rows={4}
+              minChars={POLICY_EDIT_REASON_MIN_CHARS}
+              hint="This reason is written with the new policy version."
+            />
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : undefined
+      }
     />
   );
 }
