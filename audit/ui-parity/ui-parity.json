@@ -1,9 +1,9 @@
 {
-  "documentedSpecs": 117,
+  "documentedSpecs": 119,
   "byCategory": {
     "admin": 16,
     "core": 11,
-    "clinical": 39,
+    "clinical": 41,
     "platform": 5,
     "portal": 11,
     "revenue": 18,
@@ -475,6 +475,22 @@
       "id": "encounter.my-drafts",
       "path": "/work/drafts",
       "permission": "encounter.author"
+    },
+    {
+      "app": "web",
+      "module": "08-encounters",
+      "moduleId": 8,
+      "id": "encounter.overdue-notes",
+      "path": "/work/overdue-notes",
+      "permission": "encounter.closure_override"
+    },
+    {
+      "app": "web",
+      "module": "08-encounters",
+      "moduleId": 8,
+      "id": "encounter.closure-policy",
+      "path": "/admin/closure-policy",
+      "permission": "encounter.closure_policy_admin"
     },
     {
       "app": "web",
