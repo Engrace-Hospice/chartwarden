@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SafetyCheckInStatus,
   type SafetyCheckInView,
@@ -34,7 +35,7 @@ import {
   meetsMinChars,
   shortId,
 } from "./safety-status";
-import { CheckInStatusPill, Modal, Notice, SelectField, TextAreaField } from "./safety-ui";
+import { CheckInStatusPill, Notice, SelectField, TextAreaField } from "./safety-ui";
 
 const HISTORY_DAYS = 90;
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -240,63 +241,66 @@ export function MyCheckInsScreen(): JSX.Element {
               first posted.
             </span>
           </div>
-          {amending ? (
-            <Modal
-              title="Amend this check-in"
-              onClose={() => setAmending(null)}
-              footer={
-                <Button
-                  tone="primary"
-                  size="lg"
-                  type="button"
-                  onClick={() => void submitAmend()}
-                  disabled={saving || !canSave}
-                >
-                  {saving ? "Recording..." : "Record correction"}
-                </Button>
-              }
-            >
-              <Notice tone="info">
-                Amendable until <strong>{dateTime(amending.amendableUntil)}</strong>. This writes a
-                new check-in that supersedes the one from {dateTime(amending.postedAt)}.
-              </Notice>
-              <SelectField
-                label="What you meant to say"
-                value={status}
-                options={[
-                  { value: "ok", label: checkInStatusLabel("ok") },
-                  { value: "concerned_continue", label: checkInStatusLabel("concerned_continue") },
-                  { value: "concerned_stop", label: checkInStatusLabel("concerned_stop") },
-                ]}
-                onChange={setStatus}
-              />
-              {noteOwed ? (
-                <TextAreaField
-                  label="Your note"
-                  value={note}
-                  onChange={setNote}
-                  rows={4}
-                  minChars={CONCERN_NOTE_MIN_CHARS}
-                />
-              ) : null}
-              <TextAreaField
-                label="Why the correction?"
-                value={reason}
-                onChange={setReason}
-                rows={3}
-                minChars={AMENDMENT_REASON_MIN_CHARS}
-                hint="A short reason for the audit trail."
-              />
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
         </div>
       }
       fullPageScroll
+      detail={
+        amending ? (
+          <FormDrawer
+            title="Amend this check-in"
+            busy={saving}
+            onClose={() => setAmending(null)}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void submitAmend()}
+                disabled={saving || !canSave}
+              >
+                {saving ? "Recording..." : "Record correction"}
+              </Button>
+            }
+          >
+            <Notice tone="info">
+              Amendable until <strong>{dateTime(amending.amendableUntil)}</strong>. This writes a
+              new check-in that supersedes the one from {dateTime(amending.postedAt)}.
+            </Notice>
+            <SelectField
+              label="What you meant to say"
+              value={status}
+              options={[
+                { value: "ok", label: checkInStatusLabel("ok") },
+                { value: "concerned_continue", label: checkInStatusLabel("concerned_continue") },
+                { value: "concerned_stop", label: checkInStatusLabel("concerned_stop") },
+              ]}
+              onChange={setStatus}
+            />
+            {noteOwed ? (
+              <TextAreaField
+                label="Your note"
+                value={note}
+                onChange={setNote}
+                rows={4}
+                minChars={CONCERN_NOTE_MIN_CHARS}
+              />
+            ) : null}
+            <TextAreaField
+              label="Why the correction?"
+              value={reason}
+              onChange={setReason}
+              rows={3}
+              minChars={AMENDMENT_REASON_MIN_CHARS}
+              hint="A short reason for the audit trail."
+            />
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : undefined
+      }
     />
   );
 }
