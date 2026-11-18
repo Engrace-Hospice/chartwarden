@@ -23,6 +23,7 @@ import { userInfo } from "node:os";
 import { hasBareBraceGroup } from "./bare-braces";
 import { ASSIGNMENT, program, unescapeWord, words } from "./command-words";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
+import { DOWNLOAD_SCRIPT_REASON, downloadsScript } from "./download-script";
 import { environmentDumpReason } from "./env-dump";
 import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
 import { listedFiles } from "./file-list-options";
@@ -64,7 +65,6 @@ import {
   readsScriptFromStdin,
   runsInlineCode,
 } from "./inline-code";
-import { DOWNLOAD_SCRIPT_REASON, downloadsScript } from "./download-script";
 import { launchctlReason } from "./launchctl-rules";
 import { type Listed, asListing } from "./listing";
 import { runsLiveSuite } from "./live-suite";
@@ -113,6 +113,7 @@ import {
   splitCommand,
 } from "./shell-lex";
 import { EXEC_SWEEP_READER, siblingCommands } from "./sibling-sweeps";
+import { STDIN_SCRIPT_TOOL_REASON, stdinScriptTool } from "./stdin-script-tools";
 import {
   type FeedReaders,
   PIPE_FEED_REASON,
@@ -128,6 +129,7 @@ import { readTar } from "./tar-grammar";
 import { isToolchainPath } from "./toolchain-paths";
 import { type SweepDepth, diffSweepOperands, gitDiffSweepOperands } from "./tree-sweep";
 import { reboundNames } from "./variable-rebinding";
+import { type Bindings, MAX_READINGS, NO_BINDINGS, bindAfter, readingsOf } from "./word-readings";
 import {
   MAX_COMMAND_JUDGE_MS,
   baseName,
@@ -140,12 +142,11 @@ import {
   trimSlashes,
   work,
 } from "./work-budget";
-import { xargsRuns } from "./xargs-feed";
-import { type Bindings, MAX_READINGS, NO_BINDINGS, bindAfter, readingsOf } from "./word-readings";
 import { shellQuote, sshHost } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
 import { moreGitWrites, moreWriterTargets } from "./writers-more";
 import { fileRuns, heredocCount, isScriptText, writtenTexts } from "./written-scripts";
+import { xargsRuns } from "./xargs-feed";
 
 // Re-exported from `content-scan.ts`: the names this file used to define.
 export type { Finding, FindingKind, SyntheticRegistry } from "./content-scan";
@@ -1129,6 +1130,12 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
     ...shellWordVerdicts(parsed, stdinOf, ctx, depth, here),
   );
   walk.verdicts.push(...xargsVerdicts(part.text, stdin.feed(index), ctx, depth, here));
+  // A script fed on stdin to make, awk, expect or osascript runs commands the guard cannot read as a shell script (wave 13, B10).
+  const scriptTool = stdinScriptTool(parsed.prog, parsed.args);
+  const fedStdin =
+    part.joiner === "|" || parsed.ins.length + parsed.docs.length + parsed.strings.length > 0;
+  if (scriptTool !== null && fedStdin)
+    walk.verdicts.push(ask(STDIN_SCRIPT_TOOL_REASON(scriptTool)));
   if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
   // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command
   // line; a script piped in from anything else cannot be read. A script this line wrote (a heredoc, `echo '…' > F`) and

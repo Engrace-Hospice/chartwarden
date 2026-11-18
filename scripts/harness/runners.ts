@@ -196,8 +196,13 @@ function innerOf(words: readonly string[], grammar: Grammar, sink: Sink): readon
     );
     return ["sh", "-c", words[k] as string];
   }
-  if (grammar.shellLine === true)
-    return k < words.length ? ["sh", "-c", words.slice(k).join(" ")] : null;
+  if (grammar.shellLine === true) {
+    if (k >= words.length) return null;
+    // the words are joined as typed AND quoted back (`watchexec -- bash -c 'CMD'`: joined, the string is only CMD's first word; wave 13, A11)
+    const readings = joinedAndQuoted(words.slice(k));
+    sink.lines.push(...readings.slice(1));
+    return ["sh", "-c", readings[0] as string];
+  }
   if (grammar.toolSpecs) {
     while (words[k] !== undefined && TOOL_SPEC.test(words[k] as string)) k++;
     if (words[k] === "--") k++;

@@ -15,11 +15,12 @@
  *     word, and `-C`/`--init-command` too; pwsh takes `-c|-Command|-command` and then the rest of the words as one command line.
  * An option the reader cannot place makes no guess: it returns every plausible string (at most 3) and the guard judges all of them. Pure.
  */
-import { SHELL_GRAMMARS, type ShellGrammar } from "./shell-grammars";
+import { SHELL_GRAMMARS, type ShellGrammar, shellFamily } from "./shell-grammars";
 import { joinedAndQuoted } from "./shell-quote";
 
 /** Shells the guard reads a command string from. */
-export const COMMAND_SHELLS = /^(?:bash|sh|zsh|dash|ksh|fish|csh|tcsh|ash|pwsh|powershell)$/;
+export const COMMAND_SHELLS =
+  /^(?:r?bash|sh|zsh|dash|ksh|mksh|pdksh|oksh|fish|csh|tcsh|ash|busybox|xonsh|elvish|nu|pwsh|powershell)(?:-?[0-9][0-9.]*)?$/;
 
 const PWSH = /^(?:pwsh|powershell)$/;
 const PWSH_COMMAND = /^-(?:c|command|commandwithargs|cwa)$/i;
@@ -94,7 +95,7 @@ export function shellOperandReadings(
   prog: string,
   args: readonly string[],
 ): ReadonlyArray<Scan> | null {
-  const grammars = SHELL_GRAMMARS.get(prog);
+  const grammars = SHELL_GRAMMARS.get(shellFamily(prog));
   return grammars === undefined ? null : grammars.map((grammar) => scan(grammar, args));
 }
 
@@ -147,7 +148,8 @@ function grammarStrings(grammar: ShellGrammar, args: readonly string[]): string[
 }
 
 /** The command strings `prog args` may run through its `-c`, as many readings as the options leave plausible; empty when it runs none. */
-export function shellCommandStrings(prog: string, args: readonly string[]): string[] {
+export function shellCommandStrings(named: string, args: readonly string[]): string[] {
+  const prog = shellFamily(named);
   if (PWSH.test(prog)) {
     const at = args.findIndex((a) => PWSH_COMMAND.test(a));
     return at < 0 || args[at + 1] === undefined ? [] : [args.slice(at + 1).join(" ")];
@@ -159,10 +161,14 @@ export function shellCommandStrings(prog: string, args: readonly string[]): stri
 }
 
 /** Does this shell run a command string with `-c` (so its operands are not a script file)? */
-export const runsCommandString = (prog: string, args: readonly string[]): boolean =>
-  (SHELL_GRAMMARS.get(prog) ?? []).some((grammar) => scan(grammar, args).sawC) ||
-  (!SHELL_GRAMMARS.has(prog) && shellCommandStrings(prog, args).length > 0) ||
-  (prog === "fish" && fishCommandStrings(args).length > 0);
+export const runsCommandString = (named: string, args: readonly string[]): boolean => {
+  const prog = shellFamily(named);
+  return (
+    (SHELL_GRAMMARS.get(prog) ?? []).some((grammar) => scan(grammar, args).sawC) ||
+    (!SHELL_GRAMMARS.has(prog) && shellCommandStrings(prog, args).length > 0) ||
+    (prog === "fish" && fishCommandStrings(args).length > 0)
+  );
+};
 
 /**
  * The value of `-c STR` / `--command STR` of `su`, `script`, `flock`, `runuser`: a cluster holding `c` (`-qc`, `-lc`) takes what is attached

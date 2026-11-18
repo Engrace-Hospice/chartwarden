@@ -72,3 +72,17 @@ export const SHELL_GRAMMARS: ReadonlyMap<string, readonly ShellGrammar[]> = new 
 
 /** Shells whose tables come from their documentation: the tool is not installed where the recordings were made. */
 export const UNVERIFIED_SHELLS: readonly string[] = ["ash", "fish", "pwsh", "powershell"];
+
+/**
+ * The shell a program name stands for, by FAMILY (wave 13, B11: R10-ADV-B11): a version or a variant of a shell reads its options like the shell it is
+ * (`bash-5.2`, `rbash`, `ksh93`, `mksh`, `pdksh`, `oksh`, `busybox` as `sh`), and a shell nobody recorded (`xonsh`, `elvish`, `nu`) is read like `ash`: judged as
+ * bash and asked about. A name of no family is returned as it is.
+ */
+export function shellFamily(prog: string): string {
+  const bare = prog.replace(/-?[0-9][0-9.]*$/, "");
+  if (bare === "rbash") return "bash";
+  if (/^(?:mksh|pdksh|oksh|ksh)$/.test(bare)) return "ksh";
+  if (bare === "busybox") return "sh";
+  if (/^(?:xonsh|elvish|nu)$/.test(bare)) return "ash";
+  return bare === "" ? prog : bare;
+}

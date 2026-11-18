@@ -151,13 +151,16 @@ export type PushFinding =
 export function pushFinding(facts: PushFacts, branch: string | undefined): PushFinding {
   const { forced, mirror, all, deleting, refs, unplacedOption } = facts;
   const namesMain = refs.some(pushesToMain);
-  const pushesHead = refs.length === 0 || refs.some((ref) => /^\+?HEAD$/.test(ref));
+  // `@` is git's own spelling of HEAD (probed with `git push --dry-run` in a scratch repo; wave 13, B8: R10-ADV-B8)
+  const pushesHead = refs.length === 0 || refs.some((ref) => /^\+?(?:HEAD|@)$/.test(ref));
   // A delete of main asks (as before); a forced push of it is refused.
   if (namesMain || (branch === "main" && pushesHead)) return forced ? "force-main" : "main";
   if (mirror) return "mirror";
   if (unplacedOption) return "option";
   if (all && forced) return "all-forced";
   if ((forced || deleting) && refs.some(hasExpansion)) return "unplaced";
+  // a destination built by a command substitution can name main whatever the options say (`HEAD:refs/heads/$(echo main)`)
+  if (refs.some((ref) => /\$\(|`/.test(rawDestination(ref)))) return "unplaced";
   if (forced && pushesHead && branch === undefined) return "tracking-branch";
   return null;
 }
