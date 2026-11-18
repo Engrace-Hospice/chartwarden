@@ -1,13 +1,16 @@
 // The pure closure rules the supervisor board and the policy screen share: the bounds mirror the server's, and a row's timing is read
 // from what the server's clock decided (never recomputed from the clock start). Synthetic values only.
+import { CLOSURE_OVERRIDE_MIN_REASON_CHARS } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
-  OVERRIDE_MIN_REASON_CHARS,
+  STAGE_LABEL,
+  STAGE_TONE,
   countByStage,
   formatHours,
   isClosureMode,
   isGrantActive,
   needsBlockConfirmation,
+  overrideStatusText,
   parseOverrideHours,
   parseThresholdHours,
   reasonLength,
@@ -46,8 +49,8 @@ describe("parseThresholdHours", () => {
 
 describe("reasonLength", () => {
   it("counts the trimmed reason, as the server does", () => {
-    expect(reasonLength(`   ${"x".repeat(OVERRIDE_MIN_REASON_CHARS)}   `)).toBe(
-      OVERRIDE_MIN_REASON_CHARS,
+    expect(reasonLength(`   ${"x".repeat(CLOSURE_OVERRIDE_MIN_REASON_CHARS)}   `)).toBe(
+      CLOSURE_OVERRIDE_MIN_REASON_CHARS,
     );
     expect(reasonLength("      ")).toBe(0);
   });
@@ -132,5 +135,64 @@ describe("isClosureMode", () => {
   it("accepts only the three modes", () => {
     expect(["off", "warn", "block"].every(isClosureMode)).toBe(true);
     expect(isClosureMode("enforce")).toBe(false);
+  });
+});
+
+describe("the shared stage table", () => {
+  it("words every stage once, 'On track' included, so the board and My notes cannot disagree", () => {
+    expect(STAGE_LABEL).toEqual({
+      ok: "On track",
+      at_risk: "At risk",
+      overdue: "Overdue",
+      escalated: "Escalated",
+    });
+    expect(STAGE_TONE).toEqual({
+      ok: "neutral",
+      at_risk: "progress",
+      overdue: "warning",
+      escalated: "error",
+    });
+  });
+});
+
+describe("overrideStatusText", () => {
+  const live = { expiresAt: "2026-11-18T16:00:00.000Z", revokedAt: null };
+  const revoked = { expiresAt: "2026-11-18T16:00:00.000Z", revokedAt: "2026-11-18T12:30:00.000Z" };
+
+  it("says nothing without a grant, and nothing for a grant that simply ran out", () => {
+    expect(overrideStatusText(null, "Rowan Test", NOW)).toBeNull();
+    expect(
+      overrideStatusText(
+        { expiresAt: "2026-11-18T11:00:00.000Z", revokedAt: null },
+        "Rowan Test",
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("says when an active grant ends", () => {
+    expect(overrideStatusText(live, "Rowan Test", NOW)).toMatch(
+      /^Rowan Test is not blocked until /,
+    );
+  });
+
+  it("says the clinician is limited again after a revoke that was the last grant", () => {
+    const text = overrideStatusText(revoked, "Rowan Test", NOW);
+    expect(text).toMatch(/^Override revoked\. Rowan Test is limited again/);
+    expect(overrideStatusText({ ...revoked, remainingActiveUntil: null }, "Rowan Test", NOW)).toBe(
+      text,
+    );
+  });
+
+  it("says another override is still in force after a revoke that left one, and does not claim they are limited", () => {
+    const text = overrideStatusText(
+      { ...revoked, remainingActiveUntil: "2026-11-18T18:00:00.000Z" },
+      "Rowan Test",
+      NOW,
+    );
+    expect(text).toMatch(
+      /^Override revoked\. Another override for this clinician is still active until /,
+    );
+    expect(text).not.toMatch(/limited again/);
   });
 });

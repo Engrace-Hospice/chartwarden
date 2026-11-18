@@ -12,18 +12,21 @@ import { useNoteClosure } from "./note-closure";
 import { closureBannerModel } from "./note-closure-banner-model";
 import type { ClosureBannerModel } from "./note-closure-banner-model";
 import { NOTE_CLOSURE_HOME } from "./note-closure-screens";
+import { noteHref } from "./note-href";
 
 const bannerStyle = { display: "block", padding: "0.5rem 1rem 0" } as const;
 const linkStyle = { marginLeft: "0.5rem", textDecoration: "underline", color: "inherit" } as const;
 
 /**
- * Where the "oldest note" link goes. closure-status names the note but not its patient, and the composer's route needs both, so the
- * patient is read once (GET /encounters/:id is on the gate's allowlist) and, until it arrives or if it cannot be read, the link
- * falls back to My notes, which lists the oldest note first. Only the blocked state resolves it.
+ * Where the "oldest note" link goes. closure-status names the note but not its patient or its status, and the screen it opens needs
+ * both: a draft opens in the composer, a finalized note (the server counts it as open until it is signed) on the read screen where
+ * it is signed, because the composer is read-only for it. So the note is read once (GET /encounters/:id is on the gate's allowlist)
+ * and, until it arrives or if it cannot be read, the link falls back to My notes, which lists the oldest note first. Only the
+ * blocked state resolves it.
  */
 function useOldestNoteHref(encounterId: string | null): string {
   const client = useApiClient();
-  const [resolved, setResolved] = useState<{ encounterId: string; patientId: string } | null>(null);
+  const [resolved, setResolved] = useState<{ encounterId: string; href: string } | null>(null);
   useEffect(() => {
     if (encounterId === null) return;
     let active = true;
@@ -33,7 +36,12 @@ function useOldestNoteHref(encounterId: string | null): string {
         headers: BACKGROUND_REQUEST_HEADERS,
       })
       .then(({ data }) => {
-        if (active && data) setResolved({ encounterId, patientId: data.patientId });
+        if (active && data) {
+          setResolved({
+            encounterId,
+            href: noteHref({ id: encounterId, patientId: data.patientId, status: data.status }),
+          });
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -41,7 +49,7 @@ function useOldestNoteHref(encounterId: string | null): string {
     };
   }, [client, encounterId]);
   return resolved !== null && resolved.encounterId === encounterId
-    ? `/patients/${resolved.patientId}/encounters/${encounterId}/compose`
+    ? resolved.href
     : NOTE_CLOSURE_HOME;
 }
 

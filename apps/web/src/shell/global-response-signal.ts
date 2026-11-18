@@ -18,15 +18,11 @@ export type GlobalResponseSignal =
   | { kind: "organization-onboarding" }
   /**
    * ADR-0113: the visit-note gate refused a route (403 NOTE_CLOSURE_REQUIRED) because the clinician's oldest open note is past its block
-   * instant. The three facts come from the refusal's `details`; each but the count can be absent. The shell shows the closure banner
-   * and, unless the person is on a screen the gate still allows, sends them to My notes.
+   * instant. The signal is only the cue: the closure banner reads the facts (oldest note, deadline, count) from the status poll, which
+   * this same signal refreshes at once, so the refusal's own `details` are not parsed. Unless the person is on a screen the gate still
+   * allows, the shell sends them to My notes.
    */
-  | {
-      kind: "note-closure-required";
-      encounterId?: string;
-      deadlineAt?: string;
-      overdueCount: number;
-    }
+  | { kind: "note-closure-required" }
   | null;
 
 type Listener = () => void;
@@ -90,52 +86,18 @@ const NOTE_CLOSURE_REQUIRED_CODE = "NOTE_CLOSURE_REQUIRED";
 /** The visit-note gate's fail-closed 503 (the closure status could not be read): it refuses ONE action, it is not an outage. */
 const NOTE_CLOSURE_UNAVAILABLE_CODE = "NOTE_CLOSURE_UNAVAILABLE";
 
-/** One entry of the refusal's `details` (`{ field, code, message }[]`): the value of each fact rides in `message`. */
-type RefusalDetail = { field?: unknown; message?: unknown };
-
-function detailMessage(details: readonly RefusalDetail[], field: string): string | undefined {
-  const message = details.find((d) => d.field === field)?.message;
-  return typeof message === "string" && message !== "" ? message : undefined;
-}
-
 /**
- * The `note-closure-required` signal for a refusal body's `error.details`. Only the overdue count is always present; the oldest note
- * and its deadline are left out when the gate did not send them. A missing or unreadable count falls back to 1: the refusal itself
- * means at least one note is overdue.
- */
-export function noteClosureSignalFromDetails(details: unknown): GlobalResponseSignal {
-  const list = (Array.isArray(details) ? details : []) as RefusalDetail[];
-  const encounterId = detailMessage(list, "encounterId");
-  const deadlineAt = detailMessage(list, "deadlineAt");
-  const count = Number.parseInt(detailMessage(list, "overdueCount") ?? "", 10);
-  return {
-    kind: "note-closure-required",
-    ...(encounterId === undefined ? {} : { encounterId }),
-    ...(deadlineAt === undefined ? {} : { deadlineAt }),
-    overdueCount: Number.isFinite(count) && count > 0 ? count : 1,
-  };
-}
-
-/**
- * The tenant-unavailable, organization-onboarding or note-closure-required signal for a refusal body `{ error: { code, details } }`,
- * or null for any other body. The note-closure signal is only ever read off a 403. Reads a clone.
+ * The tenant-unavailable, organization-onboarding or note-closure-required signal for a refusal body `{ error: { code } }`, or null for
+ * any other body. The note-closure signal is only ever read off a 403. Reads a clone.
  */
 export async function tenantSignalFromResponse(response: Response): Promise<GlobalResponseSignal> {
-  try {
-    if (!response.headers.get("content-type")?.includes("json")) return null;
-    const body = (await response.clone().json()) as {
-      error?: { code?: unknown; details?: unknown };
-    } | null;
-    const code = body?.error?.code;
-    if (code === ORGANIZATION_ONBOARDING_CODE) return { kind: "organization-onboarding" };
-    if (code === NOTE_CLOSURE_REQUIRED_CODE && response.status === 403) {
-      return noteClosureSignalFromDetails(body?.error?.details);
-    }
-    const reason = typeof code === "string" ? TENANT_ERROR_CODES[code] : undefined;
-    return reason ? { kind: "tenant-unavailable", reason } : null;
-  } catch {
-    return null;
+  const code = await errorCodeOf(response);
+  if (code === ORGANIZATION_ONBOARDING_CODE) return { kind: "organization-onboarding" };
+  if (code === NOTE_CLOSURE_REQUIRED_CODE && response.status === 403) {
+    return { kind: "note-closure-required" };
   }
+  const reason = code === undefined ? undefined : TENANT_ERROR_CODES[code];
+  return reason ? { kind: "tenant-unavailable", reason } : null;
 }
 
 /**

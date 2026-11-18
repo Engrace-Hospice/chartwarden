@@ -3,7 +3,7 @@
 // reaction to a 403 NOTE_CLOSURE_REQUIRED observed through the real API client (move to My notes off a refused screen, stay on an
 // allowed one, never route the gate's 503 to /maintenance).
 import { type ApiClient, ApiClientProvider, createApiClient, useApiClient } from "@chartwarden/ui";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -20,6 +20,7 @@ import {
   NOTE_CLOSURE_POLL_INTERVAL_MS,
   NoteClosureProvider,
   type NoteClosureStatus,
+  useNoteClosure,
 } from "./note-closure";
 import { NoteClosureBanner } from "./note-closure-banner";
 import { createScreenRegistry } from "./screen-registry";
@@ -64,8 +65,16 @@ const BLOCKED = status({
 
 type Call = { path: string; headers?: Record<string, string> };
 
-/** A stand-in client: `closure-status` answers from `answers` (the last repeats), the encounter read answers its patient. */
-function mockClient(answers: (NoteClosureStatus | "fail")[]) {
+const DRAFT_NOTE = { patientId: PATIENT, status: "draft" };
+
+/**
+ * A stand-in client: `closure-status` answers from `answers` (the last repeats), the encounter read answers its patient and status
+ * (`encounter`, a draft by default).
+ */
+function mockClient(
+  answers: (NoteClosureStatus | "fail")[],
+  encounter: { patientId: string; status: string } = DRAFT_NOTE,
+) {
   const calls: Call[] = [];
   let closureReads = 0;
   const GET = vi.fn(async (path: string, init?: { headers?: Record<string, string> }) => {
@@ -77,7 +86,7 @@ function mockClient(answers: (NoteClosureStatus | "fail")[]) {
       return { data: answer, error: undefined, response: new Response() };
     }
     if (path === "/api/v1/encounters/{encounterId}") {
-      return { data: { patientId: PATIENT }, error: undefined, response: new Response() };
+      return { data: encounter, error: undefined, response: new Response() };
     }
     return { data: { alerts: [] }, error: undefined, response: new Response() };
   });
@@ -152,6 +161,17 @@ describe("closure banner states", () => {
     const link = within(alert).getByRole("link", { name: "Open the oldest note" });
     await waitFor(() =>
       expect(link.getAttribute("href")).toBe(`/patients/${PATIENT}/encounters/${OLDEST}/compose`),
+    );
+  });
+
+  it("blocked: a finalized oldest note links to the read screen where it is signed, not the read-only composer", async () => {
+    const { client } = mockClient([BLOCKED], { patientId: PATIENT, status: "finalized" });
+    mountBanner(client);
+    const link = within(await screen.findByRole("alert")).getByRole("link", {
+      name: "Open the oldest note",
+    });
+    await waitFor(() =>
+      expect(link.getAttribute("href")).toBe(`/patients/${PATIENT}/encounters/${OLDEST}`),
     );
   });
 
@@ -239,17 +259,96 @@ describe("closure status polling", () => {
 
     // Inside the gap (the first read just ran): a refusal must not trigger another read, or a refused status read would loop.
     act(() => {
-      setGlobalResponseSignal({ kind: "note-closure-required", overdueCount: 2 });
+      setGlobalResponseSignal({ kind: "note-closure-required" });
     });
     expect(closureCalls()).toHaveLength(1);
 
     const later = Date.now() + NOTE_CLOSURE_MIN_REFRESH_GAP_MS + 1_000;
     vi.spyOn(Date, "now").mockReturnValue(later);
     act(() => {
-      setGlobalResponseSignal({ kind: "note-closure-required", overdueCount: 2 });
+      setGlobalResponseSignal({ kind: "note-closure-required" });
     });
     await waitFor(() => expect(closureCalls()).toHaveLength(2));
     expect(await screen.findByRole("alert")).toBeTruthy();
+  });
+});
+
+// GAP-002: a request the person did not cause must carry the background marker, or it counts as activity and the 15-minute idle logoff
+// never fires. The poll is one such request; the refresh a gate refusal triggers is another (the refusal is often the answer to a
+// wallboard's own background poll), so it must be marked too. What a person does (open the app, return to the tab, press refresh) is not.
+describe("which closure-status reads count as user activity", () => {
+  const BACKGROUND = { "x-chartwarden-background": "1" };
+  const afterTheGap = (): number => Date.now() + NOTE_CLOSURE_MIN_REFRESH_GAP_MS + 1_000;
+
+  function RefreshButton(): JSX.Element {
+    const { refresh } = useNoteClosure();
+    return (
+      <button type="button" onClick={refresh}>
+        Refresh status
+      </button>
+    );
+  }
+
+  function mountWithRefresh(client: ApiClient) {
+    return render(
+      <ApiClientProvider client={client}>
+        <SessionProvider session={author}>
+          <MemoryRouter>
+            <NoteClosureProvider>
+              <RefreshButton />
+            </NoteClosureProvider>
+          </MemoryRouter>
+        </SessionProvider>
+      </ApiClientProvider>,
+    );
+  }
+
+  it("marks the read a gate refusal triggers as background, while mount, focus and refresh stay unmarked", async () => {
+    const { client, closureCalls } = mockClient([status()]);
+    mountWithRefresh(client);
+    await waitFor(() => expect(closureCalls()).toHaveLength(1));
+    expect(closureCalls()[0]?.headers).toBeUndefined(); // mount: the person opened the app
+
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValue(afterTheGap());
+    act(() => {
+      setGlobalResponseSignal({ kind: "note-closure-required" });
+    });
+    await waitFor(() => expect(closureCalls()).toHaveLength(2));
+    expect(closureCalls()[1]?.headers).toEqual(BACKGROUND); // a refusal is not the person asking
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(closureCalls()).toHaveLength(3));
+    expect(closureCalls()[2]?.headers).toBeUndefined(); // the person came back to the tab
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
+    await waitFor(() => expect(closureCalls()).toHaveLength(4));
+    expect(closureCalls()[3]?.headers).toBeUndefined(); // the person asked for a refresh
+  });
+
+  it("does not read on a gate refusal while the tab is hidden, and reads again once it is visible", async () => {
+    const { client, closureCalls } = mockClient([status()]);
+    mountWithRefresh(client);
+    await waitFor(() => expect(closureCalls()).toHaveLength(1));
+
+    vi.spyOn(Date, "now").mockReturnValue(afterTheGap());
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    act(() => {
+      setGlobalResponseSignal({ kind: "note-closure-required" });
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(closureCalls()).toHaveLength(1);
+
+    hidden.mockReturnValue(false);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(closureCalls()).toHaveLength(2));
+    expect(closureCalls()[1]?.headers).toBeUndefined();
   });
 });
 

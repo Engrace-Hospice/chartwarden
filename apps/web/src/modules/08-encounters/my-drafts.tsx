@@ -10,7 +10,6 @@ import {
   StatusPill,
   WorkQueueLayout,
   interactiveRowProps,
-  useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/08-encounters — My notes (M8 §5.1, Track B / ADR-0030; the screen id stays `encounter.my-drafts`, route /work/drafts).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
@@ -19,7 +18,9 @@ import {
 // clock the request gate and the alerts use): a note with no clock is a LEGACY note, shown as "Legacy", never alerting. Nearest
 // deadline first, Legacy last. Reconciled to Lantern (R1): stage and late-entry tier are §6.6 StatusPills, ids mono, table No-Line.
 // A draft opens the composer, a finalized note the read screen where it is signed. Reads GET /api/v1/encounters/my-drafts via the
-// typed client; the server scopes to the calling author (ADR-0030 — no authz on the frontend). Imports only leaves (@chartwarden/ui).
+// typed client (use-my-notes.ts, which also re-reads it on focus and every minute so a stage that moved with the clock shows; the rows
+// are the generated contract's, not a hand-written copy); the server scopes to the calling author (ADR-0030 — no authz on the frontend).
+// Imports only leaves (@chartwarden/ui).
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
@@ -29,7 +30,6 @@ import { usePatientNames } from "../../shell/patient-names";
 import { lateEntryTone, stateLabel } from "./encounter-status";
 import {
   type ClosureFilter,
-  type NoteClosure,
   closureCounts,
   closureLabel,
   closureTone,
@@ -39,18 +39,7 @@ import {
   openNoteLabel,
   sortByDeadline,
 } from "./my-notes-model";
-
-interface EncounterRow {
-  id: string;
-  patientId: string;
-  visitId?: string | null;
-  encounterType: string;
-  discipline: string;
-  serviceDate: string;
-  status: string;
-  lateEntryTier: string;
-  closure: NoteClosure;
-}
+import { useMyNotes } from "./use-my-notes";
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -65,37 +54,15 @@ const isClosureFilter = (value: string): value is ClosureFilter =>
   CLOSURE_FILTER_OPTIONS.some((o) => o.value === value);
 
 export function MyDrafts(): JSX.Element {
-  const client = useApiClient();
   const navigate = useNavigate();
-  const [items, setItems] = useState<EncounterRow[]>([]);
   const [disciplineFilter, setDisciplineFilter] = useState("");
   const [lateFilter, setLateFilter] = useState("");
   const [closureFilter, setClosureFilter] = useState<ClosureFilter>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      const { data, error: err } = await client.GET("/api/v1/encounters/my-drafts");
-      if (!active) return;
-      if (err) {
-        setError("Could not load your notes.");
-        setLoading(false);
-        return;
-      }
-      setItems((data?.encounters ?? []) as EncounterRow[]);
-      setLoading(false);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client]);
+  // Read at mount, then again on focus and on a slow interval so a stage that moved with the clock shows (see use-my-notes.ts).
+  const { items, loading, error } = useMyNotes();
 
   // The banner's own poll can lag a signature by up to a minute: re-read it once this list is fresh so the two agree.
   const { refresh: refreshClosureStatus } = useNoteClosure();

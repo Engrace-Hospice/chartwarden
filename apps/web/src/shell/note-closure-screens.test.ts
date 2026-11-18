@@ -27,15 +27,12 @@ describe("isNoteClosureAllowedScreen", () => {
     "/triage/intake",
     "/triage/calls/c-1/transcript",
     "/me/oncall",
-    "/safety",
     "/safety/sos/s-1",
     "/safety/incidents/new",
     "/me/safety/check-ins",
     "/messaging",
-    "/messaging/inbox",
-    "/messaging/unacknowledged",
+    "/messaging/on-call",
     "/notifications",
-    "/n/abc",
     "/login/organization",
     "/step-up",
     "/expired",
@@ -51,6 +48,13 @@ describe("isNoteClosureAllowedScreen", () => {
     "/admin/onboarding",
     "/triage/shifts",
     "/triage/policy",
+    // These open with a read the gate refuses (an organization-wide board, the work inbox, the unacknowledged queue, a delivery
+    // target): a blocked clinician must be moved to My notes, not left on a permission error.
+    "/safety",
+    "/safety/check-ins",
+    "/messaging/inbox",
+    "/messaging/unacknowledged",
+    "/n/abc",
     "/safety/policy",
     "/safety/metrics",
     "/messaging/governance/retention",
@@ -61,6 +65,31 @@ describe("isNoteClosureAllowedScreen", () => {
     "/orders-archive",
   ])("does not treat %s as allowed", (path) => {
     expect(isNoteClosureAllowedScreen(path)).toBe(false);
+  });
+});
+
+// react-router matches case-insensitively and ignores a trailing slash, so the screen the router renders is the screen the gate allows.
+describe("isNoteClosureAllowedScreen follows the router's matching", () => {
+  it.each([
+    "/Patients/p-1/encounters/e-1/compose",
+    "/WORK/Drafts",
+    "/Triage",
+    "/triage/",
+    "/patients/",
+    "/Me/OnCall",
+  ])("keeps a blocked clinician on %s", (path) => {
+    expect(isNoteClosureAllowedScreen(path)).toBe(true);
+  });
+
+  it.each(["/Scheduling/Visits/v-1", "/Triage/Shifts", "/Safety", "/Patients-Archive", "/"])(
+    "still does not treat %s as allowed",
+    (path) => {
+      expect(isNoteClosureAllowedScreen(path)).toBe(false);
+    },
+  );
+
+  it("does not move a clinician off the composer when its path is typed in another case", () => {
+    expect(noteClosureRedirectFor("/Patients/p-1/encounters/e-1/compose", true)).toBeNull();
   });
 });
 

@@ -2,8 +2,9 @@
 // for mode off or an ok stage, severity by state, and no claim that access is limited unless the clinician is blocked (or the tenant
 // is on `block`).
 import { describe, expect, it } from "vitest";
+import { formatClosureInstant } from "./closure-instant";
 import type { NoteClosureStatus } from "./note-closure";
-import { closureBannerModel, formatClosureInstant } from "./note-closure-banner-model";
+import { closureBannerModel } from "./note-closure-banner-model";
 
 const NOW = new Date("2026-11-17T12:00:00.000Z");
 const OLDEST = "e0000000-0000-4000-8000-000000000001";
@@ -148,11 +149,5 @@ describe("closureBannerModel", () => {
       NOW,
     );
     expect(model?.blocked).toBe(true);
-  });
-});
-
-describe("formatClosureInstant", () => {
-  it("shows a dash for an unparseable instant, never 'Invalid Date'", () => {
-    expect(formatClosureInstant("not a date")).toBe("—");
   });
 });

@@ -7,6 +7,15 @@
 // STEP-UP: a refusal stashes what was typed (in memory only: the reason is free text) and sends the supervisor to /step-up; the board
 // reopens this drawer from `?note=` and the form is restored, and nothing is sent for them. IDEMPOTENCY: the grant runs under
 // `useAttemptKey`, so a retry of the SAME attempt after a lost reply carries the same key and an edit starts a new one.
+// ANNOUNCING: ONE polite status line sits in the drawer from the first render and its text is filled in when a grant or a revoke lands
+// (a live region is only announced for a change inside a region that was already there). Focus moves to the drawer's heading at the same
+// moment, because the button that was pressed is replaced by the other state's form. A late answer to a drawer that was closed in the
+// meantime records the grant for the board and does nothing else: no navigation, no stashed draft, no state.
+import {
+  CLOSURE_OVERRIDE_DEFAULT_HOURS,
+  CLOSURE_OVERRIDE_MAX_HOURS,
+  CLOSURE_OVERRIDE_MIN_REASON_CHARS,
+} from "@chartwarden/types";
 import {
   Button,
   Glyph,
@@ -21,6 +30,7 @@ import {
 import { useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { formatClosureInstant } from "../../shell/closure-instant";
 import {
   type StepUpDraftOwner,
   clearStepUpDraft,
@@ -32,25 +42,28 @@ import {
 import { useStepUpOwner } from "../../shell/use-step-up-return";
 import {
   type ClosureOverrideView,
+  type HeldOverride,
   type OverdueNote,
+  type RevokedOverrideView,
+  SUBJECT_NOT_BLOCKED_CODE,
   describeRefusal,
   grantOverride,
+  reasonFieldError,
+  refusalSentence,
   revokeOverride,
 } from "./closure-api";
 import {
-  OVERRIDE_DEFAULT_HOURS,
-  OVERRIDE_MAX_HOURS,
   OVERRIDE_MIN_HOURS,
-  OVERRIDE_MIN_REASON_CHARS,
   STAGE_LABEL,
   STAGE_TONE,
-  formatInstant,
   isGrantActive,
+  overrideStatusText,
   parseOverrideHours,
   reasonLength,
   timingLabel,
 } from "./closure-model";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
+import { useIsMounted } from "./use-is-mounted";
 
 /** The step-up draft action of the grant form; the board discards an abandoned draft of it. */
 export const GRANT_OVERRIDE_ACTION = "encounters.closure.override";
@@ -74,17 +87,29 @@ const isFields = (value: unknown): value is Fields =>
 
 const REASON_HINT_PHI = "Recorded in the audit trail. Do not include patient names or identifiers.";
 
+/** Said when a refresh no longer lists the open note: it was probably closed, so granting may find nothing to lift. */
+const NOT_LISTED_TEXT =
+  "This note is no longer on the board, so it may already be closed. The panel stays open until you close it.";
+
+/** The status line's box: it takes no room while it is empty, and lines up with the cards below once it has something to say. */
+const statusLineStyle = (hasText: boolean) =>
+  hasText ? ({ display: "block", padding: "0 1.125rem" } as const) : undefined;
+
 export interface OverrideGrantDrawerProps {
   readonly note: OverdueNote;
   readonly patientName: string;
   readonly clinicianName: string;
   /** The grant made for this clinician in this session, if any (it may have expired or been revoked). */
-  readonly grant: ClosureOverrideView | null;
+  readonly grant: HeldOverride | null;
+  /** False when the board's latest read no longer lists this note (the drawer was kept open for the supervisor). */
+  readonly listed: boolean;
   /** True when the supervisor is genuinely back from /step-up: a stashed draft for this note is restored. */
   readonly resume: boolean;
   readonly onClose: () => void;
   readonly onGranted: (grant: ClosureOverrideView) => void;
-  readonly onRevoked: (grant: ClosureOverrideView) => void;
+  readonly onRevoked: (grant: RevokedOverrideView) => void;
+  /** The server says the board's picture is out of date (the clinician is no longer blocked): the board re-reads. */
+  readonly onStale: () => void;
 }
 
 export function OverrideGrantDrawer({
@@ -92,18 +117,37 @@ export function OverrideGrantDrawer({
   patientName,
   clinicianName,
   grant,
+  listed,
   resume,
   onClose,
   onGranted,
   onRevoked,
+  onStale,
 }: OverrideGrantDrawerProps): JSX.Element {
-  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const owner = useStepUpOwner();
-  const active = grant !== null && isGrantActive(grant, new Date());
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const now = new Date();
+  const active = grant !== null && isGrantActive(grant, now);
   const close = (): void => {
     clearStepUpDraft(grantDraftKey(owner, note.encounterId)); // closing abandons the draft
     onClose();
   };
+  // Escape closes through the same path as Close and Cancel (so it abandons the stashed draft too), and a grant or a revoke resets the
+  // drawer's "edited" latch: after a grant the typed reason is gone, so Escape must close again.
+  const drawer = useDrawerA11y<HTMLElement>(
+    close,
+    `${grant?.id ?? "none"}:${active ? "active" : "idle"}`,
+  );
+  // The pressed button is replaced by the other state's form, so focus goes to a part of the drawer that stays. Once the drawer is gone
+  // the ref is null and nothing moves.
+  const settled =
+    <T,>(done: (settledGrant: T) => void) =>
+    (settledGrant: T): void => {
+      headingRef.current?.focus();
+      done(settledGrant);
+    };
+  const statusText =
+    overrideStatusText(grant, clinicianName, now) ?? (listed ? null : NOT_LISTED_TEXT);
   return (
     <aside className="wx-admission-drawer" {...drawer} aria-label={`Override for ${clinicianName}`}>
       <header className="wx-drawer-head">
@@ -111,30 +155,39 @@ export function OverrideGrantDrawer({
           <Glyph name="shield-check" size={20} />
         </span>
         <div>
-          <h2>Grant override</h2>
+          <h2 ref={headingRef} tabIndex={-1}>
+            Grant override
+          </h2>
           <div className="wx-row-sub">{clinicianName}</div>
         </div>
         <Button tone="tertiary" size="sm" aria-label="Close override panel" onClick={close}>
           <Glyph name="close" size={16} />
         </Button>
       </header>
+      <output style={statusLineStyle(statusText !== null)}>
+        {statusText ? (
+          <InlineAlert tone="success" live={false}>
+            {statusText}
+          </InlineAlert>
+        ) : null}
+      </output>
       <div className="wx-drawer-body">
         <NoteFacts note={note} patientName={patientName} clinicianName={clinicianName} />
         {active && grant ? (
-          <ActiveGrant grant={grant} clinicianName={clinicianName} onRevoked={onRevoked} />
+          <ActiveGrant grant={grant} onRevoked={settled(onRevoked)} />
         ) : (
           <section className="wx-drawer-card">
             <h3>Lift the block for a while</h3>
-            {grant?.revokedAt ? (
-              <InlineAlert tone="success">
-                Override revoked. {clinicianName} is limited again while the note is past its
-                deadline.
-              </InlineAlert>
-            ) : null}
             <p className="wx-row-sub">
               {`${clinicianName} will be able to use the rest of the app for the hours you choose. The note stays open: its alerts and deadline do not change, and this does not replace a late-entry override. Your name and the reason are recorded in the audit trail.`}
             </p>
-            <GrantForm note={note} resume={resume} onGranted={onGranted} onCancel={close} />
+            <GrantForm
+              note={note}
+              resume={resume}
+              onGranted={settled(onGranted)}
+              onStale={onStale}
+              onCancel={close}
+            />
           </section>
         )}
       </div>
@@ -173,7 +226,7 @@ function NoteFacts({
           />
         </Fact>
         <Fact label="Deadline">
-          <span className="wx-nums">{formatInstant(note.deadlineAt)}</span>
+          <span className="wx-nums">{formatClosureInstant(note.deadlineAt)}</span>
         </Fact>
         <Fact label="Timing">
           {timingLabel(note.stage, note.hoursOverdue, note.deadlineAt, new Date())}
@@ -194,16 +247,15 @@ function Fact({ label, children }: { label: string; children: ReactNode }): JSX.
 
 function ActiveGrant({
   grant,
-  clinicianName,
   onRevoked,
 }: {
-  grant: ClosureOverrideView;
-  clinicianName: string;
-  onRevoked: (grant: ClosureOverrideView) => void;
+  grant: HeldOverride;
+  onRevoked: (grant: RevokedOverrideView) => void;
 }): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
+  const mounted = useIsMounted();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -215,11 +267,12 @@ function ActiveGrant({
     setError(null);
     const outcome = await revokeOverride(client, grant.id);
     inFlight.current = false;
-    setBusy(false);
+    if (mounted.current) setBusy(false);
     if (outcome.ok) {
-      onRevoked(outcome.data);
+      onRevoked(outcome.data); // the board keeps it even if the drawer was closed meanwhile
       return;
     }
+    if (!mounted.current) return; // the supervisor left: no navigation, no state
     if (outcome.status === 401) {
       navigate("/login");
       return;
@@ -229,15 +282,12 @@ function ActiveGrant({
       navigate(stepUp);
       return;
     }
-    setError(describeRefusal(outcome).message);
+    setError(refusalSentence(describeRefusal(outcome)));
   };
 
   return (
     <section className="wx-drawer-card">
       <h3>Override active</h3>
-      <InlineAlert tone="success">
-        {`${clinicianName} is not blocked until ${formatInstant(grant.expiresAt)}.`}
-      </InlineAlert>
       <p className="wx-row-sub">
         Revoke it to limit them again at once. The grant is kept in the audit trail either way.
       </p>
@@ -255,21 +305,24 @@ function GrantForm({
   note,
   resume,
   onGranted,
+  onStale,
   onCancel,
 }: {
   note: OverdueNote;
   resume: boolean;
   onGranted: (grant: ClosureOverrideView) => void;
+  onStale: () => void;
   onCancel: () => void;
 }): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
   const owner = useStepUpOwner();
+  const mounted = useIsMounted();
   const draftKey = grantDraftKey(owner, note.encounterId);
   const [fields, setFields] = useState<Fields>(() => {
     const draft = resume ? peekStepUpDraft<unknown>(draftKey) : null;
-    return isFields(draft) ? draft : { reason: "", hours: String(OVERRIDE_DEFAULT_HOURS) };
+    return isFields(draft) ? draft : { reason: "", hours: String(CLOSURE_OVERRIDE_DEFAULT_HOURS) };
   });
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
@@ -279,23 +332,26 @@ function GrantForm({
   // fetch, a gateway page, the in-flight 409), renewed on any other answer and when the reason, the hours or the clinician change.
   const attempt = useAttemptKey();
 
+  // Fixing a field retires the refusal that was about it: leaving the old error and aria-invalid beside a "Long enough." hint contradicts it.
   const edit =
     (name: keyof Fields) =>
-    (value: string): void =>
+    (value: string): void => {
       setFields((previous) => ({ ...previous, [name]: value }));
+      setFieldErrors(({ [name]: _fixed, ...rest }) => rest);
+    };
 
   const submit = async (): Promise<void> => {
     if (inFlight.current) return;
     const hours = parseOverrideHours(fields.hours);
     const errors: FieldErrors = {
-      ...(reasonLength(fields.reason) < OVERRIDE_MIN_REASON_CHARS
+      ...(reasonLength(fields.reason) < CLOSURE_OVERRIDE_MIN_REASON_CHARS
         ? {
-            reason: `Enter at least ${OVERRIDE_MIN_REASON_CHARS} characters so the audit trail says why.`,
+            reason: `Enter at least ${CLOSURE_OVERRIDE_MIN_REASON_CHARS} characters so the audit trail says why.`,
           }
         : {}),
       ...(hours === null
         ? {
-            hours: `Enter a whole number of hours from ${OVERRIDE_MIN_HOURS} to ${OVERRIDE_MAX_HOURS}.`,
+            hours: `Enter a whole number of hours from ${OVERRIDE_MIN_HOURS} to ${CLOSURE_OVERRIDE_MAX_HOURS}.`,
           }
         : {}),
     };
@@ -310,12 +366,13 @@ function GrantForm({
       hours,
     });
     inFlight.current = false;
-    setBusy(false);
+    if (mounted.current) setBusy(false);
     if (outcome.ok) {
       clearStepUpDraft(draftKey);
-      onGranted(outcome.data);
+      onGranted(outcome.data); // the board keeps it even if the drawer was closed meanwhile
       return;
     }
+    if (!mounted.current) return; // the supervisor left: no navigation, no stashed draft, no state
     if (outcome.status === 401) {
       navigate("/login");
       return;
@@ -328,16 +385,17 @@ function GrantForm({
       return;
     }
     const failure = describeRefusal(outcome);
-    const reasonError = failure.fieldErrors.reason;
+    const reasonError = reasonFieldError(failure);
     const hoursError = failure.fieldErrors.hours;
     setFieldErrors({
       ...(reasonError ? { reason: reasonError } : {}),
       ...(hoursError ? { hours: hoursError } : {}),
     });
-    setNotice(reasonError || hoursError ? null : (failure.details[0]?.message ?? failure.message));
+    setNotice(reasonError || hoursError ? null : refusalSentence(failure));
+    if (failure.code === SUBJECT_NOT_BLOCKED_CODE) onStale();
   };
 
-  const remaining = OVERRIDE_MIN_REASON_CHARS - reasonLength(fields.reason);
+  const remaining = CLOSURE_OVERRIDE_MIN_REASON_CHARS - reasonLength(fields.reason);
   return (
     <form
       className="wx-form-stack"
@@ -355,7 +413,7 @@ function GrantForm({
         error={fieldErrors.reason}
         hint={`${REASON_HINT_PHI} ${
           remaining > 0
-            ? `${remaining} more characters needed (${OVERRIDE_MIN_REASON_CHARS} minimum).`
+            ? `${remaining} more characters needed (${CLOSURE_OVERRIDE_MIN_REASON_CHARS} minimum).`
             : "Long enough."
         }`}
         onChange={(event) => edit("reason")(event.target.value)}
@@ -367,7 +425,7 @@ function GrantForm({
         autoComplete="off"
         value={fields.hours}
         error={fieldErrors.hours}
-        hint={`${OVERRIDE_MIN_HOURS} to ${OVERRIDE_MAX_HOURS} hours. It ends by itself.`}
+        hint={`${OVERRIDE_MIN_HOURS} to ${CLOSURE_OVERRIDE_MAX_HOURS} hours. It ends by itself.`}
         onChange={(event) => edit("hours")(event.target.value)}
       />
       {notice ? <InlineAlert tone="error">{notice}</InlineAlert> : null}

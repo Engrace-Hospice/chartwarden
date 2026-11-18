@@ -523,7 +523,8 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
           category: "other" as const,
           title: `Finish ${stateLabel(e.encounterType).toLowerCase()} note`,
           patientId: e.patientId,
-          dueAt: e.closure.deadlineAt,
+          // `closure` is on every row of the contract, but a stale cached or older server answer may lack it: no deadline then.
+          dueAt: e.closure?.deadlineAt ?? null,
           href: `/patients/${e.patientId}/encounters/${e.id}`,
         })),
       };

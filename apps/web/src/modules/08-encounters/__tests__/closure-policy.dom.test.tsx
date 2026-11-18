@@ -298,3 +298,98 @@ describe("step-up", () => {
     expect(writes(calls)).toHaveLength(1);
   });
 });
+
+describe("what a screen reader hears, and where focus goes", () => {
+  it("announces a saved policy through a status line the panel already had, and focuses the panel heading", async () => {
+    mount();
+    await ready();
+    const line = within(inForce()).getByRole("status");
+    expect(line.textContent).toBe("");
+
+    fireEvent.click(modeRadio("Off"));
+    fireEvent.click(save());
+    await screen.findByText(/Policy saved: off/);
+
+    expect(within(inForce()).getByRole("status")).toBe(line); // never remounted: the text arrived in a region that was already there
+    expect(line.textContent).toMatch(/Policy saved: off/);
+    expect(document.activeElement).toBe(screen.getByText("In force now"));
+  });
+
+  it("focuses the panel heading, not the Save button that is disabled again, after a confirmed save", async () => {
+    mount();
+    await ready();
+    fireEvent.click(modeRadio("Warn, then block"));
+    fireEvent.click(save());
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Turn on blocking" }));
+    await screen.findByText(/Policy saved: warn, then block/);
+
+    expect((save() as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText("In force now")));
+  });
+});
+
+describe("a restored edit and a retry", () => {
+  it("restores the stashed edit once: a Refresh afterwards shows what the server holds, not the old edit", async () => {
+    const calls: Call[] = [];
+    const write: Responder = () => ({ status: 403, body: { error: { code: "STEP_UP_REQUIRED" } } });
+    mount({ calls, write });
+    await ready();
+    fireEvent.click(modeRadio("Off"));
+    setDeadline("36");
+    fireEvent.click(save());
+    await screen.findByText("elsewhere");
+    cleanup();
+
+    markStepUpReturn(PATH);
+    mount({ calls, write });
+    await ready();
+    expect(deadlineInput().value).toBe("36"); // restored for this visit
+    expect(stepUpDraftKeys().length).toBe(0); // and spent
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await ready();
+    expect(deadlineInput().value).toBe("24");
+    expect(modeRadio("Warn only").checked).toBe(true);
+  });
+
+  it("retires the deadline error as soon as the field is edited", async () => {
+    mount();
+    await ready();
+    setDeadline("0");
+    fireEvent.click(save());
+    expect(await screen.findByText("Enter a whole number of hours from 1 to 168.")).toBeTruthy();
+    expect(deadlineInput().getAttribute("aria-invalid")).toBe("true");
+
+    setDeadline("12");
+
+    expect(screen.queryByText("Enter a whole number of hours from 1 to 168.")).toBeNull();
+    expect(deadlineInput().getAttribute("aria-invalid")).not.toBe("true");
+  });
+});
+
+describe("leaving while a save is in flight", () => {
+  it("does not step up, stash a draft or navigate for an admin who already left the screen", async () => {
+    delete document.body.dataset.where;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mount({
+      write: async () => {
+        await gate;
+        return { status: 403, body: { error: { code: "STEP_UP_REQUIRED" } } };
+      },
+    });
+    await ready();
+    fireEvent.click(modeRadio("Off"));
+    fireEvent.click(save());
+    cleanup(); // the admin leaves while the save is still going
+
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(stepUpDraftKeys().length).toBe(0);
+    expect(document.body.dataset.where).toBeUndefined();
+  });
+});

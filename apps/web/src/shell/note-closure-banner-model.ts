@@ -2,6 +2,7 @@
 // the stage and the verdict; this only words them. Two rules shape the wording: a banner never claims access is limited unless the
 // verdict says the clinician IS blocked (or the tenant mode is `block`, where overdue notes do limit other work), and mode `off` or an
 // `ok` stage says nothing at all.
+import { formatClosureInstant } from "./closure-instant";
 import type { NoteClosureStatus } from "./note-closure";
 
 export type ClosureBannerTone = "info" | "warning" | "error";
@@ -14,18 +15,6 @@ export interface ClosureBannerModel {
   readonly blocked: boolean;
   /** The oldest open note (the link target when `blocked`). */
   readonly encounterId: string | null;
-}
-
-/** An instant in the viewer's locale and time zone ("Nov 18, 3:40 PM"); an unparseable value is shown as a dash, never "Invalid Date". */
-export function formatClosureInstant(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 const notesPhrase = (count: number): string => (count === 1 ? "visit note" : "visit notes");

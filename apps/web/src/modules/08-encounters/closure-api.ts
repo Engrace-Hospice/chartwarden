@@ -24,6 +24,15 @@ type Ok<Op> = Op extends { responses: { 200: infer R } }
 export type OverdueBoardView = Ok<operations["getApiV1EncountersOverduenotes"]>;
 export type OverdueNote = OverdueBoardView["items"][number];
 export type ClosureOverrideView = Ok<operations["postApiV1EncountersClosureoverrides"]>;
+/**
+ * A revoke's reply: the stored grant plus `remainingActiveUntil`, the latest expiry of ANOTHER active grant for the same clinician (null
+ * when this was the last one). A revoke that leaves another grant in force does not limit the clinician again, so the drawer says so.
+ */
+export type RevokedOverrideView = Ok<
+  operations["postApiV1EncountersClosureoverridesByOverrideIdRevoke"]
+>;
+/** A grant the board holds for a clinician: the one just made, or the one just revoked. */
+export type HeldOverride = ClosureOverrideView | RevokedOverrideView;
 export type ClosurePolicyView = Ok<operations["getApiV1EncountersClosurepolicy"]>;
 export type ClosurePolicyInput = Pick<ClosurePolicyView, "mode" | "thresholdHours">;
 export type CareTeamStaff = Ok<operations["getApiV1OrgsByIdCareteamstaff"]>["staff"][number];
@@ -42,7 +51,19 @@ export type Outcome<T> =
 const REFUSAL_COPY: Readonly<Record<string, string>> = {
   FORBIDDEN:
     "That was refused. You cannot override your own note, and an override needs the supervisor permission.",
+  // A supervisor who is blocked on their own notes cannot release anyone else until those are closed.
+  NOTE_CLOSURE_GRANTOR_BLOCKED: "Close your own overdue notes before releasing someone else.",
+  // The clinician closed the note (or another supervisor already released them) while the board was open: nothing to lift.
+  NOTE_CLOSURE_SUBJECT_NOT_BLOCKED:
+    "This clinician is not blocked right now, so there is nothing to lift.",
+  NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE: "That clinician's note is outside your sites.",
 };
+
+/** A refusal that means the board's picture of who is blocked is out of date, so the board re-reads. */
+export const SUBJECT_NOT_BLOCKED_CODE = "NOTE_CLOSURE_SUBJECT_NOT_BLOCKED";
+
+/** The sentence under the reason box when the server refuses the reason's content (an identifier-shaped reason). */
+export const REASON_IDENTIFIER_COPY = "Remove names, SSNs and other identifiers from the reason.";
 
 interface Settled<T> {
   readonly data?: T | undefined;
@@ -112,7 +133,7 @@ export async function grantOverride(
 export function revokeOverride(
   client: ApiClient,
   overrideId: string,
-): Promise<Outcome<ClosureOverrideView>> {
+): Promise<Outcome<RevokedOverrideView>> {
   return settle(() =>
     client.POST("/api/v1/encounters/closure-overrides/{overrideId}/revoke", {
       params: { path: { overrideId } },
@@ -148,8 +169,30 @@ export function loadStaffNames(
   });
 }
 
-/** What a refused write tells the person (kind, the sentence, and the per-field errors a 422 carries). */
+/** What a refused write tells the person (kind, the sentence, and the per-field errors a 400 or 422 carries). */
 export function describeRefusal(failure: { status: number; error: unknown }): OpsFailure {
   const response = failure.status === 0 ? null : { status: failure.status };
   return describeOpsError(failure.error, response, REFUSAL_COPY);
+}
+
+/**
+ * The one sentence a refusal that is not about a field gets. A code this feature has words for uses them (the server's detail text
+ * would otherwise win, and it names no next step); any other refusal shows its first detail, else the envelope's own message.
+ */
+export function refusalSentence(failure: OpsFailure): string {
+  const hasOwnCopy = failure.code !== null && Object.hasOwn(REFUSAL_COPY, failure.code);
+  return hasOwnCopy ? failure.message : (failure.details[0]?.message ?? failure.message);
+}
+
+/**
+ * The error beside the grant form's `reason` box. The form refuses a reason under the minimum before it sends anything, so a
+ * 400 VALIDATION_ERROR on `reason` for a reason that long is the server refusing its CONTENT (it looks like a name or an identifier):
+ * that gets our own sentence, and any other field error keeps the server's.
+ */
+export function reasonFieldError(failure: OpsFailure): string | undefined {
+  const refused = failure.fieldErrors.reason;
+  if (refused === undefined) return undefined;
+  return failure.status === 400 && failure.code === "VALIDATION_ERROR"
+    ? REASON_IDENTIFIER_COPY
+    : refused;
 }

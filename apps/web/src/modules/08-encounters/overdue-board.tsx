@@ -5,8 +5,10 @@
 //   recomputes a deadline, so the board can never disagree with the alerts or the gate)
 // A row's action opens the grant-override drawer (override-grant-drawer.tsx). Overrides only matter while the tenant policy BLOCKS, so in
 // `warn` and `off` the board is read-only and says why. A supervisor cannot override their own note (the server refuses it): that row
-// offers no action. Listing existing overrides is a later route, so the drawer revokes only grants made in this session. A failed read
-// is an error with a retry, never an empty board.
+// offers no action. Listing existing overrides is a later route, so the drawer revokes only grants made in this session. A failed first
+// read is an error with a retry, never an empty board; a failed REFRESH keeps the rows already on screen (and an open drawer, with what
+// was typed in it) and says the board could not be refreshed. A note that drops off the board while its drawer is open (it was closed)
+// keeps the drawer until the supervisor closes it, and the drawer says so. Only a status line is a live region, never the table.
 import {
   Button,
   EmptyState,
@@ -21,40 +23,37 @@ import {
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
+import { formatClosureInstant } from "../../shell/closure-instant";
 import { usePatientNames } from "../../shell/patient-names";
 import type { PatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
 import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
 import {
-  type ClosureOverrideView,
+  type HeldOverride,
   type OverdueBoardView,
   type OverdueNote,
   loadOverdueNotes,
 } from "./closure-api";
-import {
-  STAGE_LABEL,
-  STAGE_TONE,
-  countByStage,
-  formatInstant,
-  isGrantActive,
-  timingLabel,
-} from "./closure-model";
+import { STAGE_LABEL, STAGE_TONE, countByStage, isGrantActive, timingLabel } from "./closure-model";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import { CLOSURE_DRAFT_ACTIONS, OverrideGrantDrawer } from "./override-grant-drawer";
+import { useNow } from "./use-now";
 import { clinicianLabel, useStaffNames } from "./use-staff-names";
 import type { StaffNames } from "./use-staff-names";
 
-type Load =
-  | { readonly status: "loading" }
-  | { readonly status: "error"; readonly forbidden: boolean }
-  | { readonly status: "ready"; readonly board: OverdueBoardView };
+/** Why the last read of the board failed: a refusal is final ("not available"), anything else is worth a retry. */
+interface ReadFailure {
+  readonly forbidden: boolean;
+}
 
 const NOTE_PARAM = "note";
 const PAGE_SIZES = [10, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 10;
 const FORBIDDEN_STATUS = 403;
+/** How often the "Due in Xh" countdowns are recomputed from the clock (they are the only client-side arithmetic on the board). */
+const COUNTDOWN_TICK_MS = 60_000;
 
-type Grants = Readonly<Record<string, ClosureOverrideView>>;
+type Grants = Readonly<Record<string, HeldOverride>>;
 
 const patientLabelOf = (names: PatientNames, patientId: string): string =>
   names[patientId]?.name ?? "Patient";
@@ -66,34 +65,39 @@ export function OverdueBoard(): JSX.Element {
   const owner = useStepUpOwner();
   // Back from /step-up: the grant form restores its stashed draft. An abandoned draft is discarded, never restored.
   const returning = useStepUpReturn(owner, CLOSURE_DRAFT_ACTIONS);
-  const [load, setLoad] = useState<Load>({ status: "loading" });
+  const [board, setBoard] = useState<OverdueBoardView | null>(null);
+  const [failure, setFailure] = useState<ReadFailure | null>(null);
+  const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [grants, setGrants] = useState<Grants>({});
+  const [kept, setKept] = useState<OverdueNote | null>(null);
   const staffNames = useStaffNames();
+  const now = useNow(COUNTDOWN_TICK_MS);
   const viewerMembershipId = session?.membershipId ?? null;
   const noteParam = params.get(NOTE_PARAM) ?? "";
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a retry trigger, not a value the effect reads.
   useEffect(() => {
     let active = true;
-    // Stale-while-revalidate: a refresh keeps the rows (and an open drawer) mounted.
-    setLoad((previous) => (previous.status === "ready" ? previous : { status: "loading" }));
+    // Stale-while-revalidate: a refresh keeps the rows (and an open drawer) mounted, and so does a refresh that fails.
+    setLoading(true);
     void loadOverdueNotes(client).then((outcome) => {
       if (!active) return;
-      setLoad(
-        outcome.ok
-          ? { status: "ready", board: outcome.data }
-          : { status: "error", forbidden: outcome.status === FORBIDDEN_STATUS },
-      );
+      setLoading(false);
+      if (outcome.ok) {
+        setBoard(outcome.data);
+        setFailure(null);
+        return;
+      }
+      setFailure({ forbidden: outcome.status === FORBIDDEN_STATUS });
     });
     return () => {
       active = false;
     };
   }, [client, reloadKey]);
 
-  const board = load.status === "ready" ? load.board : null;
   const items = board?.items ?? [];
   const canGrant = board?.mode === "block";
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
@@ -103,9 +107,16 @@ export function OverdueBoard(): JSX.Element {
   const patientNames = usePatientNames(pagedItems.map((i) => i.patientId));
   const isOwnNote = (note: OverdueNote): boolean =>
     note.authoredByMembershipId === viewerMembershipId;
-  const selected = canGrant
+  const listed = canGrant
     ? (items.find((i) => i.encounterId === noteParam && !isOwnNote(i)) ?? null)
     : null;
+  // A refresh that no longer lists the open note (it was closed) must not pull the drawer away with a half-typed reason in it:
+  // the last row seen stands in until the supervisor closes the panel.
+  useEffect(() => {
+    if (listed !== null) setKept(listed);
+  }, [listed]);
+  const selected = listed ?? (canGrant && kept?.encounterId === noteParam ? kept : null);
+  const refresh = (): void => setReloadKey((key) => key + 1);
 
   const select = (encounterId: string): void =>
     setParams(
@@ -116,7 +127,8 @@ export function OverdueBoard(): JSX.Element {
       },
       { replace: true },
     );
-  const deselect = (): void =>
+  const deselect = (): void => {
+    setKept(null);
     setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
@@ -125,7 +137,8 @@ export function OverdueBoard(): JSX.Element {
       },
       { replace: true },
     );
-  const keepGrant = (grant: ClosureOverrideView): void =>
+  };
+  const keepGrant = (grant: HeldOverride): void =>
     setGrants((previous) => ({ ...previous, [grant.subjectMembershipId]: grant }));
 
   return (
@@ -140,11 +153,7 @@ export function OverdueBoard(): JSX.Element {
               open.
             </p>
           </div>
-          <Button
-            tone="secondary"
-            loading={load.status === "loading"}
-            onClick={() => setReloadKey((key) => key + 1)}
-          >
+          <Button tone="secondary" loading={loading} onClick={refresh}>
             Refresh
           </Button>
         </header>
@@ -157,72 +166,80 @@ export function OverdueBoard(): JSX.Element {
           </InlineAlert>
         ) : null}
 
-        <div aria-live="polite">
-          {load.status === "loading" ? (
-            <output className="wx-list-state">
-              <LoadingSpinner />
-            </output>
-          ) : load.status === "error" ? (
-            <div className="wx-list-state" role="alert">
-              <EmptyState
-                title={load.forbidden ? "Not available" : "Overdue notes unavailable"}
-                description={
-                  load.forbidden
-                    ? "You do not have access to the overdue notes board."
-                    : "The overdue notes could not be loaded. Nothing is being hidden: try again."
-                }
+        <output className="wx-sr-only">{statusLine(board, items.length)}</output>
+        {failure !== null && board !== null ? (
+          <InlineAlert tone="error">
+            {failure.forbidden
+              ? "You no longer have access to the overdue notes board. The rows below are as of the last time it loaded."
+              : "The board could not be refreshed. The rows below are as of the last time it loaded: try Refresh again."}
+          </InlineAlert>
+        ) : null}
+
+        {board === null && loading ? (
+          <output className="wx-list-state">
+            <LoadingSpinner />
+          </output>
+        ) : board === null && failure !== null ? (
+          <div className="wx-list-state" role="alert">
+            <EmptyState
+              title={failure.forbidden ? "Not available" : "Overdue notes unavailable"}
+              description={
+                failure.forbidden
+                  ? "You do not have access to the overdue notes board."
+                  : "The overdue notes could not be loaded. Nothing is being hidden: try again."
+              }
+            />
+            {failure.forbidden ? null : (
+              <Button tone="secondary" onClick={refresh}>
+                Try again
+              </Button>
+            )}
+          </div>
+        ) : items.length === 0 ? (
+          <div className="wx-list-state">
+            <EmptyState
+              title="No notes need attention"
+              description={
+                board?.mode === "off"
+                  ? "Note closure is switched off for your organization."
+                  : "No visit note is at risk, overdue or escalated."
+              }
+            />
+          </div>
+        ) : (
+          <>
+            <section
+              className="wx-list-table-wrap"
+              aria-label="Overdue visit notes"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+              tabIndex={0}
+            >
+              <NotesTable
+                notes={pagedItems}
+                canGrant={canGrant}
+                selectedId={selected?.encounterId ?? null}
+                patientNames={patientNames}
+                staffNames={staffNames}
+                grants={grants}
+                now={now}
+                isOwnNote={isOwnNote}
+                onSelect={select}
               />
-              {load.forbidden ? null : (
-                <Button tone="secondary" onClick={() => setReloadKey((key) => key + 1)}>
-                  Try again
-                </Button>
-              )}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="wx-list-state">
-              <EmptyState
-                title="No notes need attention"
-                description={
-                  board?.mode === "off"
-                    ? "Note closure is switched off for your organization."
-                    : "No visit note is at risk, overdue or escalated."
-                }
-              />
-            </div>
-          ) : (
-            <>
-              <section
-                className="wx-list-table-wrap"
-                aria-label="Overdue visit notes"
-                // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
-                tabIndex={0}
-              >
-                <NotesTable
-                  notes={pagedItems}
-                  canGrant={canGrant}
-                  selectedId={selected?.encounterId ?? null}
-                  patientNames={patientNames}
-                  staffNames={staffNames}
-                  grants={grants}
-                  isOwnNote={isOwnNote}
-                  onSelect={select}
-                />
-              </section>
-              <OffsetPagination
-                page={activePage}
-                pageSize={pageSize}
-                totalItems={items.length}
-                onPageChange={setPage}
-                onPageSizeChange={(size) => {
-                  setPageSize(size);
-                  setPage(1);
-                }}
-                pageSizeOptions={PAGE_SIZES}
-                noun="notes"
-              />
-            </>
-          )}
-        </div>
+            </section>
+            <OffsetPagination
+              page={activePage}
+              pageSize={pageSize}
+              totalItems={items.length}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+              pageSizeOptions={PAGE_SIZES}
+              noun="notes"
+            />
+          </>
+        )}
       </div>
 
       {selected ? (
@@ -232,14 +249,26 @@ export function OverdueBoard(): JSX.Element {
           patientName={patientLabelOf(patientNames, selected.patientId)}
           clinicianName={clinicianLabel(staffNames, selected.authoredByMembershipId)}
           grant={grants[selected.authoredByMembershipId] ?? null}
+          listed={listed !== null}
           resume={returning}
           onClose={deselect}
           onGranted={keepGrant}
           onRevoked={keepGrant}
+          onStale={refresh}
         />
       ) : null}
     </div>
   );
+}
+
+/**
+ * The board's one live line: what it holds, said once when a read lands (the table itself is not a live region, or every page change
+ * and refresh would re-read all of it). Silent until the first answer; text that does not change is not announced again.
+ */
+function statusLine(board: OverdueBoardView | null, count: number): string {
+  if (board === null) return "";
+  if (count === 0) return "No notes are at risk, overdue or escalated.";
+  return `${count} ${count === 1 ? "note is" : "notes are"} at risk, overdue or escalated.`;
 }
 
 function ModeNotice({ board }: { board: OverdueBoardView | null }): JSX.Element | null {
@@ -298,6 +327,7 @@ function NotesTable({
   patientNames,
   staffNames,
   grants,
+  now,
   isOwnNote,
   onSelect,
 }: {
@@ -307,10 +337,10 @@ function NotesTable({
   patientNames: PatientNames;
   staffNames: StaffNames;
   grants: Grants;
+  now: Date;
   isOwnNote: (note: OverdueNote) => boolean;
   onSelect: (encounterId: string) => void;
 }): JSX.Element {
-  const now = new Date();
   return (
     <table className={canGrant ? "wx-list-table" : "wx-list-table wx-list-table-static"}>
       <caption className="wx-sr-only">Visit notes at risk, overdue or escalated</caption>
@@ -367,8 +397,8 @@ function NotesTable({
                   tone={ENCOUNTER_TONE[note.status] ?? "neutral"}
                 />
               </td>
-              <td className="wx-nums">{formatInstant(note.clockStartedAt)}</td>
-              <td className="wx-nums">{formatInstant(note.deadlineAt)}</td>
+              <td className="wx-nums">{formatClosureInstant(note.clockStartedAt)}</td>
+              <td className="wx-nums">{formatClosureInstant(note.deadlineAt)}</td>
               <td>
                 <StatusPill label={STAGE_LABEL[note.stage]} tone={STAGE_TONE[note.stage]} />
               </td>

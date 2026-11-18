@@ -455,3 +455,308 @@ describe("step-up", () => {
     expect(document.body.dataset.where).toContain("/step-up?returnTo=");
   });
 });
+
+const heading = (drawer: HTMLElement): HTMLElement =>
+  within(drawer).getByRole("heading", { name: "Grant override", level: 2 });
+const reasonBox = (drawer: HTMLElement): HTMLTextAreaElement =>
+  within(drawer).getByLabelText(/^Reason/) as HTMLTextAreaElement;
+
+describe("a refresh that does not go to plan", () => {
+  it("keeps the rows, the open drawer and what was typed in it, and says so, when a refresh fails", async () => {
+    let reads = 0;
+    mount({
+      board: () => {
+        reads += 1;
+        return reads === 1
+          ? { body: boardBody([noteRow(), atRiskNote]) }
+          : { status: 500, body: { error: { code: "INTERNAL" } } };
+      },
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByText(/The board could not be refreshed/)).toBeTruthy();
+    expect(within(await region()).getByText("Vance, Ada")).toBeTruthy();
+    expect(screen.queryByText("Overdue notes unavailable")).toBeNull();
+    expect(screen.getByRole("complementary", { name: "Override for Rowan Test" })).toBe(drawer);
+    expect(reasonBox(drawer).value).toBe(LONG_REASON);
+  });
+
+  it("clears that notice once a later refresh succeeds", async () => {
+    let reads = 0;
+    mount({
+      board: () => {
+        reads += 1;
+        return reads === 2
+          ? { status: 500, body: { error: { code: "INTERNAL" } } }
+          : { body: boardBody([noteRow(), atRiskNote]) };
+      },
+    });
+    await region();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText(/The board could not be refreshed/);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.queryByText(/The board could not be refreshed/)).toBeNull());
+  });
+
+  it("keeps the drawer open, with what was typed, when a refresh no longer lists its note, and says why", async () => {
+    let reads = 0;
+    mount({
+      board: () => {
+        reads += 1;
+        return { body: boardBody(reads === 1 ? [noteRow(), atRiskNote] : [atRiskNote]) };
+      },
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await within(drawer).findByText(/no longer on the board/)).toBeTruthy();
+    expect(within(await region()).queryByText("Vance, Ada")).toBeNull();
+    expect(screen.getByRole("complementary", { name: "Override for Rowan Test" })).toBe(drawer);
+    expect(reasonBox(drawer).value).toBe(LONG_REASON);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close override panel" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+  });
+});
+
+describe("what a screen reader hears", () => {
+  it("does not make the table a live region, and keeps one status line that says what the board holds", async () => {
+    mount();
+    const table = await region();
+    await within(table).findByText("Vance, Ada");
+    expect(table.closest("[aria-live]")).toBeNull();
+    const line = screen.getByText("2 notes are at risk, overdue or escalated.");
+    expect(line.closest("output")).toBeTruthy();
+    expect(table.contains(line)).toBe(false);
+  });
+
+  it("announces a grant and a revoke through the status line the drawer already had, and moves focus to its heading", async () => {
+    mount();
+    const drawer = await openDrawer();
+    const [line] = within(drawer).getAllByRole("status");
+    expect(within(drawer).getAllByRole("status")).toHaveLength(1);
+    expect(line?.textContent).toBe("");
+
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    await within(drawer).findByText(/is not blocked until/);
+    expect(within(drawer).getByRole("status")).toBe(line); // the same element: it was in the drawer before the grant landed
+    expect(line?.textContent).toMatch(/is not blocked until/);
+    expect(document.activeElement).toBe(heading(drawer));
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Revoke override" }));
+    await within(drawer).findByText(/Override revoked/);
+    expect(within(drawer).getByRole("status")).toBe(line);
+    expect(line?.textContent).toMatch(/Override revoked\. Rowan Test is limited again/);
+    expect(document.activeElement).toBe(heading(drawer));
+  });
+
+  it("says another override is still in force when a revoke leaves one, and does not claim the clinician is limited", async () => {
+    mount({
+      revoke: () => ({
+        body: overrideView({ revokedAt: hoursFromNow(0), remainingActiveUntil: hoursFromNow(2) }),
+      }),
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    fireEvent.click(await within(drawer).findByRole("button", { name: "Revoke override" }));
+    const line = await within(drawer).findByText(
+      /Another override for this clinician is still active until /,
+    );
+    expect(line.closest("output")).toBeTruthy();
+    expect(within(drawer).queryByText(/limited again/)).toBeNull();
+  });
+});
+
+describe("closing the drawer", () => {
+  const entry = `${PATH}?note=${NOTE_A_ID}`;
+  const stepUpNeeded: Responder = () => ({
+    status: 403,
+    body: { error: { code: "STEP_UP_REQUIRED" } },
+  });
+
+  it("abandons the stashed step-up draft on Escape, as Close does, so it cannot resurface", async () => {
+    mount({ entry, grant: stepUpNeeded });
+    const first = await drawerFor("Rowan Test");
+    typeReason(first, LONG_REASON);
+    submitGrant(first);
+    await screen.findByText("elsewhere");
+    expect(stepUpDraftKeys().length).toBe(1);
+    cleanup();
+
+    markStepUpReturn(entry);
+    mount({ entry });
+    const back = await drawerFor("Rowan Test");
+    expect(reasonBox(back).value).toBe(LONG_REASON); // restored for this visit
+    fireEvent.keyDown(back, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(stepUpDraftKeys().length).toBe(0);
+  });
+
+  it("closes on Escape again after a grant (the typed reason is gone, so the half-filled-form latch resets)", async () => {
+    mount();
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+    fireEvent.input(reasonBox(drawer)); // typing latches Escape off while a form is half filled
+    submitGrant(drawer);
+    await within(drawer).findByText(/is not blocked until/);
+
+    fireEvent.keyDown(drawer, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+  });
+
+  it("does nothing for a drawer that was closed while its answer was in flight: no step-up, no stashed draft", async () => {
+    delete document.body.dataset.where;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mount({
+      grant: async () => {
+        await gate;
+        return { status: 403, body: { error: { code: "STEP_UP_REQUIRED" } } };
+      },
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close override panel" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(screen.queryByText("elsewhere")).toBeNull();
+    expect(document.body.dataset.where).toBeUndefined();
+    expect(stepUpDraftKeys().length).toBe(0);
+  });
+
+  it("still records a grant that landed after the drawer was closed, so the board shows it", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mount({
+      grant: async () => {
+        await gate;
+        return { status: 201, body: overrideView() };
+      },
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close override panel" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+
+    release();
+
+    expect(await within(await region()).findByText("Override active")).toBeTruthy();
+  });
+});
+
+describe("a field error and the fix", () => {
+  it("retires the error and aria-invalid on a field as soon as it is edited", async () => {
+    mount({
+      grant: refusal(422, "VALIDATION_ERROR", [
+        { field: "hours", code: "INVALID", message: "hours must be a whole number" },
+      ]),
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    expect(await within(drawer).findByText("hours must be a whole number")).toBeTruthy();
+    const hours = within(drawer).getByLabelText(/^Hours/);
+    expect(hours.getAttribute("aria-invalid")).toBe("true");
+
+    typeHours(drawer, "3");
+
+    expect(within(drawer).queryByText("hours must be a whole number")).toBeNull();
+    expect(hours.getAttribute("aria-invalid")).not.toBe("true");
+  });
+
+  it("drops a too-short reason's error the moment the reason is long enough", async () => {
+    mount();
+    const drawer = await openDrawer();
+    typeReason(drawer, SHORT_REASON);
+    submitGrant(drawer);
+    expect(await within(drawer).findByText(/Enter at least 40 characters/)).toBeTruthy();
+
+    typeReason(drawer, LONG_REASON);
+
+    expect(within(drawer).queryByText(/Enter at least 40 characters/)).toBeNull();
+    expect(within(drawer).getByText(/Long enough/)).toBeTruthy();
+  });
+});
+
+describe("what a refused grant says", () => {
+  it("tells a supervisor who is blocked on their own notes to close those first", async () => {
+    mount({
+      grant: refusal(403, "NOTE_CLOSURE_GRANTOR_BLOCKED", [
+        { field: "x", code: "X", message: "raw server text" },
+      ]),
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    expect(
+      await within(drawer).findByText(
+        "Close your own overdue notes before releasing someone else.",
+      ),
+    ).toBeTruthy();
+    expect(within(drawer).queryByText("raw server text")).toBeNull();
+    expect(reasonBox(drawer).value).toBe(LONG_REASON);
+  });
+
+  it("says there is nothing to lift for a clinician who is no longer blocked, and re-reads the board", async () => {
+    const calls: Call[] = [];
+    mount({ calls, grant: refusal(409, "NOTE_CLOSURE_SUBJECT_NOT_BLOCKED") });
+    const drawer = await openDrawer();
+    const boardReads = (): number =>
+      calls.filter((c) => `${c.method} ${c.path}` === "GET /api/v1/encounters/overdue-notes")
+        .length;
+    expect(boardReads()).toBe(1);
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    expect(
+      await within(drawer).findByText(
+        "This clinician is not blocked right now, so there is nothing to lift.",
+      ),
+    ).toBeTruthy();
+    await waitFor(() => expect(boardReads()).toBe(2));
+  });
+
+  it("says a note outside the supervisor's sites is out of their reach", async () => {
+    mount({ grant: refusal(403, "NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE") });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    expect(
+      await within(drawer).findByText("That clinician's note is outside your sites."),
+    ).toBeTruthy();
+  });
+
+  it("puts an identifier-shaped reason's refusal under the reason box in our own words", async () => {
+    mount({
+      grant: refusal(400, "VALIDATION_ERROR", [
+        {
+          field: "reason",
+          code: "EVIDENCE_LOOKS_LIKE_PHI",
+          message: "reason looks like it contains a patient identifier",
+        },
+      ]),
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    expect(
+      await within(drawer).findByText("Remove names, SSNs and other identifiers from the reason."),
+    ).toBeTruthy();
+    expect(reasonBox(drawer).getAttribute("aria-invalid")).toBe("true");
+  });
+});

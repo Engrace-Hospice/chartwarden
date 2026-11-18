@@ -1,11 +1,12 @@
 // ADR-0113 slice 1 — My notes (screen id encounter.my-drafts, route /work/drafts): the author's open notes with the server's closure
 // stage and deadline per row. Driven through the real API client over a fetch stub, so the rendered states are the wire shape's.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import { MyDrafts } from "../my-drafts";
+import { MY_NOTES_REFRESH_MS } from "../use-my-notes";
 
 const PATIENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 
@@ -46,12 +47,16 @@ const LEGACY = { clockStartedAt: null, deadlineAt: null, stage: "ok" as Stage };
 
 let response: { status: number; body: unknown } = { status: 200, body: { encounters: [] } };
 let requested: string[] = [];
+/** Whether each my-drafts read carried the background marker, in order. */
+let draftReads: { background: boolean }[] = [];
 
-async function stubFetch(input: RequestInfo | URL): Promise<Response> {
+async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   const path = new URL(url, "http://localhost").pathname;
   requested.push(path);
   if (path.endsWith("/my-drafts")) {
+    const headers = input instanceof Request ? input.headers : new Headers(init?.headers);
+    draftReads.push({ background: headers.get("x-chartwarden-background") === "1" });
     return new Response(JSON.stringify(response.body), {
       status: response.status,
       headers: { "content-type": "application/json" },
@@ -107,6 +112,7 @@ const bodyRows = (): HTMLElement[] =>
 beforeEach(() => {
   response = { status: 200, body: { encounters: [] } };
   requested = [];
+  draftReads = [];
 });
 afterEach(() => {
   response = { status: 200, body: { encounters: [] } };
@@ -265,5 +271,125 @@ describe("My notes", () => {
     expect(await screen.findByText("Unavailable")).toBeTruthy();
     expect(screen.getAllByText("Could not load your notes.").length).toBeGreaterThan(0);
     expect(screen.queryByText("No open notes")).toBeNull();
+  });
+});
+
+// A stage moves with the clock, so a list read once at mount would keep claiming "On track" under a banner that already says overdue.
+describe("keeping the list fresh", () => {
+  const stageOf = (name: string): string | null =>
+    rowOf(screen.getByText(name)).querySelector("td:nth-child(5)")?.textContent ?? null;
+
+  it("reads again when the person returns to the tab, quietly: the rows stay and the pill moves", async () => {
+    response = {
+      status: 200,
+      body: { encounters: [note("e1", { encounterType: "pt_visit", stage: "ok" })] },
+    };
+    mount();
+    await screen.findByText("Pt Visit");
+    expect(stageOf("Pt Visit")).toContain("On track");
+    expect(draftReads).toEqual([{ background: false }]);
+
+    response = {
+      status: 200,
+      body: { encounters: [note("e1", { encounterType: "pt_visit", stage: "overdue" })] },
+    };
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => expect(stageOf("Pt Visit")).toContain("Overdue"));
+    expect(draftReads).toEqual([{ background: false }, { background: true }]); // a refresh is background work, never user activity
+  });
+
+  it("never flashes the list into a loading state while it refreshes", async () => {
+    response = { status: 200, body: { encounters: [note("e1", { encounterType: "pt_visit" })] } };
+    mount();
+    await screen.findByText("Pt Visit");
+    let sawLoading = false;
+    const watcher = new MutationObserver(() => {
+      if (screen.queryByText("Pt Visit") === null) sawLoading = true;
+    });
+    watcher.observe(document.body, { childList: true, subtree: true });
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(draftReads).toHaveLength(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    watcher.disconnect();
+
+    expect(sawLoading).toBe(false);
+    expect(screen.getByText("Pt Visit")).toBeTruthy();
+  });
+
+  it("keeps the rows, and shows no error, when a refresh fails", async () => {
+    response = { status: 200, body: { encounters: [note("e1", { encounterType: "pt_visit" })] } };
+    mount();
+    await screen.findByText("Pt Visit");
+
+    response = { status: 500, body: { error: { code: "INTERNAL", message: "boom" } } };
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(draftReads).toHaveLength(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(screen.getByText("Pt Visit")).toBeTruthy();
+    expect(screen.queryByText("Could not load your notes.")).toBeNull();
+  });
+
+  it("recovers on a later refresh when the first read had failed", async () => {
+    response = { status: 500, body: { error: { code: "INTERNAL", message: "boom" } } };
+    mount();
+    expect((await screen.findAllByText("Could not load your notes.")).length).toBeGreaterThan(0);
+
+    response = { status: 200, body: { encounters: [note("e1", { encounterType: "pt_visit" })] } };
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(await screen.findByText("Pt Visit")).toBeTruthy();
+    expect(screen.queryByText("Could not load your notes.")).toBeNull();
+  });
+
+  it("does not read while the tab is hidden", async () => {
+    response = { status: 200, body: { encounters: [note("e1", { encounterType: "pt_visit" })] } };
+    mount();
+    await screen.findByText("Pt Visit");
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(draftReads).toHaveLength(1);
+    hidden.mockRestore();
+  });
+
+  it("reads again on a slow interval", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      response = { status: 200, body: { encounters: [note("e1", { encounterType: "pt_visit" })] } };
+      mount();
+      await screen.findByText("Pt Visit");
+      expect(draftReads).toHaveLength(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(MY_NOTES_REFRESH_MS);
+      });
+
+      await waitFor(() =>
+        expect(draftReads).toEqual([{ background: false }, { background: true }]),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

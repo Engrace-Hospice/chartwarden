@@ -369,6 +369,21 @@ describe("RoleHome operational dashboard", () => {
     expect(legacy?.textContent).not.toMatch(/Overdue|Due today|Tomorrow|In \d+ days/);
   });
 
+  it("still lists a note task when the row carries no closure object, undated, instead of failing the whole card", async () => {
+    const client = clientFor({
+      "/api/v1/encounters/my-drafts": {
+        encounters: [{ id: "n-bare", patientId: "p1", encounterType: "routine_visit" }],
+      },
+    });
+    renderHome(
+      { ...adminSession, permissions: ["encounter.read"], roles: ["rn"], isAdmin: false },
+      client,
+    );
+
+    const task = (await screen.findByText("Finish routine visit note")).closest("li");
+    expect(task?.textContent).not.toMatch(/Overdue|Due today|Tomorrow|In \d+ days/);
+  });
+
   it("alerts a clinician to overdue and closing-soon certification windows", async () => {
     const win = (id: string, windowKind: string, state: string) => ({
       id,

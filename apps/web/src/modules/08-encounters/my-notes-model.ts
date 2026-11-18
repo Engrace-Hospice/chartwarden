@@ -3,9 +3,12 @@
 // them. A note whose clock is null is a LEGACY note (a draft from before the clock existed, no backfill): it shows as "Legacy", has no
 // deadline and never alerts, so it sorts after every clocked note and counts in neither KPI.
 import type { StatusTone } from "@chartwarden/ui";
-import { formatClosureInstant } from "../../shell/note-closure-banner-model";
+import { formatClosureInstant } from "../../shell/closure-instant";
+import { type NoteStage, STAGE_LABEL, STAGE_TONE } from "./closure-model";
 
-export type NoteStage = "ok" | "at_risk" | "overdue" | "escalated";
+export type { NoteStage };
+// Where an open note is worked on is the shell's (the banner links there too); re-exported so this screen's imports keep one home.
+export { noteHref, openNoteLabel } from "../../shell/note-href";
 
 /** `GET /encounters/my-drafts` rows carry this per note. */
 export interface NoteClosure {
@@ -19,21 +22,6 @@ export interface ClosureSortable {
 }
 
 export const LEGACY_LABEL = "Legacy";
-
-const STAGE_LABEL: Readonly<Record<NoteStage, string>> = {
-  ok: "On track",
-  at_risk: "At risk",
-  overdue: "Overdue",
-  escalated: "Escalated",
-};
-
-/** The supervisor board's tones (at risk calm-progress, overdue warning, escalated error), so a stage reads the same everywhere. */
-const STAGE_TONE: Readonly<Record<NoteStage, StatusTone>> = {
-  ok: "neutral",
-  at_risk: "progress",
-  overdue: "warning",
-  escalated: "error",
-};
 
 export const isLegacyNote = (closure: NoteClosure): boolean => closure.clockStartedAt === null;
 
@@ -88,21 +76,4 @@ export function sortByDeadline<T extends ClosureSortable>(rows: readonly T[]): T
     if (left === right) return 0;
     return left < right ? -1 : 1;
   });
-}
-
-/**
- * A draft's home is the composer (#91). A finalized note is finished writing and waits for its signature, which is the read screen's
- * ceremony: sending that author back to the composer would offer them nothing to do.
- */
-export function noteHref(note: {
-  readonly id: string;
-  readonly patientId: string;
-  readonly status: string;
-}): string {
-  const base = `/patients/${note.patientId}/encounters/${note.id}`;
-  return note.status === "finalized" ? base : `${base}/compose`;
-}
-
-export function openNoteLabel(status: string): string {
-  return status === "finalized" ? "Review and Sign" : "Continue Documentation";
 }

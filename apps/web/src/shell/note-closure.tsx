@@ -117,12 +117,16 @@ export function NoteClosureProvider({ children }: { children: ReactNode }): JSX.
   }, [load, scope, blocked]);
 
   // A gate refusal observed anywhere means the clock just changed for this clinician: read it now instead of waiting for the next poll.
+  // A refusal is often the answer to someone ELSE's background poll (a wallboard's 30-second safety-dashboard refresh), so this read is
+  // background work too: marked, so it never counts as activity and keeps the idle logoff honest (GAP-002), and skipped while the tab
+  // is hidden, like the poll. The reads a person causes (mount, focus, `refresh()`) stay unmarked.
   useEffect(() => {
     if (scope === null) return;
     return subscribeGlobalResponseSignal(() => {
       if (getGlobalResponseSignal()?.kind !== "note-closure-required") return;
+      if (document.hidden) return;
       if (Date.now() - lastStartedAt.current < NOTE_CLOSURE_MIN_REFRESH_GAP_MS) return;
-      void load(false);
+      void load(true);
     });
   }, [load, scope]);
 
