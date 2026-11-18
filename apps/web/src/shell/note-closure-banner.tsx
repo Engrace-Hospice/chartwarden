@@ -1,8 +1,10 @@
 import { BACKGROUND_REQUEST_HEADERS, InlineAlert, useApiClient } from "@chartwarden/ui";
 // apps/web/src/shell — the persistent visit-note closure banner (ADR-0113). Mounted once in the app frame, above the header, beside the
 // system-status banner; it shows on every chromed screen while the clinician's oldest open note is at risk, overdue or blocking.
-// Mode `off` and an `ok` stage render nothing. The two live regions (polite for info / warning, assertive for the blocking state)
-// are ALWAYS mounted: a screen reader announces a change inside a region that was already there, not a region that just appeared.
+// Mode `off` and an `ok` stage render nothing. The polite region (info / warning) is ALWAYS mounted, because a screen reader announces
+// a change inside a region that was already there. The blocking state is a `role="alert"` mounted only while blocked (an alert is
+// announced on insertion), the offline banner's convention: an empty alert on every screen would also break the screens that
+// assert they show none.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -63,9 +65,11 @@ export function NoteClosureBanner(): JSX.Element {
       <output style={model && !model.blocked ? bannerStyle : undefined}>
         {model && !model.blocked ? <BannerContent model={model} /> : null}
       </output>
-      <div role="alert" style={model?.blocked ? bannerStyle : undefined}>
-        {model?.blocked ? <BannerContent model={model} /> : null}
-      </div>
+      {model?.blocked ? (
+        <div role="alert" style={bannerStyle}>
+          <BannerContent model={model} />
+        </div>
+      ) : null}
     </>
   );
 }
