@@ -118,7 +118,16 @@ function Where(): JSX.Element {
   );
 }
 
-function mount(api: ApiClient, entry = `/billing/dde?item=${ITEM}`) {
+function mount(
+  api: ApiClient,
+  entry = `/billing/dde?item=${ITEM}`,
+  permissions = [
+    "billing.dde.read",
+    "billing.dde.work",
+    "billing.dde.mark_submitted",
+    "billing.dde.admin",
+  ],
+) {
   return render(
     <ApiClientProvider client={api}>
       <SessionProvider
@@ -126,12 +135,7 @@ function mount(api: ApiClient, entry = `/billing/dde?item=${ITEM}`) {
           userId: "synthetic-user",
           organizationId: "synthetic-org",
           membershipId: "abababab-abab-4bab-8bab-abababababab",
-          permissions: [
-            "billing.dde.read",
-            "billing.dde.work",
-            "billing.dde.mark_submitted",
-            "billing.dde.admin",
-          ],
+          permissions,
         }}
       >
         <MemoryRouter initialEntries={[entry]}>
@@ -356,6 +360,33 @@ describe("DdeQueue actions", () => {
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(postCall(post)[0]).toBe("/api/v1/billing/dde-items/{id}/record-acceptance");
     expect(postCall(post)[1].body).toEqual({ expectedVersion: 3, macAcceptedOn: "2026-10-08" });
+  });
+
+  it("does not offer MAC acceptance to a work-only operator", async () => {
+    const { api, post } = setup({
+      pages: [
+        {
+          items: [
+            item({ state: "submitted", allowedActions: ["record_outcome", "record_acceptance"] }),
+          ],
+          hasMore: false,
+          nextCursor: null,
+        },
+      ],
+    });
+    mount(api, `/billing/dde?item=${ITEM}`, ["billing.dde.read", "billing.dde.work"]);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", { name: "Record what came back" }));
+    const form = await r.findByRole("form", { name: "Record what came back" });
+    const outcome = within(form).getByLabelText(/What came back/) as HTMLSelectElement;
+    expect(Array.from(outcome.options).map((option) => option.textContent)).not.toContain(
+      "Accepted by the MAC (needs re-authentication)",
+    );
+    fireEvent.change(outcome, { target: { value: "returned" } });
+    fireEvent.change(r.getByLabelText(/RTP reason code/), { target: { value: "37001" } });
+    fireEvent.submit(form);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(postCall(post)[0]).toBe("/api/v1/billing/dde-items/{id}/record-outcome");
   });
 
   it("returns an item through record-outcome with its RTP code", async () => {

@@ -133,6 +133,7 @@ export function SubmissionForm({
 export function OutcomeForm({
   item,
   resolvingInDoubt = false,
+  canRecordAcceptance,
   busy,
   draft,
   onDraft,
@@ -141,6 +142,7 @@ export function OutcomeForm({
 }: {
   item: DdeItem;
   resolvingInDoubt?: boolean;
+  canRecordAcceptance: boolean;
   busy: boolean;
   draft: OutcomeDraft;
   onDraft: (d: OutcomeDraft) => void;
@@ -159,6 +161,10 @@ export function OutcomeForm({
       return;
     }
     setConfirmationError(null);
+    if (draft.outcome === "accepted" && !canRecordAcceptance) {
+      setErrors({ outcome: "You do not have permission to record MAC acceptance." });
+      return;
+    }
     const found = validateOutcome(draft, item);
     setErrors(found);
     if (Object.keys(found).length === 0) onSubmit(draft);
@@ -204,7 +210,9 @@ export function OutcomeForm({
         error={errors.outcome}
         options={[
           { value: "", label: "Select…" },
-          { value: "accepted", label: "Accepted by the MAC (needs re-authentication)" },
+          ...(canRecordAcceptance
+            ? [{ value: "accepted", label: "Accepted by the MAC (needs re-authentication)" }]
+            : []),
           { value: "returned", label: "Returned / rejected" },
         ]}
         onChange={(e) => onDraft({ ...draft, outcome: e.target.value as OutcomeDraft["outcome"] })}

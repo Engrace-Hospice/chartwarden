@@ -502,6 +502,7 @@ export function ItemRail({
               <OutcomeForm
                 item={n}
                 resolvingInDoubt={inDoubt}
+                canRecordAcceptance={can("record_acceptance")}
                 busy={busy}
                 draft={drafts.outcome}
                 onDraft={(outcome) => setDrafts((d) => ({ ...d, outcome }))}
