@@ -62,3 +62,24 @@ describe("lookups replace raw ids (#612)", () => {
     expect(field.value).toBe("Jordan Clinician");
   });
 });
+
+describe("the incident wizard footer", () => {
+  it("opens the review step with a new button instead of reusing the Continue node", async () => {
+    // A real click on a reused <button> flips it to type="submit" before its default action runs, which
+    // created the draft without the review step (see the WF08 visit wizard). jsdom cannot replay that
+    // ordering, so assert the cause: the review step's button is a different element.
+    mount(<IncidentNewScreen />);
+    const field = screen.getByLabelText(/^Affected clinician/) as HTMLInputElement;
+    fireEvent.focus(field);
+    fireEvent.click(await screen.findByRole("option", { name: /Jordan Clinician/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(await screen.findByLabelText(/^Describe what happened/), {
+      target: { value: "x".repeat(200) },
+    });
+    const advance = screen.getByRole("button", { name: "Continue" });
+    fireEvent.click(advance);
+    const create = await screen.findByRole("button", { name: /create draft/i });
+    expect(create).not.toBe(advance);
+    expect(advance.isConnected).toBe(false);
+  });
+});

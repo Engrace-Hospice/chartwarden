@@ -200,16 +200,36 @@ export function IncidentNewScreen(): JSX.Element {
               Discard
             </Link>
           )}
+          {/* Distinct keys: one reused <button> flips to type="submit" before a real click's default
+              action runs, so "Continue" on the details step created the draft without the review step. */}
           {step === 0 ? (
-            <Button type="button" tone="primary" disabled={saving} onClick={continueFromIncident}>
+            <Button
+              key="continue-incident"
+              type="button"
+              tone="primary"
+              disabled={saving}
+              onClick={continueFromIncident}
+            >
               Continue
             </Button>
           ) : step === 1 ? (
-            <Button type="button" tone="primary" disabled={saving} onClick={continueFromDetails}>
+            <Button
+              key="continue-details"
+              type="button"
+              tone="primary"
+              disabled={saving}
+              onClick={continueFromDetails}
+            >
               Continue
             </Button>
           ) : (
-            <Button type="submit" form={FORM_ID} tone="primary" disabled={saving || !ready}>
+            <Button
+              key="create-draft"
+              type="submit"
+              form={FORM_ID}
+              tone="primary"
+              disabled={saving || !ready}
+            >
               {saving ? "Creating..." : "Create draft"}
             </Button>
           )}
