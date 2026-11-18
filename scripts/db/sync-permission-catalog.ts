@@ -21,20 +21,12 @@
  *
  * Usage: bun run db:sync:permissions   (DATABASE_ADMIN_URL — needs write on `permission`)
  */
-import {
-  FULL_CATALOG_EXCLUDED_KEYS,
-  NOTE_CLOSURE_PERMISSION_KEYS,
-  allPermissionMirrorRows,
-} from "@chartwarden/auth";
+import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { Client } from "pg";
+import { fullCatalogGrantRows } from "./lib/full-catalog-grants";
 
 /** Roles granted the ENTIRE catalog — kept in lockstep so `org_admin ⊇ administrator` always holds. */
 const GRANT_ALL_ROLE_KEYS = ["administrator", "org_admin"];
-
-/** The closure keys the full-catalog roles do not get by default (today `encounter.closure_override` only). */
-const WITHHELD_CLOSURE_KEYS: ReadonlySet<string> = new Set(
-  NOTE_CLOSURE_PERMISSION_KEYS.filter((key) => FULL_CATALOG_EXCLUDED_KEYS.has(key)),
-);
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -74,10 +66,10 @@ async function main(): Promise<void> {
     "SELECT id, organization_id, key FROM role WHERE key = ANY($1) AND organization_id IS NOT NULL",
     [GRANT_ALL_ROLE_KEYS],
   );
+  const grantRows = fullCatalogGrantRows(rows);
   let granted = 0;
   for (const role of admins.rows) {
-    for (const row of rows) {
-      if (WITHHELD_CLOSURE_KEYS.has(row.key)) continue;
+    for (const row of grantRows) {
       const r = await db.query(
         `INSERT INTO role_permission (organization_id, role_id, permission_key)
          VALUES ($1,$2,$3) ON CONFLICT (role_id, permission_key) DO NOTHING`,

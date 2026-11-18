@@ -18,7 +18,8 @@
 //     so templates.ts spreads NOTE_CLOSURE_DEFAULT_GRANTS into it; org_admin / administrator derive the policy key from the full catalog
 //     (clinical_supervisor / don / clinical_lead are not templates; a role created by hand after migration 1511 receives nothing, as
 //     with the care plan and code-status grants);
-//   - the dev permission sync (scripts/db/sync-permission-catalog.ts), which applies the same exclusion.
+//   - the dev permission sync and the two dev seeds (scripts/db/sync-permission-catalog.ts, seed.ts, seed-org-admin.ts), which apply
+//     the same exclusion through scripts/db/lib/full-catalog-grants.ts (pinned by scripts/__tests__/full-catalog-grants.test.ts).
 // Aides, volunteers and compliance roles hold neither key. A tenant tightens by removing a grant from a role it owns. NOT a
 // `system_locked` floor.
 

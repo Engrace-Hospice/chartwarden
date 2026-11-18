@@ -25,6 +25,7 @@ import {
 } from "../../apps/backend/src/bootstrap/tenant-kek";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH, seedUsername, writeSeedCredentials } from "./lib/credentials";
+import { fullCatalogGrantRows } from "./lib/full-catalog-grants";
 import { roleMayHoldPermission } from "./lib/idg-role-grants";
 import { firstRow } from "./lib/query-rows";
 
@@ -457,8 +458,10 @@ async function main(): Promise<void> {
     const roleId = firstRow(r, "seed: role upsert").id;
     roleIdByKey.set(u.roleKey, roleId);
 
+    // A full-catalog role (administrator, org_admin) holds every key but the visit-note closure override: an administrator is not a
+    // clinical supervisor (ADR-0113 D7), the same as a tenant provisioned through the product.
     const keys = u.grantAll
-      ? allRows.map((x) => x.key)
+      ? fullCatalogGrantRows(allRows).map((x) => x.key)
       : allRows
           .filter((row) => u.permCats.includes(row.category as Cat))
           .filter((row) => roleMayHoldPermission(u.roleKey, row.key))

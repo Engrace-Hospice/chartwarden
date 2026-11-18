@@ -23,6 +23,7 @@ import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { Client } from "pg";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH, seedUsername, writeSeedCredentials } from "./lib/credentials";
+import { fullCatalogGrantRows } from "./lib/full-catalog-grants";
 import { grantPlatformRole } from "./lib/platform-role";
 import { firstRow } from "./lib/query-rows";
 
@@ -129,8 +130,8 @@ async function main(): Promise<void> {
   );
   const roleId = firstRow(r, "seed-org-admin: role upsert").id;
 
-  // org_admin supersedes administrator → the FULL permission catalog.
-  const keys = allRows.map((x) => x.key);
+  // org_admin supersedes administrator → the FULL permission catalog, less the visit-note closure override an administrator is never given.
+  const keys = fullCatalogGrantRows(allRows).map((x) => x.key);
   for (const key of keys) {
     await db.query(
       `INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)
