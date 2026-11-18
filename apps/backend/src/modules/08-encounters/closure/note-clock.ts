@@ -89,6 +89,33 @@ export function decideNoteClosure(input: NoteClosureInput): NoteClosureDecision 
   };
 }
 
+/** A stage a note can be alerted at (every stage but `ok`). */
+export type NoteClosureAlertStage = Exclude<NoteClosureStage, "ok">;
+
+/**
+ * The instant `stage` begins for a note clocked at `clockStartedAt` under threshold T: `at_risk` at T - 6h (never before the clock
+ * itself: with T under 6h the note is `at_risk` from its first instant), `overdue` at T, `escalated` at T + 12h. The alert sweep
+ * uses it to emit a stage only shortly after it begins. Mirrors `stageForElapsed`, and the clock tests walk both across every
+ * boundary so they cannot drift. Throws RangeError on an invalid instant or threshold, or on `ok`.
+ */
+export function stageBeginsAt(
+  clockStartedAt: Date,
+  thresholdHours: number,
+  stage: NoteClosureAlertStage,
+): Date {
+  if (!Number.isFinite(thresholdHours) || thresholdHours <= 0) {
+    throw new RangeError("thresholdHours must be a positive finite number");
+  }
+  assertValidInstant("clockStartedAt", clockStartedAt);
+  if (stage === "at_risk") {
+    return plusHours(clockStartedAt, Math.max(0, thresholdHours - AT_RISK_LEAD_HOURS));
+  }
+  if (stage === "overdue") return plusHours(clockStartedAt, thresholdHours);
+  if (stage === "escalated")
+    return plusHours(clockStartedAt, thresholdHours + ESCALATION_LAG_HOURS);
+  throw new RangeError(`no begin instant for stage ${String(stage)}`);
+}
+
 /**
  * What the caller should do with a decision under the tenant `mode`. `off` is always clear; `warn`
  * never blocks; `block` refuses once `asOf >= blockFrom` unless a supervisor override is active (the

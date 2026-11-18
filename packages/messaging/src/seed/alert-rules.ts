@@ -1115,22 +1115,44 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // ADR-0113 D5 - the visit-note closure clock's three alert stages, which REPLACE the old `m8.encounter.unsigned` /
+  // `m8.encounter.documentation_late` rows (one alert stream: the `encounter.attention` sweep). `at_risk` (info, T-6h) and
+  // `overdue` (warn, T) go to the note's author only; `escalated` (warn, T+12h) goes to the author AND the supervisors of the
+  // note's provider entity, with the org-wide supervisors as the fallback when nobody is assigned to that entity or the draft has
+  // no site (so an escalation never has an empty audience). Never critical: documentation lateness is not a patient emergency.
+  // The payload names ids and instants only (packages/types M8_CLOSURE_ALERT_PAYLOADS).
   {
-    eventType: "m8.encounter.unsigned",
+    eventType: "m8.encounter.closure_at_risk",
     category: "clinical_routine",
-    severityFloor: "warn",
-    recipientResolver: "care_team",
-    resolverArgs: { patientIdPath: "patientId" },
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["authorUserId"] },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
   },
   {
-    eventType: "m8.encounter.documentation_late",
+    eventType: "m8.encounter.closure_overdue",
     category: "clinical_routine",
     severityFloor: "warn",
-    recipientResolver: "care_team",
-    resolverArgs: { patientIdPath: "patientId" },
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["authorUserId"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m8.encounter.closure_escalated",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: {
+      roleKeys: [],
+      userIdPaths: ["authorUserId"],
+      providerEntityIdPath: "providerEntityId",
+      providerEntityScopedRoleKeys: M8_SUPERVISOR_ROLE_KEYS,
+      providerEntityFallbackRoleKeys: M8_SUPERVISOR_ROLE_KEYS,
+    },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
