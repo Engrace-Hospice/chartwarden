@@ -1,6 +1,7 @@
 import {
   Button,
   CursorPagination,
+  Drawer,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -161,6 +162,31 @@ export function VolunteerComplianceGates(): JSX.Element {
   const blockedVolunteers = new Set(failing.map((g) => g.volunteerMembershipId));
   const drifted = rows.filter((g) => g.storedStatus !== g.effectiveStatus);
 
+  // Record / correct a gate opens in the detail rail (a drawer), above the alerts, not over the page.
+  const gateSaved = () => {
+    setCreating(false);
+    setEditing(null);
+    void load();
+  };
+  const formDrawer = creating ? (
+    <GateFormDrawer
+      key="new"
+      title="Record compliance gate"
+      onClose={() => setCreating(false)}
+      onSaved={gateSaved}
+      onError={setActionError}
+    />
+  ) : editing ? (
+    <GateFormDrawer
+      key={editing.gateId}
+      title={`Correct ${gateKindLabel(editing.gateKind)}`}
+      gate={editing}
+      onClose={() => setEditing(null)}
+      onSaved={gateSaved}
+      onError={setActionError}
+    />
+  ) : null;
+
   return (
     <>
       <WorkQueueLayout
@@ -301,6 +327,7 @@ export function VolunteerComplianceGates(): JSX.Element {
         }
         detail={
           <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
+            {formDrawer}
             <Notice tone={failing.length > 0 ? "error" : "success"}>
               {failing.length === 0
                 ? "Every gate on this page is satisfied or approaching expiry — no volunteer is blocked by the currently loaded rows."
@@ -328,31 +355,6 @@ export function VolunteerComplianceGates(): JSX.Element {
         fullPageScroll
       />
 
-      {creating ? (
-        <GateFormModal
-          title="Record compliance gate"
-          onClose={() => setCreating(false)}
-          onSaved={() => {
-            setCreating(false);
-            void load();
-          }}
-          onError={setActionError}
-        />
-      ) : null}
-
-      {editing ? (
-        <GateFormModal
-          title={`Correct ${gateKindLabel(editing.gateKind)}`}
-          gate={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            void load();
-          }}
-          onError={setActionError}
-        />
-      ) : null}
-
       {revoking ? (
         <RevokeGateModal
           gate={revoking}
@@ -368,7 +370,7 @@ export function VolunteerComplianceGates(): JSX.Element {
 }
 
 /** Routes 20 / 21 — record a new gate, or correct a recorded one's window / evidence. */
-function GateFormModal({
+function GateFormDrawer({
   title,
   gate,
   onClose,
@@ -426,18 +428,24 @@ function GateFormModal({
   }
 
   return (
-    <Modal
+    <Drawer
       title={title}
+      label={title}
       onClose={onClose}
       footer={
-        <Button
-          tone="primary"
-          type="button"
-          onClick={() => void submit()}
-          disabled={!canSubmit || busy}
-        >
-          {busy ? "Saving…" : "Save gate"}
-        </Button>
+        <>
+          <Button tone="secondary" type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            tone="primary"
+            type="button"
+            onClick={() => void submit()}
+            disabled={!canSubmit || busy}
+          >
+            {busy ? "Saving…" : "Save gate"}
+          </Button>
+        </>
       }
     >
       {editingExisting ? (
@@ -468,7 +476,7 @@ function GateFormModal({
       <TextField label="Source document id" value={sourceDocumentId} onChange={setSourceDocument} />
       <TextAreaField label="Notes" value={notes} onChange={setNotes} rows={2} />
       {error ? <p style={alertStyle}>{error}</p> : null}
-    </Modal>
+    </Drawer>
   );
 }
 
