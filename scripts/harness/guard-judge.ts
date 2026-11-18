@@ -423,8 +423,10 @@ function judge(hook: HookInput): void {
     });
 
   // Wave 13 (L2): Claude Code and Codex always send an object. Anything else read as `{}` (a string has no `command`),
-  // and an empty command is an allow: in Claude mode this exited 0. Refused in both modes, and ledgered.
-  if (hook.tool_input !== undefined && !isRecord(hook.tool_input)) {
+  // and an empty command is an allow: in Claude mode this exited 0. Refused in both modes, and ledgered. Claude mode
+  // never denies an MCP call (it asks: `claudeMcpFinding` below), so those keep their ask.
+  const claudeMcp = !CODEX && tool.startsWith("mcp__");
+  if (!claudeMcp && hook.tool_input !== undefined && !isRecord(hook.tool_input)) {
     refuse(log, `The tool input ${NOT_AN_OBJECT}.`);
   }
 
