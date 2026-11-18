@@ -30,6 +30,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -66,7 +67,6 @@ import {
   sosStateLabel,
 } from "./safety-status";
 import {
-  Card,
   CheckboxField,
   CipherText,
   Field,
@@ -272,9 +272,11 @@ export function SosDetailScreen(): JSX.Element {
         <TerminusPanel sosAlertId={alert.id} />
       ) : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Alert"
-        actions={
+        action={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             {canAcknowledge ? (
               <Button
@@ -327,9 +329,9 @@ export function SosDetailScreen(): JSX.Element {
             failed press.
           </Notice>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Lifecycle ledger">
+      <Panel stack headingLevel={3} title="Lifecycle ledger">
         {ledger.length === 0 ? (
           <span style={mutedStyle}>No transitions recorded yet.</span>
         ) : (
@@ -341,9 +343,9 @@ export function SosDetailScreen(): JSX.Element {
           end to end; it is append-only in the database, so nothing here can be tidied up after the
           fact.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title="Who answered">
+      <Panel stack headingLevel={3} title="Who answered">
         {alert.acknowledgments.length === 0 ? (
           <Notice tone={isOpen ? "error" : "warning"} live>
             <strong>Nobody has signed on to this alert.</strong>{" "}
@@ -373,9 +375,9 @@ export function SosDetailScreen(): JSX.Element {
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Resolution">
+      <Panel stack headingLevel={3} title="Resolution">
         <CipherText
           value={alert.resolutionNarrative}
           available={alert.resolutionNarrativeAvailable}
@@ -398,12 +400,14 @@ export function SosDetailScreen(): JSX.Element {
             </Button>
           </div>
         )}
-      </Card>
+      </Panel>
 
       {/* ── the D6 coordinate boundary ─────────────────────────────────────────────────────────────── */}
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Location stream"
-        actions={
+        action={
           stream === null ? (
             <Button
               tone="secondary"
@@ -489,7 +493,7 @@ export function SosDetailScreen(): JSX.Element {
             </span>
           </>
         )}
-      </Card>
+      </Panel>
 
       {ceremony === "acknowledge" ? (
         <Modal

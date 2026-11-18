@@ -30,6 +30,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -65,7 +66,6 @@ import {
   shortId,
 } from "./safety-status";
 import {
-  Card,
   CheckboxField,
   CipherText,
   Field,
@@ -303,9 +303,11 @@ export function IncidentDetailScreen(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Incident"
-        actions={
+        action={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             {isDraft ? (
               <>
@@ -427,35 +429,35 @@ export function IncidentDetailScreen(): JSX.Element {
             <strong>Reopened:</strong> {incident.reopenReason}
           </Notice>
         ) : null}
-      </Card>
+      </Panel>
 
-      <Card title="Narrative">
+      <Panel stack headingLevel={3} title="Narrative">
         <CipherText value={incident.narrative} available={incident.narrativeAvailable} />
-      </Card>
+      </Panel>
 
       {incident.witnesses ? (
-        <Card title="Witnesses">
+        <Panel stack headingLevel={3} title="Witnesses">
           <p style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
             {incident.witnesses}
           </p>
-        </Card>
+        </Panel>
       ) : null}
 
-      <Card title="Action plan">
+      <Panel stack headingLevel={3} title="Action plan">
         <CipherText
           value={incident.actionPlan}
           available={incident.actionPlanAvailable}
           emptyLabel="No action plan — this incident has not been closed with one."
         />
-      </Card>
+      </Panel>
 
-      <Card title="Lifecycle ledger">
+      <Panel stack headingLevel={3} title="Lifecycle ledger">
         {ledger.length === 0 ? (
           <span style={mutedStyle}>No transitions yet — this incident is still a draft.</span>
         ) : (
           <Timeline entries={ledger} />
         )}
-      </Card>
+      </Panel>
 
       {/* ── ceremonies ─────────────────────────────────────────────────────────────────────────────── */}
 
