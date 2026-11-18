@@ -117,27 +117,6 @@ export const columnStyle: CSSProperties = {
 };
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
-export const selectStyle: CSSProperties = {
-  minHeight: "2.5rem",
-  padding: "0 0.75rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.8125rem",
-};
-export const inputStyle: CSSProperties = { ...selectStyle, minWidth: "9rem" };
-export const textareaStyle: CSSProperties = {
-  width: "100%",
-  padding: "0.5rem 0.6rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.85rem",
-  fontFamily: "inherit",
-  resize: "vertical",
-};
 export const ghostButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -205,105 +184,8 @@ export function FilterRow({ children }: { children: ReactNode }): JSX.Element {
   return <div className="wx-filter-panel">{children}</div>;
 }
 
-/** A labelled <select> for the filter row / a modal field. */
-export function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  onChange: (v: string) => void;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--color-on-surface)" }}>
-        {label}
-      </span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="wx-select"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-/** A labelled text/number/date input. */
-export function TextField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  describedBy,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: "text" | "number" | "date" | "datetime-local";
-  placeholder?: string;
-  describedBy?: string;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <input
-        aria-label={label}
-        aria-describedby={describedBy}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        style={inputStyle}
-      />
-    </label>
-  );
-}
-
-/** A labelled multi-line field — narrative / attestation / reason capture. */
-export function TextAreaField({
-  label,
-  value,
-  onChange,
-  rows = 4,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  rows?: number;
-  hint?: string;
-}): JSX.Element {
-  const hintId = hint ? `${label.replace(/\W+/g, "-").toLowerCase()}-hint` : undefined;
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <textarea
-        aria-label={label}
-        aria-describedby={hintId}
-        value={value}
-        rows={rows}
-        onChange={(e) => onChange(e.target.value)}
-        style={textareaStyle}
-      />
-      {hint ? (
-        <span id={hintId} style={mutedStyle}>
-          {hint}
-        </span>
-      ) : null}
-    </label>
-  );
-}
+// The labelled controls are the kit's, behind the string-valued `onChange(value)` these screens use.
+export { SelectField, TextAreaField, TextField } from "../../shell/value-fields";
 
 /** The §5.1 modal shell — backdrop + dialog + footer actions. Every M15 ceremony reuses it. Delegates
  * to `@chartwarden/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
