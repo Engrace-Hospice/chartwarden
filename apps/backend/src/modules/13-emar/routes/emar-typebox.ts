@@ -11,7 +11,6 @@ import { parse } from "@chartwarden/shared/route-kit";
 // key on the ORDER's class from M12's `getAdministrationContext`, and a body value that disagrees with it is
 // refused (422 MED_CLASS_MISMATCH).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   AdministrationPolicyView as ServiceAdministrationPolicyView,
   AdministrationView as ServiceAdministrationView,

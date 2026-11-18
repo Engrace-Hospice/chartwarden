@@ -16,7 +16,6 @@ import { pageLimit, parse } from "@chartwarden/shared/route-kit";
 // shape check. The `:kind` param is the closed `MDM_ENTITY_KINDS` union, so an unknown kind is a
 // malformed request, never routed.
 import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
 export { parse };
 

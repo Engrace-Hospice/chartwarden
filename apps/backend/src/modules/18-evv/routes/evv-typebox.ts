@@ -9,7 +9,6 @@ import type { EvvAggregatorSubmissionDto, EvvBracketDto, EvvEventDto } from "@ch
 // resolve at authz time. Coordinates (D10) never leave the system through these schemas except on the inbound
 // capture body; the read DTOs are coordinate-free.
 import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   ArrivalView as ServiceArrivalView,
   CheckResultView as ServiceCheckResultView,

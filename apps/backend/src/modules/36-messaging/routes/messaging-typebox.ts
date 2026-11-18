@@ -24,7 +24,6 @@ import { MENTION_KINDS, MESSAGE_REACTION_KEYS } from "@chartwarden/types";
 // are validated in the service, not here: the structural schema accepts the record shape and the
 // service maps an unknown key to the §4.2 422 domain error.
 import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { ClinicalLinkViewSchema } from "./clinical-link-typebox";
 
 export { parse };

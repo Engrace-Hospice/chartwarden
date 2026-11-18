@@ -12,7 +12,6 @@ import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // (packages/db/src/schema/subscription-billing/*) and the leaf `@chartwarden/types` unions; schema wins on
 // conflict. M35 carries NO PHI (§8.5); every money field is INTEGER CENTS.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
 export { parse };
 

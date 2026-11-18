@@ -12,7 +12,6 @@ import type { OrderKind } from "@chartwarden/types";
 // discontinuation reason) are pinned here so the route → pure `@chartwarden/orders` machine flow is wired
 // end-to-end. Unions mirror the canonical `@chartwarden/types` order vocabularies (single source).
 import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   OrderDetailView as ServiceOrderDetailView,
   OrderView as ServiceOrderView,

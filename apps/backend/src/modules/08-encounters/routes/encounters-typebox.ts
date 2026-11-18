@@ -7,7 +7,6 @@ import { CHART_PROMOTION_REJECT_REASONS } from "@chartwarden/types";
 // consequential routes). Optimistic concurrency rides the `If-Match` header (NOT the body); the sign
 // routes carry the client's step-up timestamp (verified server-side ≤ 5 min stale, §2.7 D13).
 import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   CreatedEncounter as ServiceCreatedEncounter,
   EncounterView as ServiceEncounterView,

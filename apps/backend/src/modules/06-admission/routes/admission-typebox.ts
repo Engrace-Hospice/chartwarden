@@ -6,7 +6,6 @@ import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES } from "@chartwarden/types
 // VALIDATION_FAILED envelope. Schemas mirror §4.2 1:1 (abbreviated where the spec is). Optimistic
 // locking: state-change PATCH/POST routes carry `ifVersion`.
 import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   AdmissionDetail as ServiceAdmissionDetail,
   AdmissionReadinessResult as ServiceAdmissionReadinessResult,

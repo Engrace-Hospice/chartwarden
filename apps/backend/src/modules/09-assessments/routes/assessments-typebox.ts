@@ -12,7 +12,6 @@ import type {
 // (the API ignores any client-sent `score` — D6 server-authoritative). Optimistic concurrency on the
 // correction route rides the `If-Match` header (NOT the body) → 409 STALE_VERSION on skew.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   AssessmentDetailView as ServiceAssessmentDetailView,
   AssessmentView as ServiceAssessmentView,

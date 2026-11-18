@@ -20,7 +20,6 @@ import { pageLimit, pageQuery, parse } from "@chartwarden/shared/route-kit";
 // never mistakes a TypeBox-schema import for a Drizzle one. Validation runs through TypeBox `Value`
 // so a bad request fails with M1's VALIDATION_FAILED envelope and query scalars coerce first.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
 export { parse };
 

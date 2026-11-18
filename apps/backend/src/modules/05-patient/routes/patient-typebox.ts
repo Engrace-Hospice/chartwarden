@@ -4,7 +4,6 @@ import { pageLimit, pageQuery, parse } from "@chartwarden/shared/route-kit";
 // never mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
 // VALIDATION_FAILED envelope.
 import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   AdmitResult as ServiceAdmitResult,
   AmendmentView as ServiceAmendmentView,

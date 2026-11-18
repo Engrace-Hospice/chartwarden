@@ -14,7 +14,6 @@ import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // @chartwarden/reporting package (packages/reporting/src/schemas/tile-read.ts); we re-export them so the
 // route plugins + the OpenAPI enrichment table reference ONE symbol.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
 export { parse };
 

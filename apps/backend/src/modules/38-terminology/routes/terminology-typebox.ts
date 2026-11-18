@@ -20,7 +20,6 @@ import type {
 // value-level mirror of the §4.5 `CodeSystemId` union), so an unknown / not-yet-licensed system
 // (e.g. `cpt`, §7.8) is rejected as a malformed request, never routed.
 import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   LicenseAttestationEntry as StoreAttestationEntry,
   TerminologyLoadHistoryEntry as StoreLoadHistoryEntry,

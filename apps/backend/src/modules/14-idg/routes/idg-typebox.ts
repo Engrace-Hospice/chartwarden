@@ -10,7 +10,6 @@ import { CHART_PROMOTION_REJECT_REASONS } from "@chartwarden/types";
 // lifecycle-bearing envelope fields are pinned here. The cancel/reschedule bodies carry `proposedTransition` +
 // `newScheduledStart` so the route's `per_patient_review_floor_clear` ABAC resolves at authz time.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { IDG_DECISION_PAYLOAD_SCHEMA } from "../decision-payload-schema";
 import type {
   ActionItemView as ServiceActionItemView,

@@ -8,7 +8,6 @@ import { parse } from "@chartwarden/shared/route-kit";
 // four §4.7 pre-schedule predicates resolve at authz time. Response view shapes (the §5 screens' reads) are
 // enriched into the OpenAPI contract with the screens in M17-T08.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   AvailabilityView as ServiceAvailabilityView,
   ProposalView as ServiceProposalView,

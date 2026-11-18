@@ -9,7 +9,6 @@ import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // the M1/M2/M3 routes use — and so query-string scalars are coerced (`limit=50` → 50) before the
 // shape check. `uuid` / `date-time` formats are registered so they actually validate.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
 

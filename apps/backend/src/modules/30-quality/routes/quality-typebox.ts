@@ -16,7 +16,6 @@
 // spec's `rolling_12mo|…|cms_reference_period`). Architecture/schema wins on conflict.
 import { Uuid, pageQuery, parse } from "@chartwarden/shared/route-kit";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { MAX_PAGE_SIZE } from "./pagination";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));

@@ -11,7 +11,6 @@ import type {
 // concurrency: the three PATCH routes carry the read version in the `If-Match` header (NOT the body —
 // see ./concurrency.ts); the POST state-change routes carry it in the body as `ifVersion`.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
 export { parse };
 

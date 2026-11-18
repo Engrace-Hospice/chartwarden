@@ -8,7 +8,6 @@ import { HospiceCoverageFieldsSchema, SetHospiceCoverageBodySchema } from "@char
 // at this boundary (the server discriminates on `medClass` and validates against the per-class TypeBox + the
 // M38 RxNorm/NDC binding); the lifecycle-bearing envelope fields are pinned here.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   MedicationHistoryRecordView,
   RxBenefitLookupView,

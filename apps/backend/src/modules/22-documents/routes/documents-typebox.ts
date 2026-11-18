@@ -7,7 +7,6 @@
 import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 import type { ExtractionReviewStatus } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type { CursorPage as ServiceCursorPage } from "./pagination";
 import type {
   DocumentView as ServiceDocumentView,

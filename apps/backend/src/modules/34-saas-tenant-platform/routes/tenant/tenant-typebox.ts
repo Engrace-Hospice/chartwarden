@@ -10,7 +10,6 @@ import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // route plugins, not by these body schemas. Read responses mirror the `service.ts` view DTOs so the
 // generated client types the Phase-3 tenant screens (the M22 read-surface enrichment pattern).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   BaaRecordView as ServiceBaaRecordView,
   DownloadUrlView as ServiceDownloadUrlView,

@@ -8,7 +8,6 @@ import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // spec spells out; representative where it abbreviates). Org binding is server-side (`request.context` /
 // `withOrgContext` / `withPlatformContext`), NEVER the body — no schema below carries an `organizationId`.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
 export { parse };
 
