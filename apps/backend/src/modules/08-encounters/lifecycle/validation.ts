@@ -70,7 +70,12 @@ export function daysBetween(a: LocalDate, b: LocalDate): number {
 
 // ── §2.7 synchronous validators (each raises the catalogued code on failure) ────────────────────────
 
-/** §2.7 — `(encounter_type × discipline)` must be a legal §2.2 pair (also a DB CHECK). */
+/**
+ * §2.7 — `(encounter_type × discipline)` must be a legal §2.2 pair. Enforced in application code at every
+ * `encounter` writer (the route + `EncounterCreator` seam through this check, the M17 seed consumer and the
+ * scheduler's stamping gate through `isValidEncounterDisciplinePair`); there is NO DB CHECK on the pair, so
+ * a new writer must call one of them.
+ */
 export function checkEncounterDisciplinePair(input: {
   encounterType: EncounterType;
   discipline: EncounterDiscipline;

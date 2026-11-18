@@ -24,9 +24,10 @@ import {
   activeNarrativeVocabRelease,
   narrativeVocabReleaseById,
 } from "@chartwarden/narrative-vocab";
-import { runWithRequestContext } from "@chartwarden/tenancy";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { consentEvaluatorDenyStub } from "../src/bootstrap/seams/providers";
 import { getSeam, registerSeam } from "../src/bootstrap/seams/registry";
@@ -49,6 +50,7 @@ import {
   createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
@@ -1923,5 +1925,67 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         expect(eventsAfter).toBe(eventsBefore);
       },
     );
+
+    // The consumer throws on an illegal pair (the bad-payload convention). The real dispatcher must retry it and
+    // then park it as `failed` (the DLQ terminal): never mint a draft, never silently drop the row.
+    it("through the real dispatcher an illegal-pair m17.visit.published is retried, then parked as failed with no draft and a dead-letter signal", async () => {
+      const catalog = buildBootOutboxCatalog([M17_OUTBOX_EVENTS, M8_OUTBOX_EVENTS]);
+      const txPublisher = buildTxOutboxPublisher(catalog);
+      const deadLetters: Array<{ eventType: string; attemptCount: number }> = [];
+      let nowMs = Date.now();
+      const dispatcher = createOutboxDispatcher({
+        db: handle.db,
+        orgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        consumers: [consumer()],
+        eventCatalog: catalog,
+        options: {
+          // The suite leaves many older pending rows for ORG_A; claim them all so the new row is reached on tick 1.
+          batchSize: 1000,
+          maxAttempts: 2,
+          backoffBaseMs: 1,
+          backoffCapMs: 1,
+          clock: () => nowMs,
+          log: () => {},
+          onDeadLetter: (e) =>
+            deadLetters.push({ eventType: e.eventType, attemptCount: e.attemptCount }),
+        },
+      });
+
+      const visitId = randomUUID();
+      await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        txPublisher.publish(tx as never, {
+          eventName: "m17.visit.published",
+          organizationId: ORG_A,
+          aggregateKind: "visit",
+          aggregateId: visitId,
+          callerModule: "m17",
+          payload: {
+            ...published(visitId, "routine_visit", "np"),
+            visitPurpose: "huv1",
+            visitSetting: "patient_home",
+            scheduledStartedAt: "2026-01-14T17:00:00.000Z",
+            scheduledEndedAt: "2026-01-14T18:00:00.000Z",
+            patientAddressId: null,
+            externalFacilityId: null,
+            parentRecurringVisitId: null,
+            parentProposalId: null,
+          },
+        }),
+      );
+
+      await dispatcher.tick();
+      nowMs += 60_000;
+      await dispatcher.tick();
+
+      const row = (
+        await admin.query(
+          "SELECT status, attempt_count FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm17.visit.published'",
+          [visitId],
+        )
+      ).rows[0];
+      expect(row).toMatchObject({ status: "failed", attempt_count: 2 });
+      expect(deadLetters).toEqual([{ eventType: "m17.visit.published", attemptCount: 2 }]);
+      expect(await draftsFor(visitId)).toHaveLength(0);
+    });
   });
 });
