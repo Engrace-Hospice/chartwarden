@@ -1730,6 +1730,10 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     }
   }, 60_000);
 
+  it.todo(
+    "CM-4A re-enables dispatch: runNoeSubmit holds the NOE row (findByIdForUpdate) across a slow macPortal.upload, so a concurrent record / park waits and then loses",
+  );
+
   // Round 3, L1a: the worker read the notice, checked it, then spent a network call on the upload before it wrote anything, so a
   // record / park of the same notice could commit in between and the notice would be transmitted AND recorded as filed. The worker
   // now takes the row's lock with its read and holds it to its commit: the concurrent write waits, and then loses (412).
