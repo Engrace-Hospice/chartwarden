@@ -45,10 +45,18 @@ describe("FormModal", () => {
 
   it("does not close from a click on the scrim, so typed text is not lost", () => {
     const onClose = renderModal(false);
-    const scrim = document.querySelector(".wx-modal-scrim");
-    expect(scrim).toBeTruthy();
-    fireEvent.click(scrim as Element);
+    // The scrim's click handler is the kit's full-bleed Close button behind the card.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("ignores Escape once something has been typed, but Cancel still closes", () => {
+    const onClose = renderModal(false);
+    fireEvent.input(screen.getByLabelText("Delivered at"), { target: { value: "x" } });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to close while a write is in flight", () => {

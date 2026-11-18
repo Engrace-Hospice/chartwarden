@@ -2,10 +2,11 @@
 // fields, Cancel and the save action. The same props as `FormDrawer`, so a screen picks the one the act needs: a plain
 // record form is a drawer beside its list; an attestation, a sign-off, an irreversible transition or an audited read
 // is this modal, which blocks the page until it is answered. While a write is in flight it cannot be dismissed
-// (Cancel, Escape): closing it would orphan the request and its outcome. The scrim never dismisses it, so a click
-// outside cannot discard what was typed. The modal blocks the page itself, so nothing goes inert.
+// (Cancel, Escape): closing it would orphan the request and its outcome. Neither the scrim nor, once something has
+// been typed, Escape dismisses it (like the drawer's Escape), so a stray key or click cannot discard the text; Cancel
+// always can. The modal blocks the page itself, so nothing goes inert.
 import { Button, InlineAlert, Modal } from "@chartwarden/ui";
-import type { JSX, ReactNode } from "react";
+import { type JSX, type ReactNode, useState } from "react";
 
 export function FormModal({
   title,
@@ -24,15 +25,16 @@ export function FormModal({
   error?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
+  const [typed, setTyped] = useState(false);
   return (
     <Modal
       open
-      onClose={busy ? undefined : onClose}
+      onClose={busy || typed ? undefined : onClose}
       dismissOnScrim={false}
       ariaLabel={title}
       width="34rem"
     >
-      <div className="wx-modal-body">
+      <div className="wx-modal-body" onInput={() => setTyped(true)}>
         <h2>{title}</h2>
         {children}
         {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
