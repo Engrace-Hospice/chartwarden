@@ -154563,7 +154563,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "The caller's open draft encounters",
+        "summary": "My notes: the caller's open encounters (draft and finalized: a note is closed only once signed), each with its visit-note closure clock (`closure.clockStartedAt`, `deadlineAt`, `stage`; a legacy note with no clock has null instants and stage ok). Nearest deadline first, legacy last",
         "parameters": [],
         "responses": {
           "200": {
@@ -154595,7 +154595,8 @@
                           "authoredByUserId",
                           "isF2f",
                           "signedAt",
-                          "cosignedAt"
+                          "cosignedAt",
+                          "closure"
                         ],
                         "properties": {
                           "id": {
@@ -155002,6 +155003,58 @@
                                 "version": {
                                   "type": "integer"
                                 }
+                              }
+                            }
+                          },
+                          "closure": {
+                            "type": "object",
+                            "required": [
+                              "clockStartedAt",
+                              "deadlineAt",
+                              "stage"
+                            ],
+                            "properties": {
+                              "clockStartedAt": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "deadlineAt": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "stage": {
+                                "anyOf": [
+                                  {
+                                    "const": "ok",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "at_risk",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "overdue",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "escalated",
+                                    "type": "string"
+                                  }
+                                ]
                               }
                             }
                           }

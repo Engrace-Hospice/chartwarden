@@ -12140,7 +12140,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The caller's open draft encounters */
+        /** My notes: the caller's open encounters (draft and finalized: a note is closed only once signed), each with its visit-note closure clock (`closure.clockStartedAt`, `deadlineAt`, `stage`; a legacy note with no clock has null instants and stage ok). Nearest deadline first, legacy last */
         get: operations["getApiV1EncountersMydrafts"];
         put?: never;
         post?: never;
@@ -68329,6 +68329,11 @@ export interface operations {
                                 signedAt: string | null;
                                 version: number;
                             }[];
+                            closure: {
+                                clockStartedAt: string | null;
+                                deadlineAt: string | null;
+                                stage: "ok" | "at_risk" | "overdue" | "escalated";
+                            };
                         }[];
                     };
                 };

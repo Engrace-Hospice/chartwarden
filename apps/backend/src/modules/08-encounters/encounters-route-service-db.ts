@@ -77,6 +77,8 @@ import {
   requireReview,
 } from "./chart-promotion";
 import { stampClockIfNull } from "./closure/clock-stamp";
+import { myNotesOf } from "./closure/my-notes";
+import { readClosurePolicy } from "./closure/policy-service";
 import { seedModalityFor } from "./consumers/seed-modality";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
@@ -1425,14 +1427,33 @@ export function createDbEncounterRouteService(
         return { encounters: rows.map(toView) };
       });
     },
+    // ADR-0113: "My notes" = the author's OPEN notes (draft + finalized, a finalized note is closed only once signed), each with
+    // where it sits on the visit-note clock, from the same pure clock + tenant policy the gate and the alerts use.
     async myDrafts(organizationId, actorUserId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const rows = (await tx
-          .select(encounterCols)
+        const t = tx as unknown as DbClient;
+        const policy = await readClosurePolicy(t, organizationId, "visit_note");
+        const rows = (await t
+          .select({ ...encounterCols, clockStartedAt: ENC.clockStartedAt })
           .from(ENC)
-          .where(and(eq(ENC.status, "draft"), eq(ENC.authoredByMembershipId, actorUserId)))
-          .orderBy(desc(ENC.serviceDate), desc(ENC.id))) as EncounterRow[];
-        return { encounters: rows.map(toView) };
+          .where(
+            and(
+              eq(ENC.organizationId, organizationId),
+              eq(ENC.authoredByMembershipId, actorUserId),
+              // A literal list (not bind parameters), as the closure reader does, so the planner can prove the partial-index predicate.
+              sql`${ENC.status} IN ('draft', 'finalized')`,
+            ),
+          )
+          .orderBy(desc(ENC.serviceDate), desc(ENC.id))) as (EncounterRow & {
+          clockStartedAt: Date | null;
+        })[];
+        return {
+          encounters: myNotesOf(
+            rows.map((r) => ({ view: toView(r), clockStartedAt: r.clockStartedAt })),
+            policy,
+            clock(),
+          ),
+        };
       });
     },
     async billable(organizationId, encounterIds) {

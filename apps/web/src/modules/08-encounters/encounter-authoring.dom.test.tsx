@@ -123,6 +123,8 @@ function bodyFor(method: string, path: string): unknown {
             isF2f: false,
             signedAt: null,
             cosignedAt: null,
+            // ADR-0113: a legacy draft (no clock): "Legacy", no deadline, never alerts.
+            closure: { clockStartedAt: null, deadlineAt: null, stage: "ok" },
           },
         ],
       };
@@ -624,7 +626,7 @@ describe("#91 — vitals capture", () => {
   });
 });
 
-describe("#91 — My Drafts leads somewhere a draft can be finished", () => {
+describe("#91 — My notes (was My Drafts) leads somewhere a draft can be finished", () => {
   it("a draft row opens the COMPOSER, not the read screen", async () => {
     mount("/work/drafts", <MyDrafts />, "/work/drafts");
     // The row holds its own controls, so it is a focusable row, not `role="button"` (a button may not

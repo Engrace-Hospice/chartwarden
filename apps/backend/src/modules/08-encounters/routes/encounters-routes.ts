@@ -284,7 +284,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 28 — author's open drafts.
+  // 28 — the author's open notes ("My notes", ADR-0113): draft + finalized, each with its position on the visit-note closure clock.
   app.get(
     "/api/v1/encounters/my-drafts",
     {

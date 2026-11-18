@@ -400,9 +400,33 @@ export const EncounterViewResponseSchema = Type.Object({
   ),
 });
 
-/** The `{ encounters }` envelope the list / queue / my-drafts / signed-since reads return. */
+/** The `{ encounters }` envelope the list / queue / signed-since reads return. */
 export const EncounterListResponseSchema = Type.Object({
   encounters: Type.Array(EncounterViewResponseSchema),
+});
+
+/**
+ * ADR-0113 — where one open note sits on the visit-note closure clock. `clockStartedAt` / `deadlineAt` are null for a legacy
+ * draft that never got a clock (no backfill): it shows as "Legacy", never alerts and never blocks.
+ */
+export const NoteClosureViewResponseSchema = Type.Object({
+  clockStartedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  deadlineAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  stage: lit(["ok", "at_risk", "overdue", "escalated"] as const),
+});
+
+/**
+ * ADR-0113 — one row of "My notes" (`GET /encounters/my-drafts`): the list row plus its `closure`. A distinct shape: the shared
+ * {@link EncounterViewResponseSchema} (list, queue, single read) does not carry it.
+ */
+export const MyNoteResponseSchema = Type.Composite([
+  EncounterViewResponseSchema,
+  Type.Object({ closure: NoteClosureViewResponseSchema }),
+]);
+
+/** The `{ encounters }` envelope "My notes" returns: the author's open notes (draft + finalized), nearest deadline first, legacy last. */
+export const MyNotesResponseSchema = Type.Object({
+  encounters: Type.Array(MyNoteResponseSchema),
 });
 
 /** Routes 4/5 — a vitals capture/edit result (§4.4 decorators). */

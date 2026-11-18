@@ -2196,6 +2196,7 @@ import {
   MileageViewResponseSchema as M8MileageViewResponseSchema,
   ModificationDecisionSchema as M8ModificationDecisionSchema,
   ModificationResponseSchema as M8ModificationResponseSchema,
+  MyNotesResponseSchema as M8MyNotesResponseSchema,
   RenderPayloadResponseSchema as M8RenderPayloadResponseSchema,
   SelectionsUpdateResponseSchema as M8SelectionsUpdateResponseSchema,
   SelectionsViewResponseSchema as M8SelectionsViewResponseSchema,
@@ -5594,8 +5595,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/encounters/my-drafts": {
-    summary: "The caller's open draft encounters",
-    response: M8EncounterListResponseSchema,
+    summary:
+      "My notes: the caller's open encounters (draft and finalized: a note is closed only once signed), each with its visit-note closure clock (`closure.clockStartedAt`, `deadlineAt`, `stage`; a legacy note with no clock has null instants and stage ok). Nearest deadline first, legacy last",
+    response: M8MyNotesResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId": {
     summary:

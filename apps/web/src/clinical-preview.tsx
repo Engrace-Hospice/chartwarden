@@ -891,7 +891,14 @@ const homeRoutes: Record<string, unknown> = {
     ],
   },
   "/api/v1/encounters/my-drafts": {
-    encounters: [{ id: "e1", patientId: "pp1", encounterType: "routine_visit" }],
+    encounters: [
+      {
+        id: "e1",
+        patientId: "pp1",
+        encounterType: "routine_visit",
+        closure: { clockStartedAt: null, deadlineAt: null, stage: "ok" },
+      },
+    ],
   },
   "/api/v1/visits": [
     {
