@@ -11,6 +11,7 @@ import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type { EncounterRenderPayload, MileagePayrollRow } from "@chartwarden/types";
 import { and, asc, between, desc, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { seedModalityFor } from "../consumers/seed-modality";
 import type { HearthnoteEnvelopeCipher } from "../hearthnote-crypto";
 import { checkEncounterDisciplinePair } from "../lifecycle/index";
 import type { EncounterReaderStore } from "./store";
@@ -172,6 +173,8 @@ export function createEncounterStoreOps(db: DbClient, deps: EncounterStoreOpsDep
             authoredByMembershipId: input.authorMembershipId,
             serviceDate: input.serviceDate,
             status: "draft",
+            // Only a telephonic encounter type implies a modality here; confirmed_at stays NULL.
+            visitModality: seedModalityFor({ encounterType: input.encounterType }),
           })
           .returning({ id: E.id });
         if (!row) throw new Error("EncounterCreator: encounter insert returned no row");

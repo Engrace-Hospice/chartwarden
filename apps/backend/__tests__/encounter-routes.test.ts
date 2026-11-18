@@ -1468,3 +1468,250 @@ describe("GAP-182 — GET /encounters is narrowed to the caller's caseload", () 
     await app.close();
   });
 });
+
+describe("M8 visit modality — sign body and the legacy confirm route", () => {
+  type Server = ReturnType<typeof makeServer>;
+
+  async function finalizedRnDraft(
+    app: Server["app"],
+    encounterType: "routine_visit" | "telephonic" = "routine_visit",
+  ): Promise<string> {
+    const draft = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType,
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    const id = draft.json().id as string;
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: requiredSectionSelections(encounterType, "rn"),
+    });
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+      payload: {},
+    });
+    return id;
+  }
+
+  const read = (app: Server["app"], id: string) =>
+    app.inject({ method: "GET", url: `/api/v1/encounters/${id}`, headers: RN });
+
+  it("a sign body carrying a modality marks the encounter's modality confirmed", async () => {
+    const { app } = makeServer();
+    const id = await finalizedRnDraft(app);
+    const sign = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/sign`,
+      headers: RN,
+      payload: { attestationConfirmed: true, visitModality: "video" },
+    });
+    expect(sign.statusCode).toBe(200);
+    const view = (await read(app, id)).json();
+    expect(view.visitModality).toBe("video");
+    expect(view.visitModalityConfirmed).toBe(true);
+    await app.close();
+  });
+
+  it("422 for a modality outside the vocabulary", async () => {
+    const { app } = makeServer();
+    const id = await finalizedRnDraft(app);
+    const sign = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/sign`,
+      headers: RN,
+      payload: { attestationConfirmed: true, visitModality: "carrier_pigeon" },
+    });
+    expect(sign.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("POST /visit-modality confirms the modality on an already-signed encounter", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${ENC_BY_RN}/visit-modality`,
+      headers: RN,
+      payload: { attestationConfirmed: true, visitModality: "in_person" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().visitModality).toBe("in_person");
+    expect(typeof res.json().visitModalityConfirmedAt).toBe("string");
+    const view = (await read(app, ENC_BY_RN)).json();
+    expect(view.visitModality).toBe("in_person");
+    expect(view.visitModalityConfirmed).toBe(true);
+    await app.close();
+  });
+
+  const confirm = (app: Server["app"], id: string, visitModality: string) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/visit-modality`,
+      headers: RN,
+      payload: { attestationConfirmed: true, visitModality },
+    });
+
+  it("409 MODALITY_ALREADY_CONFIRMED when the modality is already confirmed: the stored value does not move", async () => {
+    const { app } = makeServer();
+    expect((await confirm(app, ENC_BY_RN, "telephonic")).statusCode).toBe(200);
+    const again = await confirm(app, ENC_BY_RN, "in_person"); // flipping it would unlock the SIA payment
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.code).toBe("MODALITY_ALREADY_CONFIRMED");
+    const view = (await read(app, ENC_BY_RN)).json();
+    expect(view.visitModality).toBe("telephonic");
+    expect(view.visitModalityConfirmed).toBe(true);
+    // Even re-sending the same value is refused: it is a one-time confirmation, not an idempotent upsert.
+    expect((await confirm(app, ENC_BY_RN, "telephonic")).statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("422 MODALITY_CONFLICTS_WITH_VISIT_TYPE: a telephonic encounter type cannot be signed as in person or video", async () => {
+    const { app } = makeServer();
+    for (const visitModality of ["in_person", "video"]) {
+      const id = await finalizedRnDraft(app, "telephonic");
+      const sign = await app.inject({
+        method: "POST",
+        url: `/api/v1/encounters/${id}/sign`,
+        headers: RN,
+        payload: { attestationConfirmed: true, visitModality },
+      });
+      expect(sign.statusCode).toBe(422);
+      expect(sign.json().error.code).toBe("MODALITY_CONFLICTS_WITH_VISIT_TYPE");
+      expect((await read(app, id)).json().visitModalityConfirmed).toBe(false);
+    }
+    const id = await finalizedRnDraft(app, "telephonic");
+    const ok = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/sign`,
+      headers: RN,
+      payload: { attestationConfirmed: true, visitModality: "telephonic" },
+    });
+    expect(ok.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("422 MODALITY_CONFLICTS_WITH_VISIT_TYPE on the confirm route for a signed telephonic encounter; telephonic is allowed", async () => {
+    const { app } = makeServer();
+    const id = await finalizedRnDraft(app, "telephonic");
+    // The in-memory slice does not require a modality at sign, so this is a signed, still-unconfirmed row.
+    const sign = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/sign`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
+    expect(sign.statusCode).toBe(200);
+    for (const visitModality of ["in_person", "video"]) {
+      const res = await confirm(app, id, visitModality);
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("MODALITY_CONFLICTS_WITH_VISIT_TYPE");
+    }
+    expect((await read(app, id)).json().visitModalityConfirmed).toBe(false);
+    expect((await confirm(app, id, "telephonic")).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("422 for a clinician time that is not a short RFC 3339 string (length cap before parsing)", async () => {
+    const { app } = makeServer();
+    const id = await finalizedRnDraft(app);
+    const sign = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/sign`,
+      headers: RN,
+      payload: {
+        attestationConfirmed: true,
+        visitModality: "in_person",
+        startedAt: `2026-06-20T10:00:00Z${" ".repeat(64)}`,
+        endedAt: "2026-06-20T10:30:00Z",
+      },
+    });
+    expect(sign.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("403 when someone other than the author confirms the modality", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${ENC_BY_RN}/visit-modality`,
+      headers: RN2,
+      payload: { attestationConfirmed: true, visitModality: "in_person" },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("403 for a caller without encounter.sign", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${ENC_BY_RN}/visit-modality`,
+      headers: VIEWER,
+      payload: { attestationConfirmed: true, visitModality: "in_person" },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("403 (requireStepUp) when the caller's step-up is stale", async () => {
+    const { app, sessions } = makeServer();
+    sessions.put({
+      sessionId: "rn_1",
+      userId: "rn_1",
+      membershipId: "rn_1",
+      organizationId: ORG,
+      roles: [],
+      providerEntityIds: [],
+      locationIds: [],
+      lastStepUpAt: new Date(Date.now() - 10 * 60 * 1000),
+      lastStepUpFactor: "webauthn",
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${ENC_BY_RN}/visit-modality`,
+      headers: RN,
+      payload: { attestationConfirmed: true, visitModality: "in_person" },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("409 on an encounter that is not signed yet (the modality is confirmed at signing)", async () => {
+    const { app } = makeServer();
+    const id = await finalizedRnDraft(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/visit-modality`,
+      headers: RN,
+      payload: { attestationConfirmed: true, visitModality: "in_person" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("ILLEGAL_TRANSITION");
+    await app.close();
+  });
+
+  it("422 without the attestation", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${ENC_BY_RN}/visit-modality`,
+      headers: RN,
+      payload: { visitModality: "in_person" },
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+});

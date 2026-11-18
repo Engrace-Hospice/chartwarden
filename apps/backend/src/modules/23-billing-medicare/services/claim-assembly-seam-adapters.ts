@@ -445,8 +445,14 @@ export interface M8BillableEncountersReader {
       /** What the hospice visit line is coded from (CMS Pub. 100-04 ch. 11 §30.3). */
       readonly discipline: string;
       readonly encounterType: string;
-      /** The start-to-end bracket in minutes; `null` = not documented. */
+      /** The start-to-end bracket in (fractional) minutes; `null` = not documented. */
       readonly durationMinutes: number | null;
+      /** How the visit was delivered (M8 `visit_modality`); `null` or absent = unknown (a legacy row). */
+      readonly visitModality?: "in_person" | "telephonic" | "video" | null;
+      /** True once the clinician confirmed the modality at signing; absent reads as NOT confirmed. */
+      readonly visitModalityConfirmed?: boolean;
+      /** Who supplied the documented bracket (M18 EVV or the signing clinician); `null` or absent = none / unknown. */
+      readonly timeSource?: "evv" | "clinician" | null;
     }>
   >;
 }
@@ -492,6 +498,9 @@ export function buildM23BillableEncountersAdapter(
         discipline: r.discipline,
         encounterType: r.encounterType,
         durationMinutes: r.durationMinutes,
+        modality: r.visitModality ?? null,
+        modalityConfirmed: r.visitModalityConfirmed === true,
+        timeSource: r.timeSource ?? null,
         billability: r.billable
           ? ("billable" as const)
           : r.reason === "awaiting_cosignature"

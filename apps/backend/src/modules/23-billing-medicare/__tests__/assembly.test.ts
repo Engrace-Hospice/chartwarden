@@ -13,6 +13,7 @@
 import * as billing from "@chartwarden/billing";
 import { BillingRuleRegistry, type ClaimAssemblySeams, pass } from "@chartwarden/billing";
 import type { Rule } from "@chartwarden/billing";
+import { ChartWardenError } from "@chartwarden/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildClaimAssemblyService } from "../services/claim-assembly";
 import type { ClaimAssemblyActor } from "../services/claim-assembly";
@@ -400,6 +401,46 @@ describe("D10 — cosignature-wait visits are excluded from the assembled line b
   });
 });
 
+/** A billable, in-person RN visit whose delivery mode the clinician confirmed — eligible for the SIA. */
+const rnVisit = (encounterId: string, serviceDate: string, durationMinutes: number) => ({
+  encounterId,
+  serviceDate,
+  billability: "billable" as const,
+  discipline: "rn",
+  encounterType: "routine_visit",
+  durationMinutes,
+  modality: "in_person" as const,
+  modalityConfirmed: true,
+});
+
+/** An admission whose stay ended in a death at home on `deceasedDate` (status 40, occurrence code 55). */
+const DEATH_ADMISSION = (deceasedDate: string) => ({
+  admissionId: "adm-1",
+  hospiceAdmissionDate: "2025-09-01",
+  dischargeDate: deceasedDate,
+  dischargeReason: "death",
+  deceasedDate,
+  placeOfDeath: "home",
+  transferOut: null,
+});
+const RHC_PERIODS = [
+  {
+    levelOfCarePeriodId: "loc-1",
+    levelOfCare: "routine_home_care",
+    from: "2025-09-01",
+    to: "2025-10-31",
+    chcDocumentedHours: null,
+    gipAdmissionCriteriaDocumented: null,
+  },
+];
+const SIA_CLAIM = {
+  orgId: "org-1",
+  providerEntityId: "pe-1",
+  patientId: "pat-1",
+  serviceFrom: "2025-09-25",
+  serviceTo: "2025-10-05",
+};
+
 describe("SIA add-on across Oct 1 — priced with the fiscal year of the death date", () => {
   /** A claim Sep 25 - Oct 5 (2025) with a death on `deceasedDate`, an RN visit in the SIA window, and per-year inputs. */
   const crossingSeams = (
@@ -417,13 +458,14 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
     const base = buildSeams();
     return buildSeams({
       admission: {
+        // The claim that ENDS the stay in a death: only it carries status 40/41/42 and can be paid an SIA.
         resolveForRange: async () => ({
           admissionId: "adm-1",
           hospiceAdmissionDate: "2025-09-01",
-          dischargeDate: null,
-          dischargeReason: null,
+          dischargeDate: deceasedDate,
+          dischargeReason: "death",
           deceasedDate,
-          placeOfDeath: null,
+          placeOfDeath: "home",
           transferOut: null,
         }),
       },
@@ -451,22 +493,10 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
           },
         ],
       },
-      billableEncounters: { forRange: async () => [] },
-      signedEncounters: {
-        inWindow: async () =>
-          opts.withVisits === false
-            ? []
-            : [
-                {
-                  encounterId: "rn-1",
-                  serviceDate: deceasedDate,
-                  discipline: "RN",
-                  signed: true,
-                  cosignRequired: false,
-                  cosigned: false,
-                  durationMinutes: 120,
-                },
-              ],
+      // M8 hands the SIA the same billable encounters the visit lines come from, now with the confirmed modality.
+      billableEncounters: {
+        forRange: async () =>
+          opts.withVisits === false ? [] : [rnVisit("rn-1", deceasedDate, 120)],
       },
       referenceData: {
         ...base.referenceData,
@@ -530,22 +560,23 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
 
   const ENDS_SEP_30 = { ...REQUEST, serviceFrom: "2025-09-25", serviceTo: "2025-09-30" };
 
-  it("a claim ending Sep 30 with a death on Oct 1 prices SIA with the death year's rate, index and rate-table date (no silent fallback)", async () => {
+  it("a claim ending Sep 30 with a death on Oct 1 carries NO SIA: the add-on rides the claim that ends in the death (Medicare adjusts September)", async () => {
     const chcCalls: unknown[] = [];
     await buildClaimAssemblyService(
       makeFakeDb() as never,
       crossingSeams("2025-10-01", chcCalls, { locTo: "2025-09-30" }),
     ).assemble(ACTOR, ENDS_SEP_30);
-    expect(chcCalls).toEqual([[2025, "1.2000", "2025-10-01"]]);
-    expect(store.sia[0].siaAddOnCents).toBe(14_000);
+    expect(chcCalls).toEqual([]); // nothing priced, no rate read
+    expect(store.sia).toHaveLength(0);
+    expect(store.claims.size).toBe(1);
   });
 
   it("fails closed with a typed 422 when the death year's provider index is missing", async () => {
     await expect(
       buildClaimAssemblyService(
         makeFakeDb() as never,
-        crossingSeams("2025-10-03", [], { locTo: "2025-09-30", providerIndex: { 2025: null } }),
-      ).assemble(ACTOR, ENDS_SEP_30),
+        crossingSeams("2025-10-03", [], { providerIndex: { 2025: null } }),
+      ).assemble(ACTOR, CROSSING),
     ).rejects.toMatchObject({ code: "WAGE_INDEX_UNAVAILABLE", statusCode: 422 });
     expect(store.claims.size).toBe(0);
   });
@@ -554,8 +585,8 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
     await expect(
       buildClaimAssemblyService(
         makeFakeDb() as never,
-        crossingSeams("2025-10-03", [], { locTo: "2025-09-30", areaIndex: { 2025: null } }),
-      ).assemble(ACTOR, ENDS_SEP_30),
+        crossingSeams("2025-10-03", [], { areaIndex: { 2025: null } }),
+      ).assemble(ACTOR, CROSSING),
     ).rejects.toMatchObject({ code: "WAGE_INDEX_AREA_UNRESOLVED", statusCode: 422 });
     expect(store.claims.size).toBe(0);
   });
@@ -623,11 +654,138 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
       referenceData: { chcHourlyRateCents: untouched, wageIndexForCcn: untouched },
     } as never;
     const facts = {
-      admission: { deceasedDate: "2025-10-03" },
-      signedEncounters: [],
+      admission: DEATH_ADMISSION("2025-10-03"),
+      mdmResolution: { placeOfService: "home" },
+      resolvedPeriods: [],
+      resolvedLoc: RHC_PERIODS,
+      billableEncounters: [],
       fiscalYearPricing: new Map(), // an unresolved residence would have thrown had the factor been resolved
     } as never;
-    await expect(computeClaimSia(seams, facts)).resolves.toBeNull();
+    await expect(computeClaimSia(seams, facts, SIA_CLAIM)).resolves.toBeNull();
+  });
+
+  it("explains a missing add-on: a death claim whose only RN visit was a phone call gets a zero-payable snapshot and reads no rate", async () => {
+    const untouched = () => {
+      throw new Error("no rate or index may be read when nothing is payable");
+    };
+    const seams = {
+      referenceData: { chcHourlyRateCents: untouched, wageIndexForCcn: untouched },
+    } as never;
+    const phoneCall = { ...rnVisit("rn-phone", "2025-10-03", 60), modality: "telephonic" as const };
+    const facts = {
+      admission: DEATH_ADMISSION("2025-10-03"),
+      mdmResolution: { placeOfService: "home" },
+      resolvedPeriods: [],
+      resolvedLoc: RHC_PERIODS,
+      billableEncounters: [phoneCall],
+      fiscalYearPricing: new Map(),
+    } as never;
+    const sia = await computeClaimSia(seams, facts, SIA_CLAIM);
+    expect(sia?.result.present).toBe(false);
+    expect(sia?.result.hasCandidateVisits).toBe(true);
+    expect(sia?.pricing).toBeNull();
+    expect(sia?.result.evaluation.visits[0]?.excluded).toBe("modality_telephonic");
+  });
+
+  it("an interim claim (the death is after its service-to date) carries no SIA, however many visits it has", async () => {
+    const facts = {
+      admission: DEATH_ADMISSION("2025-10-20"),
+      mdmResolution: { placeOfService: "home" },
+      resolvedPeriods: [],
+      resolvedLoc: RHC_PERIODS,
+      billableEncounters: [rnVisit("rn-1", "2025-10-03", 60)],
+      fiscalYearPricing: new Map(),
+    } as never;
+    await expect(computeClaimSia({} as never, facts, SIA_CLAIM)).resolves.toBeNull();
+  });
+
+  it("a death in the first days of the next month tells billing the prior claim moves, without adding it to this claim", async () => {
+    // Claim Oct 1-31; death Oct 3 -> the window [Sep 27, Oct 3] starts on the PRIOR (September) claim.
+    const priorVisit = rnVisit("rn-sep", "2025-09-30", 60);
+    const seams = {
+      billableEncounters: { forRange: async () => [priorVisit] },
+      levelOfCare: { periodsInRange: async () => RHC_PERIODS },
+      referenceData: {
+        chcHourlyRateCents: async () => 6_000,
+        wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
+      },
+    } as never;
+    const facts = {
+      admission: DEATH_ADMISSION("2025-10-03"),
+      mdmResolution: { placeOfService: "home" },
+      resolvedPeriods: [],
+      resolvedLoc: RHC_PERIODS,
+      billableEncounters: [rnVisit("rn-oct", "2025-10-02", 60)],
+      fiscalYearStarting: 2025,
+      fiscalYearPricing: new Map([[2025, { wageIndexFactorDecimal: "1.0000" }]]),
+      rateScope: { orgId: "org-1", providerEntityId: "pe-1", serviceFrom: "2025-10-01" },
+      pe: { ccn: "123456" },
+      valueAreas: undefined,
+    } as never;
+    const sia = await computeClaimSia(seams, facts, {
+      ...SIA_CLAIM,
+      serviceFrom: "2025-10-01",
+      serviceTo: "2025-10-31",
+    });
+    expect(sia?.result.paidUnits).toBe(4); // the October visit only
+    expect(sia?.priorClaimAdvisory).toEqual({
+      from: "2025-09-27",
+      to: "2025-09-30",
+      units: 4,
+      cents: 6_000,
+    });
+  });
+
+  it("an advisory-only claim is never blocked by a missing death-year rate: the advisory is just left unpriced (null, never a fabricated 0)", async () => {
+    // Claim Oct 1-31, death Oct 3, and NO payable visit in October: only the September 30 visit earns units (on the
+    // prior claim). The death year's CHC rate is unavailable, which would 422 a claim that PAYS the add-on itself.
+    const seams = {
+      billableEncounters: { forRange: async () => [rnVisit("rn-sep", "2025-09-30", 60)] },
+      levelOfCare: { periodsInRange: async () => RHC_PERIODS },
+      referenceData: {
+        chcHourlyRateCents: async () => {
+          throw new ChartWardenError("CHC_RATE_UNAVAILABLE", "no CHC rate for that year", 422);
+        },
+        wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
+      },
+    } as never;
+    const facts = {
+      admission: DEATH_ADMISSION("2025-10-03"),
+      mdmResolution: { placeOfService: "home" },
+      resolvedPeriods: [],
+      resolvedLoc: RHC_PERIODS,
+      billableEncounters: [],
+      fiscalYearStarting: 2025,
+      fiscalYearPricing: new Map([[2025, { wageIndexFactorDecimal: "1.0000" }]]),
+      rateScope: { orgId: "org-1", providerEntityId: "pe-1", serviceFrom: "2025-10-01" },
+      pe: { ccn: "123456" },
+      valueAreas: undefined,
+    } as never;
+    const sia = await computeClaimSia(seams, facts, {
+      ...SIA_CLAIM,
+      serviceFrom: "2025-10-01",
+      serviceTo: "2025-10-31",
+    });
+    expect(sia?.result.present).toBe(false);
+    expect(sia?.pricing).toBeNull();
+    expect(sia?.priorClaimAdvisory).toEqual({
+      from: "2025-09-27",
+      to: "2025-09-30",
+      units: 4,
+      cents: null,
+    });
+  });
+
+  it("a death claim at a hospice's own inpatient facility (Q5006) forecasts no add-on: its visits are reported weekly, not as lines the MAC could price from", async () => {
+    const facts = {
+      admission: DEATH_ADMISSION("2025-10-03"),
+      resolvedPeriods: [],
+      resolvedLoc: RHC_PERIODS,
+      mdmResolution: { placeOfService: "ipu" }, // -> Q5006, the hospice's own inpatient facility
+      billableEncounters: [rnVisit("rn-1", "2025-10-03", 60)],
+      fiscalYearPricing: new Map(),
+    } as never;
+    await expect(computeClaimSia({} as never, facts, SIA_CLAIM)).resolves.toBeNull();
   });
 
   it("persists each segment's fiscal year and wage-index factor so the second-year math is reproducible", async () => {
@@ -652,41 +810,31 @@ describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produ
     const seams = buildSeams({
       admission: {
         resolveForRange: async () => ({
-          admissionId: "adm-1",
+          ...DEATH_ADMISSION("2025-11-07"),
           hospiceAdmissionDate: "2025-11-01",
-          dischargeDate: null,
-          dischargeReason: null,
-          deceasedDate: "2025-11-07",
-          placeOfDeath: null,
-          transferOut: null,
         }),
       },
-      signedEncounters: {
-        inWindow: async () => [
-          {
-            encounterId: "rn-1",
-            serviceDate: "2025-11-06",
-            discipline: "RN",
-            signed: true,
-            cosignRequired: false,
-            cosigned: false,
-            durationMinutes: 120,
-          },
-        ],
-      },
+      billableEncounters: { forRange: async () => [rnVisit("rn-1", "2025-11-06", 120)] },
     });
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
 
     const res = await svc.assemble(ACTOR, REQUEST);
 
     expect(store.sia).toHaveLength(1);
-    // 120 min capped (≤240) priced at the CHC hourly rate $60.00 → 2h × $60.00 = $120.00.
+    // 120 min = 8 fifteen-minute units, priced at the CHC hourly rate $60.00: 8 x $60.00 / 4 = $120.00.
     expect(store.sia[0].siaAddOnCents).toBe(12_000);
-    // The billed total is the sum of the line charges only ($1,400.00): the MAC derives the SIA from the visit
-    // lines, so it is never a charge (the 837I claim total must balance to its lines).
-    expect(res.totalChargeCents).toBe(140_000);
+    expect(store.sia[0]).toMatchObject({
+      paidUnits: 8,
+      eligibleUnits: 8,
+      truncatedUnits: 0,
+      chcHourlyRateCents: 6_000,
+    });
+    // The billed total is the sum of the line charges only: the per-diem lines ($1,400.00) plus the RN visit line
+    // (8 units x $25.00 = $200.00, informational). The SIA itself is payment the MAC derives from those visit
+    // lines, never a charge (the 837I claim total must balance to its lines).
+    expect(res.totalChargeCents).toBe(160_000);
     const claim = [...store.claims.values()][0];
-    expect(claim.totalChargeCents).toBe(140_000);
+    expect(claim.totalChargeCents).toBe(160_000);
     // Expected payment keeps the add-on: gross $1,520.00 less 2% sequestration ($30.40) = $1,489.60.
     expect(claim.totalExpectedPaymentCents).toBe(148_960);
   });

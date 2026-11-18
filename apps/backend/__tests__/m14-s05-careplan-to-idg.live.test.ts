@@ -230,7 +230,7 @@ describe.skipIf(!DB_URL)(
     }
     async function signLpn(id: string) {
       await m8.finalize(ORG, id, SERVICE_DATE as never);
-      return m8.sign(ORG, id, LPN, { at: SERVICE_DATE as never });
+      return m8.sign(ORG, id, LPN, { at: SERVICE_DATE as never, visitModality: "in_person" });
     }
 
     beforeAll(async () => {

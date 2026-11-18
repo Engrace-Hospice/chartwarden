@@ -26,7 +26,7 @@ import {
 } from "@chartwarden/narrative-vocab";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { consentEvaluatorDenyStub } from "../src/bootstrap/seams/providers";
@@ -49,7 +49,10 @@ import {
   createDbEncounterRouteService,
   createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
-import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
+import {
+  billableEncountersInRangeForOrg,
+  createDrizzleEncounterReaderStore,
+} from "../src/modules/08-encounters/seams/drizzle-store";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
@@ -66,6 +69,8 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 /** A recent-but-past service date (the encounter_service_date_not_future CHECK forbids the future). */
 const SERVICE_DATE = "2026-01-15";
+/** A primary sign: the clinician confirms the visit was in person (required for the Medicare-countable disciplines). */
+const SIGN_ARGS = { at: SERVICE_DATE as never, visitModality: "in_person" as const };
 const LIVE_NOW = "2026-01-16T17:00:00Z"; // org-local (America/New_York) 2026-01-16, one day after SERVICE_DATE
 // `encounter_signature.session_id` is a uuid column — session ids in this system are uuids.
 const SESSION_A = "66666666-6666-6666-6666-666666666666";
@@ -418,7 +423,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const [row] = (await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]))
       .rows;
     expect(row.vocab_version_id).not.toBeNull(); // D11 pinned at finalize
-    const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    const signed = await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     expect(signed.status).toBe("signed");
     expect(signed.cosignatureRequestId).toBeNull();
     const events = await eventsFor(id);
@@ -465,7 +470,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     it("a same-/next-day note finalizes and signs as normal with no reason", async () => {
       const id = await draft("routine_visit", "rn");
       await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
       expect((await tierOf(id)).late_entry_tier).toBe("normal");
       expect(await signedTier(id)).toBe("normal");
     });
@@ -481,16 +486,16 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         late_entry_tier: "late_entry",
         late_entry_reason: REASON,
       });
-      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
       expect(await signedTier(id)).toBe("late_entry");
     });
 
     it("6 days late: sign is refused until a Clinical Supervisor override is recorded", async () => {
       const id = await draft("routine_visit", "rn", { serviceDate: "2026-01-10" });
       await svc.finalize(ORG_A, id, SERVICE_DATE as never, { lateEntryReason: REASON });
-      await expect(
-        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
-      ).rejects.toMatchObject({ code: "SIGNIFICANT_LATE_ENTRY_OVERRIDE_REQUIRED" });
+      await expect(svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS)).rejects.toMatchObject({
+        code: "SIGNIFICANT_LATE_ENTRY_OVERRIDE_REQUIRED",
+      });
       // the administrative route is the wrong tier for 6 days
       await expect(
         svc.administrativeOverride(ORG_A, id, {
@@ -505,7 +510,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       const overridden = await tierOf(id);
       expect(overridden.late_entry_tier).toBe("significant_late_entry");
       expect(overridden.late_entry_reason).toBe(REASON); // the author's own reason is kept
-      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
       expect(await signedTier(id)).toBe("significant_late_entry");
       const override = (
         await admin.query(
@@ -525,14 +530,14 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
           reason: OVERRIDE_REASON,
         }),
       ).rejects.toMatchObject({ statusCode: 409, code: "LATE_ENTRY_TIER_MISMATCH" });
-      await expect(
-        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
-      ).rejects.toMatchObject({ code: "ADMINISTRATIVE_LATE_OVERRIDE_REQUIRED" });
+      await expect(svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS)).rejects.toMatchObject({
+        code: "ADMINISTRATIVE_LATE_OVERRIDE_REQUIRED",
+      });
       await svc.administrativeOverride(ORG_A, id, {
         actorMembershipId: membershipOf[ORG_A],
         reason: ADMIN_REASON,
       });
-      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
       expect(await signedTier(id)).toBe("administrative_override");
     });
   });
@@ -540,7 +545,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("LPN sign routes to cosign_pending; acknowledge → cosign signs the encounter (§2.4/§7.2)", async () => {
     const id = await draft("routine_visit", "lpn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    const signed = await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     expect(signed.status).toBe("cosign_pending");
     expect(signed.cosignatureRequestId).not.toBeNull();
     expect(await eventsFor(id)).toContain("m8.encounter.signed");
@@ -576,7 +581,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("GAP-029 — the author cannot acknowledge or cosign their own LPN note (403, workflow untouched)", async () => {
     const id = await draft("routine_visit", "lpn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     await expect(
       svc.cosignAcknowledge(ORG_A, id, ACTOR_A, SERVICE_DATE as never),
     ).rejects.toMatchObject({ statusCode: 403 });
@@ -590,13 +595,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     // Without the M6 face_to_face_encounter_id the dual-write guard fires (F2F_DUAL_WRITE_REQUIRED → 412).
     const bare = await draft("face_to_face", "md");
     await svc.finalize(ORG_A, bare, SERVICE_DATE as never);
-    await expect(
-      svc.sign(ORG_A, bare, ACTOR_A, { at: SERVICE_DATE as never }),
-    ).rejects.toMatchObject({ statusCode: 412 });
+    await expect(svc.sign(ORG_A, bare, ACTOR_A, SIGN_ARGS)).rejects.toMatchObject({
+      statusCode: 412,
+    });
     // With it present, the sign completes as `signed` (MD/NP never route to cosignature).
     const f2f = await draft("face_to_face", "md", { faceToFaceEncounterId: randomUUID() });
     await svc.finalize(ORG_A, f2f, SERVICE_DATE as never);
-    const signed = await svc.sign(ORG_A, f2f, ACTOR_A, { at: SERVICE_DATE as never });
+    const signed = await svc.sign(ORG_A, f2f, ACTOR_A, SIGN_ARGS);
     expect(signed.status).toBe("signed");
     expect(await eventsFor(f2f)).toContain("m8.encounter.signed");
   });
@@ -634,7 +639,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("addendum on a signed encounter: draft → finalize → sign; emits m8.encounter.addendum_signed", async () => {
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     const a = await svc.createAddendum(ORG_A, id, {
       reason: "Correcting the signed encounter documentation.",
       authorMembershipId: ACTOR_A.membershipId,
@@ -651,7 +656,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(addendumRows.rows[0].template_key).toBe("routine_visit:rn");
     const fin = await svc.finalizeAddendum(ORG_A, id, a.id);
     expect(fin.status).toBe("finalized");
-    const signed = await svc.signAddendum(ORG_A, id, a.id, ACTOR_A, { at: SERVICE_DATE as never });
+    const signed = await svc.signAddendum(ORG_A, id, a.id, ACTOR_A, SIGN_ARGS);
     expect(signed.status).toBe("signed");
     expect(await eventsFor(id)).toContain("m8.encounter.addendum_signed");
   });
@@ -733,7 +738,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("§2.6 — an addendum finalize pins its OWN output against the parent's template", async () => {
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     const a = await svc.createAddendum(ORG_A, id, {
       reason: "Correcting the signed encounter documentation.",
       authorMembershipId: ACTOR_A.membershipId,
@@ -867,7 +872,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("§2.7 immutability — editing a signed encounter is refused (IMMUTABLE_AFTER_SIGN → 409)", async () => {
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     await expect(svc.captureVitals(ORG_A, id, { heartRate: 72 })).rejects.toMatchObject({
       statusCode: 409,
     });
@@ -942,7 +947,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       painScale: "nrs_0_10",
     });
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     // Writing is refused after signing (§2.7); READING must not be — 42 CFR 418.104 requires the
     // signed record be retrievable, and it is the signed state the record exists in.
     const read = await svc.listVitals(ORG_A, id);
@@ -1125,7 +1130,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       clinicallyNotIndicatedReason: "patient refused cuff placement this visit",
     });
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    const signed = await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     expect(signed.status).toBe("signed");
   });
 
@@ -1135,15 +1140,16 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       const id = await draft("recert_visit", "rn");
       await svc.finalize(ORG_A, id, SERVICE_DATE as never);
       latestScales = new Set(["pps"]); // ESAS drops out before sign — mirrors the M7-overdue shape.
-      await expect(
-        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
-      ).rejects.toMatchObject({ statusCode: 422, code: "COMPLIANCE_GATE_FAILED" });
+      await expect(svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS)).rejects.toMatchObject({
+        statusCode: 422,
+        code: "COMPLIANCE_GATE_FAILED",
+      });
       const rows = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);
       expect(rows.rows[0].status).toBe("finalized");
       expect(await eventsFor(id)).not.toContain("m8.encounter.signed");
 
       latestScales = new Set(["pps", "esas_r"]);
-      const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      const signed = await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
       expect(signed.status).toBe("signed");
     } finally {
       latestScales = new Set();
@@ -1163,9 +1169,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       nextReviewDueAt: "2026-01-20T00:00:00.000Z",
     };
     try {
-      await expect(
-        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
-      ).rejects.toMatchObject({ statusCode: 422, code: "COMPLIANCE_GATE_FAILED" });
+      await expect(svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS)).rejects.toMatchObject({
+        statusCode: 422,
+        code: "COMPLIANCE_GATE_FAILED",
+      });
       const rows = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);
       expect(rows.rows[0].status).toBe("finalized");
       expect(await eventsFor(id)).not.toContain("m8.encounter.signed");
@@ -1178,14 +1185,14 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       carePlanOverdue = null;
     }
     // With the plan back in window the same encounter signs — so the block was the plan, not the note.
-    const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    const signed = await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     expect(signed.status).toBe("signed");
   });
 
   it("§2.6 — an addendum with nothing in it does not finalize", async () => {
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
     const a = await svc.createAddendum(ORG_A, id, {
       reason: "Correcting the signed encounter documentation.",
       authorMembershipId: ACTOR_A.membershipId,
@@ -1208,9 +1215,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       [PATIENT],
     );
     try {
-      await expect(
-        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
-      ).rejects.toMatchObject({ statusCode: 422, code: "NO_ELIGIBLE_COSIGNER" });
+      await expect(svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS)).rejects.toMatchObject({
+        statusCode: 422,
+        code: "NO_ELIGIBLE_COSIGNER",
+      });
       // A refused sign writes NOTHING: the row is still finalized, there is no CoP 418.104(c)
       // signature row, and no cosignature_request routed at nobody.
       const enc = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);
@@ -1231,9 +1239,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       );
     }
     // Re-assigned, the SAME encounter signs — so the refusal was the missing case manager, not the note.
-    expect((await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never })).status).toBe(
-      "cosign_pending",
-    );
+    expect((await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS)).status).toBe("cosign_pending");
   });
 
   it("§2.6 check 10 — a case manager whose MEMBERSHIP has lapsed is not an eligible cosigner", async () => {
@@ -1245,9 +1251,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       CASE_MANAGER_MEMBERSHIP_ID,
     ]);
     try {
-      await expect(
-        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
-      ).rejects.toMatchObject({ statusCode: 422, code: "NO_ELIGIBLE_COSIGNER" });
+      await expect(svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS)).rejects.toMatchObject({
+        statusCode: 422,
+        code: "NO_ELIGIBLE_COSIGNER",
+      });
     } finally {
       await admin.query("UPDATE membership SET status='active' WHERE id=$1", [
         CASE_MANAGER_MEMBERSHIP_ID,
@@ -1265,9 +1272,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     try {
       // Only lpn/chha route a cosignature (§2.3), so the guard must not become a new way for an RN
       // note to fail — the discipline decides, not the assignment roster.
-      expect((await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never })).status).toBe(
-        "signed",
-      );
+      expect((await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS)).status).toBe("signed");
     } finally {
       await admin.query(
         "UPDATE patient_assignment SET unassigned_at = NULL WHERE patient_id=$1 AND role='primary_rn'",
@@ -1572,7 +1577,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         source: "odometer",
       });
       await svc.finalize(ORG_A, signedId, SERVICE_DATE as never);
-      await svc.sign(ORG_A, signedId, ACTOR_A, { at: SERVICE_DATE as never });
+      await svc.sign(ORG_A, signedId, ACTOR_A, SIGN_ARGS);
       const draftId = await draft("routine_visit", "rn");
       await svc.captureMileage(ORG_A, draftId, {
         odometerStart: 3000,
@@ -1603,7 +1608,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     it("SignedEncountersReader.renderPayloadFor opens the pinned narrative of a signed encounter", async () => {
       const id = await draft("routine_visit", "rn");
       await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
       const viaRoute = await svc.renderPayload(ORG_A, id);
       const viaSeam = await runWithRequestContext(REQ, () => seamStore().renderPayload(id));
       expect(viaSeam?.final).toBe(viaRoute.final);
@@ -1639,7 +1644,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       const vitals = requiredVitalsCapture("routine_visit" as never, "rn" as never);
       if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
       await svc.finalize(ORG_A, d.id, SERVICE_DATE as never);
-      await svc.sign(ORG_A, d.id, ACTOR_A, { at: SERVICE_DATE as never });
+      await svc.sign(ORG_A, d.id, ACTOR_A, SIGN_ARGS);
 
       const { rows } = await admin.query(
         "SELECT evv_bracket_state, evv_check_in_event_id, started_at, ended_at FROM encounter WHERE id=$1",
@@ -1666,7 +1671,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       registerSeam("EvvBracketResolver", { resolveBracket: async () => null } as never);
       const id = await draft("routine_visit", "rn");
       await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
       const { rows: ev } = await admin.query(
         "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m8.encounter.signed'",
         [id],
@@ -1680,6 +1685,605 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       expect(digests.find((x) => x.encounterId === id)?.evvBracketState).toBe(
         "evv_missing_documented",
       );
+    });
+  });
+
+  // Migration 1510 — how a visit was delivered and where its documented time came from. The HARD PRINCIPLE under
+  // test: a time is never fabricated (EVV wins, otherwise only what the clinician typed) and a modality is never
+  // defaulted to in_person.
+  describe("visit delivery at sign (migration 1510)", () => {
+    const row = async (id: string) =>
+      (
+        await admin.query(
+          `SELECT status, visit_modality, visit_modality_confirmed_at, visit_modality_confirmed_by,
+                  started_at, ended_at, time_source FROM encounter WHERE id=$1`,
+          [id],
+        )
+      ).rows[0];
+    const finalized = async (type = "routine_visit", discipline = "rn"): Promise<string> => {
+      const id = await draft(type, discipline);
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+      return id;
+    };
+    const noEvv = () =>
+      registerSeam("EvvBracketResolver", { resolveBracket: async () => null } as never);
+    const range = { from: SERVICE_DATE, to: SERVICE_DATE };
+    // Every test signs as the same author on the same service date, and a documented bracket may not overlap another one the
+    // author documented. So each test starts with no brackets on the books (the freeze trigger is stepped around for this
+    // fixture reset only).
+    afterEach(async () => {
+      await admin.query("ALTER TABLE encounter DISABLE TRIGGER trg_encounter_delivery_freeze");
+      try {
+        await admin.query(
+          "UPDATE encounter SET started_at=NULL, ended_at=NULL, time_source=NULL WHERE started_at IS NOT NULL",
+        );
+      } finally {
+        await admin.query("ALTER TABLE encounter ENABLE TRIGGER trg_encounter_delivery_freeze");
+      }
+    });
+    /** Puts a signed visit back to "never confirmed", as a pre-1510 row is. trg_encounter_delivery_freeze (rightly) refuses to
+     *  un-confirm a signed visit, so this fixture, and only this fixture, steps around it. */
+    const unconfirm = async (id: string): Promise<void> => {
+      await admin.query("ALTER TABLE encounter DISABLE TRIGGER trg_encounter_delivery_freeze");
+      try {
+        await admin.query(
+          `UPDATE encounter SET visit_modality=NULL, visit_modality_confirmed_at=NULL,
+                  visit_modality_confirmed_by=NULL WHERE id=$1`,
+          [id],
+        );
+      } finally {
+        await admin.query("ALTER TABLE encounter ENABLE TRIGGER trg_encounter_delivery_freeze");
+      }
+    };
+
+    it("refuses an RN sign with no modality: 422 MODALITY_CONFIRMATION_REQUIRED, nothing written", async () => {
+      noEvv();
+      const id = await finalized();
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "MODALITY_CONFIRMATION_REQUIRED" });
+      const r = await row(id);
+      expect(r.status).toBe("finalized");
+      expect(r.visit_modality).toBeNull();
+    });
+
+    it("a telephonic encounter opens seeded but UNCONFIRMED, and still has to be confirmed at sign", async () => {
+      noEvv();
+      const id = await finalized("telephonic", "rn");
+      const seeded = await row(id);
+      expect(seeded.visit_modality).toBe("telephonic");
+      expect(seeded.visit_modality_confirmed_at).toBeNull();
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ code: "MODALITY_CONFIRMATION_REQUIRED" });
+    });
+
+    it("the confirmed modality is written with who and when", async () => {
+      noEvv();
+      const id = await finalized();
+      await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never, visitModality: "video" });
+      const r = await row(id);
+      expect(r.visit_modality).toBe("video");
+      expect(r.visit_modality_confirmed_at).not.toBeNull();
+      expect(r.visit_modality_confirmed_by).toBe(ACTOR_A.membershipId);
+    });
+
+    it("a physician is not asked: signs with no modality and none is invented", async () => {
+      noEvv();
+      const id = await draft("face_to_face", "md", { faceToFaceEncounterId: randomUUID() });
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+      const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      expect(signed.status).toBe("signed");
+      const r = await row(id);
+      expect([r.visit_modality, r.visit_modality_confirmed_at]).toEqual([null, null]);
+    });
+
+    it("no EVV and no typed times: started_at / ended_at / time_source stay NULL (never fabricated)", async () => {
+      noEvv();
+      const id = await finalized();
+      await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
+      const r = await row(id);
+      expect([r.started_at, r.ended_at, r.time_source]).toEqual([null, null, null]);
+      const mine = (
+        await billableEncountersInRangeForOrg(
+          handle.db,
+          ORG_A,
+          SITING_A.providerEntityId,
+          PATIENT,
+          range,
+        )
+      ).find((x) => x.encounterId === id);
+      expect(mine?.durationMinutes).toBeNull();
+    });
+
+    it("clinician-entered times are stored with time_source 'clinician' and reach the billable reader unrounded", async () => {
+      noEvv();
+      const id = await finalized();
+      await svc.sign(ORG_A, id, ACTOR_A, {
+        ...SIGN_ARGS,
+        startedAt: "2026-01-15T14:00:00.000Z", // 09:00 org-local, the service date
+        endedAt: "2026-01-15T14:52:30.000Z",
+      });
+      const r = await row(id);
+      expect(r.time_source).toBe("clinician");
+      expect(new Date(r.started_at).toISOString()).toBe("2026-01-15T14:00:00.000Z");
+      const mine = (
+        await billableEncountersInRangeForOrg(
+          handle.db,
+          ORG_A,
+          SITING_A.providerEntityId,
+          PATIENT,
+          range,
+        )
+      ).find((x) => x.encounterId === id);
+      expect(mine).toMatchObject({
+        durationMinutes: 52.5,
+        visitModality: "in_person",
+        visitModalityConfirmed: true,
+        timeSource: "clinician",
+      });
+    });
+
+    it("typed times are refused (503 EVV_BRACKET_UNAVAILABLE) while M18 cannot be asked; no times still signs; a retry once M18 answers stores them", async () => {
+      registerSeam("EvvBracketResolver", {
+        resolveBracket: async () => {
+          throw new Error("m18 unreachable");
+        },
+      } as never);
+      const mk = async (): Promise<string> => {
+        const d = await svc.createDraft(ORG_A, membershipOf[ORG_A], {
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          encounterType: "routine_visit" as never,
+          discipline: "rn" as never,
+          serviceDate: SERVICE_DATE as never,
+          visitId: randomUUID(),
+        });
+        await svc.updateSelections(
+          ORG_A,
+          d.id,
+          0,
+          requiredSectionSelections("routine_visit" as never, "rn" as never),
+        );
+        const vitals = requiredVitalsCapture("routine_visit" as never, "rn" as never);
+        if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
+        await svc.finalize(ORG_A, d.id, SERVICE_DATE as never);
+        return d.id;
+      };
+      const typed = {
+        ...SIGN_ARGS,
+        startedAt: "2026-01-15T14:00:00.000Z",
+        endedAt: "2026-01-15T14:30:00.000Z",
+      };
+      const refused = await mk();
+      const failure = await svc.sign(ORG_A, refused, ACTOR_A, typed).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(failure).toMatchObject({ statusCode: 503, code: "EVV_BRACKET_UNAVAILABLE" });
+      // The M18 failure is kept as the cause (for the server log's cause chain), not swallowed and not in the response message.
+      expect((failure as Error).cause).toMatchObject({ message: "m18 unreachable" });
+      expect((failure as Error).message).not.toContain("m18 unreachable");
+      const untouched = await row(refused);
+      expect(untouched.status).toBe("finalized");
+      expect(untouched.started_at).toBeNull();
+      expect(untouched.time_source).toBeNull();
+      // The same visit signs with no typed times (EVV is never a sign gate): nothing is invented, the columns stay NULL.
+      await svc.sign(ORG_A, refused, ACTOR_A, SIGN_ARGS);
+      expect(await row(refused)).toMatchObject({
+        status: "signed",
+        started_at: null,
+        time_source: null,
+      });
+      // Once M18 answers "no bracket", the typed times are the clinician's and are stored as such.
+      noEvv();
+      const retried = await mk();
+      await svc.sign(ORG_A, retried, ACTOR_A, typed);
+      expect(await row(retried)).toMatchObject({ status: "signed", time_source: "clinician" });
+    });
+
+    it("typed times may not overlap another in-person bracket the same author documented; touching brackets and no times are fine", async () => {
+      noEvv();
+      const at = (hhmmss: string) => `2026-01-15T${hhmmss}.000Z`;
+      const first = await finalized();
+      await svc.sign(ORG_A, first, ACTOR_A, {
+        ...SIGN_ARGS,
+        startedAt: at("16:00:00"),
+        endedAt: at("16:50:00"),
+      });
+      const second = await finalized();
+      await expect(
+        svc.sign(ORG_A, second, ACTOR_A, {
+          ...SIGN_ARGS,
+          startedAt: at("16:30:00"),
+          endedAt: at("17:00:00"),
+        }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "VISIT_TIME_OVERLAP" });
+      expect((await row(second)).status).toBe("finalized");
+      // Touching is not overlapping, and signing without times is never blocked.
+      await svc.sign(ORG_A, second, ACTOR_A, {
+        ...SIGN_ARGS,
+        startedAt: at("16:50:00"),
+        endedAt: at("17:20:00"),
+      });
+      expect(await row(second)).toMatchObject({ status: "signed", time_source: "clinician" });
+      const third = await finalized();
+      await svc.sign(ORG_A, third, ACTOR_A, SIGN_ARGS);
+      expect(await row(third)).toMatchObject({ status: "signed", started_at: null });
+    });
+
+    it("two overlapping typed signs by one author racing in the same instant: exactly one bracket is stored", async () => {
+      noEvv();
+      const at = (hhmmss: string) => `2026-01-15T${hhmmss}.000Z`;
+      const a = await finalized();
+      const b = await finalized();
+      // Without the per-author advisory lock both reads see no clash (neither sees the other's uncommitted row) and both commit.
+      const outcomes = await Promise.allSettled([
+        svc.sign(ORG_A, a, ACTOR_A, {
+          ...SIGN_ARGS,
+          startedAt: at("19:00:00"),
+          endedAt: at("19:40:00"),
+        }),
+        svc.sign(ORG_A, b, ACTOR_A, {
+          ...SIGN_ARGS,
+          startedAt: at("19:20:00"),
+          endedAt: at("20:00:00"),
+        }),
+      ]);
+      expect(outcomes.filter((o) => o.status === "fulfilled")).toHaveLength(1);
+      const refused = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
+      expect(refused?.reason).toMatchObject({ statusCode: 422, code: "VISIT_TIME_OVERLAP" });
+      const stored = [await row(a), await row(b)].filter((r) => r.time_source === "clinician");
+      expect(stored).toHaveLength(1);
+    });
+
+    it("the database refuses what the service refuses: typed times and a confirmed mode are frozen after sign, and the coherence CHECKs hold", async () => {
+      noEvv();
+      const id = await finalized();
+      await svc.sign(ORG_A, id, ACTOR_A, {
+        ...SIGN_ARGS,
+        startedAt: "2026-01-15T18:00:00.000Z",
+        endedAt: "2026-01-15T18:30:00.000Z",
+      });
+      const attempt = async (sqlText: string): Promise<string> => {
+        try {
+          await admin.query(sqlText, [id]);
+        } catch (e) {
+          return (e as Error).message;
+        }
+        return "ACCEPTED";
+      };
+      expect(
+        await attempt("UPDATE encounter SET ended_at = ended_at + interval '1 hour' WHERE id=$1"),
+      ).toMatch(/M8_ENCOUNTER_DELIVERY_FROZEN/);
+      expect(await attempt("UPDATE encounter SET time_source='evv' WHERE id=$1")).toMatch(
+        /M8_ENCOUNTER_DELIVERY_FROZEN/,
+      );
+      expect(await attempt("UPDATE encounter SET visit_modality='telephonic' WHERE id=$1")).toMatch(
+        /M8_ENCOUNTER_DELIVERY_FROZEN/,
+      );
+      // Incoherent writes fail on the CHECKs (on an unsigned row, so the freeze is not what answers).
+      const draftId = await draft("routine_visit", "rn");
+      const incoherent = async (sqlText: string): Promise<string> => {
+        try {
+          await admin.query(sqlText, [draftId]);
+        } catch (e) {
+          return (e as Error).message;
+        }
+        return "ACCEPTED";
+      };
+      expect(
+        await incoherent("UPDATE encounter SET visit_modality_confirmed_at=now() WHERE id=$1"),
+      ).toMatch(/encounter_visit_modality_confirmation_chk/);
+      expect(await incoherent("UPDATE encounter SET time_source='clinician' WHERE id=$1")).toMatch(
+        /encounter_time_source_times_chk/,
+      );
+      expect(
+        await incoherent(
+          "UPDATE encounter SET time_source='clinician', started_at=now(), ended_at=now() - interval '1 minute' WHERE id=$1",
+        ),
+      ).toMatch(/encounter_clinician_times_ordered_chk/);
+    });
+
+    it("EVV always wins: typed times are ignored and time_source is 'evv'", async () => {
+      registerSeam("EvvBracketResolver", {
+        resolveBracket: async () => ({
+          checkInEventId: randomUUID(),
+          checkOutEventId: randomUUID(),
+          startedAt: "2026-01-15T15:00:00.000Z",
+          endedAt: "2026-01-15T15:40:00.000Z",
+          bracketState: "evv_present",
+        }),
+      } as never);
+      const visitId = randomUUID();
+      const d = await svc.createDraft(ORG_A, membershipOf[ORG_A], {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit" as never,
+        discipline: "rn" as never,
+        serviceDate: SERVICE_DATE as never,
+        visitId,
+      });
+      await svc.updateSelections(
+        ORG_A,
+        d.id,
+        0,
+        requiredSectionSelections("routine_visit" as never, "rn" as never),
+      );
+      const vitals = requiredVitalsCapture("routine_visit" as never, "rn" as never);
+      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
+      await svc.finalize(ORG_A, d.id, SERVICE_DATE as never);
+      expect((await svc.getEncounter(ORG_A, d.id)).evvBracketPresent).toBe(true);
+      await svc.sign(ORG_A, d.id, ACTOR_A, {
+        ...SIGN_ARGS,
+        startedAt: "2026-01-15T14:00:00.000Z",
+        endedAt: "2026-01-15T14:59:00.000Z",
+      });
+      const r = await row(d.id);
+      expect(r.time_source).toBe("evv");
+      expect(new Date(r.started_at).toISOString()).toBe("2026-01-15T15:00:00.000Z");
+      expect(new Date(r.ended_at).toISOString()).toBe("2026-01-15T15:40:00.000Z");
+    });
+
+    it.each([
+      ["an end before the start", "2026-01-15T15:00:00.000Z", "2026-01-15T14:00:00.000Z"],
+      ["a time in the future", "2026-01-16T16:30:00.000Z", "2026-01-16T17:30:00.000Z"],
+      ["a start on another local day", "2026-01-14T14:00:00.000Z", "2026-01-14T15:00:00.000Z"],
+      [
+        "offset-less times (read in server-local time otherwise)",
+        "2026-01-15T09:00:00",
+        "2026-01-15T09:50:00",
+      ],
+      ["a visit longer than 8 hours", "2026-01-15T13:00:00.000Z", "2026-01-15T21:30:00.000Z"],
+    ])(
+      "422 VISIT_TIME_INVALID for %s, and the note stays unsigned",
+      async (_name, startedAt, endedAt) => {
+        noEvv();
+        const id = await finalized();
+        await expect(
+          svc.sign(ORG_A, id, ACTOR_A, { ...SIGN_ARGS, startedAt, endedAt }),
+        ).rejects.toMatchObject({ statusCode: 422, code: "VISIT_TIME_INVALID" });
+        const r = await row(id);
+        expect(r.status).toBe("finalized");
+        expect(r.started_at).toBeNull();
+      },
+    );
+
+    it("a documented visit of exactly 8 hours (with an explicit offset) is stored as 'clinician'", async () => {
+      noEvv();
+      const id = await finalized();
+      await svc.sign(ORG_A, id, ACTOR_A, {
+        ...SIGN_ARGS,
+        startedAt: "2026-01-15T08:00:00-05:00", // 13:00Z, the service date org-local
+        endedAt: "2026-01-15T16:00:00-05:00",
+      });
+      const r = await row(id);
+      expect(r.time_source).toBe("clinician");
+      expect(new Date(r.started_at).toISOString()).toBe("2026-01-15T13:00:00.000Z");
+      expect(new Date(r.ended_at).toISOString()).toBe("2026-01-15T21:00:00.000Z");
+    });
+
+    it("422 MODALITY_CONFLICTS_WITH_VISIT_TYPE: a telephonic encounter type is not signed as in person or video, and stays unsigned", async () => {
+      noEvv();
+      for (const visitModality of ["in_person", "video"] as const) {
+        const id = await finalized("telephonic", "rn");
+        await expect(
+          svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never, visitModality }),
+        ).rejects.toMatchObject({ statusCode: 422, code: "MODALITY_CONFLICTS_WITH_VISIT_TYPE" });
+        const r = await row(id);
+        expect([r.status, r.visit_modality_confirmed_at]).toEqual(["finalized", null]);
+      }
+      const id = await finalized("telephonic", "rn");
+      await svc.sign(ORG_A, id, ACTOR_A, {
+        at: SERVICE_DATE as never,
+        visitModality: "telephonic",
+      });
+      expect((await row(id)).visit_modality).toBe("telephonic");
+    });
+
+    it("the sign UPDATE is audited with the real actor (not a NULL actor)", async () => {
+      noEvv();
+      const id = await finalized();
+      await svc.sign(ORG_A, id, { ...ACTOR_A, userId: USER }, SIGN_ARGS);
+      const { rows } = await admin.query(
+        `SELECT actor_user_id, before->>'visit_modality' AS before_modality,
+                after->>'visit_modality' AS after_modality
+           FROM audit_event
+          WHERE resource_id=$1 AND event_type='encounter.update' AND after->>'status'='signed'`,
+        [id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ actor_user_id: USER, after_modality: "in_person" });
+    });
+
+    describe("confirmVisitModality (rows signed before the column existed)", () => {
+      /** A signed RN encounter whose modality is back to NULL, as a pre-1510 row would be. */
+      const legacySigned = async (): Promise<string> => {
+        noEvv();
+        const id = await finalized();
+        await svc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
+        await unconfirm(id);
+        return id;
+      };
+
+      it("the author confirms the modality; only the three modality columns change; the audit trigger records it", async () => {
+        const id = await legacySigned();
+        const before = await row(id);
+        const { rows: auditBefore } = await admin.query(
+          "SELECT count(*)::int AS n FROM audit_event WHERE resource_id=$1 AND event_type='encounter.update'",
+          [id],
+        );
+        const out = await svc.confirmVisitModality(ORG_A, id, ACTOR_A, {
+          visitModality: "telephonic",
+        });
+        expect(out.visitModality).toBe("telephonic");
+        const after = await row(id);
+        expect(after).toMatchObject({
+          status: before.status,
+          visit_modality: "telephonic",
+          visit_modality_confirmed_by: ACTOR_A.membershipId,
+        });
+        expect(after.visit_modality_confirmed_at).not.toBeNull();
+        const { rows: signedAt } = await admin.query(
+          "SELECT signed_at FROM encounter WHERE id=$1",
+          [id],
+        );
+        expect(signedAt[0].signed_at).not.toBeNull();
+        const { rows: auditAfter } = await admin.query(
+          "SELECT count(*)::int AS n FROM audit_event WHERE resource_id=$1 AND event_type='encounter.update'",
+          [id],
+        );
+        expect(auditAfter[0].n).toBeGreaterThan(auditBefore[0].n);
+      });
+
+      it("403 for anyone but the author", async () => {
+        const id = await legacySigned();
+        await expect(
+          svc.confirmVisitModality(
+            ORG_A,
+            id,
+            { membershipId: randomUUID(), sessionId: SESSION_A },
+            { visitModality: "in_person" },
+          ),
+        ).rejects.toMatchObject({ statusCode: 403 });
+        expect((await row(id)).visit_modality).toBeNull();
+      });
+
+      it("409 on an encounter that is not signed yet", async () => {
+        noEvv();
+        const id = await finalized();
+        await expect(
+          svc.confirmVisitModality(ORG_A, id, ACTOR_A, { visitModality: "in_person" }),
+        ).rejects.toMatchObject({ statusCode: 409, code: "ILLEGAL_TRANSITION" });
+      });
+
+      it("404 across tenants (RLS)", async () => {
+        const id = await legacySigned();
+        await expect(
+          svc.confirmVisitModality(ORG_B, id, ACTOR_A, { visitModality: "in_person" }),
+        ).rejects.toMatchObject({ statusCode: 404 });
+      });
+
+      const mod = async (id: string) =>
+        (
+          await admin.query(
+            `SELECT visit_modality, visit_modality_confirmed_at, visit_modality_confirmed_by, updated_at
+               FROM encounter WHERE id=$1`,
+            [id],
+          )
+        ).rows[0];
+
+      it("409 MODALITY_ALREADY_CONFIRMED: a second confirm is refused and the stored modality / confirmer / instant do not move", async () => {
+        const id = await legacySigned();
+        await svc.confirmVisitModality(ORG_A, id, ACTOR_A, { visitModality: "telephonic" });
+        const confirmed = await mod(id);
+        // Flipping a confirmed `telephonic` to `in_person` is the SIA-unlocking move this route must refuse.
+        await expect(
+          svc.confirmVisitModality(ORG_A, id, ACTOR_A, { visitModality: "in_person" }),
+        ).rejects.toMatchObject({ statusCode: 409, code: "MODALITY_ALREADY_CONFIRMED" });
+        await expect(
+          svc.confirmVisitModality(ORG_A, id, ACTOR_A, { visitModality: "telephonic" }),
+        ).rejects.toMatchObject({ statusCode: 409, code: "MODALITY_ALREADY_CONFIRMED" });
+        expect(await mod(id)).toEqual(confirmed);
+      });
+
+      it("409 MODALITY_ALREADY_CONFIRMED on a visit whose modality was confirmed at sign (not only after a legacy confirm)", async () => {
+        noEvv();
+        const id = await finalized();
+        await svc.sign(ORG_A, id, ACTOR_A, {
+          at: SERVICE_DATE as never,
+          visitModality: "telephonic",
+        });
+        const signed = await mod(id);
+        await expect(
+          svc.confirmVisitModality(ORG_A, id, ACTOR_A, { visitModality: "in_person" }),
+        ).rejects.toMatchObject({ statusCode: 409, code: "MODALITY_ALREADY_CONFIRMED" });
+        expect(await mod(id)).toEqual(signed);
+      });
+
+      it("the guard is part of the UPDATE: a confirm that lost the race to a concurrent winner gets the 409 and overwrites nothing", async () => {
+        const id = await legacySigned();
+        // A second connection confirms the row but has not committed yet: the service's read still sees an
+        // UNCONFIRMED row, so only the `visit_modality_confirmed_at IS NULL` predicate on its UPDATE stands
+        // between it and overwriting the winner once the winner commits.
+        const rival = new Client({ connectionString: DB_URL });
+        await rival.connect();
+        try {
+          await rival.query("BEGIN");
+          await rival.query(
+            `UPDATE encounter SET visit_modality='telephonic', visit_modality_confirmed_at=now(),
+                    visit_modality_confirmed_by=$2 WHERE id=$1`,
+            [id, ACTOR_A.membershipId],
+          );
+          const loser = svc.confirmVisitModality(ORG_A, id, ACTOR_A, {
+            visitModality: "in_person",
+          });
+          const settled = loser.then(
+            () => "won",
+            (e: { code?: string }) => e.code,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 300)); // let it read and block on the row lock
+          await rival.query("COMMIT");
+          expect(await settled).toBe("MODALITY_ALREADY_CONFIRMED");
+        } finally {
+          await rival.end();
+        }
+        expect((await mod(id)).visit_modality).toBe("telephonic");
+      });
+
+      it("the audit row carries before/after of the three modality columns, the real actor, and a moved updated_at", async () => {
+        const id = await legacySigned();
+        const before = await mod(id);
+        await svc.confirmVisitModality(
+          ORG_A,
+          id,
+          { ...ACTOR_A, userId: USER },
+          {
+            visitModality: "telephonic",
+          },
+        );
+        const { rows } = await admin.query(
+          `SELECT actor_user_id, before, after FROM audit_event
+            WHERE resource_id=$1 AND event_type='encounter.update'
+            ORDER BY created_at DESC LIMIT 1`,
+          [id],
+        );
+        const audit = rows[0];
+        expect(audit.actor_user_id).toBe(USER);
+        expect(audit.before).toMatchObject({
+          visit_modality: null,
+          visit_modality_confirmed_at: null,
+          visit_modality_confirmed_by: null,
+        });
+        expect(audit.after).toMatchObject({
+          visit_modality: "telephonic",
+          visit_modality_confirmed_by: ACTOR_A.membershipId,
+        });
+        expect(audit.after.visit_modality_confirmed_at).not.toBeNull();
+        expect(audit.after.updated_at).not.toBe(audit.before.updated_at);
+        // updated_at is stamped with the confirmation instant (the service clock), in the same UPDATE.
+        const after = await mod(id);
+        expect(new Date(after.updated_at).getTime()).toBe(Date.parse(LIVE_NOW));
+        expect(new Date(after.visit_modality_confirmed_at).getTime()).toBe(Date.parse(LIVE_NOW));
+      });
+
+      it("422 MODALITY_CONFLICTS_WITH_VISIT_TYPE: a telephonic encounter type cannot be confirmed in person or video; telephonic is allowed", async () => {
+        noEvv();
+        const id = await finalized("telephonic", "rn");
+        await svc.sign(ORG_A, id, ACTOR_A, {
+          at: SERVICE_DATE as never,
+          visitModality: "telephonic",
+        });
+        await unconfirm(id);
+        for (const visitModality of ["in_person", "video"] as const) {
+          await expect(
+            svc.confirmVisitModality(ORG_A, id, ACTOR_A, { visitModality }),
+          ).rejects.toMatchObject({ statusCode: 422, code: "MODALITY_CONFLICTS_WITH_VISIT_TYPE" });
+        }
+        expect((await mod(id)).visit_modality_confirmed_at).toBeNull();
+        await svc.confirmVisitModality(ORG_A, id, ACTOR_A, { visitModality: "telephonic" });
+        expect((await mod(id)).visit_modality).toBe("telephonic");
+      });
     });
   });
 

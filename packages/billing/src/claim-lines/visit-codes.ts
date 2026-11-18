@@ -4,10 +4,23 @@
 // these lines are bundled into the level-of-care payment (no additional payment); the MAC reads the RN
 // (G0299) and social-work (G0155) lines to price the end-of-life Service Intensity Add-on.
 // PURE: no I/O, no clock.
+import { normalizeDiscipline } from "../domain/discipline";
 import type { VisitChargeDiscipline } from "../visit-charges";
 
 /** Hospice visits are reported in multiples of this many minutes (ch. 11 §30.3 "Service Units"). */
 export const HOSPICE_VISIT_UNIT_MINUTES = 15;
+
+/** How a visit was delivered (M8 `visit_modality`). Only `in_person` visits are SIA-eligible by default. */
+export type VisitModality = "in_person" | "telephonic" | "video";
+
+/** Which way an exact half-unit (7.5 minutes into a 15-minute increment) rounds. A compliance parameter. */
+export type UnitTieBreak = "up" | "down";
+
+/**
+ * How an exact half-unit (7.5 minutes) rounds. ONE default for the claim lines AND the SIA engine (whose policy snapshot
+ * names it): the lines and the forecast must never round differently, and the validation rule compares them.
+ */
+export const DEFAULT_UNIT_TIE_BREAK: UnitTieBreak = "up";
 
 /** The visit revenue codes this module can emit. */
 export type VisitRevenueCode = "0421" | "0431" | "0441" | "0551" | "0561" | "0569" | "0571";
@@ -79,6 +92,8 @@ export interface VisitCodeInput {
   /** The authoring discipline (`rn`, `lpn`, `chha`, `msw`, and — where an encounter model carries them — `pt`/`ot`/`slp`). */
   readonly discipline: string;
   readonly encounterType?: string | null;
+  /** The clinician-confirmed delivery mode; `telephonic` here or on the encounter type means a phone contact. */
+  readonly modality?: VisitModality | null;
 }
 
 /**
@@ -89,8 +104,8 @@ export interface VisitCodeInput {
 export function visitCodeFor(input: VisitCodeInput): VisitCode | null {
   const encounterType = input.encounterType ?? null;
   if (encounterType !== null && NON_VISIT_ENCOUNTER_TYPES.has(encounterType)) return null;
-  const telephonic = encounterType === "telephonic";
-  switch (input.discipline.toLowerCase()) {
+  const telephonic = encounterType === "telephonic" || input.modality === "telephonic";
+  switch (normalizeDiscipline(input.discipline)) {
     case "rn":
       return telephonic ? null : SKILLED_NURSING_RN;
     case "lpn":
@@ -115,7 +130,22 @@ export function visitCodeFor(input: VisitCodeInput): VisitCode | null {
  * be reported, rounding the time to the nearest 15-minute increment" (ch. 11 §30.3). `null` when the duration is
  * not a positive finite number: a documentation gap is never fabricated into a duration.
  */
-export function visitUnitsForMinutes(minutes: number): number | null {
+export function visitUnitsForMinutes(
+  minutes: number,
+  tieBreak: UnitTieBreak = DEFAULT_UNIT_TIE_BREAK,
+): number | null {
   if (!Number.isFinite(minutes) || minutes <= 0) return null;
-  return Math.max(1, Math.round(minutes / HOSPICE_VISIT_UNIT_MINUTES));
+  const exact = minutes / HOSPICE_VISIT_UNIT_MINUTES;
+  const rounded = tieBreak === "up" ? Math.round(exact) : Math.ceil(exact - 0.5);
+  return Math.max(1, rounded);
+}
+
+/**
+ * True for the two lines Medicare prices the Service Intensity Add-on from: RN direct care (0551 + G0299) and
+ * social-work care (056x other than the 0569 phone-call code + G0155). LPN (G0300), aides (0571), therapy and
+ * phone calls are excluded by construction (ch. 11 §30.2.2; 80 FR 47142).
+ */
+export function isSiaVisitCode(revenueCode: string, hcpcs: string | null): boolean {
+  if (revenueCode === "0551") return hcpcs === "G0299";
+  return revenueCode.startsWith("056") && revenueCode !== "0569" && hcpcs === "G0155";
 }

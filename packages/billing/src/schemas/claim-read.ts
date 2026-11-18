@@ -95,11 +95,74 @@ export const PerDiemClassView = Type.Object({
 });
 export type PerDiemClassView = Static<typeof PerDiemClassView>;
 
-/** The SIA add-on projection embedded in claim detail (0..1). */
+const NullableInteger = Type.Union([Type.Integer(), Type.Null()]);
+
+/** How a `sia_calculation` row was computed: legacy minutes, or the 15-minute units model. */
+export const SiaBasisApi = Type.Union([Type.Literal("minutes_v1"), Type.Literal("units_v2")]);
+
+/** One visit in the last-7-days window with the engine's verdict. `reason` is the exclusion code (null when counted). */
+export const SiaVisitView = Type.Object({
+  id: Uuid,
+  date: IsoDateSchema,
+  discipline: Type.String(),
+  /** The documented minutes, exact (an EVV bracket has seconds, so this may be fractional); null when undocumented. */
+  minutes: Type.Union([Type.Number(), Type.Null()]),
+  /** Who supplied `minutes`: the M18 EVV bracket or the signing clinician (typed); null = none, unknown, or a revision
+   *  written before this was recorded. */
+  timeSource: Type.Union([Type.Literal("evv"), Type.Literal("clinician"), Type.Null()]),
+  /** 15-minute units the visit is worth before the daily cap; null when it is not an eligible visit. */
+  units: NullableInteger,
+  /** Units actually payable after the 16-unit daily cap. */
+  paidUnits: Type.Integer(),
+  counted: Type.Boolean(),
+  /** The engine's SiaExclusionReason code, e.g. `modality_unconfirmed`, `no_documented_time`, `over_daily_cap`. */
+  reason: Type.Union([Type.String(), Type.Null()]),
+});
+export type SiaVisitView = Static<typeof SiaVisitView>;
+
+/** The open-question parameters the row was computed under. */
+export const SiaPolicyView = Type.Object({
+  unitTieBreak: Type.String(),
+  videoEligible: Type.Boolean(),
+  visitDating: Type.String(),
+  wageBasis: Type.String(),
+});
+export type SiaPolicyView = Static<typeof SiaPolicyView>;
+
+/** Death fell in the first 7 days of a month: Medicare adjusts the PRIOR month's claim; not part of this claim's payment. */
+export const SiaPriorClaimAdvisoryView = Type.Object({
+  from: IsoDateSchema,
+  to: IsoDateSchema,
+  units: Type.Integer(),
+  /** The prior-month days' value; null when the death year's CHC rate was unavailable (not priced). */
+  cents: Type.Union([CentsSchema, Type.Null()]),
+});
+export type SiaPriorClaimAdvisoryView = Static<typeof SiaPriorClaimAdvisoryView>;
+
+/**
+ * The SIA add-on projection embedded in claim detail (`pricing.sia`, 0..1): the claim's NEWEST `sia_calculation` revision. A legacy
+ * `minutes_v1` row has `visits: []` and null unit totals, rate and policy; its price is `amountCents` and its minutes are kept.
+ * ONE mapper (`siaViewOf`) builds this for every read site, and the claim detail types derive from it.
+ */
 export const SiaView = Type.Object({
-  present: Type.Boolean(),
-  qualifyingVisitCount: Type.Integer(),
+  basis: SiaBasisApi,
+  revision: Type.Integer(),
+  windowStart: IsoDateSchema,
+  /** The date of death (the window is `[death - 6, death]`). */
+  windowEnd: IsoDateSchema,
+  paidUnits: NullableInteger,
+  eligibleUnits: NullableInteger,
+  truncatedUnits: NullableInteger,
+  /** The wage-adjusted CHC hourly rate the add-on was priced with: units x rate / 4. */
+  chcHourlyRateCents: Type.Union([CentsSchema, Type.Null()]),
+  wageIndexFiscalYear: NullableInteger,
   amountCents: CentsSchema,
+  /** Documented minutes of the counted visits (clinical time, before rounding and the daily cap). */
+  totalQualifyingMinutes: Type.Integer(),
+  calculatedAt: IsoDateTimeSchema,
+  policy: Type.Union([SiaPolicyView, Type.Null()]),
+  visits: Type.Array(SiaVisitView),
+  priorClaimAdvisory: Type.Union([SiaPriorClaimAdvisoryView, Type.Null()]),
 });
 export type SiaView = Static<typeof SiaView>;
 
@@ -141,19 +204,8 @@ export const ValidationRunSummaryView = Type.Object({
 export type ValidationRunSummaryView = Static<typeof ValidationRunSummaryView>;
 
 // ── route #3: GET /claims/:id (detail) ──────────────────────────────────────────────────────────────────
-export const ClaimDetailResponse = Type.Composite([
-  ClaimSummaryView,
-  Type.Object({
-    lines: Type.Array(ClaimLineView),
-    perDiemClass: Type.Union([PerDiemClassView, Type.Null()]),
-    sia: Type.Union([SiaView, Type.Null()]),
-    latestValidationRun: Type.Union([ValidationRunSummaryView, Type.Null()]),
-    submissions: Type.Array(SubmissionView),
-    acknowledgments: Type.Array(AcknowledgmentView),
-    replacesClaimId: Type.Union([Uuid, Type.Null()]),
-  }),
-]);
-export type ClaimDetailResponse = Static<typeof ClaimDetailResponse>;
+// The detail body is the backend's `ClaimDetailView` (read-service.ts), published through the OpenAPI enrichment; its
+// `pricing.sia` IS `SiaView` above. There is no second TypeBox copy of the whole detail here to drift from it.
 
 // ── route #11: GET /claims/:id/state-history ────────────────────────────────────────────────────────────
 export const StateHistoryEntryView = Type.Object({
