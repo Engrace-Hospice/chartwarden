@@ -51,7 +51,11 @@ import type { FastifyRequest } from "fastify";
 import { Client, type Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { type NoteClosureGate, createNoteClosureGate } from "../src/bootstrap/note-closure-gate";
+import {
+  NOTE_CLOSURE_CLEAR_TTL_MS,
+  type NoteClosureGate,
+  createNoteClosureGate,
+} from "../src/bootstrap/note-closure-gate";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
@@ -1421,6 +1425,39 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
         [noteId, randomUUID()],
       );
       expect(await outcome(blockedMember)).toBe("pass");
+    });
+
+    it("an overridden clinician's pass is trusted for at most the TTL over the real evaluator (so the evaluation budget never meets them), the grant lifts the block at once, and a block is never cached", async () => {
+      await setPolicy(ORG_A, "block", { thresholdHours: 24 });
+      const NOW = new Date("2026-11-18T12:00:00.000Z");
+      const overridden = await seedMember(orgs.A, "overridden-cache");
+      const supervisor = await seedMember(orgs.A, "overridden-cache-supervisor");
+      await seedEncounter({
+        org: orgs.A,
+        authorMembershipId: overridden.membershipId,
+        clockStartedAt: at(NOW, -30),
+      });
+      const clock = { now: NOW };
+      const { gate } = buildGate(clock);
+      expect(await gateOutcome(gate, ORG_A, overridden)).toBe("NOTE_CLOSURE_REQUIRED");
+
+      const overrideId = await insertOverrideRow(
+        ORG_A,
+        overridden.membershipId,
+        supervisor.membershipId,
+        { grantedAt: NOW, expiresAt: at(NOW, 4) },
+      );
+      expect(await gateOutcome(gate, ORG_A, overridden)).toBe("pass"); // the grant lifted the block on the next request
+
+      await admin.query(
+        "UPDATE documentation_obligation_override SET revoked_at=$2, revoked_by_membership_id=$3 WHERE id=$1",
+        [overrideId, NOW, supervisor.membershipId],
+      );
+      const { gate: otherReplica } = buildGate(clock); // a replica that never cached the overridden pass
+      expect(await gateOutcome(otherReplica, ORG_A, overridden)).toBe("NOTE_CLOSURE_REQUIRED");
+      expect(await gateOutcome(gate, ORG_A, overridden)).toBe("pass"); // this one still trusts what it read, for up to the TTL
+      clock.now = new Date(NOW.getTime() + NOTE_CLOSURE_CLEAR_TTL_MS);
+      expect(await gateOutcome(gate, ORG_A, overridden)).toBe("NOTE_CLOSURE_REQUIRED");
     });
 
     it("a signed, cosign_pending, cosigned or voided note is not open; a finalized one is; signing clears at once", async () => {

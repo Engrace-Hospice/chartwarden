@@ -8,9 +8,12 @@
 // ORDER OF CHECKS, cheapest first:
 //   1. an allowlisted METHOD + route template: pass with ZERO IO (so an allowlisted route can never 503);
 //   2. the policy mode (read through the shared 5s cache): `off` / `warn` pass;
-//   3. `block`: a cached CLEAR verdict (5s per organization + member) passes; otherwise ask the one evaluator the banner and the
-//      board also use. `blocked` refuses; `clear` / `warn` pass. Only `clear` is cached, never `blocked`, so a signature or an
-//      override takes effect on the very next request on every replica. Concurrent evaluations for one organization + member share
+//   3. `block`: a cached PASSING verdict (5s per organization + member) passes; otherwise ask the one evaluator the banner and the
+//      board also use. `blocked` refuses; `clear` / `warn` pass. A `clear` is cached until the earlier of 5s and `blockFrom`; a `warn`
+//      (an overridden clinician, or the grace window after `block` was enabled) only on a proven bound, the end of the override or the
+//      block instant ahead, so an overridden clinician does not cost a transaction per request. Never `blocked`: a signature or an
+//      override GRANT takes effect on the very next request on every replica (an override REVOKE reaches a replica that cached the
+//      overridden member within the 5s TTL). Concurrent evaluations for one organization + member share
 //      ONE in-flight evaluator call (a settled result is never reused), so a burst of blocked requests costs one transaction. A
 //      joiner can therefore inherit a block computed just before a signature or an override committed; the window is one evaluator
 //      call, and the client's refresh-on-403 recovers it. A started evaluation is bounded by NOTE_CLOSURE_EVALUATION_TIMEOUT_MS (a hung
@@ -50,7 +53,7 @@ export const NOTE_CLOSURE_UNAVAILABLE_CODE = "NOTE_CLOSURE_UNAVAILABLE";
 const HTTP_FORBIDDEN = 403;
 const HTTP_SERVICE_UNAVAILABLE = 503;
 
-/** How long a CLEAR verdict is trusted per organization + member. A block is never cached. */
+/** How long a PASSING verdict (a clear, or a warn on a proven bound) is trusted per organization + member. A block is never cached. */
 export const NOTE_CLOSURE_CLEAR_TTL_MS = 5_000;
 /**
  * Upper bound on remembered clear verdicts per replica. At the bound the expired ones are purged and, if the map is still full of live
@@ -98,6 +101,8 @@ export interface NoteClosureGateEvaluation {
   readonly encounterId: string | null;
   readonly overdueCount: number;
   readonly decision: { readonly deadlineAt: Date | null; readonly blockFrom: Date | null };
+  /** When the supervisor override that lifts this member's block ends; null (or absent) when none is in force. Bounds a cached `warn`. */
+  readonly overrideExpiresAt?: Date | null;
 }
 
 export interface NoteClosureEvaluateInput<Policy> {
@@ -254,12 +259,23 @@ function createClearVerdictCache(maxEntries: number) {
 }
 
 /**
- * A verdict is trusted until the earlier of the TTL and the instant the note would start to block, so a cached clear can never carry a
- * member past `blockFrom`.
+ * Until when a verdict that PASSES may be trusted: the earlier of the TTL and the instant it could stop passing, so a cached verdict can
+ * never carry a member past `blockFrom` (a clear) or past the end of their override (a warn). A `warn` is trusted only on a PROVEN bound
+ * (the override's expiry, or a block instant still ahead, the grace window after `block` was enabled); with neither it is not trusted at
+ * all (returns `nowMs`, which is already expired), so it fails safe. Without this an overridden clinician, the very person a supervisor just
+ * let back to work, would cost one evaluator call per request and could meet the evaluation budget's 429.
  */
-function clearUntil(nowMs: number, blockFrom: Date | null): number {
+function trustedUntil(nowMs: number, evaluation: NoteClosureGateEvaluation): number {
   const ttlEnd = nowMs + NOTE_CLOSURE_CLEAR_TTL_MS;
-  return blockFrom ? Math.min(ttlEnd, blockFrom.getTime()) : ttlEnd;
+  const blockFromMs = evaluation.decision.blockFrom?.getTime() ?? null;
+  if (evaluation.verdict === "clear") {
+    return blockFromMs === null ? ttlEnd : Math.min(ttlEnd, blockFromMs);
+  }
+  const bounds = [
+    evaluation.overrideExpiresAt?.getTime() ?? null,
+    blockFromMs !== null && blockFromMs > nowMs ? blockFromMs : null,
+  ].filter((ms): ms is number => ms !== null);
+  return bounds.length === 0 ? nowMs : Math.min(ttlEnd, ...bounds);
 }
 
 /** Remembers, per organization, the last policy a read returned and when. Mutable by nature; it never leaves this module. */
@@ -475,12 +491,9 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
     if (evaluation.verdict !== "clear" && evaluation.verdict !== "warn") {
       throw new RangeError("unknown note-closure verdict");
     }
-    if (evaluation.verdict === "clear") {
-      clearCache.remember(
-        cacheKey,
-        asOf.getTime(),
-        clearUntil(asOf.getTime(), evaluation.decision.blockFrom),
-      );
+    const trustedUntilMs = trustedUntil(asOf.getTime(), evaluation);
+    if (trustedUntilMs > asOf.getTime()) {
+      clearCache.remember(cacheKey, asOf.getTime(), trustedUntilMs);
     }
     return null;
   }

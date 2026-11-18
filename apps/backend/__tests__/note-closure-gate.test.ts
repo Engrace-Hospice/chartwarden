@@ -232,11 +232,76 @@ describe("the gate - step 3: block mode", () => {
     expect(h.evaluate).toHaveBeenCalledTimes(2);
   });
 
-  it("passes a warn verdict (an active override) and does not cache it", async () => {
+  it("passes a warn verdict, but trusts it only on a proven bound: with no override and no block instant ahead it is asked again every time", async () => {
     const h = harness({ evaluation: async () => ({ ...blocked, verdict: "warn" }) });
     await h.gate.assertMayCall(request());
     await h.gate.assertMayCall(request());
     expect(h.evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("caches an overridden warn until the earlier of the TTL and the end of the override, then asks again", async () => {
+    const overrideExpiresAt = new Date(NOW.getTime() + 2_000);
+    const h = harness({
+      evaluation: async () => ({ ...blocked, verdict: "warn", overrideExpiresAt }),
+    });
+    await h.gate.assertMayCall(request());
+    h.advance(1_999);
+    await h.gate.assertMayCall(request());
+    expect(h.evaluate).toHaveBeenCalledTimes(1);
+    h.advance(1); // the override has ended: the cached pass must not outlive it
+    await h.gate.assertMayCall(request());
+    expect(h.evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("caps an overridden warn at the TTL when the override runs for hours", async () => {
+    const overrideExpiresAt = new Date(NOW.getTime() + 60 * 60 * 1000);
+    const h = harness({
+      evaluation: async () => ({ ...blocked, verdict: "warn", overrideExpiresAt }),
+    });
+    await h.gate.assertMayCall(request());
+    h.advance(NOTE_CLOSURE_CLEAR_TTL_MS - 1);
+    await h.gate.assertMayCall(request());
+    expect(h.evaluate).toHaveBeenCalledTimes(1);
+    h.advance(1);
+    await h.gate.assertMayCall(request());
+    expect(h.evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("caches a warn in the grace window (a block instant still ahead) only until that instant", async () => {
+    const blockFrom = new Date(NOW.getTime() + 2_000);
+    const h = harness({
+      evaluation: async () => ({
+        ...blocked,
+        verdict: "warn",
+        decision: { deadlineAt: DEADLINE, blockFrom },
+      }),
+    });
+    await h.gate.assertMayCall(request());
+    h.advance(1_999);
+    await h.gate.assertMayCall(request());
+    expect(h.evaluate).toHaveBeenCalledTimes(1);
+    h.advance(1);
+    await h.gate.assertMayCall(request());
+    expect(h.evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("never caches a blocked verdict, even one that carries an override expiry", async () => {
+    const overrideExpiresAt = new Date(NOW.getTime() + 60 * 60 * 1000);
+    const h = harness({ evaluation: async () => ({ ...blocked, overrideExpiresAt }) });
+    await refusalOf(h.gate.assertMayCall(request()));
+    await refusalOf(h.gate.assertMayCall(request()));
+    expect(h.evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("an overridden member is not spent against the evaluation budget on every request", async () => {
+    const overrideExpiresAt = new Date(NOW.getTime() + 60 * 60 * 1000);
+    const h = harness({
+      evaluation: async () => ({ ...blocked, verdict: "warn", overrideExpiresAt }),
+    });
+    for (let i = 0; i < NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND * 3; i++) {
+      await h.gate.assertMayCall(request());
+    }
+    expect(h.evaluate).toHaveBeenCalledTimes(1);
   });
 
   it("caches a clear verdict per organization + member for the TTL, then asks again", async () => {
