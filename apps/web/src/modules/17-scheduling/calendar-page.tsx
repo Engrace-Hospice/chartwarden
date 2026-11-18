@@ -183,9 +183,9 @@ export function calendarFilterStateFromParams(params: URLSearchParams): Calendar
   const status = params.get("status") ?? "";
   return {
     staff: params.get("staff") ?? "",
-    purpose: purpose in PURPOSES ? purpose : "",
-    setting: setting in SETTINGS ? setting : "",
-    status: status in VISIT_TONE ? status : "",
+    purpose: Object.hasOwn(PURPOSES, purpose) ? purpose : "",
+    setting: Object.hasOwn(SETTINGS, setting) ? setting : "",
+    status: Object.hasOwn(VISIT_TONE, status) ? status : "",
     showInactive: params.get("inactive") === "1",
     density: params.get("density") === "compact" ? "compact" : "comfortable",
   };
