@@ -25,7 +25,7 @@ import { usePatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
 import { mapSchedulingApiError } from "./scheduling-errors";
-import { VISIT_TONE, stateLabel } from "./scheduling-status";
+import { VISIT_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import {
   NewVisitButton,
   NewVisitModal,
@@ -365,7 +365,7 @@ export function MyVisits(): JSX.Element {
                       <td style={tdStyle}>
                         <NameLabel value={patientNameOf(patientNames, v.patientId)} />
                       </td>
-                      <td style={tdStyle}>{stateLabel(v.visitPurpose)}</td>
+                      <td style={tdStyle}>{purposeLabel(v.visitPurpose)}</td>
                       <td
                         style={{
                           ...tdStyle,

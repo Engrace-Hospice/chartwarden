@@ -46,3 +46,32 @@ export function stateLabel(s: string): string {
   if (s === "sfv") return "SFV";
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+/**
+ * Visit purpose → display label and the discipline that usually performs it (the fallback color when
+ * the assigned clinician's credential is not readable). It mirrors the first discipline listed for each
+ * purpose in `VISIT_PURPOSE_DISCIPLINES` (packages/scheduling/src/policy.ts), which is the authority:
+ * `recert` and `loc_change` are RN visits and `f2f` is the physician/NP encounter. Keep the two in step.
+ */
+export const PURPOSES: Record<string, { label: string; discipline: string }> = {
+  routine_visit: { label: "Routine Visit", discipline: "rn" },
+  prn: { label: "PRN Visit", discipline: "rn" },
+  aide_poc: { label: "HHA Visit", discipline: "chha" },
+  msw_assessment: { label: "MSW Assessment", discipline: "msw" },
+  msw_followup: { label: "MSW Follow-up", discipline: "msw" },
+  chaplain_visit: { label: "Chaplain Visit", discipline: "chaplain" },
+  chaplain_assessment: { label: "Chaplain Assessment", discipline: "chaplain" },
+  volunteer_visit: { label: "Volunteer Visit", discipline: "volunteer" },
+  f2f: { label: "Face-to-Face", discipline: "md" },
+  recert: { label: "Recert Kickoff (RN)", discipline: "rn" },
+  loc_change: { label: "LOC Change", discipline: "rn" },
+  pronouncement: { label: "Pronouncement", discipline: "rn" },
+  admission_visit: { label: "Admission Visit", discipline: "rn" },
+  discharge_visit: { label: "Discharge Visit", discipline: "rn" },
+  huv1: { label: "HUV1", discipline: "rn" },
+  huv2: { label: "HUV2", discipline: "rn" },
+  sfv: { label: "SFV", discipline: "rn" },
+};
+
+/** The label every scheduling surface shows for a visit purpose, so the picker and the calendar agree. */
+export const purposeLabel = (p: string): string => PURPOSES[p]?.label ?? stateLabel(p);

@@ -21,7 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
-import { VISIT_TONE, stateLabel } from "./scheduling-status";
+import { PURPOSES, VISIT_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import {
   type EncounterLink,
   NewVisitModal,
@@ -73,30 +73,8 @@ const DISCIPLINES: Record<string, { label: string; color: string }> = {
   volunteer: { label: "Volunteer", color: "var(--color-viz-green)" },
   md: { label: "MD", color: "var(--color-viz-teal)" },
   np: { label: "NP", color: "var(--color-viz-teal)" },
+  pa: { label: "PA", color: "var(--color-viz-teal)" },
 };
-
-// Visit purpose → display label and the discipline that usually performs it (the fallback color when
-// the assigned clinician's credential is not readable).
-const PURPOSES: Record<string, { label: string; discipline: string }> = {
-  routine_visit: { label: "Routine Visit", discipline: "rn" },
-  prn: { label: "PRN Visit", discipline: "rn" },
-  aide_poc: { label: "HHA Visit", discipline: "chha" },
-  msw_assessment: { label: "MSW Assessment", discipline: "msw" },
-  msw_followup: { label: "MSW Follow-up", discipline: "msw" },
-  chaplain_visit: { label: "Chaplain Visit", discipline: "chaplain" },
-  chaplain_assessment: { label: "Chaplain Assessment", discipline: "chaplain" },
-  volunteer_visit: { label: "Volunteer Visit", discipline: "volunteer" },
-  f2f: { label: "Face-to-Face", discipline: "md" },
-  recert: { label: "Recertification", discipline: "rn" },
-  loc_change: { label: "LOC Change", discipline: "rn" },
-  pronouncement: { label: "Pronouncement", discipline: "rn" },
-  admission_visit: { label: "Admission Visit", discipline: "rn" },
-  discharge_visit: { label: "Discharge Visit", discipline: "rn" },
-  huv1: { label: "HUV1", discipline: "rn" },
-  huv2: { label: "HUV2", discipline: "rn" },
-  sfv: { label: "SFV", discipline: "rn" },
-};
-const purposeLabel = (p: string): string => PURPOSES[p]?.label ?? stateLabel(p);
 
 const SETTINGS: Record<string, { label: string; icon: GlyphName }> = {
   patient_home: { label: "Patient Home", icon: "home" },

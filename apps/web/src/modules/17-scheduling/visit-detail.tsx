@@ -16,7 +16,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { VISIT_TONE, stateLabel } from "./scheduling-status";
+import { VISIT_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import {
   type EncounterLink,
   FieldValue,
@@ -182,7 +182,7 @@ export function VisitDetail(): JSX.Element {
                 />
               </div>
               <div style={factsGrid}>
-                <FieldValue label="Purpose">{stateLabel(visit.visitPurpose)}</FieldValue>
+                <FieldValue label="Purpose">{purposeLabel(visit.visitPurpose)}</FieldValue>
                 <FieldValue label="Setting">{stateLabel(visit.visitSetting)}</FieldValue>
                 <FieldValue label="Service date">
                   <span className="tabular-nums">{visit.serviceDate}</span>
