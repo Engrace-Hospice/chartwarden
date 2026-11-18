@@ -54,6 +54,7 @@ import {
 import {
   CheckboxField,
   FilterRow,
+  LoadFailure,
   Notice,
   SelectField,
   TextField,
@@ -110,30 +111,39 @@ export function VendorRoutingAdmin(): JSX.Element {
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<RuleDraft>(EMPTY_DRAFT);
 
-  const load = useCallback(async () => {
-    const isLatest = startRead();
-    setLoading(true);
-    setError(null);
-    try {
-      const { page, error: err } = await listVendorRoutingRules(client, {
-        limit: PAGE,
-        // `scopeFilter` is always "" or one of the closed scope-kind vocabulary the SelectField below offers.
-        ...(scopeFilter ? { scopeKind: scopeFilter as VendorRoutingScopeKind } : {}),
-        ...(includeRetired ? { includeRetired: true } : {}),
-      });
-      if (!isLatest()) return;
-      if (err) {
-        setError(errorMessage(err, LOAD_FAILURE));
-        return;
+  // `keepRowsOnFailure` is for a refresh after a write (or a retry): the rows on screen still match the filter. A read
+  // for a CHANGED filter that fails clears them, so a stale list never sits under a filter it does not match.
+  const load = useCallback(
+    async (keepRowsOnFailure = false) => {
+      const isLatest = startRead();
+      setLoading(true);
+      setError(null);
+      try {
+        const { page, error: err } = await listVendorRoutingRules(client, {
+          limit: PAGE,
+          // `scopeFilter` is always "" or one of the closed scope-kind vocabulary the SelectField below offers.
+          ...(scopeFilter ? { scopeKind: scopeFilter as VendorRoutingScopeKind } : {}),
+          ...(includeRetired ? { includeRetired: true } : {}),
+        });
+        if (!isLatest()) return;
+        if (err) {
+          setError(errorMessage(err, LOAD_FAILURE));
+          if (!keepRowsOnFailure) setRules([]);
+          return;
+        }
+        setRules(page?.data ?? []);
+        setLoadedOnce(true);
+      } catch {
+        if (isLatest()) {
+          setError(LOAD_FAILURE);
+          if (!keepRowsOnFailure) setRules([]);
+        }
+      } finally {
+        if (isLatest()) setLoading(false);
       }
-      setRules(page?.data ?? []);
-      setLoadedOnce(true);
-    } catch {
-      if (isLatest()) setError(LOAD_FAILURE);
-    } finally {
-      if (isLatest()) setLoading(false);
-    }
-  }, [client, scopeFilter, includeRetired, startRead]);
+    },
+    [client, scopeFilter, includeRetired, startRead],
+  );
 
   useEffect(() => {
     void load();
@@ -185,7 +195,7 @@ export function VendorRoutingAdmin(): JSX.Element {
       return;
     }
     closeDrawer();
-    void load();
+    void load(true);
   };
 
   const retire = async (rule: VendorRoutingRuleView) => {
@@ -198,7 +208,7 @@ export function VendorRoutingAdmin(): JSX.Element {
       setRetireError(failed);
       return;
     }
-    void load();
+    void load(true);
   };
 
   // Group by scope so the ladder reads top-down, most specific first. The ROUTING_SCOPES order IS the
@@ -244,11 +254,7 @@ export function VendorRoutingAdmin(): JSX.Element {
           exactly one answer.
         </Notice>
 
-        {error ? (
-          <p className="wx-text-error" role="alert">
-            {error}
-          </p>
-        ) : null}
+        {error ? <LoadFailure message={error} onReload={() => void load(true)} /> : null}
         {retireError ? (
           <p className="wx-text-error" role="alert">
             {retireError}

@@ -256,7 +256,8 @@ describe("vendor routing — rules", () => {
     const drawer = await drawerNamed("New routing rule");
     fireEvent.click(screen.getByLabelText("Include retired rules"));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("The vendor routing rules could not be loaded.");
+    expect(within(alert).getByText("The vendor routing rules could not be loaded.")).toBeTruthy();
+    expect(within(alert).getByRole("button", { name: "Reload" })).toBeTruthy();
     await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
     expect(screen.getByRole("complementary", { name: "New routing rule" })).toBe(drawer);
   });
@@ -319,5 +320,38 @@ describe("vendor routing — rules", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     await drawerNamed("Edit routing rule");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("clears the rules when a filter read is rejected, and Reload loads them again", async () => {
+    let calls = 0;
+    mount(undefined, () => {
+      calls += 1;
+      if (calls === 2) return Promise.reject(new TypeError("Failed to fetch"));
+      return Promise.resolve(
+        ok(pageOf([{ ...rule, precedencePriority: calls === 1 ? 111 : 222 }])),
+      );
+    });
+    await screen.findByText("111");
+    fireEvent.click(screen.getByLabelText("Include retired rules"));
+    const alert = await screen.findByRole("alert");
+    // No stale rules under a filter they do not match.
+    expect(screen.queryByText("111")).toBeNull();
+    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }));
+    expect(await screen.findByText("222")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("after a Retire, a rejected refresh keeps the rules and says so", async () => {
+    let calls = 0;
+    mount(undefined, () =>
+      ++calls === 1
+        ? Promise.resolve(ok(pageOf([{ ...rule, precedencePriority: 111 }])))
+        : Promise.reject(new TypeError("Failed to fetch")),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Retire" }));
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText("The vendor routing rules could not be loaded.")).toBeTruthy();
+    // The write landed and the rules still match the filter, so they stay.
+    expect(screen.getByText("111")).toBeTruthy();
   });
 });

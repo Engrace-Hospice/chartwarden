@@ -267,8 +267,52 @@ describe("supply catalog — tenant items", () => {
     const drawer = await drawerNamed("New tenant item");
     fireEvent.change(screen.getByLabelText("Search name or HCPCS"), { target: { value: "pad" } });
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("The supply catalog could not be loaded.");
+    expect(within(alert).getByText("The supply catalog could not be loaded.")).toBeTruthy();
+    expect(within(alert).getByRole("button", { name: "Reload" })).toBeTruthy();
     await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
     expect(screen.getByRole("complementary", { name: "New tenant item" })).toBe(drawer);
+  });
+
+  it("clears the list when a search is rejected, and Reload loads it again", async () => {
+    let calls = 0;
+    mount(undefined, () => {
+      calls += 1;
+      if (calls === 2) return Promise.reject(new TypeError("Failed to fetch"));
+      return Promise.resolve(
+        ok(
+          pageOf([{ ...overlayItem, name: calls === 1 ? "Comfort cart linens set" : "Bed pads" }]),
+        ),
+      );
+    });
+    await screen.findByText("Comfort cart linens set");
+    fireEvent.change(screen.getByLabelText("Search name or HCPCS"), { target: { value: "bed" } });
+    const alert = await screen.findByRole("alert");
+    // No stale list under a search it does not match.
+    expect(screen.queryByText("Comfort cart linens set")).toBeNull();
+    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }));
+    expect(await screen.findByText("Bed pads")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("after a save, a rejected refresh keeps the list and says so", async () => {
+    let calls = 0;
+    mount(undefined, () =>
+      ++calls === 1
+        ? Promise.resolve(ok(pageOf([overlayItem])))
+        : Promise.reject(new TypeError("Failed to fetch")),
+    );
+    const drawer = await (async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "New tenant item" }));
+      return drawerNamed("New tenant item");
+    })();
+    fireEvent.change(within(drawer).getByLabelText("Name"), { target: { value: "Bed pads" } });
+    fireEvent.change(within(drawer).getByLabelText("Local SKU code"), {
+      target: { value: "PAD-01" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save item" }));
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText("The supply catalog could not be loaded.")).toBeTruthy();
+    // The write landed and the rows still match the search, so they stay.
+    expect(screen.getByText("Comfort cart linens set")).toBeTruthy();
   });
 });

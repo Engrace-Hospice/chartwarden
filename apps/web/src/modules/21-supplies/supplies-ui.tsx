@@ -7,7 +7,7 @@
 //
 // Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens` stays green and the twilight dark
 // mode is automatic.
-import { StatusPill, t } from "@chartwarden/ui";
+import { Button, StatusPill, t } from "@chartwarden/ui";
 import type { StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import {
@@ -117,6 +117,24 @@ export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element 
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/** A failed read, announced, with the way to try again (a list that cannot be refreshed offers nothing else). */
+export function LoadFailure({
+  message,
+  onReload,
+}: { message: string; onReload: () => void }): JSX.Element {
+  return (
+    <div
+      role="alert"
+      style={{ display: "flex", alignItems: "center", gap: t.space3, flexWrap: "wrap" }}
+    >
+      <span className="wx-text-error">{message}</span>
+      <Button tone="secondary" type="button" onClick={onReload}>
+        Reload
+      </Button>
     </div>
   );
 }

@@ -6,7 +6,7 @@
 // drawer, which stays dismissible. A reload after a step keeps the count worksheet's typed quantities and any open drawer.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComfortKitReturnReconciliation } from "./return-reconciliation";
@@ -410,5 +410,47 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
         (within(drawer).getByRole("button", { name: "Assign" }) as HTMLButtonElement).disabled,
       ).toBe(false),
     );
+  });
+
+  it("keeps the drawer's Save disabled once the return it was opened on is reconciled", async () => {
+    let release: () => void = () => {};
+    let reconciled = false;
+    const { post, get } = mount({
+      contents: [line],
+      onPost: () =>
+        new Promise((resolve) => {
+          release = () => {
+            reconciled = true;
+            resolve(ok({}));
+          };
+        }),
+      onGet: (path, _id, respond) =>
+        Promise.resolve(
+          reconciled && path === "/api/v1/supplies/comfort-kit-returns/{returnId}"
+            ? ok({ ...returnRow, state: "reconciled" })
+            : respond(path),
+        ),
+    });
+    fireEvent.change(await screen.findByLabelText("Quantity returned for Morphine oral solution"), {
+      target: { value: "30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reconcile" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    // The opener is still live while the reconcile is in flight.
+    const drawer = await open("Assign retriever", "Assign the retrieving staff member");
+    fireEvent.change(within(drawer).getByLabelText("Retrieving membership id"), {
+      target: { value: "m-okafor" },
+    });
+    const assign = within(drawer).getByRole("button", { name: "Assign" }) as HTMLButtonElement;
+    release();
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(4));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // The reload shows a reconciled return; the open drawer cannot write against it.
+    expect(screen.getByRole("complementary", { name: "Assign the retrieving staff member" })).toBe(
+      drawer,
+    );
+    expect(assign.disabled).toBe(true);
   });
 });

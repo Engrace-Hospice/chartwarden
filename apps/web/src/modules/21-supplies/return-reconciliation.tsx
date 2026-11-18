@@ -686,7 +686,7 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
             <Button
               tone="primary"
               type="button"
-              disabled={busy || inlineBusy || loading || retrieverMembershipId.trim() === ""}
+              disabled={busy || inlineBusy || !writable || retrieverMembershipId.trim() === ""}
               onClick={() =>
                 void run(
                   () =>
@@ -723,7 +723,7 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
             <Button
               tone="primary"
               type="button"
-              disabled={busy || inlineBusy || loading || unreturnableReason.trim() === ""}
+              disabled={busy || inlineBusy || !writable || unreturnableReason.trim() === ""}
               onClick={() =>
                 void run(
                   () =>

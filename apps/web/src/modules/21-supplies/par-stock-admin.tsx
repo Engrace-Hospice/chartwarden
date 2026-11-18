@@ -41,6 +41,7 @@ import { PAR_SEVERITY_RANK, dateTime, shortId } from "./supplies-status";
 import {
   CheckboxField,
   FilterRow,
+  LoadFailure,
   Notice,
   ParSeverityPill,
   SelectField,
@@ -100,29 +101,38 @@ export function ParStockAdmin(): JSX.Element {
   const [observedQuantity, setObservedQuantity] = useState("");
   const [observationNote, setObservationNote] = useState("");
 
-  const load = useCallback(async () => {
-    const isLatest = startRead();
-    setLoading(true);
-    setError(null);
-    try {
-      const { page, error: err } = await listParStock(client, {
-        limit: PAGE,
-        ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
-        ...(belowOnly ? { belowThresholdOnly: true } : {}),
-      });
-      if (!isLatest()) return;
-      if (err) {
-        setError(errorMessage(err, LOAD_FAILURE));
-        return;
+  // `keepRowsOnFailure` is for a refresh after a write (or a retry): the rows on screen still match the filter. A read
+  // for a CHANGED filter that fails clears them, so a stale list never sits under a filter it does not match.
+  const load = useCallback(
+    async (keepRowsOnFailure = false) => {
+      const isLatest = startRead();
+      setLoading(true);
+      setError(null);
+      try {
+        const { page, error: err } = await listParStock(client, {
+          limit: PAGE,
+          ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
+          ...(belowOnly ? { belowThresholdOnly: true } : {}),
+        });
+        if (!isLatest()) return;
+        if (err) {
+          setError(errorMessage(err, LOAD_FAILURE));
+          if (!keepRowsOnFailure) setRows([]);
+          return;
+        }
+        setRows(page?.data ?? []);
+        setLoadedOnce(true);
+      } catch {
+        if (isLatest()) {
+          setError(LOAD_FAILURE);
+          if (!keepRowsOnFailure) setRows([]);
+        }
+      } finally {
+        if (isLatest()) setLoading(false);
       }
-      setRows(page?.data ?? []);
-      setLoadedOnce(true);
-    } catch {
-      if (isLatest()) setError(LOAD_FAILURE);
-    } finally {
-      if (isLatest()) setLoading(false);
-    }
-  }, [client, locationId, belowOnly, startRead]);
+    },
+    [client, locationId, belowOnly, startRead],
+  );
 
   useEffect(() => {
     void load();
@@ -170,7 +180,7 @@ export function ParStockAdmin(): JSX.Element {
       return;
     }
     setEditing(null);
-    void load();
+    void load(true);
   };
 
   const closeObserving = () => {
@@ -195,7 +205,7 @@ export function ParStockAdmin(): JSX.Element {
       return;
     }
     closeObserving();
-    void load();
+    void load(true);
   };
 
   return (
@@ -216,11 +226,7 @@ export function ParStockAdmin(): JSX.Element {
           and the screen reading it would show a green shelf that is actually empty.
         </Notice>
 
-        {error ? (
-          <p className="wx-text-error" role="alert">
-            {error}
-          </p>
-        ) : null}
+        {error ? <LoadFailure message={error} onReload={() => void load(true)} /> : null}
         {editError ? (
           <p className="wx-text-error" role="alert">
             {editError}

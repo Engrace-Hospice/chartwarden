@@ -45,6 +45,7 @@ import { SKU_CLASSES, shortDate } from "./supplies-status";
 import {
   CheckboxField,
   FilterRow,
+  LoadFailure,
   Notice,
   SelectField,
   TextField,
@@ -97,32 +98,41 @@ export function SupplyItemCatalog(): JSX.Element {
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<TenantItemDraft>(EMPTY_TENANT_ITEM);
 
-  const load = useCallback(async () => {
-    const isLatest = startRead();
-    setLoading(true);
-    setError(null);
-    try {
-      const { page, error: err } = await listSupplyItems(client, {
-        limit: PAGE,
-        ...(query.trim() ? { q: query.trim() } : {}),
-        // `skuClass` is always "" or one of the catalog's SKU classes — the SelectField below offers no
-        // other value.
-        ...(skuClass ? { skuClass: skuClass as SupplyItemSkuClass } : {}),
-        ...(includeRetired ? { includeRetired: true } : {}),
-      });
-      if (!isLatest()) return;
-      if (err) {
-        setError(errorMessage(err, LOAD_FAILURE));
-        return;
+  // `keepRowsOnFailure` is for a refresh after a write (or a retry): the rows on screen still match the filter. A read
+  // for a CHANGED filter that fails clears them, so a stale list never sits under a filter it does not match.
+  const load = useCallback(
+    async (keepRowsOnFailure = false) => {
+      const isLatest = startRead();
+      setLoading(true);
+      setError(null);
+      try {
+        const { page, error: err } = await listSupplyItems(client, {
+          limit: PAGE,
+          ...(query.trim() ? { q: query.trim() } : {}),
+          // `skuClass` is always "" or one of the catalog's SKU classes — the SelectField below offers no
+          // other value.
+          ...(skuClass ? { skuClass: skuClass as SupplyItemSkuClass } : {}),
+          ...(includeRetired ? { includeRetired: true } : {}),
+        });
+        if (!isLatest()) return;
+        if (err) {
+          setError(errorMessage(err, LOAD_FAILURE));
+          if (!keepRowsOnFailure) setItems([]);
+          return;
+        }
+        setItems(page?.data ?? []);
+        setLoadedOnce(true);
+      } catch {
+        if (isLatest()) {
+          setError(LOAD_FAILURE);
+          if (!keepRowsOnFailure) setItems([]);
+        }
+      } finally {
+        if (isLatest()) setLoading(false);
       }
-      setItems(page?.data ?? []);
-      setLoadedOnce(true);
-    } catch {
-      if (isLatest()) setError(LOAD_FAILURE);
-    } finally {
-      if (isLatest()) setLoading(false);
-    }
-  }, [client, query, skuClass, includeRetired, startRead]);
+    },
+    [client, query, skuClass, includeRetired, startRead],
+  );
 
   useEffect(() => {
     void load();
@@ -161,7 +171,7 @@ export function SupplyItemCatalog(): JSX.Element {
       return;
     }
     closeDrawer();
-    void load();
+    void load(true);
   };
 
   const platform = items.filter((i) => i.isPlatform);
@@ -195,11 +205,7 @@ export function SupplyItemCatalog(): JSX.Element {
           }
         />
 
-        {error ? (
-          <p className="wx-text-error" role="alert">
-            {error}
-          </p>
-        ) : null}
+        {error ? <LoadFailure message={error} onReload={() => void load(true)} /> : null}
 
         <Notice tone="info">
           The platform catalog is rewritten wholesale by the annual HCPCS loader and cannot be

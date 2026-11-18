@@ -240,23 +240,45 @@ describe("par stock — record a count", () => {
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 
-  it("says so inline when a reload is rejected, keeps the page and frees the row", async () => {
+  it("after a save, a rejected refresh keeps the rows, offers Reload and frees the row", async () => {
     let calls = 0;
     mount(undefined, () =>
       ++calls === 1
         ? Promise.resolve(ok(pageOf([shelf])))
         : Promise.reject(new TypeError("Failed to fetch")),
     );
-    await screen.findByText("Mouth care swabs");
-    fireEvent.change(screen.getByLabelText("Location id"), { target: { value: "loc-2" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit thresholds" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("The par shelf could not be loaded.");
+    expect(within(alert).getByText("The par shelf could not be loaded.")).toBeTruthy();
+    expect(within(alert).getByRole("button", { name: "Reload" })).toBeTruthy();
     await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
-    // The previous rows stay, and an inline save is not left disabled by a load that never ended.
+    // The rows stay (the write landed, the rows still match the filter) and the page is not left loading.
+    expect(screen.getByText("Mouth care swabs")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Edit thresholds" }));
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(
       false,
     );
+  });
+
+  it("clears the rows when a filter read is rejected, and Reload loads them again", async () => {
+    let calls = 0;
+    mount(undefined, () => {
+      calls += 1;
+      if (calls === 2) return Promise.reject(new TypeError("Failed to fetch"));
+      return Promise.resolve(
+        ok(pageOf([{ ...shelf, skuName: calls === 1 ? "Mouth care swabs" : "Gauze pads" }])),
+      );
+    });
+    await screen.findByText("Mouth care swabs");
+    fireEvent.change(screen.getByLabelText("Location id"), { target: { value: "loc-2" } });
+    const alert = await screen.findByRole("alert");
+    // No stale list under a filter it does not match.
+    expect(screen.queryByText("Mouth care swabs")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Shelf (0)" })).toBeTruthy();
+    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }));
+    expect(await screen.findByText("Gauze pads")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("shows Unavailable when the first load is rejected", async () => {
