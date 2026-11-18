@@ -681,6 +681,34 @@ controls:
       owner: engineering
       review_by: 2027-01-31
 
+  - id: CW-PI-04
+    title: >-
+      A visit is scheduled only for a clinician discipline that has a legal M8 encounter pair: create, proposal publish, reschedule,
+      edit and reassign refuse an unsupported one with 422 VISIT_ENCOUNTER_TYPE_UNSUPPORTED (codes only, nothing written, no event);
+      the clinician picker marks it CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED; a recurring policy that could never schedule is refused at
+      creation and, if one already exists, the nightly cron alerts the scheduling roles (ids and a count only) instead of skipping it
+      silently; and the M8 visit-seed consumer refuses an illegal pair rather than minting a draft, so an event that carries one is
+      retried and then parked as failed. The pair is enforced in application code only (no DB CHECK).
+    hipaa: ["164.312(c)(1)"]
+    soc2: ["PI1.2", "PI1.3"]
+    status: partial
+    evidence:
+      - script: test:m17:write:live
+      - script: test:m8:write:live
+      - file: packages/scheduling/src/policy.ts
+      - file: packages/scheduling/__tests__/policy.test.ts
+      - file: apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts
+      - file: apps/backend/src/modules/17-scheduling/jobs/cron-workers.ts
+      - file: apps/backend/src/modules/08-encounters/outbox-consumers/m17-visit-scheduled.ts
+      - file: packages/types/src/encounter.ts
+      - file: packages/messaging/src/seed/alert-rules.ts
+      - file: apps/backend/__tests__/m17-scheduling-write.live.test.ts
+      - file: apps/backend/__tests__/m8-encounters-write.live.test.ts
+    gap:
+      reason: The purposes recert and loc_change have no schedulable discipline at all (M17 requires md/np for them, while M8 section 2.2 gives recert_visit to RN and seeds loc_change as routine_visit for RN/LPN), so both are refused for every clinician until the spec owner picks which table changes; packages/scheduling/__tests__/policy.test.ts pins that list. Visits, M8 drafts and in-flight m17.visit.published events that already carry an illegal pair are not remediated (a pre-fix NP/MD HUV visit can no longer be rescheduled, only cancelled, and an event already queued at deploy is retried then parked as failed, which also holds back the other consumers of that event until it is). Reassigning a visit or editing its purpose does not re-seed or void the M8 draft the first publish created. The pair has no database CHECK, so a new encounter writer must call isValidEncounterDisciplinePair itself.
+      owner: engineering
+      review_by: 2027-01-31
+
   - id: CW-AC-19
     title: >-
       Auditors are never billed or provisioned as staff: the role key external_auditor is reserved for the system auditor role (a tenant role under that key is refused with 422 RESERVED_ROLE at the route and by a trigger in the database; because the application role can write every column the system row's facts rest on, the trigger also requires the transaction-local marker only the auditor grant sets before it writes that row, which stops other application code paths from writing it, not a session that can run arbitrary SQL as the application role), so a real auditor always lands on the system role. An organisation that still holds a legacy tenant-created external_auditor role is refused at auditor redemption (role_over_privileged, 403 AUDITOR_ROLE_MISCONFIGURED, fail-closed): an administrator must remove that role before an auditor can be onboarded (CW-AU-02). Family-portal, auditor magic-link and ChartWarden support sessions never enter the staff meter at all: its ledger is fed by m2.session.created, which fires only when a staff session binds to an organisation at select-organization, so those sessions write no ledger row. The meter excludes the system auditor role and platform-owned operator roles (non_staff_observed), decided when each sign-in is observed, not from today's grants; and a month that spans a pseudonym-key rotation counts its busiest single epoch and flags the statement needs_review.
