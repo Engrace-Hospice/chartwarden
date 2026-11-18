@@ -369,6 +369,35 @@ describe("RoleHome operational dashboard", () => {
     expect(legacy?.textContent).not.toMatch(/Overdue|Due today|Tomorrow|In \d+ days/);
   });
 
+  it("sends a draft note task to the composer and a finalized one to the read screen where it is signed", async () => {
+    const note = (id: string, encounterType: string, status: string) => ({
+      id,
+      patientId: "p1",
+      encounterType,
+      status,
+      closure: { clockStartedAt: "2020-01-01T00:00:00.000Z", deadlineAt: null, stage: "ok" },
+    });
+    const client = clientFor({
+      "/api/v1/encounters/my-drafts": {
+        encounters: [
+          note("n-draft", "routine_visit", "draft"),
+          note("n-final", "admission_visit", "finalized"),
+        ],
+      },
+    });
+    renderHome(
+      { ...adminSession, permissions: ["encounter.read"], roles: ["rn"], isAdmin: false },
+      client,
+    );
+
+    const hrefOf = async (title: string): Promise<string | null | undefined> =>
+      (await screen.findByText(title)).closest("a")?.getAttribute("href");
+    expect(await hrefOf("Finish routine visit note")).toBe(
+      "/patients/p1/encounters/n-draft/compose",
+    );
+    expect(await hrefOf("Finish admission visit note")).toBe("/patients/p1/encounters/n-final");
+  });
+
   it("still lists a note task when the row carries no closure object, undated, instead of failing the whole card", async () => {
     const client = clientFor({
       "/api/v1/encounters/my-drafts": {

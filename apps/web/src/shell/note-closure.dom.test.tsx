@@ -273,9 +273,10 @@ describe("closure status polling", () => {
   });
 });
 
-// GAP-002: a request the person did not cause must carry the background marker, or it counts as activity and the 15-minute idle logoff
-// never fires. The poll is one such request; the refresh a gate refusal triggers is another (the refusal is often the answer to a
-// wallboard's own background poll), so it must be marked too. What a person does (open the app, return to the tab, press refresh) is not.
+// GAP-002: ONE rule (shell/use-refresh-cues.ts) says what counts as the person's activity. A read the PERSON causes (opening the app,
+// pressing refresh) is an ordinary request; a read a CUE causes (the poll, returning to the tab, a gate refusal that is often the answer
+// to a wallboard's own background poll) carries the background marker, or it would count as activity and the 15-minute idle logoff would
+// never fire. My notes and the overdue board follow the same rule.
 describe("which closure-status reads count as user activity", () => {
   const BACKGROUND = { "x-chartwarden-background": "1" };
   const afterTheGap = (): number => Date.now() + NOTE_CLOSURE_MIN_REFRESH_GAP_MS + 1_000;
@@ -303,7 +304,7 @@ describe("which closure-status reads count as user activity", () => {
     );
   }
 
-  it("marks the read a gate refusal triggers as background, while mount, focus and refresh stay unmarked", async () => {
+  it("marks every cue's read as background (the poll, a gate refusal, a return to the tab); only mount and refresh() are the person's", async () => {
     const { client, closureCalls } = mockClient([status()]);
     mountWithRefresh(client);
     await waitFor(() => expect(closureCalls()).toHaveLength(1));
@@ -321,7 +322,7 @@ describe("which closure-status reads count as user activity", () => {
       window.dispatchEvent(new Event("focus"));
     });
     await waitFor(() => expect(closureCalls()).toHaveLength(3));
-    expect(closureCalls()[2]?.headers).toBeUndefined(); // the person came back to the tab
+    expect(closureCalls()[2]?.headers).toEqual(BACKGROUND); // returning to the tab is a cue, not a request the person made
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
     await waitFor(() => expect(closureCalls()).toHaveLength(4));
@@ -348,7 +349,7 @@ describe("which closure-status reads count as user activity", () => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
     await waitFor(() => expect(closureCalls()).toHaveLength(2));
-    expect(closureCalls()[1]?.headers).toBeUndefined();
+    expect(closureCalls()[1]?.headers).toEqual(BACKGROUND);
   });
 });
 

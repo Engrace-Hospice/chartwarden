@@ -191,7 +191,7 @@ describe("saving", () => {
 
   it("shows the server's refusal in words and keeps the edit", async () => {
     mount({
-      write: refusal(422, "VALIDATION_ERROR", [
+      write: refusal(422, "VALIDATION_FAILED", [
         {
           field: "thresholdHours",
           code: "INVALID",
@@ -391,5 +391,26 @@ describe("leaving while a save is in flight", () => {
 
     expect(stepUpDraftKeys().length).toBe(0);
     expect(document.body.dataset.where).toBeUndefined();
+  });
+});
+
+describe("a reload", () => {
+  it("drops the 'Policy saved' notice for an earlier save, because it now shows what the server holds", async () => {
+    mount();
+    await ready();
+    fireEvent.click(modeRadio("Off"));
+    fireEvent.click(save());
+    await screen.findByText(/Policy saved: off/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByRole("radio", { name: "Off" });
+
+    expect(screen.queryByText(/Policy saved/)).toBeNull();
+  });
+
+  it("does not nest one live region in another while it loads (the spinner is itself the status)", async () => {
+    mount({ read: () => new Promise(() => undefined) });
+    const spinner = await screen.findByLabelText("Loading");
+    expect(spinner.parentElement?.closest("output")).toBeNull();
   });
 });

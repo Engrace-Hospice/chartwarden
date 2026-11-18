@@ -3,8 +3,10 @@
 import { CLOSURE_OVERRIDE_MIN_REASON_CHARS } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
+  OVERRIDE_REASON_MAX_CHARS,
   STAGE_LABEL,
   STAGE_TONE,
+  boardStatusLine,
   countByStage,
   formatHours,
   isClosureMode,
@@ -194,5 +196,45 @@ describe("overrideStatusText", () => {
       /^Override revoked\. Another override for this clinician is still active until /,
     );
     expect(text).not.toMatch(/limited again/);
+  });
+});
+
+describe("the reason's upper bound", () => {
+  it("is the server's 2,000 characters (closure-typebox.ts OVERRIDE_REASON_MAX_CHARS)", () => {
+    expect(OVERRIDE_REASON_MAX_CHARS).toBe(2_000);
+  });
+});
+
+describe("timingLabel with a deadline that cannot be read", () => {
+  it("shows a dash, never 'Due in NaNh', for an at-risk note", () => {
+    expect(timingLabel("at_risk", 0, "not a date", NOW)).toBe("—");
+    expect(timingLabel("at_risk", 0, "", NOW)).toBe("—");
+  });
+
+  it("still says how long an overdue note has been overdue, whatever its deadline says", () => {
+    expect(timingLabel("overdue", 6.4, "not a date", NOW)).toBe("6h overdue");
+  });
+});
+
+describe("boardStatusLine", () => {
+  const rows = (...stages: ("at_risk" | "overdue" | "escalated")[]) => ({
+    items: stages.map((stage) => ({ stage })),
+  });
+
+  it("says plainly when the board is empty", () => {
+    expect(boardStatusLine(rows())).toBe("No notes are at risk, overdue or escalated.");
+  });
+
+  it("names the count and the stage split, singular and plural", () => {
+    expect(boardStatusLine(rows("overdue"))).toBe(
+      "1 note on the board: 0 escalated, 1 overdue, 0 at risk.",
+    );
+    expect(boardStatusLine(rows("escalated", "overdue", "at_risk", "at_risk"))).toBe(
+      "4 notes on the board: 1 escalated, 1 overdue, 2 at risk.",
+    );
+  });
+
+  it("changes when a note moves a stage even though the count does not (so the move is announced)", () => {
+    expect(boardStatusLine(rows("at_risk"))).not.toBe(boardStatusLine(rows("overdue")));
   });
 });

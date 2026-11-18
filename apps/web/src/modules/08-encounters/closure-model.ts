@@ -21,10 +21,17 @@ export type ClosureMode = DocumentationObligationMode;
 
 /** The shortest override window the form accepts (the longest and the default are the shared bounds). */
 export const OVERRIDE_MIN_HOURS = 1;
+/**
+ * The longest reason the grant box takes: the server caps it at 2,000 characters (OVERRIDE_REASON_MAX_CHARS in
+ * apps/backend/src/modules/08-encounters/routes/closure-typebox.ts, a route-local constant, not a shared one), so the box stops a
+ * reason the server would refuse. Pinned by closure-model.test.ts.
+ */
+export const OVERRIDE_REASON_MAX_CHARS = 2_000;
 /** Hours before the deadline when a clinician is first warned (the server's AT_RISK_LEAD_HOURS in note-clock.ts): copy only. */
 export const WARNING_LEAD_HOURS = 6;
 
 const MS_PER_HOUR = 3_600_000;
+const UNKNOWN_TIMING = "—";
 
 export const STAGE_LABEL: Readonly<Record<NoteStage, string>> = {
   ok: "On track",
@@ -117,6 +124,8 @@ export function timingLabel(
 ): string {
   if (stage !== "at_risk") return `${formatHours(hoursOverdue)} overdue`;
   const hoursLeft = (new Date(deadlineAt).getTime() - now.getTime()) / MS_PER_HOUR;
+  // An unparseable deadline is a dash (as formatClosureInstant shows it), never "Due in NaNh".
+  if (Number.isNaN(hoursLeft)) return UNKNOWN_TIMING;
   return `Due in ${formatHours(Math.max(0, hoursLeft))}`;
 }
 
@@ -160,4 +169,18 @@ export interface StageCounts {
 export function countByStage(items: readonly { readonly stage: ClosureStage }[]): StageCounts {
   const count = (stage: ClosureStage): number => items.filter((i) => i.stage === stage).length;
   return { escalated: count("escalated"), overdue: count("overdue"), atRisk: count("at_risk") };
+}
+
+/**
+ * The board's one live line: what it holds, in the words a screen reader should hear when a read lands (the table itself is not a live
+ * region, or every page change and refresh would re-read all of it). The stage split is in it, so a note that moved from at risk to
+ * overdue changes the line even when the count did not.
+ */
+export function boardStatusLine(board: {
+  readonly items: readonly { readonly stage: ClosureStage }[];
+}): string {
+  const count = board.items.length;
+  if (count === 0) return "No notes are at risk, overdue or escalated.";
+  const { escalated, overdue, atRisk } = countByStage(board.items);
+  return `${count} ${count === 1 ? "note" : "notes"} on the board: ${escalated} escalated, ${overdue} overdue, ${atRisk} at risk.`;
 }

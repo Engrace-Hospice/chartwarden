@@ -54,6 +54,7 @@ import {
 } from "./closure-api";
 import {
   OVERRIDE_MIN_HOURS,
+  OVERRIDE_REASON_MAX_CHARS,
   STAGE_LABEL,
   STAGE_TONE,
   isGrantActive,
@@ -87,9 +88,18 @@ const isFields = (value: unknown): value is Fields =>
 
 const REASON_HINT_PHI = "Recorded in the audit trail. Do not include patient names or identifiers.";
 
-/** Said when a refresh no longer lists the open note: it was probably closed, so granting may find nothing to lift. */
-const NOT_LISTED_TEXT =
-  "This note is no longer on the board, so it may already be closed. The panel stays open until you close it.";
+/**
+ * Where the open note stands on the board's latest read. `listed`: it is there and overrides are on. `gone`: a refresh no longer lists it
+ * (it was probably closed), so granting may find nothing to lift. `not-blocking`: the organization's mode is no longer `block`, so no
+ * override is needed. In the last two the drawer stays open, with what was typed, until the supervisor closes it.
+ */
+export type NoteBoardState = "listed" | "gone" | "not-blocking";
+
+const BOARD_STATE_TEXT: Readonly<Record<Exclude<NoteBoardState, "listed">, string>> = {
+  gone: "This note is no longer on the board, so it may already be closed. The panel stays open until you close it.",
+  "not-blocking":
+    "Your organization no longer blocks clinicians for overdue notes, so no override is needed. The panel stays open until you close it.",
+};
 
 /** The status line's box: it takes no room while it is empty, and lines up with the cards below once it has something to say. */
 const statusLineStyle = (hasText: boolean) =>
@@ -101,8 +111,8 @@ export interface OverrideGrantDrawerProps {
   readonly clinicianName: string;
   /** The grant made for this clinician in this session, if any (it may have expired or been revoked). */
   readonly grant: HeldOverride | null;
-  /** False when the board's latest read no longer lists this note (the drawer was kept open for the supervisor). */
-  readonly listed: boolean;
+  /** Where the note stands on the board's latest read (the drawer is kept open for the supervisor when it is not `listed`). */
+  readonly boardState: NoteBoardState;
   /** True when the supervisor is genuinely back from /step-up: a stashed draft for this note is restored. */
   readonly resume: boolean;
   readonly onClose: () => void;
@@ -117,7 +127,7 @@ export function OverrideGrantDrawer({
   patientName,
   clinicianName,
   grant,
-  listed,
+  boardState,
   resume,
   onClose,
   onGranted,
@@ -146,8 +156,10 @@ export function OverrideGrantDrawer({
       headingRef.current?.focus();
       done(settledGrant);
     };
-  const statusText =
-    overrideStatusText(grant, clinicianName, now) ?? (listed ? null : NOT_LISTED_TEXT);
+  // A grant's confirmation is good news (success); that the board no longer needs an override here is a notice (info).
+  const grantText = overrideStatusText(grant, clinicianName, now);
+  const boardText = boardState === "listed" ? null : BOARD_STATE_TEXT[boardState];
+  const statusText = grantText ?? boardText;
   return (
     <aside className="wx-admission-drawer" {...drawer} aria-label={`Override for ${clinicianName}`}>
       <header className="wx-drawer-head">
@@ -166,7 +178,7 @@ export function OverrideGrantDrawer({
       </header>
       <output style={statusLineStyle(statusText !== null)}>
         {statusText ? (
-          <InlineAlert tone="success" live={false}>
+          <InlineAlert tone={grantText === null ? "info" : "success"} live={false}>
             {statusText}
           </InlineAlert>
         ) : null}
@@ -409,6 +421,7 @@ function GrantForm({
         label="Reason"
         required
         rows={4}
+        maxLength={OVERRIDE_REASON_MAX_CHARS}
         value={fields.reason}
         error={fieldErrors.reason}
         hint={`${REASON_HINT_PHI} ${

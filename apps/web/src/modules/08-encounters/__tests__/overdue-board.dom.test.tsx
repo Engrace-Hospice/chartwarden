@@ -1,10 +1,10 @@
 // The supervisor overdue-notes board (ADR-0113): the rows the server's clock decided, error / empty / read-only states, and the
 // grant-override drawer (validation, the 40-character reason, the idempotency key, the step-up round trip, revoke, self-grant).
 // Synthetic data only.
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { markStepUpReturn, stepUpDraftKeys } from "../../../shell/step-up-redirect";
-import { OverdueBoard } from "../overdue-board";
+import { OVERDUE_BOARD_REFRESH_MS, OverdueBoard } from "../overdue-board";
 import {
   CLINICIAN_A_ID,
   CLINICIAN_B_ID,
@@ -330,7 +330,7 @@ describe("granting an override", () => {
 
   it("shows the server's field error beside the field", async () => {
     mount({
-      grant: refusal(422, "VALIDATION_ERROR", [
+      grant: refusal(422, "VALIDATION_FAILED", [
         { field: "reason", code: "INVALID", message: "reason must be at least 40 characters" },
       ]),
     });
@@ -529,7 +529,7 @@ describe("what a screen reader hears", () => {
     const table = await region();
     await within(table).findByText("Vance, Ada");
     expect(table.closest("[aria-live]")).toBeNull();
-    const line = screen.getByText("2 notes are at risk, overdue or escalated.");
+    const line = screen.getByText("2 notes on the board: 0 escalated, 1 overdue, 1 at risk.");
     expect(line.closest("output")).toBeTruthy();
     expect(table.contains(line)).toBe(false);
   });
@@ -663,7 +663,7 @@ describe("closing the drawer", () => {
 describe("a field error and the fix", () => {
   it("retires the error and aria-invalid on a field as soon as it is edited", async () => {
     mount({
-      grant: refusal(422, "VALIDATION_ERROR", [
+      grant: refusal(422, "VALIDATION_FAILED", [
         { field: "hours", code: "INVALID", message: "hours must be a whole number" },
       ]),
     });
@@ -743,7 +743,7 @@ describe("what a refused grant says", () => {
 
   it("puts an identifier-shaped reason's refusal under the reason box in our own words", async () => {
     mount({
-      grant: refusal(400, "VALIDATION_ERROR", [
+      grant: refusal(422, "VALIDATION_FAILED", [
         {
           field: "reason",
           code: "EVIDENCE_LOOKS_LIKE_PHI",
@@ -758,5 +758,279 @@ describe("what a refused grant says", () => {
       await within(drawer).findByText("Remove names, SSNs and other identifiers from the reason."),
     ).toBeTruthy();
     expect(reasonBox(drawer).getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+describe("the reason box", () => {
+  it("stops at the server's 2,000 characters", async () => {
+    mount();
+    const drawer = await openDrawer();
+    expect(reasonBox(drawer).maxLength).toBe(2_000);
+  });
+
+  it("keeps the server's own sentence for a reason error that is not the identifier refusal", async () => {
+    mount({
+      grant: refusal(422, "VALIDATION_FAILED", [
+        { field: "reason", code: "INVALID", message: "reason must be at least 40 characters" },
+      ]),
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+    submitGrant(drawer);
+    expect(await within(drawer).findByText("reason must be at least 40 characters")).toBeTruthy();
+    expect(within(drawer).queryByText(/Remove names, SSNs/)).toBeNull();
+  });
+});
+
+describe("a refresh that is refused", () => {
+  const entry = `${PATH}?note=${NOTE_A_ID}`;
+  const stepUpNeeded: Responder = () => ({
+    status: 403,
+    body: { error: { code: "STEP_UP_REQUIRED" } },
+  });
+
+  it("drops to Not available on a 403: no rows, no drawer, and the stashed step-up draft is discarded", async () => {
+    let reads = 0;
+    const board: Responder = () => {
+      reads += 1;
+      return reads <= 2
+        ? { body: boardBody([noteRow(), atRiskNote]) }
+        : { status: 403, body: { error: { code: "FORBIDDEN" } } };
+    };
+    // A first visit stashes a draft at step-up; coming back restores it (and keeps it stashed until it is spent or abandoned).
+    mount({ entry, board, grant: stepUpNeeded });
+    const first = await drawerFor("Rowan Test");
+    typeReason(first, LONG_REASON);
+    submitGrant(first);
+    await screen.findByText("elsewhere");
+    expect(stepUpDraftKeys().length).toBe(1);
+    cleanup();
+
+    markStepUpReturn(entry);
+    mount({ entry, board });
+    const back = await drawerFor("Rowan Test");
+    expect(reasonBox(back).value).toBe(LONG_REASON);
+    expect(stepUpDraftKeys().length).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByText("Not available")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Overdue visit notes" })).toBeNull();
+    expect(screen.queryByText("Vance, Ada")).toBeNull();
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(stepUpDraftKeys().length).toBe(0);
+    expect(screen.queryByText(/could not be refreshed/)).toBeNull();
+  });
+
+  it("keeps the rows and the drawer when the refresh gets no answer at all (a network failure), like a 5xx", async () => {
+    let reads = 0;
+    mount({
+      board: () => {
+        reads += 1;
+        if (reads === 1) return { body: boardBody([noteRow(), atRiskNote]) };
+        throw new Error("offline");
+      },
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByText(/The board could not be refreshed/)).toBeTruthy();
+    expect(within(await region()).getByText("Vance, Ada")).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "Override for Rowan Test" })).toBe(drawer);
+    expect(reasonBox(drawer).value).toBe(LONG_REASON);
+  });
+});
+
+describe("the board reads itself again", () => {
+  afterEach(() => vi.useRealTimers());
+  const stageOfRow = (name: string): string =>
+    within(
+      within(screen.getByRole("region", { name: "Overdue visit notes" }))
+        .getByText(name)
+        .closest("tr") as HTMLElement,
+    ).getAllByRole("cell")[7]?.textContent ?? "";
+
+  it("re-reads on its minute tick, quietly and in the background, so a row moves from At risk to Overdue and the counts follow", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const calls: Call[] = [];
+    let reads = 0;
+    mount({
+      calls,
+      board: () => {
+        reads += 1;
+        return {
+          body: boardBody([
+            reads === 1
+              ? atRiskNote
+              : {
+                  ...atRiskNote,
+                  stage: "overdue",
+                  hoursOverdue: 0.4,
+                  deadlineAt: hoursFromNow(-0.4),
+                },
+          ]),
+        };
+      },
+    });
+    await region();
+    await within(await region()).findByText("Quill, Bo");
+    expect(stageOfRow("Quill, Bo")).toContain("At risk");
+    const boardCalls = (): Call[] =>
+      calls.filter((c) => c.path === "/api/v1/encounters/overdue-notes");
+    expect(boardCalls()).toHaveLength(1);
+    expect(boardCalls()[0]?.headers.get("x-chartwarden-background")).toBeNull(); // the first read is the person's
+
+    await act(async () => {
+      vi.advanceTimersByTime(OVERDUE_BOARD_REFRESH_MS);
+    });
+
+    await waitFor(() => expect(boardCalls()).toHaveLength(2));
+    expect(boardCalls()[1]?.headers.get("x-chartwarden-background")).toBe("1"); // a timer's read never counts as activity
+    await waitFor(() => expect(stageOfRow("Quill, Bo")).toContain("Overdue"));
+    const summary = screen.getByLabelText("Overdue note summary");
+    expect(within(summary).getByText("Overdue").nextSibling?.textContent).toBe("1");
+    expect(within(summary).getByText("At risk").nextSibling?.textContent).toBe("0");
+  });
+
+  it("does not read on the tick while the tab is hidden, and the Refresh button stays a normal request", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const calls: Call[] = [];
+    mount({ calls });
+    await region();
+    const boardCalls = (): Call[] =>
+      calls.filter((c) => c.path === "/api/v1/encounters/overdue-notes");
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+
+    await act(async () => {
+      vi.advanceTimersByTime(OVERDUE_BOARD_REFRESH_MS * 2);
+    });
+    expect(boardCalls()).toHaveLength(1);
+
+    hidden.mockReturnValue(false);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(boardCalls()).toHaveLength(2));
+    expect(boardCalls()[1]?.headers.get("x-chartwarden-background")).toBeNull();
+    hidden.mockRestore();
+  });
+
+  it("never starts a second background read while one is still in flight", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const calls: Call[] = [];
+    let release: () => void = () => undefined;
+    let reads = 0;
+    mount({
+      calls,
+      board: async () => {
+        reads += 1;
+        if (reads === 2)
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        return { body: boardBody([noteRow(), atRiskNote]) };
+      },
+    });
+    await region();
+    const boardCalls = (): Call[] =>
+      calls.filter((c) => c.path === "/api/v1/encounters/overdue-notes");
+
+    await act(async () => {
+      vi.advanceTimersByTime(OVERDUE_BOARD_REFRESH_MS * 3);
+    });
+    await waitFor(() => expect(boardCalls()).toHaveLength(2)); // the second is stuck; the later ticks did not pile on
+    expect(boardCalls()).toHaveLength(2);
+    release();
+  });
+});
+
+describe("a refresh is announced afresh", () => {
+  it("announces a second failure again (the error is not left mounted between them) and an unchanged answer again", async () => {
+    let reads = 0;
+    mount({
+      board: () => {
+        reads += 1;
+        return reads === 2 || reads === 3
+          ? { status: 500, body: { error: { code: "INTERNAL" } } }
+          : { body: boardBody([noteRow(), atRiskNote]) };
+      },
+    });
+    await region();
+    const line = (): HTMLElement =>
+      screen.getByText(/notes on the board: 0 escalated, 1 overdue, 1 at risk\./) as HTMLElement;
+    const statusLine = line().closest("output") as HTMLElement;
+    expect(statusLine.textContent).toMatch(/2 notes on the board/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    const firstError = await screen.findByText(/The board could not be refreshed/);
+    expect(statusLine.textContent).toBe(""); // cleared when the refresh started: the next answer will be spoken afresh
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.queryByText(/The board could not be refreshed/)).toBeNull()); // gone while it re-reads
+    const secondError = await screen.findByText(/The board could not be refreshed/);
+    expect(secondError).not.toBe(firstError); // a new alert was inserted, so it is announced again
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(statusLine.textContent).toMatch(/2 notes on the board/));
+  });
+});
+
+describe("what the drawer says when the board no longer needs it", () => {
+  it("is an info notice, not the green of a success, when the note drops off the board", async () => {
+    let reads = 0;
+    mount({
+      board: () => {
+        reads += 1;
+        return { body: boardBody(reads === 1 ? [noteRow(), atRiskNote] : [atRiskNote]) };
+      },
+    });
+    const drawer = await openDrawer();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    const notice = await within(drawer).findByText(/no longer on the board/);
+    expect(notice.getAttribute("style")).not.toMatch(/success/);
+    expect(notice.getAttribute("style")).toMatch(/on-surface-variant/);
+
+    // ...and the same line for a real grant IS the success tone, so the distinction is the tone, not an accident.
+  });
+
+  it("keeps the drawer, with the typed reason, when a refresh says the organization no longer blocks, and says why", async () => {
+    let reads = 0;
+    mount({
+      board: () => {
+        reads += 1;
+        return {
+          body: boardBody([noteRow(), atRiskNote], { mode: reads === 1 ? "block" : "warn" }),
+        };
+      },
+    });
+    const drawer = await openDrawer();
+    typeReason(drawer, LONG_REASON);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(
+      await within(drawer).findByText(/no longer blocks clinicians for overdue notes/),
+    ).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "Override for Rowan Test" })).toBe(drawer);
+    expect(reasonBox(drawer).value).toBe(LONG_REASON);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close override panel" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+  });
+
+  it("never opens a drawer from a deep link while the organization does not block", async () => {
+    mount({
+      entry: `${PATH}?note=${NOTE_A_ID}`,
+      board: () => ({ body: boardBody([noteRow(), atRiskNote], { mode: "warn" }) }),
+    });
+    await region();
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+});
+
+describe("the first load", () => {
+  it("does not nest one live region in another while it loads (the spinner is itself the status)", async () => {
+    mount({ board: () => new Promise(() => undefined) });
+    const spinner = await screen.findByLabelText("Loading");
+    expect(spinner.parentElement?.closest("output")).toBeNull();
   });
 });

@@ -18,6 +18,7 @@ import type { JSX, ReactNode } from "react";
 import { getGlobalResponseSignal, subscribeGlobalResponseSignal } from "./global-response-signal";
 import { isOnboardingSession } from "./onboarding-stage";
 import { useSessionState } from "./session";
+import { useRefreshCues } from "./use-refresh-cues";
 
 /** How often an author's closure status is refreshed in the background. */
 export const NOTE_CLOSURE_POLL_INTERVAL_MS = 60_000;
@@ -88,38 +89,26 @@ export function NoteClosureProvider({ children }: { children: ReactNode }): JSX.
     [client, scope],
   );
 
+  // Opening the app is the person's own read, an ordinary request. Every later read is a CUE's (the timer below, a return to the tab, a
+  // gate refusal) and is background work: marked, so it never counts as activity and keeps the idle logoff honest (GAP-002). Only
+  // `refresh()` (the person pressing a button) is unmarked again. The same rule use-refresh-cues.ts gives every screen that re-reads.
   useEffect(() => {
-    if (scope === null) return;
-    void load(false);
-    const refreshWhenVisible = (): void => {
-      if (!document.hidden) void load(false);
-    };
-    window.addEventListener("focus", refreshWhenVisible);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.removeEventListener("focus", refreshWhenVisible);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
+    if (scope !== null) void load(false);
   }, [load, scope]);
 
+  // While the clinician is blocked the poll runs faster, so closing the last overdue note lifts the banner within seconds.
   const blocked = status?.verdict === "blocked";
-  useEffect(() => {
-    if (scope === null) return;
-    const poll = (): void => {
-      // The background marker keeps this maintenance request from extending idle sessions.
-      if (!document.hidden) void load(true);
-    };
-    const interval = window.setInterval(
-      poll,
-      blocked ? NOTE_CLOSURE_BLOCKED_POLL_INTERVAL_MS : NOTE_CLOSURE_POLL_INTERVAL_MS,
-    );
-    return () => window.clearInterval(interval);
-  }, [load, scope, blocked]);
+  const intervalMs =
+    scope === null
+      ? null
+      : blocked
+        ? NOTE_CLOSURE_BLOCKED_POLL_INTERVAL_MS
+        : NOTE_CLOSURE_POLL_INTERVAL_MS;
+  useRefreshCues(() => void load(true), intervalMs);
 
   // A gate refusal observed anywhere means the clock just changed for this clinician: read it now instead of waiting for the next poll.
   // A refusal is often the answer to someone ELSE's background poll (a wallboard's 30-second safety-dashboard refresh), so this read is
-  // background work too: marked, so it never counts as activity and keeps the idle logoff honest (GAP-002), and skipped while the tab
-  // is hidden, like the poll. The reads a person causes (mount, focus, `refresh()`) stay unmarked.
+  // background work too, and skipped while the tab is hidden, like every cue.
   useEffect(() => {
     if (scope === null) return;
     return subscribeGlobalResponseSignal(() => {

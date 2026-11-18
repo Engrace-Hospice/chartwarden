@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   NOTE_CLOSURE_HOME,
   isNoteClosureAllowedScreen,
+  matchesScreenPattern,
   noteClosureRedirectFor,
 } from "./note-closure-screens";
 
@@ -65,6 +66,48 @@ describe("isNoteClosureAllowedScreen", () => {
     "/orders-archive",
   ])("does not treat %s as allowed", (path) => {
     expect(isNoteClosureAllowedScreen(path)).toBe(false);
+  });
+});
+
+// A tree says "everything under it", but a few screens under /patients open with a read the server refuses. They are refused by name, so
+// the clinician is moved to My notes instead of sitting on a permission error; their siblings stay.
+describe("screens under an allowed tree that the server refuses", () => {
+  it.each([
+    "/patients/p-1/claims",
+    "/patients/p-1/consents/c-1",
+    "/patients/p-1/consents/new",
+    "/patients/p-1/consents/expiring",
+    "/patients/p-1/discipline-plans",
+    "/patients/p-1/discipline-plans/aide-poc/v-1/edit",
+    "/patients/p-1/election-certification",
+    "/patients/p-1/reconciliation/w-1",
+    "/patients/p-1/signatures",
+    "/Patients/p-1/Claims",
+  ])("does not treat %s as allowed", (path) => {
+    expect(isNoteClosureAllowedScreen(path)).toBe(false);
+    expect(noteClosureRedirectFor(path, true)).toBe(NOTE_CLOSURE_HOME);
+  });
+
+  it.each([
+    "/patients/p-1",
+    "/patients/p-1/consents",
+    "/patients/p-1/documents",
+    "/patients/p-1/emar",
+    "/patients/p-1/medications/reconciliation",
+    "/patients/p-1/encounters/e-1/compose",
+  ])("still keeps a blocked clinician on %s", (path) => {
+    expect(isNoteClosureAllowedScreen(path)).toBe(true);
+  });
+});
+
+describe("matchesScreenPattern", () => {
+  it("lets * stand for one segment and names the screen and everything under it", () => {
+    expect(matchesScreenPattern("/patients/p-1/consents/c-1", "/patients/*/consents/*")).toBe(true);
+    expect(matchesScreenPattern("/patients/p-1/consents/c-1/extra", "/patients/*/consents/*")).toBe(
+      true,
+    );
+    expect(matchesScreenPattern("/patients/p-1/consents", "/patients/*/consents/*")).toBe(false);
+    expect(matchesScreenPattern("/patients/p-1/claims", "/patients/*/consents/*")).toBe(false);
   });
 });
 

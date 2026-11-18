@@ -9,7 +9,7 @@
 //
 // A write whose reply is lost may or may not have landed: the grant runs under the screen's `useAttemptKey` so its retry carries the
 // same key (docs/DEVELOPMENT.md "Idempotency keys in the UI"). A call that throws (offline) is status 0, never an exception.
-import { type OpsFailure, describeOpsError } from "@chartwarden/ui";
+import { BACKGROUND_REQUEST_HEADERS, type OpsFailure, describeOpsError } from "@chartwarden/ui";
 import type { ApiClient, AttemptKey, operations } from "@chartwarden/ui";
 
 /** The `application/json` payload of an openapi-fetch response/request-body slot. */
@@ -87,12 +87,20 @@ async function settle<T>(send: () => Promise<Settled<T>>): Promise<Outcome<T>> {
   }
 }
 
+/**
+ * Read the board. `background` marks a read nobody asked for (the board's own minute tick, a return to the tab): it must not count as
+ * the person's activity, or an unattended wallboard would keep its session alive for ever (GAP-002).
+ */
 export function loadOverdueNotes(
   client: ApiClient,
-  limit: number = OVERDUE_BOARD_LIMIT,
+  options: { readonly limit?: number; readonly background?: boolean } = {},
 ): Promise<Outcome<OverdueBoardView>> {
+  const { limit = OVERDUE_BOARD_LIMIT, background = false } = options;
   return settle(() =>
-    client.GET("/api/v1/encounters/overdue-notes", { params: { query: { limit } } }),
+    client.GET("/api/v1/encounters/overdue-notes", {
+      params: { query: { limit } },
+      ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
+    }),
   );
 }
 
@@ -184,15 +192,17 @@ export function refusalSentence(failure: OpsFailure): string {
   return hasOwnCopy ? failure.message : (failure.details[0]?.message ?? failure.message);
 }
 
+/** The detail code the server gives a reason it refuses for looking like an SSN or Medicare number (override-service.ts). */
+const REASON_LOOKS_LIKE_IDENTIFIER = "EVIDENCE_LOOKS_LIKE_PHI";
+
 /**
- * The error beside the grant form's `reason` box. The form refuses a reason under the minimum before it sends anything, so a
- * 400 VALIDATION_ERROR on `reason` for a reason that long is the server refusing its CONTENT (it looks like a name or an identifier):
- * that gets our own sentence, and any other field error keeps the server's.
+ * The error beside the grant form's `reason` box. The server refuses a reason that looks like a patient identifier with a 422
+ * VALIDATION_FAILED whose detail is `{ field: "reason", code: "EVIDENCE_LOOKS_LIKE_PHI" }` (and never echoes the text): that detail,
+ * not the status or the top-level code, gets our own sentence. Any other field error on `reason` keeps the server's.
  */
 export function reasonFieldError(failure: OpsFailure): string | undefined {
-  const refused = failure.fieldErrors.reason;
-  if (refused === undefined) return undefined;
-  return failure.status === 400 && failure.code === "VALIDATION_ERROR"
-    ? REASON_IDENTIFIER_COPY
-    : refused;
+  const looksLikeIdentifier = failure.details.some(
+    (detail) => detail.field === "reason" && detail.code === REASON_LOOKS_LIKE_IDENTIFIER,
+  );
+  return looksLikeIdentifier ? REASON_IDENTIFIER_COPY : failure.fieldErrors.reason;
 }

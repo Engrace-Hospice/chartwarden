@@ -57,21 +57,58 @@ export const NOTE_CLOSURE_ALLOWED_SCREEN_TREES: readonly string[] = [
 /** Screens that are allowed on their own but whose siblings are not (`/triage` the hub, never `/triage/shifts`). */
 export const NOTE_CLOSURE_ALLOWED_SCREENS_EXACT: readonly string[] = ["/triage", "/messaging"];
 
-const isUnder = (pathname: string, tree: string): boolean =>
-  pathname === tree || pathname.startsWith(`${tree}/`);
+/**
+ * Screens UNDER an allowed tree whose own first read the server refuses, so the tree's "everything under it" is too wide for them. A
+ * segment pattern: `*` stands for any one segment (a route parameter), and a pattern names the screen and everything under it.
+ *   - `/patients/*` + `/claims`: the billing claim reads (GET /billing/claims, /medicaid-claims, ...), an administrative read.
+ *   - consents: only the list (GET /patients/:id/consents) is allowed; a consent's detail, the capture form (GET /consent-types) and
+ *     the expiring list (GET /patients/:id/expiring-consents) are not.
+ *   - `/discipline-plans`: every read is GET /discipline-plans...
+ *   - `/election-certification`: GET /patients/:id/election-certification. (The patient chart's overview also reads it, as a secondary
+ *     read it tolerates; the chart itself is allowed.)
+ *   - `/reconciliation`: GET /reconciliation/worksheets/:id.
+ *   - `/signatures`: GET /admin/portal-signature-requests.
+ * Widen the SERVER's allowlist deliberately first, then delete the entry here (the mirror test names this when it fails).
+ */
+export const NOTE_CLOSURE_REFUSED_UNDER_TREES: readonly string[] = [
+  "/patients/*/claims",
+  "/patients/*/consents/*",
+  "/patients/*/discipline-plans",
+  "/patients/*/election-certification",
+  "/patients/*/reconciliation",
+  "/patients/*/signatures",
+];
+
+const segmentsOf = (path: string): string[] => path.split("/").filter((segment) => segment !== "");
+
+const isUnder = (pathname: string, tree: string): boolean => {
+  const path = segmentsOf(pathname);
+  const prefix = segmentsOf(tree);
+  return path.length >= prefix.length && prefix.every((part, index) => path[index] === part);
+};
+
+/** Whether `pathname` is the screen `pattern` names, or under it (`*` matches any one segment). */
+export function matchesScreenPattern(pathname: string, pattern: string): boolean {
+  const path = segmentsOf(pathname);
+  const parts = segmentsOf(pattern);
+  return (
+    path.length >= parts.length &&
+    parts.every((part, index) => part === "*" || path[index] === part)
+  );
+}
 
 /** The pathname as the router matches it: case-insensitive, and a trailing slash names the same screen. */
-const routerForm = (pathname: string): string => {
-  const lower = pathname.toLowerCase();
-  return lower.length > 1 && lower.endsWith("/") ? lower.slice(0, -1) : lower;
-};
+const routerForm = (pathname: string): string => pathname.toLowerCase();
 
 /** True when the gate still allows this screen's own calls for a blocked clinician. */
 export function isNoteClosureAllowedScreen(pathname: string): boolean {
   const path = routerForm(pathname);
+  const inAllowedTree =
+    NOTE_CLOSURE_ALLOWED_SCREENS_EXACT.some(
+      (screen) => segmentsOf(path).join("/") === segmentsOf(screen).join("/"),
+    ) || NOTE_CLOSURE_ALLOWED_SCREEN_TREES.some((tree) => isUnder(path, tree));
   return (
-    NOTE_CLOSURE_ALLOWED_SCREENS_EXACT.includes(path) ||
-    NOTE_CLOSURE_ALLOWED_SCREEN_TREES.some((tree) => isUnder(path, tree))
+    inAllowedTree && !NOTE_CLOSURE_REFUSED_UNDER_TREES.some((p) => matchesScreenPattern(path, p))
   );
 }
 

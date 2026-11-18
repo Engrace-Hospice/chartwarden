@@ -169,6 +169,12 @@ export function ClosurePolicy(): JSX.Element {
     setRefusal(failure.fieldErrors.thresholdHours ?? failure.fieldErrors.mode ?? failure.message);
   };
 
+  // A reload shows what the server holds now, so the "Policy saved" notice for an earlier save goes with it.
+  const reload = (): void => {
+    setSaved(null);
+    setReloadKey((key) => key + 1);
+  };
+
   const requestSave = (): void => {
     const thresholdHours = parseThresholdHours(threshold);
     setSaved(null);
@@ -206,19 +212,15 @@ export function ClosurePolicy(): JSX.Element {
               when they do not.
             </p>
           </div>
-          <Button
-            tone="secondary"
-            loading={load.status === "loading"}
-            onClick={() => setReloadKey((key) => key + 1)}
-          >
+          <Button tone="secondary" loading={load.status === "loading"} onClick={reload}>
             Refresh
           </Button>
         </header>
 
         {load.status === "loading" ? (
-          <output className="wx-list-state">
+          <div className="wx-list-state">
             <LoadingSpinner />
-          </output>
+          </div>
         ) : null}
         {load.status === "error" ? (
           <div className="wx-list-state" role="alert">
@@ -231,7 +233,7 @@ export function ClosurePolicy(): JSX.Element {
               }
             />
             {load.forbidden ? null : (
-              <Button tone="secondary" onClick={() => setReloadKey((key) => key + 1)}>
+              <Button tone="secondary" onClick={reload}>
                 Try again
               </Button>
             )}

@@ -5,10 +5,15 @@
 //   recomputes a deadline, so the board can never disagree with the alerts or the gate)
 // A row's action opens the grant-override drawer (override-grant-drawer.tsx). Overrides only matter while the tenant policy BLOCKS, so in
 // `warn` and `off` the board is read-only and says why. A supervisor cannot override their own note (the server refuses it): that row
-// offers no action. Listing existing overrides is a later route, so the drawer revokes only grants made in this session. A failed first
-// read is an error with a retry, never an empty board; a failed REFRESH keeps the rows already on screen (and an open drawer, with what
-// was typed in it) and says the board could not be refreshed. A note that drops off the board while its drawer is open (it was closed)
-// keeps the drawer until the supervisor closes it, and the drawer says so. Only a status line is a live region, never the table.
+// offers no action. Listing existing overrides is a later route, so the drawer revokes only grants made in this session.
+// READING: the first read and the Refresh button are the person's (ordinary requests, a spinner on the button); the board also reads
+// itself again every minute and when the tab is visited again (background requests, no spinner, visible tab only; the shared cues in
+// shell/use-refresh-cues.ts), because a note's stage moves with the clock and a row must not stay "At risk" under a stale count. A failed
+// first read is an error with a retry, never an empty board. A refresh that fails with a 5xx or no answer keeps the rows already on screen
+// (and an open drawer, with what was typed in it) and says the board could not be refreshed; a REFUSAL (403) is final: the rows and the
+// drawer go (its stashed step-up draft too), because the person may no longer see them. A note that drops off the board while its
+// drawer is open (it was closed), or a mode that no longer blocks, keeps the drawer until the supervisor closes it, and the drawer says
+// so. Only the status line is a live region, never the table: it names the board's counts when a read lands.
 import {
   Button,
   EmptyState,
@@ -20,13 +25,15 @@ import {
   interactiveRowProps,
   useApiClient,
 } from "@chartwarden/ui";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { formatClosureInstant } from "../../shell/closure-instant";
 import { usePatientNames } from "../../shell/patient-names";
 import type { PatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
+import { clearStepUpDraft } from "../../shell/step-up-redirect";
+import { useRefreshCues } from "../../shell/use-refresh-cues";
 import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
 import {
   type HeldOverride,
@@ -34,9 +41,22 @@ import {
   type OverdueNote,
   loadOverdueNotes,
 } from "./closure-api";
-import { STAGE_LABEL, STAGE_TONE, countByStage, isGrantActive, timingLabel } from "./closure-model";
+import {
+  STAGE_LABEL,
+  STAGE_TONE,
+  boardStatusLine,
+  countByStage,
+  isGrantActive,
+  timingLabel,
+} from "./closure-model";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
-import { CLOSURE_DRAFT_ACTIONS, OverrideGrantDrawer } from "./override-grant-drawer";
+import {
+  CLOSURE_DRAFT_ACTIONS,
+  type NoteBoardState,
+  OverrideGrantDrawer,
+  grantDraftKey,
+} from "./override-grant-drawer";
+import { useIsMounted } from "./use-is-mounted";
 import { useNow } from "./use-now";
 import { clinicianLabel, useStaffNames } from "./use-staff-names";
 import type { StaffNames } from "./use-staff-names";
@@ -52,6 +72,8 @@ const DEFAULT_PAGE_SIZE = 10;
 const FORBIDDEN_STATUS = 403;
 /** How often the "Due in Xh" countdowns are recomputed from the clock (they are the only client-side arithmetic on the board). */
 const COUNTDOWN_TICK_MS = 60_000;
+/** How often the board reads itself again while its tab is visible: a stage can only move with the clock, so a minute is plenty. */
+export const OVERDUE_BOARD_REFRESH_MS = 60_000;
 
 type Grants = Readonly<Record<string, HeldOverride>>;
 
@@ -60,6 +82,7 @@ const patientLabelOf = (names: PatientNames, patientId: string): string =>
 
 export function OverdueBoard(): JSX.Element {
   const client = useApiClient();
+  const mounted = useIsMounted();
   const [params, setParams] = useSearchParams();
   const session = useSession();
   const owner = useStepUpOwner();
@@ -68,7 +91,7 @@ export function OverdueBoard(): JSX.Element {
   const [board, setBoard] = useState<OverdueBoardView | null>(null);
   const [failure, setFailure] = useState<ReadFailure | null>(null);
   const [loading, setLoading] = useState(true);
-  const [reloadKey, setReloadKey] = useState(0);
+  const [announcement, setAnnouncement] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [grants, setGrants] = useState<Grants>({});
@@ -77,26 +100,62 @@ export function OverdueBoard(): JSX.Element {
   const now = useNow(COUNTDOWN_TICK_MS);
   const viewerMembershipId = session?.membershipId ?? null;
   const noteParam = params.get(NOTE_PARAM) ?? "";
+  // Which read's answer still counts, and how many are in flight: a newer read supersedes an older one, and a background read never
+  // starts while another is going (an in-flight guard, as in use-my-notes).
+  const latestRead = useRef(0);
+  const pending = useRef(0);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a retry trigger, not a value the effect reads.
-  useEffect(() => {
-    let active = true;
-    // Stale-while-revalidate: a refresh keeps the rows (and an open drawer) mounted, and so does a refresh that fails.
-    setLoading(true);
-    void loadOverdueNotes(client).then((outcome) => {
-      if (!active) return;
+  const read = useCallback(
+    async (background: boolean): Promise<void> => {
+      if (background && pending.current > 0) return;
+      latestRead.current += 1;
+      const mine = latestRead.current;
+      pending.current += 1;
+      if (!background) {
+        // The person's own read: a spinner on the button, and a clean slate so a second failure is announced afresh and an unchanged
+        // answer is announced again (a live region only speaks when its content changes).
+        setLoading(true);
+        setFailure(null);
+        setAnnouncement("");
+      }
+      const outcome = await loadOverdueNotes(client, { background });
+      pending.current -= 1;
+      if (!mounted.current || latestRead.current !== mine) return;
       setLoading(false);
       if (outcome.ok) {
         setBoard(outcome.data);
         setFailure(null);
+        setAnnouncement(boardStatusLine(outcome.data));
         return;
       }
-      setFailure({ forbidden: outcome.status === FORBIDDEN_STATUS });
-    });
-    return () => {
-      active = false;
-    };
-  }, [client, reloadKey]);
+      const forbidden = outcome.status === FORBIDDEN_STATUS;
+      setFailure({ forbidden });
+      // Stale-while-revalidate holds for a 5xx or no answer; a refusal is final, so rows the person may no longer see go.
+      if (forbidden) setBoard(null);
+    },
+    [client, mounted],
+  );
+  useEffect(() => {
+    void read(false);
+  }, [read]);
+  useRefreshCues(() => void read(true), OVERDUE_BOARD_REFRESH_MS);
+  const refresh = (): void => void read(false);
+
+  // A refusal also closes an open drawer and discards the step-up draft stashed for it: nothing typed there may outlive the access.
+  const forbidden = failure?.forbidden === true;
+  useEffect(() => {
+    if (!forbidden || noteParam === "") return;
+    clearStepUpDraft(grantDraftKey(owner, noteParam));
+    setKept(null);
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete(NOTE_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [forbidden, noteParam, owner, setParams]);
 
   const items = board?.items ?? [];
   const canGrant = board?.mode === "block";
@@ -110,13 +169,15 @@ export function OverdueBoard(): JSX.Element {
   const listed = canGrant
     ? (items.find((i) => i.encounterId === noteParam && !isOwnNote(i)) ?? null)
     : null;
-  // A refresh that no longer lists the open note (it was closed) must not pull the drawer away with a half-typed reason in it:
-  // the last row seen stands in until the supervisor closes the panel.
+  // A refresh that no longer lists the open note (it was closed), or a mode that no longer blocks, must not pull the drawer away with a
+  // half-typed reason in it: the last row seen stands in until the supervisor closes the panel. A drawer is never OPENED that way: it
+  // needs a listed note, which only a board that blocks offers.
   useEffect(() => {
     if (listed !== null) setKept(listed);
   }, [listed]);
-  const selected = listed ?? (canGrant && kept?.encounterId === noteParam ? kept : null);
-  const refresh = (): void => setReloadKey((key) => key + 1);
+  const selected = forbidden ? null : (listed ?? (kept?.encounterId === noteParam ? kept : null));
+  const boardState: NoteBoardState =
+    listed !== null ? "listed" : canGrant ? "gone" : "not-blocking";
 
   const select = (encounterId: string): void =>
     setParams(
@@ -166,19 +227,18 @@ export function OverdueBoard(): JSX.Element {
           </InlineAlert>
         ) : null}
 
-        <output className="wx-sr-only">{statusLine(board, items.length)}</output>
+        <output className="wx-sr-only">{announcement}</output>
         {failure !== null && board !== null ? (
           <InlineAlert tone="error">
-            {failure.forbidden
-              ? "You no longer have access to the overdue notes board. The rows below are as of the last time it loaded."
-              : "The board could not be refreshed. The rows below are as of the last time it loaded: try Refresh again."}
+            The board could not be refreshed. The rows below are as of the last time it loaded: try
+            Refresh again.
           </InlineAlert>
         ) : null}
 
         {board === null && loading ? (
-          <output className="wx-list-state">
+          <div className="wx-list-state">
             <LoadingSpinner />
-          </output>
+          </div>
         ) : board === null && failure !== null ? (
           <div className="wx-list-state" role="alert">
             <EmptyState
@@ -249,7 +309,7 @@ export function OverdueBoard(): JSX.Element {
           patientName={patientLabelOf(patientNames, selected.patientId)}
           clinicianName={clinicianLabel(staffNames, selected.authoredByMembershipId)}
           grant={grants[selected.authoredByMembershipId] ?? null}
-          listed={listed !== null}
+          boardState={boardState}
           resume={returning}
           onClose={deselect}
           onGranted={keepGrant}
@@ -259,16 +319,6 @@ export function OverdueBoard(): JSX.Element {
       ) : null}
     </div>
   );
-}
-
-/**
- * The board's one live line: what it holds, said once when a read lands (the table itself is not a live region, or every page change
- * and refresh would re-read all of it). Silent until the first answer; text that does not change is not announced again.
- */
-function statusLine(board: OverdueBoardView | null, count: number): string {
-  if (board === null) return "";
-  if (count === 0) return "No notes are at risk, overdue or escalated.";
-  return `${count} ${count === 1 ? "note is" : "notes are"} at risk, overdue or escalated.`;
 }
 
 function ModeNotice({ board }: { board: OverdueBoardView | null }): JSX.Element | null {
