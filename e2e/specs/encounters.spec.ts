@@ -124,6 +124,27 @@ async function openVisitWindow(
   );
 }
 
+async function memberIdByName(page: Page, name: string): Promise<string> {
+  return page.evaluate(async (wanted) => {
+    const contextResponse = await fetch("/api/v1/auth/context", { credentials: "include" });
+    if (!contextResponse.ok) throw new Error(`auth context read failed: ${contextResponse.status}`);
+    const context = (await contextResponse.json()) as { organizationId: string | null };
+    if (!context.organizationId) throw new Error("authenticated session has no organization");
+    const response = await fetch(`/api/v1/orgs/${context.organizationId}/members`, {
+      credentials: "include",
+    });
+    if (!response.ok) throw new Error(`member read failed: ${response.status}`);
+    const body = (await response.json()) as {
+      members: Array<{ membershipId: string; displayName: string | null; status: string }>;
+    };
+    const match = body.members.find(
+      (member) => member.status === "active" && member.displayName?.includes(wanted),
+    );
+    if (!match) throw new Error(`no member named ${wanted}`);
+    return match.membershipId;
+  }, name);
+}
+
 const visitShortId = (visitId: string): string =>
   visitId.length > 18 ? `${visitId.slice(0, 8)}...${visitId.slice(-6)}` : visitId;
 
@@ -139,6 +160,11 @@ test.describe("Encounters", () => {
     const serviceDate = localDay(tomorrow);
     await page.goto(`/scheduling/day?date=${serviceDate}`);
     await expect(page.getByRole("heading", { name: "Day View" })).toBeVisible({ timeout: 15_000 });
+    // The window comes from the API, not from the dialog: the wizard asks for the time before the clinician,
+    // and whether "Who is available" lists a clinician who already has a visit then is undecided, so the
+    // RN's first free hour is chosen up front and the clinician is picked by id.
+    const rnMembershipId = await memberIdByName(page, "Rita Alvarez");
+    const visitWindow = await openVisitWindow(page, serviceDate, rnMembershipId);
     await page.getByRole("button", { name: "New Visit" }).click();
     const visitDialog = page.getByRole("dialog", { name: "New Visit" });
     await pickLookupOption(
@@ -158,26 +184,12 @@ test.describe("Encounters", () => {
     // The guided wizard (0342bcf46) is four steps: who/why → when/where → clinician → review.
     await visitDialog.getByRole("button", { name: "Continue to time and location" }).click();
     await visitDialog.getByLabel("Visit setting").selectOption("telephonic");
-    const fillWindow = async (window: { start: string; end: string }): Promise<void> => {
-      await visitDialog.getByLabel("Scheduled start").fill(window.start);
-      await visitDialog.getByLabel("Scheduled end").fill(window.end);
-      await visitDialog.getByRole("button", { name: "Continue to clinician" }).click();
-    };
-    // Time now precedes clinician, and "Who is available" still lists a clinician who already has a visit
-    // then (the conflict only surfaces on submit). Start with the helper's first candidate (07:00), read the
-    // RN's real bookings, and go back only if that hour is taken.
-    await fillWindow({ start: `${serviceDate}T07:00`, end: `${serviceDate}T07:45` });
+    await visitDialog.getByLabel("Scheduled start").fill(visitWindow.start);
+    await visitDialog.getByLabel("Scheduled end").fill(visitWindow.end);
+    await visitDialog.getByRole("button", { name: "Continue to clinician" }).click();
     const clinician = visitDialog.getByRole("combobox", { name: /Assigned clinician/ });
     await expect(clinician).toBeEnabled({ timeout: 15_000 });
-    await clinician.selectOption({ label: "Rita Alvarez, RN · RN" });
-    const assignedMembershipId = await clinician.inputValue();
-    const visitWindow = await openVisitWindow(page, serviceDate, assignedMembershipId);
-    if (visitWindow.start !== `${serviceDate}T07:00`) {
-      await visitDialog.getByRole("button", { name: "Back" }).click();
-      await fillWindow(visitWindow);
-      await expect(clinician).toBeEnabled({ timeout: 15_000 });
-      await clinician.selectOption({ label: "Rita Alvarez, RN · RN" });
-    }
+    await clinician.selectOption(rnMembershipId);
     const createRequests: string[] = [];
     page.on("request", (request) => {
       if (request.method() === "POST" && new URL(request.url()).pathname === "/api/v1/visits") {
@@ -186,10 +198,14 @@ test.describe("Encounters", () => {
     });
     await visitDialog.getByRole("button", { name: "Continue to review" }).click();
     // Reaching the review step must create nothing. A real click once submitted the form here (the WF08
-    // wizard reused one <button> for Continue and Create), so the visit appeared with no review.
+    // wizard reused one <button> for Continue and Create): the visit was created at once, the dialog closed
+    // and "Create Visit" never appeared, or (on a conflict) a POST sat in the request log.
     await expect(visitDialog.getByText("Confirm visit details")).toBeVisible();
-    await page.waitForTimeout(750); // an absence check needs a short settle; the old bug fired within ~100 ms
+    await expect(visitDialog.getByRole("button", { name: "Create Visit" })).toBeEnabled();
     expect(createRequests, "Continue to review must not create the visit").toEqual([]);
+    // The button that held focus was replaced, and focus must stay in the dialog (Escape and the Tab trap
+    // only see keys there), not drop to <body>.
+    await expect(visitDialog.locator('li[aria-current="step"]')).toBeFocused();
     await visitDialog.getByRole("button", { name: "Create Visit" }).click();
     await page.waitForURL(/\/scheduling\/visits\/[^/]+$/, { timeout: 15_000 });
     const visitId = /\/scheduling\/visits\/([^/?#]+)$/.exec(page.url())?.[1] as string;

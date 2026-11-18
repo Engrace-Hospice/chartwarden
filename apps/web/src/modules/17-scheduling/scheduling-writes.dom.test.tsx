@@ -566,6 +566,13 @@ describe("#91 — a visit can be scheduled", () => {
     expect(dialog.contains(document.activeElement)).toBe(true);
     expect(document.activeElement?.getAttribute("aria-current")).toBe("step");
   });
+
+  it("does not move focus when the dialog opens", async () => {
+    const dialog = await openNewVisit();
+    // The modal's own initial focus stands; the step-change effect must not claim it on mount.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement?.getAttribute("aria-current")).toBeNull();
+  });
 });
 
 describe("#91 — the per-visit ceremonies", () => {

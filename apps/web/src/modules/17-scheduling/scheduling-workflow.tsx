@@ -213,11 +213,13 @@ export function NewVisitModal({
     setPatientLabel(initialPatient.label);
   }, [open, initialPatient]);
 
-  // Advancing 3 -> 4 replaces the focused Continue button with Create Visit (distinct keys, see the
-  // footer). Focus would fall to <body>, where the modal's Escape and Tab handling never see it, so land
-  // on the current step in the progress list instead; it also announces the new step.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the step changes
+  // A step change can remove the focused button: advancing 3 -> 4 swaps Continue for Create Visit (distinct
+  // keys, see the footer) and Back is absent on step 1. Focus would fall to <body>, where the modal's Escape
+  // and Tab handling never see it, so land on the current step in the progress list; it also announces the step.
+  const previousStep = useRef(step);
   useEffect(() => {
+    if (previousStep.current === step) return;
+    previousStep.current = step;
     const active = document.activeElement;
     if (!active || active === document.body) currentStepRef.current?.focus();
   }, [step]);
