@@ -16,6 +16,7 @@ import { preview15 } from "./modules-preview/m15";
 import { preview16 } from "./modules-preview/m16";
 import { preview19 } from "./modules-preview/m19";
 import { preview20 } from "./modules-preview/m20";
+import { preview21 } from "./modules-preview/m21";
 import { createMockClient } from "./modules-preview/mock-client";
 import type { ModulePreview } from "./modules-preview/types";
 import { SessionProvider } from "./shell/session";
@@ -26,6 +27,7 @@ const previews: Record<string, ModulePreview> = {
   "16": preview16,
   "19": preview19,
   "20": preview20,
+  "21": preview21,
 };
 
 const params = new URLSearchParams(location.search);
