@@ -41,5 +41,8 @@ export const TIMEOFF_TONE: Record<string, StatusTone> = {
 
 /** Title-case an underscore enum value, e.g. `en_route` → `En Route`. */
 export function stateLabel(s: string): string {
+  if (s === "huv1") return "HUV1";
+  if (s === "huv2") return "HUV2";
+  if (s === "sfv") return "SFV";
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

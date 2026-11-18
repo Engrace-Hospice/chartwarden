@@ -95,6 +95,9 @@ const VISIT_PURPOSES = [
   "pronouncement",
   "admission_visit",
   "discharge_visit",
+  "huv1",
+  "huv2",
+  "sfv",
 ] as const satisfies readonly VisitPurpose[];
 
 const VISIT_SETTINGS = [

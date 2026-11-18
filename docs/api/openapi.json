@@ -134970,6 +134970,18 @@
                               {
                                 "const": "discharge_visit",
                                 "type": "string"
+                              },
+                              {
+                                "const": "huv1",
+                                "type": "string"
+                              },
+                              {
+                                "const": "huv2",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sfv",
+                                "type": "string"
                               }
                             ]
                           },
@@ -190020,6 +190032,18 @@
                               },
                               {
                                 "const": "discharge_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "huv1",
+                                "type": "string"
+                              },
+                              {
+                                "const": "huv2",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sfv",
                                 "type": "string"
                               }
                             ]
@@ -310632,6 +310656,18 @@
                           {
                             "const": "discharge_visit",
                             "type": "string"
+                          },
+                          {
+                            "const": "huv1",
+                            "type": "string"
+                          },
+                          {
+                            "const": "huv2",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sfv",
+                            "type": "string"
                           }
                         ]
                       },
@@ -310814,6 +310850,18 @@
                         {
                           "const": "discharge_visit",
                           "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
+                          "type": "string"
                         }
                       ]
                     },
@@ -310989,6 +311037,18 @@
                       },
                       {
                         "const": "discharge_visit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "huv1",
+                        "type": "string"
+                      },
+                      {
+                        "const": "huv2",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sfv",
                         "type": "string"
                       }
                     ]
@@ -311191,6 +311251,18 @@
                         },
                         {
                           "const": "discharge_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
                           "type": "string"
                         }
                       ]
@@ -341069,6 +341141,18 @@
                 },
                 {
                   "const": "discharge_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "huv1",
+                  "type": "string"
+                },
+                {
+                  "const": "huv2",
+                  "type": "string"
+                },
+                {
+                  "const": "sfv",
                   "type": "string"
                 }
               ]
@@ -396806,6 +396890,18 @@
                           {
                             "const": "discharge_visit",
                             "type": "string"
+                          },
+                          {
+                            "const": "huv1",
+                            "type": "string"
+                          },
+                          {
+                            "const": "huv2",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sfv",
+                            "type": "string"
                           }
                         ]
                       },
@@ -396982,6 +397078,18 @@
                         },
                         {
                           "const": "discharge_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
                           "type": "string"
                         }
                       ]
@@ -397195,6 +397303,18 @@
                         },
                         {
                           "const": "discharge_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
                           "type": "string"
                         }
                       ]
@@ -397482,6 +397602,18 @@
                           {
                             "const": "discharge_visit",
                             "type": "string"
+                          },
+                          {
+                            "const": "huv1",
+                            "type": "string"
+                          },
+                          {
+                            "const": "huv2",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sfv",
+                            "type": "string"
                           }
                         ]
                       },
@@ -397719,6 +397851,18 @@
                         {
                           "const": "discharge_visit",
                           "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
+                          "type": "string"
                         }
                       ]
                     },
@@ -397954,6 +398098,18 @@
                       {
                         "const": "discharge_visit",
                         "type": "string"
+                      },
+                      {
+                        "const": "huv1",
+                        "type": "string"
+                      },
+                      {
+                        "const": "huv2",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sfv",
+                        "type": "string"
                       }
                     ]
                   },
@@ -398121,6 +398277,18 @@
                         },
                         {
                           "const": "discharge_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
                           "type": "string"
                         }
                       ]
@@ -398367,6 +398535,18 @@
                         {
                           "const": "discharge_visit",
                           "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
+                          "type": "string"
                         }
                       ]
                     },
@@ -398569,6 +398749,18 @@
                       {
                         "const": "discharge_visit",
                         "type": "string"
+                      },
+                      {
+                        "const": "huv1",
+                        "type": "string"
+                      },
+                      {
+                        "const": "huv2",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sfv",
+                        "type": "string"
                       }
                     ]
                   },
@@ -398721,6 +398913,18 @@
                         },
                         {
                           "const": "discharge_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
                           "type": "string"
                         }
                       ]
@@ -398988,6 +399192,18 @@
                         },
                         {
                           "const": "discharge_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
                           "type": "string"
                         }
                       ]
@@ -399262,6 +399478,18 @@
                         {
                           "const": "discharge_visit",
                           "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
+                          "type": "string"
                         }
                       ]
                     },
@@ -399528,6 +399756,18 @@
                         },
                         {
                           "const": "discharge_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
                           "type": "string"
                         }
                       ]
@@ -399806,6 +400046,18 @@
                             {
                               "const": "discharge_visit",
                               "type": "string"
+                            },
+                            {
+                              "const": "huv1",
+                              "type": "string"
+                            },
+                            {
+                              "const": "huv2",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sfv",
+                              "type": "string"
                             }
                           ]
                         },
@@ -400018,6 +400270,18 @@
                             },
                             {
                               "const": "discharge_visit",
+                              "type": "string"
+                            },
+                            {
+                              "const": "huv1",
+                              "type": "string"
+                            },
+                            {
+                              "const": "huv2",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sfv",
                               "type": "string"
                             }
                           ]
@@ -400301,6 +400565,18 @@
                         },
                         {
                           "const": "discharge_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv1",
+                          "type": "string"
+                        },
+                        {
+                          "const": "huv2",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sfv",
                           "type": "string"
                         }
                       ]
@@ -401968,6 +402244,18 @@
                               },
                               {
                                 "const": "discharge_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "huv1",
+                                "type": "string"
+                              },
+                              {
+                                "const": "huv2",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sfv",
                                 "type": "string"
                               }
                             ]

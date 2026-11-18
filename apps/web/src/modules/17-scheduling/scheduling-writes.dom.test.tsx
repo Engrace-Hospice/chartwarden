@@ -338,6 +338,9 @@ describe("#91 — a visit can be scheduled", () => {
     expect(within(dialog).getByText("When and where")).toBeTruthy();
     expect(within(dialog).getByText("Who is available")).toBeTruthy();
     expect(within(dialog).getByText("Review and schedule")).toBeTruthy();
+    expect(within(dialog).getByRole("option", { name: "HUV1" })).toBeTruthy();
+    expect(within(dialog).getByRole("option", { name: "HUV2" })).toBeTruthy();
+    expect(within(dialog).getByRole("option", { name: "SFV" })).toBeTruthy();
 
     await choosePatient(dialog);
     await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");

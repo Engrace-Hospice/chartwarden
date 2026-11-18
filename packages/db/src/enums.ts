@@ -2039,6 +2039,9 @@ export const visitPurpose = pgEnum("visit_purpose", [
   "pronouncement",
   "admission_visit",
   "discharge_visit",
+  "huv1",
+  "huv2",
+  "sfv",
 ]);
 
 /** `visit_setting` — the §2.3 service-location class; drives the address/facility validation rules. */

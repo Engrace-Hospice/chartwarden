@@ -48,6 +48,11 @@ export const VISIT_PURPOSE_DISCIPLINES: {
   pronouncement: ["rn", "md", "np"],
   admission_visit: ["rn"],
   discharge_visit: ["rn"],
+  // M10 HOPE author floors: HUV timepoints are RN/NP/MD; the scheduling taxonomy's `lpn`
+  // represents both LPN and LVN for the SFV author set.
+  huv1: ["rn", "np", "md"],
+  huv2: ["rn", "np", "md"],
+  sfv: ["rn", "np", "lpn"],
 } as const;
 
 /** §1.1 D8 — the seven-predicate pre-schedule gate, in evaluation order (the `visit_overlap` DB backstop is

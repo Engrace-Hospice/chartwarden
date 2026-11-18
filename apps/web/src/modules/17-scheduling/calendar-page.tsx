@@ -92,6 +92,9 @@ const PURPOSES: Record<string, { label: string; discipline: string }> = {
   pronouncement: { label: "Pronouncement", discipline: "rn" },
   admission_visit: { label: "Admission Visit", discipline: "rn" },
   discharge_visit: { label: "Discharge Visit", discipline: "rn" },
+  huv1: { label: "HUV1", discipline: "rn" },
+  huv2: { label: "HUV2", discipline: "rn" },
+  sfv: { label: "SFV", discipline: "rn" },
 };
 const purposeLabel = (p: string): string => PURPOSES[p]?.label ?? stateLabel(p);
 
