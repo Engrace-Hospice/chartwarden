@@ -39,7 +39,10 @@ export function SchedulingWorkspaceNav({ patientId }: SchedulingWorkspaceNavProp
       label: "Staff & availability",
       to: withPatient("/calendar?panel=staff", patientId),
       visible:
-        can("availability.read") || can("time_off.read_team") || can("membership_credential.read"),
+        can("visit.read") &&
+        (can("availability.read") ||
+          can("time_off.read_team") ||
+          can("membership_credential.read")),
       current:
         location.pathname === "/calendar" &&
         new URLSearchParams(location.search).get("panel") === "staff",

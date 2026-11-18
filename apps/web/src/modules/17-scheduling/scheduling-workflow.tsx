@@ -7,6 +7,7 @@ import {
   AdmissionLookupField,
   MdmEntityLookupField,
   PatientLookupField,
+  admissionDateLabel,
 } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
@@ -111,6 +112,14 @@ type NewVisitStep = 1 | 2 | 3 | 4;
 type EligibilityState = "idle" | "loading" | "ready" | "error";
 type VisitAddress = { id: string; label: string; isPrimary: boolean; current: boolean };
 
+function defaultVisitWindow(): { start: string; end: string } {
+  const now = Date.now();
+  return {
+    start: toLocalInput(new Date(now + 60 * 60 * 1000)),
+    end: toLocalInput(new Date(now + 2 * 60 * 60 * 1000)),
+  };
+}
+
 const NEW_VISIT_STEPS: ReadonlyArray<{ step: NewVisitStep; label: string }> = [
   { step: 1, label: "Who and why" },
   { step: 2, label: "When and where" },
@@ -183,8 +192,8 @@ export function NewVisitModal({
   const [addressId, setAddressId] = useState("");
   const [addresses, setAddresses] = useState<VisitAddress[]>([]);
   const [facilityId, setFacilityId] = useState("");
-  const [start, setStart] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60 * 1000)));
-  const [end, setEnd] = useState(() => toLocalInput(new Date(Date.now() + 2 * 60 * 60 * 1000)));
+  const [start, setStart] = useState(() => defaultVisitWindow().start);
+  const [end, setEnd] = useState(() => defaultVisitWindow().end);
   const [notes, setNotes] = useState("");
   const [reminder, setReminder] = useState(false);
   const [step, setStep] = useState<NewVisitStep>(1);
@@ -204,20 +213,36 @@ export function NewVisitModal({
   }, [open, initialPatient]);
 
   useEffect(() => {
-    if (!open || !patientId || admissionId) return;
+    let active = true;
+    if (!open || !patientId || admissionId)
+      return () => {
+        active = false;
+      };
     void client
       .GET("/api/v1/patients/{patientId}/admissions", {
         params: { path: { patientId } },
       })
       .then((result) => {
-        const active = ((result.data?.items ?? []) as Array<{ id: string; state: string }>).filter(
-          (admission) => admission.state === "active",
-        );
-        if (active.length === 1) setAdmissionId(active[0]!.id);
+        if (!active) return;
+        const activeAdmissions = (
+          (result.data?.items ?? []) as Array<{
+            id: string;
+            state: string;
+            admissionAt: string | null;
+          }>
+        ).filter((admission) => admission.state === "active");
+        if (activeAdmissions.length === 1) {
+          setAdmissionId(activeAdmissions[0]!.id);
+          setAdmissionLabel(admissionDateLabel(activeAdmissions[0]!.admissionAt));
+        }
       });
+    return () => {
+      active = false;
+    };
   }, [admissionId, client, open, patientId]);
 
   function reset(): void {
+    const window = defaultVisitWindow();
     setPatientId("");
     setPatientLabel("");
     setAdmissionId("");
@@ -229,6 +254,8 @@ export function NewVisitModal({
     setAddressId("");
     setAddresses([]);
     setFacilityId("");
+    setStart(window.start);
+    setEnd(window.end);
     setNotes("");
     setReminder(false);
     setStep(1);
@@ -237,6 +264,11 @@ export function NewVisitModal({
     setEligibleClinicians([]);
     setEligibilityState("idle");
     setEligibilityHint(null);
+  }
+
+  function closeAndReset(): void {
+    reset();
+    onClose();
   }
 
   // Patient addresses are M5-owned.  Once a patient is chosen, select their current primary address
@@ -401,23 +433,30 @@ export function NewVisitModal({
       ...(notes.trim() ? { schedulerInternalNotes: notes.trim() } : {}),
       caregiverReminderOptIn: reminder,
     };
-    const result = await createVisit(client, body);
-    submittingRef.current = false;
-    setSubmitting(false);
-    if (!result.ok) {
-      setError(result.message);
-      setSupportReference(result.correlationId ?? null);
-      return;
+    try {
+      const result = await createVisit(client, body);
+      if (!result.ok) {
+        setError(result.message);
+        setSupportReference(result.correlationId ?? null);
+        return;
+      }
+      reset();
+      onCreated(result.value as VisitView);
+    } catch {
+      setError(
+        "The visit could not be scheduled because the server could not be reached. Your draft is safe; try again.",
+      );
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
     }
-    reset();
-    onCreated(result.value as VisitView);
   }
 
   if (!open) return null;
   return (
     <Modal
       open={open}
-      onClose={submitting ? undefined : onClose}
+      onClose={submitting ? undefined : closeAndReset}
       ariaLabel="New Visit"
       width="42rem"
     >
@@ -430,7 +469,7 @@ export function NewVisitModal({
               schedule.
             </p>
           </div>
-          <button type="button" onClick={onClose} disabled={submitting} style={iconButton}>
+          <button type="button" onClick={closeAndReset} disabled={submitting} style={iconButton}>
             <Glyph name="close" size={16} label="Close" />
           </button>
         </div>
@@ -543,7 +582,7 @@ export function NewVisitModal({
           </>
         ) : null}
         <div style={actions}>
-          <Button tone="tertiary" onClick={onClose} disabled={submitting}>
+          <Button tone="tertiary" onClick={closeAndReset} disabled={submitting}>
             Cancel
           </Button>
           <span style={{ flex: 1 }} />

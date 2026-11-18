@@ -4,8 +4,12 @@ import { describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { SchedulingWorkspaceNav } from "./workspace-nav";
 
-function renderNav(path: string, permissions: string[], patientId?: string): void {
-  render(
+function renderNav(
+  path: string,
+  permissions: string[],
+  patientId?: string,
+): ReturnType<typeof render> {
+  return render(
     <SessionProvider
       session={{
         userId: "user-1",
@@ -47,5 +51,14 @@ describe("SchedulingWorkspaceNav", () => {
       "/scheduling/proposals?patient=patient-1",
     );
     expect(screen.getByRole("link", { name: "My visits" })).toHaveAttribute("href", "/me/visits");
+  });
+
+  it("offers the staff panel only when the session can also open the calendar", () => {
+    const { unmount } = renderNav("/calendar", ["availability.read"]);
+    expect(screen.queryByRole("link", { name: "Staff & availability" })).not.toBeInTheDocument();
+    unmount();
+
+    renderNav("/calendar", ["visit.read", "availability.read"]);
+    expect(screen.getByRole("link", { name: "Staff & availability" })).toBeInTheDocument();
   });
 });

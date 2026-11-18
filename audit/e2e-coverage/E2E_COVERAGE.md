@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 219 statically-routable `web` screen(s) — 205/219 E2E-reached, 205/219 axe-reached.
+**Coverage:** 220 statically-routable `web` screen(s) — 206/220 E2E-reached, 206/220 axe-reached.
 
 ## Zero E2E coverage
 
@@ -11,8 +11,8 @@
 | `saas.help` | 34-saas | `/admin/help` | (none) |
 | `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
+| `billing.medicare-notices` | 23-billing-medicare | `/billing/medicare-notices` | (none) |
 | `billing.operations` | 23-billing-medicare | `/billing/operations` | (none) |
-| `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `messaging.family-contact` | 36-messaging | `/family/open` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
@@ -30,8 +30,8 @@
 | `saas.help` | 34-saas | `/admin/help` | (none) |
 | `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
+| `billing.medicare-notices` | 23-billing-medicare | `/billing/medicare-notices` | (none) |
 | `billing.operations` | 23-billing-medicare | `/billing/operations` | (none) |
-| `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `messaging.family-contact` | 36-messaging | `/family/open` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
@@ -44,7 +44,7 @@
 
 ## Dynamic web screens (#852)
 
-42/120 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
+42/121 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|
@@ -69,6 +69,7 @@
 | `billing.claim.submissions` | `/billing/claims/:claimId/submissions` | billing.claim.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `billing.claim.validation` | `/billing/claims/:claimId/validation` | billing.validation.read_run | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `billing.noe.detail` | `/billing/noe/:noeId` | billing.noe.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `billing.noe.exception-review` | `/billing/noe/:noeId/exception-review` | billing.noe.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `billing.notr.detail` | `/billing/notr/:notrId` | billing.notr.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `care-plan.summary` | `/care-plans/:planId/summary` | care_plan.read_summary | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `care-plan.versions` | `/care-plans/:planId/versions` | care_plan.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |

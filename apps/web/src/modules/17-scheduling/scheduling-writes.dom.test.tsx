@@ -60,6 +60,8 @@ const visit = () => ({
 let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
 let writeFailure: { status: number; body: unknown } | null = null;
+let rejectWrite = false;
+let admissionReadBarrier: Promise<void> | null = null;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
   if (typeof input === "string")
@@ -179,6 +181,9 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const { url, method } = requestOf(input, init);
   const path = new URL(url, "http://localhost").pathname;
   calls.push(`${method} ${path}`);
+  if (method === "GET" && path.endsWith("/admissions") && admissionReadBarrier) {
+    await admissionReadBarrier;
+  }
   if (method !== "GET") {
     const req = typeof input === "object" && "clone" in input ? (input as Request) : null;
     const raw = req ? await req.clone().text() : typeof init?.body === "string" ? init.body : "";
@@ -189,6 +194,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         // Every M17 write sends JSON; recording nothing is honest if one ever does not.
       }
     }
+    if (rejectWrite) throw new TypeError("network unavailable");
     if (writeFailure) {
       return new Response(JSON.stringify(writeFailure.body), {
         status: writeFailure.status,
@@ -251,6 +257,8 @@ beforeEach(() => {
   calls = [];
   bodies = [];
   writeFailure = null;
+  rejectWrite = false;
+  admissionReadBarrier = null;
   visitStatus = "published";
   proposalStatus = "pending";
   timeOffState = "requested";
@@ -260,6 +268,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   writeFailure = null;
+  rejectWrite = false;
+  admissionReadBarrier = null;
 });
 
 // The create flow is main's `NewVisitModal` (scheduling-workflow.tsx), opened from its retained action.
@@ -356,6 +366,43 @@ describe("#91 — a visit can be scheduled", () => {
     ).toBe("Admitted Aug 1, 2026");
   });
 
+  it("clears the draft when the wizard is cancelled and reopened", async () => {
+    const dialog = await openNewVisit();
+    await choosePatient(dialog);
+    await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New Visit" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "New Visit" }));
+    const reopened = await screen.findByRole("dialog", { name: "New Visit" });
+    expect(within(reopened).getByText("Who and why")).toBeTruthy();
+    expect(
+      (within(reopened).getByRole("combobox", { name: PATIENT_FIELD }) as HTMLInputElement).value,
+    ).toBe("");
+  });
+
+  it("ignores an admission response that arrives after the wizard is cancelled", async () => {
+    let releaseAdmissionRead = (): void => undefined;
+    admissionReadBarrier = new Promise<void>((resolve) => {
+      releaseAdmissionRead = resolve;
+    });
+    const dialog = await openNewVisit();
+    await choosePatient(dialog);
+    await waitFor(() => expect(calls).toContain(`GET /api/v1/patients/${PATIENT}/admissions`));
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+    releaseAdmissionRead();
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New Visit" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "New Visit" }));
+    const reopened = await screen.findByRole("dialog", { name: "New Visit" });
+    await Promise.resolve();
+    expect(
+      (within(reopened).getByRole("combobox", { name: /active admission/i }) as HTMLInputElement)
+        .value,
+    ).toBe("");
+  });
+
   it("choosing a patient scopes the admission lookup to that patient's ACTIVE admissions", async () => {
     admissions = [
       {
@@ -378,6 +425,21 @@ describe("#91 — a visit can be scheduled", () => {
     // F-065 — until that read existed nothing could resolve a patient's admission (#161).
     expect(calls).toContain(`GET /api/v1/patients/${PATIENT}/admissions`);
     expect(within(dialog).queryByText("Admitted Jan 1, 2025")).toBeNull();
+  });
+
+  it("shows a readable label when the only active admission is selected automatically", async () => {
+    const dialog = await openNewVisit();
+    await choosePatient(dialog);
+
+    await waitFor(() =>
+      expect(
+        (
+          within(dialog).getByRole("combobox", {
+            name: /active admission/i,
+          }) as HTMLInputElement
+        ).value,
+      ).toBe("Admitted Aug 1, 2026"),
+    );
   });
 
   it("a patient with no open admission is told why, offered a path, and the create is refused", async () => {
@@ -453,6 +515,17 @@ describe("#91 — a visit can be scheduled", () => {
       /discipline, active licence/i,
     );
     expect(within(dialog).getByRole("alert").textContent).toContain("corr-schedule-1");
+  });
+
+  it("keeps the draft retryable when the create request cannot reach the server", async () => {
+    rejectWrite = true;
+    const dialog = await openNewVisit();
+    await fillValidVisit(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: /create visit/i }));
+
+    expect((await within(dialog).findByRole("alert")).textContent).toMatch(/could not be reached/i);
+    expect(within(dialog).getByRole("button", { name: /create visit/i })).not.toBeDisabled();
+    expect(within(dialog).getByText("Confirm visit details")).toBeTruthy();
   });
 
   it("submits a review only once when the create action is activated repeatedly", async () => {

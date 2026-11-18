@@ -249,6 +249,7 @@ export function CalendarPage(): JSX.Element {
   const statusFilter = filterState.status;
   const showInactive = filterState.showInactive;
   const density = filterState.density;
+  const staffPanelRequested = params.get("panel") === "staff";
   const selectedId = params.get("visit");
   const creating = params.get("newVisit") === "1";
   const contextPatientId = params.get("patient");
@@ -257,8 +258,8 @@ export function CalendarPage(): JSX.Element {
   const staffPanelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (params.get("panel") === "staff") staffPanelRef.current?.focus();
-  }, [params]);
+    if (staffPanelRequested) staffPanelRef.current?.focus();
+  }, [staffPanelRequested]);
 
   useEffect(() => {
     let active = true;

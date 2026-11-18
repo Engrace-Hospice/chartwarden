@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 402 screens wired across web/portal/admin.
+**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 404 screens wired across web/portal/admin.
 - **admin**: 44 screen(s)
 - **portal**: 19 screen(s)
-- **web**: 339 screen(s)
+- **web**: 341 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -228,6 +228,7 @@
 | web | 22-documents | `intake.review-workspace` | `/intake/:batchId/review` | `intake.review` | ✅ |
 | web | 22-documents | `documents.intake-batch` | `/intake/:batchId` | `intake.read` | ✅ |
 | web | 22-documents | `documents.template-library` | `/admin/forms/templates` | `documents.read_templates` | ✅ |
+| web | 23-billing-medicare | `billing.medicare-notices` | `/billing/medicare-notices` | `(none)` | ✅ |
 | web | 23-billing-medicare | `billing.operations` | `/billing/operations` | `(none)` | ✅ |
 | web | 23-billing-medicare | `billing.ar-dashboard` | `/billing` | `billing.claim.read_ar_dashboard` | ✅ |
 | web | 23-billing-medicare | `billing.work-queue` | `/billing/queue` | `billing.claim.read` | ✅ |
@@ -240,6 +241,7 @@
 | web | 23-billing-medicare | `billing.claim.acknowledgments` | `/billing/claims/:claimId/acknowledgments` | `billing.claim.read` | ✅ |
 | web | 23-billing-medicare | `billing.noe` | `/billing/noe` | `billing.noe.read` | ✅ |
 | web | 23-billing-medicare | `billing.noe.detail` | `/billing/noe/:noeId` | `billing.noe.read` | ✅ |
+| web | 23-billing-medicare | `billing.noe.exception-review` | `/billing/noe/:noeId/exception-review` | `billing.noe.read` | ✅ |
 | web | 23-billing-medicare | `billing.notr` | `/billing/notr` | `billing.notr.read` | ✅ |
 | web | 23-billing-medicare | `billing.notr.detail` | `/billing/notr/:notrId` | `billing.notr.read` | ✅ |
 | web | 23-billing-medicare | `billing.transfer-notices` | `/billing/transfer-notices` | `billing.noe.read` | ✅ |

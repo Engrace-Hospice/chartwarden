@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 219,
-  "e2eReachedCount": 205,
-  "axeReachedCount": 205,
+  "totalStaticWebScreens": 220,
+  "e2eReachedCount": 206,
+  "axeReachedCount": 206,
   "zeroE2eCoverage": [
     {
       "id": "saas.help",
@@ -29,17 +29,17 @@
       "axeReached": false
     },
     {
-      "id": "billing.operations",
+      "id": "billing.medicare-notices",
       "module": "23-billing-medicare",
-      "path": "/billing/operations",
+      "path": "/billing/medicare-notices",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
     },
     {
-      "id": "scheduling.calendar",
-      "module": "17-scheduling",
-      "path": "/calendar",
+      "id": "billing.operations",
+      "module": "23-billing-medicare",
+      "path": "/billing/operations",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -143,17 +143,17 @@
       "axeReached": false
     },
     {
-      "id": "billing.operations",
+      "id": "billing.medicare-notices",
       "module": "23-billing-medicare",
-      "path": "/billing/operations",
+      "path": "/billing/medicare-notices",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
     },
     {
-      "id": "scheduling.calendar",
-      "module": "17-scheduling",
-      "path": "/calendar",
+      "id": "billing.operations",
+      "module": "23-billing-medicare",
+      "path": "/billing/operations",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -231,7 +231,7 @@
       "axeReached": false
     }
   ],
-  "dynamicWebScreens": 120,
+  "dynamicWebScreens": 121,
   "dynamicAxeReachedCount": 42,
   "dynamicExcluded": [
     {
@@ -337,6 +337,11 @@
     {
       "id": "billing.noe.detail",
       "path": "/billing/noe/:noeId",
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "billing.noe.exception-review",
+      "path": "/billing/noe/:noeId/exception-review",
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
@@ -939,6 +944,14 @@
       "axeReached": true
     },
     {
+      "id": "billing.medicare-notices",
+      "module": "23-billing-medicare",
+      "path": "/billing/medicare-notices",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "billing.metrics",
       "module": "23-billing-medicare",
       "path": "/billing/metrics",
@@ -1030,9 +1043,9 @@
       "id": "scheduling.calendar",
       "module": "17-scheduling",
       "path": "/calendar",
-      "permission": "(none)",
-      "e2eReached": false,
-      "axeReached": false
+      "permission": "visit.read",
+      "e2eReached": true,
+      "axeReached": true
     },
     {
       "id": "cap.dashboard",
