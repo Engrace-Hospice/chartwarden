@@ -420,6 +420,26 @@ describe("pullRemittances", () => {
     },
   );
 
+  it("reports every held set of a file whose sets are ALL held, not just the first", async () => {
+    const result: ReceiveAdviceResult = {
+      outcome: "held_duplicate",
+      adviceId: "adv-1",
+      existingAdviceId: "adv-0",
+      reason: "LEGACY_IDENTITY_AMBIGUOUS",
+      heldSets: ["LEGACY_IDENTITY_AMBIGUOUS", "CLAIMMD_ERA_STAGE_MATCH"],
+    };
+    const { far, deps } = setup({ heldFor: { suffix: "ERA-1", result } });
+    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+
+    const pulled = await pullRemittances(deps, ORG);
+
+    expect(pulled.held).toEqual([
+      `org ${ORG} provider ${PE}: remittance ERA-1 LEGACY_IDENTITY_AMBIGUOUS`,
+      `org ${ORG} provider ${PE}: remittance ERA-1 CLAIMMD_ERA_STAGE_MATCH`,
+    ]);
+    expect(pulled).toMatchObject({ queued: 0, duplicates: 0, failures: [] });
+  });
+
   it("retries a re-offered file whose content changed (new hash) instead of treating it as quarantined", async () => {
     const { deps, cursors, ingest } = setup({ malformedFor: "ERA-1" });
     const offer = { body: buildRawEdi("1", "0001") };

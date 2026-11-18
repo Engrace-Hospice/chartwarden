@@ -83,12 +83,16 @@ export type ReceiveAdviceResult =
       readonly outcome: "review_required";
       readonly stageId: string;
       readonly reason: "CLAIMMD_ERA_STAGE_MATCH";
+      /** Present only when MORE THAN ONE set of the file was held: every held set's reason, this one included. */
+      readonly heldSets?: readonly HeldSetReason[];
     }
   | {
       readonly outcome: "held_duplicate";
       readonly adviceId: string;
       readonly existingAdviceId: string;
       readonly reason: "LEGACY_IDENTITY_AMBIGUOUS";
+      /** Present only when MORE THAN ONE set of the file was held: every held set's reason, this one included. */
+      readonly heldSets?: readonly HeldSetReason[];
     }
   | {
       readonly outcome: "malformed";

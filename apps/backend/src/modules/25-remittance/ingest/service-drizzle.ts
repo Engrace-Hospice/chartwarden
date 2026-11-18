@@ -29,6 +29,7 @@ import type {
   X12835WorkerClient,
 } from "./service";
 import { DENY_TERMINOLOGY, NO_CLAIM_MATCH_CANDIDATES } from "./service";
+import { summarizeSetOutcomes } from "./set-outcomes";
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 const CLAIMMD_ERA_STAGE = schema.claimmdEraM25Stage;
@@ -428,7 +429,8 @@ export function buildDrizzleM25IngestService(
       return refuse("payee check: the 835 payee NPI is invalid", "content");
     if (payee.id !== expected)
       return refuse("payee check: the 835 payee NPI is not this provider entity's", "environment");
-    // NPI matched: a REF*TJ the payer sent must also be this tenant's (a mismatch is a mis-addressed file).
+    // NPI matched: a REF*TJ the payer sent must also be this tenant's. A well-formed mismatch is most likely a
+    // stale or mis-keyed EIN on file, so it is transient (environment); only a malformed TIN is the file's own content.
     const taxMismatch = payee.taxId
       ? await tinMismatch(organizationId, providerEntityId, payee.taxId)
       : null;
@@ -1622,14 +1624,8 @@ export function buildDrizzleM25IngestService(
           return out;
         },
       );
-      const primary =
-        results.find((r) => r.outcome === "queued") ?? (results[0] as ReceiveAdviceResult);
-      // One outcome per file: a held set beside a queued or duplicate one must not vanish behind it.
-      if (primary.outcome !== "queued" && primary.outcome !== "duplicate") return primary;
-      const heldSets = results.flatMap((r) =>
-        r.outcome === "held_duplicate" || r.outcome === "review_required" ? [r.reason] : [],
-      );
-      return heldSets.length > 0 ? { ...primary, heldSets } : primary;
+      // One outcome per file: a held set beside a queued or duplicate one (or several held sets) must not vanish.
+      return summarizeSetOutcomes(results);
     },
 
     async postAdvice(actor: M25IngestActor, adviceId: string): Promise<PostAdviceResult> {

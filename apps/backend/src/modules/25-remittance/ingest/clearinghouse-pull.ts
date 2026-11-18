@@ -339,11 +339,15 @@ async function pullOne(
       await deps.cursors.clearRefusals(key, file.remittanceId, fileSha256);
       if (received.outcome === "queued") queued += 1;
       else if (received.outcome === "duplicate") duplicates += 1;
-      else held.push(`${label}: remittance ${file.remittanceId} ${received.reason}`);
-      // A multi-set file answers with one outcome: its held sets ride along so none hides behind a queued/duplicate one.
-      if (received.outcome === "queued" || received.outcome === "duplicate")
-        for (const reason of received.heldSets ?? [])
-          held.push(`${label}: remittance ${file.remittanceId} ${reason}`);
+      // A multi-set file answers with one outcome: `heldSets` lists every held set (beside a queued/duplicate set,
+      // or several held ones), and a lone held set is the outcome itself.
+      const heldReasons =
+        received.heldSets ??
+        (received.outcome === "held_duplicate" || received.outcome === "review_required"
+          ? [received.reason]
+          : []);
+      for (const reason of heldReasons)
+        held.push(`${label}: remittance ${file.remittanceId} ${reason}`);
     }
     if (result.data.nextCursor !== cursor) await deps.cursors.set(key, result.data.nextCursor);
     if (!result.data.hasMore) {
