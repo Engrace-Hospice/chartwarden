@@ -1689,6 +1689,114 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       });
     });
 
+    it("a stage sealed before migration 1508 (no paymentEffectiveDate key) keeps its legacy production day; a stage that has the key refuses a null BPR16", async () => {
+      const key = randomBytes(32);
+      const cipher = createClaimMdProtectedPayloadCipher(
+        { activeId: "m25-payment-date-test", byId: new Map([["m25-payment-date-test", key]]) },
+        "claimmd-era-stage:v1",
+      );
+      const seedStage = async (
+        label: string,
+        dates: { paymentEffectiveDate?: string | null; productionDate: string },
+      ) => {
+        const suffix = crypto.randomUUID().slice(0, 8);
+        const stageId = crypto.randomUUID();
+        const sourceInboxId = crypto.randomUUID();
+        const trace = `SYNTHETIC-PAYMENT-DATE-${label}-${suffix}`;
+        const st02 = `D${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
+        const parsed: ParsedRemittanceAdvice = {
+          payerProgram: "commercial",
+          payer: { name: "Synthetic Payer", id: crypto.randomUUID() },
+          payee: { name: "Synthetic Hospice", idQualifier: "XX", id: "1999999999" },
+          interchangeControlNumber: "000000321",
+          transactionSetControlNumber: st02,
+          checkOrEftTraceNumber: trace,
+          paymentMethod: "eft",
+          totalPaymentAmount: 42,
+          ...dates,
+          claims: [
+            {
+              patientControlNumber: `SYNTHETIC-PD-PCN-${suffix}`,
+              payerIcn: `SYNTHETIC-PD-ICN-${suffix}`,
+              statusCode: 1,
+              totalCharge: 42,
+              totalPayment: 42,
+              patientResponsibility: 0,
+              serviceFrom: "2026-03-01",
+              serviceTo: "2026-03-31",
+              adjustments: [],
+              remarks: [],
+              serviceLines: [],
+            },
+          ],
+        };
+        const idempotencyKey = createHash("sha256").update(`payment-date:${stageId}`).digest("hex");
+        const sealed = cipher
+          .seal(
+            sourceInboxId,
+            idempotencyKey,
+            // JSON drops `undefined`, so a pre-1508 stage genuinely has no paymentEffectiveDate key.
+            JSON.stringify({ transactionSet: parsed, claimOutcomes: [] }),
+          )
+          .toString("base64");
+        await admin.query(
+          `INSERT INTO claimmd_era_m25_stage
+            (id, organization_id, provider_entity_id, source_inbox_id, account_reference, usage,
+             era_id, file_index, interchange_control_number, transaction_set_control_number,
+             original_835_digest, source_file_digest, resolution_id, resolution_version,
+             idempotency_key, source_evidence, protected_details_cipher, content_digest,
+             payment_trace_digest, state)
+           VALUES ($1,$2,$3,$4,'synthetic-account','test','9996',0,'000000321',$5,$6,$7,$8,1,
+             $9,'{"codes":["EXACT_PAYEE_NPI","SINGLE_PROVIDER_ARTIFACT"]}'::jsonb,$10,$11,$12,'staged')`,
+          [
+            stageId,
+            ORG_A,
+            PE_A,
+            sourceInboxId,
+            st02,
+            createHash("sha256").update(`pd-original:${stageId}`).digest("hex"),
+            createHash("sha256").update(`pd-file:${stageId}`).digest("hex"),
+            crypto.randomUUID(),
+            idempotencyKey,
+            sealed,
+            m25ContentDigestOf(parsed),
+            createHash("sha256").update(trace).digest("hex"),
+          ],
+        );
+        return stageId;
+      };
+      const review = buildDrizzleClaimMdEraReviewService(handle.db, cipher, undefined, [], {
+        ingestService: buildDrizzleM25IngestService(handle.db, {
+          client: fakeClient(new Map()),
+          payeeNpi: PAYEE_UNCHECKED,
+        }),
+        enabled: true,
+      });
+      const reviewer = {
+        organizationId: ORG_A,
+        userId: crypto.randomUUID(),
+        roles: ["billing_specialist"],
+        providerEntityScope: [PE_A],
+        membershipId: crypto.randomUUID(),
+        stepUpRecent: true,
+      };
+
+      const preField = await seedStage("pre", { productionDate: "2026-03-01" });
+      const strictNull = await seedStage("null", {
+        paymentEffectiveDate: null,
+        productionDate: "2026-03-01",
+      });
+      const dated = await seedStage("dated", {
+        paymentEffectiveDate: "2026-03-01",
+        productionDate: "2026-03-01",
+      });
+
+      const planFor = async (stageId: string) => (await review.postingPlan(reviewer, stageId)).blockers;
+      expect(await planFor(preField)).not.toContain("UNSUPPORTED_OR_INCOMPLETE_835");
+      expect(await planFor(dated)).not.toContain("UNSUPPORTED_OR_INCOMPLETE_835");
+      expect(await planFor(strictNull)).toContain("UNSUPPORTED_OR_INCOMPLETE_835");
+    });
+
     it("blocks a Claim.MD posting plan when the same financial effect was posted by legacy intake first", async () => {
       const suffix = crypto.randomUUID().slice(0, 8);
       const stageId = crypto.randomUUID();

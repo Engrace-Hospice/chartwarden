@@ -74,6 +74,11 @@ function setup(
     readonly failFirstCommit?: boolean;
     readonly resolutionFails?: boolean;
     readonly multiGroup?: boolean;
+    /** Claim entries as persisted before group-scoped identity: no `functionalGroupControlNumber` key. */
+    readonly legacyClaimEntries?: boolean;
+    readonly claimOutcome?: "unmatched" | "conflict" | "ambiguous";
+    /** With `multiGroup`: the outcome of the second group's (GS06 78) claim entry. */
+    readonly secondGroupClaimOutcome?: "unmatched" | "conflict";
   } = {},
 ) {
   const raw = options.multiGroup ? raw835WithRepeatedSt02AcrossGroups() : raw835();
@@ -100,20 +105,20 @@ function setup(
     claims: [
       {
         fileIndex: 0,
-        functionalGroupControlNumber: "77",
+        ...(options.legacyClaimEntries ? {} : { functionalGroupControlNumber: "77" }),
         transactionSetControlNumber: "0001",
         pcn: "PCN-SYNTH",
-        outcome: "unmatched",
+        outcome: options.claimOutcome ?? "unmatched",
         claimId: null,
       },
       ...(options.multiGroup
         ? [
             {
               fileIndex: 0,
-              functionalGroupControlNumber: "78",
+              ...(options.legacyClaimEntries ? {} : { functionalGroupControlNumber: "78" }),
               transactionSetControlNumber: "0001",
               pcn: "PCN-SYNTH",
-              outcome: "unmatched",
+              outcome: options.secondGroupClaimOutcome ?? "unmatched",
               claimId: null,
             },
           ]
@@ -260,6 +265,44 @@ describe("BIL-1.4.1B safe M25 delivery", () => {
     );
     expect(staged.map(({ source }) => source.functionalGroupControlNumber)).toEqual(["77", "78"]);
     expect(new Set(staged.map(({ source }) => source.idempotencyKey)).size).toBe(2);
+  });
+
+  it("holds a component whose claim entry predates GS06 and is conflicting or ambiguous (matched by file index and ST02)", async () => {
+    for (const claimOutcome of ["conflict", "ambiguous"] as const) {
+      const x = setup({ legacyClaimEntries: true, claimOutcome });
+      expect(await x.service.deliver(INBOX)).toBe("held");
+      expect(x.stageComponent).not.toHaveBeenCalled();
+      expect(x.store.finishDelivery).toHaveBeenCalledWith(
+        expect.objectContaining({ state: "held", safeErrorCode: "RESOLUTION_COMPONENT_UNSAFE" }),
+      );
+    }
+  });
+
+  it("still delivers a component whose pre-GS06 claim entries are safe, carrying them as its outcomes", async () => {
+    const x = setup({ legacyClaimEntries: true });
+    expect(await x.service.deliver(INBOX)).toBe("delivered");
+    expect(x.stagedDetail[0]?.claimOutcomes).toEqual([
+      {
+        fileIndex: 0,
+        transactionSetControlNumber: "0001",
+        pcn: "PCN-SYNTH",
+        outcome: "unmatched",
+        claimId: null,
+      },
+    ]);
+  });
+
+  it("keeps a claim entry that names another group's GS06 out of this component (the strict rule stays for current entries)", async () => {
+    // Group 78's entry is the conflict; group 77 shares its ST02 and file index but must not inherit it.
+    const x = setup({ multiGroup: true, secondGroupClaimOutcome: "conflict" });
+
+    expect(await x.service.deliver(INBOX)).toBe("held");
+
+    expect(x.stageComponent).toHaveBeenCalledTimes(1); // group 77 staged; group 78 is held
+    expect(
+      (x.stageComponent.mock.calls[0]?.[0] as unknown as { source: { functionalGroupControlNumber: string } })
+        .source.functionalGroupControlNumber,
+    ).toBe("77");
   });
 
   it("holds when source or verified resolution cannot be revalidated and never calls a posting port", async () => {

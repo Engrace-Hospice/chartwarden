@@ -27,6 +27,7 @@ import {
   isIdempotentMatchDecisionRetry,
 } from "../domain/era-match-review";
 import { providerEntityScopeCondition } from "../routes/scope";
+import { stagedPaymentDate } from "./claimmd-era-payment-date";
 import {
   adviceEnvelopeIdentityColumns,
   claimMdStagePayeeIdentityEvidence,
@@ -886,8 +887,7 @@ export function buildDrizzleClaimMdEraReviewService(
       !parsed.transactionSetControlNumber ||
       !parsed.checkOrEftTraceNumber ||
       !["check", "eft"].includes(parsed.paymentMethod) ||
-      !parsed.paymentEffectiveDate ||
-      !Number.isFinite(Date.parse(parsed.paymentEffectiveDate))
+      !stagedPaymentDate(parsed)
     )
       blockers.push("UNSUPPORTED_OR_INCOMPLETE_835");
 
@@ -2446,7 +2446,8 @@ export function buildDrizzleClaimMdEraReviewService(
             "the staged source lacks required payment identity",
             409,
           );
-        if (!parsed.paymentEffectiveDate)
+        const paymentDate = stagedPaymentDate(parsed);
+        if (!paymentDate)
           throw new ChartWardenError(
             "POSTING_SOURCE_INVALID",
             "the staged source lacks a payment effective date",
@@ -2484,10 +2485,13 @@ export function buildDrizzleClaimMdEraReviewService(
               sourceEvidence: stage.sourceEvidence,
               verifiedAt: stage.createdAt,
             }),
-            paymentEffectiveDate: parsed.paymentEffectiveDate,
+            // A stage sealed before migration 1508 has only the legacy production day (see stagedPaymentDate): it is
+            // recorded as the legacy `production_date` alone and never asserted to be a BPR16.
+            paymentEffectiveDate:
+              paymentDate.source === "payment_effective_date" ? paymentDate.day : null,
             adjudicationCutoffDate: parsed.adjudicationCutoffDate,
             functionalGroupCreationDate: parsed.functionalGroupCreationDate,
-            productionDate: new Date(parsed.paymentEffectiveDate),
+            productionDate: new Date(paymentDate.day),
             receivedAt: new Date(),
             minioObjectKey: `claimmd-stage/${stage.id}/${sourceFileSha256}`,
             fileSha256: sourceFileSha256,
@@ -2497,6 +2501,9 @@ export function buildDrizzleClaimMdEraReviewService(
               stageId: stage.id,
               sourceDigest: stage.original835Digest,
               planId: plan.id,
+              ...(paymentDate.source === "legacy_production_date"
+                ? { paymentDateSource: paymentDate.source }
+                : {}),
             },
           })
           .returning({
