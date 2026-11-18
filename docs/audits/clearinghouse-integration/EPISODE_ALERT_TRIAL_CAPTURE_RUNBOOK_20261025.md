@@ -32,6 +32,8 @@ be guessed into code; every item is a human capture, and it does not authorize a
 
 | # | Capture | Fills in |
 |---|---|---|
+| 0 | Written yes/no for programmatic hospice NOE and NOTR; for each, identify institutional EDI, individually attributed DDE API, another documented API, or hosted/manual-only path | Primary product priority and which existing port/workflow could be used; this answer does not authorize activation |
+| 0a | NOE/NOTR formats, receipt, later MAC decision and acceptance-date source, correction/cancel rules, idempotency, timeout/uncertain-send lookup and per-operator attribution if DDE | Notice attempt provenance and safe reconciliation; no duplicate route |
 | 1 | Base URL and the exact eligibility path | `ELIGIBILITY_PATH` (`/eligibility`, UNVERIFIED) |
 | 2 | Auth scheme (header name, prefix, key vs token, expiry) | `Authorization: <key>` placeholder |
 | 3 | Eligibility request body (field names, date format, MBI format, NPI required?) | `{ mbi, serviceDate }` placeholder |

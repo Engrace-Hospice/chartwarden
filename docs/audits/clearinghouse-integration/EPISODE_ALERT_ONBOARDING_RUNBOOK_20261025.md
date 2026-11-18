@@ -45,9 +45,11 @@ Decisions this feeds: [ADR-0103](../../adr/ADR-0103-dde-access-provider-port.md)
    continue with synthetic fixtures and `LocalFakeHttpClient`; that fake has no
    network path and does not verify the vendor contract. Do not enable application calls based on environment variables or a
    trial key.
-9. **Decide.** Engineering reads the answers against the blocker map and updates ADR-0103 D7:
-   either per-operator write endpoints exist (unblocks #759) or they do not (the port stays `manual` and only the documented
-   API is used). The product owner confirms; label #762 `needs-decision` while waiting on that call.
+9. **Decide the NOE/NOTR route.** Confirm in writing whether each hospice notice is supported through institutional EDI,
+   individually attributed DDE API, or only hosted/manual DDE. Use the existing port that matches the documented mechanism;
+   do not force an EDI path through `DdeAccessProvider` or activate a second path for the same notice. If only hosted/manual
+   support exists, preserve manual DDE and ask the maintainer whether to revise integration scope. Keep the issue open until
+   the route, authorization and reconciliation behavior are decided and qualified.
 
 ## What to attach to this folder
 

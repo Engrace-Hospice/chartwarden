@@ -232,3 +232,17 @@ relationship for each NPI with that vendor. That requirement is distinct from DD
 institutional claim/ERA authorization. Oregon is HH+H J6; current CMS material identifies Wellpoint Federal (formerly NGS) for
 HH+H J6 effective 2026-04-01. Provider-specific payer and enrollment records still require verification; no historical Oregon
 Part A identifier is hardcoded by this ADR.
+
+## Product-priority note — 2026-11-18 (EPA-755 engineering finalization)
+
+The maintainer reports that Episode Alert's primary intended product role is hospice NOE/NOTR submission, tracking, correction,
+and reconciliation. This is a product-priority statement, not a vendor confirmation and not an amendment to D1-D7. The actual
+route remains undetermined: documented institutional EDI, individually attributed DDE API operation, hosted/manual DDE, or
+read-only reporting may have different ports and authorization requirements. ADR-0103 applies only if the supported path is a
+vendor-hosted DDE operation; do not force EDI notices through this DDE port.
+
+Preserve ADR-0053's tenant-selected ordinary claim clearinghouse. Episode Alert is not presumed to replace it. A future notice
+router must designate one authoritative path for each notice attempt and prohibit a second submission through another provider
+while the first is accepted or in doubt. Eligibility/hospice history, general claim status, adjustments/cancellations, ERA and
+ordinary claim submission remain secondary questions, not cancelled requirements. The current manual workflow and all vendors
+remain unchanged pending documented contracts and qualification.

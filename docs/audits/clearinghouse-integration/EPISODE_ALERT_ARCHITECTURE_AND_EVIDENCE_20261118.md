@@ -27,6 +27,7 @@ Evidence can have several labels at once. A public product claim or local test n
 - `LOCAL_TEST_VERIFIED`: Episode Alert eligibility has local request/parser plumbing and synthetic fixtures. The XML field/root assumptions remain unverified. The `ELIGIBILITY_VENDOR` package registry has no backend consumer; M23 eligibility is still bound through `M23_HETS_TRANSPORT`.
 - Claim status and remittance methods remain `CH_NOT_WIRED`. No Episode Alert API endpoint, authentication scheme, message schema, test environment, or account-specific authorization has been recorded.
 - No actual vendor test, applicable MAC qualification, provider enrollment, signed BAA, or ChartWarden vendor authorization is evidenced here. Episode Alert remains unbound; manual DDE remains available.
+- `MAINTAINER_REPORTED`: the product priority is hospice NOE/NOTR submission, tracking, correction and reconciliation through Episode Alert if its documented contract supports a safe route. This does not establish vendor support or a selected implementation route.
 
 ### Historical local validation evidence
 
@@ -67,7 +68,19 @@ Keep these evidence and execution paths separate:
 | FISS status and change reporting | M23 DDE queue/provider status and daily-change plumbing | FISS/DDE status is distinct from 999/277CA clearinghouse acknowledgments and payer 276/277 claim status. |
 | ERA/remittance | M25 ingest, source resolution, duplicate hold and staged delivery | A future Episode Alert source must carry immutable vendor/account/provider identity and source digest through M25. If the same ERA is received from multiple authorized sources, stage/post it once; keep exact and possible duplicates held per existing controls. |
 
-**Provisional internal recommendation (not yet ratified):** treat Episode Alert as a complementary Medicare service provider unless a later explicit decision changes the tenant's clearinghouse authority. Do not bind it to `CLEARINGHOUSE_VENDOR` for eligibility-only or unqualified submission capabilities. The smallest coherent future eligibility route is an adapter selected within the existing M23 HETS/eligibility abstraction, with source attribution, enrollment validation and one resulting eligibility view. Confirm whether Episode Alert submits through HETS as a vendor and require the per-NPI enrollment relationship; do not bypass CMS validation.
+**Maintainer-reported product direction:** Episode Alert is primarily intended for hospice NOE/NOTR workflows, not to replace the tenant's ordinary claim-submission clearinghouse. This is product prioritization, not vendor confirmation or selection of a wire contract. Keep each tenant's Stedi, Claim.MD, or outside claim-submission choice under ADR-0053. Do not bind Episode Alert to `CLEARINGHOUSE_VENDOR` by default or create a second submission path for the same notice.
+
+The exact NOE/NOTR route remains unknown. Select the existing port only after written vendor evidence establishes the mechanism and its authorization. A future notice-routing policy must define one authoritative path per notice and attempt. An uncertain or already accepted notice must not be sent through another provider merely because another path is available.
+
+| Priority | Capability | Intended role |
+|---|---|---|
+| Primary | NOE / NOTR, submission receipt, MAC acceptance/rejection evidence, status, filing deadline, correction and reconciliation | Intended Episode Alert use, contingent on a documented supported route and authorized qualification. |
+| Complementary | FISS/DDE status and daily change reporting | Operational reconciliation signals; distinct from clearinghouse acknowledgments and payer claim-status responses. |
+| Secondary | Eligibility/hospice history, general claim status, adjustments/cancellations, ERA/remittances, ordinary claim submission | Still in scope of the existing issue/adapter questions where applicable. Secondary does not mean unsupported or cancelled. These do not replace NOE/NOTR priority. |
+
+Potential notice routes remain conditional: documented institutional EDI notice submission; documented DDE API operation attributed to an individually authorized operator; hosted DDE with manual submission and recorded ChartWarden evidence; or read-only reporting/reconciliation if no supported write API exists. Manual browser use does not authorize automation. If only hosted/manual support exists, preserve the current manual DDE workflow and ask the maintainer to decide whether to revise the integration scope.
+
+For eligibility specifically, compare an adapter behind the current M23 HETS abstraction, a separately selected Medicare eligibility source, and a complementary source for verified supplemental hospice fields. The smallest coherent future option is an adapter within the existing M23 eligibility workflow if the vendor is an authorized HETS submitter and per-NPI CMS enrollment is verified; a separate source requires a canonical result/provenance model. Do not infer complete hospice eligibility from partial Part A data.
 
 | Eligibility integration option | Trade-off | Current recommendation |
 |---|---|---|
