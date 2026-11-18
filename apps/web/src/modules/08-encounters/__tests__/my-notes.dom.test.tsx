@@ -148,6 +148,18 @@ describe("My notes", () => {
     expect(within(legacy).queryByText("Overdue")).toBeNull();
   });
 
+  it("shows a note an older replica sent without a closure as Legacy, instead of failing the screen", async () => {
+    const { closure: _missing, ...beforeTheClock } = note("e-old", {
+      encounterType: "admission_visit",
+    });
+    response = { status: 200, body: { encounters: [beforeTheClock] } };
+    mount();
+
+    const legacy = rowOf(await screen.findByText("Admission Visit"));
+    expect(within(legacy).getByText("Legacy")).toBeTruthy();
+    expect(within(legacy).getByText("No deadline")).toBeTruthy();
+  });
+
   it("counts Overdue (escalated included) and At risk in the KPI strip; Legacy and on-track notes count in neither", async () => {
     response = {
       status: 200,

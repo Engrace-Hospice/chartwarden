@@ -14,6 +14,22 @@ import { useIsMounted } from "./use-is-mounted";
 export type MyNoteRow =
   operations["getApiV1EncountersMydrafts"]["responses"][200]["content"]["application/json"]["encounters"][number];
 
+/** What a row without a `closure` is: a legacy note (no clock, no deadline, never alerts). */
+const LEGACY_CLOSURE: MyNoteRow["closure"] = {
+  clockStartedAt: null,
+  deadlineAt: null,
+  stage: "ok",
+};
+
+/**
+ * A backend replica from before the clock (a deploy overlap) or a stale cache sends rows with no `closure`; the screen reads it on every
+ * row, so a missing one is a legacy note, never an exception that takes the whole screen to the error boundary.
+ */
+const withClosure = (row: MyNoteRow): MyNoteRow => ({
+  ...row,
+  closure: row.closure ?? LEGACY_CLOSURE,
+});
+
 /** How often an open My notes list is read again while the tab is visible (a stage can only change by the clock, so a minute is plenty). */
 export const MY_NOTES_REFRESH_MS = 60_000;
 export const MY_NOTES_LOAD_ERROR = "Could not load your notes.";
@@ -50,7 +66,7 @@ export function useMyNotes(): MyNotes {
           if (!background) setError(MY_NOTES_LOAD_ERROR);
           return;
         }
-        setItems(data.encounters);
+        setItems(data.encounters.map(withClosure));
         setError(null);
       } catch {
         if (mounted.current && !background) setError(MY_NOTES_LOAD_ERROR);
