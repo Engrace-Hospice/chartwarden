@@ -274,7 +274,11 @@ export function program(
     // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
     const peeled = peelRunnerWithFiles(pair.w.slice(k), isPackageScript);
     if (peeled === null) break;
-    unplaced.push(...(peeled.unplaced ?? []).map((option) => `${programName(word)} ${option}`));
+    unplaced.push(
+      ...(peeled.unplaced ?? []).map(
+        (option) => `${unescapeWord(word).replace(/^.*\//, "")} ${option}`,
+      ),
+    );
     if (peeled.inner === null) break;
     // `dotenv -e FILE -- cmd`: the runner's file options are read like `< FILE`, whatever the command is.
     reads.push(...peeled.files);
@@ -286,8 +290,13 @@ export function program(
   }
   const w = pair.w;
   // `env -u X` with no command prints the environment: it is still `env`.
+  // The name is folded to lower case: the file system the programs are found on may not tell `GIT` from `git` (wave 13, A1).
   const prog =
-    k >= w.length && lastWrapper === "env" ? "env" : unescapeWord(w[k] ?? "").replace(/^.*\//, "");
+    k >= w.length && lastWrapper === "env"
+      ? "env"
+      : unescapeWord(w[k] ?? "")
+          .replace(/^.*\//, "")
+          .toLowerCase();
   return {
     prog,
     word: unescapeWord(w[k] ?? ""),

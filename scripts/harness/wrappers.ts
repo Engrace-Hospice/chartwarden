@@ -13,6 +13,7 @@ import { localCommandOfOption, optionCommandStrings, sshLikeCommands } from "./o
 import { commandOptionValues, suCommandStrings } from "./shell-command-string";
 import { joinedAndQuoted, shellQuote } from "./shell-quote";
 import { SSH_VALUE_LETTERS, readCluster } from "./ssh-hops";
+import { openArgsCommands, screenCommands, tmuxCommands } from "./terminal-multiplexers";
 
 export { joinedAndQuoted, shellQuote };
 
@@ -128,6 +129,12 @@ export function shellStrings(
       const [, ...command] = afterOptions(args, /^-[tFcEIOBT]$/);
       return [...commandOptionValues(args), command.join(" ")];
     }
+    case "screen":
+      return screenCommands(args);
+    case "tmux":
+      return tmuxCommands(args);
+    case "open":
+      return openArgsCommands(args);
     case "ssh":
       return sshCommands(args, isLocalHost);
     case "scp":

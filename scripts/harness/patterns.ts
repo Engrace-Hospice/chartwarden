@@ -23,6 +23,7 @@ import { userInfo } from "node:os";
 import { hasBareBraceGroup } from "./bare-braces";
 import { ASSIGNMENT, program, unescapeWord, words } from "./command-words";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
+import { DOWNLOAD_SCRIPT_REASON, downloadsScript } from "./download-script";
 import { environmentDumpReason } from "./env-dump";
 import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
 import { listedFiles } from "./file-list-options";
@@ -72,6 +73,7 @@ import { programOptionReason } from "./option-commands";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
+import { SPELLING_ASK_REASON, askedBySpelling } from "./permission-asks";
 import { persistenceReason } from "./persistence-commands";
 import { expandedProgramWord, shellsBehindWord } from "./program-words";
 import {
@@ -111,10 +113,12 @@ import {
   splitCommand,
 } from "./shell-lex";
 import { EXEC_SWEEP_READER, siblingCommands } from "./sibling-sweeps";
+import { STDIN_SCRIPT_TOOL_REASON, stdinScriptTool } from "./stdin-script-tools";
 import {
   type FeedReaders,
   PIPE_FEED_REASON,
   type PipelineStdin,
+  type StdinFeed,
   type StdinStage,
   allTexts,
   pipelineStdin,
@@ -125,6 +129,7 @@ import { readTar } from "./tar-grammar";
 import { isToolchainPath } from "./toolchain-paths";
 import { type SweepDepth, diffSweepOperands, gitDiffSweepOperands } from "./tree-sweep";
 import { reboundNames } from "./variable-rebinding";
+import { type Bindings, MAX_READINGS, NO_BINDINGS, bindAfter, readingsOf } from "./word-readings";
 import {
   MAX_COMMAND_JUDGE_MS,
   baseName,
@@ -141,6 +146,7 @@ import { shellQuote, sshHost } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
 import { moreGitWrites, moreWriterTargets } from "./writers-more";
 import { fileRuns, heredocCount, isScriptText, writtenTexts } from "./written-scripts";
+import { xargsRuns } from "./xargs-feed";
 
 // Re-exported from `content-scan.ts`: the names this file used to define.
 export type { Finding, FindingKind, SyntheticRegistry } from "./content-scan";
@@ -387,7 +393,7 @@ function readsShellScript(segment: string): boolean {
   // `$SHELL <<EOF`, `$(which sh) <<EOF`: a program the guard cannot name may be a shell.
   if (/[$`]/.test(parsed.prog)) return true;
   return [parsed.prog, ...parsed.args].some((word) => {
-    const name = word.replace(/^.*\//, "");
+    const name = word.replace(/^.*\//, "").toLowerCase();
     return NESTED_SHELL.test(name) || SCRIPT_READER.test(name);
   });
 }
@@ -696,11 +702,14 @@ function handedScriptVerdicts(
 ): BashVerdict[] {
   const p = stages[index] as StdinStage;
   const texts: string[] = [];
+  const out: BashVerdict[] = [];
   let unreadable = false;
   if (SOURCES.test(p.prog)) {
     // `source <(echo '…')`: the substitution's output is the script (read as typed and as handed, R9-CR-2).
     for (const inner of substitutions(parts[index]?.text ?? "")) {
       for (const printed of printedReadings(inner)) if (printed !== null) texts.push(...printed);
+      // `source <(curl …)` runs a download, as `bash <(curl …)` does (wave 13, B9)
+      if (downloadsScript(inner)) out.push(ask(DOWNLOAD_SCRIPT_REASON));
     }
     // `source /dev/stdin <<< '…'` runs what it is fed (its heredoc body is read by the lexer already).
     if (p.args.some((a) => SOURCE_STDIN.test(a))) {
@@ -713,7 +722,7 @@ function handedScriptVerdicts(
     texts.push(...handed.texts);
     unreadable = handed.unreadable;
   }
-  const out = texts.map((text) => judge(text, ctx, depth + 1, here));
+  out.push(...texts.map((text) => judge(text, ctx, depth + 1, here)));
   if (unreadable) out.push(ask(UNREADABLE_SCRIPT_REASON));
   return out;
 }
@@ -823,7 +832,7 @@ function gitExecVerdicts(
 ): BashVerdict[] {
   const words = assignmentWords(parsed.prog, parsed.args, parsed.assigns);
   const out: BashVerdict[] = [];
-  const env = gitEnvVerdict(words);
+  const env = gitEnvVerdict(words, parsed.prog === "git" ? variableStatements : null);
   if (env) out.push(env.decision === "deny" ? deny(env.reason) : ask(env.reason));
   out.push(...envWriteVerdicts(words, here, ctx));
   for (const text of envCommandStrings(words)) out.push(judge(text, ctx, depth + 1, here));
@@ -1043,6 +1052,7 @@ interface Walk {
   readonly verdicts: BashVerdict[];
   readonly scriptTexts: string[]; // what an interpreter or a shell is handed on stdin
   readonly written: WrittenScripts;
+  bindings: Bindings; // what the statements before the next command bound (`word-readings.ts`)
 }
 
 /** The parts of one `judge` call that do not change while it walks. */
@@ -1095,6 +1105,17 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
   const v = classifySegment(part.text, parsed, ctx, here);
   if (v) walk.verdicts.push(v);
+  // A command the permission rules ask about, spelled so they do not match it (`GH pr merge`): asks here (wave 13, A1).
+  const spelled = askedBySpelling(
+    parsed.prog,
+    parsed.args,
+    parsed.prog === "git" ? gitInvocation(parsed.args).sub : "",
+    parsed.word.replace(/^.*\//, "") === parsed.prog,
+  );
+  if (spelled !== null) walk.verdicts.push(ask(SPELLING_ASK_REASON(spelled)));
+  // The words the shell builds at run time (an option spliced with an empty expansion, or held in a variable) are read as the command they make (wave 13, A2/A3).
+  walk.verdicts.push(...readingVerdicts(part.text, walk.bindings, ctx, depth, here));
+  walk.bindings = bindAfter(walk.bindings, part.text, variableStatementWords([parsed]));
   if (parsed.unplaced !== undefined)
     walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
   const remote = remoteSessionReason(parsed, input.engineVariables);
@@ -1108,6 +1129,13 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
     ...nestedWithInlineVariables(parsed, stdinOf, ctx, depth, here),
     ...shellWordVerdicts(parsed, stdinOf, ctx, depth, here),
   );
+  walk.verdicts.push(...xargsVerdicts(part.text, stdin.feed(index), ctx, depth, here));
+  // A script fed on stdin to make, awk, expect or osascript runs commands the guard cannot read as a shell script (wave 13, B10).
+  const scriptTool = stdinScriptTool(parsed.prog, parsed.args);
+  const fedStdin =
+    part.joiner === "|" || parsed.ins.length + parsed.docs.length + parsed.strings.length > 0;
+  if (scriptTool !== null && fedStdin)
+    walk.verdicts.push(ask(STDIN_SCRIPT_TOOL_REASON(scriptTool)));
   if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
   // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command
   // line; a script piped in from anything else cannot be read. A script this line wrote (a heredoc, `echo '…' > F`) and
@@ -1258,10 +1286,12 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     verdicts,
     scriptTexts: [],
     written: new Map(),
+    bindings: NO_BINDINGS,
   };
   const input = walkInputOf(c, parts, parsedParts, ctx, depth);
   // The variables this text sets are in scope for the commands in it and for every text nested in it.
   const outerStatements = variableStatements;
+  walk.bindings = bindAfter(NO_BINDINGS, "", outerStatements);
   const statements = textVariableStatements(c, parts, input, outerStatements);
   variableStatements = statements.words;
   verdicts.push(...statements.verdicts);
@@ -1279,6 +1309,65 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     verdicts.find((v) => v.decision === "deny") ??
     verdicts.find((v) => v.decision === "ask") ?? { decision: "allow", reason: "" }
   );
+}
+
+/** Is a reading of a command being judged? A reading is not read again (one-shot state, as above). */
+let judgingReading = false;
+const READING_REASON = (reason: string): string =>
+  `Once the shell expands its words, this command is judged: ${reason}`;
+const READING_CAP_REASON = `A word of this command holds a variable with more than ${MAX_READINGS} values, so the guard cannot read every command it may run. A human decides.`;
+
+/**
+ * Judges the other readings of a simple command (`word-readings.ts`): its known variables, array and positional parameters written in, a
+ * backslash removed, and an expansion spliced into a word removed. A reading the command itself determines keeps its verdict; one that
+ * removed an expansion is a guess and asks at most (wave 13, A2/A3: R10-ADV-2, R10-ADV-3).
+ */
+function readingVerdicts(
+  text: string,
+  bindings: Bindings,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  if (judgingReading || halted()) return [];
+  const { list, overCap } = readingsOf(text, bindings);
+  const verdicts: BashVerdict[] = overCap ? [ask(READING_CAP_REASON)] : [];
+  judgingReading = true;
+  try {
+    for (const reading of list) {
+      const read = parseSegment(reading.text);
+      const sub = read.prog === "git" ? gitInvocation(read.args).sub : "";
+      const spelled = askedBySpelling(read.prog, read.args, sub, false);
+      if (spelled !== null) verdicts.push(ask(SPELLING_ASK_REASON(spelled)));
+      const v = judge(reading.text, ctx, depth + 1, here);
+      judgeBudget++; // a reading is not a command line of its own: it must not use up the budget of a long script
+      if (v.decision === "allow") continue;
+      const decision = reading.exact ? v.decision : "ask";
+      verdicts.push({ decision, reason: scrub(READING_REASON(v.reason)) });
+    }
+  } finally {
+    judgingReading = false;
+  }
+  return verdicts;
+}
+
+const XARGS_REASON =
+  "`xargs` hands the text it is fed to a shell, `ssh`, `eval` or another program as the command to run (`… | xargs -I{} sh -c '{}'`), and the guard cannot see that text. Write the command out, or let a human decide.";
+
+/** The command lines `xargs` makes of the text it is fed (`xargs-feed.ts`), judged like any other; one that runs data it cannot see asks (wave 13, A9). */
+function xargsVerdicts(
+  text: string,
+  feed: StdinFeed,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  if (!text.includes("xargs")) return [];
+  const run = xargsRuns(words(text), allTexts(feed), feed.unseen || feed.overflow);
+  if (run === null) return [];
+  const verdicts = run.lines.map((line) => judge(line, ctx, depth + 1, here));
+  if (run.question) verdicts.push(ask(XARGS_REASON));
+  return verdicts;
 }
 
 /** What each simple command of a text prints when it only prints, typed and as handed (R9-CR-2); null for any other command. */
@@ -1469,6 +1558,31 @@ function interactiveInvocation(p: Parsed): boolean {
 
 export const isInteractiveShell = (cmd: string): boolean =>
   segments(cmd).some((seg) => interactiveInvocation(parseSegment(seg)));
+
+const CODEX_COMMAND_STRING_REASON =
+  "Codex refuses a shell command string (`bash -c '…'`, `sh -c`, and the wrappers that hand one to a shell: `xargs … sh -c`, `watchexec -- bash -c`), because the string can expand variables and run substitutions after the guard has read it. Run the command directly or put it in a script file.";
+const CODEX_STDIN_SCRIPT_REASON =
+  "Codex refuses a shell or interpreter that reads its script from stdin (`echo '…' | bash`, `bash <<< '…'`, `… | bash -o pipefail`): the guard judges the text, but Codex must run a command directly or from a reviewable script file.";
+
+/**
+ * Why Codex refuses this command as an interactive shell, when the real reason is not a bare shell (wave 13, L3: `echo hi | bash -o pipefail`, `… | xargs -I{} sh -c '{}'` and
+ * `watchexec -- bash -c '…'` were all refused as "a bare interactive shell or REPL", which hid the reason a reader needs); null for a bare shell or REPL (the caller's text).
+ */
+export function interactiveShellReason(cmd: string): string | null {
+  for (const part of splitSegments(cmd).parts) {
+    const p = parseSegment(part.text);
+    if (!interactiveInvocation(p)) continue;
+    if (
+      SHELL.test(p.prog) &&
+      p.args.some((a) => a === "-c" || /^-[A-Za-z]*c/.test(a) || a.startsWith("--command"))
+    )
+      return CODEX_COMMAND_STRING_REASON;
+    if (part.joiner === "|" || p.strings.length + p.docs.length + p.ins.length > 0)
+      return CODEX_STDIN_SCRIPT_REASON;
+    return null;
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------------------------------
 // Paths: where a write lands once `cd`, `..`, `~`, `$HOME` and `$PWD` are accounted for

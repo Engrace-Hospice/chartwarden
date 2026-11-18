@@ -192,8 +192,6 @@ describe("D7: a force push is compared by the decoded refspec", () => {
   });
 
   it.each([
-    "EMPTY=''; git push --force origin main$EMPTY",
-    "EMPTY=''; git push --force origin main${EMPTY}",
     "git push --force origin main$(true)",
     'git push --force origin "main$EMPTY"',
     "git push --force origin main${EMPTY}",

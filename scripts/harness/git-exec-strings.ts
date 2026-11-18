@@ -203,6 +203,13 @@ const REROOT_VARIABLES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Variables that make git read its GLOBAL configuration from another directory: `XDG_CONFIG_HOME` (git reads `$XDG_CONFIG_HOME/git/config`; probed in a scratch repo
+ * with git 2.53: a `core.hooksPath` there skipped a failing pre-commit hook when the repository's own config named none). Other tools set it for their own use, so it
+ * asks only next to a git command (wave 13, A7: R10-ADV-7). `GIT_CONFIG_NOSYSTEM`, `GIT_CEILING_DIRECTORIES`, `GIT_CONFIG` and `GIT_DIR` did not skip the hook.
+ */
+const CONFIG_HOME_VARIABLES: ReadonlySet<string> = new Set(["XDG_CONFIG_HOME"]);
+
+/**
  * Variables git documents as naming a FILE it writes: every `GIT_TRACE*` sink, the Windows stream redirects, and the
  * index (git writes `GIT_INDEX_FILE` in place). `git help git` lists them; a `GIT_TRACE_*` that only changes what is
  * traced (`GIT_TRACE_REDACT`, `GIT_TRACE2_BRIEF`, `GIT_TRACE_CURL_NO_DATA`) is not here.
@@ -294,14 +301,21 @@ export interface GitEnvVerdict {
 const ENV_CONFIG_REASON =
   "A GIT_CONFIG_* environment variable sets a key that makes git run a program of the caller's choosing, read configuration from another file, or skip the repo's hooks (core.fsmonitor, core.hooksPath, an alias, a pager, an editor, a helper), exactly as `git -c` would. A human sets it.";
 const ENV_REROOT_REASON =
-  "A GIT_DIR, GIT_COMMON_DIR, GIT_WORK_TREE, GIT_EXEC_PATH, GIT_TEMPLATE_DIR, GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, GIT_ALLOW_PROTOCOL setting points git at another repository, another configuration or other helper programs, whose hooks and filters run outside the guard. A human decides.";
+  "A GIT_DIR, GIT_COMMON_DIR, GIT_WORK_TREE, GIT_EXEC_PATH, GIT_TEMPLATE_DIR, GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, GIT_ALLOW_PROTOCOL setting, or an XDG_CONFIG_HOME next to a git command, points git at another repository, another configuration or other helper programs, whose hooks and filters run outside the guard. A human decides.";
 
 /** What the git-related variables in `words` call for: a deny for an exec-capable config key, an ask for a re-root. */
-export function gitEnvVerdict(words: readonly string[]): GitEnvVerdict | null {
+export function gitEnvVerdict(
+  words: readonly string[],
+  /** What the statements around the command set, given for a GIT command only (wave 13, A7); `null` for any other program. */
+  around: readonly string[] | null = null,
+): GitEnvVerdict | null {
   if (gitEnvConfigs(words).some((kv) => GIT_EXEC_CONFIG.test(configKey(kv)))) {
     return { decision: "deny", reason: ENV_CONFIG_REASON };
   }
-  return assignments(words).some(({ name }) => REROOT_VARIABLES.has(name))
+  const home =
+    around !== null &&
+    assignments([...words, ...around]).some(({ name }) => CONFIG_HOME_VARIABLES.has(name));
+  return home || assignments(words).some(({ name }) => REROOT_VARIABLES.has(name))
     ? { decision: "ask", reason: ENV_REROOT_REASON }
     : null;
 }

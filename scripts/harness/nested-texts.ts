@@ -10,9 +10,10 @@ import { words } from "./command-words";
  */
 import { containerCommand, hiddenEnvFileReason } from "./container-run";
 import { expandVariables } from "./db-variables";
+import { DOWNLOAD_SCRIPT_REASON, downloadsScript } from "./download-script";
 import { printedText } from "./inline-code";
 import { COMMAND_SHELLS, shellCommandStrings } from "./shell-command-string";
-import { UNVERIFIED_SHELLS } from "./shell-grammars";
+import { UNVERIFIED_SHELLS, shellFamily } from "./shell-grammars";
 import { withStdin } from "./stdin-texts";
 import { containerRun, shellStrings } from "./wrappers";
 
@@ -92,10 +93,18 @@ export function nestedTexts(
     stdin ??= stdinOf();
     out.push({ text: withStdin(text, stdin), ...rest });
   };
-  if (prog === "eval") add(evalLine(args));
-  else if (COMMAND_SHELLS.test(prog)) {
+  if (prog === "eval") {
+    // `eval "$(echo CMD)"` runs CMD; `eval "$(curl …)"` runs a download (asks); any other substitution is an everyday setup line (`eval "$(ssh-agent -s)"`).
+    const line = evalLine(args);
+    const inner = LONE_SUBSTITUTION.exec(line);
+    const printed = inner === null ? null : printedBySubstitution(inner[1] ?? inner[2] ?? "");
+    if (printed !== null) add(printed);
+    else if (inner !== null && downloadsScript(inner[1] ?? inner[2] ?? ""))
+      out.push({ text: "", question: DOWNLOAD_SCRIPT_REASON });
+    else add(line);
+  } else if (COMMAND_SHELLS.test(prog)) {
     const strings = shellCommandStrings(prog, args);
-    if (strings.length > 0 && UNVERIFIED_SHELLS.includes(prog)) {
+    if (strings.length > 0 && UNVERIFIED_SHELLS.includes(shellFamily(prog))) {
       out.push({ text: "", question: UNVERIFIED_SHELL_QUESTION });
     }
     for (const text of strings) {
