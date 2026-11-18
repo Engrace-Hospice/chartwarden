@@ -640,21 +640,14 @@ export function createDbSchedulingBackend(
     endsAt: string,
     seamFacts: PreScheduleSeamFacts,
   ): Promise<SchedulingDiscipline | null> {
-    // The clinician qualifies if ANY discipline they hold is accepted for this visit purpose, and the
-    // credential check then runs against that same qualifying set — a membership holding `msw` + `rn`
-    // passes an `admission_visit` on its `rn` role and `rn` licence, whichever order the rows arrive in.
-    const qualifying = (await resolveDisciplinesTx(tx, orgId, membershipId)).filter((d) =>
-      VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(d),
-    );
-    const discipline = selectVisitAssignmentDiscipline(
+    const discipline = await stampedDisciplineOrNull(
+      tx,
+      orgId,
+      membershipId,
       visitPurpose,
-      qualifying,
       seamFacts.activeCredentialDisciplines,
     );
     if (discipline === null) return null;
-    // Every stamping path (create/publish, edit, reassign) routes through here: a discipline the M8 seed
-    // consumer could not author a legal draft for is never stamped.
-    requireEncounterType(visitPurpose, discipline);
 
     // Credential disciplines are seam-backed and were resolved before this transaction opened.
 
@@ -979,11 +972,37 @@ export function createDbSchedulingBackend(
     });
   }
 
-  // `md_np` is deliberately absent: no visit purpose schedules a physician/NP care-plan intervention. The only
-  // md/np purpose with a legal M8 pair that is not an RN visit is `f2f`, a regulatory encounter that dual-writes
-  // an F2F record to M6, so it must never stand in for an arbitrary physician intervention, and any RN purpose
-  // would hand the intervention to the wrong discipline. (It used to map to `recert`, which no md/np clinician
-  // could be stamped for, and which is now an RN kickoff visit.)
+  /** The discipline a clinician is stamped with for a visit purpose, or null when they hold none the purpose
+   *  accepts. Every stamping path routes through it (create/publish, edit, reassign, and recurring-policy
+   *  creation), so they cannot drift: a discipline the M8 seed consumer could not author a legal draft for is
+   *  refused here with VISIT_ENCOUNTER_TYPE_UNSUPPORTED, never stamped. The clinician qualifies if ANY discipline
+   *  they hold is accepted for the purpose, and the credential check runs against that same qualifying set (a
+   *  membership holding `msw` + `rn` passes an `admission_visit` on its `rn` role and `rn` licence, whichever
+   *  order the rows arrive in). `credentialed` defaults to the held set for a caller that judges credentials
+   *  later (a recurring policy: each occurrence re-checks them). */
+  async function stampedDisciplineOrNull(
+    tx: DbClient,
+    orgId: string,
+    membershipId: string,
+    visitPurpose: VisitPurpose,
+    credentialed?: readonly SchedulingDiscipline[],
+  ): Promise<SchedulingDiscipline | null> {
+    const qualifying = (await resolveDisciplinesTx(tx, orgId, membershipId)).filter((d) =>
+      VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(d),
+    );
+    const discipline = selectVisitAssignmentDiscipline(
+      visitPurpose,
+      qualifying,
+      credentialed ?? qualifying,
+    );
+    if (discipline === null) return null;
+    requireEncounterType(visitPurpose, discipline);
+    return discipline;
+  }
+
+  // `md_np` is deliberately absent: the only physician/NP purpose is `f2f`, a regulatory encounter that
+  // dual-writes an F2F record to M6, so it must never stand in for an arbitrary physician intervention. (It used
+  // to map to `recert`, which no md/np clinician could be stamped for, and which is now an RN kickoff visit.)
   const proposalDisciplines: readonly InterventionDiscipline[] = [
     "rn",
     "lpn",
@@ -1682,18 +1701,19 @@ export function createDbSchedulingBackend(
           tx,
           input.assignedMembershipId,
         );
-        // A policy that could never schedule a visit is refused now, not failed every night: a clinician who
-        // holds NO discipline the purpose accepts is the one-off create gate's 403 PRE_SCHEDULE_GATE_FAILED,
-        // and one who holds qualifying disciplines but NONE with a legal M8 pair is 422
-        // VISIT_ENCOUNTER_TYPE_UNSUPPORTED. Both judge the clinician's HELD disciplines only (credentials may
-        // lapse or arrive after creation, and each occurrence re-checks them), so held is passed as both the
-        // held and the credentialed set.
-        const held = (await resolveDisciplinesTx(tx, orgId, input.assignedMembershipId)).filter(
-          (discipline) => VISIT_PURPOSE_DISCIPLINES[input.visitPurpose].includes(discipline),
+        // A policy that could never schedule a visit is refused now, not failed every night. A clinician who
+        // holds NO discipline the purpose accepts gets the same 403 PRE_SCHEDULE_GATE_FAILED the edit and reassign
+        // gates give (the one-off create path reports the same cause as 422 VISIT_PRE_SCHEDULE_GATE_UNMET from
+        // the visit state machine); one who holds qualifying disciplines but NONE with a legal M8 pair gets 422
+        // VISIT_ENCOUNTER_TYPE_UNSUPPORTED from the shared helper. Only the HELD disciplines are judged here
+        // (credentials may lapse or arrive after creation, and each occurrence re-checks them).
+        const stamped = await stampedDisciplineOrNull(
+          tx,
+          orgId,
+          input.assignedMembershipId,
+          input.visitPurpose,
         );
-        const stamped = selectVisitAssignmentDiscipline(input.visitPurpose, held, held);
         if (stamped === null) throw new ForbiddenError("PRE_SCHEDULE_GATE_FAILED");
-        requireEncounterType(input.visitPurpose, stamped);
         const [inserted] = await tx
           .insert(RV)
           .values({

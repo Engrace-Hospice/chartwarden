@@ -1071,6 +1071,10 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
           [policyId],
         )
       ).rows[0].n as number;
+    const childIds = async (policyId: string) =>
+      (
+        await admin.query("SELECT id FROM visit WHERE parent_recurring_visit_id=$1", [policyId])
+      ).rows.map((row) => row.id as string);
     /** A policy created BEFORE the creation guard existed: legal when made, then forced to an illegal pair. */
     async function legacyUnschedulablePolicy(): Promise<string> {
       const legacy = await recurringPolicy(np, "f2f");
@@ -1108,22 +1112,37 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     });
 
     it("createRecurring accepts an rn for recert and loc_change (RN visits), and they materialize with the legal M8 type", async () => {
-      const nurse = await clinician(["rn"], ["rn"]);
-      const policies = [
-        await recurringPolicy(nurse, "recert"),
-        await recurringPolicy(await clinician(["rn"], ["rn"]), "loc_change"),
-      ];
+      // Created inside the try so a failure on the second never leaves the first active for the next test.
+      const created: Array<{
+        policy: Awaited<ReturnType<typeof recurringPolicy>>;
+        encounterType: string;
+      }> = [];
       try {
+        for (const [purpose, encounterType] of [
+          ["recert", "recert_visit"],
+          ["loc_change", "routine_visit"],
+        ] as const) {
+          created.push({
+            policy: await recurringPolicy(await clinician(["rn"], ["rn"]), purpose),
+            encounterType,
+          });
+        }
         const result = await svc.materializeRecurringVisitsForOrg(ORG_A, M17_SYSTEM_USER_ID, {
           horizonDays: 2,
         });
-        for (const policy of policies) {
+        for (const { policy, encounterType } of created) {
           expect(result.unschedulablePolicyIds).not.toContain(policy.id);
           expect(result.failedPolicies.map((f) => f.policyId)).not.toContain(policy.id);
-          expect(await childCount(policy.id)).toBeGreaterThan(0);
+          const children = await childIds(policy.id);
+          expect(children.length).toBeGreaterThan(0);
+          for (const child of children) {
+            expect(await eventPayload(child, "m17.visit.published")).toMatchObject({
+              encounterType,
+            });
+          }
         }
       } finally {
-        for (const policy of policies) {
+        for (const { policy } of created) {
           await svc.discontinueRecurring(ORG_A, policy.assignedMembershipId, policy.id);
         }
       }

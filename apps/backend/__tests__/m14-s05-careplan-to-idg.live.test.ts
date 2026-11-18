@@ -147,6 +147,7 @@ describe.skipIf(!DB_URL)(
     let problemId = "";
     let interventionId = "";
     let proseInterventionId = "";
+    const askedDisciplines: string[] = [];
     let visitId = "";
     let noteId = ""; // the LPN visit note that is cosigned
     let draftNoteId = ""; // never finalized
@@ -349,10 +350,17 @@ describe.skipIf(!DB_URL)(
       );
       registerSchedulingSeams({ credentials: { store: createDrizzleCredentialStore(handle.db) } });
       // The REAL M7 reader: M17 proposes visits from it, M8's sign gate asks it whether review is overdue.
-      registerSeam(
-        "CarePlanReader",
-        createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
-      );
+      const realCarePlanReader = createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db));
+      registerSeam("CarePlanReader", {
+        ...realCarePlanReader,
+        // Records which intervention disciplines M17's proposal generator asks the plan about.
+        relevantElementsForEncounter: (
+          ...args: Parameters<typeof realCarePlanReader.relevantElementsForEncounter>
+        ) => {
+          askedDisciplines.push(String(args[2]));
+          return realCarePlanReader.relevantElementsForEncounter(...args);
+        },
+      });
       // The one stub, same as the M8 write suite: no assessment scales are required for a routine visit.
       registerSeam("LatestAssessmentProvider", {
         latest: async () => null,
@@ -481,6 +489,10 @@ describe.skipIf(!DB_URL)(
       // only the text, and M17's grammar (count:unit:period) rejects it: counted as "skipped", no alert, no proposal.
       expect(out.proposalsSkipped).toBeGreaterThanOrEqual(1);
       expect(out.proposalsCreated).toBeGreaterThan(0);
+      // A physician/NP intervention is never proposed: the only md/np purpose is the regulatory `f2f`, so the
+      // generator does not even ask the plan for `md_np` (it used to, and mapped the answer to `recert`).
+      expect(askedDisciplines).toContain("lpn");
+      expect(askedDisciplines).not.toContain("md_np");
       const { rows } = await admin.query(
         `SELECT status, proposed_discipline, source, source_payload->>'interventionId' AS intervention_id,
                 source_payload->>'planId' AS plan_id

@@ -39,9 +39,10 @@ export type SchedulingDiscipline =
  * `recert` and `loc_change` are RN visits, not physician-intent ones: M8 §2.2 defines `recert_visit` as the
  * recertification-period KICKOFF visit "(not the F2F itself)", documented with PPS/ESAS/prognosis indicators,
  * and gives it to RN only; M8 has no level-of-care-change type, so `loc_change` seeds `routine_visit`, whose
- * legal authors are RN/LPN, and a level-of-care change is an RN assessment (so RN only). The physician or NP
- * encounter of a recertification is the `f2f` purpose. These two used to list md/np, which no M8 type accepts,
- * so neither purpose could be scheduled for anyone. */
+ * legal authors are RN/LPN. `loc_change` is nonetheless RN only: that is a deliberate conservative scheduling
+ * choice (the web already treated it as an RN visit), not an M8 or CoP constraint, so adding `lpn` later is a
+ * product decision. The physician or NP encounter of a recertification is the `f2f` purpose. These two used to
+ * list md/np, which no M8 type accepts, so neither purpose could be scheduled for anyone. */
 export const VISIT_PURPOSE_DISCIPLINES: {
   readonly [K in VisitPurpose]: readonly SchedulingDiscipline[];
 } = {
