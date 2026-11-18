@@ -165,7 +165,20 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     return row.rows[0].id as string;
   }
 
-  async function seedMacCredential(orgId: string, providerEntityId: string, jurisdiction: string) {
+  // Claim assembly resolves the MAC jurisdiction from the effective `medicare_provider_routing` row (1489),
+  // not from the submitter credential, so a provider that should assemble needs both.
+  async function seedMacCredentialAndRoute(
+    orgId: string,
+    providerEntityId: string,
+    jurisdiction: string,
+  ) {
+    await admin.query(
+      `INSERT INTO medicare_provider_routing
+         (organization_id, provider_entity_id, mac_jurisdiction, effective_from, provenance,
+          set_by_membership_id, set_reason)
+       VALUES ($1, $2, $3, '2000-01-01', 'manual', $4, 'provider_documentation')`,
+      [orgId, providerEntityId, jurisdiction, U],
+    );
     await admin.query(
       `INSERT INTO mac_submitter_credential
          (organization_id, provider_entity_id, mac_jurisdiction, submitter_id, trading_partner_id,
@@ -578,24 +591,24 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
   describe("mdm.resolveProviderEntity", () => {
     it("resolves the real CCN + admin-configured MAC jurisdiction, cbsaCode null", async () => {
       const pe = await seedProviderEntity(ORG_A, "381234");
-      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      await seedMacCredentialAndRoute(ORG_A, pe, "ngs_j6");
       const adapter = buildM23MdmProviderEntityAdapter(handle.db, testProviderCcnPort);
       const resolved = await adapter.resolveProviderEntity(ORG_A, pe, "2026-01-01");
       expect(resolved).toEqual({ ccn: "381234", macJurisdiction: "ngs_j6", cbsaCode: null });
     });
 
-    it("names the missing MAC submitter credential (422) instead of reporting the provider entity unresolved", async () => {
+    it("names the missing Medicare provider routing (422) instead of reporting the provider entity unresolved", async () => {
       const pe = await seedProviderEntity(ORG_A, "381235");
       const adapter = buildM23MdmProviderEntityAdapter(handle.db, testProviderCcnPort);
       await expect(adapter.resolveProviderEntity(ORG_A, pe, "2026-01-01")).rejects.toMatchObject({
-        code: "MAC_SUBMITTER_CREDENTIAL_MISSING",
+        code: "MEDICARE_ROUTING_MISSING",
         statusCode: 422,
       });
     });
 
     it("never resolves another org's provider entity (cross-tenant RLS isolation)", async () => {
       const peOrgB = await seedProviderEntity(ORG_B, "381236");
-      await seedMacCredential(ORG_B, peOrgB, "cgs_j15");
+      await seedMacCredentialAndRoute(ORG_B, peOrgB, "cgs_j15");
       const adapter = buildM23MdmProviderEntityAdapter(handle.db, testProviderCcnPort);
       expect(await adapter.resolveProviderEntity(ORG_A, peOrgB, "2026-01-01")).toBeNull();
     });
@@ -1965,7 +1978,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
       const pe = await seedProviderEntity(ORG_A, "381240");
-      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      await seedMacCredentialAndRoute(ORG_A, pe, "ngs_j6");
       // The claim range has to straddle "now" — see `futureClaimRange`'s own doc — so the matching
       // wage-index fiscal year is derived the same way, not hardcoded.
       const { range, fiscalYearStarting } = futureClaimRange();
@@ -2000,7 +2013,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
       const pe = await seedProviderEntity(ORG_A, "381299");
-      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      await seedMacCredentialAndRoute(ORG_A, pe, "ngs_j6");
       const { range, fiscalYearStarting } = futureClaimRange();
       await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
       const service = buildM23BootAssemblyService(handle.db, {
@@ -2045,7 +2058,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
       const pe = await seedProviderEntity(ORG_A, "381242");
-      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      await seedMacCredentialAndRoute(ORG_A, pe, "ngs_j6");
       const { range, fiscalYearStarting } = futureClaimRange();
       await seedWageIndex("381242", fiscalYearStarting, "0.9500", "12060");
       await seedSequestrationPolicy(ORG_A, pe, "2.00", "2020-01-01");
