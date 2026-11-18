@@ -32,7 +32,7 @@ const rank = (cmd: string, branch?: string): number => RANK[decide(cmd, branch)]
 /** Rows that must be refused (ask or deny). */
 function refused(title: string, rows: ReadonlyArray<readonly [string, string, string?]>): void {
   describe(title, () => {
-    it.each(rows)("%s refuses: %s", (_id, cmd, branch) => {
+    it.each(rows)("%s refuses: %s", (_id: string, cmd: string, branch?: string) => {
       expect(rank(cmd, branch), cmd).toBeGreaterThanOrEqual(1);
     });
   });
@@ -40,7 +40,7 @@ function refused(title: string, rows: ReadonlyArray<readonly [string, string, st
 /** Rows that must be denied outright. */
 function denied(title: string, rows: ReadonlyArray<readonly [string, string, string?]>): void {
   describe(title, () => {
-    it.each(rows)("%s denies: %s", (_id, cmd, branch) => {
+    it.each(rows)("%s denies: %s", (_id: string, cmd: string, branch?: string) => {
       expect(decide(cmd, branch), cmd).toBe("deny");
     });
   });
