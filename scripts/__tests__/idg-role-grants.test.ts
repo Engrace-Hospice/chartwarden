@@ -46,6 +46,44 @@ describe("roleMayHoldPermission (M8 encounter.administrative_override, the draft
   });
 });
 
+describe("roleMayHoldPermission (M8 visit-note closure keys, ADR-0113 D7)", () => {
+  const OVERRIDE = "encounter.closure_override";
+  const POLICY_ADMIN = "encounter.closure_policy_admin";
+  const NOT_SUPERVISORS = [
+    "rn",
+    "registered_nurse",
+    "lpn",
+    "chha",
+    "home_health_aide",
+    "chaplain",
+    "volunteer",
+    "msw",
+    "md",
+    "np",
+    "auditor",
+    "compliance_officer",
+  ];
+
+  it.each(NOT_SUPERVISORS)("withholds both closure keys from %s", (role) => {
+    expect(roleMayHoldPermission(role, OVERRIDE)).toBe(false);
+    expect(roleMayHoldPermission(role, POLICY_ADMIN)).toBe(false);
+  });
+
+  it.each(["clinical_supervisor", "director_of_nursing", "don", "clinical_lead"])(
+    "keeps the override for the supervisor key %s",
+    (role) => {
+      expect(roleMayHoldPermission(role, OVERRIDE)).toBe(true);
+    },
+  );
+
+  it("gives the policy key to the DON keys only, never the field supervisors", () => {
+    expect(roleMayHoldPermission("director_of_nursing", POLICY_ADMIN)).toBe(true);
+    expect(roleMayHoldPermission("don", POLICY_ADMIN)).toBe(true);
+    expect(roleMayHoldPermission("clinical_supervisor", POLICY_ADMIN)).toBe(false);
+    expect(roleMayHoldPermission("clinical_lead", POLICY_ADMIN)).toBe(false);
+  });
+});
+
 describe("roleMayHoldPermission (M19 triage.paper_reentry, #640)", () => {
   it.each(["auditor", "clinician", "rn", "volunteer"])(
     "withholds the back-dating write from %s",
