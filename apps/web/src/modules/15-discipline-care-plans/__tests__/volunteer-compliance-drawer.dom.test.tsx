@@ -196,7 +196,9 @@ describe("volunteer compliance — a write in flight", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Correct" }));
     const drawer = await screen.findByRole("complementary", { name: CORRECT });
     fireEvent.click(within(drawer).getByRole("button", { name: "Save gate" }));
-    expect((await within(drawer).findByRole("alert")).textContent).toContain("connection dropped");
+    expect((await within(drawer).findByRole("alert")).textContent).toContain(
+      "No answer came back; it may not have been recorded",
+    );
     expect(
       (within(drawer).getByRole("button", { name: "Save gate" }) as HTMLButtonElement).disabled,
     ).toBe(false);
@@ -215,9 +217,35 @@ describe("volunteer compliance — a write in flight", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Reason"), { target: { value: "lapsed" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Revoke gate" }));
-    expect(await within(dialog).findByText(/connection dropped/)).toBeTruthy();
+    expect(
+      await within(dialog).findByText(/No answer came back; it may not have been recorded/),
+    ).toBeTruthy();
     expect(
       (within(dialog).getByRole("button", { name: "Revoke gate" }) as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it("a failure that is not a lost connection does not claim the connection dropped", async () => {
+    // An unreadable answer (not a rejection of the request itself): the screen's own failure, not the network's.
+    renderScreen({ PATCH: async () => undefined as never });
+    fireEvent.click(await screen.findByRole("button", { name: "Correct" }));
+    const drawer = await screen.findByRole("complementary", { name: CORRECT });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save gate" }));
+    const message = (await within(drawer).findByRole("alert")).textContent ?? "";
+    expect(message).toBe("The gate could not be saved.");
+    expect(
+      (within(drawer).getByRole("button", { name: "Save gate" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(document.querySelector("[inert]")).toBeNull();
+  });
+
+  it("a revoke that fails for a reason other than a lost connection does not claim the connection dropped", async () => {
+    renderScreen({ POST: async () => undefined as never });
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Reason"), { target: { value: "lapsed" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Revoke gate" }));
+    expect(await within(dialog).findByText("The gate could not be revoked.")).toBeTruthy();
+    expect(within(dialog).queryByText(/No answer came back/)).toBeNull();
   });
 });

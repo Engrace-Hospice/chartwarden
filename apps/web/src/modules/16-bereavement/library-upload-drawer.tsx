@@ -6,7 +6,7 @@ import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { FormDrawer } from "../../shell/form-drawer";
-import { errorMessage } from "./bereavement-api";
+import { NO_RESPONSE, errorMessage } from "./bereavement-api";
 import { SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, orNull } from "./program-status";
 import {
@@ -18,7 +18,12 @@ import {
 } from "./programs-api";
 
 const UPLOAD_STOPPED = "The upload was cancelled. The file was not added to the library.";
-const UPLOAD_FAILED = "The file could not be uploaded. Check your connection and try again.";
+/** Nothing was registered and the file did not (as far as we know) arrive. */
+const UPLOAD_FAILED =
+  "The file could not be uploaded, so nothing was added to the library. Try again.";
+/** The file is stored, but adding it to the library did not complete (no answer, or an unexpected failure). */
+const NOT_REGISTERED =
+  "The file uploaded, but adding it to the library did not complete and may not have been recorded. Check the library for it before retrying: Upload will not send the file again.";
 
 export function LibraryUploadDrawer({
   onClose,
@@ -83,7 +88,9 @@ export function LibraryUploadDrawer({
     keys.settle(res.status, res.error);
     if (res.error || !res.data) {
       setError(
-        errorMessage(res.error, "The file was uploaded but could not be added to the library."),
+        res.status === NO_RESPONSE
+          ? NOT_REGISTERED
+          : errorMessage(res.error, "The file was uploaded but could not be added to the library."),
       );
       return null;
     }
@@ -103,7 +110,9 @@ export function LibraryUploadDrawer({
     try {
       registered = await uploadAndRegister(file, order);
     } catch {
-      setError(UPLOAD_FAILED);
+      // Unexpected (the helpers report a lost connection as a result, not a throw): say which side of the upload it fell on, and do
+      // not blame the connection.
+      setError(uploaded.current?.file === file ? NOT_REGISTERED : UPLOAD_FAILED);
     } finally {
       setBusy(false);
     }

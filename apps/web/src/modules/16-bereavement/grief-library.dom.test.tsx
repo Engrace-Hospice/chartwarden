@@ -8,6 +8,25 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { GriefLibrary } from "./grief-library";
+import {
+  libraryUrl,
+  registerLibraryItem,
+  setLibraryStatus,
+  uploadLibraryDocument,
+} from "./programs-api";
+
+// Pass-through spies: every call reaches the real helper unless a test queues one rejection (the helpers report a lost
+// connection as a result, so a throw is the unexpected case the screens must still survive).
+vi.mock("./programs-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./programs-api")>();
+  return {
+    ...actual,
+    libraryUrl: vi.fn(actual.libraryUrl),
+    setLibraryStatus: vi.fn(actual.setLibraryStatus),
+    registerLibraryItem: vi.fn(actual.registerLibraryItem),
+    uploadLibraryDocument: vi.fn(actual.uploadLibraryDocument),
+  };
+});
 
 const ITEM_ID = "11111111-1111-4111-8111-111111111111";
 const DOC_ID = "22222222-2222-4222-8222-222222222222";
@@ -784,12 +803,13 @@ describe("grief library — writes in flight and failed writes", () => {
     );
   });
 
-  it("an upload whose registration rejects on a network failure ends in the drawer, which is live again", async () => {
+  /** Mount with a reservation and completion that succeed and `register` answering the registration; press Upload. */
+  const uploadWith = async (register: () => Reply | Promise<Reply>) => {
     vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValue(
       new Uint8Array(32).fill(0xab).buffer,
     );
     vi.stubGlobal("fetch", async () => new Response(null, { status: 200 }));
-    mount((req) => {
+    const { calls } = mount((req) => {
       if (req.path === "/api/v1/document-uploads")
         return {
           status: 201,
@@ -801,7 +821,7 @@ describe("grief library — writes in flight and failed writes", () => {
           },
         };
       if (req.path.endsWith("/complete")) return ok({ documentId: DOC_ID });
-      if (req.method === "POST" && req.path === LIBRARY) return "reject";
+      if (req.method === "POST" && req.path === LIBRARY) return register();
       return ok([]);
     });
     fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
@@ -811,7 +831,9 @@ describe("grief library — writes in flight and failed writes", () => {
     fireEvent.change(within(drawer).getByLabelText(/^File/), { target: { files: [file] } });
     fireEvent.change(within(drawer).getByLabelText("Title"), { target: { value: "Guide" } });
     fireEvent.click(within(drawer).getByRole("button", { name: "Upload" }));
-    expect((await within(drawer).findByRole("alert")).textContent).toContain("connection dropped");
+    return { drawer, calls };
+  };
+  const expectLiveAndDismissable = async (drawer: HTMLElement): Promise<void> => {
     expect(
       (within(drawer).getByRole("button", { name: "Upload" }) as HTMLButtonElement).disabled,
     ).toBe(false);
@@ -820,5 +842,73 @@ describe("grief library — writes in flight and failed writes", () => {
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Upload a library item" })).toBeNull(),
     );
+  };
+
+  it("an upload whose registration gets no answer says the file uploaded and to check the library", async () => {
+    const { drawer } = await uploadWith(() => "reject");
+    const message = (await within(drawer).findByRole("alert")).textContent ?? "";
+    expect(message).toContain("The file uploaded");
+    expect(message).toContain("Check the library for it before retrying");
+    expect(message).not.toContain("could not be uploaded");
+    await expectLiveAndDismissable(drawer);
+  });
+
+  it("an unexpected failure after the file uploaded says so, and the retry registers without sending the file again", async () => {
+    vi.mocked(registerLibraryItem).mockRejectedValueOnce(new TypeError("boom"));
+    const { drawer, calls } = await uploadWith(() => ok(item({ title: "Guide" })));
+    const message = (await within(drawer).findByRole("alert")).textContent ?? "";
+    expect(message).toContain("The file uploaded");
+    expect(message).not.toContain("connection");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload" }));
+    expect(await screen.findByText("Guide was added to the library as a draft.")).toBeTruthy();
+    expect(calls.filter((c) => c.path === "/api/v1/document-uploads")).toHaveLength(1);
+  });
+
+  it("an unexpected failure while sending the file says it could not be uploaded, without blaming the connection", async () => {
+    vi.mocked(uploadLibraryDocument).mockRejectedValueOnce(new RangeError("bad"));
+    const { drawer } = await uploadWith(() => ok(item()));
+    const message = (await within(drawer).findByRole("alert")).textContent ?? "";
+    expect(message).toContain("The file could not be uploaded, so nothing was added");
+    expect(message).not.toContain("connection");
+    expect(message).not.toContain("The file uploaded");
+    await expectLiveAndDismissable(drawer);
+  });
+});
+
+describe("grief library — a row action that throws", () => {
+  it("a rejected preview says so and the next row action still runs", async () => {
+    vi.mocked(libraryUrl).mockRejectedValueOnce(new TypeError("boom"));
+    mount((req) =>
+      req.path.endsWith("/url")
+        ? ok({
+            itemId: ITEM_ID,
+            url: "https://files.example/t.pdf",
+            expiresAt: "2099-01-01T00:00:00.000Z",
+          })
+        : ok([item()]),
+    );
+    const preview = await screen.findByRole("button", { name: `Preview ${TITLE_A}` });
+    fireEvent.click(preview);
+    expect((await screen.findByRole("alert")).textContent).toContain("did not finish");
+    await waitFor(() => expect((preview as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(preview);
+    expect(await screen.findByRole("link", { name: "Open preview" })).toBeTruthy();
+  });
+
+  it("a rejected status change says so in its dialog and the retry goes through", async () => {
+    vi.mocked(setLibraryStatus).mockRejectedValueOnce(new TypeError("boom"));
+    mount((req) =>
+      req.method === "POST" ? ok(item({ status: "published", version: 4 })) : ok([item()]),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: `Publish ${TITLE_A}` }));
+    const dialog = await screen.findByRole("alertdialog");
+    const confirm = within(dialog).getByRole("button", { name: "Yes, publish it" });
+    fireEvent.click(confirm);
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("did not finish");
+    await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(confirm);
+    expect(await screen.findByText(`${TITLE_A} is now published.`)).toBeTruthy();
   });
 });

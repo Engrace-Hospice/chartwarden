@@ -64,6 +64,8 @@ const STATUS_CONFIRM: Record<LibraryStatus, string> = {
   published: "Families see the item in the portal's grief library as soon as it is published.",
   archived: "Families no longer see the item. It stays here and can be republished.",
 };
+const ACTION_FAILED =
+  "That action did not finish and may not have been applied. Reload the library to check, then try again.";
 const TRANSCRIPT_NEEDED = "Add a transcript before publishing this video.";
 /** A video is published only with its transcript (the server refuses one without). */
 const needsTranscript = (item: LibraryItem, next: LibraryStatus): boolean =>
@@ -122,9 +124,16 @@ export function GriefLibrary(): JSX.Element | null {
     inFlight.current = true;
     setBusyId(itemId);
     setActionError(null);
-    await run();
-    inFlight.current = false;
-    setBusyId(null);
+    try {
+      await run();
+    } catch {
+      // The requests report a lost connection as a result, so a throw here is unexpected: say the action did not finish (without
+      // blaming the connection) and, above all, release the guard so the next row action is not silently ignored.
+      setActionError(ACTION_FAILED);
+    } finally {
+      inFlight.current = false;
+      setBusyId(null);
+    }
   };
 
   const mintPreview = (item: LibraryItem, part: LibraryPart) =>

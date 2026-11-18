@@ -64,8 +64,20 @@ const EXPIRY_OPTIONS = [
 ];
 const PAGE_SIZE = 25;
 /** A write whose fetch rejected: the answer, if any, never arrived. The retry is safe (the client keeps its idempotency key). */
-const CONNECTION_DROPPED =
-  "The connection dropped before the server answered, so we can't tell whether it went through. Check your connection and try again.";
+const NO_ANSWER =
+  "No answer came back; it may not have been recorded. Check your connection, then retry.";
+
+/**
+ * `call`'s response, or null when no answer came back (the client rejects on a network failure). Only the request sits inside the
+ * catch: a throw from building the body or reading the answer is a bug, and must not be reported as a dropped connection.
+ */
+async function awaitAnswer<T>(call: () => Promise<T>): Promise<T | null> {
+  try {
+    return await call();
+  } catch {
+    return null;
+  }
+}
 
 /** The one form drawer beside the grid: record a new gate or correct a row's. Opening one replaces the other. */
 type GateForm = { readonly kind: "new" } | { readonly kind: "edit"; readonly gate: GateView };
@@ -396,25 +408,31 @@ function GateFormDrawer({
         sourceDocumentId: sourceDocumentId.trim() === "" ? null : sourceDocumentId.trim(),
         ...(notes.trim() === "" ? {} : { notes }),
       };
-      const res = editingExisting
-        ? await client.PATCH("/api/v1/volunteer-compliance-gates/{gateId}", {
-            params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
-            body: common,
-          } as never)
-        : await client.POST("/api/v1/volunteer-compliance-gates", {
-            params: { header: writeHeaders() },
-            body: {
-              volunteerMembershipId,
-              gateKind,
-              validFrom: new Date(validFrom).toISOString(),
-              ...common,
-            },
-          } as never);
-      if (res.error) setError(errorMessage(res.error, "The gate could not be saved."));
+      const created = editingExisting
+        ? null
+        : {
+            volunteerMembershipId,
+            gateKind,
+            validFrom: new Date(validFrom).toISOString(),
+            ...common,
+          };
+      const res = await awaitAnswer(() =>
+        editingExisting
+          ? client.PATCH("/api/v1/volunteer-compliance-gates/{gateId}", {
+              params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
+              body: common,
+            } as never)
+          : client.POST("/api/v1/volunteer-compliance-gates", {
+              params: { header: writeHeaders() },
+              body: created,
+            } as never),
+      );
+      if (res === null) setError(NO_ANSWER);
+      else if (res.error) setError(errorMessage(res.error, "The gate could not be saved."));
       else saved = true;
     } catch {
-      // The client rejects on a network failure: without this the drawer would stay busy, and undismissable, for good.
-      setError(CONNECTION_DROPPED);
+      // Not a lost connection (that is `NO_ANSWER` above): the request was never built, or its answer could not be read.
+      setError("The gate could not be saved.");
     } finally {
       setBusy(false);
     }
@@ -485,14 +503,17 @@ function RevokeGateModal({
     setError(null);
     let revoked = false;
     try {
-      const res = await client.POST("/api/v1/volunteer-compliance-gates/{gateId}/revoke", {
-        params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
-        body: { revokedReason },
-      } as never);
-      if (res.error) setError(errorMessage(res.error, "The gate could not be revoked."));
+      const res = await awaitAnswer(() =>
+        client.POST("/api/v1/volunteer-compliance-gates/{gateId}/revoke", {
+          params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
+          body: { revokedReason },
+        } as never),
+      );
+      if (res === null) setError(NO_ANSWER);
+      else if (res.error) setError(errorMessage(res.error, "The gate could not be revoked."));
       else revoked = true;
     } catch {
-      setError(CONNECTION_DROPPED);
+      setError("The gate could not be revoked.");
     } finally {
       setBusy(false);
     }
