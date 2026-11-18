@@ -684,12 +684,16 @@ controls:
   - id: CW-PI-04
     title: >-
       A visit is scheduled only for a clinician discipline that has a legal M8 encounter pair: create, proposal publish, reschedule,
-      edit and reassign refuse an unsupported one with 422 VISIT_ENCOUNTER_TYPE_UNSUPPORTED (codes only, nothing written, no event);
-      the clinician picker marks it CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED; a recurring policy whose clinician holds qualifying disciplines but none with a legal pair is
-      refused at creation and, if one already exists, the nightly cron alerts the scheduling audience (ids and a count only; an alert
-      that reaches nobody fails the job) instead of skipping it silently, and a policy that fails for any other reason no longer stops
-      the rest of the org's pass (it is reported by id and error code in the failing job); and the M8 visit-seed consumer refuses an illegal pair rather than minting a draft, so an event that carries one is
-      retried and then parked as failed. The pair is enforced in application code only (no DB CHECK).
+      edit and reassign refuse an unsupported one (422 VISIT_ENCOUNTER_TYPE_UNSUPPORTED, or the discipline gate when the clinician
+      holds no discipline the purpose accepts), codes only, nothing written, no event. Every purpose has at least one schedulable
+      discipline (recert and loc_change are RN visits, and the physician or NP encounter of a recertification is f2f), pinned by a
+      ratchet in policy.test.ts. The clinician picker marks an unsupported discipline CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED. A
+      recurring policy whose clinician holds no discipline the purpose accepts (403 PRE_SCHEDULE_GATE_FAILED) or none with a legal
+      pair (422) is refused at creation, and if one already exists the nightly cron alerts the scheduling audience (ids and a count
+      only; an alert that reaches nobody fails the job) instead of skipping it silently, and a policy that fails for any other reason
+      no longer stops the rest of the org's pass (it is reported by id and error code in the failing job). The M8 visit-seed consumer
+      refuses an illegal pair rather than minting a draft, so an event that carries one is retried and then parked as failed. The pair
+      is enforced in application code only (no DB CHECK).
     hipaa: ["164.312(c)(1)"]
     soc2: ["PI1.2", "PI1.3"]
     status: partial
@@ -707,7 +711,7 @@ controls:
       - file: apps/backend/__tests__/gap-052-m17-cron-isolation.test.ts
       - file: apps/backend/__tests__/m8-encounters-write.live.test.ts
     gap:
-      reason: The purposes recert and loc_change have no schedulable discipline at all (M17 requires md/np for them, while M8 section 2.2 gives recert_visit to RN and seeds loc_change as routine_visit for RN/LPN), so both are refused for every clinician until the spec owner picks which table changes; packages/scheduling/__tests__/policy.test.ts pins that list. The web picker still offers both and answers the refusal with a plain "cannot yet be scheduled for the selected visit type", and calendar-page.tsx assumes loc_change is an RN visit, so M17, M8 and the web disagree three ways. Visits, M8 drafts and in-flight m17.visit.published events that already carry an illegal pair are not remediated (a pre-fix NP/MD HUV visit can no longer be rescheduled, only cancelled, and an event already queued at deploy is retried then parked as failed; the consumers bound after m8.seed-visit-encounter never receive that visit's event unless an operator replays the failed row, and the ops outbox is read-only, so there is no replay route). A clinician holding no qualifying discipline at all is not refused at policy creation (roles and credentials change afterwards); the nightly pass reports such a policy as failed (a failing job and its DLQ alert) rather than through the scheduling alert, and a policy that is unschedulable only on some dates (a credential that becomes valid mid-horizon) is reported on every pass while any date in the horizon is refused, although the dates that can schedule still materialize. The scheduling alert's audience is clinical_lead, scheduler, director_of_nursing and org_admin by role key (the first two exist only where a tenant created them); a tenant holding none of the four gets a failing job, not a delivered alert. Reassigning a visit or editing its purpose does not re-seed or void the M8 draft the first publish created. The pair has no database CHECK, so a new encounter writer must call isValidEncounterDisciplinePair itself.
+      reason: Visits, recurring policies, M8 drafts and in-flight m17.visit.published events created before these rules that already carry an illegal pair or purpose are not remediated (a pre-fix NP/MD visit for recert, loc_change or an HUV can no longer be rescheduled, edited or reassigned, only cancelled, a policy whose clinician holds no discipline its purpose accepts fails the nightly pass by id and code until it is discontinued, and an event already queued at deploy is retried then parked as failed; the consumers bound after m8.seed-visit-encounter never receive that visit's event unless an operator replays the failed row, and the ops outbox is read-only, so there is no replay route). M17 proposes no visit for a physician or NP care-plan intervention (md_np), because the only md/np purpose with a legal pair that is not an RN visit is f2f, a regulatory encounter that dual-writes an F2F record to M6, so it is never used for an arbitrary intervention, and that intervention stays in the care plan unscheduled. A policy that is unschedulable only on some dates (a credential that becomes valid mid-horizon) is reported on every pass while any date in the horizon is refused, although the dates that can schedule still materialize. The scheduling alert's audience is clinical_lead, scheduler, director_of_nursing and org_admin by role key (the first two exist only where a tenant created them); a tenant holding none of the four gets a failing job, not a delivered alert. Reassigning a visit or editing its purpose does not re-seed or void the M8 draft the first publish created. The pair has no database CHECK, so a new encounter writer must call isValidEncounterDisciplinePair itself.
       owner: engineering
       review_by: 2027-01-31
 
