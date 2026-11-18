@@ -544,7 +544,12 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       expect(await lineCount(fx.adviceId)).toBe(1);
     });
 
-    it("executes a staged Claim.MD ERA through source validation, financial review, approval and the M25 core", async () => {
+    // A staged Claim.MD ERA through source validation, financial review, approval and the M25 core, for a stage with
+    // its ISA06/ISA08/GS06 columns and for one sealed before migration 1508 (those columns NULL).
+    it.each([
+      ["with its identity columns", false],
+      ["sealed before 1508 (NULL identity columns)", true],
+    ])("executes a staged Claim.MD ERA end to end: %s", async (_label, legacy) => {
       const stageId = crypto.randomUUID();
       const sourceInboxId = crypto.randomUUID();
       const resolutionId = crypto.randomUUID();
@@ -552,7 +557,8 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       // Production's resolver seals the owning claim's immutable send-evidence ids with each claim
       // outcome (claimmd-era-resolution.ts); the review requires exactly one to verify the attempt.
       const historicalSubmissionEvidenceId = crypto.randomUUID();
-      const payerId = "f0000000-0000-4000-8000-00000000fee1";
+      // payer.id is a primary key and the test runs once per stage shape, so each shape owns its payer.
+      const payerId = `f0000000-0000-4000-8000-0000000${legacy ? "0fee2" : "0fee1"}`;
       const pcn = `SYNTHETIC-CLAIMMD-PCN-${stageId.slice(0, 8)}`;
       const trace = `SYNTHETIC-CLAIMMD-TRACE-${stageId.slice(0, 8)}`;
       const transactionSetControlNumber = String(Date.now() % 100_000_000).padStart(8, "0");
@@ -664,6 +670,15 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           paymentTraceDigest,
         ],
       );
+      // Migration 1508 added the stage's ISA06/ISA08/GS06 columns as nullable, so a stage staged before it has NULLs
+      // while its sealed transaction set may still carry the values. It must stay executable, not strand after approval.
+      if (legacy)
+        await admin.query(
+          `UPDATE claimmd_era_m25_stage
+              SET interchange_sender_code = NULL, interchange_receiver_code = NULL, functional_group_control_number = NULL
+            WHERE id = $1`,
+          [stageId],
+        );
 
       // Seed the real M41-owned historical attempt and M23-owned immutable send evidence. The
       // reviewer below must discover this claim through the production owner-reader composition,
@@ -3066,6 +3081,43 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       expect(count.rows[0].n).toBe(2);
     });
 
+    it("answers a file whose first set is held and second is queued with the queued outcome AND the held reason", async () => {
+      // receiveAdvice answers once per file, so a held set beside a queued one used to vanish behind it and the pull's
+      // operator-facing `held` report never saw it.
+      const actor: M25IngestActor = { organizationId: ORG_A };
+      const raw = buildEdiSets("000000760", [
+        { st02: "0706", icn: "ICN-H1", npi: TENANT_NPI },
+        { st02: "0707", icn: "ICN-H2", npi: TENANT_NPI },
+      ]);
+      // a legacy (GS06-less) advice already holds ISA13/ST02 of the FIRST set only
+      await admin.query(
+        `INSERT INTO remittance_advice
+          (organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
+           transaction_set_control_number, check_or_eft_trace_number, payment_method,
+           total_payment_amount, minio_object_key, file_sha256, parse_status)
+         VALUES ($1,$2,$3,'medicare','000000760','0706','SYNTHETIC-TRACE-000000760','eft',12.00,
+                 'manual/legacy-000000760.835',$4,'posted')`,
+        [ORG_A, PE_A, PAYER, "e".repeat(64)],
+      );
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: createX12835Client({ readRaw: async () => raw }),
+        payeeNpi: async () => TENANT_NPI,
+      });
+
+      const result = await service.receiveAdvice(actor, input("minio/held-beside-queued.835", raw));
+
+      expect(result).toMatchObject({ outcome: "queued", heldSets: ["LEGACY_IDENTITY_AMBIGUOUS"] });
+      const rows = await admin.query(
+        `SELECT transaction_set_control_number AS st, parse_status
+           FROM remittance_advice WHERE interchange_control_number='000000760' ORDER BY 1, parse_status::text`,
+      );
+      expect(rows.rows).toEqual([
+        { st: "0706", parse_status: "held_duplicate" },
+        { st: "0706", parse_status: "posted" },
+        { st: "0707", parse_status: "queued" },
+      ]);
+    });
+
     /** One ISA, then one GS..GE group per entry; every group reuses the same ST02 (legal across groups). */
     function buildGroupedEdi(
       isa13: string,
@@ -4070,6 +4122,87 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         [ORG_A],
       );
       expect(audit.rows[0].n).toBe(MAX_REFUSALS_PER_REMITTANCE);
+      // the standing signal: the file is quarantined, the vendor no longer offers it, and the tick still says so
+      const standing = `org ${ORG_A} provider ${PE_A}: 1 quarantined remittance(s) awaiting operator release (RECEIVE_REFUSED=1)`;
+      expect((await pullRemittances(deps, ORG_A)).backlog).toEqual([standing]);
+      expect(await cursors.quarantineBacklog(key)).toEqual({ RECEIVE_REFUSED: 1 });
+      expect(await cursors.quarantineBacklog({ ...key, organizationId: ORG_B })).toEqual({});
+    });
+
+    it("quarantines an unsupported-routing file under its own reason (durable, audited) and keeps reporting it as a standing backlog", async () => {
+      const cursors = buildDrizzleRemittanceCursorStore(handle.db);
+      const far = new InMemoryClearinghouse();
+      for (const n of [1, 2, 3]) {
+        await far.control.deliverRemittance(
+          `ERA-U-${n}`,
+          buildFullEdi(`00007200${n}`, "0001", "100.00", {
+            clp01: `PCN-U-${n}`,
+            icn: `ICN-U-${n}`,
+          }),
+          scope,
+        );
+      }
+      const deps = {
+        transport: far,
+        vendor: "in_memory_unsupported",
+        contexts: {
+          providerEntitiesFor: async () => [PE_A],
+          contextFor: async () => pullCtx(),
+        },
+        payers: { medicarePayerId: async () => PAYER },
+        cursors,
+        ingest: {
+          receiveAdvice: async (
+            _actor: { organizationId: string },
+            input: { minioObjectKey: string },
+          ): Promise<ReceiveAdviceResult> =>
+            input.minioObjectKey.endsWith("ERA-U-2")
+              ? {
+                  outcome: "unsupported",
+                  code: "X12_835_UNSUPPORTED_ROUTING",
+                  reason: "synthetic group routing",
+                }
+              : { outcome: "duplicate", existingAdviceId: "x" },
+        },
+      };
+      const key = {
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        vendor: "in_memory_unsupported",
+        usage: "test" as const,
+      };
+
+      for (let i = 1; i < MAX_REFUSALS_PER_REMITTANCE; i++) {
+        const r = await pullRemittances(deps, ORG_A);
+        expect(r.failures).toHaveLength(1);
+        expect(r.failures[0]).toContain("unsupported X12 group routing");
+      }
+      const final = await pullRemittances(deps, ORG_A);
+
+      expect(final.failures).toEqual([]);
+      expect(final.quarantined).toHaveLength(1);
+      expect(await cursors.get(key)).toBe("3"); // the chain moved past the unroutable file
+      const row = await admin.query(
+        "SELECT reason_code, refusal_count, quarantined_at FROM remittance_pull_refusal WHERE organization_id=$1 AND remittance_id='ERA-U-2'",
+        [ORG_A],
+      );
+      expect(row.rows[0].reason_code).toBe("UNSUPPORTED_ROUTING");
+      expect(row.rows[0].refusal_count).toBe(MAX_REFUSALS_PER_REMITTANCE);
+      expect(row.rows[0].quarantined_at).not.toBeNull();
+      // every state change of the row is audited with its reason code (ids and a code, never file content)
+      const audit = await admin.query(
+        `SELECT count(*)::int AS n FROM audit_event
+          WHERE resource_kind='remittance_pull_refusal' AND organization_id=$1 AND after->>'reason_code'='UNSUPPORTED_ROUTING'`,
+        [ORG_A],
+      );
+      expect(audit.rows[0].n).toBe(MAX_REFUSALS_PER_REMITTANCE);
+      // the vendor never re-offers it, so the standing backlog is the only thing left to say it is waiting
+      const standing = `org ${ORG_A} provider ${PE_A}: 1 quarantined remittance(s) awaiting operator release (UNSUPPORTED_ROUTING=1)`;
+      const later = await pullRemittances(deps, ORG_A);
+      expect(later.quarantined).toEqual([]);
+      expect(later.backlog).toEqual([standing]);
+      expect(await cursors.quarantineBacklog(key)).toEqual({ UNSUPPORTED_ROUTING: 1 });
+      expect(await cursors.quarantineBacklog({ ...key, organizationId: ORG_B })).toEqual({});
     });
 
     it("zeroes a file's refusal count once it is accepted, and the cursor advances", async () => {
