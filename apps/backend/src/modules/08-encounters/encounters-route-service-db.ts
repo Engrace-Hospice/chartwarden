@@ -76,6 +76,7 @@ import {
   promotionHasDraft,
   requireReview,
 } from "./chart-promotion";
+import { stampClockIfNull } from "./closure/clock-stamp";
 import { seedModalityFor } from "./consumers/seed-modality";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
@@ -444,6 +445,25 @@ export function createDbEncounterRouteService(
   /** GAP-013: the org-local calendar day (org timezone, never the request's UTC date) the late-entry tier is measured on. */
   const orgLocalToday = async (t: DbClient, organizationId: string): Promise<LocalDate> =>
     localDateInTimeZone(clock(), await organizationTimezone(t, organizationId)) as LocalDate;
+
+  /**
+   * ADR-0113: a seeded draft that never got an M17 start event gets its documentation clock on the author's first
+   * authoring write (and at sign, so a signed note always has one). Write-once and open-notes-only in the UPDATE itself;
+   * the row's own `clockStartedAt` just skips the round trip once it is set. A GET never calls this.
+   */
+  const stampDraftOpened = async (
+    t: DbClient,
+    organizationId: string,
+    row: { readonly id: string; readonly clockStartedAt: Date | null },
+  ): Promise<void> => {
+    if (row.clockStartedAt !== null) return;
+    await stampClockIfNull(t, {
+      orgId: organizationId,
+      encounterId: row.id,
+      at: clock(),
+      source: "draft_opened",
+    });
+  };
 
   const freeTextCipher = ciphers?.freeText;
   const narrativeCipher = ciphers?.narrative;
@@ -1257,6 +1277,7 @@ export function createDbEncounterRouteService(
       const t = tx as unknown as DbClient;
       const r = await loadEnc(t, encounterId);
       checkMutableForEdit({ status: r.status });
+      await stampDraftOpened(t, organizationId, r);
       const plan = planMileageCapture(input);
       const [existing] = await t
         .select({ id: MILEAGE.id })
@@ -1498,6 +1519,10 @@ export function createDbEncounterRouteService(
               status: "draft",
               // Only a telephonic encounter type implies a modality at creation; confirmed_at stays NULL.
               visitModality: seedModalityFor({ encounterType: args.encounterType }),
+              // ADR-0113: an ad-hoc note (no visit, so no M17 start event) starts its own clock at creation, in this INSERT.
+              ...(args.visitId
+                ? {}
+                : { clockStartedAt: clock(), clockStartSource: "draft_created" as const }),
             })
             .returning(),
           "encounter insert returned no row",
@@ -1534,6 +1559,7 @@ export function createDbEncounterRouteService(
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
         checkVersion({ expected: ifVersion, actual: Number(r.version) });
+        await stampDraftOpened(t, organizationId, r);
         // Assemble BEFORE the write: an unknown code or section must reject the PATCH, not be stored and
         // discovered by whoever later tries to render the note.
         const layer1Preview = assembleSelections(
@@ -1700,6 +1726,7 @@ export function createDbEncounterRouteService(
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
+        await stampDraftOpened(t, organizationId, r);
         const plan = planVitalsCapture(input); // validates envelopes + CNI reason (§2.2)
         const v = firstOrThrow(
           await t
@@ -1751,6 +1778,7 @@ export function createDbEncounterRouteService(
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
+        await stampDraftOpened(t, organizationId, r);
         const [existing] = await t
           .select({ id: VITALS.id })
           .from(VITALS)
@@ -1979,6 +2007,7 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
+        await stampDraftOpened(t, organizationId, r);
         // GAP-013 §2.5 — the tier is COMPUTED here from service_date vs the org-local day and reified on the
         // row; a note > 24h late must carry the clinician's reason (422 LATE_ENTRY_REASON_REQUIRED). The
         // significant / administrative tiers cannot be written to the column before their override exists
@@ -2118,6 +2147,8 @@ export function createDbEncounterRouteService(
         if (r.authoredByMembershipId !== actor.membershipId) {
           throw new ForbiddenError("only the author of an encounter may sign it");
         }
+        // Before either status UPDATE below (the stamp only touches open notes): a signed note always carries a clock.
+        await stampDraftOpened(t, organizationId, r);
         const now = new Date();
         const admission = await admissionSummaryFor(organizationId, r.admissionId);
         validateAdmissionForService(

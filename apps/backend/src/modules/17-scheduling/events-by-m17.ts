@@ -148,7 +148,9 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     // F-141 (#248) — m18 dropped: M18's own D14 (locked) names its exhaustive consumed-events list as
     // exactly `m17.visit.published`/`.cancelled` — this event is not among them, and M18 brackets the
     // visit through its own check-in/check-out route path, not by reacting to `.started`.
-    declaredConsumers: [],
+    // ADR-0113 — m8 now consumes it: M8 stamps the visit-note closure clock (`encounter.clock_started_at`) from
+    // the M17 visit start (`m8.stamp-note-clock`; source `evv_check_in` when `evvBracketState` is `evv_present`).
+    declaredConsumers: ["m8"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

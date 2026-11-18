@@ -114,6 +114,7 @@ export {
   type M8VisitClosedOutboxPort,
   buildM8VisitClosedConsumer,
 } from "./outbox-consumers/m17-visit-closed";
+export { buildM8VisitStartedNoteClockConsumer } from "./outbox-consumers/m17-visit-started-note-clock";
 export {
   buildM8WorkerDeps,
   registerM8CronWorkers,

@@ -651,6 +651,7 @@ import {
   billableEncountersInRangeForOrg,
   buildM8VisitClosedConsumer,
   buildM8VisitPublishedConsumer,
+  buildM8VisitStartedNoteClockConsumer,
   buildM8WorkerDeps,
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
@@ -15137,6 +15138,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             db: dbHandle.db,
             outbox: m8OutboxPublisher,
           }),
+          // ADR-0113 — the visit-note closure clock starts at arrival: M8 stamps `encounter.clock_started_at` from the M17 visit start.
+          buildM8VisitStartedNoteClockConsumer({ db: dbHandle.db }),
           buildM17EncounterSignedConsumer({
             db: dbHandle.db,
             outbox: m17OutboxPublisher,
