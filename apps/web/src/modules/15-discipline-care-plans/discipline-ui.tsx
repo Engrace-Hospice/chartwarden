@@ -154,20 +154,6 @@ export const textareaStyle: CSSProperties = {
   fontFamily: "inherit",
   resize: "vertical",
 };
-export const primaryButtonStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  minHeight: "2.5rem",
-  padding: "0 1rem",
-  borderRadius: t.radiusMd,
-  border: "none",
-  cursor: "pointer",
-  background: t.primary,
-  color: t.onPrimary,
-  fontSize: "0.875rem",
-  fontWeight: 600,
-};
 export const ghostButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -182,11 +168,6 @@ export const ghostButtonStyle: CSSProperties = {
   fontSize: "0.875rem",
   fontWeight: 600,
   textDecoration: "none",
-};
-export const disabledButtonStyle: CSSProperties = {
-  ...ghostButtonStyle,
-  cursor: "not-allowed",
-  opacity: 0.5,
 };
 
 // ── modal chrome (the §5.1 modals: sign, supervisory visit, volunteer assignment, gate) ────────────────

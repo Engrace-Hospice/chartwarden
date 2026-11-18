@@ -129,13 +129,7 @@ function SupervisoryVisitModal({
       title="Record supervisory visit"
       onClose={onClose}
       footer={
-        <Button
-          tone="primary"
-          style={{ opacity: canSubmit ? 1 : 0.5 }}
-          type="button"
-          onClick={() => void submit()}
-          disabled={!canSubmit}
-        >
+        <Button tone="primary" type="button" onClick={() => void submit()} disabled={!canSubmit}>
           {busy ? "Recording…" : "Record attestation"}
         </Button>
       }

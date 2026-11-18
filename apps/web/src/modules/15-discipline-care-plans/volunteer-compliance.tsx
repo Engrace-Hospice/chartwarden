@@ -432,7 +432,6 @@ function GateFormModal({
       footer={
         <Button
           tone="primary"
-          style={{ opacity: canSubmit && !busy ? 1 : 0.5 }}
           type="button"
           onClick={() => void submit()}
           disabled={!canSubmit || busy}
@@ -506,7 +505,6 @@ function RevokeGateModal({
       footer={
         <Button
           tone="primary"
-          style={{ opacity: revokedReason.trim() === "" || busy ? 0.5 : 1 }}
           type="button"
           onClick={() => void submit()}
           disabled={revokedReason.trim() === "" || busy}

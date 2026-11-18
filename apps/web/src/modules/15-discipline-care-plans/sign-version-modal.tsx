@@ -93,13 +93,7 @@ export function SignVersionModal({
       }}
       closeDisabled={busy}
       footer={
-        <Button
-          tone="primary"
-          style={{ opacity: canSubmit ? 1 : 0.5 }}
-          type="button"
-          onClick={() => void submit()}
-          disabled={!canSubmit}
-        >
+        <Button tone="primary" type="button" onClick={() => void submit()} disabled={!canSubmit}>
           {busy ? "Signing…" : isAcknowledgment ? "Acknowledge" : "Sign"}
         </Button>
       }

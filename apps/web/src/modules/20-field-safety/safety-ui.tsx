@@ -133,20 +133,9 @@ export const textareaStyle: CSSProperties = {
   fontFamily: "inherit",
   resize: "vertical",
 };
-export const primaryButtonStyle: CSSProperties = {
-  // §5.4 — the field clinician is the primary MOBILE user of this module, so every control clears the
-  // 44 CSS-px SC 2.5.5 floor: the padding below plus the 0.82rem line box does it on a phone.
-  padding: "0.7rem 1.1rem",
-  borderRadius: t.radiusMd,
-  border: "none",
-  cursor: "pointer",
-  background: t.primary,
-  color: t.onPrimary,
-  fontSize: "0.875rem",
-  fontWeight: 600,
-  minHeight: "2.75rem",
-};
 export const ghostButtonStyle: CSSProperties = {
+  // §5.4 — the field clinician is the primary MOBILE user of this module, so every control clears the
+  // 44 CSS-px SC 2.5.5 floor (kit `Button` calls here use `size="lg"` for the same reason).
   padding: "0.7rem 1.1rem",
   borderRadius: t.radiusMd,
   border: `1px solid ${t.cardBorder}`,
@@ -160,19 +149,6 @@ export const ghostButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-};
-export const dangerButtonStyle: CSSProperties = {
-  ...primaryButtonStyle,
-  background: t.error,
-  // `onEmphasis`, not `onPrimary`: the token exists precisely for text on a saturated STATUS fill, and it
-  // is theme-reactive (white in light, twilight ink in dark). `onPrimary` is the brand fill's pair and
-  // would be the wrong contrast partner on red in one of the two themes.
-  color: t.onEmphasis,
-};
-export const disabledButtonStyle: CSSProperties = {
-  ...ghostButtonStyle,
-  cursor: "not-allowed",
-  opacity: 0.5,
 };
 
 // ── modal chrome (the §5 ceremonies: acknowledge, resolve, sign off, transition, grant) ────────────────
