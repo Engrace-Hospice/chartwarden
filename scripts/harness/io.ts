@@ -30,7 +30,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EMPTY_REGISTRY, type SyntheticRegistry, registryFrom } from "./patterns";
+import { EMPTY_REGISTRY, type SyntheticRegistry, registryFrom } from "./synthetic-registry";
 
 export interface HookInput {
   readonly session_id?: string;
@@ -172,7 +172,17 @@ const MAX_LEDGER_FIELD_CHARS = 1000;
 const capLedgerField = (s: string): string =>
   s.length > MAX_LEDGER_FIELD_CHARS ? `${s.slice(0, MAX_LEDGER_FIELD_CHARS)}…` : s;
 
-export function appendLedger(root: string, sessionId: string | undefined, e: LedgerEvent): void {
+/** How long a ledger write waits for another writer's lock: 50 tries 10 ms apart. */
+export const LOCK_ATTEMPTS = 50;
+const LOCK_RETRY_MS = 10;
+
+/** Waits at most `lockAttempts` tries for the lock (the emergency path passes fewer); gives up at once on a lock it cannot create. */
+export function appendLedger(
+  root: string,
+  sessionId: string | undefined,
+  e: LedgerEvent,
+  lockAttempts = LOCK_ATTEMPTS,
+): void {
   if (process.env.CW_AGENT_LEDGER === "off") return;
   try {
     const now = new Date();
@@ -180,15 +190,17 @@ export function appendLedger(root: string, sessionId: string | undefined, e: Led
     mkdirSync(join(root, ".claude", "audit"), { recursive: true });
     const lock = `${file}.lock`;
     let fd = -1;
-    for (let i = 0; i < 50 && fd < 0; i++) {
+    for (let i = 0; i < lockAttempts && fd < 0; i++) {
       try {
         fd = openSync(lock, "wx");
-      } catch {
+      } catch (error) {
+        // Only another writer's lock is worth waiting for: a read-only or unwritable directory never gets better.
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") break;
         // A lock older than 5 s was left by a killed hook: clear it rather than wait on it forever.
         try {
           if (Date.now() - statSync(lock).mtimeMs > 5000) unlinkSync(lock);
         } catch {}
-        Bun.sleepSync(10);
+        Bun.sleepSync(LOCK_RETRY_MS);
       }
     }
     // Never write unlocked: a lost line is visible as a gap in time, a raced line breaks the chain.

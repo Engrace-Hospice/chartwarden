@@ -21,6 +21,16 @@
 import { readFileSync } from "node:fs";
 import { appendLedger, codexRoot, parseHookInput, projectDir, sha256 } from "./io";
 
+/**
+ * This file imports `./io` and nothing else of the harness (`io.ts` itself loads only `synthetic-registry.ts`): a
+ * corrupted `patterns.ts`, which is exactly when an emergency deny happens, must not take the ledger line with it.
+ * `harness-emergency-ledger-wave13b2.test.ts` pins the import graph and runs it against a corrupted copy.
+ *
+ * The child waits at most 10 x 10 ms for another writer's lock (the worker's own writes wait 50 x 10 ms): the parent
+ * kills it at `LEDGER_TIMEOUT_MS` anyway, and a lost line is cheaper than a late exit.
+ */
+const EMERGENCY_LOCK_ATTEMPTS = 10;
+
 const [, , mode, reason = "emergency deny"] = process.argv;
 const codex = mode === "--codex";
 
@@ -32,13 +42,18 @@ try {
   const tool = typeof hook.tool_name === "string" ? hook.tool_name : "";
   const session = typeof hook.session_id === "string" ? hook.session_id : undefined;
   const command = tool === "Bash" ? hook.tool_input?.command : undefined;
-  appendLedger(codex ? codexRoot() : projectDir(hook), session, {
-    event: "pre_tool",
-    tool: tool && codex ? `codex/${tool}` : tool,
-    cmd_sha256: typeof command === "string" ? sha256(command) : undefined,
-    decision: "deny",
-    reason,
-  });
+  appendLedger(
+    codex ? codexRoot() : projectDir(hook),
+    session,
+    {
+      event: "pre_tool",
+      tool: tool && codex ? `codex/${tool}` : tool,
+      cmd_sha256: typeof command === "string" ? sha256(command) : undefined,
+      decision: "deny",
+      reason,
+    },
+    EMERGENCY_LOCK_ATTEMPTS,
+  );
 } catch {
   // best effort, like every ledger write: a ledger failure never blocks the developer's work or changes the deny
 }

@@ -197,6 +197,9 @@ function checkPatch(text: string, root: string, base: string, log: Log): void {
 }
 
 const NOT_TEXT = "was not text, so the guard cannot judge it";
+const NOT_AN_OBJECT = "was not an object, so the guard cannot judge it";
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 /** Claude Code's tools that write a file. */
 const EDIT_TOOLS: ReadonlySet<string> = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 /** Lines of an MCP input resolved on disk in one call; past it the call is refused (the work must fit the hook's timeout). */
@@ -419,6 +422,12 @@ function judge(hook: HookInput): void {
       reason,
     });
 
+  // Wave 13 (L2): Claude Code and Codex always send an object. Anything else read as `{}` (a string has no `command`),
+  // and an empty command is an allow: in Claude mode this exited 0. Refused in both modes, and ledgered.
+  if (hook.tool_input !== undefined && !isRecord(hook.tool_input)) {
+    refuse(log, `The tool input ${NOT_AN_OBJECT}.`);
+  }
+
   if (CODEX && tool === "apply_patch") {
     const patch = input.command;
     if (typeof patch !== "string") {
@@ -456,9 +465,10 @@ function judge(hook: HookInput): void {
 
   if (tool === "Bash") {
     const command = input.command;
-    // `String(command)` of an array or object is not what the shell would run: refuse it before judging it.
-    if (CODEX && typeof command !== "string") refuse(log, `The command ${NOT_TEXT}.`);
-    const cmd = String(command ?? "");
+    // `String(command)` of an array or object is not what the shell would run, and a missing one is an empty command
+    // (an allow): refuse it before judging it, in both agents (wave 13, L2: Claude mode used to read it as `""`).
+    if (typeof command !== "string") refuse(log, `The command ${NOT_TEXT}.`);
+    const cmd = command;
     // An argv string cannot carry a NUL, so a shell would cut the command there: what runs is not what was read.
     if (cmd.includes("\0")) {
       refuse(

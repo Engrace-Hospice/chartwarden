@@ -10,23 +10,13 @@
  */
 
 import { cloudCliReason } from "./cloud-cli-sessions";
+import { readCloudWords } from "./cloud-global-options";
+import { shortValue } from "./engine-short-options";
 import { remoteOperandReason } from "./remote-operands";
 import { remoteHopReason } from "./ssh-hops";
 
 /** The value options that stand before a subcommand and must not be read as one (`kubectl -n prod exec …`). */
 const VALUE_OPTION: ReadonlyMap<string, RegExp> = new Map([
-  [
-    "kubectl",
-    /^(?:-n|--namespace|--context|--kubeconfig|-s|--server|--cluster|--user|--as|--as-group|--token|--certificate-authority|--client-certificate|--client-key|--request-timeout|--cache-dir|--tls-server-name|--profile|--profile-output|-v|--v)$/,
-  ],
-  [
-    "gcloud",
-    /^--(?:project|account|configuration|billing-project|impersonate-service-account|verbosity|format|filter)$/,
-  ],
-  [
-    "aws",
-    /^--(?:profile|region|endpoint-url|output|query|ca-bundle|cli-read-timeout|cli-connect-timeout)$/,
-  ],
   ["fly", /^(?:-a|--app|-c|--config|-o|--org|-r|--region|-t|--access-token)$/],
   ["flyctl", /^(?:-a|--app|-c|--config|-o|--org|-r|--region|-t|--access-token)$/],
   ["heroku", /^(?:-a|--app|-r|--remote)$/],
@@ -40,6 +30,8 @@ const VALUE_OPTION: ReadonlyMap<string, RegExp> = new Map([
 
 /** The words of `args` that are not options and not the value of one the tool takes. */
 function positionals(prog: string, args: readonly string[]): string[] {
+  const recorded = readCloudWords(prog, args);
+  if (recorded !== null) return recorded.words;
   const valued = VALUE_OPTION.get(prog);
   const out: string[] = [];
   for (let k = 0; k < args.length; k++) {
@@ -135,6 +127,19 @@ function engineVariableReason(assigns: readonly string[]): string | null {
 function engineOptionReason(prog: string, args: readonly string[]): string | null {
   for (let k = 0; k < args.length; k++) {
     const a = args[k] as string;
+    // `-cprod`, `-c=prod`, `-Dc prod`: the letter's value attached or clustered (`engine-short-options.ts`); the bare letter is read below.
+    const short = a.length > 2 ? shortValue(prog, a) : undefined;
+    if (short?.letter === "H") return reason(`\`${prog} -H\``);
+    if (short?.letter === "c") {
+      const named = short.value ?? args[k + 1] ?? "";
+      if (!LOCAL_CONTEXT.test(named) && !LOCAL_CONNECTION.test(named)) {
+        return reason(`\`${prog} --context\``);
+      }
+    }
+    if (short !== undefined) {
+      if (short.value === null) k++;
+      continue;
+    }
     if (ENGINE_HOST_OPTION.test(a)) return reason(`\`${prog} ${a.split("=")[0]}\``);
     if (ENGINE_REMOTE_FLAG.test(a)) return reason(`\`${prog} ${a}\``);
     const connection = CONNECTION_OPTION.exec(a);
@@ -237,6 +242,10 @@ export function remoteAccessReason(
     return reason("`podman machine ssh`");
   if (DOCKER_ENGINES.has(prog)) return dockerReason(prog, args, assigns);
   if (prog === "autossh") return reason("`autossh`");
+  const unplaced = readCloudWords(prog, args)?.unknown;
+  if (unplaced !== null && unplaced !== undefined) {
+    return `\`${prog} ${unplaced.split("=")[0]}\` is an option before the subcommand that the guard does not know, so it cannot tell which word is the subcommand (\`kubectl exec\`, \`gcloud compute ssh\` and \`aws ssm start-session\` open a session on another machine, which a non-local ssh is). A human decides.`;
+  }
   const words = positionals(prog, args);
   const [first, second] = words;
   const session = SESSION_TOOLS.get(prog);

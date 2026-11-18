@@ -83,10 +83,12 @@ interface Emergency {
 
 /**
  * The longest the entry thread waits for the ledger child. The deadline is 6.5 s, Codex's alarm 8 s and Claude's hook
- * timeout 10 s; the deny is already written when the child starts, so even a child that is killed at this bound leaves
- * 0.5 s before the earliest of them. A line that does not make it is lost, and the deny is not.
+ * timeout 10 s; the deny is already written when the child starts, so the worst case is the bun start of the entry
+ * thread (about 0.1 s, 0.3 s on a loaded machine), 6.5 s, and this bound: about 7.1 to 7.4 s, 0.6 s or more before the
+ * earliest of the two agent limits (it was 1,000 ms in wave 12: 7.5 to 7.6 s, 0.4 s of margin). A line that does not
+ * make it is lost, and the deny is not.
  */
-export const LEDGER_TIMEOUT_MS = 1000;
+export const LEDGER_TIMEOUT_MS = 500;
 /** Past this the hook input is not handed to the ledger child: the line then names no tool. */
 const MAX_LEDGER_INPUT_CHARS = 8_000_000;
 /** The flags the pinned hook commands give `bun`: a bunfig, a dotenv file or a tsconfig in the session directory must not load. */
