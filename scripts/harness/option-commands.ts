@@ -58,8 +58,7 @@ function longValues(args: readonly string[], names: readonly string[]): string[]
 /** The command lines `ssh`, `scp` and `sftp` run here through their options (scp and sftp also take `-S program`). */
 export function sshLikeCommands(prog: string, args: readonly string[]): string[] {
   const fromO = dashOValues(args).map(localCommandOfOption);
-  const programs =
-    prog === "scp" ? shortValues(args, "S") : prog === "sftp" ? shortValues(args, "SD") : [];
+  const programs = prog === "scp" || prog === "sftp" ? shortValues(args, "SD") : [];
   return [...fromO, ...programs].filter((c): c is string => c !== undefined && c.trim() !== "");
 }
 
@@ -89,12 +88,12 @@ export function optionCommandStrings(prog: string, args: readonly string[]): str
 }
 
 /**
- * scp's and sftp's `-S program` REPLACES the `ssh` they start, and sftp's `-D` is the sftp-server to run: any program but
+ * scp's and sftp's `-S program` REPLACES the `ssh` they start, and `-D` (both, wave 13) is the sftp-server to run: any program but
  * `ssh` is arbitrary code run here, and the guard cannot judge a program it has no command line for. Why this asks, or null.
  */
 export function programOptionReason(prog: string, args: readonly string[]): string | null {
   if (prog !== "scp" && prog !== "sftp") return null;
-  const programs = shortValues(args, prog === "sftp" ? "SD" : "S");
+  const programs = shortValues(args, "SD");
   const unknown = programs.find((p) => p.replace(/^.*\//, "") !== "ssh");
   return unknown === undefined
     ? null

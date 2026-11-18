@@ -10,6 +10,7 @@
  */
 
 import { cloudCliReason } from "./cloud-cli-sessions";
+import { remoteOperandReason } from "./remote-operands";
 import { remoteHopReason } from "./ssh-hops";
 
 /** The value options that stand before a subcommand and must not be read as one (`kubectl -n prod exec …`). */
@@ -229,7 +230,8 @@ export function remoteAccessReason(
   assigns: readonly string[] = [],
   isLocalHost: (host: string) => boolean = () => false,
 ): string | null {
-  const hop = remoteHopReason(prog, args, isLocalHost);
+  const hop =
+    remoteHopReason(prog, args, isLocalHost) ?? remoteOperandReason(prog, args, isLocalHost);
   if (hop !== null) return reason(hop);
   if (prog === "podman" && args[0] === "machine" && args[1] === "ssh")
     return reason("`podman machine ssh`");
