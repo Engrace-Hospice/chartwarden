@@ -28,6 +28,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type PharmacyDispatchMode,
   type VendorRoutingFulfillmentMode,
@@ -53,11 +54,9 @@ import {
 import {
   CheckboxField,
   FilterRow,
-  Modal,
   Notice,
   SelectField,
   TextField,
-  columnStyle,
   enumOptions,
   ghostButtonStyle,
   pageTitleStyle,
@@ -183,175 +182,178 @@ export function VendorRoutingAdmin(): JSX.Element {
   })).filter((g) => g.rows.length > 0 || scopeFilter === "" || scopeFilter === g.scope);
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Vendor routing</span>}
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Button
-              tone="primary"
-              type="button"
-              onClick={() => {
-                setDraft(EMPTY_DRAFT);
-                setEditing(null);
-                setCreating(true);
-                setActionError(null);
-              }}
-            >
-              New rule
-            </Button>
-            <Link to="/supplies" style={ghostButtonStyle}>
-              Back to queue
-            </Link>
-          </div>
-        }
-      />
-
-      <Notice tone="info">
-        Resolution is deterministic: the most specific matching scope wins (SKU, then Location, then
-        tenant, then platform), and inside a scope the lowest priority number wins. There is no
-        fallback list — the ladder resolves to exactly one rule, so "why this vendor" has exactly
-        one answer.
-      </Notice>
-
-      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
-
-      <FilterRow>
-        <SelectField
-          label="Scope"
-          value={scopeFilter}
-          options={[{ value: "", label: "all scopes" }, ...enumOptions(ROUTING_SCOPES)]}
-          onChange={setScopeFilter}
-        />
-        <CheckboxField
-          label="Include retired rules"
-          checked={includeRetired}
-          onChange={setIncludeRetired}
-        />
-      </FilterRow>
-
-      {byScope.map(({ scope, rows }) => (
-        <Panel
-          stack
-          headingLevel={3}
-          key={scope}
-          title={`${humanize(scope)} scope`}
-          action={
-            scope === "platform" ? <StatusPill label="Read-only" tone="neutral" /> : undefined
+    <div className={`wx-list-drawer${creating || editing ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main wx-kit-column">
+        <PageHeader
+          title={<span style={pageTitleStyle}>Vendor routing</span>}
+          actions={
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              <Button
+                tone="primary"
+                type="button"
+                onClick={() => {
+                  setDraft(EMPTY_DRAFT);
+                  setEditing(null);
+                  setCreating(true);
+                  setActionError(null);
+                }}
+              >
+                New rule
+              </Button>
+              <Link to="/supplies" style={ghostButtonStyle}>
+                Back to queue
+              </Link>
+            </div>
           }
-        >
-          {scope === "platform" ? (
-            <span className="wx-text-muted">
-              Platform rules are the floor every tenant reads and none may write. A tenant cannot
-              author one: the request schema omits the scope and the database write policy would
-              refuse it anyway.
-            </span>
-          ) : null}
-          {rows.length === 0 ? (
-            <span className="wx-text-muted">
-              {scope === "tenant"
-                ? "No tenant default is configured. Boot validation refuses a tenant with no tenant-scope rule — a request with nothing to resolve against cannot be routed."
-                : "No rule at this scope."}
-            </span>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Rule</th>
-                  <th>Target</th>
-                  <th>SKU pattern</th>
-                  <th>Vendor</th>
-                  <th>Fulfillment</th>
-                  <th style={thNum}>Priority</th>
-                  <th>Effective</th>
-                  <th>State</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.ruleId}>
-                    <td className="wx-data-md">{shortId(r.ruleId)}</td>
-                    <td className="wx-data-md">{shortId(r.scopeId)}</td>
-                    <td>{r.skuClassPattern ?? "any"}</td>
-                    <td className="wx-data-md">
-                      {r.assignedVendorId ? shortId(r.assignedVendorId) : "internal hub"}
-                    </td>
-                    <td>
-                      {humanize(r.assignedFulfillmentMode)}
-                      {r.defaultPharmacyDispatchMode ? (
-                        <div className="wx-text-muted">
-                          {humanize(r.defaultPharmacyDispatchMode)}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {r.precedencePriority}
-                    </td>
-                    <td>
-                      {shortDate(r.effectiveFrom)}
-                      {r.effectiveTo ? ` → ${shortDate(r.effectiveTo)}` : ""}
-                    </td>
-                    <td>
-                      <StatusPill
-                        label={r.isActive ? "Active" : "Retired"}
-                        tone={r.isActive ? "success" : "neutral"}
-                      />
-                    </td>
-                    <td>
-                      {r.isPlatform ? (
-                        <span className="wx-text-muted">platform</span>
-                      ) : (
-                        <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-                          <Button
-                            tone="secondary"
-                            type="button"
-                            onClick={() => {
-                              setEditing(r);
-                              setCreating(false);
-                              setActionError(null);
-                              setDraft({
-                                scopeKind: r.scopeKind,
-                                scopeId: r.scopeId ?? "",
-                                skuClassPattern: r.skuClassPattern ?? "",
-                                assignedVendorId: r.assignedVendorId ?? "",
-                                assignedFulfillmentMode: r.assignedFulfillmentMode,
-                                defaultPharmacyDispatchMode: r.defaultPharmacyDispatchMode ?? "",
-                                precedencePriority: String(r.precedencePriority),
-                              });
-                            }}
-                          >
-                            Edit
-                          </Button>
-                          {r.isActive ? (
+        />
+
+        <Notice tone="info">
+          Resolution is deterministic: the most specific matching scope wins (SKU, then Location,
+          then tenant, then platform), and inside a scope the lowest priority number wins. There is
+          no fallback list — the ladder resolves to exactly one rule, so "why this vendor" has
+          exactly one answer.
+        </Notice>
+
+        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
+
+        <FilterRow>
+          <SelectField
+            label="Scope"
+            value={scopeFilter}
+            options={[{ value: "", label: "all scopes" }, ...enumOptions(ROUTING_SCOPES)]}
+            onChange={setScopeFilter}
+          />
+          <CheckboxField
+            label="Include retired rules"
+            checked={includeRetired}
+            onChange={setIncludeRetired}
+          />
+        </FilterRow>
+
+        {byScope.map(({ scope, rows }) => (
+          <Panel
+            stack
+            headingLevel={3}
+            key={scope}
+            title={`${humanize(scope)} scope`}
+            action={
+              scope === "platform" ? <StatusPill label="Read-only" tone="neutral" /> : undefined
+            }
+          >
+            {scope === "platform" ? (
+              <span className="wx-text-muted">
+                Platform rules are the floor every tenant reads and none may write. A tenant cannot
+                author one: the request schema omits the scope and the database write policy would
+                refuse it anyway.
+              </span>
+            ) : null}
+            {rows.length === 0 ? (
+              <span className="wx-text-muted">
+                {scope === "tenant"
+                  ? "No tenant default is configured. Boot validation refuses a tenant with no tenant-scope rule — a request with nothing to resolve against cannot be routed."
+                  : "No rule at this scope."}
+              </span>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rule</th>
+                    <th>Target</th>
+                    <th>SKU pattern</th>
+                    <th>Vendor</th>
+                    <th>Fulfillment</th>
+                    <th style={thNum}>Priority</th>
+                    <th>Effective</th>
+                    <th>State</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.ruleId}>
+                      <td className="wx-data-md">{shortId(r.ruleId)}</td>
+                      <td className="wx-data-md">{shortId(r.scopeId)}</td>
+                      <td>{r.skuClassPattern ?? "any"}</td>
+                      <td className="wx-data-md">
+                        {r.assignedVendorId ? shortId(r.assignedVendorId) : "internal hub"}
+                      </td>
+                      <td>
+                        {humanize(r.assignedFulfillmentMode)}
+                        {r.defaultPharmacyDispatchMode ? (
+                          <div className="wx-text-muted">
+                            {humanize(r.defaultPharmacyDispatchMode)}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {r.precedencePriority}
+                      </td>
+                      <td>
+                        {shortDate(r.effectiveFrom)}
+                        {r.effectiveTo ? ` → ${shortDate(r.effectiveTo)}` : ""}
+                      </td>
+                      <td>
+                        <StatusPill
+                          label={r.isActive ? "Active" : "Retired"}
+                          tone={r.isActive ? "success" : "neutral"}
+                        />
+                      </td>
+                      <td>
+                        {r.isPlatform ? (
+                          <span className="wx-text-muted">platform</span>
+                        ) : (
+                          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
                             <Button
                               tone="secondary"
                               type="button"
-                              disabled={busy}
-                              onClick={() => void retire(r)}
+                              onClick={() => {
+                                setEditing(r);
+                                setCreating(false);
+                                setActionError(null);
+                                setDraft({
+                                  scopeKind: r.scopeKind,
+                                  scopeId: r.scopeId ?? "",
+                                  skuClassPattern: r.skuClassPattern ?? "",
+                                  assignedVendorId: r.assignedVendorId ?? "",
+                                  assignedFulfillmentMode: r.assignedFulfillmentMode,
+                                  defaultPharmacyDispatchMode: r.defaultPharmacyDispatchMode ?? "",
+                                  precedencePriority: String(r.precedencePriority),
+                                });
+                              }}
                             >
-                              Retire
+                              Edit
                             </Button>
-                          ) : null}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Panel>
-      ))}
+                            {r.isActive ? (
+                              <Button
+                                tone="secondary"
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void retire(r)}
+                              >
+                                Retire
+                              </Button>
+                            ) : null}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+        ))}
+      </div>
 
       {creating || editing ? (
-        <Modal
+        <FormDrawer
           title={editing ? "Edit routing rule" : "New routing rule"}
+          busy={busy}
           onClose={() => {
             setCreating(false);
             setEditing(null);
           }}
-          footer={
+          save={
             <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
               Save rule
             </Button>
@@ -411,7 +413,7 @@ export function VendorRoutingAdmin(): JSX.Element {
             onChange={(v) => setDraft({ ...draft, precedencePriority: v })}
             type="number"
           />
-        </Modal>
+        </FormDrawer>
       ) : null}
     </div>
   );
