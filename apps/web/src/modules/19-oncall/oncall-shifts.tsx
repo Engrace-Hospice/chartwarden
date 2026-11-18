@@ -382,7 +382,7 @@ export function OnCallShiftsScreen(): JSX.Element {
             </div>
           ) : (
             <div style={tableWrapStyle}>
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr style={headerRowStyle}>
                     <th style={{ ...thStyle, width: "12%" }}>Shift</th>

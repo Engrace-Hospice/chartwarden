@@ -23,7 +23,6 @@ import {
   StatusPill,
   WorkQueueLayout,
   isoToLocalInput,
-  t,
   useApiClient,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
@@ -54,18 +53,12 @@ import {
   SelectField,
   TextAreaField,
   TextField,
-  alertStyle,
   disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./oncall-ui";
 
@@ -202,16 +195,16 @@ export function PaperReentryWorklistScreen(): JSX.Element {
                 />
               </div>
             ) : (
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr style={tableHeadRowStyle}>
-                    <th style={th}>Window</th>
-                    <th style={th}>Provider entity</th>
-                    <th style={th}>Shift</th>
-                    <th style={th}>Assigned to</th>
+                    <th>Window</th>
+                    <th>Provider entity</th>
+                    <th>Shift</th>
+                    <th>Assigned to</th>
                     <th style={thNum}>Expires in</th>
-                    <th style={th}>Re-entered</th>
-                    <th style={th}>Action</th>
+                    <th>Re-entered</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -219,17 +212,13 @@ export function PaperReentryWorklistScreen(): JSX.Element {
                     const remaining = minutesUntil(r.expiresAt);
                     const done = r.reenteredAt !== null;
                     return (
-                      <tr key={r.id} style={rowLine}>
-                        <td style={td}>
+                      <tr key={r.id}>
+                        <td>
                           {dateTime(r.shiftStartsAt)} → {dateTime(r.shiftEndsAt)}
                         </td>
-                        <td style={{ ...td, fontFamily: t.fontMono }}>
-                          {shortId(r.providerEntityId)}
-                        </td>
-                        <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.shiftId)}</td>
-                        <td style={{ ...td, fontFamily: t.fontMono }}>
-                          {shortId(r.assignedToMembershipId)}
-                        </td>
+                        <td className="wx-data-md">{shortId(r.providerEntityId)}</td>
+                        <td className="wx-data-md">{shortId(r.shiftId)}</td>
+                        <td className="wx-data-md">{shortId(r.assignedToMembershipId)}</td>
                         <td style={tdNum}>
                           {remaining > 0 ? (
                             durationLabel(remaining)
@@ -237,7 +226,7 @@ export function PaperReentryWorklistScreen(): JSX.Element {
                             <StatusPill label="Lapsed" tone="error" />
                           )}
                         </td>
-                        <td style={td}>
+                        <td>
                           {done ? (
                             r.linkedTriageCallId ? (
                               <Link to={`/triage/calls/${r.linkedTriageCallId}`} style={linkStyle}>
@@ -250,11 +239,11 @@ export function PaperReentryWorklistScreen(): JSX.Element {
                             "—"
                           )}
                         </td>
-                        <td style={td}>
+                        <td>
                           {done ? (
-                            <span style={mutedStyle}>filed</span>
+                            <span className="wx-text-muted">filed</span>
                           ) : remaining <= 0 ? (
-                            <span style={mutedStyle}>window closed</span>
+                            <span className="wx-text-muted">window closed</span>
                           ) : (
                             <button
                               type="button"
@@ -339,7 +328,7 @@ export function PaperReentryWorklistScreen(): JSX.Element {
             onChange={(id) => setAdmissionId(id)}
           />
           {!anchorValid ? (
-            <p style={alertStyle}>Patient and admission travel together or not at all.</p>
+            <p className="wx-text-error">Patient and admission travel together or not at all.</p>
           ) : null}
           <TextAreaField
             label="Chief complaint as recorded on paper"
@@ -347,7 +336,7 @@ export function PaperReentryWorklistScreen(): JSX.Element {
             onChange={setChiefComplaint}
             rows={3}
           />
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             The call is filed with a paper origin flag and both times: the original instant and the
             moment it was typed in. A reviewer sees both, which is the point — the record does not
             pretend the call was entered live.

@@ -29,7 +29,6 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
-  t,
   useApiClient,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
@@ -54,24 +53,14 @@ import {
 } from "./oncall-status";
 import {
   CheckboxField,
-  CountGrid,
-  FilterRow,
   Modal,
   Notice,
   SelectField,
   TextField,
-  alertStyle,
-  columnStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
-  pageTitleStyle,
   primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./oncall-ui";
 
@@ -271,39 +260,39 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
                 />
               </div>
             ) : (
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr style={tableHeadRowStyle}>
-                    <th style={th}>Chief complaint</th>
-                    <th style={th}>Key</th>
-                    <th style={th}>SNOMED</th>
-                    <th style={th}>Discipline</th>
-                    <th style={th}>Layer</th>
-                    <th style={th}>Mandatory escalation</th>
+                    <th>Chief complaint</th>
+                    <th>Key</th>
+                    <th>SNOMED</th>
+                    <th>Discipline</th>
+                    <th>Layer</th>
+                    <th>Mandatory escalation</th>
                     <th style={thNum}>Questions</th>
-                    <th style={th}>Version</th>
-                    <th style={th}>Effective</th>
+                    <th>Version</th>
+                    <th>Effective</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sorted.map((p) => (
-                    <tr key={p.id} style={rowLine}>
-                      <td style={td}>
+                    <tr key={p.id}>
+                      <td>
                         <Link to={`/triage/protocols/${p.id}`} style={linkStyle}>
                           {p.chiefComplaintLabel}
                         </Link>
                       </td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>{p.key}</td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>{p.snomedCode}</td>
-                      <td style={td}>{disciplineLabel(p.disciplineRequired)}</td>
-                      <td style={td}>
+                      <td className="wx-data-md">{p.key}</td>
+                      <td className="wx-data-md">{p.snomedCode}</td>
+                      <td>{disciplineLabel(p.disciplineRequired)}</td>
+                      <td>
                         {p.organizationId === null ? (
                           <StatusPill label="Platform floor" tone="critical" />
                         ) : (
                           <StatusPill label="Tenant" tone="progress" />
                         )}
                       </td>
-                      <td style={td}>
+                      <td>
                         {p.requiresMandatoryEscalation ? (
                           <StatusPill
                             label={
@@ -318,8 +307,8 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
                         )}
                       </td>
                       <td style={tdNum}>{p.questions.length}</td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>{p.version}</td>
-                      <td style={td}>
+                      <td className="wx-data-md">{p.version}</td>
+                      <td>
                         {shortDate(p.effectiveFrom)}
                         {p.effectiveTo ? ` → ${shortDate(p.effectiveTo)}` : ""}
                       </td>
@@ -400,7 +389,7 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
               onChange={setTier}
             />
           ) : null}
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Questions are added on the protocol's own page after it exists — including the red-flag
             predicate that decides whether an answer raises an escalation.
           </span>

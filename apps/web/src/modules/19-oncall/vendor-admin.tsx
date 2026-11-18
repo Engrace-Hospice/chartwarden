@@ -53,15 +53,9 @@ import {
   Notice,
   SelectField,
   TextField,
-  alertStyle,
   disabledButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./oncall-ui";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -215,48 +209,44 @@ export function ExternalVendorAdminScreen(): JSX.Element {
                 />
               </div>
             ) : (
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr style={tableHeadRowStyle}>
-                    <th style={th}>Vendor</th>
-                    <th style={th}>Canonical entity</th>
-                    <th style={th}>Adapter</th>
-                    <th style={th}>Adapter loaded</th>
-                    <th style={th}>BAA</th>
-                    <th style={th}>BAA expires</th>
-                    <th style={th}>RN coverage</th>
-                    <th style={th}>Minimization</th>
-                    <th style={th}>Action</th>
+                    <th>Vendor</th>
+                    <th>Canonical entity</th>
+                    <th>Adapter</th>
+                    <th>Adapter loaded</th>
+                    <th>BAA</th>
+                    <th>BAA expires</th>
+                    <th>RN coverage</th>
+                    <th>Minimization</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {bindings.map((b) => (
-                    <tr key={b.id} style={rowLine}>
-                      <td style={td}>{b.name}</td>
-                      <td style={{ ...td, fontFamily: "var(--font-mono)" }}>
-                        {shortId(b.mdmVendorId)}
-                      </td>
-                      <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{b.adapterKey}</td>
-                      <td style={td}>
+                    <tr key={b.id}>
+                      <td>{b.name}</td>
+                      <td className="wx-data-md">{shortId(b.mdmVendorId)}</td>
+                      <td className="wx-data-md">{b.adapterKey}</td>
+                      <td>
                         {b.adapterRegistered ? (
                           <StatusPill label="Loaded" tone="success" />
                         ) : (
                           <StatusPill label="Not registered" tone="error" />
                         )}
                       </td>
-                      <td style={td}>
+                      <td>
                         {b.baaInEffect ? (
                           <StatusPill label="In force" tone="success" />
                         ) : (
                           <StatusPill label="Not in force" tone="error" />
                         )}
                       </td>
-                      <td style={td}>
-                        {b.baaExpiresOn ? shortDate(b.baaExpiresOn) : "no stated expiry"}
-                      </td>
-                      <td style={td}>{b.rnCoverageAttested ? "Yes" : "No"}</td>
-                      <td style={td}>{humanize(b.minimizationProfile)}</td>
-                      <td style={td}>
+                      <td>{b.baaExpiresOn ? shortDate(b.baaExpiresOn) : "no stated expiry"}</td>
+                      <td>{b.rnCoverageAttested ? "Yes" : "No"}</td>
+                      <td>{humanize(b.minimizationProfile)}</td>
+                      <td>
                         <button
                           type="button"
                           style={busy ? disabledButtonCompactStyle : linkButtonStyle}

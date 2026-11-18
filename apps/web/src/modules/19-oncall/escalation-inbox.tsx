@@ -304,7 +304,7 @@ export function EscalationInboxScreen(): JSX.Element {
             </div>
           ) : (
             <div style={tableWrapStyle}>
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr style={headerRowStyle}>
                     <th style={{ ...thStyle, width: "18%" }}>Tier</th>

@@ -48,10 +48,8 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
   disabledButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   primaryButtonStyle,
 } from "./oncall-ui";
 
@@ -267,7 +265,7 @@ export function OnCallPolicyScreen(): JSX.Element {
                   options={ONCALL_MODELS.map((m) => ({ value: m, label: humanize(m) }))}
                   onChange={setModel}
                 />
-                <span style={mutedStyle}>
+                <span className="wx-text-muted">
                   Only the direct model ships live. Selecting hybrid or centralized on a deployment
                   where the feature flag is off is refused rather than accepted-and-ignored.
                 </span>
@@ -282,7 +280,7 @@ export function OnCallPolicyScreen(): JSX.Element {
                   hint="Edited as JSON because no per-key schema is published for this column."
                 />
                 {tiers === undefined ? (
-                  <p style={alertStyle}>
+                  <p className="wx-text-error">
                     That is not a JSON object. Fix it before saving — the server expects an object,
                     and an array or a bare value would be refused.
                   </p>
@@ -294,7 +292,9 @@ export function OnCallPolicyScreen(): JSX.Element {
                   rows={6}
                   hint="What the callback-SLA detector chases when a call is parked without an explicit target."
                 />
-                {sla === undefined ? <p style={alertStyle}>That is not a JSON object.</p> : null}
+                {sla === undefined ? (
+                  <p className="wx-text-error">That is not a JSON object.</p>
+                ) : null}
                 <TextAreaField
                   label="State overrides (JSON object)"
                   value={overridesText}
@@ -303,7 +303,7 @@ export function OnCallPolicyScreen(): JSX.Element {
                   hint="State-specific routing (mandatory-reporter rules and the like)."
                 />
                 {overrides === undefined ? (
-                  <p style={alertStyle}>That is not a JSON object.</p>
+                  <p className="wx-text-error">That is not a JSON object.</p>
                 ) : null}
               </Panel>
 
@@ -318,7 +318,7 @@ export function OnCallPolicyScreen(): JSX.Element {
                   hint="Your OWN published number. When alert delivery is degraded, this is what the status surface shows a caller."
                 />
                 {!contactValid ? (
-                  <p style={alertStyle}>
+                  <p className="wx-text-error">
                     A contact number must be E.164 (a leading + and 2–15 digits).
                   </p>
                 ) : null}
@@ -335,7 +335,7 @@ export function OnCallPolicyScreen(): JSX.Element {
                   checked={aiRisk}
                   onChange={setAiRisk}
                 />
-                <span style={mutedStyle}>
+                <span className="wx-text-muted">
                   Both are advisory: the clinician always selects the protocol, and the risk band
                   alters no disposition option.
                 </span>

@@ -25,10 +25,8 @@ import {
   Field,
   Notice,
   SummaryGrid,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
 } from "./oncall-ui";
 
@@ -87,7 +85,7 @@ export function TriageTranscriptScreen(): JSX.Element {
 
       {!transcript ? (
         <Panel stack headingLevel={3} title="Decrypt">
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             The caller's own words and the call transcript are stored encrypted under the per-tenant
             key envelope. Nothing is decrypted until you ask.
           </span>
@@ -102,7 +100,7 @@ export function TriageTranscriptScreen(): JSX.Element {
               {busy ? "Decrypting…" : "Decrypt the transcript"}
             </Button>
           </div>
-          {error ? <p style={alertStyle}>{error}</p> : null}
+          {error ? <p className="wx-text-error">{error}</p> : null}
         </Panel>
       ) : (
         <>
@@ -117,7 +115,7 @@ export function TriageTranscriptScreen(): JSX.Element {
             {transcript.callerQuote ? (
               <p style={verbatimStyle}>{transcript.callerQuote}</p>
             ) : (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 No caller quote was captured on this call. That is an absence of a recording, not a
                 redaction — this route returns the plaintext or nothing.
               </span>
@@ -128,7 +126,7 @@ export function TriageTranscriptScreen(): JSX.Element {
             {transcript.transcript ? (
               <p style={verbatimStyle}>{transcript.transcript}</p>
             ) : (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 This call carries no transcript. Phase 1 captures no call AUDIO at all (D14) — there
                 is no storage and no transcription pipeline anywhere in M19 — so a transcript exists
                 only where one was typed.

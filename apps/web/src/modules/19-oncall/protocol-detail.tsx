@@ -59,16 +59,10 @@ import {
   SelectField,
   SummaryGrid,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./oncall-ui";
 
@@ -265,43 +259,41 @@ export function TriageProtocolDetailScreen(): JSX.Element {
 
       <Panel stack headingLevel={3} title="Questions">
         {questions.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             This protocol has no questions. A protocol with no questions can be pinned to a call but
             has no walk — add at least one before it is used at 2 a.m.
           </span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
                 <th style={thNum}>#</th>
-                <th style={th}>Prompt</th>
-                <th style={th}>Answer type</th>
-                <th style={th}>Required</th>
-                <th style={th}>Red flag</th>
-                <th style={th}>Predicate</th>
-                <th style={th}>Locked</th>
-                <th style={th}>Action</th>
+                <th>Prompt</th>
+                <th>Answer type</th>
+                <th>Required</th>
+                <th>Red flag</th>
+                <th>Predicate</th>
+                <th>Locked</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {questions.map((q) => (
-                <tr key={q.id} style={rowLine}>
+                <tr key={q.id}>
                   <td style={tdNum}>{q.questionOrder}</td>
-                  <td style={td}>{q.prompt}</td>
-                  <td style={td}>{humanize(q.answerType)}</td>
-                  <td style={td}>{q.required ? "Yes" : "No"}</td>
-                  <td style={td}>
+                  <td>{q.prompt}</td>
+                  <td>{humanize(q.answerType)}</td>
+                  <td>{q.required ? "Yes" : "No"}</td>
+                  <td>
                     {q.isRedFlagQuestion ? <StatusPill label="Red flag" tone="error" /> : "—"}
                   </td>
-                  <td style={td}>
-                    {q.isRedFlagQuestion ? redFlagMatchLabel(q.redFlagMatch) : "—"}
-                  </td>
-                  <td style={td}>
+                  <td>{q.isRedFlagQuestion ? redFlagMatchLabel(q.redFlagMatch) : "—"}</td>
+                  <td>
                     {q.isSystemLocked ? <StatusPill label="System locked" tone="critical" /> : "—"}
                   </td>
-                  <td style={td}>
+                  <td>
                     {q.isSystemLocked || isPlatform ? (
-                      <span style={mutedStyle}>not editable</span>
+                      <span className="wx-text-muted">not editable</span>
                     ) : (
                       <Button
                         tone="secondary"
@@ -324,7 +316,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
             </tbody>
           </table>
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           A question's order, prompt, answer type and predicate are set when it is added. The one
           in-place toggle offered here is required/optional, because it is the only edit that cannot
           change what a red-flag predicate is evaluated against — changing the answer type of an
@@ -332,7 +324,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
         </span>
       </Panel>
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       {editingHeader ? (
         <Modal
@@ -482,7 +474,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                   onChange={setArmValues}
                 />
               ) : null}
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 Only the predicate arms this answer type can carry are offered — a predicate
                 evaluated against a column the question does not write would never fire, which is
                 the one way a red-flag question can fail silently.

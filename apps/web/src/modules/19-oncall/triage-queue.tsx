@@ -295,7 +295,7 @@ export function TriageQueueScreen(): JSX.Element {
           </div>
         ) : (
           <div style={tableWrapStyle}>
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr style={headerRowStyle}>
                   <th style={{ ...thStyle, width: "13%" }}>Call</th>

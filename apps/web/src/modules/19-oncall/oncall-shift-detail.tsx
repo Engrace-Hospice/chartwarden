@@ -56,10 +56,8 @@ import {
   SummaryGrid,
   TextAreaField,
   Timeline,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
 } from "./oncall-ui";
 
@@ -255,14 +253,14 @@ export function OnCallShiftDetailScreen(): JSX.Element {
             Cancel the shift
           </Button>
         </div>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Going on shift adds this clinician to the on-call messaging channel and makes them the
           recipient the after-hours safety path resolves. Coming off removes them — messages sent
           during their tenure stay attributed to them.
         </span>
       </Panel>
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       {cancelling ? (
         <Modal

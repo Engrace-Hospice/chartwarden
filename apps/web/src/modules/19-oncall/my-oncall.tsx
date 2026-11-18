@@ -27,7 +27,6 @@ import {
   Panel,
   StatusPill,
   WorkQueueLayout,
-  t,
   useApiClient,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
@@ -53,20 +52,12 @@ import {
 } from "./oncall-status";
 import {
   CallStatePill,
-  CountGrid,
   Field,
   Notice,
   SummaryGrid,
-  columnStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
-  pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./oncall-ui";
 
@@ -223,12 +214,12 @@ export function MyOnCallScreen(): JSX.Element {
                 />
               </SummaryGrid>
             ) : (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 No active or upcoming shift is on the roster in this window. The roster read is
                 scoped by the server; a shift belonging to a colleague is simply absent.
               </span>
             )}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               The roster shows what is scheduled for your scope, not "assigned to me" — M19
               publishes no per-membership roster filter, and a triage call has no assignee at all:
               the covering shift is the assignment.
@@ -237,31 +228,31 @@ export function MyOnCallScreen(): JSX.Element {
 
           <Panel stack headingLevel={3} title="Open now">
             {board.length === 0 ? (
-              <span style={mutedStyle}>Nothing is open. A quiet night.</span>
+              <span className="wx-text-muted">Nothing is open. A quiet night.</span>
             ) : (
               <div style={{ width: "100%", overflowX: "auto" }}>
-                <table style={tableStyle}>
+                <table>
                   <thead>
                     <tr style={tableHeadRowStyle}>
-                      <th style={th}>Call</th>
-                      <th style={th}>State</th>
-                      <th style={th}>Protocol</th>
+                      <th>Call</th>
+                      <th>State</th>
+                      <th>Protocol</th>
                       <th style={thNum}>Escalations</th>
                       <th style={thNum}>Open</th>
                     </tr>
                   </thead>
                   <tbody>
                     {board.map((c) => (
-                      <tr key={c.id} style={rowLine}>
-                        <td style={td}>
+                      <tr key={c.id}>
+                        <td>
                           <Link to={`/triage/calls/${c.id}`} style={linkStyle}>
                             {shortId(c.id)}
                           </Link>
                         </td>
-                        <td style={td}>
+                        <td>
                           <CallStatePill state={c.state} />
                         </td>
-                        <td style={td}>{c.protocolLabel ?? "—"}</td>
+                        <td>{c.protocolLabel ?? "—"}</td>
                         <td style={tdNum}>{c.openEscalationCount}</td>
                         <td style={tdNum}>{durationLabel(minutesSince(c.openedAt))}</td>
                       </tr>
@@ -273,7 +264,7 @@ export function MyOnCallScreen(): JSX.Element {
           </Panel>
 
           <Panel stack headingLevel={3} title="Working a call away from a desk">
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               The triage panel is <strong>online-only</strong>. If connectivity drops mid-call,
               finish on paper and re-enter it when service is restored — no partial triage state is
               kept on the device, because a disposition gate that can be reconstructed offline is
