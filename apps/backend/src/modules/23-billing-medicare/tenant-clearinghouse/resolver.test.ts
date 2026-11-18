@@ -193,8 +193,8 @@ describe("per-organization clearinghouse binding", () => {
 
   it("binds each org's transport to that org: a call naming another org is refused before the vendor", async () => {
     const { runtime, put } = await setup();
-    await put(ORG_A, { vendor: "claimmd", mode: "test", secret: KEY });
-    await put(ORG_B, { vendor: "claimmd", mode: "test", secret: KEY });
+    await put(ORG_A, { vendor: "stedi", mode: "test", secret: KEY });
+    await put(ORG_B, { vendor: "stedi", mode: "test", secret: KEY });
     const a = await runtime.binding.forOrg?.(ORG_A);
     const ctxFor = (organizationId: string) => ({
       organizationId,

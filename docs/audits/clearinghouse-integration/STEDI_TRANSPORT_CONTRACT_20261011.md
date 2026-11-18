@@ -95,3 +95,9 @@ The real CMS payer record shows eligibility `ENROLLMENT_REQUIRED`. HETS specific
 | `fetchClaimStatus` | 276/277 status inquiry **U** (vendor-unverified). Implemented in code (#820) from the remembered JSON shape, taking the subscriber/provider/service dates from the new optional `inquiry` argument (`CH_INVALID_REQUEST` without one). Path, field names and category-code mapping are NOT sandbox-observed. Never a `not_found` state, which could drive a duplicate resubmission; `latest` is always null |
 | `verifyAndParseEvent` | Standard Webhooks verification, then a reference only |
 | `checkEligibility` | eligibility-check endpoint (later PR) |
+
+### Implementation and qualification status (2026-11-18)
+
+The table above describes the desired/vendor contract. It is not an implementation claim. Current Stedi code implements `submitClaim`, `submitNotice`, and a vendor-unverified `fetchClaimStatus`; `validateOnly`, `fetchAcknowledgments`, `fetchRemittances`, `verifyAndParseEvent`, and Stedi `checkEligibility` return `CH_NOT_WIRED`. M23 sends claims through Stedi JSON when the production mapper is available; notices remain raw X12. See `stedi-transport.ts` and M23 `jobs/clearinghouse-submission.ts` for runtime behavior.
+
+The hardened #727 runner records four distinct outcomes: `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`. Vendor submissions count as `PASS` only for successful responses with a non-derived vendor receipt id; account provisioning failures, credential rejection, outages, timeouts and ambiguous results are `BLOCKED`. Local refusal/replay tests are marked `evidence: local`; they do not establish vendor behavior. A passing Vitest process is not qualification unless the sanitized artifact says overall `PASS` and its process result is recorded. The test covers one synthetic 81A notice, not NOTR or payer/MAC acceptance, and retrieves no 277CA/835.
