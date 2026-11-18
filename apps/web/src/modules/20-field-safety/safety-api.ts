@@ -247,6 +247,20 @@ export function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * `client.POST/PUT/PATCH/DELETE` REJECT on a network failure instead of returning `{ error }`. A write handler runs
+ * its call through `.catch(() => null)` so that failure reaches the handler as `null` (and `saving` is reset on
+ * every path); this is the sentence for it. Nothing came back, so the write may have landed: the copy says so rather
+ * than claiming "not recorded".
+ */
+export const NO_ANSWER =
+  "No answer came back; it may not have been recorded. Check your connection, then retry.";
+
+/** The refusal to show for a write: the server's own words, or {@link NO_ANSWER} when the request threw (`null`). */
+export function writeErrorMessage(res: { error: unknown } | null, fallback: string): string {
+  return res ? errorMessage(res.error, fallback) : NO_ANSWER;
+}
+
 // ── reads ──────────────────────────────────────────────────────────────────────────────────────────────
 
 /** §4.1 row 26 — the supervisor live-awareness board. NO coordinates on this DTO (D6). */

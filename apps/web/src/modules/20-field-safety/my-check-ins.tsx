@@ -24,6 +24,7 @@ import {
   errorMessage,
   getCheckIn,
   getMyDay,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   AMENDMENT_REASON_MIN_CHARS,
@@ -99,19 +100,22 @@ export function MyCheckInsScreen(): JSX.Element {
 
   const submitAmend = useCallback(async () => {
     if (!amending) return;
+    const submittedId = amending.id;
     setSaving(true);
     setModalError(null);
-    const res = await amendCheckIn(client, amending.id, {
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
+    const res = await amendCheckIn(client, submittedId, {
       status: status as SafetyCheckInStatus,
       ...(status !== "ok" ? { concernNote: note } : {}),
       amendmentReason: reason,
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The amendment was not recorded."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The amendment was not recorded."));
       return;
     }
-    setAmending(null);
+    // Close only the form that was submitted, never another check-in's.
+    setAmending((current) => (current?.id === submittedId ? null : current));
     await load();
   }, [amending, client, load, note, reason, status]);
 
@@ -247,6 +251,7 @@ export function MyCheckInsScreen(): JSX.Element {
       detail={
         amending ? (
           <FormDrawer
+            key={amending.id}
             title="Amend this check-in"
             busy={saving}
             onClose={() => setAmending(null)}

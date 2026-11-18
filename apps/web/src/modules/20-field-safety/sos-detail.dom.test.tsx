@@ -62,13 +62,31 @@ const stream = {
   auditWarningBanner: "This read was logged with your name at warn severity.",
 };
 
-function mount(alert: SafetySosAlertView): {
+const refused = (code: string) => ({
+  data: undefined,
+  error: { error: { code } },
+  response: new Response(null, { status: 403 }),
+});
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+
+function mount(
+  alert: SafetySosAlertView,
+  opts: { post?: () => Promise<unknown>; streamRead?: () => Promise<unknown> } = {},
+): {
   get: ReturnType<typeof vi.fn>;
   post: ReturnType<typeof vi.fn>;
 } {
-  const post = vi.fn(async () => ok({}));
+  const post = vi.fn(opts.post ?? (async () => ok({})));
   const get = vi.fn(async (path: string) =>
-    path === "/api/v1/safety/sos/{sosAlertId}/location-stream" ? ok(stream) : ok(alert),
+    path === "/api/v1/safety/sos/{sosAlertId}/location-stream"
+      ? (opts.streamRead?.() ?? ok(stream))
+      : ok(alert),
   );
   const client = { GET: get, POST: post } as unknown as ApiClient;
   render(
@@ -195,5 +213,105 @@ describe("SOS detail — the ceremonies", () => {
       await screen.findByRole("complementary", { name: "Read this clinician's coordinates" }),
     ).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "Resolve this SOS" })).toBeNull();
+  });
+});
+
+describe("SOS detail — a write in flight and a write that fails", () => {
+  const record = (drawer: HTMLElement): void => {
+    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+      target: { value: ACTION },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+  };
+  const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
+
+  it("makes the page inert while the acknowledgment is in flight, then live again", async () => {
+    const write = deferred<unknown>();
+    mount(alertIn("escalation_tier_1", false), { post: () => write.promise });
+    const drawer = await open("Acknowledge", "Acknowledge this SOS");
+    record(drawer);
+    const reload = screen.getByRole("button", { name: "Reload" });
+    const reveal = screen.getByRole("button", { name: "Request coordinate access" });
+    await waitFor(() => expect(isInert(reload)).toBe(true));
+    expect(isInert(reveal)).toBe(true);
+    expect(isInert(screen.getByRole("link", { name: "Back to active SOS" }))).toBe(true);
+    expect(isInert(drawer)).toBe(false);
+    write.resolve(ok({}));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Acknowledge this SOS" })).toBeNull(),
+    );
+    expect(isInert(await screen.findByRole("button", { name: "Reload" }))).toBe(false);
+  });
+
+  it("leaves another ceremony open when an earlier write lands", async () => {
+    const write = deferred<unknown>();
+    const { get } = mount(alertIn("escalation_tier_1", false), { post: () => write.promise });
+    record(await open("Acknowledge", "Acknowledge this SOS"));
+    // A browser blocks this click (the page is inert); jsdom delivers it, so the guard is what is tested.
+    fireEvent.click(screen.getByRole("button", { name: "Request coordinate access" }));
+    await screen.findByRole("complementary", { name: "Read this clinician's coordinates" });
+    const readsBefore = get.mock.calls.length;
+    write.resolve(ok({}));
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
+    expect(
+      await screen.findByRole("complementary", { name: "Read this clinician's coordinates" }),
+    ).toBeTruthy();
+  });
+
+  it("recovers when the acknowledgment request is rejected by the network", async () => {
+    mount(alertIn("escalation_tier_1", false), {
+      post: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await open("Acknowledge", "Acknowledge this SOS");
+    record(drawer);
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert.textContent).toContain("No answer came back");
+    expect(
+      (within(drawer).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(isInert(screen.getByRole("button", { name: "Reload" }))).toBe(false);
+  });
+
+  it("recovers when the coordinate read is rejected by the network", async () => {
+    mount(alertIn("escalation_tier_1", false), {
+      streamRead: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
+    fireEvent.click(
+      within(drawer).getByRole("button", { name: "I understand — show the coordinates" }),
+    );
+    expect(await within(drawer).findByText(/No answer came back, so no coordinates/)).toBeTruthy();
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("announces a refused coordinate read once, in the drawer while it is open", async () => {
+    mount(alertIn("escalation_tier_1", false), {
+      streamRead: async () => refused("FORBIDDEN"),
+    });
+    const drawer = await open("Request coordinate access", "Read this clinician's coordinates");
+    fireEvent.click(
+      within(drawer).getByRole("button", { name: "I understand — show the coordinates" }),
+    );
+    const refusal = "You do not hold the authority this action requires for this record.";
+    await within(drawer).findByText(refusal);
+    expect(screen.getAllByText(refusal)).toHaveLength(1);
+    // Once the drawer is dismissed the Location-stream panel carries it, still once.
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "Read this clinician's coordinates" }),
+      ).toBeNull(),
+    );
+    expect(screen.getAllByText(refusal)).toHaveLength(1);
   });
 });

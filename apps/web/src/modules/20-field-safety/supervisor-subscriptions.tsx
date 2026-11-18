@@ -30,6 +30,7 @@ import {
   deleteSubscription,
   errorMessage,
   listSubscriptions,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   ALERT_KINDS,
@@ -107,6 +108,7 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
   const add = useCallback(async () => {
     setSaving(true);
     setModalError(null);
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
     const res = await createSubscription(client, {
       supervisorMembershipId: supervisor.trim(),
       scopeKind: scopeKind as SafetySubscriptionScopeKind,
@@ -123,10 +125,10 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
       ...(forwarding && forwardTo.trim()
         ? { vacationForwardToMembershipId: forwardTo.trim() }
         : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The subscription was not created."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The subscription was not created."));
       return;
     }
     setAdding(false);

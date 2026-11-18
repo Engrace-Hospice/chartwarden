@@ -22,6 +22,7 @@ import {
   getConsents,
   grantConsent,
   revokeConsent,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   CONSENT_PURPOSES,
@@ -79,18 +80,19 @@ export function MyConsentScreen(): JSX.Element {
 
   const doGrant = useCallback(async () => {
     if (!granting) return;
-    setSaving(true);
+    const purpose = granting;
+    const text = CONSENT_TEXT[purpose];
     setModalError(null);
-    const text = CONSENT_TEXT[granting];
     if (!text) {
-      setSaving(false);
       setModalError("No consent wording is defined for that purpose, so nothing was sent.");
       return;
     }
+    setSaving(true);
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
     const res = await grantConsent(client, {
-      purpose: granting as NonNullable<SafetyConsentPurpose>,
+      purpose: purpose as NonNullable<SafetyConsentPurpose>,
       acknowledgmentTextSnapshot: text,
-      ...(granting === "emergency_contact_call"
+      ...(purpose === "emergency_contact_call"
         ? {
             contact: {
               name: contactName.trim(),
@@ -99,13 +101,14 @@ export function MyConsentScreen(): JSX.Element {
             },
           }
         : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "Your consent was not recorded."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "Your consent was not recorded."));
       return;
     }
-    setGranting(null);
+    // Close only the form that was submitted, never another purpose's.
+    setGranting((current) => (current === purpose ? null : current));
     setContactName("");
     setContactPhone("");
     setContactRelationship("");
@@ -114,18 +117,19 @@ export function MyConsentScreen(): JSX.Element {
 
   const doRevoke = useCallback(async () => {
     if (!revoking) return;
+    const purpose = revoking;
     setSaving(true);
     setModalError(null);
     const res = await revokeConsent(client, {
-      purpose: revoking as NonNullable<SafetyConsentPurpose>,
+      purpose: purpose as NonNullable<SafetyConsentPurpose>,
       ...(revokeReason.trim() ? { reason: revokeReason.trim() } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "Your withdrawal was not recorded."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "Your withdrawal was not recorded."));
       return;
     }
-    setRevoking(null);
+    setRevoking((current) => (current === purpose ? null : current));
     setRevokeReason("");
     await load();
   }, [client, load, revokeReason, revoking]);
@@ -253,6 +257,7 @@ export function MyConsentScreen(): JSX.Element {
       detail={
         granting ? (
           <FormDrawer
+            key={`grant:${granting}`}
             title={consentPurposeLabel(granting)}
             busy={saving}
             onClose={() => setGranting(null)}
@@ -301,6 +306,7 @@ export function MyConsentScreen(): JSX.Element {
           </FormDrawer>
         ) : revoking ? (
           <FormDrawer
+            key={`revoke:${revoking}`}
             title={`Withdraw: ${consentPurposeLabel(revoking)}`}
             busy={saving}
             onClose={() => setRevoking(null)}

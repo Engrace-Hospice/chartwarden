@@ -42,14 +42,28 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(): { post: ReturnType<typeof vi.fn> } {
-  const post = vi.fn(async () => ok({}));
-  const client = {
-    GET: vi.fn(async (path: string) =>
-      path === "/api/v1/safety/sos/active" ? ok(board) : ok({ version: 3 }),
-    ),
-    POST: post,
-  } as unknown as ApiClient;
+const refused = (code: string) => ({
+  data: undefined,
+  error: { error: { code } },
+  response: new Response(null, { status: 409 }),
+});
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+
+function mount(opts: { post?: () => Promise<unknown>; alertRead?: () => Promise<unknown> } = {}): {
+  post: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+} {
+  const post = vi.fn(opts.post ?? (async () => ok({})));
+  const get = vi.fn(async (path: string) =>
+    path === "/api/v1/safety/sos/active" ? ok(board) : (opts.alertRead?.() ?? ok({ version: 3 })),
+  );
+  const client = { GET: get, POST: post } as unknown as ApiClient;
   render(
     <MemoryRouter>
       <ApiClientProvider client={client}>
@@ -57,15 +71,25 @@ function mount(): { post: ReturnType<typeof vi.fn> } {
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { post };
+  return { post, get };
 }
 
 const ACTION = "Reached the daughter on the number we hold and asked her to stay with the nurse.";
+const rowButton = async (name: string): Promise<HTMLElement> =>
+  within((await screen.findByText(name)).closest("tr") as HTMLElement).getByRole("button", {
+    name: "Acknowledge",
+  });
 const ackOf = async (name: string): Promise<HTMLElement> => {
-  const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
-  fireEvent.click(within(row).getByRole("button", { name: "Acknowledge" }));
+  fireEvent.click(await rowButton(name));
   return screen.findByRole("complementary", { name: `Acknowledge ${name}'s SOS` });
 };
+const record = (drawer: HTMLElement): void => {
+  fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+    target: { value: ACTION },
+  });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+};
+const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
 
 describe("active SOS board — acknowledge an alert", () => {
   it("opens the form as a drawer beside the board, not a dialog over it", async () => {
@@ -135,5 +159,90 @@ describe("active SOS board — acknowledge an alert", () => {
       "",
     );
     expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull();
+  });
+
+  it("makes the board inert while the acknowledgment is in flight, then live again", async () => {
+    const write = deferred<unknown>();
+    mount({ post: () => write.promise });
+    const drawer = await ackOf("Maya");
+    const noor = await rowButton("Noor");
+    record(drawer);
+    await waitFor(() => expect(isInert(noor)).toBe(true));
+    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(true);
+    expect(isInert(screen.getByRole("link", { name: "Safety board" }))).toBe(true);
+    expect(isInert(drawer)).toBe(false);
+    write.resolve(ok({}));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+    );
+    expect(isInert(noor)).toBe(false);
+  });
+
+  it("leaves another alert's form open when an earlier acknowledgment lands", async () => {
+    const write = deferred<unknown>();
+    const { get } = mount({ post: () => write.promise });
+    const first = await ackOf("Maya");
+    record(first);
+    // A browser blocks this click (the board is inert); jsdom delivers it, so the same-alert guard is what is tested.
+    const second = await ackOf("Noor");
+    const readsBefore = get.mock.calls.length;
+    write.resolve(ok({}));
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
+    expect(screen.getByRole("complementary", { name: "Acknowledge Noor's SOS" })).toBe(second);
+  });
+
+  it("names the alert when the server refuses the acknowledgment, and keeps the form for a retry", async () => {
+    mount({ post: async () => refused("CONFLICT") });
+    const drawer = await ackOf("Maya");
+    record(drawer);
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert.textContent).toContain("The acknowledgment for Maya was not recorded.");
+    expect(alert.textContent).toContain("This record changed while you were working on it");
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("recovers when the acknowledgment request is rejected by the network", async () => {
+    mount({
+      post: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await ackOf("Maya");
+    record(drawer);
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert.textContent).toContain("The acknowledgment for Maya was not confirmed.");
+    expect(alert.textContent).toContain("No answer came back");
+    // Not stuck: the drawer can be retried or dismissed and the board is live again.
+    expect(
+      (within(drawer).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(false);
+  });
+
+  it("announces a failed open on a ready board instead of doing nothing", async () => {
+    mount({ alertRead: async () => ({ data: undefined, error: { message: "boom" } }) });
+    fireEvent.click(await rowButton("Maya"));
+    const notice = await screen.findByText("That alert could not be opened.");
+    expect(notice.getAttribute("role")).toBe("alert");
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("does not leave Acknowledge stuck when the alert read is rejected", async () => {
+    mount({
+      alertRead: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const button = await rowButton("Maya");
+    fireEvent.click(button);
+    const notice = await screen.findByText(/no answer came back/);
+    expect(notice.getAttribute("role")).toBe("alert");
+    expect((button as HTMLButtonElement).disabled).toBe(false);
   });
 });

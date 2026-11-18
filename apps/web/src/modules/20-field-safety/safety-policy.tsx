@@ -16,7 +16,13 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { FormDrawer } from "../../shell/form-drawer";
-import { type SafetyPolicyView, errorMessage, getPolicy, patchPolicy } from "./safety-api";
+import {
+  type SafetyPolicyView,
+  errorMessage,
+  getPolicy,
+  patchPolicy,
+  writeErrorMessage,
+} from "./safety-api";
 import {
   INCIDENT_CATEGORIES,
   POLICY_EDIT_REASON_MIN_CHARS,
@@ -140,7 +146,8 @@ export function SafetyPolicyScreen(): JSX.Element {
   }, [policy]);
 
   const save = useCallback(async () => {
-    if (!policy) return;
+    // A replay shows a past version; saving from it would still write a new CURRENT version from this draft.
+    if (!policy || historical) return;
     setSaving(true);
     setModalError(null);
     const body: Record<string, unknown> = { editReason };
@@ -156,14 +163,15 @@ export function SafetyPolicyScreen(): JSX.Element {
       body.afterHoursStartHour = Math.trunc(Number(afterHoursStart));
     if (afterHoursEnd.trim() !== "") body.afterHoursEndHour = Math.trunc(Number(afterHoursEnd));
 
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
     const res = await patchPolicy(
       client,
       null,
       body as Record<string, unknown> & { editReason: string },
-    );
+    ).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The policy was not changed."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The policy was not changed."));
       return;
     }
     setEditing(false);
@@ -271,6 +279,7 @@ export function SafetyPolicyScreen(): JSX.Element {
                 onChange={(event) => setAsOf(event.target.value)}
                 aria-label="Read the policy as it stood at"
                 style={inputStyle}
+                disabled={editing}
               />
               <Button
                 size="sm"
@@ -279,13 +288,15 @@ export function SafetyPolicyScreen(): JSX.Element {
                   setHistorical(true);
                   void load(toInstant(asOf));
                 }}
-                disabled={asOf.trim() === ""}
+                // The editor's draft is of the current version: a replay under it would leave Save writing it.
+                disabled={editing || asOf.trim() === ""}
               >
                 Time-travel
               </Button>
               <Button
                 size="sm"
                 tone="tertiary"
+                disabled={editing}
                 onClick={() => {
                   setHistorical(false);
                   setAsOf("");
@@ -402,7 +413,9 @@ export function SafetyPolicyScreen(): JSX.Element {
                 size="lg"
                 type="button"
                 onClick={() => void save()}
-                disabled={saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)}
+                disabled={
+                  saving || historical || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)
+                }
               >
                 {saving ? "Saving..." : "Save new version"}
               </Button>

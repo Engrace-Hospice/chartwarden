@@ -52,17 +52,29 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(state: SafetyIncidentView["lifecycleState"]): {
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+const offline = async (): Promise<never> => {
+  throw new TypeError("Failed to fetch");
+};
+
+function mount(
+  state: SafetyIncidentView["lifecycleState"],
+  opts: { post?: () => Promise<unknown>; patch?: () => Promise<unknown> } = {},
+): {
+  get: ReturnType<typeof vi.fn>;
   patch: ReturnType<typeof vi.fn>;
   post: ReturnType<typeof vi.fn>;
 } {
-  const patch = vi.fn(async () => ok({}));
-  const post = vi.fn(async () => ok({}));
-  const client = {
-    GET: vi.fn(async () => ok(incident(state))),
-    PATCH: patch,
-    POST: post,
-  } as unknown as ApiClient;
+  const patch = vi.fn(opts.patch ?? (async () => ok({})));
+  const post = vi.fn(opts.post ?? (async () => ok({})));
+  const get = vi.fn(async () => ok(incident(state)));
+  const client = { GET: get, PATCH: patch, POST: post } as unknown as ApiClient;
   render(
     <MemoryRouter initialEntries={["/safety/incidents/inc-1"]}>
       <ApiClientProvider client={client}>
@@ -72,7 +84,7 @@ function mount(state: SafetyIncidentView["lifecycleState"]): {
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { patch, post };
+  return { get, patch, post };
 }
 
 const open = async (button: string, drawerName: string): Promise<HTMLElement> => {
@@ -193,5 +205,67 @@ describe("incident detail — the ceremonies", () => {
     expect(
       screen.queryByRole("complementary", { name: "Change this incident's state" }),
     ).toBeNull();
+  });
+});
+
+describe("incident detail — a write in flight and a write that fails", () => {
+  const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
+  const cancelOf = (drawer: HTMLElement) =>
+    within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+
+  it("makes the page inert while a submit is in flight, then live again", async () => {
+    const write = deferred<unknown>();
+    mount("draft", { post: () => write.promise });
+    const drawer = await open("Submit for review", "Submit this incident for review");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Submit" }));
+    const reload = screen.getByRole("button", { name: "Reload" });
+    await waitFor(() => expect(isInert(reload)).toBe(true));
+    expect(isInert(screen.getByRole("button", { name: "OSHA sign-off" }))).toBe(true);
+    expect(isInert(screen.getByRole("link", { name: "Back to ledger" }))).toBe(true);
+    expect(isInert(drawer)).toBe(false);
+    write.resolve(ok({}));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "Submit this incident for review" }),
+      ).toBeNull(),
+    );
+    expect(isInert(await screen.findByRole("button", { name: "Reload" }))).toBe(false);
+  });
+
+  it("leaves another ceremony open when an earlier write lands", async () => {
+    const write = deferred<unknown>();
+    const { get } = mount("draft", { post: () => write.promise });
+    const drawer = await open("Submit for review", "Submit this incident for review");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Submit" }));
+    // A browser blocks this click (the page is inert); jsdom delivers it, so the guard is what is tested.
+    fireEvent.click(screen.getByRole("button", { name: "OSHA sign-off" }));
+    await screen.findByRole("complementary", { name: "OSHA-equivalent sign-off" });
+    const readsBefore = get.mock.calls.length;
+    write.resolve(ok({}));
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
+    expect(
+      await screen.findByRole("complementary", { name: "OSHA-equivalent sign-off" }),
+    ).toBeTruthy();
+  });
+
+  it("recovers when a submit is rejected by the network", async () => {
+    mount("draft", { post: offline });
+    const drawer = await open("Submit for review", "Submit this incident for review");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Submit" }));
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert.textContent).toContain("No answer came back");
+    expect(
+      (within(drawer).getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(cancelOf(drawer).disabled).toBe(false);
+    expect(isInert(screen.getByRole("button", { name: "Reload" }))).toBe(false);
+  });
+
+  it("recovers when a draft edit is rejected by the network", async () => {
+    mount("draft", { patch: offline });
+    const drawer = await open("Edit draft", "Edit this draft");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save draft" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("No answer came back");
+    expect(cancelOf(drawer).disabled).toBe(false);
   });
 });

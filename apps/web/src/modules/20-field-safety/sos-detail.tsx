@@ -49,6 +49,7 @@ import {
   getLocationStream,
   getSosAlert,
   resolveSos,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   ACKNOWLEDGMENT_OUTCOMES,
@@ -131,6 +132,13 @@ export function SosDetailScreen(): JSX.Element {
     setModalError(null);
   }, []);
 
+  // A write's success closes only the ceremony it submitted, never whichever one is open by then.
+  const closeIfStill = useCallback((submitted: Ceremony) => {
+    setCeremony((current) => (current === submitted ? "none" : current));
+  }, []);
+
+  // Every write below runs through `.catch(() => null)`: the client REJECTS on a network failure, and `saving` must
+  // reset on every path or the drawer can never be dismissed. `null` is that failure.
   const submitAck = useCallback(async () => {
     if (!alert) return;
     setSaving(true);
@@ -139,16 +147,16 @@ export function SosDetailScreen(): JSX.Element {
       actionTaken,
       // `ackOutcome` is always one of the closed vocabulary the SelectField below offers.
       outcome: ackOutcome as SafetySosAcknowledgeOutcome,
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The acknowledgment was not recorded."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The acknowledgment was not recorded."));
       return;
     }
-    closeCeremony();
+    closeIfStill("acknowledge");
     setActionTaken("");
     await load();
-  }, [ackOutcome, actionTaken, alert, client, closeCeremony, load]);
+  }, [ackOutcome, actionTaken, alert, client, closeIfStill, load]);
 
   const submitResolve = useCallback(async () => {
     if (!alert) return;
@@ -159,18 +167,18 @@ export function SosDetailScreen(): JSX.Element {
       // `outcome` is always one of the closed vocabulary the SelectField below offers.
       outcome: outcome as SafetySosResolveOutcome,
       openIncidentFromOutcome: openIncident,
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The alert was not closed."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The alert was not closed."));
       return;
     }
-    closeCeremony();
+    closeIfStill("resolve");
     setNarrative("");
     // The write may have produced an incident; the reload is what tells us its id, so the CTA below can
     // link to a real row rather than to one this screen assumed into existence.
     await load();
-  }, [alert, client, closeCeremony, load, narrative, openIncident, outcome]);
+  }, [alert, client, closeIfStill, load, narrative, openIncident, outcome]);
 
   /** The D6 reveal. See rule 2 in the module header: the banner precedes the request, never the result. */
   const revealCoordinates = useCallback(async () => {
@@ -179,20 +187,22 @@ export function SosDetailScreen(): JSX.Element {
     setStreamError(null);
     const res = await getLocationStream(client, alert.id, {
       ...(accessReason.trim() ? { accessReason: accessReason.trim() } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error || !res.stream) {
+    if (!res || res.error || !res.stream) {
       setStreamError(
-        errorMessage(
-          res.error,
-          "The coordinate stream was refused. Nothing was decrypted and nothing was disclosed.",
-        ),
+        res
+          ? errorMessage(
+              res.error,
+              "The coordinate stream was refused. Nothing was decrypted and nothing was disclosed.",
+            )
+          : "No answer came back, so no coordinates were shown. Check your connection, then retry.",
       );
       return;
     }
     setStream(res.stream);
-    closeCeremony();
-  }, [accessReason, alert, client, closeCeremony]);
+    closeIfStill("coordinates");
+  }, [accessReason, alert, client, closeIfStill]);
 
   if (loading) return <LoadingSpinner />;
   if (!alert)
@@ -432,7 +442,8 @@ export function SosDetailScreen(): JSX.Element {
                 clinician who raised this alert can see that access on her own consent surface. Ask
                 for it only when you need it.
               </Notice>
-              {streamError ? (
+              {/* While the coordinates drawer is open it announces the refusal beside its own button. */}
+              {streamError && ceremony !== "coordinates" ? (
                 <Notice tone="error" assertive>
                   {streamError}
                 </Notice>

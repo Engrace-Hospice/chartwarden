@@ -35,16 +35,37 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(amendableUntil: string | null): { patch: ReturnType<typeof vi.fn> } {
-  const patch = vi.fn(async () => ok({}));
-  const client = {
-    GET: vi.fn(async (path: string) =>
-      path === "/api/v1/safety/check-ins/{checkInId}"
-        ? ok({ ...posted, amendableUntil })
-        : ok({ asOf: "2026-11-18T12:00:00.000Z", obligations: [], recentCheckIns: [posted] }),
-    ),
-    PATCH: patch,
-  } as unknown as ApiClient;
+const second: SafetyCheckInView = {
+  ...posted,
+  id: "22222222-2222-4222-8222-222222222222",
+  postedAt: "2026-11-17T21:00:00.000Z",
+};
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+
+function mount(
+  amendableUntil: string | null,
+  opts: { patch?: () => Promise<unknown> } = {},
+): { patch: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> } {
+  const patch = vi.fn(opts.patch ?? (async () => ok({})));
+  const get = vi.fn(async (path: string, init?: { params?: { path?: { checkInId?: string } } }) =>
+    path === "/api/v1/safety/check-ins/{checkInId}"
+      ? ok({
+          ...(init?.params?.path?.checkInId === second.id ? second : posted),
+          amendableUntil,
+        })
+      : ok({
+          asOf: "2026-11-18T12:00:00.000Z",
+          obligations: [],
+          recentCheckIns: [posted, second],
+        }),
+  );
+  const client = { GET: get, PATCH: patch } as unknown as ApiClient;
   render(
     <MemoryRouter>
       <ApiClientProvider client={client}>
@@ -52,7 +73,7 @@ function mount(amendableUntil: string | null): { patch: ReturnType<typeof vi.fn>
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { patch };
+  return { patch, get };
 }
 
 const OPEN_WINDOW = "2026-11-18T12:05:00.000Z";
@@ -61,7 +82,7 @@ const drawerNamed = (name: string) => screen.findByRole("complementary", { name 
 describe("my check-ins — amend a check-in", () => {
   it("opens the form as a drawer beside the history, not a dialog over it", async () => {
     mount(OPEN_WINDOW);
-    fireEvent.click(await screen.findByRole("button", { name: "Amend" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Amend" }))[0] as HTMLElement);
     const drawer = await drawerNamed("Amend this check-in");
     expect(within(drawer).getByLabelText("Why the correction?")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -71,7 +92,7 @@ describe("my check-ins — amend a check-in", () => {
 
   it("closes from Cancel without recording anything", async () => {
     const { patch } = mount(OPEN_WINDOW);
-    fireEvent.click(await screen.findByRole("button", { name: "Amend" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Amend" }))[0] as HTMLElement);
     const drawer = await drawerNamed("Amend this check-in");
     fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
@@ -82,7 +103,7 @@ describe("my check-ins — amend a check-in", () => {
 
   it("keeps Record correction disabled until the reason is long enough", async () => {
     mount(OPEN_WINDOW);
-    fireEvent.click(await screen.findByRole("button", { name: "Amend" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Amend" }))[0] as HTMLElement);
     const drawer = await drawerNamed("Amend this check-in");
     const record = within(drawer).getByRole("button", {
       name: "Record correction",
@@ -96,7 +117,7 @@ describe("my check-ins — amend a check-in", () => {
 
   it("asks for a note, with a live count, once the correction says concern", async () => {
     mount(OPEN_WINDOW);
-    fireEvent.click(await screen.findByRole("button", { name: "Amend" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Amend" }))[0] as HTMLElement);
     const drawer = await drawerNamed("Amend this check-in");
     expect(within(drawer).queryByLabelText("Your note")).toBeNull();
     fireEvent.change(within(drawer).getByLabelText("What you meant to say"), {
@@ -108,8 +129,77 @@ describe("my check-ins — amend a check-in", () => {
 
   it("opens no form when the grace window has closed", async () => {
     mount(null);
-    fireEvent.click(await screen.findByRole("button", { name: "Amend" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Amend" }))[0] as HTMLElement);
     expect(await screen.findByText("Grace closed")).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "Amend this check-in" })).toBeNull();
+  });
+});
+
+describe("my check-ins — a write in flight and a write that fails", () => {
+  const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
+  const REASON = "Tapped the wrong button on the first try";
+  const recordCorrection = (drawer: HTMLElement): void => {
+    fireEvent.change(within(drawer).getByLabelText("Why the correction?"), {
+      target: { value: REASON },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Record correction" }));
+  };
+  const amendButtons = async () => await screen.findAllByRole("button", { name: "Amend" });
+
+  it("makes the page inert while the correction is in flight, then live again", async () => {
+    const write = deferred<unknown>();
+    mount(OPEN_WINDOW, { patch: () => write.promise });
+    const [firstAmend, secondAmend] = await amendButtons();
+    fireEvent.click(firstAmend as HTMLElement);
+    const drawer = await drawerNamed("Amend this check-in");
+    recordCorrection(drawer);
+    await waitFor(() => expect(isInert(secondAmend as HTMLElement)).toBe(true));
+    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(true);
+    expect(isInert(screen.getByRole("link", { name: "My safety" }))).toBe(true);
+    expect(isInert(drawer)).toBe(false);
+    write.resolve(ok({}));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Amend this check-in" })).toBeNull(),
+    );
+    expect(isInert(secondAmend as HTMLElement)).toBe(false);
+  });
+
+  it("leaves another check-in's form open when an earlier correction lands", async () => {
+    const write = deferred<unknown>();
+    const { get } = mount(OPEN_WINDOW, { patch: () => write.promise });
+    const [firstAmend, secondAmend] = await amendButtons();
+    fireEvent.click(firstAmend as HTMLElement);
+    recordCorrection(await drawerNamed("Amend this check-in"));
+    // A browser blocks this click (the page is inert); jsdom delivers it, so the guard is what is tested.
+    fireEvent.click(secondAmend as HTMLElement);
+    await waitFor(() =>
+      expect(
+        (
+          screen
+            .getByRole("complementary", { name: "Amend this check-in" })
+            .querySelector("textarea") as HTMLTextAreaElement
+        ).value,
+      ).toBe(""),
+    );
+    const readsBefore = get.mock.calls.length;
+    write.resolve(ok({}));
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
+    expect(await drawerNamed("Amend this check-in")).toBeTruthy();
+  });
+
+  it("recovers when the correction is rejected by the network", async () => {
+    mount(OPEN_WINDOW, {
+      patch: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    fireEvent.click((await amendButtons())[0] as HTMLElement);
+    const drawer = await drawerNamed("Amend this check-in");
+    recordCorrection(drawer);
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("No answer came back");
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(false);
   });
 });

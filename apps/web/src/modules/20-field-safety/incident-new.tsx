@@ -21,7 +21,7 @@ import {
   type SafetyIncidentCategory,
   type SafetyIncidentSeverity,
   createIncident,
-  errorMessage,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   DEFAULT_INCIDENT_CATEGORY,
@@ -115,6 +115,7 @@ export function IncidentNewScreen(): JSX.Element {
     }
     setSaving(true);
     setError(null);
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
     const res = await createIncident(client, {
       affectedClinicianMembershipId: affected.trim(),
       category: category as SafetyIncidentCategory,
@@ -128,10 +129,10 @@ export function IncidentNewScreen(): JSX.Element {
       ...(sosAlertId.trim() ? { linkedSosAlertId: sosAlertId.trim() } : {}),
       workersCompClaimInitiated: wcInitiated,
       ...(wcReference.trim() ? { workersCompClaimReference: wcReference.trim() } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error || !res.incident) {
-      setError(errorMessage(res.error, "The incident was not created. Nothing has been recorded."));
+    if (!res || res.error || !res.incident) {
+      setError(writeErrorMessage(res, "The incident was not created. Nothing has been recorded."));
       return;
     }
     navigate(`/safety/incidents/${res.incident.id}`);

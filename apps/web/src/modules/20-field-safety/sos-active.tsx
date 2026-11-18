@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import { FormDrawer } from "../../shell/form-drawer";
 import {
   type ActiveSosView,
+  NO_ANSWER,
   type SafetySosAcknowledgeOutcome,
   acknowledgeSos,
   errorMessage,
@@ -57,6 +58,8 @@ export function ActiveSosScreen(): JSX.Element {
 
   const [ackFor, setAckFor] = useState<{ id: string; who: string; version: number } | null>(null);
   const [ackOpening, setAckOpening] = useState<string | null>(null);
+  // A failed open (the re-read of the alert before its form). Apart from `error`, which is the board's own read.
+  const [openError, setOpenError] = useState<string | null>(null);
   const [actionTaken, setActionTaken] = useState("");
   const [outcome, setOutcome] = useState(DEFAULT_ACK_OUTCOME);
   const [phoneMasked, setPhoneMasked] = useState("");
@@ -93,10 +96,15 @@ export function ActiveSosScreen(): JSX.Element {
     async (id: string, who: string) => {
       setAckOpening(id);
       setModalError(null);
-      const res = await getSosAlert(client, id);
+      setOpenError(null);
+      const res = await getSosAlert(client, id).catch(() => null);
       setAckOpening(null);
-      if (res.error || !res.alert) {
-        setError(errorMessage(res.error, "That alert could not be opened."));
+      if (!res || res.error || !res.alert) {
+        setOpenError(
+          res
+            ? errorMessage(res.error, "That alert could not be opened.")
+            : "That alert could not be opened: no answer came back. Check your connection, then retry.",
+        );
         return;
       }
       setActionTaken("");
@@ -109,19 +117,27 @@ export function ActiveSosScreen(): JSX.Element {
 
   const submitAck = useCallback(async () => {
     if (!ackFor) return;
+    const target = ackFor;
     setSaving(true);
     setModalError(null);
-    const res = await acknowledgeSos(client, ackFor.id, ackFor.version, {
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
+    const res = await acknowledgeSos(client, target.id, target.version, {
       actionTaken,
       outcome: outcome as SafetySosAcknowledgeOutcome,
       ...(phoneMasked.trim() ? { outreachPhoneNumberMasked: phoneMasked.trim() } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The acknowledgment was not recorded."));
+    if (!res || res.error) {
+      // Names the alert: a failure must never read as another alert's.
+      setModalError(
+        res
+          ? `The acknowledgment for ${target.who} was not recorded. ${errorMessage(res.error, "")}`.trim()
+          : `The acknowledgment for ${target.who} was not confirmed. ${NO_ANSWER}`,
+      );
       return;
     }
-    setAckFor(null);
+    // Close only the form that was submitted; another alert's form may be open by now.
+    setAckFor((current) => (current?.id === target.id ? null : current));
     await load(true);
   }, [ackFor, actionTaken, client, load, outcome, phoneMasked]);
 
@@ -217,6 +233,11 @@ export function ActiveSosScreen(): JSX.Element {
             <Notice tone="warning" assertive>
               <strong>This board did not refresh.</strong> {error} What follows is the last answer
               received at {dateTime(active.fetchedAt)}.
+            </Notice>
+          ) : null}
+          {openError ? (
+            <Notice tone="error" assertive>
+              {openError}
             </Notice>
           ) : null}
           {orderedAlerts.length === 0 ? (
@@ -362,7 +383,7 @@ export function ActiveSosScreen(): JSX.Element {
                       <Button
                         size="sm"
                         tone="secondary"
-                        disabled={ackOpening === alert.id}
+                        disabled={ackOpening !== null}
                         onClick={() => void openAck(alert.id, alert.postedByFirstName)}
                       >
                         {ackOpening === alert.id ? "Opening..." : "Acknowledge"}
@@ -391,6 +412,7 @@ export function ActiveSosScreen(): JSX.Element {
       detail={
         ackFor ? (
           <FormDrawer
+            key={ackFor.id}
             title={`Acknowledge ${ackFor.who}'s SOS`}
             busy={saving}
             onClose={() => setAckFor(null)}

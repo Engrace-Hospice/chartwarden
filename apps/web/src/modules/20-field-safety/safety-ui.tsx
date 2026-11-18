@@ -16,7 +16,6 @@
 //     to cancel", announced through an assertive live region so a screen-reader user gets the same
 //     realtime feedback a sighted one does (SC 4.1.3).
 import { Button, StatusPill, t } from "@chartwarden/ui";
-import type { StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import {
   CHECK_IN_STATUS_TONE,
@@ -43,7 +42,6 @@ export const pageTitleStyle: CSSProperties = {
   color: t.onSurface,
 };
 export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
-export const alertStyle: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.error };
 export const linkStyle: CSSProperties = {
   fontSize: "0.8rem",
   color: t.primary,
@@ -51,15 +49,6 @@ export const linkStyle: CSSProperties = {
 };
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
-export const selectStyle: CSSProperties = {
-  minHeight: "2.5rem",
-  padding: "0 0.75rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.8125rem",
-};
 export const ghostButtonStyle: CSSProperties = {
   // §5.4 — the field clinician is the primary MOBILE user of this module, so every control clears the
   // 44 CSS-px SC 2.5.5 floor (kit `Button` calls here use `size="lg"` for the same reason).
@@ -115,21 +104,8 @@ export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element 
   );
 }
 
-/** A horizontal filter row — the §5 ledger filter bar. */
-export function FilterRow({ children }: { children: ReactNode }): JSX.Element {
-  return <div className="wx-filter-panel">{children}</div>;
-}
-
 // The kit-backed string-valued fields (label, hint and counter wiring live in the shared adapter).
 export { SelectField, TextAreaField, TextField } from "../../shell/value-fields";
-
-/** Turn a wire-enum list into `SelectField` options via a labeller. */
-export function enumOptions(
-  values: readonly string[],
-  label: (v: string) => string = humanize,
-): { value: string; label: string }[] {
-  return values.map((v) => ({ value: v, label: label(v) }));
-}
 
 /** A labelled checkbox — the boolean capture atom. */
 export function CheckboxField({
@@ -284,52 +260,6 @@ export function IncidentStatePill({ state }: { state: string }): JSX.Element {
 /** The incident severity badge. */
 export function SeverityPill({ severity }: { severity: string }): JSX.Element {
   return <StatusPill label={humanize(severity)} tone={toneOf(INCIDENT_SEVERITY_TONE, severity)} />;
-}
-
-/** A count chip row — the §5 KPI tiles. COUNTS over a fetched page, never rates: M20 publishes no
- *  aggregate route (`SafetyMetricsProvider` is a SEAM for M30/M33, not an HTTP surface), and a rate
- *  computed from one page reads like a census. Each screen using this says so beside it. */
-export function CountGrid({
-  entries,
-}: {
-  entries: readonly { label: string; value: number | string; tone?: StatusTone }[];
-}): JSX.Element {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(11rem, 1fr))",
-        gap: t.space3,
-      }}
-    >
-      {entries.map((e) => (
-        <div
-          key={e.label}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.15rem",
-            padding: `${t.space3} ${t.space4}`,
-            border: `1px solid ${t.cardBorder}`,
-            borderRadius: t.radiusLg,
-            background: t.surfaceLowest,
-          }}
-        >
-          <span style={{ fontSize: "0.8125rem", color: t.muted }}>{e.label}</span>
-          <span
-            style={{
-              fontSize: "1.375rem",
-              fontWeight: 700,
-              fontVariantNumeric: "tabular-nums",
-              color: e.tone === "critical" ? t.alert : e.tone === "error" ? t.error : t.onSurface,
-            }}
-          >
-            {e.value}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 /**

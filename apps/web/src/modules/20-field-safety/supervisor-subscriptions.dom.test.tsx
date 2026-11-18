@@ -18,6 +18,7 @@ const json = (body: unknown): Response =>
   });
 
 let writes: { method: string; path: string; body: unknown }[] = [];
+let rejectWrites = false;
 
 async function stub(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const request = input instanceof Request ? input : null;
@@ -27,6 +28,7 @@ async function stub(input: RequestInfo | URL, init?: RequestInit): Promise<Respo
   );
   const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
   if (method !== "GET") {
+    if (rejectWrites) throw new TypeError("Failed to fetch");
     const text = init?.body ? String(init.body) : request ? await request.clone().text() : "";
     writes.push({ method, path: url.pathname, body: text ? JSON.parse(text) : null });
     return json({});
@@ -57,6 +59,7 @@ async function stub(input: RequestInfo | URL, init?: RequestInit): Promise<Respo
 afterEach(() => {
   cleanup();
   writes = [];
+  rejectWrites = false;
 });
 
 function mount(): void {
@@ -141,5 +144,26 @@ describe("supervisor subscriptions — add a subscription", () => {
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Add a subscription" })).toBeNull(),
     );
+  });
+});
+
+describe("supervisor subscriptions — a write that fails", () => {
+  it("recovers when the add request is rejected by the network", async () => {
+    rejectWrites = true;
+    mount();
+    const drawer = await openDrawer();
+    await pick(drawer, /^Supervisor/, /Sam Supervisor/);
+    await pick(drawer, /^Clinician/, /Jordan Clinician/);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Add subscription" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("No answer came back");
+    expect(
+      (within(drawer).getByRole("button", { name: "Add subscription" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    // The page is live again, not left inert behind a write that will never answer.
+    expect(screen.getByRole("link", { name: "Safety board" }).closest("[inert]")).toBeNull();
   });
 });

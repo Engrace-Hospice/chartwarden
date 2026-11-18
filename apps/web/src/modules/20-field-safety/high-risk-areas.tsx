@@ -24,6 +24,7 @@ import {
   errorMessage,
   listHighRiskAreas,
   patchHighRiskArea,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   DEFAULT_HIGH_RISK_AREA_POLICY,
@@ -142,31 +143,34 @@ export function HighRiskAreasScreen(): JSX.Element {
       setModalError(parsed.error);
       return;
     }
+    const submitted = editing;
     setSaving(true);
     setModalError(null);
-    const res =
-      editing === "new"
-        ? await createHighRiskArea(client, {
-            riskCategory: riskCategory as SafetyHighRiskCategory,
-            advisoryMessage: advisoryMessage.trim(),
-            polygon: parsed.rings,
-            policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
-            ...(effectiveFrom ? { effectiveFrom: toInstant(effectiveFrom) } : {}),
-            ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
-          })
-        : await patchHighRiskArea(client, (editing as SafetyHighRiskAreaView).id, {
-            riskCategory: riskCategory as SafetyHighRiskCategory,
-            advisoryMessage: advisoryMessage.trim(),
-            polygon: parsed.rings,
-            policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
-            ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
-          });
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
+    const res = await (editing === "new"
+      ? createHighRiskArea(client, {
+          riskCategory: riskCategory as SafetyHighRiskCategory,
+          advisoryMessage: advisoryMessage.trim(),
+          polygon: parsed.rings,
+          policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
+          ...(effectiveFrom ? { effectiveFrom: toInstant(effectiveFrom) } : {}),
+          ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
+        })
+      : patchHighRiskArea(client, (editing as SafetyHighRiskAreaView).id, {
+          riskCategory: riskCategory as SafetyHighRiskCategory,
+          advisoryMessage: advisoryMessage.trim(),
+          polygon: parsed.rings,
+          policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
+          ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
+        })
+    ).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The area was not saved."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The area was not saved."));
       return;
     }
-    setEditing(null);
+    // Close only the form that was submitted, never another area's.
+    setEditing((current) => (current === submitted ? null : current));
     await load();
   }, [
     advisoryMessage,
@@ -334,6 +338,7 @@ export function HighRiskAreasScreen(): JSX.Element {
       detail={
         editing !== null ? (
           <FormDrawer
+            key={editing === "new" ? "new" : editing.id}
             title={editing === "new" ? "Draw a high-risk area" : "Edit this area"}
             busy={saving}
             onClose={() => setEditing(null)}

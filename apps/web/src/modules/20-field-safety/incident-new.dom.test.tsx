@@ -18,6 +18,7 @@ const json = (body: unknown): Response =>
   });
 
 let writes: { method: string; path: string; body: Record<string, unknown> | null }[] = [];
+let rejectWrites = false;
 
 async function stub(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const request = input instanceof Request ? input : null;
@@ -27,6 +28,7 @@ async function stub(input: RequestInfo | URL, init?: RequestInit): Promise<Respo
   );
   const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
   if (method !== "GET") {
+    if (rejectWrites) throw new TypeError("Failed to fetch");
     const text = init?.body ? String(init.body) : request ? await request.clone().text() : "";
     writes.push({ method, path: url.pathname, body: text ? JSON.parse(text) : null });
     return json({ id: "new-incident-1" });
@@ -50,6 +52,7 @@ async function stub(input: RequestInfo | URL, init?: RequestInit): Promise<Respo
 afterEach(() => {
   cleanup();
   writes = [];
+  rejectWrites = false;
 });
 
 function mount(): void {
@@ -182,5 +185,23 @@ describe("report a safety incident — the wizard", () => {
       workersCompClaimInitiated: false,
     });
     expect(await screen.findByText("Opened an incident")).toBeTruthy();
+  });
+});
+
+describe("report a safety incident — a write that fails", () => {
+  it("recovers when the create request is rejected by the network", async () => {
+    rejectWrites = true;
+    await toReview();
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    const failure = await screen.findByText(/No answer came back/);
+    expect(failure.getAttribute("role")).toBe("alert");
+    // Not stuck on "Creating...": the draft can be retried and the wizard can still go back.
+    expect(
+      (screen.getByRole("button", { name: "Create draft" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect((screen.getByRole("button", { name: "Back" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(screen.queryByText("Opened an incident")).toBeNull();
   });
 });

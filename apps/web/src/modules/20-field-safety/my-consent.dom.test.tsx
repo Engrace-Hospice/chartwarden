@@ -41,9 +41,21 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(): { post: ReturnType<typeof vi.fn> } {
-  const post = vi.fn(async () => ok({}));
-  const client = { GET: vi.fn(async () => ok(surface)), POST: post } as unknown as ApiClient;
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+
+function mount(opts: { post?: () => Promise<unknown> } = {}): {
+  post: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+} {
+  const post = vi.fn(opts.post ?? (async () => ok({})));
+  const get = vi.fn(async () => ok(surface));
+  const client = { GET: get, POST: post } as unknown as ApiClient;
   render(
     <MemoryRouter>
       <ApiClientProvider client={client}>
@@ -51,7 +63,7 @@ function mount(): { post: ReturnType<typeof vi.fn> } {
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { post };
+  return { post, get };
 }
 
 const rowOf = async (label: string): Promise<HTMLElement> =>
@@ -150,5 +162,85 @@ describe("my safety consent — give or withdraw a consent", () => {
     fireEvent.click(within(await rowOf(COORDS)).getByRole("button", { name: "Withdraw" }));
     expect(await screen.findByRole("complementary", { name: `Withdraw: ${COORDS}` })).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: CONTACT })).toBeNull();
+  });
+});
+
+describe("my safety consent — a write in flight and a write that fails", () => {
+  const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
+  const fillContact = (drawer: HTMLElement): void => {
+    fireEvent.change(within(drawer).getByLabelText("Their name"), {
+      target: { value: "Sam Rivera" },
+    });
+    fireEvent.change(within(drawer).getByLabelText("Their phone number"), {
+      target: { value: "5035550123" },
+    });
+  };
+  const consent = (drawer: HTMLElement): void => {
+    fillContact(drawer);
+    fireEvent.click(within(drawer).getByRole("button", { name: "I consent" }));
+  };
+
+  it("makes the page inert while the consent is being recorded, then live again", async () => {
+    const write = deferred<unknown>();
+    mount({ post: () => write.promise });
+    const drawer = await give();
+    const withdrawRow = within(await rowOf(COORDS)).getByRole("button", { name: "Withdraw" });
+    consent(drawer);
+    await waitFor(() => expect(isInert(withdrawRow)).toBe(true));
+    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(true);
+    expect(isInert(screen.getByRole("link", { name: "My safety" }))).toBe(true);
+    expect(isInert(drawer)).toBe(false);
+    write.resolve(ok({}));
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: CONTACT })).toBeNull());
+    expect(isInert(withdrawRow)).toBe(false);
+  });
+
+  it("leaves another purpose's form open when an earlier consent lands", async () => {
+    const write = deferred<unknown>();
+    const { get } = mount({ post: () => write.promise });
+    consent(await give());
+    // A browser blocks this click (the page is inert); jsdom delivers it, so the guard is what is tested.
+    fireEvent.click(
+      within(await rowOf("Continuous location while an SOS is active")).getByRole("button", {
+        name: "Give again",
+      }),
+    );
+    const readsBefore = get.mock.calls.length;
+    write.resolve(ok({}));
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
+    expect(
+      await screen.findByRole("complementary", {
+        name: "Continuous location while an SOS is active",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("recovers when the consent request is rejected by the network", async () => {
+    mount({
+      post: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await give();
+    consent(drawer);
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("No answer came back");
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(false);
+  });
+
+  it("recovers when the withdrawal request is rejected by the network", async () => {
+    mount({
+      post: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await withdraw();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Withdraw my consent" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("No answer came back");
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 });

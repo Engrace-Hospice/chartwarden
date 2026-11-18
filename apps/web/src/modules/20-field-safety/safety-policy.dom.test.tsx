@@ -45,12 +45,21 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(): { patch: ReturnType<typeof vi.fn> } {
-  const patch = vi.fn(async () => ok(policy));
-  const client = {
-    GET: vi.fn(async () => ok(policy)),
-    PATCH: patch,
-  } as unknown as ApiClient;
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+
+function mount(opts: { patch?: () => Promise<unknown> } = {}): {
+  patch: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+} {
+  const patch = vi.fn(opts.patch ?? (async () => ok(policy)));
+  const get = vi.fn(async () => ok(policy));
+  const client = { GET: get, PATCH: patch } as unknown as ApiClient;
   render(
     <MemoryRouter>
       <ApiClientProvider client={client}>
@@ -58,7 +67,7 @@ function mount(): { patch: ReturnType<typeof vi.fn> } {
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { patch };
+  return { patch, get };
 }
 
 const REASON = "Raised the mid-visit cadence after the spring review of overdue pages.";
@@ -133,5 +142,84 @@ describe("safety policy — edit the policy", () => {
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Edit the safety policy" })).toBeNull(),
     );
+  });
+});
+
+describe("safety policy — replay beside the editor, and a write that fails", () => {
+  const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
+  const button = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+  const pickInstant = async (): Promise<void> => {
+    fireEvent.change(await screen.findByLabelText("Read the policy as it stood at"), {
+      target: { value: "2026-10-01T09:00" },
+    });
+  };
+  const saveWith = (drawer: HTMLElement): void => {
+    fireEvent.change(within(drawer).getByLabelText("Why are you changing this?"), {
+      target: { value: REASON },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save new version" }));
+  };
+
+  it("disables the replay controls while the editor is open", async () => {
+    mount();
+    await pickInstant();
+    expect(button("Time-travel").disabled).toBe(false);
+    const drawer = await openEditor();
+    expect(button("Time-travel").disabled).toBe(true);
+    expect(button("Back to current").disabled).toBe(true);
+    expect(
+      (screen.getByLabelText("Read the policy as it stood at") as HTMLInputElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(button("Time-travel").disabled).toBe(false));
+    expect(button("Back to current").disabled).toBe(false);
+  });
+
+  it("cannot open the editor, and so cannot save, once a replay is showing", async () => {
+    const { patch } = mount();
+    await pickInstant();
+    fireEvent.click(button("Time-travel"));
+    await screen.findByText(/Historical view for/);
+    expect(button("Edit policy").disabled).toBe(true);
+    fireEvent.click(button("Edit policy"));
+    expect(screen.queryByRole("complementary", { name: "Edit the safety policy" })).toBeNull();
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it("makes the page inert while the new version is being written, then live again", async () => {
+    const write = deferred<unknown>();
+    mount({ patch: () => write.promise });
+    const drawer = await openEditor();
+    const timeTravel = button("Time-travel");
+    saveWith(drawer);
+    await waitFor(() => expect(isInert(timeTravel)).toBe(true));
+    expect(isInert(button("Back to current"))).toBe(true);
+    expect(isInert(screen.getByRole("link", { name: "Safety board" }))).toBe(true);
+    expect(isInert(drawer)).toBe(false);
+    write.resolve(ok(policy));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Edit the safety policy" })).toBeNull(),
+    );
+    expect(isInert(timeTravel)).toBe(false);
+  });
+
+  it("recovers when the new version's request is rejected by the network", async () => {
+    mount({
+      patch: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await openEditor();
+    saveWith(drawer);
+    // The drawer's own warning is also an alert, so find the failure by its words.
+    const failure = await within(drawer).findByText(/No answer came back/);
+    expect(failure.getAttribute("role")).toBe("alert");
+    expect(
+      (within(drawer).getByRole("button", { name: "Save new version" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 });

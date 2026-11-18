@@ -50,6 +50,7 @@ import {
   patchIncident,
   submitIncident,
   transitionIncident,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   DEFAULT_INCIDENT_TRANSITION,
@@ -150,6 +151,13 @@ export function IncidentDetailScreen(): JSX.Element {
     setCeremony("edit");
   }, [incident]);
 
+  // A write's success closes only the ceremony it submitted, never whichever one is open by then.
+  const closeIfStill = useCallback((submitted: Ceremony) => {
+    setCeremony((current) => (current === submitted ? "none" : current));
+  }, []);
+
+  // Every write below runs through `.catch(() => null)`: the client REJECTS on a network failure, and `saving` must
+  // reset on every path or the drawer can never be dismissed. `null` is that failure.
   const submitEdit = useCallback(async () => {
     if (!incident) return;
     setSaving(true);
@@ -163,17 +171,18 @@ export function IncidentDetailScreen(): JSX.Element {
       ...(witnesses.trim() ? { witnesses } : {}),
       workersCompClaimInitiated: wcInitiated,
       ...(wcReference.trim() ? { workersCompClaimReference: wcReference.trim() } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The edit was not saved."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The edit was not saved."));
       return;
     }
-    setCeremony("none");
+    closeIfStill("edit");
     await load();
   }, [
     category,
     client,
+    closeIfStill,
     incident,
     load,
     locationDescription,
@@ -194,16 +203,16 @@ export function IncidentDetailScreen(): JSX.Element {
       // agency on her own say-so.
       oshaReportable: incident.oshaReportable,
       ...(finalNarrative.trim() ? { finalNarrative } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The incident was not submitted."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The incident was not submitted."));
       return;
     }
-    setCeremony("none");
+    closeIfStill("submit");
     setFinalNarrative("");
     await load();
-  }, [client, finalNarrative, incident, load]);
+  }, [client, closeIfStill, finalNarrative, incident, load]);
 
   const doTransition = useCallback(async () => {
     if (!incident) return;
@@ -214,17 +223,17 @@ export function IncidentDetailScreen(): JSX.Element {
       toState: toState as SafetyIncidentStateTransition,
       reason,
       ...(toState === "closed_with_action_plan" && actionPlan.trim() ? { actionPlan } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The transition was refused."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The transition was refused."));
       return;
     }
-    setCeremony("none");
+    closeIfStill("transition");
     setReason("");
     setActionPlan("");
     await load();
-  }, [actionPlan, client, incident, load, reason, toState]);
+  }, [actionPlan, client, closeIfStill, incident, load, reason, toState]);
 
   const doOsha = useCallback(async () => {
     if (!incident) return;
@@ -235,16 +244,16 @@ export function IncidentDetailScreen(): JSX.Element {
       reason: oshaReason,
       stateCode: stateCode.trim().toUpperCase(),
       reportingWindowHours: Number(windowHours),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The sign-off was refused."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The sign-off was refused."));
       return;
     }
-    setCeremony("none");
+    closeIfStill("osha");
     setOshaReason("");
     await load();
-  }, [client, incident, load, oshaReason, oshaReportable, stateCode, windowHours]);
+  }, [client, closeIfStill, incident, load, oshaReason, oshaReportable, stateCode, windowHours]);
 
   if (loading) return <LoadingSpinner />;
   if (!incident)
