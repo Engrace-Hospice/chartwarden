@@ -25,6 +25,7 @@ import {
   registerSeam,
   stepUpFreshFor,
 } from "../../../bootstrap";
+import type { NoteClosureGate } from "../../../bootstrap/note-closure-gate";
 import type { OrganizationStageReader } from "../../../bootstrap/onboarding-org-gate";
 import { registerM23AbacPredicates } from "../abac-predicates";
 import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
@@ -68,6 +69,7 @@ const NPI = "1234567893";
 const TEST_KEY = "synthetic_claimmd_key_never_external";
 const NOW = new Date("2026-11-17T15:00:00.000Z");
 const liveOrganizationStage: OrganizationStageReader = { isConfined: async () => false };
+const liveNoteClosureGate: NoteClosureGate = { assertMayCall: async () => {} };
 
 const actor = {
   organizationId: ORG,
@@ -895,6 +897,7 @@ describe("M23-CM5-T1 synthetic Claim.MD 837I rehearsal", () => {
       },
       getResolver: () => getSeam("SessionContextResolver"),
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       sessionTimeout: {
         enforce: async (sessionId) => (sessionId === "session-expired" ? "expired_idle" : "active"),
       },

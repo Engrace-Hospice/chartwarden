@@ -10,6 +10,7 @@ import { createSessionAuthenticate } from "../src/bootstrap/index";
 // Unit-tests the authenticate hook factory with a stub snapshot reader + stub SessionContextResolver
 // (no better-auth / no DB). The real session read + DB-backed resolver are verified in the AUTH-T06
 // live-PG lane; the DB-backed SessionContextStore reconciliation lands in AUTH-T05.
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 
 interface Ctx {
@@ -73,6 +74,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
     });
@@ -113,6 +115,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => resolverReturning(ORG_BOUND_ACTOR, 30), // 30s ago, floor allows 300s
     });
@@ -124,6 +127,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => resolverReturning(ORG_BOUND_ACTOR, 86_400), // a day ago
     });
@@ -140,6 +144,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     let calls = 0;
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => {
         calls++;
@@ -155,6 +160,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => null,
       getResolver: () => resolverReturning(null),
     });
@@ -173,6 +179,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: null }),
       getResolver: () => resolverReturning(null),
     });
@@ -194,6 +201,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "orgX" }),
       getResolver: () => resolverReturning(null),
     });
@@ -220,6 +228,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       });
       const hook = createSessionAuthenticate({
         organizationStage: liveOrganizationStage,
+        noteClosureGate: liveNoteClosureGate,
         getSnapshot: async () => {
           throw new Error("must not read the interactive session on the machine-credential path");
         },
@@ -241,6 +250,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       const { req, ctx } = reqWith({ "x-internal-service-token": "anything" });
       const hook = createSessionAuthenticate({
         organizationStage: liveOrganizationStage,
+        noteClosureGate: liveNoteClosureGate,
         getSnapshot: async () => null,
         getResolver: () => resolverReturning(null),
         // systemCredential intentionally omitted — the header alone must never authenticate.
@@ -256,6 +266,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       });
       const hook = createSessionAuthenticate({
         organizationStage: liveOrganizationStage,
+        noteClosureGate: liveNoteClosureGate,
         getSnapshot: async () => null,
         getResolver: () => resolverReturning(null),
         systemCredential: { token: "s3cret-internal-token-value-32chars!!" },
@@ -275,6 +286,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       const { req, ctx } = reqWith();
       const hook = createSessionAuthenticate({
         organizationStage: liveOrganizationStage,
+        noteClosureGate: liveNoteClosureGate,
         getSnapshot: async () => null,
         getResolver: () => resolverReturning(null),
         systemCredential: { token: "s3cret-internal-token-value-32chars!!" },
@@ -294,6 +306,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
         const enforced: string[] = [];
         const hook = createSessionAuthenticate({
           organizationStage: liveOrganizationStage,
+          noteClosureGate: liveNoteClosureGate,
           getSnapshot: snapshot,
           getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
           sessionTimeout: {
@@ -316,6 +329,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       const calls: unknown[] = [];
       const hook = createSessionAuthenticate({
         organizationStage: liveOrganizationStage,
+        noteClosureGate: liveNoteClosureGate,
         getSnapshot: snapshot,
         getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
         sessionTimeout: {
@@ -335,6 +349,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       const { req, ctx } = reqWith();
       const hook = createSessionAuthenticate({
         organizationStage: liveOrganizationStage,
+        noteClosureGate: liveNoteClosureGate,
         getSnapshot: snapshot,
         getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
         sessionTimeout: { enforce: async () => "active" },

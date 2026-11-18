@@ -55,6 +55,7 @@ import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://... bun run test:m36:session-devices:live
  * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8: the suite resets the public schema and the chartwarden_* roles.
  */
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -272,6 +273,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         security: { rateLimitEnabled: false },
         authenticate: createSessionAuthenticate({
           organizationStage: liveOrganizationStage,
+          noteClosureGate: liveNoteClosureGate,
           getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
           getResolver: () => resolver,
         }),

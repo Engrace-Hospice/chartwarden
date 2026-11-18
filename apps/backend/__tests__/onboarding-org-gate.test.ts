@@ -14,6 +14,7 @@ import {
   createOrganizationStageReader,
   preActivationMayCall,
 } from "../src/bootstrap/onboarding-org-gate";
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 
 const ORG = "33333333-3333-4333-8333-333333333333";
 const actor: ResolvedActor = {
@@ -77,6 +78,7 @@ const hook = (
       isConfined: typeof preActivation === "boolean" ? async () => preActivation : preActivation,
       ...(stage === "no-created-reader" ? {} : { isCreated: async () => stage === "created" }),
     },
+    noteClosureGate: liveNoteClosureGate,
   });
 
 const may = (
@@ -335,6 +337,7 @@ describe("authenticate on a not-yet-live organization", () => {
       }),
       getResolver: () => resolver,
       organizationStage: { isConfined: async () => true, isCreated },
+      noteClosureGate: liveNoteClosureGate,
     });
     await authenticate(request("GET", "/api/v1/tenant/onboarding"));
     expect(isCreated).not.toHaveBeenCalled();

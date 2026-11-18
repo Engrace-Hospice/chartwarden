@@ -42,6 +42,7 @@ import type { TenantClearinghouseRouteService } from "../src/modules/23-billing-
 import type { TenantRouteService } from "../src/modules/34-saas-tenant-platform/routes/tenant/service";
 import { registerSupportConsentGrantRoutes } from "../src/modules/34-saas-tenant-platform/routes/tenant/support-consent-grants";
 import { registerPricingRoutes } from "../src/modules/35-subscription/pricing/pricing.routes";
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 
 const ORG = "33333333-3333-4333-8333-333333333333";
 const USER = "11111111-1111-4111-8111-111111111111";
@@ -150,6 +151,7 @@ function serverFor(stage: Stage) {
         isConfined: async () => stage !== "live",
         isCreated: async () => stage === "created",
       },
+      noteClosureGate: liveNoteClosureGate,
     }),
     security: { rateLimitEnabled: false },
   });

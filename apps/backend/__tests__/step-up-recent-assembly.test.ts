@@ -38,6 +38,7 @@ import { writeActorOf as m37WriteActorOf } from "../src/modules/37-ipu/routes/ac
 // fact a real module's `writeActorOf` reads — was the one path nothing ran. That is what this file
 // tests, and it is deliberately the seam rather than a whole route: the defect was never in the
 // domain logic (which is well covered), it was that the fact never arrived.
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -86,6 +87,7 @@ async function authenticated(agoSec: number | null): Promise<FastifyRequest> {
   } as unknown as FastifyRequest;
   const hook = createSessionAuthenticate({
     organizationStage: liveOrganizationStage,
+    noteClosureGate: liveNoteClosureGate,
     getSnapshot: async () => ({ sessionId: SESSION, userId: "u1", activeOrganizationId: ORG }),
     getResolver: () => resolver(agoSec),
   });
@@ -132,6 +134,7 @@ describe("F-029 — the step-up fact reaches the modules that read it", () => {
     } as unknown as FastifyRequest;
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => null,
       getResolver: () => resolver(30),
     });
@@ -155,6 +158,7 @@ describe("F-029 — the step-up fact reaches the modules that read it", () => {
     } as unknown as FastifyRequest;
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({
         sessionId: SESSION,
         userId: "u1",
@@ -191,6 +195,7 @@ describe("F-030 — the session class and portal scope reach the predicates that
     } as unknown as FastifyRequest;
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({ sessionId: SESSION, userId: "u1", activeOrganizationId: ORG }),
       getResolver: () => ({
         resolveActor: async () => ({ ...ACTOR, ...actor }),

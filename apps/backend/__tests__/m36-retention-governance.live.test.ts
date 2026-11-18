@@ -71,6 +71,7 @@ import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:retention-governance:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 import { catalogOutbox } from "./_m36-handoff-live-kit";
 
@@ -344,6 +345,7 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
         organizationStage: liveOrganizationStage,
+        noteClosureGate: liveNoteClosureGate,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),

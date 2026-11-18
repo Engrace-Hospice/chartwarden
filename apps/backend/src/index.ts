@@ -199,6 +199,7 @@ import {
   registerOutboxMetrics,
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
+import { createNoteClosureGate } from "./bootstrap/note-closure-gate";
 import { createOrganizationStageReader } from "./bootstrap/onboarding-org-gate";
 import { createOpsNoticeClaims } from "./bootstrap/ops-notice-claims";
 import { buildDrizzleOrgProfilePort } from "./bootstrap/org-profile";
@@ -653,11 +654,13 @@ import {
   buildM8VisitPublishedConsumer,
   buildM8VisitStartedNoteClockConsumer,
   buildM8WorkerDeps,
+  createDbClosurePolicyCache,
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
   createHearthnoteCiphers,
   encounterIdsForVisitsForOrg,
   encounterVisitIdsForOrg,
+  evaluateMemberClosure,
   mountEncounterRoutes,
   registerEncounterAbacPredicates,
   registerEncounterErasers,
@@ -4330,6 +4333,27 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const organizationStage = dbHandle
     ? createOrganizationStageReader(readOrganizationStatus!)
     : undefined;
+  // ADR-0113 D6 - the visit-note closure gate. ONE policy cache serves the gate and `mountEncounterRoutes` (below), so a policy PUT
+  // invalidates what the gate reads. The gate runs the one shared evaluator inside the caller's org context; a failure is logged with
+  // the organization id only and the request is refused 503 (the gate fails closed).
+  const closurePolicyCache = dbHandle ? createDbClosurePolicyCache(dbHandle.db) : undefined;
+  const noteClosureGate =
+    dbHandle && closurePolicyCache
+      ? createNoteClosureGate({
+          policyCache: closurePolicyCache,
+          evaluate: ({ organizationId, userId, membershipId, now, policy }) =>
+            withOrgContext(dbHandle.db, { organizationId, userId }, (tx) =>
+              evaluateMemberClosure(tx as unknown as DbClient, {
+                organizationId,
+                membershipId,
+                now,
+                policy,
+              }),
+            ),
+          onFailure: ({ organizationId, error }) =>
+            app.log.error({ err: error, organizationId }, "note-closure gate read failed"),
+        })
+      : undefined;
   const tenantClearinghouse = dbHandle
     ? createTenantClearinghouseRuntime({
         db: dbHandle.db,
@@ -5777,6 +5801,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           }
           return organizationStage;
         })(),
+        // ADR-0113 D6 - a clinician past a visit note's block instant reaches only the closure allowlist (403 NOTE_CLOSURE_REQUIRED
+        // otherwise; 503 NOTE_CLOSURE_UNAVAILABLE when the status cannot be read). Required for the same reason as the stage reader.
+        noteClosureGate: (() => {
+          if (!noteClosureGate) {
+            throw new Error(
+              "the note-closure gate is unavailable: refusing to build the session authenticate hook without the visit-note closure gate",
+            );
+          }
+          return noteClosureGate;
+        })(),
         // TASK-013 — the M23 #39/#40 / M15 `/internal/...` system-principal routes' only path to
         // reachability. Unset (dev/no secret configured) → `systemCredential` is undefined and the
         // machine-credential branch never runs, exactly today's fail-closed posture.
@@ -6598,6 +6632,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             dbHandle.db,
             m8OutboxPublisher,
             createHearthnoteCiphers(getTenantKeyProvider()),
+            // ADR-0113 D6 - the SAME policy cache the closure gate reads, so a closure-policy PUT invalidates the gate's view.
+            { ...(closurePolicyCache ? { policyCache: closurePolicyCache } : {}) },
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
           // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox. The M4 legal-hold read gates a
