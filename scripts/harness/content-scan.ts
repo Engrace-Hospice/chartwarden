@@ -7,22 +7,8 @@ import { backupName } from "./backup-names";
 import { aliasNormalise } from "./path-alias";
 import { EXTRA_SECRET_RULES } from "./secret-names";
 
-export interface SyntheticRegistry {
-  readonly ssn: ReadonlySet<string>;
-  readonly mbi: ReadonlySet<string>;
-}
-
-export function registryFrom(json: {
-  ssn?: readonly string[];
-  mbi?: readonly string[];
-}): SyntheticRegistry {
-  return {
-    ssn: new Set((json.ssn ?? []).map((s) => s.replace(/-/g, ""))),
-    mbi: new Set((json.mbi ?? []).map((s) => s.replace(/-/g, "").toUpperCase())),
-  };
-}
-
-export const EMPTY_REGISTRY: SyntheticRegistry = { ssn: new Set(), mbi: new Set() };
+export { EMPTY_REGISTRY, registryFrom, type SyntheticRegistry } from "./synthetic-registry";
+import type { SyntheticRegistry } from "./synthetic-registry";
 
 // ---------------------------------------------------------------------------------------------------
 // 1. Secret paths
