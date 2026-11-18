@@ -9,9 +9,9 @@
 --     An absent row means warn / 24 hours; the default mode is warn because main auto-deploys.
 --   * documentation_obligation_override: a supervisor lifts the BLOCK (never the alerts or the deadline) for one clinician and
 --     one obligation kind for at most 24 hours. Append-only: the application role can insert and can only stamp the two
---     revocation columns; it has no DELETE. Three triggers close what the grants alone leave open (all expand: nothing in the
---     previous release writes these columns or this table): a revoked override can never be un-revoked, an override's subject and
---     grantor must be members of the override's own organization (the FKs are single-column and FK checks bypass RLS), and an
+--     revocation columns; it has no DELETE. Two guard triggers enforce three rules the grants alone leave open (all expand: nothing in
+--     the previous release writes these columns or this table): a revoked override can never be un-revoked, an override's subject
+--     and grantor must be members of the override's own organization (the FKs are single-column and FK checks bypass RLS), and an
 --     encounter's clock is write-once.
 --     The free-text reason is typed by a supervisor, so it may hold a name or another identifier: the application screens it for
 --     SSN / MBI shapes before the insert, the row trigger scrubs it from the row's audit snapshot, and the catalogued

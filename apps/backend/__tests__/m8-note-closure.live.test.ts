@@ -2581,7 +2581,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
   });
 
   // ===============================================================================================================
-  // 11. database hardening: the three triggers of migration 1510
+  // 11. database hardening: the two guard triggers (three rules) of migration 1510
   // ===============================================================================================================
   describe("11. migration 1510's triggers: a revoked override stays revoked, an override's members belong to its organization, the clock is write-once", () => {
     let subject: Member;

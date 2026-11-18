@@ -1,9 +1,10 @@
 // apps/backend/src/modules/08-encounters/closure/clock-stamp.ts — stamping the visit-note closure clock (ADR-0113).
 //
-// The clock starts when the clinician's documentation duty began. Four signals can say so, strongest first:
-// `evv_check_in`, `visit_started` (both from the M17 `m17.visit.started` event), `draft_opened` (the first
-// authoring write on a seeded draft, or sign if none came earlier) and `draft_created` (ad-hoc creation).
-// A stamp is write-once: `stampClockIfNull` never overwrites and never touches a closed note.
+// The clock starts when the clinician's documentation duty began. Four signals can say so: `evv_check_in`, `visit_started` (both from
+// the M17 `m17.visit.started` event), `draft_opened` (the first authoring write on a seeded draft, or sign if none came earlier) and
+// `draft_created` (ad-hoc creation). The FIRST signal to arrive wins; there is no precedence between them, because a stamp is
+// write-once: `stampClockIfNull` never overwrites and never touches a closed note. So an author's pre-charting write on a seeded draft
+// before the visit starts starts the clock then (stricter than arrival, on purpose: the fail-safe is a clock that runs).
 //
 // `clampClockStart` and `localDayStart` are pure; `stampClockIfNull` is the one UPDATE every stamping path shares.
 import { type DbClient, schema } from "@chartwarden/db";

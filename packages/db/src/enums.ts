@@ -1358,8 +1358,9 @@ export const evvBracketState = pgEnum("evv_bracket_state", [
   "evv_missing_documented",
 ]);
 
-/** `encounter_clock_start_source` — which signal started an encounter's documentation clock (migration 1510, ADR-0113),
- * in precedence order: EVV check-in, the M17 visit start, the first authoring write on a seeded draft, ad-hoc creation. */
+/** `encounter_clock_start_source` — which signal started an encounter's documentation clock (migration 1510, ADR-0113): EVV check-in,
+ * the M17 visit start, the first authoring write on a seeded draft, ad-hoc creation. The first to arrive wins (write-once); there is
+ * no precedence between them. */
 export const encounterClockStartSource = pgEnum("encounter_clock_start_source", [
   "evv_check_in",
   "visit_started",

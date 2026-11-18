@@ -4,7 +4,7 @@
 // pgEnums and the bounds migration 1510 pins as CHECKs (a pin test in apps/backend/__tests__ keeps them equal to the SQL).
 // packages/types cannot import @chartwarden/db, so the enums are restated here.
 
-/** Which signal started an encounter's documentation clock, strongest first (mirrors `encounter_clock_start_source`). */
+/** Which signal started an encounter's documentation clock; the first to arrive wins (mirrors `encounter_clock_start_source`). */
 export const ENCOUNTER_CLOCK_START_SOURCES = [
   "evv_check_in",
   "visit_started",
