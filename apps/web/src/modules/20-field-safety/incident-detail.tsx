@@ -38,6 +38,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SafetyIncidentCategory,
   type SafetyIncidentSeverity,
@@ -70,7 +71,6 @@ import {
   CipherText,
   Field,
   IncidentStatePill,
-  Modal,
   Notice,
   SelectField,
   SeverityPill,
@@ -78,7 +78,6 @@ import {
   TextAreaField,
   TextField,
   Timeline,
-  columnStyle,
   ghostButtonStyle,
   linkStyle,
   pageTitleStyle,
@@ -269,204 +268,207 @@ export function IncidentDetailScreen(): JSX.Element {
   }));
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Incident {shortId(incident.id)}</span>}
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/safety/incidents" style={ghostButtonStyle}>
-              Back to ledger
-            </Link>
-            <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
-              Reload
-            </Button>
-          </div>
-        }
-      />
+    <div className={`wx-list-drawer${ceremony !== "none" ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main wx-kit-column">
+        <PageHeader
+          title={<span style={pageTitleStyle}>Incident {shortId(incident.id)}</span>}
+          actions={
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              <Link to="/safety/incidents" style={ghostButtonStyle}>
+                Back to ledger
+              </Link>
+              <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
+                Reload
+              </Button>
+            </div>
+          }
+        />
 
-      {reportableUnsigned ? (
-        <Notice tone="error" assertive>
-          <strong>Marked OSHA-reportable with no sign-off on record.</strong> A supervisor must sign
-          off before this incident can leave draft — the database refuses the combination outright,
-          so this is not a warning that can be worked around.
-        </Notice>
-      ) : null}
+        {reportableUnsigned ? (
+          <Notice tone="error" assertive>
+            <strong>Marked OSHA-reportable with no sign-off on record.</strong> A supervisor must
+            sign off before this incident can leave draft — the database refuses the combination
+            outright, so this is not a warning that can be worked around.
+          </Notice>
+        ) : null}
 
-      {filedOnBehalf && !isClosed ? (
-        <Notice tone="warning" live>
-          <strong>This incident was filed on the affected clinician's behalf.</strong> §6 requires
-          HER acknowledgment before it may close, and that acknowledgment cannot be coerced — if she
-          declines, the row stays under review and a compliance flag fires. There is no button here
-          to record it for her, deliberately: M20 publishes no route that would let one person post
-          another's acknowledgment.
-        </Notice>
-      ) : null}
+        {filedOnBehalf && !isClosed ? (
+          <Notice tone="warning" live>
+            <strong>This incident was filed on the affected clinician's behalf.</strong> §6 requires
+            HER acknowledgment before it may close, and that acknowledgment cannot be coerced — if
+            she declines, the row stays under review and a compliance flag fires. There is no button
+            here to record it for her, deliberately: M20 publishes no route that would let one
+            person post another's acknowledgment.
+          </Notice>
+        ) : null}
 
-      <Panel
-        stack
-        headingLevel={3}
-        title="Incident"
-        action={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            {isDraft ? (
-              <>
-                <Button tone="secondary" size="lg" type="button" onClick={openEdit}>
-                  Edit draft
-                </Button>
+        <Panel
+          stack
+          headingLevel={3}
+          title="Incident"
+          action={
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              {isDraft ? (
+                <>
+                  <Button tone="secondary" size="lg" type="button" onClick={openEdit}>
+                    Edit draft
+                  </Button>
+                  <Button
+                    tone="primary"
+                    size="lg"
+                    type="button"
+                    onClick={() => {
+                      setModalError(null);
+                      setCeremony("submit");
+                    }}
+                  >
+                    Submit for review
+                  </Button>
+                </>
+              ) : null}
+              {!isDraft ? (
                 <Button
-                  tone="primary"
+                  tone="secondary"
                   size="lg"
                   type="button"
                   onClick={() => {
+                    setToState(DEFAULT_INCIDENT_TRANSITION);
                     setModalError(null);
-                    setCeremony("submit");
+                    setCeremony("transition");
                   }}
                 >
-                  Submit for review
+                  Change state
                 </Button>
-              </>
-            ) : null}
-            {!isDraft ? (
+              ) : null}
               <Button
                 tone="secondary"
                 size="lg"
                 type="button"
                 onClick={() => {
-                  setToState(DEFAULT_INCIDENT_TRANSITION);
+                  setOshaReportable(!incident.oshaReportable);
                   setModalError(null);
-                  setCeremony("transition");
+                  setCeremony("osha");
                 }}
+                disabled={isClosed}
               >
-                Change state
+                OSHA sign-off
               </Button>
-            ) : null}
-            <Button
-              tone="secondary"
-              size="lg"
-              type="button"
-              onClick={() => {
-                setOshaReportable(!incident.oshaReportable);
-                setModalError(null);
-                setCeremony("osha");
-              }}
-              disabled={isClosed}
-            >
-              OSHA sign-off
-            </Button>
-          </div>
-        }
-      >
-        <SummaryGrid>
-          <Field label="State" value={<IncidentStatePill state={incident.lifecycleState} />} />
-          <Field label="Category" value={incidentCategoryLabel(incident.category)} />
-          <Field label="Severity" value={<SeverityPill severity={incident.severity} />} />
-          <Field label="Occurred" value={dateTime(incident.occurredAt)} />
-          <Field label="Reported" value={dateTime(incident.reportedAt)} />
-          <Field
-            label="Affected clinician"
-            value={shortId(incident.affectedClinicianMembershipId)}
-            mono
-          />
-          <Field label="Reported by" value={shortId(incident.reportedByMembershipId)} mono />
-          <Field
-            label="Visit"
-            value={incident.visitId ? shortId(incident.visitId) : "None"}
-            mono={incident.visitId !== null}
-          />
-          <Field label="Submitted" value={dateTime(incident.submittedAt)} />
-          <Field label="Reviewed" value={dateTime(incident.reviewedAt)} />
-          <Field label="Closed" value={dateTime(incident.closedAt)} />
-          <Field label="Row version" value={String(incident.version)} mono />
-          <Field
-            label="OSHA-reportable"
-            value={
-              incident.oshaReportable ? (
-                <StatusPill
-                  label={incident.oshaReportableSignedOffAt ? "Yes — signed" : "Yes — UNSIGNED"}
-                  tone={incident.oshaReportableSignedOffAt ? "critical" : "error"}
-                />
-              ) : (
-                "No"
-              )
-            }
-          />
-          <Field
-            label="Signed off"
-            value={
-              incident.oshaReportableSignedOffAt
-                ? `${dateTime(incident.oshaReportableSignedOffAt)} · ${shortId(incident.oshaReportableSignedOffByMembershipId)}`
-                : "—"
-            }
-          />
-          <Field
-            label="Workers' comp"
-            value={
-              incident.workersCompClaimInitiated
-                ? (incident.workersCompClaimReference ?? "Initiated")
-                : "Not initiated"
-            }
-            mono={incident.workersCompClaimReference !== null}
-          />
-          <Field
-            label="Linked SOS"
-            value={
-              incident.linkedSosAlertId ? (
-                <Link to={`/safety/sos/${incident.linkedSosAlertId}`} style={linkStyle}>
-                  {shortId(incident.linkedSosAlertId)}
-                </Link>
-              ) : (
-                "None"
-              )
-            }
-          />
-        </SummaryGrid>
-        {incident.locationDescription ? (
-          <Field label="Where" value={incident.locationDescription} />
-        ) : null}
-        {incident.reopenReason ? (
-          <Notice tone="warning">
-            <strong>Reopened:</strong> {incident.reopenReason}
-          </Notice>
-        ) : null}
-      </Panel>
-
-      <Panel stack headingLevel={3} title="Narrative">
-        <CipherText value={incident.narrative} available={incident.narrativeAvailable} />
-      </Panel>
-
-      {incident.witnesses ? (
-        <Panel stack headingLevel={3} title="Witnesses">
-          <p style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
-            {incident.witnesses}
-          </p>
+            </div>
+          }
+        >
+          <SummaryGrid>
+            <Field label="State" value={<IncidentStatePill state={incident.lifecycleState} />} />
+            <Field label="Category" value={incidentCategoryLabel(incident.category)} />
+            <Field label="Severity" value={<SeverityPill severity={incident.severity} />} />
+            <Field label="Occurred" value={dateTime(incident.occurredAt)} />
+            <Field label="Reported" value={dateTime(incident.reportedAt)} />
+            <Field
+              label="Affected clinician"
+              value={shortId(incident.affectedClinicianMembershipId)}
+              mono
+            />
+            <Field label="Reported by" value={shortId(incident.reportedByMembershipId)} mono />
+            <Field
+              label="Visit"
+              value={incident.visitId ? shortId(incident.visitId) : "None"}
+              mono={incident.visitId !== null}
+            />
+            <Field label="Submitted" value={dateTime(incident.submittedAt)} />
+            <Field label="Reviewed" value={dateTime(incident.reviewedAt)} />
+            <Field label="Closed" value={dateTime(incident.closedAt)} />
+            <Field label="Row version" value={String(incident.version)} mono />
+            <Field
+              label="OSHA-reportable"
+              value={
+                incident.oshaReportable ? (
+                  <StatusPill
+                    label={incident.oshaReportableSignedOffAt ? "Yes — signed" : "Yes — UNSIGNED"}
+                    tone={incident.oshaReportableSignedOffAt ? "critical" : "error"}
+                  />
+                ) : (
+                  "No"
+                )
+              }
+            />
+            <Field
+              label="Signed off"
+              value={
+                incident.oshaReportableSignedOffAt
+                  ? `${dateTime(incident.oshaReportableSignedOffAt)} · ${shortId(incident.oshaReportableSignedOffByMembershipId)}`
+                  : "—"
+              }
+            />
+            <Field
+              label="Workers' comp"
+              value={
+                incident.workersCompClaimInitiated
+                  ? (incident.workersCompClaimReference ?? "Initiated")
+                  : "Not initiated"
+              }
+              mono={incident.workersCompClaimReference !== null}
+            />
+            <Field
+              label="Linked SOS"
+              value={
+                incident.linkedSosAlertId ? (
+                  <Link to={`/safety/sos/${incident.linkedSosAlertId}`} style={linkStyle}>
+                    {shortId(incident.linkedSosAlertId)}
+                  </Link>
+                ) : (
+                  "None"
+                )
+              }
+            />
+          </SummaryGrid>
+          {incident.locationDescription ? (
+            <Field label="Where" value={incident.locationDescription} />
+          ) : null}
+          {incident.reopenReason ? (
+            <Notice tone="warning">
+              <strong>Reopened:</strong> {incident.reopenReason}
+            </Notice>
+          ) : null}
         </Panel>
-      ) : null}
 
-      <Panel stack headingLevel={3} title="Action plan">
-        <CipherText
-          value={incident.actionPlan}
-          available={incident.actionPlanAvailable}
-          emptyLabel="No action plan — this incident has not been closed with one."
-        />
-      </Panel>
+        <Panel stack headingLevel={3} title="Narrative">
+          <CipherText value={incident.narrative} available={incident.narrativeAvailable} />
+        </Panel>
 
-      <Panel stack headingLevel={3} title="Lifecycle ledger">
-        {ledger.length === 0 ? (
-          <span className="wx-text-muted">
-            No transitions yet — this incident is still a draft.
-          </span>
-        ) : (
-          <Timeline entries={ledger} />
-        )}
-      </Panel>
+        {incident.witnesses ? (
+          <Panel stack headingLevel={3} title="Witnesses">
+            <p style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
+              {incident.witnesses}
+            </p>
+          </Panel>
+        ) : null}
 
-      {/* ── ceremonies ─────────────────────────────────────────────────────────────────────────────── */}
+        <Panel stack headingLevel={3} title="Action plan">
+          <CipherText
+            value={incident.actionPlan}
+            available={incident.actionPlanAvailable}
+            emptyLabel="No action plan — this incident has not been closed with one."
+          />
+        </Panel>
+
+        <Panel stack headingLevel={3} title="Lifecycle ledger">
+          {ledger.length === 0 ? (
+            <span className="wx-text-muted">
+              No transitions yet — this incident is still a draft.
+            </span>
+          ) : (
+            <Timeline entries={ledger} />
+          )}
+        </Panel>
+      </div>
+
+      {/* ── ceremonies: drawers beside the incident ─────────────────────────────────────────────────── */}
 
       {ceremony === "edit" ? (
-        <Modal
+        <FormDrawer
           title="Edit this draft"
+          busy={saving}
           onClose={() => setCeremony("none")}
-          footer={
+          save={
             <Button
               tone="primary"
               size="lg"
@@ -523,14 +525,15 @@ export function IncidentDetailScreen(): JSX.Element {
               {modalError}
             </Notice>
           ) : null}
-        </Modal>
+        </FormDrawer>
       ) : null}
 
       {ceremony === "submit" ? (
-        <Modal
+        <FormDrawer
           title="Submit this incident for review"
+          busy={saving}
           onClose={() => setCeremony("none")}
-          footer={
+          save={
             <Button
               tone="primary"
               size="lg"
@@ -565,14 +568,15 @@ export function IncidentDetailScreen(): JSX.Element {
               {modalError}
             </Notice>
           ) : null}
-        </Modal>
+        </FormDrawer>
       ) : null}
 
       {ceremony === "transition" ? (
-        <Modal
+        <FormDrawer
           title="Change this incident's state"
+          busy={saving}
           onClose={() => setCeremony("none")}
-          footer={
+          save={
             <Button
               tone="primary"
               size="lg"
@@ -626,14 +630,15 @@ export function IncidentDetailScreen(): JSX.Element {
               {modalError}
             </Notice>
           ) : null}
-        </Modal>
+        </FormDrawer>
       ) : null}
 
       {ceremony === "osha" ? (
-        <Modal
+        <FormDrawer
           title="OSHA-equivalent sign-off"
+          busy={saving}
           onClose={() => setCeremony("none")}
-          footer={
+          save={
             <Button
               tone="primary"
               size="lg"
@@ -701,7 +706,7 @@ export function IncidentDetailScreen(): JSX.Element {
               {modalError}
             </Notice>
           ) : null}
-        </Modal>
+        </FormDrawer>
       ) : null}
     </div>
   );
