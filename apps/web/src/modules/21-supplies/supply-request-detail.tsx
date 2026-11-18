@@ -35,6 +35,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import { HospiceCoverageBadge, HospiceCoverageSection } from "../../shell/hospice-coverage";
 import {
   type DeliveryMethod,
@@ -72,14 +73,12 @@ import {
 } from "./supplies-status";
 import {
   Field,
-  Modal,
   Notice,
   SelectField,
   SummaryGrid,
   TextAreaField,
   TextField,
   Timeline,
-  columnStyle,
   enumOptions,
   ghostButtonStyle,
   pageTitleStyle,
@@ -160,6 +159,14 @@ export function SupplyRequestDetailScreen(): JSX.Element {
     setActionError(null);
   };
 
+  /** Open one step. The drawers share a few fields (the reason), so a reason typed for one step must not follow the
+   *  responder into another when they switch with the drawer already open. */
+  const openCeremony = (next: Exclude<Ceremony, null>) => {
+    setReason("");
+    setActionError(null);
+    setCeremony(next);
+  };
+
   /** Run a transition, then reload — the response carries the new row, but a reload also refreshes the
    *  derived `dispatchId` the kit path needs, and costs one read on a screen nobody opens in a loop. */
   const run = async (fn: () => Promise<{ error: unknown }>, failure: string) => {
@@ -220,298 +227,308 @@ export function SupplyRequestDetailScreen(): JSX.Element {
   ].filter((e): e is { label: string; at: string; by?: string } => e !== null);
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={
-          <span style={pageTitleStyle}>Supply request {shortId(request.supplyRequestId)}</span>
-        }
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/supplies" style={ghostButtonStyle}>
-              Back to queue
-            </Link>
-            {request.dispatchId ? (
-              <Link to={`/supplies/dispatches/${request.dispatchId}`} style={ghostButtonStyle}>
-                Comfort-kit dispatch
+    <div className={`wx-list-drawer${ceremony !== null ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main wx-kit-column">
+        <PageHeader
+          title={
+            <span style={pageTitleStyle}>Supply request {shortId(request.supplyRequestId)}</span>
+          }
+          actions={
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              <Link to="/supplies" style={ghostButtonStyle}>
+                Back to queue
               </Link>
-            ) : null}
-          </div>
-        }
-      />
-
-      {request.status === "cancellation_pending" ? (
-        <Notice tone="warning">
-          Cancellation has been REQUESTED of the vendor and is not yet a fact. The row keeps its
-          real state until the vendor answers — a DME already on the truck cannot be un-shipped by
-          our writing "cancelled". Their answer arrives through the vendor inbound path, not from
-          this screen.
-        </Notice>
-      ) : null}
-
-      {request.status === "received_confirmed" ? (
-        <Notice tone="info">
-          Completion is not a button. A one-shot DME/supply request completes automatically; a
-          comfort kit waits on the M13 deployment ack; a rental DME waits on
-          `m11.order.discontinued`.
-        </Notice>
-      ) : null}
-
-      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
-
-      <Panel
-        stack
-        headingLevel={3}
-        title="Request"
-        action={
-          <span className="wx-coverage-actions">
-            <StatusPill
-              label={humanize(request.status)}
-              tone={toneOf(REQUEST_STATUS_TONE, request.status)}
-            />
-            <HospiceCoverageBadge coverage={request.hospiceCoverage} />
-          </span>
-        }
-      >
-        <SummaryGrid>
-          <Field label="Kind" value={requestKindLabel(request.kind)} />
-          <Field label="Patient" value={shortId(request.patientId)} mono />
-          <Field label="Admission" value={shortId(request.admissionId)} mono />
-          <Field label="Location" value={shortId(request.locationId)} mono />
-          <Field label="Provider entity" value={shortId(request.providerEntityId)} mono />
-          <Field
-            label="Origin"
-            value={
-              request.sourceOrderId
-                ? `M11 order ${shortId(request.sourceOrderId)}`
-                : request.sourceReplenishmentEventId
-                  ? `M13 replenishment ${shortId(request.sourceReplenishmentEventId)}`
-                  : "Direct creation"
-            }
-          />
-          <Field label="Requested" value={dateTime(request.createdAt)} />
-          <Field label="Version stamp" value={dateTime(request.updatedAt)} />
-        </SummaryGrid>
-        {request.deliveryInstructions ? (
-          <div>
-            <span className="wx-text-muted">
-              Delivery instructions (D13 — audit-denylisted free text)
-            </span>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
-              {request.deliveryInstructions}
-            </p>
-          </div>
-        ) : null}
-        {request.cancellationReason ? (
-          <div>
-            <span className="wx-text-muted">Cancellation reason</span>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
-              {request.cancellationReason}
-            </p>
-          </div>
-        ) : null}
-      </Panel>
-
-      {/* COP27 (42 CFR 418.24(c)) — dme / supply only; a comfort-kit drug is determined on its M12 order. */}
-      {!isKit ? (
-        <HospiceCoverageSection
-          current={request}
-          onSave={async (draft) => {
-            const { request: next, error: err } = await setCoverageDetermination(
-              client,
-              supplyRequestId,
-              stamp,
-              draft,
-            );
-            if (err || !next)
-              return errorMessage(err, "The coverage determination could not be saved.");
-            setRequest(next);
-            return null;
-          }}
+              {request.dispatchId ? (
+                <Link to={`/supplies/dispatches/${request.dispatchId}`} style={ghostButtonStyle}>
+                  Comfort-kit dispatch
+                </Link>
+              ) : null}
+            </div>
+          }
         />
-      ) : null}
 
-      <Panel stack headingLevel={3} title={`${requestKindLabel(request.kind)} payload`}>
-        {/* The per-kind D1 `data` payload is rendered as data. §3.4's per-kind TypeBox is NOT published to
+        {request.status === "cancellation_pending" ? (
+          <Notice tone="warning">
+            Cancellation has been REQUESTED of the vendor and is not yet a fact. The row keeps its
+            real state until the vendor answers — a DME already on the truck cannot be un-shipped by
+            our writing "cancelled". Their answer arrives through the vendor inbound path, not from
+            this screen.
+          </Notice>
+        ) : null}
+
+        {request.status === "received_confirmed" ? (
+          <Notice tone="info">
+            Completion is not a button. A one-shot DME/supply request completes automatically; a
+            comfort kit waits on the M13 deployment ack; a rental DME waits on
+            `m11.order.discontinued`.
+          </Notice>
+        ) : null}
+
+        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
+
+        <Panel
+          stack
+          headingLevel={3}
+          title="Request"
+          action={
+            <span className="wx-coverage-actions">
+              <StatusPill
+                label={humanize(request.status)}
+                tone={toneOf(REQUEST_STATUS_TONE, request.status)}
+              />
+              <HospiceCoverageBadge coverage={request.hospiceCoverage} />
+            </span>
+          }
+        >
+          <SummaryGrid>
+            <Field label="Kind" value={requestKindLabel(request.kind)} />
+            <Field label="Patient" value={shortId(request.patientId)} mono />
+            <Field label="Admission" value={shortId(request.admissionId)} mono />
+            <Field label="Location" value={shortId(request.locationId)} mono />
+            <Field label="Provider entity" value={shortId(request.providerEntityId)} mono />
+            <Field
+              label="Origin"
+              value={
+                request.sourceOrderId
+                  ? `M11 order ${shortId(request.sourceOrderId)}`
+                  : request.sourceReplenishmentEventId
+                    ? `M13 replenishment ${shortId(request.sourceReplenishmentEventId)}`
+                    : "Direct creation"
+              }
+            />
+            <Field label="Requested" value={dateTime(request.createdAt)} />
+            <Field label="Version stamp" value={dateTime(request.updatedAt)} />
+          </SummaryGrid>
+          {request.deliveryInstructions ? (
+            <div>
+              <span className="wx-text-muted">
+                Delivery instructions (D13 — audit-denylisted free text)
+              </span>
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
+                {request.deliveryInstructions}
+              </p>
+            </div>
+          ) : null}
+          {request.cancellationReason ? (
+            <div>
+              <span className="wx-text-muted">Cancellation reason</span>
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
+                {request.cancellationReason}
+              </p>
+            </div>
+          ) : null}
+        </Panel>
+
+        {/* COP27 (42 CFR 418.24(c)) — dme / supply only; a comfort-kit drug is determined on its M12 order. */}
+        {!isKit ? (
+          <HospiceCoverageSection
+            current={request}
+            onSave={async (draft) => {
+              const { request: next, error: err } = await setCoverageDetermination(
+                client,
+                supplyRequestId,
+                stamp,
+                draft,
+              );
+              if (err || !next)
+                return errorMessage(err, "The coverage determination could not be saved.");
+              setRequest(next);
+              return null;
+            }}
+          />
+        ) : null}
+
+        <Panel stack headingLevel={3} title={`${requestKindLabel(request.kind)} payload`}>
+          {/* The per-kind D1 `data` payload is rendered as data. §3.4's per-kind TypeBox is NOT published to
             the client, so a hand-written field list here would be a second, drifting copy of the contract
             the write path validates against — and would silently hide a field a kind gained. */}
-        <span className="wx-text-muted">
-          The per-kind payload as stored. M21 publishes no client-side schema for it, so it is shown
-          verbatim rather than re-rendered into fields this screen would have to guess.
-        </span>
-        <pre
-          style={{
-            margin: 0,
-            padding: t.space3,
-            borderRadius: t.radiusMd,
-            background: t.surfaceLow,
-            color: t.onSurface,
-            fontFamily: t.fontMono,
-            fontSize: "0.78rem",
-            overflowX: "auto",
-          }}
-        >
-          {JSON.stringify(request.data, null, 2)}
-        </pre>
-      </Panel>
-
-      <Panel
-        stack
-        headingLevel={3}
-        title="Vendor & routing"
-        action={
-          can.assignVendor ? (
-            <Button tone="primary" type="button" onClick={() => setCeremony("assign-vendor")}>
-              Override vendor
-            </Button>
-          ) : undefined
-        }
-      >
-        <SummaryGrid>
-          <Field label="Assigned vendor" value={shortId(request.assignedVendorId)} mono />
-          <Field label="Pharmacy partner" value={shortId(request.pharmacyPartnerId)} mono />
-          <Field label="Vendor order reference" value={request.vendorOrderReference ?? "—"} mono />
-          <Field
-            label="Tracking"
-            value={
-              request.trackingNumber ? `${request.carrier ?? "—"} · ${request.trackingNumber}` : "—"
-            }
-            mono
-          />
-        </SummaryGrid>
-        {request.routingRuleResolved ? (
-          <>
-            <SummaryGrid>
-              <Field
-                label="Precedence level used"
-                value={humanize(request.routingRuleResolved.precedenceLevelUsed)}
-              />
-              <Field
-                label="Matched rule"
-                value={shortId(request.routingRuleResolved.matchedRuleId)}
-                mono
-              />
-              <Field
-                label="Fulfillment mode"
-                value={humanize(request.routingRuleResolved.assignedFulfillmentMode)}
-              />
-              <Field label="Resolved" value={dateTime(request.routingRuleResolved.resolvedAt)} />
-              <Field
-                label="Resolver version"
-                value={request.routingRuleResolved.resolverVersion}
-                mono
-              />
-              <Field
-                label="Policy digest"
-                value={shortId(request.routingRuleResolved.routingPolicyDigest)}
-                mono
-              />
-            </SummaryGrid>
-            <span className="wx-text-muted">
-              Every rule the D4 ladder evaluated, in precedence order — this is the frozen answer to
-              "why this vendor", and it survives an override.
-            </span>
-            <table>
-              <thead>
-                <tr>
-                  <th>Precedence</th>
-                  <th>Rule</th>
-                  <th>Matched</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {request.routingRuleResolved.candidatesEvaluated.map((c, i) => (
-                  <tr key={`${c.precedenceLevel}-${c.ruleId ?? i}`}>
-                    <td>{humanize(c.precedenceLevel)}</td>
-                    <td className="wx-data-md">{shortId(c.ruleId)}</td>
-                    <td>
-                      <StatusPill
-                        label={c.matched ? "Matched" : "Skipped"}
-                        tone={c.matched ? "success" : "neutral"}
-                      />
-                    </td>
-                    <td>{c.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        ) : (
           <span className="wx-text-muted">
-            No routing has been resolved yet. The D4 ladder runs at vendor assignment and is frozen
-            onto the row from that moment.
+            The per-kind payload as stored. M21 publishes no client-side schema for it, so it is
+            shown verbatim rather than re-rendered into fields this screen would have to guess.
           </span>
-        )}
-      </Panel>
+          <pre
+            style={{
+              margin: 0,
+              padding: t.space3,
+              borderRadius: t.radiusMd,
+              background: t.surfaceLow,
+              color: t.onSurface,
+              fontFamily: t.fontMono,
+              fontSize: "0.78rem",
+              overflowX: "auto",
+            }}
+          >
+            {JSON.stringify(request.data, null, 2)}
+          </pre>
+        </Panel>
 
-      <Panel stack headingLevel={3} title="Lifecycle">
-        <span className="wx-text-muted">
-          Reconstructed from this request's own timestamp columns. The immutable actor trail — who
-          read it, who was refused, who broke glass — belongs to the M4 audit surface that owns it.
-        </span>
-        {timeline.length === 0 ? (
-          <span className="wx-text-muted">Nothing has happened to this request yet.</span>
-        ) : (
-          <Timeline entries={timeline} />
-        )}
-      </Panel>
+        <Panel
+          stack
+          headingLevel={3}
+          title="Vendor & routing"
+          action={
+            can.assignVendor ? (
+              <Button tone="primary" type="button" onClick={() => openCeremony("assign-vendor")}>
+                Override vendor
+              </Button>
+            ) : undefined
+          }
+        >
+          <SummaryGrid>
+            <Field label="Assigned vendor" value={shortId(request.assignedVendorId)} mono />
+            <Field label="Pharmacy partner" value={shortId(request.pharmacyPartnerId)} mono />
+            <Field
+              label="Vendor order reference"
+              value={request.vendorOrderReference ?? "—"}
+              mono
+            />
+            <Field
+              label="Tracking"
+              value={
+                request.trackingNumber
+                  ? `${request.carrier ?? "—"} · ${request.trackingNumber}`
+                  : "—"
+              }
+              mono
+            />
+          </SummaryGrid>
+          {request.routingRuleResolved ? (
+            <>
+              <SummaryGrid>
+                <Field
+                  label="Precedence level used"
+                  value={humanize(request.routingRuleResolved.precedenceLevelUsed)}
+                />
+                <Field
+                  label="Matched rule"
+                  value={shortId(request.routingRuleResolved.matchedRuleId)}
+                  mono
+                />
+                <Field
+                  label="Fulfillment mode"
+                  value={humanize(request.routingRuleResolved.assignedFulfillmentMode)}
+                />
+                <Field label="Resolved" value={dateTime(request.routingRuleResolved.resolvedAt)} />
+                <Field
+                  label="Resolver version"
+                  value={request.routingRuleResolved.resolverVersion}
+                  mono
+                />
+                <Field
+                  label="Policy digest"
+                  value={shortId(request.routingRuleResolved.routingPolicyDigest)}
+                  mono
+                />
+              </SummaryGrid>
+              <span className="wx-text-muted">
+                Every rule the D4 ladder evaluated, in precedence order — this is the frozen answer
+                to "why this vendor", and it survives an override.
+              </span>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Precedence</th>
+                    <th>Rule</th>
+                    <th>Matched</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {request.routingRuleResolved.candidatesEvaluated.map((c, i) => (
+                    <tr key={`${c.precedenceLevel}-${c.ruleId ?? i}`}>
+                      <td>{humanize(c.precedenceLevel)}</td>
+                      <td className="wx-data-md">{shortId(c.ruleId)}</td>
+                      <td>
+                        <StatusPill
+                          label={c.matched ? "Matched" : "Skipped"}
+                          tone={c.matched ? "success" : "neutral"}
+                        />
+                      </td>
+                      <td>{c.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <span className="wx-text-muted">
+              No routing has been resolved yet. The D4 ladder runs at vendor assignment and is
+              frozen onto the row from that moment.
+            </span>
+          )}
+        </Panel>
 
-      <Panel stack headingLevel={3} title="Actions">
-        <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <ActionButton
-            label="Assign / override vendor"
-            enabled={can.assignVendor}
-            precondition="Only a request still in `requested` can have its vendor assigned."
-            onClick={() => setCeremony("assign-vendor")}
-          />
-          <ActionButton
-            label="Mark ordered"
-            enabled={can.markOrdered}
-            precondition="A vendor must be assigned before an order can be placed."
-            onClick={() => setCeremony("mark-ordered")}
-          />
-          <ActionButton
-            label="Mark in transit"
-            enabled={can.markInTransit}
-            precondition="The vendor must have accepted the order first."
-            onClick={() => setCeremony("mark-in-transit")}
-          />
-          <ActionButton
-            label="Record delivery"
-            enabled={can.markDelivered}
-            precondition="Only a shipment in transit can be attested as delivered."
-            onClick={() => setCeremony("mark-delivered")}
-          />
-          <ActionButton
-            label="Confirm receipt"
-            enabled={can.confirmReceived}
-            precondition="Receipt is confirmed after delivery is attested."
-            onClick={() => setCeremony("confirm-received")}
-          />
-          <ActionButton
-            label="Initiate kit return"
-            enabled={can.initiateReturn}
-            precondition={
-              isKit
-                ? "A kit return opens once the kit has been delivered or its receipt confirmed."
-                : "Only a comfort-kit request has a return branch — DME comes back through the M11 rental-pickup path."
-            }
-            onClick={() => setCeremony("return")}
-          />
-          <ActionButton
-            label="Cancel"
-            enabled={can.cancel}
-            precondition="This request has already reached a state cancellation cannot touch."
-            onClick={() => setCeremony("cancel")}
-          />
-        </div>
-      </Panel>
+        <Panel stack headingLevel={3} title="Lifecycle">
+          <span className="wx-text-muted">
+            Reconstructed from this request's own timestamp columns. The immutable actor trail — who
+            read it, who was refused, who broke glass — belongs to the M4 audit surface that owns
+            it.
+          </span>
+          {timeline.length === 0 ? (
+            <span className="wx-text-muted">Nothing has happened to this request yet.</span>
+          ) : (
+            <Timeline entries={timeline} />
+          )}
+        </Panel>
+
+        <Panel stack headingLevel={3} title="Actions">
+          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+            <ActionButton
+              label="Assign / override vendor"
+              enabled={can.assignVendor}
+              precondition="Only a request still in `requested` can have its vendor assigned."
+              onClick={() => openCeremony("assign-vendor")}
+            />
+            <ActionButton
+              label="Mark ordered"
+              enabled={can.markOrdered}
+              precondition="A vendor must be assigned before an order can be placed."
+              onClick={() => openCeremony("mark-ordered")}
+            />
+            <ActionButton
+              label="Mark in transit"
+              enabled={can.markInTransit}
+              precondition="The vendor must have accepted the order first."
+              onClick={() => openCeremony("mark-in-transit")}
+            />
+            <ActionButton
+              label="Record delivery"
+              enabled={can.markDelivered}
+              precondition="Only a shipment in transit can be attested as delivered."
+              onClick={() => openCeremony("mark-delivered")}
+            />
+            <ActionButton
+              label="Confirm receipt"
+              enabled={can.confirmReceived}
+              precondition="Receipt is confirmed after delivery is attested."
+              onClick={() => openCeremony("confirm-received")}
+            />
+            <ActionButton
+              label="Initiate kit return"
+              enabled={can.initiateReturn}
+              precondition={
+                isKit
+                  ? "A kit return opens once the kit has been delivered or its receipt confirmed."
+                  : "Only a comfort-kit request has a return branch — DME comes back through the M11 rental-pickup path."
+              }
+              onClick={() => openCeremony("return")}
+            />
+            <ActionButton
+              label="Cancel"
+              enabled={can.cancel}
+              precondition="This request has already reached a state cancellation cannot touch."
+              onClick={() => openCeremony("cancel")}
+            />
+          </div>
+        </Panel>
+      </div>
 
       {ceremony === "assign-vendor" ? (
-        <Modal
+        <FormDrawer
           title="Assign or override the vendor"
+          busy={busy}
           onClose={close}
-          footer={
+          save={
             <Button
               tone="primary"
               type="button"
@@ -570,14 +587,14 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             rows={3}
             hint="Recorded with the routing trace. Required in practice whenever the ladder's answer is being set aside."
           />
-        </Modal>
+        </FormDrawer>
       ) : null}
-
       {ceremony === "mark-ordered" ? (
-        <Modal
+        <FormDrawer
           title="Record the vendor's acceptance"
+          busy={busy}
           onClose={close}
-          footer={
+          save={
             <Button
               tone="primary"
               type="button"
@@ -606,14 +623,14 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             onChange={setOrderReference}
             mono
           />
-        </Modal>
+        </FormDrawer>
       ) : null}
-
       {ceremony === "mark-in-transit" ? (
-        <Modal
+        <FormDrawer
           title="Record the shipment"
+          busy={busy}
           onClose={close}
-          footer={
+          save={
             <Button
               tone="primary"
               type="button"
@@ -635,14 +652,14 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         >
           <TextField label="Carrier" value={carrier} onChange={setCarrier} />
           <TextField label="Tracking number" value={tracking} onChange={setTracking} mono />
-        </Modal>
+        </FormDrawer>
       ) : null}
-
       {ceremony === "mark-delivered" ? (
-        <Modal
+        <FormDrawer
           title="Attest delivery"
+          busy={busy}
           onClose={close}
-          footer={
+          save={
             <Button
               tone="primary"
               type="button"
@@ -685,14 +702,14 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             onChange={setEvidenceDocumentId}
             mono
           />
-        </Modal>
+        </FormDrawer>
       ) : null}
-
       {ceremony === "confirm-received" ? (
-        <Modal
+        <FormDrawer
           title="Confirm receipt"
+          busy={busy}
           onClose={close}
-          footer={
+          save={
             <Button
               tone="primary"
               type="button"
@@ -725,14 +742,14 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             onChange={setReceiptActor}
           />
           <TextField label="Confirmed at" value={when} onChange={setWhen} type="datetime-local" />
-        </Modal>
+        </FormDrawer>
       ) : null}
-
       {ceremony === "cancel" || ceremony === "return" ? (
-        <Modal
+        <FormDrawer
           title={ceremony === "cancel" ? "Cancel this request" : "Initiate the kit return"}
+          busy={busy}
           onClose={close}
-          footer={
+          save={
             <Button
               tone="primary"
               type="button"
@@ -770,7 +787,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             </Notice>
           )}
           <TextAreaField label="Reason" value={reason} onChange={setReason} rows={3} />
-        </Modal>
+        </FormDrawer>
       ) : null}
     </div>
   );
