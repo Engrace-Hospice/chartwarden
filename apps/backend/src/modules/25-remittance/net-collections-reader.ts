@@ -3,8 +3,10 @@
 // The meter the M35 billing-service percentage is charged on: an organisation's NET COLLECTIONS for a period.
 //
 //   net collections = the sum of `remittance_advice.total_payment_amount` (835 BPR02) over the org's remittances that are
-//                     posted or partially posted and whose PAYMENT DATE (`production_date`, BPR16: the EFT effective / check
-//                     issue date, the day the money moved, not the day we parsed the file) falls in [periodStart, periodEnd).
+//                     posted or partially posted and whose PAYMENT DATE (`payment_effective_date`, BPR16: the EFT effective /
+//                     check issue date, the day the money moved, not the day we parsed the file; rows from before migration
+//                     1508 carry only the legacy `production_date`, read as its UTC day) falls in [periodStart, periodEnd).
+//                     Receive refuses a non-zero 835 with no BPR16, so a new payment is never undated and never drops out of a period.
 //
 // BPR02 is already NET: the parser refuses an 835 unless `sum(CLP04 claim payments) - sum(PLB provider-level adjustments) = BPR02`,
 // and a claim reversal carries a negative CLP04 while an overpayment recovery or takeback rides a PLB adjustment, so everything
@@ -34,13 +36,20 @@ const CENTS = sql<string>`coalesce(sum(round(${RA.totalPaymentAmount} * 100)) FI
 const POSTED_COUNT = sql<string>`count(*) FILTER (WHERE ${POSTED})`;
 const PENDING_COUNT = sql<string>`count(*) FILTER (WHERE NOT (${POSTED}))`;
 /** The UTC calendar month of the payment date, `YYYY-MM`. */
-const PAYMENT_DATE = sql<Date | null>`coalesce(${RA.paymentEffectiveDate}::date, (${RA.productionDate} AT TIME ZONE 'UTC')::date)`;
+const PAYMENT_DATE = sql<string | null>`coalesce(${RA.paymentEffectiveDate}::date, (${RA.productionDate} AT TIME ZONE 'UTC')::date)`;
 const PAYMENT_MONTH = sql<string>`to_char(${PAYMENT_DATE}, 'YYYY-MM')`;
 
 interface Period {
   readonly periodStart: Date;
   readonly periodEnd: Date;
 }
+
+/**
+ * The period bound as an ISO `YYYY-MM-DD` day with an explicit `::date` cast. A JS `Date` parameter is
+ * serialised by the driver in the HOST timezone (a UTC-midnight bound becomes the previous local day west
+ * of UTC), which shifts the compared `date` by a day; a literal UTC day does not depend on the host.
+ */
+const utcDay = (instant: Date) => sql`${instant.toISOString().slice(0, 10)}::date`;
 
 const toNetCollections = (
   row: { cents: string; posted: string; pending: string } | undefined,
@@ -59,8 +68,8 @@ export function buildNetCollectionsReader(db: DbClient): NetCollectionsReader {
   const inPeriod = (organizationId: string, { periodStart, periodEnd }: Period) =>
     and(
       eq(RA.organizationId, organizationId),
-      gte(PAYMENT_DATE, periodStart),
-      lt(PAYMENT_DATE, periodEnd),
+      gte(PAYMENT_DATE, utcDay(periodStart)),
+      lt(PAYMENT_DATE, utcDay(periodEnd)),
     );
 
   return {
