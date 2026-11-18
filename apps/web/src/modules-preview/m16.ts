@@ -148,5 +148,6 @@ export const preview16: ModulePreview = {
   screens: bereavementScreens,
   fixtures,
   start: "/bereavement/supervisor",
-  extraPermissions: [],
+  // Beyond each screen's read key: the write actions the screens gate their buttons on.
+  extraPermissions: ["bereavement.group.manage"],
 };

@@ -158,18 +158,18 @@ describe("support groups — create a draft", () => {
       MANAGE,
     );
     fireEvent.click(await screen.findByRole("button", { name: "New group" }));
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Spring circle" } });
-    fireEvent.change(within(dialog).getByLabelText("Facilitator membership id"), {
+    const drawer = await screen.findByRole("complementary", { name: "New support group" });
+    fireEvent.change(within(drawer).getByLabelText("Name"), { target: { value: "Spring circle" } });
+    fireEvent.change(within(drawer).getByLabelText("Facilitator membership id"), {
       target: { value: FACILITATOR },
     });
-    fireEvent.change(within(dialog).getByLabelText("First date"), {
+    fireEvent.change(within(drawer).getByLabelText("First date"), {
       target: { value: "2027-03-02" },
     });
-    fireEvent.change(within(dialog).getByLabelText("Time zone"), {
+    fireEvent.change(within(drawer).getByLabelText("Time zone"), {
       target: { value: "America/Chicago" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create draft group" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Create draft group" }));
     expect(await screen.findByText("Group page")).toBeTruthy();
     const post = calls.find((c) => c.method === "POST" && c.path === GROUPS_PATH);
     expect(post?.idempotencyKey).toBeTruthy();
@@ -189,20 +189,40 @@ describe("support groups — create a draft", () => {
     });
   });
 
+  it("opens the form as a drawer beside the list, not a dialog over it", async () => {
+    mount(() => page([group()]), MANAGE);
+    fireEvent.click(await screen.findByRole("button", { name: "New group" }));
+    expect(await screen.findByRole("complementary", { name: "New support group" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The list stays on the page while the form is open.
+    expect(screen.getByRole("table", { name: "Support groups" })).toBeTruthy();
+  });
+
+  it("closes the drawer from Cancel without sending anything", async () => {
+    const { calls } = mount(() => page([]), MANAGE);
+    fireEvent.click(await screen.findByRole("button", { name: "New group" }));
+    const drawer = await screen.findByRole("complementary", { name: "New support group" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New support group" })).toBeNull(),
+    );
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
   it("refuses a join link that is not https before sending anything", async () => {
     const { calls } = mount(() => page([]), MANAGE);
     fireEvent.click(await screen.findByRole("button", { name: "New group" }));
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Format"), { target: { value: "drop_in" } });
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Drop-in" } });
-    fireEvent.change(within(dialog).getByLabelText("Facilitator membership id"), {
+    const drawer = await screen.findByRole("complementary", { name: "New support group" });
+    fireEvent.change(within(drawer).getByLabelText("Format"), { target: { value: "drop_in" } });
+    fireEvent.change(within(drawer).getByLabelText("Name"), { target: { value: "Drop-in" } });
+    fireEvent.change(within(drawer).getByLabelText("Facilitator membership id"), {
       target: { value: FACILITATOR },
     });
-    fireEvent.change(within(dialog).getByLabelText("Join link (https, optional)"), {
+    fireEvent.change(within(drawer).getByLabelText("Join link (https, optional)"), {
       target: { value: "http://example.test/room" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create draft group" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toContain("https://");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Create draft group" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("https://");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
 });

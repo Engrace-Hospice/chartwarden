@@ -8,7 +8,14 @@ import {
 } from "@chartwarden/ui";
 import type { JSX } from "react";
 
-export type TextFieldType = "text" | "number" | "date" | "datetime-local" | "email" | "tel";
+export type TextFieldType =
+  | "text"
+  | "number"
+  | "date"
+  | "time"
+  | "datetime-local"
+  | "email"
+  | "tel";
 
 export function TextField({
   label,
