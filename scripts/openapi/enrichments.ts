@@ -2148,6 +2148,16 @@ import {
   ProblemProposalListQuerySchema as M7ProblemProposalListQuerySchema,
   ProblemProposalListResponseSchema as M7ProblemProposalListResponseSchema,
 } from "../../apps/backend/src/modules/07-care-plan/routes/problem-proposal-typebox";
+// ADR-0113 visit-note closure clock (M8).
+import {
+  ClosureOverrideResponseSchema as M8ClosureOverrideResponseSchema,
+  ClosurePolicyResponseSchema as M8ClosurePolicyResponseSchema,
+  ClosureStatusResponseSchema as M8ClosureStatusResponseSchema,
+  GrantClosureOverrideSchema as M8GrantClosureOverrideSchema,
+  OverdueNotesQuerySchema as M8OverdueNotesQuerySchema,
+  OverdueNotesResponseSchema as M8OverdueNotesResponseSchema,
+  PutClosurePolicySchema as M8PutClosurePolicySchema,
+} from "../../apps/backend/src/modules/08-encounters/routes/closure-typebox";
 import {
   AddendumFinalizeResponseSchema as M8AddendumFinalizeResponseSchema,
   AddendumSelectionsResponseSchema as M8AddendumSelectionsResponseSchema,
@@ -5756,6 +5766,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string)",
     response: M8RenderPayloadResponseSchema,
+  },
+  // ADR-0113 — the visit-note closure clock. Static `/encounters/<segment>` paths: they win over `/encounters/:encounterId`.
+  "GET /api/v1/encounters/closure-status": {
+    summary:
+      "The caller's own visit-note closure position (mode, stage, deadline, the oldest open clocked note, the count overdue) — the shell banner polls it",
+    response: M8ClosureStatusResponseSchema,
+  },
+  "GET /api/v1/encounters/overdue-notes": {
+    summary:
+      "Supervisor board: at-risk, overdue and escalated clocked open notes, oldest first (org-wide scope sees every site, otherwise the caller's sites; encounter.closure_override)",
+    query: M8OverdueNotesQuerySchema,
+    response: M8OverdueNotesResponseSchema,
+  },
+  "POST /api/v1/encounters/closure-overrides": {
+    summary:
+      "Grant a supervisor override that lifts the closure BLOCK for one clinician for 1-24 hours (default 4). Needs a fresh step-up; the reason (>= 40 chars) is audited, never echoed",
+    body: M8GrantClosureOverrideSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M8ClosureOverrideResponseSchema,
+  },
+  "POST /api/v1/encounters/closure-overrides/:overrideId/revoke": {
+    summary:
+      "Revoke a closure override early (idempotent; needs a fresh step-up). The grant row is never deleted",
+    response: M8ClosureOverrideResponseSchema,
+  },
+  "GET /api/v1/encounters/closure-policy": {
+    summary:
+      "The tenant's visit-note closure policy (mode off | warn | block, threshold hours; an unset tenant is warn / 24)",
+    response: M8ClosurePolicyResponseSchema,
+  },
+  "PUT /api/v1/encounters/closure-policy": {
+    summary:
+      "Set the tenant's visit-note closure policy. Moving to block stamps enforce_from = now server-side so notes already overdue get a fresh window",
+    body: M8PutClosurePolicySchema,
+    response: M8ClosurePolicyResponseSchema,
   },
 });
 

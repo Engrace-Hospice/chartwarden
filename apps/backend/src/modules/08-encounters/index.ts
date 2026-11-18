@@ -6,12 +6,15 @@
 import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predicates";
+import { createDbClosureRouteService } from "./closure/closure-route-service";
+import type { ClosurePolicyCache } from "./closure/policy-service";
 import {
   type EncounterWriteOutboxPort,
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
+import { registerClosureRoutes as _registerM8ClosureRoutes } from "./routes/closure-routes";
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
 
 /**
@@ -21,16 +24,36 @@ import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounter
  * every mutation emits its `m8.*` event on the passed transactional-outbox publisher (the composition
  * root binds M1's catalog-validating publisher pinned to caller-module `m8`). Replaces the in-memory
  * clinical-core scaffold mount for M8.
+ *
+ * ADR-0113: also mounts the visit-note closure routes (closure-status, overdue-notes, closure-overrides, closure-policy).
+ * `closure.policyCache` is the policy cache the request-time closure gate reads; pass the SAME instance to both so a policy PUT
+ * invalidates what the gate sees. Absent, the closure routes build their own (the gate would then lag a PUT by up to its TTL).
  */
 export function mountEncounterRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: EncounterWriteOutboxPort,
   ciphers?: HearthnoteCiphers,
+  closure?: { readonly policyCache?: ClosurePolicyCache },
 ): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
   _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox, ciphers) });
+  _registerM8ClosureRoutes(app, {
+    service: createDbClosureRouteService({
+      db,
+      ...(closure?.policyCache ? { policyCache: closure.policyCache } : {}),
+    }),
+  });
 }
+
+// ADR-0113 — the visit-note closure clock: the pure clock, the tenant policy (+ its cache), the supervisor override, the shared
+// evaluator the gate / banner / board call, and the route service.
+export * from "./closure/index";
+export {
+  type ClosureRouteDeps,
+  CLOSURE_OVERRIDE_STEP_UP_KEY,
+  registerClosureRoutes,
+} from "./routes/closure-routes";
 
 export * from "./lifecycle/index";
 // #121 — the §2.6 Layer-3 compliance gate + the register of what each of its twelve checks is today.
