@@ -274,6 +274,35 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
     await admin?.end();
   });
 
+  it("provisioning after migrating (a fresh database) makes the platform carrier a member of claimmd_capture, idempotently", async () => {
+    // Migrations 1350/1356 grant the membership only when chartwarden_platform already exists, and only the provisioner
+    // creates it, so this file's order (migrate, then provision) is the one that used to leave it out.
+    const has = async (role: string, ofRole: string, privilege: "MEMBER" | "USAGE") =>
+      (
+        await admin.query<{ ok: boolean }>("SELECT pg_has_role($1, $2, $3) AS ok", [
+          role,
+          ofRole,
+          privilege,
+        ])
+      ).rows[0]?.ok;
+    expect(await has("chartwarden_platform", "claimmd_capture", "MEMBER")).toBe(true);
+    expect(await has("chartwarden_platform_login", "claimmd_capture", "USAGE")).toBe(true);
+    provision(); // a re-provision is a no-op, not an error
+    expect(await has("chartwarden_platform", "claimmd_capture", "MEMBER")).toBe(true);
+    // membership of the one NOLOGIN capture role only: the carrier is still not the admin role
+    expect(await has("chartwarden_platform", "chartwarden_admin", "MEMBER")).toBe(false);
+    // and it is effective: the platform login reads the central ERA-staging table (as itself, not as the superuser)
+    await admin.query("BEGIN");
+    try {
+      await admin.query("SET LOCAL ROLE chartwarden_platform_login");
+      await expect(
+        admin.query("SELECT count(*) FROM claimmd_era_m25_stage"),
+      ).resolves.toBeDefined();
+    } finally {
+      await admin.query("ROLLBACK");
+    }
+  });
+
   it("answers 503 and stores nothing while unconfigured", async () => {
     const off = Fastify();
     applyErrorHandler(off);
