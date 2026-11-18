@@ -1,7 +1,8 @@
 // @chartwarden/ui — Drawer. The redesign's right-hand drawer for a record's form or detail: the
 // `aside.wx-admission-drawer` column (sticky beside its list inside `.wx-list-drawer.has-drawer`), a head
 // of [icon · title · subtitle · Close] and one body card. Focus, Escape and focus-return are `useDrawerA11y`'s.
-// A confirmation or a signing ceremony is a Modal, not a Drawer: those must block the page until answered.
+// A confirmation or a signing ceremony belongs in a Modal (DESIGN.md §7.4): those must block the page until answered. A screen
+// that puts one in a Drawer anyway must stop the page changing under it while the write is in flight (apps/web's FormDrawer does).
 import type { JSX, ReactNode } from "react";
 import { useDrawerA11y } from "../hooks/use-drawer-a11y";
 import { Glyph, type GlyphName } from "../system/glyphs";
@@ -14,6 +15,8 @@ export interface DrawerProps {
   /** The landmark's accessible name; usually the title. */
   label: string;
   onClose: () => void;
+  /** Disables the Close button (a write is in flight and the drawer cannot be dismissed); Escape is the caller's `onClose` to refuse. */
+  closeDisabled?: boolean;
   /** When this changes the form was reset (saved, switched record): Escape closes the drawer again. */
   resetKey?: unknown;
   /** The action row under the body (Save, Cancel). */
@@ -27,6 +30,7 @@ export function Drawer({
   icon,
   label,
   onClose,
+  closeDisabled,
   resetKey,
   footer,
   children,
@@ -40,11 +44,17 @@ export function Drawer({
             <Glyph name={icon} size={20} />
           </span>
         ) : null}
-        <div>
+        <div className="wx-drawer-head-main">
           <h2>{title}</h2>
           {subtitle ? <div className="wx-row-sub">{subtitle}</div> : null}
         </div>
-        <Button tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+        <Button
+          tone="tertiary"
+          size="sm"
+          aria-label="Close"
+          disabled={closeDisabled}
+          onClick={onClose}
+        >
           <Glyph name="close" size={16} />
         </Button>
       </header>

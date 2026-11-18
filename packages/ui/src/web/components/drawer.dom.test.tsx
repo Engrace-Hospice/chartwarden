@@ -50,6 +50,17 @@ describe("Drawer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("disables the Close button when asked, so a write in flight cannot be dismissed", () => {
+    render(
+      <Drawer title="t" label="t" onClose={vi.fn()} closeDisabled>
+        <p>body</p>
+      </Drawer>,
+    );
+    expect((screen.getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
   it("closes on Escape while nothing has been typed", () => {
     const onClose = renderDrawer();
     fireEvent.keyDown(screen.getByRole("complementary"), { key: "Escape" });
