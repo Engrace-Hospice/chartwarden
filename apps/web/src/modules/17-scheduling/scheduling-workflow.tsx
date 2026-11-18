@@ -1,7 +1,7 @@
 import { Button, Glyph, Modal, StatusPill, t, toLocalInput, useApiClient } from "@chartwarden/ui";
 import type { ApiClient, EntityLookupOption } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, JSX, ReactNode } from "react";
+import type { CSSProperties, FormEvent, JSX, ReactNode, RefObject } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   AdmissionLookupField,
@@ -199,6 +199,7 @@ export function NewVisitModal({
   const [step, setStep] = useState<NewVisitStep>(1);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  const currentStepRef = useRef<HTMLLIElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [supportReference, setSupportReference] = useState<string | null>(null);
   const [eligibleClinicians, setEligibleClinicians] = useState<EligibleClinician[]>([]);
@@ -211,6 +212,15 @@ export function NewVisitModal({
     setPatientId(initialPatient.id);
     setPatientLabel(initialPatient.label);
   }, [open, initialPatient]);
+
+  // Advancing 3 -> 4 replaces the focused Continue button with Create Visit (distinct keys, see the
+  // footer). Focus would fall to <body>, where the modal's Escape and Tab handling never see it, so land
+  // on the current step in the progress list instead; it also announces the new step.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the step changes
+  useEffect(() => {
+    const active = document.activeElement;
+    if (!active || active === document.body) currentStepRef.current?.focus();
+  }, [step]);
 
   useEffect(() => {
     let active = true;
@@ -473,7 +483,7 @@ export function NewVisitModal({
             <Glyph name="close" size={16} label="Close" />
           </button>
         </div>
-        <NewVisitProgress current={step} />
+        <NewVisitProgress current={step} currentRef={currentStepRef} />
         {error ? (
           <div role="alert" style={errorBanner}>
             <strong>{error}</strong>
@@ -599,8 +609,11 @@ export function NewVisitModal({
               Back
             </Button>
           ) : null}
+          {/* Distinct keys: without them React reuses one <button> for both, and a real click on
+              "Continue to review" flips it to type="submit" before the click's default action runs,
+              submitting the form and skipping the review step. */}
           {step < 4 ? (
-            <Button onClick={advance} disabled={submitting}>
+            <Button key="advance" onClick={advance} disabled={submitting}>
               {step === 1
                 ? "Continue to time and location"
                 : step === 2
@@ -608,7 +621,7 @@ export function NewVisitModal({
                   : "Continue to review"}
             </Button>
           ) : (
-            <Button type="submit" loading={submitting} disabled={submitting}>
+            <Button key="create" type="submit" loading={submitting} disabled={submitting}>
               <Glyph name="check" size={14} /> Create Visit
             </Button>
           )}
@@ -618,12 +631,20 @@ export function NewVisitModal({
   );
 }
 
-function NewVisitProgress({ current }: { current: NewVisitStep }): JSX.Element {
+function NewVisitProgress({
+  current,
+  currentRef,
+}: {
+  current: NewVisitStep;
+  currentRef: RefObject<HTMLLIElement>;
+}): JSX.Element {
   return (
     <ol className="wx-visit-wizard-steps" aria-label="Visit scheduling progress">
       {NEW_VISIT_STEPS.map((item) => (
         <li
           key={item.step}
+          ref={item.step === current ? currentRef : undefined}
+          tabIndex={item.step === current ? -1 : undefined}
           className={
             item.step === current ? "is-current" : item.step < current ? "is-complete" : ""
           }

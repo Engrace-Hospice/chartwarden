@@ -155,13 +155,41 @@ test.describe("Encounters", () => {
       .first()
       .click();
     await visitDialog.getByLabel("Visit purpose").selectOption("routine_visit");
+    // The guided wizard (0342bcf46) is four steps: who/why → when/where → clinician → review.
+    await visitDialog.getByRole("button", { name: "Continue to time and location" }).click();
     await visitDialog.getByLabel("Visit setting").selectOption("telephonic");
+    const fillWindow = async (window: { start: string; end: string }): Promise<void> => {
+      await visitDialog.getByLabel("Scheduled start").fill(window.start);
+      await visitDialog.getByLabel("Scheduled end").fill(window.end);
+      await visitDialog.getByRole("button", { name: "Continue to clinician" }).click();
+    };
+    // Time now precedes clinician, and "Who is available" still lists a clinician who already has a visit
+    // then (the conflict only surfaces on submit). Start with the helper's first candidate (07:00), read the
+    // RN's real bookings, and go back only if that hour is taken.
+    await fillWindow({ start: `${serviceDate}T07:00`, end: `${serviceDate}T07:45` });
     const clinician = visitDialog.getByRole("combobox", { name: /Assigned clinician/ });
+    await expect(clinician).toBeEnabled({ timeout: 15_000 });
     await clinician.selectOption({ label: "Rita Alvarez, RN · RN" });
     const assignedMembershipId = await clinician.inputValue();
     const visitWindow = await openVisitWindow(page, serviceDate, assignedMembershipId);
-    await visitDialog.getByLabel("Scheduled start").fill(visitWindow.start);
-    await visitDialog.getByLabel("Scheduled end").fill(visitWindow.end);
+    if (visitWindow.start !== `${serviceDate}T07:00`) {
+      await visitDialog.getByRole("button", { name: "Back" }).click();
+      await fillWindow(visitWindow);
+      await expect(clinician).toBeEnabled({ timeout: 15_000 });
+      await clinician.selectOption({ label: "Rita Alvarez, RN · RN" });
+    }
+    const createRequests: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST" && new URL(request.url()).pathname === "/api/v1/visits") {
+        createRequests.push(request.url());
+      }
+    });
+    await visitDialog.getByRole("button", { name: "Continue to review" }).click();
+    // Reaching the review step must create nothing. A real click once submitted the form here (the WF08
+    // wizard reused one <button> for Continue and Create), so the visit appeared with no review.
+    await expect(visitDialog.getByText("Confirm visit details")).toBeVisible();
+    await page.waitForTimeout(750); // an absence check needs a short settle; the old bug fired within ~100 ms
+    expect(createRequests, "Continue to review must not create the visit").toEqual([]);
     await visitDialog.getByRole("button", { name: "Create Visit" }).click();
     await page.waitForURL(/\/scheduling\/visits\/[^/]+$/, { timeout: 15_000 });
     const visitId = /\/scheduling\/visits\/([^/?#]+)$/.exec(page.url())?.[1] as string;
@@ -303,10 +331,14 @@ test.describe("Encounters", () => {
 
     // M8's signed event is the only authority that completes M17. The visit and chart must lead back
     // to this exact immutable encounter rather than parallel client-owned status.
-    await page.goto(`/scheduling/visits/${visitId}`);
-    await expect(page.getByText("Completed", { exact: true }).first()).toBeVisible({
-      timeout: 20_000,
-    });
+    // Completion is M17's asynchronous reaction to the signed event (~0.6 s after sign on the private
+    // stack) and the visit page fetches once, so reload until it lands instead of racing a single load.
+    await expect(async () => {
+      await page.goto(`/scheduling/visits/${visitId}`);
+      await expect(page.getByText("Completed", { exact: true }).first()).toBeVisible({
+        timeout: 3_000,
+      });
+    }).toPass({ timeout: 30_000 });
     await page.getByRole("button", { name: "Signed", exact: true }).click();
     await page.waitForURL(`/patients/${patientId}/encounters/${encounterId}`);
   });

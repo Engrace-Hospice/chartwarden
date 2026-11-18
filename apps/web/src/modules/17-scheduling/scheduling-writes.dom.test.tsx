@@ -309,7 +309,7 @@ async function choosePatient(dialog: HTMLElement): Promise<void> {
   );
 }
 
-async function fillValidVisit(dialog: HTMLElement): Promise<void> {
+async function fillValidVisit(dialog: HTMLElement, advanceToReview = true): Promise<void> {
   await choosePatient(dialog);
   await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
   fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
@@ -331,7 +331,9 @@ async function fillValidVisit(dialog: HTMLElement): Promise<void> {
   });
   fireEvent.click(within(dialog).getByRole("button", { name: /continue to clinician/i }));
   await chooseClinician(dialog, /assigned clinician/i, MEMBER);
-  fireEvent.click(within(dialog).getByRole("button", { name: /continue to review/i }));
+  if (advanceToReview) {
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to review/i }));
+  }
 }
 
 describe("shared Scheduling navigation", () => {
@@ -536,6 +538,33 @@ describe("#91 — a visit can be scheduled", () => {
     fireEvent.click(create);
     await waitFor(() => expect(writes()).toContain("POST /api/v1/visits"));
     expect(writes().filter((call) => call === "POST /api/v1/visits")).toHaveLength(1);
+  });
+
+  it("opens the review step with a new button instead of reusing the Continue node", async () => {
+    // A real click skipped this step in the browser (found by the WF09 runtime pass): React flushed
+    // setStep(4) before the click's default action, so the reused <button> had flipped from type "button"
+    // to "submit" and submitted the form. jsdom cannot replay that ordering (it needs a microtask
+    // checkpoint between the listener and the activation behaviour), so assert the cause: Create Visit
+    // must be a different element. The browser journey (e2e/specs/encounters.spec.ts) asserts the effect.
+    const dialog = await openNewVisit();
+    await fillValidVisit(dialog, false);
+    const advance = within(dialog).getByRole("button", { name: /continue to review/i });
+    fireEvent.click(advance);
+    const create = await within(dialog).findByRole("button", { name: /create visit/i });
+    expect(create).not.toBe(advance);
+    expect(advance.isConnected).toBe(false);
+  });
+
+  it("keeps keyboard focus inside the dialog when the review step replaces the focused button", async () => {
+    const dialog = await openNewVisit();
+    await fillValidVisit(dialog, false);
+    const advance = within(dialog).getByRole("button", { name: /continue to review/i });
+    advance.focus();
+    fireEvent.click(advance);
+    await within(dialog).findByRole("button", { name: /create visit/i });
+    // Focus must not fall to <body>: the modal's Escape and Tab handling only see keys inside the dialog.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement?.getAttribute("aria-current")).toBe("step");
   });
 });
 
