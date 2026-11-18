@@ -2,7 +2,8 @@
 /** Runs the explicitly gated vendor contract and finalizes its artifact with Vitest's actual exit status. */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { contractRunGates } from "../packages/x12-837-client/src/clearinghouse/stedi-contract-qualification";
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -58,7 +59,7 @@ if (!gates.ready) {
       "run",
       "packages/x12-837-client/src/clearinghouse/stedi-sandbox-contract.test.ts",
     ],
-    { cwd: resolve(import.meta.dir, ".."), env, stdio: "inherit" },
+    { cwd: resolve(dirname(fileURLToPath(import.meta.url)), ".."), env, stdio: "inherit" },
   );
   const vitestExitCode = command.status;
   let partial: Record<string, unknown> | null = null;

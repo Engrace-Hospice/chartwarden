@@ -166,6 +166,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M23->M25 ClaimSubmissionReader seam — LIVE
       {
         claimId: REAL_CLAIM_ID,
         claimControlNumber: REAL_CCN,
+        transmittedControlNumbers: [],
         payerIcn: REAL_ICN,
         serviceFrom: "2026-01-01",
         serviceTo: "2026-01-31",
@@ -259,5 +260,159 @@ describe.skipIf(!DB_URL)("WX-PR-012 M23->M25 ClaimSubmissionReader seam — LIVE
     );
     expect(ledger.rows[0].patient_id).toBe(REAL_PATIENT_ID);
     expect(Number(ledger.rows[0].pr_amount)).toBe(50);
+  });
+
+  // ADR-0053 M23-CM5-T1.2C: a claim sent since external patient control numbers is transmitted (CLM01) under its attempt's external
+  // number, and the payer's 835 echoes that number as CLP01, not the claim's internal control number.
+  describe("a claim sent under external patient control numbers", () => {
+    const SENT_CLAIM_ID = "00000000-0000-0000-0000-0000000ccc02";
+    const SENT_PATIENT_ID = "00000000-0000-0000-0000-0000000ee002";
+    const SENT_CCN = "SENT-CCN-0002";
+    const FIRST_ATTEMPT_PCN = "A1B2C3D4E5F6G7H8J";
+    const RETRY_PCN = "K1L2M3N4P5Q6R7S8T";
+    const OTHER_PE = "00000000-0000-0000-0000-0000000000a2";
+
+    beforeAll(async () => {
+      await admin.query(
+        `INSERT INTO claim (
+           id, organization_id, provider_entity_id, patient_id, admission_id,
+           election_period_id_from, election_period_id_to, patient_payer_id,
+           tob, service_from, service_to, claim_control_number,
+           mac_jurisdiction, total_charge_cents, sequestration_applied_pct, sequestration_policy_id,
+           created_by_membership_id
+         ) VALUES (
+           $1, $2, $3, $4, $5,
+           $6, $6, $7,
+           '811', '2026-03-01', '2026-03-31', $8,
+           'ngs_j6', 70000, '2.00', $9,
+           $10
+         )`,
+        [
+          SENT_CLAIM_ID,
+          ORG,
+          PE,
+          SENT_PATIENT_ID,
+          "00000000-0000-0000-0000-0000000ad002", // admission_id
+          "00000000-0000-0000-0000-0000000ec0e2", // election_period_id_from/to
+          "00000000-0000-0000-0000-0000000ba0e2", // patient_payer_id
+          SENT_CCN,
+          "00000000-0000-0000-0000-0000000f0502", // sequestration_policy_id
+          "00000000-0000-0000-0000-0000000ba0cb", // created_by_membership_id
+        ],
+      );
+      for (const [attemptIndex, controlNumber] of [
+        [0, FIRST_ATTEMPT_PCN],
+        [1, RETRY_PCN],
+      ] as const) {
+        await admin.query(
+          `INSERT INTO claim_submission (organization_id, provider_entity_id, kind, claim_id, claim_control_number,
+             external_patient_control_number, attempt_index, outcome, reviewed_source_fingerprint)
+           VALUES ($1,$2,'claim_837i',$3,$4,$5,$6,'queued',$7)`,
+          [ORG, PE, SENT_CLAIM_ID, SENT_CCN, controlNumber, attemptIndex, "a".repeat(64)],
+        );
+      }
+    });
+
+    it("the seam finds the claim by any number it was transmitted under, and returns them all", async () => {
+      const adapter = buildM23BackedClaimMatchCandidateProvider();
+      for (const patientControlNumber of [FIRST_ATTEMPT_PCN, RETRY_PCN]) {
+        const found = await adapter.candidatesForLine({
+          organizationId: ORG,
+          providerEntityId: PE,
+          patientControlNumber,
+        });
+        expect(found.map((c) => c.claimId)).toEqual([SENT_CLAIM_ID]);
+        expect([...(found[0]?.transmittedControlNumbers ?? [])].sort()).toEqual(
+          [FIRST_ATTEMPT_PCN, RETRY_PCN].sort(),
+        );
+        expect(found[0]?.claimControlNumber).toBe(SENT_CCN);
+      }
+    });
+
+    it("a transmitted number finds nothing under another organization or provider entity", async () => {
+      const adapter = buildM23BackedClaimMatchCandidateProvider();
+      expect(
+        await adapter.candidatesForLine({
+          organizationId: "99999999-9999-9999-9999-999999999999",
+          providerEntityId: PE,
+          patientControlNumber: RETRY_PCN,
+        }),
+      ).toEqual([]);
+      expect(
+        await adapter.candidatesForLine({
+          organizationId: ORG,
+          providerEntityId: OTHER_PE,
+          patientControlNumber: RETRY_PCN,
+        }),
+      ).toEqual([]);
+    });
+
+    it("a real 835 whose CLP01 is the transmitted number and that carries no payer ICN auto-matches by patient control number", async () => {
+      const isa = "000000902";
+      const st = "0902";
+      const parsed: ParsedRemittanceAdvice = {
+        payerProgram: "medicare",
+        interchangeControlNumber: isa,
+        transactionSetControlNumber: st,
+        checkOrEftTraceNumber: "SYNTHETIC-TRACE-902",
+        paymentMethod: "eft",
+        totalPaymentAmount: 650,
+        paymentEffectiveDate: "2026-04-10",
+        productionDate: "2026-04-10",
+        claims: [
+          {
+            patientControlNumber: RETRY_PCN,
+            statusCode: 1,
+            totalCharge: 700,
+            totalPayment: 650,
+            patientResponsibility: 50,
+            adjustments: [{ groupCode: "PR", reasonCode: "1", amount: 50 }],
+            remarks: [],
+            serviceLines: [],
+          },
+        ],
+      };
+      const service = buildDrizzleM25IngestService(handle.db, {
+        payeeNpi: PAYEE_UNCHECKED,
+        client: {
+          async parse835() {
+            return { ok: true, value: parsed } as X12WorkerResult<ParsedRemittanceAdvice>;
+          },
+          async parse277ca() {
+            throw new Error("not used in this test");
+          },
+        },
+        claims: { medicare: buildM23BackedClaimMatchCandidateProvider() },
+        terminology: {
+          async lookup(carcCode) {
+            if (carcCode === "1")
+              return { category: "informational", plainLanguage: "patient responsibility" };
+            return null;
+          },
+        },
+      });
+      const received = await service.receiveAdvice(
+        { organizationId: ORG },
+        {
+          providerEntityId: PE,
+          payerId: PAYER,
+          payerKind: "medicare",
+          minioObjectKey: "minio/sent-under-external-pcn.835",
+          fileSha256: sha256Hex(buildRawEdi(isa, st)),
+          rawEdi: buildRawEdi(isa, st),
+        },
+      );
+      if (received.outcome !== "queued") throw new Error(`unreachable: ${received.outcome}`);
+      const posted = await service.postAdvice({ organizationId: ORG }, received.adviceId);
+      expect(posted.outcome).toBe("posted");
+
+      const line = await admin.query(
+        "SELECT claim_id, match_state, match_strategy FROM remittance_line WHERE remittance_advice_id=$1",
+        [received.adviceId],
+      );
+      expect(line.rows[0].claim_id).toBe(SENT_CLAIM_ID);
+      expect(line.rows[0].match_state).toBe("posted");
+      expect(line.rows[0].match_strategy).toBe("patient_control");
+    });
   });
 });

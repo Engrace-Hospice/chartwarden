@@ -10,7 +10,13 @@ import {
 import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
 import { isValidNpi } from "@chartwarden/x12-837-client";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
-import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
+import {
+  autoMatch,
+  classifyPostingOutcome,
+  effectiveCategory,
+  explicitIdentityAgrees,
+  routeAdjustment,
+} from "../domain";
 import type { DenialCategory } from "../domain";
 import { decimalDollarsToCents } from "../domain/era-match-review";
 import type { WriteOutboxPort } from "../routes/write-service";
@@ -645,17 +651,7 @@ export function buildDrizzleM25IngestService(
           if (!selected) throw new Error("M25_EXPLICIT_ASSOCIATION_NOT_AUTHORIZED_BY_SOURCE_OWNER");
           // The source-owned reader is scoped by tenant/provider/payer above. Require at least one
           // exact immutable X12 identity and reject any contradictory exact identity it returned.
-          const hasExactIdentity =
-            (!!claim.payerIcn && selected.payerIcn === claim.payerIcn) ||
-            (!!claim.patientControlNumber &&
-              selected.claimControlNumber === claim.patientControlNumber);
-          if (
-            !hasExactIdentity ||
-            (!!claim.payerIcn && !!selected.payerIcn && selected.payerIcn !== claim.payerIcn) ||
-            (!!claim.patientControlNumber &&
-              !!selected.claimControlNumber &&
-              selected.claimControlNumber !== claim.patientControlNumber)
-          )
+          if (!explicitIdentityAgrees(selected, claim))
             throw new Error("M25_EXPLICIT_ASSOCIATION_IDENTITY_CONFLICT");
           return {
             matched: true,

@@ -19,6 +19,7 @@
     { "path": "../packages/ai-platform" },
     { "path": "../packages/saas-tenant-platform" },
     { "path": "../packages/terminology-loader" },
-    { "path": "../packages/messaging" }
+    { "path": "../packages/messaging" },
+    { "path": "../packages/x12-837-client" }
   ]
 }

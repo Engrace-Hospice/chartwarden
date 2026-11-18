@@ -57,6 +57,7 @@ import {
   runAckPull999,
   runTransferNoticeSubmitJob,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
+import { runTransferNoticeSubmit } from "../src/modules/23-billing-medicare/jobs/transfer-notice-jobs";
 import { resolveRhcCarryOver } from "../src/modules/23-billing-medicare/services/rhc-carry-over";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
@@ -397,13 +398,36 @@ describe.skipIf(!DB_URL)("M23 transfer notice (TOB 8xC) — LIVE Postgres", () =
     expect(subs).toEqual([{ kind: "transfer_notice", outcome: "queued", transfer_notice_id: id }]);
     expect((await noticeRowsFor(view.admissionId))[0].state).toBe("READY");
 
-    // The worker, exactly as the BullMQ processor runs it (org-scoped tx as the app role).
+    // The BullMQ processor, as the app role in an org-scoped tx, holds: dispatch is not authorized until CM-4A wires an
+    // authoritative source, so it transmits nothing and changes nothing.
+    const job = {
+      organizationId: ORG_A,
+      transferNoticeId: id,
+      submissionId: accepted.submissionId,
+    };
+    await expect(
+      withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        runTransferNoticeSubmitJob(tx as never, workerDeps, job),
+      ),
+    ).rejects.toThrow("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
+    expect((await noticeRowsFor(view.admissionId))[0].state).toBe("READY");
+
+    // The filing itself runs through the underlying 8xC/8xD processor with the ports the worker used to hand it.
+    const { x12, macPortal, outbox } = workerDeps;
+    if (!x12?.generateTransferNotice || !macPortal || !outbox)
+      throw new Error("the suite's worker deps are missing the transfer-notice ports");
+    const generateTransferNotice = x12.generateTransferNotice.bind(x12);
     await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
-      runTransferNoticeSubmitJob(tx as never, workerDeps, {
-        organizationId: ORG_A,
-        transferNoticeId: id,
-        submissionId: accepted.submissionId,
-      }),
+      runTransferNoticeSubmit(
+        tx as never,
+        {
+          generate: generateTransferNotice,
+          upload: (input) => macPortal.upload(input),
+          outbox: outbox as never,
+          now: () => new Date(),
+        },
+        job,
+      ),
     );
     expect(generated.at(-1)).toMatchObject({
       transferNoticeId: id,

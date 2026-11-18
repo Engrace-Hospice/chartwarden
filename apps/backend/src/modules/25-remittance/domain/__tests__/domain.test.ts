@@ -20,6 +20,7 @@ import {
   decisionRequiresOutcome,
   deriveTierDeadline,
   effectiveCategory,
+  explicitIdentityAgrees,
   isReopen,
   isWithinDeadline,
   nextTier,
@@ -195,6 +196,70 @@ describe("auto-match (D3)", () => {
     });
   });
 
+  describe("a claim sent under external patient control numbers (the 835 echoes the transmitted CLM01)", () => {
+    const sent: MatchCandidate[] = [
+      {
+        claimId: "c-new",
+        claimControlNumber: "CCN-NEW-00",
+        transmittedControlNumbers: ["A1B2C3D4E5F6G7H8J", "K1L2M3N4P5Q6R7S8T"],
+        totalCharge: 500,
+      },
+      {
+        claimId: "c-other",
+        claimControlNumber: "CCN-OTHER-00",
+        transmittedControlNumbers: ["Z9Y8X7W6V5U4T3S2R"],
+        totalCharge: 500,
+      },
+    ];
+
+    it("strategy 2 — CLP01 equal to a number the claim was transmitted under → auto", () => {
+      for (const clp01 of ["A1B2C3D4E5F6G7H8J", "K1L2M3N4P5Q6R7S8T"]) {
+        expect(
+          autoMatch({ clp01PatientControlNumber: clp01, totalCharge: 500 }, sent),
+        ).toMatchObject({
+          matched: true,
+          claimId: "c-new",
+          strategy: "patient_control",
+          requiresManual: false,
+        });
+      }
+    });
+
+    it("strategy 2 — a historical claim (no transmitted number) still matches on its own control number", () => {
+      const line: MatchLineKeys = { clp01PatientControlNumber: "CCN-OLD-00", totalCharge: 500 };
+      expect(
+        autoMatch(line, [{ claimId: "c-old", claimControlNumber: "CCN-OLD-00", totalCharge: 500 }]),
+      ).toMatchObject({ matched: true, claimId: "c-old", strategy: "patient_control" });
+    });
+
+    it("strategy 2 — two claims carrying the same CLP01 are ambiguous, never auto-bound", () => {
+      const twice: MatchCandidate[] = [
+        { claimId: "c-1", transmittedControlNumbers: ["A1B2C3D4E5F6G7H8J"] },
+        { claimId: "c-2", transmittedControlNumbers: ["A1B2C3D4E5F6G7H8J"] },
+      ];
+      expect(
+        autoMatch({ clp01PatientControlNumber: "A1B2C3D4E5F6G7H8J", totalCharge: 1 }, twice),
+      ).toEqual({ matched: false, requiresManual: true });
+    });
+
+    it("strategy 1 still wins: the payer ICN binds before any control number is read", () => {
+      const withIcn: MatchCandidate[] = [
+        { claimId: "c-icn", payerIcn: "ICN-7", transmittedControlNumbers: ["Z9Y8X7W6V5U4T3S2R"] },
+        { claimId: "c-ctl", transmittedControlNumbers: ["A1B2C3D4E5F6G7H8J"] },
+      ];
+      expect(
+        autoMatch(
+          {
+            clp07PayerIcn: "ICN-7",
+            clp01PatientControlNumber: "A1B2C3D4E5F6G7H8J",
+            totalCharge: 1,
+          },
+          withIcn,
+        ),
+      ).toMatchObject({ claimId: "c-icn", strategy: "payer_icn" });
+    });
+  });
+
   it("strategy 3 — heuristic hit ALWAYS routes to manual", () => {
     const line: MatchLineKeys = {
       patientMemberId: "M-42",
@@ -214,6 +279,49 @@ describe("auto-match (D3)", () => {
     expect(autoMatch({ clp07PayerIcn: "NOPE", totalCharge: 1 }, candidates)).toEqual({
       matched: false,
       requiresManual: true,
+    });
+  });
+
+  describe("explicit association identity (a source-owner-authorized candidate)", () => {
+    const claim = {
+      payerIcn: "ICN-1",
+      claimControlNumber: "CCN-1-00",
+      transmittedControlNumbers: ["A1B2C3D4E5F6G7H8J"],
+    };
+
+    it("agrees on the payer ICN, the internal control number, or a transmitted one", () => {
+      expect(explicitIdentityAgrees(claim, { payerIcn: "ICN-1" })).toBe(true);
+      expect(explicitIdentityAgrees(claim, { patientControlNumber: "CCN-1-00" })).toBe(true);
+      expect(explicitIdentityAgrees(claim, { patientControlNumber: "A1B2C3D4E5F6G7H8J" })).toBe(
+        true,
+      );
+      expect(
+        explicitIdentityAgrees(claim, {
+          payerIcn: "ICN-1",
+          patientControlNumber: "A1B2C3D4E5F6G7H8J",
+        }),
+      ).toBe(true);
+    });
+
+    it("refuses a CLP01 the claim does not carry, even when the payer ICN matches", () => {
+      expect(
+        explicitIdentityAgrees(claim, { payerIcn: "ICN-1", patientControlNumber: "NOT-OURS" }),
+      ).toBe(false);
+    });
+
+    it("refuses a different payer ICN, even when the control number matches", () => {
+      expect(
+        explicitIdentityAgrees(claim, {
+          payerIcn: "ICN-OTHER",
+          patientControlNumber: "A1B2C3D4E5F6G7H8J",
+        }),
+      ).toBe(false);
+    });
+
+    it("refuses a line that shares no exact identity with the claim", () => {
+      expect(explicitIdentityAgrees(claim, {})).toBe(false);
+      expect(explicitIdentityAgrees(claim, { payerIcn: "ICN-OTHER" })).toBe(false);
+      expect(explicitIdentityAgrees(claim, { patientControlNumber: "NOT-OURS" })).toBe(false);
     });
   });
 
