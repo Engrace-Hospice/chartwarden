@@ -24,6 +24,7 @@ import {
   StatusPill,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -54,12 +55,14 @@ import {
 import {
   CheckboxField,
   FilterRow,
+  type LoadError,
   LoadFailure,
   Notice,
   SelectField,
   TextField,
   enumOptions,
   ghostButtonStyle,
+  nextLoadError,
   pageTitleStyle,
   thNum,
 } from "./supplies-ui";
@@ -98,7 +101,7 @@ export function VendorRoutingAdmin(): JSX.Element {
   const [rules, setRules] = useState<VendorRoutingRuleView[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
   // A refusal of the rule drawer shows in the drawer; retiring a rule from its row has no drawer, so its own refusal
   // shows on the page. The two writes keep separate busy flags: a Retire must not mark the open drawer busy (inert
   // page, no Cancel), though the drawer's own Save waits for it.
@@ -107,6 +110,7 @@ export function VendorRoutingAdmin(): JSX.Element {
   const { busy, run: runWrite } = useWrite();
   const { busy: inlineBusy, run: runInline } = useWrite();
   const startRead = useLatestRead();
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [editing, setEditing] = useState<VendorRoutingRuleView | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<RuleDraft>(EMPTY_DRAFT);
@@ -117,7 +121,6 @@ export function VendorRoutingAdmin(): JSX.Element {
     async (keepRowsOnFailure = false) => {
       const isLatest = startRead();
       setLoading(true);
-      setError(null);
       try {
         const { page, error: err } = await listVendorRoutingRules(client, {
           limit: PAGE,
@@ -127,15 +130,16 @@ export function VendorRoutingAdmin(): JSX.Element {
         });
         if (!isLatest()) return;
         if (err) {
-          setError(errorMessage(err, LOAD_FAILURE));
+          setError((previous) => nextLoadError(previous, errorMessage(err, LOAD_FAILURE)));
           if (!keepRowsOnFailure) setRules([]);
           return;
         }
         setRules(page?.data ?? []);
         setLoadedOnce(true);
+        setError(null);
       } catch {
         if (isLatest()) {
-          setError(LOAD_FAILURE);
+          setError((previous) => nextLoadError(previous, LOAD_FAILURE));
           if (!keepRowsOnFailure) setRules([]);
         }
       } finally {
@@ -153,7 +157,7 @@ export function VendorRoutingAdmin(): JSX.Element {
   // mounted, with the previous rules showing, so the drawer's typed text, focus and opener survive it.
   if (loading && !loadedOnce) return <LoadingSpinner />;
   // A failed FIRST load has nothing to show. A failed reload keeps the page (and any open drawer) and says so inline.
-  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error} />;
+  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error.message} />;
 
   // `draft.scopeKind`/`assignedFulfillmentMode`/`defaultPharmacyDispatchMode` are always one of the
   // closed vocabularies the SelectFields below offer.
@@ -211,6 +215,9 @@ export function VendorRoutingAdmin(): JSX.Element {
     void load(true);
   };
 
+  // A read that failed and left nothing to show is not an unconfigured ladder: say "not loaded", never "no rule".
+  const unread = error !== null && rules.length === 0;
+
   // Group by scope so the ladder reads top-down, most specific first. The ROUTING_SCOPES order IS the
   // precedence order and must not be re-sorted.
   const byScope = ROUTING_SCOPES.map((scope) => ({
@@ -222,7 +229,13 @@ export function VendorRoutingAdmin(): JSX.Element {
 
   return (
     <div className={`wx-list-drawer${creating || editing ? " has-drawer" : ""}`}>
-      <div className="wx-list-drawer-main wx-kit-column" aria-busy={loading}>
+      <div
+        ref={focusRef}
+        tabIndex={-1}
+        className="wx-list-drawer-main wx-kit-column"
+        aria-busy={loading}
+        style={{ outline: "none" }}
+      >
         <PageHeader
           title={<span style={pageTitleStyle}>Vendor routing</span>}
           actions={
@@ -254,7 +267,9 @@ export function VendorRoutingAdmin(): JSX.Element {
           exactly one answer.
         </Notice>
 
-        {error ? <LoadFailure message={error} onReload={() => void load(true)} /> : null}
+        {error ? (
+          <LoadFailure error={error} reloading={loading} onReload={() => void load(true)} />
+        ) : null}
         {retireError ? (
           <p className="wx-text-error" role="alert">
             {retireError}
@@ -292,7 +307,9 @@ export function VendorRoutingAdmin(): JSX.Element {
                 refuse it anyway.
               </span>
             ) : null}
-            {rows.length === 0 ? (
+            {unread ? (
+              <span className="wx-text-muted">Not loaded.</span>
+            ) : rows.length === 0 ? (
               <span className="wx-text-muted">
                 {scope === "tenant"
                   ? "No tenant default is configured. Boot validation refuses a tenant with no tenant-scope rule — a request with nothing to resolve against cannot be routed."

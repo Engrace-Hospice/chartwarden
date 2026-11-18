@@ -28,6 +28,7 @@ import {
   StatusPill,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -45,12 +46,14 @@ import { SKU_CLASSES, shortDate } from "./supplies-status";
 import {
   CheckboxField,
   FilterRow,
+  type LoadError,
   LoadFailure,
   Notice,
   SelectField,
   TextField,
   enumOptions,
   ghostButtonStyle,
+  nextLoadError,
   pageTitleStyle,
 } from "./supplies-ui";
 import { useLatestRead } from "./use-latest-read";
@@ -89,11 +92,12 @@ export function SupplyItemCatalog(): JSX.Element {
   const [items, setItems] = useState<SupplyItemView[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
   // Every write on this screen is the drawer's, so its refusal shows in the drawer.
   const [actionError, setActionError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
   const startRead = useLatestRead();
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [editing, setEditing] = useState<SupplyItemView | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<TenantItemDraft>(EMPTY_TENANT_ITEM);
@@ -104,7 +108,6 @@ export function SupplyItemCatalog(): JSX.Element {
     async (keepRowsOnFailure = false) => {
       const isLatest = startRead();
       setLoading(true);
-      setError(null);
       try {
         const { page, error: err } = await listSupplyItems(client, {
           limit: PAGE,
@@ -116,15 +119,16 @@ export function SupplyItemCatalog(): JSX.Element {
         });
         if (!isLatest()) return;
         if (err) {
-          setError(errorMessage(err, LOAD_FAILURE));
+          setError((previous) => nextLoadError(previous, errorMessage(err, LOAD_FAILURE)));
           if (!keepRowsOnFailure) setItems([]);
           return;
         }
         setItems(page?.data ?? []);
         setLoadedOnce(true);
+        setError(null);
       } catch {
         if (isLatest()) {
-          setError(LOAD_FAILURE);
+          setError((previous) => nextLoadError(previous, LOAD_FAILURE));
           if (!keepRowsOnFailure) setItems([]);
         }
       } finally {
@@ -142,7 +146,7 @@ export function SupplyItemCatalog(): JSX.Element {
   // mounted, with the previous rows showing, so the drawer's typed text, focus and opener survive it.
   if (loading && !loadedOnce) return <LoadingSpinner />;
   // A failed FIRST load has nothing to show. A failed reload keeps the page (and any open drawer) and says so inline.
-  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error} />;
+  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error.message} />;
 
   const closeDrawer = () => {
     setCreating(false);
@@ -174,6 +178,8 @@ export function SupplyItemCatalog(): JSX.Element {
     void load(true);
   };
 
+  // A read that failed and left nothing to show is not an empty catalog: say "not loaded", never "none match".
+  const unread = error !== null && items.length === 0;
   const platform = items.filter((i) => i.isPlatform);
   const overlay = items.filter((i) => !i.isPlatform);
   const ready =
@@ -181,7 +187,13 @@ export function SupplyItemCatalog(): JSX.Element {
 
   return (
     <div className={`wx-list-drawer${creating || editing ? " has-drawer" : ""}`}>
-      <div className="wx-list-drawer-main wx-kit-column" aria-busy={loading}>
+      <div
+        ref={focusRef}
+        tabIndex={-1}
+        className="wx-list-drawer-main wx-kit-column"
+        aria-busy={loading}
+        style={{ outline: "none" }}
+      >
         <PageHeader
           title={<span style={pageTitleStyle}>Supply catalog</span>}
           actions={
@@ -205,7 +217,9 @@ export function SupplyItemCatalog(): JSX.Element {
           }
         />
 
-        {error ? <LoadFailure message={error} onReload={() => void load(true)} /> : null}
+        {error ? (
+          <LoadFailure error={error} reloading={loading} onReload={() => void load(true)} />
+        ) : null}
 
         <Notice tone="info">
           The platform catalog is rewritten wholesale by the annual HCPCS loader and cannot be
@@ -229,8 +243,14 @@ export function SupplyItemCatalog(): JSX.Element {
           />
         </FilterRow>
 
-        <Panel stack headingLevel={3} title={`Platform catalog (${platform.length})`}>
-          {platform.length === 0 ? (
+        <Panel
+          stack
+          headingLevel={3}
+          title={unread ? "Platform catalog" : `Platform catalog (${platform.length})`}
+        >
+          {unread ? (
+            <span className="wx-text-muted">Not loaded.</span>
+          ) : platform.length === 0 ? (
             <span className="wx-text-muted">No canonical SKU matches this search.</span>
           ) : (
             <table>
@@ -276,8 +296,14 @@ export function SupplyItemCatalog(): JSX.Element {
           </span>
         </Panel>
 
-        <Panel stack headingLevel={3} title={`Tenant overlay (${overlay.length})`}>
-          {overlay.length === 0 ? (
+        <Panel
+          stack
+          headingLevel={3}
+          title={unread ? "Tenant overlay" : `Tenant overlay (${overlay.length})`}
+        >
+          {unread ? (
+            <span className="wx-text-muted">Not loaded.</span>
+          ) : overlay.length === 0 ? (
             <span className="wx-text-muted">
               Your agency has no local shelf items. These are the non-billable things that will
               never have a HCPCS code.

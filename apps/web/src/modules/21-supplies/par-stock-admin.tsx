@@ -25,6 +25,7 @@ import {
   Panel,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -41,6 +42,7 @@ import { PAR_SEVERITY_RANK, dateTime, shortId } from "./supplies-status";
 import {
   CheckboxField,
   FilterRow,
+  type LoadError,
   LoadFailure,
   Notice,
   ParSeverityPill,
@@ -49,6 +51,7 @@ import {
   TextField,
   ghostButtonStyle,
   inputNarrowStyle,
+  nextLoadError,
   pageTitleStyle,
   tdQty,
   thNum,
@@ -82,7 +85,7 @@ export function ParStockAdmin(): JSX.Element {
   const [rows, setRows] = useState<ParStockView[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
   // A refusal of the count drawer shows in the drawer; an inline threshold edit has no drawer, so its own refusal
   // shows on the page. The two writes keep separate busy flags: an inline save must not mark the open drawer busy
   // (inert page, no Cancel), though the drawer's own Save waits for it.
@@ -91,6 +94,7 @@ export function ParStockAdmin(): JSX.Element {
   const { busy, run: runWrite } = useWrite();
   const { busy: inlineBusy, run: runInline } = useWrite();
   const startRead = useLatestRead();
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<ThresholdDraft>({
     reorderPoint: "",
@@ -107,7 +111,6 @@ export function ParStockAdmin(): JSX.Element {
     async (keepRowsOnFailure = false) => {
       const isLatest = startRead();
       setLoading(true);
-      setError(null);
       try {
         const { page, error: err } = await listParStock(client, {
           limit: PAGE,
@@ -116,15 +119,16 @@ export function ParStockAdmin(): JSX.Element {
         });
         if (!isLatest()) return;
         if (err) {
-          setError(errorMessage(err, LOAD_FAILURE));
+          setError((previous) => nextLoadError(previous, errorMessage(err, LOAD_FAILURE)));
           if (!keepRowsOnFailure) setRows([]);
           return;
         }
         setRows(page?.data ?? []);
         setLoadedOnce(true);
+        setError(null);
       } catch {
         if (isLatest()) {
-          setError(LOAD_FAILURE);
+          setError((previous) => nextLoadError(previous, LOAD_FAILURE));
           if (!keepRowsOnFailure) setRows([]);
         }
       } finally {
@@ -142,10 +146,12 @@ export function ParStockAdmin(): JSX.Element {
   // mounted, with the previous rows showing, so the drawer's typed text, focus and opener survive it.
   if (loading && !loadedOnce) return <LoadingSpinner />;
   // A failed FIRST load has nothing to show. A failed reload keeps the page (and any open drawer) and says so inline.
-  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error} />;
+  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error.message} />;
 
   // The band filter is applied CLIENT-side because §4.1 publishes no `severity` query param — only the
   // coarser `belowThresholdOnly`. Narrowing a fetched page is honest; inventing a server filter is not.
+  // A read that failed and left nothing to show is not an empty shelf: say "not loaded", never "no row matches".
+  const unread = error !== null && rows.length === 0;
   const visible = (severity ? rows.filter((r) => r.severity === severity) : rows)
     .slice()
     .sort(
@@ -210,7 +216,13 @@ export function ParStockAdmin(): JSX.Element {
 
   return (
     <div className={`wx-list-drawer${observing ? " has-drawer" : ""}`}>
-      <div className="wx-list-drawer-main wx-kit-column" aria-busy={loading}>
+      <div
+        ref={focusRef}
+        tabIndex={-1}
+        className="wx-list-drawer-main wx-kit-column"
+        aria-busy={loading}
+        style={{ outline: "none" }}
+      >
         <PageHeader
           title={<span style={pageTitleStyle}>Par stock</span>}
           actions={
@@ -226,7 +238,9 @@ export function ParStockAdmin(): JSX.Element {
           and the screen reading it would show a green shelf that is actually empty.
         </Notice>
 
-        {error ? <LoadFailure message={error} onReload={() => void load(true)} /> : null}
+        {error ? (
+          <LoadFailure error={error} reloading={loading} onReload={() => void load(true)} />
+        ) : null}
         {editError ? (
           <p className="wx-text-error" role="alert">
             {editError}
@@ -248,8 +262,10 @@ export function ParStockAdmin(): JSX.Element {
           />
         </FilterRow>
 
-        <Panel stack headingLevel={3} title={`Shelf (${visible.length})`}>
-          {visible.length === 0 ? (
+        <Panel stack headingLevel={3} title={unread ? "Shelf" : `Shelf (${visible.length})`}>
+          {unread ? (
+            <span className="wx-text-muted">Not loaded.</span>
+          ) : visible.length === 0 ? (
             <span className="wx-text-muted">
               No par row matches. A Location with no par rows has no monitored shelf — the nightly
               par monitor has nothing to raise for it.

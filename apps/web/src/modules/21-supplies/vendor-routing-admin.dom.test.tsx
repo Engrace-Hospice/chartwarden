@@ -334,8 +334,11 @@ describe("vendor routing — rules", () => {
     await screen.findByText("111");
     fireEvent.click(screen.getByLabelText("Include retired rules"));
     const alert = await screen.findByRole("alert");
-    // No stale rules under a filter they do not match.
+    // No stale rules under a filter they do not match, and no false "unconfigured" either.
     expect(screen.queryByText("111")).toBeNull();
+    expect(screen.queryByText(/No tenant default is configured/)).toBeNull();
+    expect(screen.queryByText(/No rule at this scope/)).toBeNull();
+    expect(screen.getAllByText("Not loaded.").length).toBeGreaterThan(0);
     fireEvent.click(within(alert).getByRole("button", { name: "Reload" }));
     expect(await screen.findByText("222")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -353,5 +356,41 @@ describe("vendor routing — rules", () => {
     expect(within(alert).getByText("The vendor routing rules could not be loaded.")).toBeTruthy();
     // The write landed and the rules still match the filter, so they stay.
     expect(screen.getByText("111")).toBeTruthy();
+  });
+
+  it("keeps focus on Reload through a failed retry, re-announces the repeat and moves focus on after a success", async () => {
+    let calls = 0;
+    const { get } = mount(undefined, () => {
+      calls += 1;
+      return calls === 2 || calls === 3
+        ? Promise.reject(new TypeError("Failed to fetch"))
+        : Promise.resolve(ok(pageOf([{ ...rule, precedencePriority: 111 }])));
+    });
+    await screen.findByText("111");
+    fireEvent.click(screen.getByLabelText("Include retired rules"));
+    const alert = await screen.findByRole("alert");
+    const reload = within(alert).getByRole("button", { name: "Reload" });
+    const firstMessage = within(alert).getByText("The vendor routing rules could not be loaded.");
+    reload.focus();
+    fireEvent.click(reload);
+    // The retry is in flight: the alert and the focused button stay, and a second click is ignored.
+    expect(screen.getByRole("alert")).toBe(alert);
+    expect(document.activeElement).toBe(reload);
+    expect(reload.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(reload);
+    expect(get).toHaveBeenCalledTimes(3);
+    // The identical second failure re-keys the message (so it is announced again); focus never left Reload.
+    await waitFor(() => expect(reload.getAttribute("aria-disabled")).toBe("false"));
+    expect(screen.getByRole("alert")).toBe(alert);
+    expect(within(alert).getByText("The vendor routing rules could not be loaded.")).not.toBe(
+      firstMessage,
+    );
+    expect(document.activeElement).toBe(reload);
+    // A successful retry removes the alert and hands focus to the page, not to <body>.
+    fireEvent.click(reload);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(await screen.findByText("111")).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    expect(document.activeElement?.className).toContain("wx-list-drawer-main");
   });
 });

@@ -287,8 +287,11 @@ describe("supply catalog — tenant items", () => {
     await screen.findByText("Comfort cart linens set");
     fireEvent.change(screen.getByLabelText("Search name or HCPCS"), { target: { value: "bed" } });
     const alert = await screen.findByRole("alert");
-    // No stale list under a search it does not match.
+    // No stale list under a search it does not match, and no false "nothing there" either.
     expect(screen.queryByText("Comfort cart linens set")).toBeNull();
+    expect(screen.queryByText(/No canonical SKU matches/)).toBeNull();
+    expect(screen.queryByText(/Your agency has no local shelf items/)).toBeNull();
+    expect(screen.getAllByText("Not loaded.")).toHaveLength(2);
     fireEvent.click(within(alert).getByRole("button", { name: "Reload" }));
     expect(await screen.findByText("Bed pads")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -314,5 +317,41 @@ describe("supply catalog — tenant items", () => {
     expect(within(alert).getByText("The supply catalog could not be loaded.")).toBeTruthy();
     // The write landed and the rows still match the search, so they stay.
     expect(screen.getByText("Comfort cart linens set")).toBeTruthy();
+  });
+
+  it("keeps focus on Reload through a failed retry, re-announces the repeat and moves focus on after a success", async () => {
+    let calls = 0;
+    const { get } = mount(undefined, () => {
+      calls += 1;
+      return calls === 2 || calls === 3
+        ? Promise.reject(new TypeError("Failed to fetch"))
+        : Promise.resolve(ok(pageOf([overlayItem])));
+    });
+    await screen.findByText("Comfort cart linens set");
+    fireEvent.change(screen.getByLabelText("Search name or HCPCS"), { target: { value: "bed" } });
+    const alert = await screen.findByRole("alert");
+    const reload = within(alert).getByRole("button", { name: "Reload" });
+    const firstMessage = within(alert).getByText("The supply catalog could not be loaded.");
+    reload.focus();
+    fireEvent.click(reload);
+    // The retry is in flight: the alert and the focused button stay, and a second click is ignored.
+    expect(screen.getByRole("alert")).toBe(alert);
+    expect(document.activeElement).toBe(reload);
+    expect(reload.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(reload);
+    expect(get).toHaveBeenCalledTimes(3);
+    // The identical second failure re-keys the message (so it is announced again); focus never left Reload.
+    await waitFor(() => expect(reload.getAttribute("aria-disabled")).toBe("false"));
+    expect(screen.getByRole("alert")).toBe(alert);
+    expect(within(alert).getByText("The supply catalog could not be loaded.")).not.toBe(
+      firstMessage,
+    );
+    expect(document.activeElement).toBe(reload);
+    // A successful retry removes the alert and hands focus to the page, not to <body>.
+    fireEvent.click(reload);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(await screen.findByText("Comfort cart linens set")).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    expect(document.activeElement?.className).toContain("wx-list-drawer-main");
   });
 });

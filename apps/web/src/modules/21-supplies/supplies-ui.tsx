@@ -121,18 +121,42 @@ export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element 
   );
 }
 
-/** A failed read, announced, with the way to try again (a list that cannot be refreshed offers nothing else). */
+/** A failed read. `attempt` counts consecutive failures, so an identical repeat failure is a new message. */
+export interface LoadError {
+  message: string;
+  attempt: number;
+}
+
+/** The error after one more failed read: the alert stays up between retries, and a repeat is announced again. */
+export function nextLoadError(previous: LoadError | null, message: string): LoadError {
+  return { message, attempt: (previous?.attempt ?? 0) + 1 };
+}
+
+/** A failed read, announced, with the way to try again (a list that cannot be refreshed offers nothing else). It
+ *  stays mounted while the retry runs, so Reload keeps keyboard focus: the button is `aria-disabled` (still
+ *  focusable, clicks ignored), not `disabled`. A new attempt re-keys the message so a repeat failure is re-announced. */
 export function LoadFailure({
-  message,
+  error,
+  reloading,
   onReload,
-}: { message: string; onReload: () => void }): JSX.Element {
+}: { error: LoadError; reloading: boolean; onReload: () => void }): JSX.Element {
   return (
     <div
       role="alert"
       style={{ display: "flex", alignItems: "center", gap: t.space3, flexWrap: "wrap" }}
     >
-      <span className="wx-text-error">{message}</span>
-      <Button tone="secondary" type="button" onClick={onReload}>
+      <span key={error.attempt} className="wx-text-error">
+        {error.message}
+      </span>
+      <Button
+        tone="secondary"
+        type="button"
+        aria-disabled={reloading}
+        style={reloading ? { opacity: 0.72, cursor: "not-allowed" } : undefined}
+        onClick={() => {
+          if (!reloading) onReload();
+        }}
+      >
         Reload
       </Button>
     </div>
