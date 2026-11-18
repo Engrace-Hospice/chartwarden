@@ -17,7 +17,7 @@
 // not what changed since the last count, and an adjustment-shaped form drifts from the shelf every time a
 // count is missed. The server derives the delta and runs it through the §2.7 rule, so a count that would
 // drive the shelf negative is a typed refusal rather than a silent clamp.
-import { EmptyState, LoadingSpinner, PageHeader, t, useApiClient } from "@chartwarden/ui";
+import { Button, EmptyState, LoadingSpinner, PageHeader, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -41,12 +41,10 @@ import {
   TextField,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   inputNarrowStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -266,34 +264,26 @@ export function ParStockAdmin(): JSX.Element {
                       <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
                         {isEditing ? (
                           <>
-                            <button
+                            <Button
+                              tone="primary"
                               type="button"
                               disabled={busy}
-                              style={busy ? disabledButtonStyle : primaryButtonStyle}
                               onClick={() => void saveEdit(row)}
                             >
                               Save
-                            </button>
-                            <button
-                              type="button"
-                              style={ghostButtonStyle}
-                              onClick={() => setEditing(null)}
-                            >
+                            </Button>
+                            <Button tone="secondary" type="button" onClick={() => setEditing(null)}>
                               Cancel
-                            </button>
+                            </Button>
                           </>
                         ) : (
                           <>
-                            <button
-                              type="button"
-                              style={ghostButtonStyle}
-                              onClick={() => startEdit(row)}
-                            >
+                            <Button tone="secondary" type="button" onClick={() => startEdit(row)}>
                               Edit thresholds
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              tone="secondary"
                               type="button"
-                              style={ghostButtonStyle}
                               onClick={() => {
                                 setObserving(row);
                                 setObservedQuantity(row.currentQuantity);
@@ -302,7 +292,7 @@ export function ParStockAdmin(): JSX.Element {
                               }}
                             >
                               Record count
-                            </button>
+                            </Button>
                           </>
                         )}
                       </div>
@@ -324,12 +314,10 @@ export function ParStockAdmin(): JSX.Element {
           title={`Record an on-hand count — ${observing.skuName}`}
           onClose={() => setObserving(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy || observedQuantity.trim() === ""}
-              style={
-                busy || observedQuantity.trim() === "" ? disabledButtonStyle : primaryButtonStyle
-              }
               onClick={async () => {
                 setBusy(true);
                 setActionError(null);
@@ -348,7 +336,7 @@ export function ParStockAdmin(): JSX.Element {
               }}
             >
               Record count
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">

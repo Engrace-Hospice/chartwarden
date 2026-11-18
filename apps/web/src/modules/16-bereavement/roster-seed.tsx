@@ -10,7 +10,7 @@
 // and the server is the only place that knows the tenant's configuration — so this screen states the floor
 // and then reports what the server ACTUALLY materialized, rather than drawing a preview it would have had
 // to invent.
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@chartwarden/ui";
+import { Button, EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -38,7 +38,6 @@ import {
   linkStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -179,9 +178,9 @@ export function BereavementRosterSeed(): JSX.Element {
       <Card
         title="Additional contacts"
         actions={
-          <button type="button" style={ghostButtonStyle} onClick={addDraft}>
+          <Button tone="secondary" type="button" onClick={addDraft}>
             Add a contact
-          </button>
+          </Button>
         }
       >
         {drafts.length === 0 ? (
@@ -225,9 +224,9 @@ export function BereavementRosterSeed(): JSX.Element {
                 value={d.phone ?? ""}
                 onChange={(v) => setDraft(i, { ...d, phone: v })}
               />
-              <button type="button" style={ghostButtonStyle} onClick={() => removeDraft(i)}>
+              <Button tone="secondary" type="button" onClick={() => removeDraft(i)}>
                 Remove
-              </button>
+              </Button>
             </div>
           ))
         )}
@@ -259,14 +258,14 @@ export function BereavementRosterSeed(): JSX.Element {
       </Card>
 
       <div>
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || plan.status !== "initiating"}
           onClick={submit}
         >
           {busy ? "Opening the plan…" : "Seed roster and open the plan"}
-        </button>
+        </Button>
       </div>
     </div>
   );

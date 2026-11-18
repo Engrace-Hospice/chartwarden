@@ -32,10 +32,8 @@ import {
   SelectField,
   TextAreaField,
   TextField,
-  ghostButtonStyle,
   linkStyle,
   mutedStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -203,22 +201,22 @@ export function PhysicianLetterReview(): JSX.Element | null {
                           )}
                         </td>
                         <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
-                          <button
+                          <Button
+                            tone="primary"
                             type="button"
-                            style={primaryButtonStyle}
                             aria-label={`Approve the letter for plan ${shortId(letter.planId)}`}
                             onClick={() => setAction({ letter, mode: "approve" })}
                           >
                             Approve
-                          </button>{" "}
-                          <button
+                          </Button>{" "}
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
                             aria-label={`Decline the letter for plan ${shortId(letter.planId)}`}
                             onClick={() => setAction({ letter, mode: "decline" })}
                           >
                             Decline
-                          </button>
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -372,14 +370,14 @@ function ApproveModal({
       busy={busy}
       dirty={note !== "" || attendingUserId !== ""}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || noteTooLong || recipientMissing}
           onClick={submit}
         >
           {busy ? "Approving…" : "Approve letter"}
-        </button>
+        </Button>
       }
     >
       <span style={mutedStyle}>
@@ -478,14 +476,14 @@ function DeclineModal({
       busy={busy}
       dirty={reason !== ""}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || reasonLength < DECLINE_REASON_MIN}
           onClick={submit}
         >
           {busy ? "Declining…" : "Decline letter"}
-        </button>
+        </Button>
       }
     >
       <span style={mutedStyle}>

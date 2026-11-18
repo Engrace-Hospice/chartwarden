@@ -37,15 +37,7 @@ import {
   secondsUntil,
   shortId,
 } from "./safety-status";
-import {
-  CancelCountdown,
-  Notice,
-  SelectField,
-  SosButton,
-  TextAreaField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { CancelCountdown, Notice, SelectField, SosButton, TextAreaField } from "./safety-ui";
 
 const GEO_TIMEOUT_MS = 3000;
 
@@ -371,7 +363,9 @@ export function MySafetyScreen(): JSX.Element {
                         />
                       </td>
                       <td style={{ ...tdStyle, textAlign: "right" }}>
-                        <button
+                        <Button
+                          tone="primary"
+                          size="lg"
                           type="button"
                           onClick={() =>
                             void postCheckIn({
@@ -382,10 +376,9 @@ export function MySafetyScreen(): JSX.Element {
                             })
                           }
                           disabled={posting}
-                          style={posting ? disabledButtonStyle : primaryButtonStyle}
                         >
                           I'm OK
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -437,7 +430,9 @@ export function MySafetyScreen(): JSX.Element {
               </Notice>
             ) : null}
             <div>
-              <button
+              <Button
+                tone="primary"
+                size="lg"
                 type="button"
                 onClick={() =>
                   void postCheckIn({
@@ -447,10 +442,9 @@ export function MySafetyScreen(): JSX.Element {
                   })
                 }
                 disabled={posting || !canPost}
-                style={posting || !canPost ? disabledButtonStyle : primaryButtonStyle}
               >
                 {posting ? "Sending..." : "Post check-in"}
-              </button>
+              </Button>
             </div>
             {postWarnings && postWarnings.length > 0 ? (
               <Notice tone="warning" live>

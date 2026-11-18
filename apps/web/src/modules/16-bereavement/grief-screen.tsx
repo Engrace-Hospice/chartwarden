@@ -15,6 +15,7 @@
 // arithmetic the counselor would otherwise do on paper, and only the total crosses the wire. The threshold
 // prompt below is an ADVISORY: the tier promotion to `complicated` is the server's, driven by route 18.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -49,7 +50,6 @@ import {
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -221,12 +221,12 @@ export function BereavementGriefScreen(): JSX.Element {
 
       <Card title="Outcome">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("refer")}>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("refer")}>
             Log an external referral (program continues)
-          </button>
-          <button type="button" style={primaryButtonStyle} onClick={() => setCeremony("escalate")}>
+          </Button>
+          <Button tone="primary" type="button" onClick={() => setCeremony("escalate")}>
             Escalate — complicated grief
-          </button>
+          </Button>
         </div>
         <span style={mutedStyle}>
           Escalating ends the bereavement program for this survivor and routes them to the named
@@ -295,14 +295,14 @@ function ReferralModal({
       title="Log an external grief-resource referral"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || externalResourceId.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Recording…" : "Log referral"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="info">
@@ -369,14 +369,14 @@ function EscalateModal({
       title="Escalate — complicated grief"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || externalResourceId.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Escalating…" : "Escalate"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="warning">

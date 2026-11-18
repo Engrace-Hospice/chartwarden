@@ -42,14 +42,7 @@ import {
   shortId,
   toneOf,
 } from "./safety-status";
-import {
-  ChipMultiSelect,
-  Modal,
-  Notice,
-  SelectField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { ChipMultiSelect, Modal, Notice, SelectField } from "./safety-ui";
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -332,7 +325,9 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
               title="Add a subscription"
               onClose={() => setAdding(false)}
               footer={
-                <button
+                <Button
+                  tone="primary"
+                  size="lg"
                   type="button"
                   onClick={() => void add()}
                   disabled={
@@ -342,18 +337,9 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
                     !selectorFilled ||
                     (forwarding && forwardTo.trim().length === 0)
                   }
-                  style={
-                    saving ||
-                    supervisor.trim().length === 0 ||
-                    alertKinds.length === 0 ||
-                    !selectorFilled ||
-                    (forwarding && forwardTo.trim().length === 0)
-                      ? disabledButtonStyle
-                      : primaryButtonStyle
-                  }
                 >
                   {saving ? "Adding..." : "Add subscription"}
-                </button>
+                </Button>
               }
             >
               <MembershipLookupField

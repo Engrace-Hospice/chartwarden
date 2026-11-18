@@ -6,7 +6,7 @@
 //
 // Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens` stays green and the twilight dark
 // mode is automatic.
-import { Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
+import { Button, Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
 import type { StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import {
@@ -396,9 +396,9 @@ export function Modal({
         <h2 style={modalTitleStyle}>{title}</h2>
         {children}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
-          <button type="button" onClick={onClose} style={ghostButtonStyle}>
+          <Button tone="secondary" size="lg" type="button" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
           {footer}
         </div>
       </div>

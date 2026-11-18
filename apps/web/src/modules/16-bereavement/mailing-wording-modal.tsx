@@ -7,7 +7,7 @@
 // "Try again"; the typed wording stays. A 409/404 (the run is no longer a draft, or is gone) closes the dialog and the page says why.
 // Unsaved wording is protected three ways: the scrim cannot dismiss the dialog, Cancel and Escape ask before discarding, and while the
 // write is in flight every control is inert and the dialog cannot close.
-import { useApiClient, useAttemptKey } from "@chartwarden/ui";
+import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
@@ -17,7 +17,7 @@ import {
   isStaleWrite,
   updateMailingRunContent,
 } from "./bereavement-api";
-import { ErrorText, Modal, Notice, ghostButtonStyle, primaryButtonStyle } from "./bereavement-ui";
+import { ErrorText, Modal, Notice } from "./bereavement-ui";
 import { MailingContentEditor } from "./mailing-content-editor";
 import { contentForSave, sameWording, wordingOf, wordingProblems } from "./mailing-status";
 
@@ -121,14 +121,14 @@ export function EditWordingModal({
       busy={busy}
       dirty={dirty}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || blocked || !dirty || conflictAt !== null}
           onClick={() => void save()}
         >
           {busy ? "Saving…" : "Save wording"}
-        </button>
+        </Button>
       }
     >
       <MailingContentEditor value={draft} onChange={setDraft} disabled={busy} />
@@ -147,15 +147,15 @@ export function EditWordingModal({
             )}
             {reloadFailed ? (
               // stays mounted while it retries (aria-disabled, not removed), so focus is not dropped to the page body
-              <button
+              <Button
+                tone="secondary"
                 type="button"
-                style={ghostButtonStyle}
                 aria-disabled={reloading}
                 aria-busy={reloading}
                 onClick={() => void reloadTheirs()}
               >
                 Try again
-              </button>
+              </Button>
             ) : null}
           </div>
         ) : (
@@ -167,9 +167,9 @@ export function EditWordingModal({
               {theirs.signoff ? ` ${theirs.signoff}` : ""}
             </Notice>
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-              <button
+              <Button
+                tone="secondary"
                 type="button"
-                style={ghostButtonStyle}
                 onClick={() => {
                   setDraft(theirs);
                   setConflictAt(null);
@@ -177,17 +177,17 @@ export function EditWordingModal({
                 }}
               >
                 Replace with theirs
-              </button>
-              <button
+              </Button>
+              <Button
+                tone="secondary"
                 type="button"
-                style={ghostButtonStyle}
                 onClick={() => {
                   setConflictAt(null);
                   setError(null);
                 }}
               >
                 Overwrite with mine
-              </button>
+              </Button>
             </div>
           </section>
         )
@@ -196,16 +196,12 @@ export function EditWordingModal({
         <div role="alert">
           <Notice tone="warning">
             You have unsaved wording. Discard it?{" "}
-            <button type="button" style={ghostButtonStyle} onClick={onClose}>
+            <Button tone="secondary" type="button" onClick={onClose}>
               Discard changes
-            </button>{" "}
-            <button
-              type="button"
-              style={ghostButtonStyle}
-              onClick={() => setConfirmingDiscard(false)}
-            >
+            </Button>{" "}
+            <Button tone="secondary" type="button" onClick={() => setConfirmingDiscard(false)}>
               Keep editing
-            </button>
+            </Button>
           </Notice>
         </div>
       ) : null}

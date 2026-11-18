@@ -16,6 +16,7 @@
 // outage becomes a documented gap rather than a set of calls that appear days later. The screen sorts by
 // expiry and marks what is close, because "we ran out of time to type it in" is a finding, not a filing.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -284,14 +285,15 @@ export function PaperReentryWorklistScreen(): JSX.Element {
           title="Re-enter a call taken on paper"
           onClose={() => setEntering(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={!canEnter}
-              style={canEnter ? primaryButtonStyle : disabledButtonStyle}
               onClick={() => void commit()}
             >
               File the call
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">

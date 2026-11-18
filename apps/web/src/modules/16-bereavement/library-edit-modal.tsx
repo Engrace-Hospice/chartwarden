@@ -1,18 +1,11 @@
 // apps/web/src/modules/16-bereavement — edit one grief-library item's details (ADR-0109 D10, route 79). The version the page READ goes in
 // `If-Match`; a 409/404 closes the dialog, and the page reloads and says why. The document itself is never replaced here: upload a new
 // item instead.
-import { useApiClient, useAttemptKey } from "@chartwarden/ui";
+import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
-import {
-  ErrorText,
-  Modal,
-  SelectField,
-  TextAreaField,
-  TextField,
-  primaryButtonStyle,
-} from "./bereavement-ui";
+import { ErrorText, Modal, SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, isUuid, orNull } from "./program-status";
 import { type LibraryCategory, type LibraryItem, updateLibraryItem } from "./programs-api";
 
@@ -85,14 +78,9 @@ export function LibraryEditModal({
       busy={busy}
       dirty
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy}
-          onClick={() => void save()}
-        >
+        <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : "Save"}
-        </button>
+        </Button>
       }
     >
       <TextField label="Title" value={title} onChange={setTitle} maxLength={200} />

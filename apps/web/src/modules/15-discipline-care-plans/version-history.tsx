@@ -1,4 +1,5 @@
 import {
+  Button,
   DerivedBadge,
   EmptyState,
   LoadingSpinner,
@@ -52,7 +53,6 @@ import {
   TableScroll,
   alertStyle,
   columnStyle,
-  ghostButtonStyle,
   linkStyle,
   mutedStyle,
   pageTitleStyle,
@@ -219,20 +219,20 @@ export function DisciplineVersionHistory(): JSX.Element {
                         </td>
                         <td style={td}>
                           <div style={{ display: "flex", gap: t.space2 }}>
-                            <button
+                            <Button
+                              tone="secondary"
                               type="button"
-                              style={ghostButtonStyle}
                               onClick={() => void open(v.versionId, "selected")}
                             >
                               Open
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              tone="secondary"
                               type="button"
-                              style={ghostButtonStyle}
                               onClick={() => void open(v.versionId, "compare")}
                             >
                               Compare against
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>

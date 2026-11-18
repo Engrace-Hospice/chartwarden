@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -55,7 +56,6 @@ import {
   linkStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -314,13 +314,13 @@ export function AidePocEditor(): JSX.Element {
                     </td>
                     <td style={td}>
                       {iv.status === "active" ? (
-                        <button
+                        <Button
+                          tone="secondary"
                           type="button"
-                          style={ghostButtonStyle}
                           onClick={() => void discontinueIntervention(iv)}
                         >
                           Discontinue
-                        </button>
+                        </Button>
                       ) : null}
                     </td>
                   </tr>
@@ -343,14 +343,14 @@ export function AidePocEditor(): JSX.Element {
             onChange={setFrequencyValue}
             placeholder="3/week"
           />
-          <button
+          <Button
+            tone="primary"
             type="button"
             disabled={!canAddIntervention}
-            style={{ ...primaryButtonStyle, opacity: canAddIntervention ? 1 : 0.5 }}
             onClick={() => void addIntervention()}
           >
             Add task
-          </button>
+          </Button>
         </div>
       </Card>
 
@@ -413,17 +413,14 @@ export function AidePocEditor(): JSX.Element {
             options={SOURCE_OPTIONS}
             onChange={setGoalSource}
           />
-          <button
+          <Button
+            tone="primary"
             type="button"
             disabled={goalText.trim() === "" || goalProblemId.trim() === ""}
-            style={{
-              ...primaryButtonStyle,
-              opacity: goalText.trim() === "" || goalProblemId.trim() === "" ? 0.5 : 1,
-            }}
             onClick={() => void addGoal()}
           >
             Add goal
-          </button>
+          </Button>
         </div>
         <TextAreaField
           label="Goal text"

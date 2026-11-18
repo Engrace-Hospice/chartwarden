@@ -5,17 +5,11 @@
 // What it guarantees itself: nothing is pre-filled (no default wording ships: a blank page stays blank, and Generate refuses it),
 // the limits are the server's (`CONTENT_LIMITS`) and are said as they are crossed, and every control goes inert at once while a
 // write is in flight (`disabled` is a <fieldset disabled>, so a control added later is covered too).
-import { t } from "@chartwarden/ui";
+import { Button, t } from "@chartwarden/ui";
 import { useId } from "react";
 import type { CSSProperties, JSX } from "react";
 import type { MailingLocaleContent } from "./bereavement-api";
-import {
-  ErrorText,
-  TextAreaField,
-  TextField,
-  ghostButtonStyle,
-  mutedStyle,
-} from "./bereavement-ui";
+import { ErrorText, TextAreaField, TextField, mutedStyle } from "./bereavement-ui";
 import { CONTENT_LIMITS, GREETING_NAME_TOKEN, wordingProblems } from "./mailing-status";
 
 const fieldsetStyle: CSSProperties = {
@@ -80,29 +74,29 @@ export function MailingContentEditor({
             hint={`${paragraph.trim().length} of ${CONTENT_LIMITS.paragraph} characters.`}
           />
           <div>
-            <button
+            <Button
+              tone="secondary"
               type="button"
-              style={ghostButtonStyle}
               aria-label={label(`remove paragraph ${i + 1}`)}
               onClick={() =>
                 onChange({ ...value, paragraphs: value.paragraphs.filter((_, j) => j !== i) })
               }
             >
               Remove paragraph {i + 1}
-            </button>
+            </Button>
           </div>
         </div>
       ))}
       <div>
-        <button
+        <Button
+          tone="secondary"
           type="button"
-          style={ghostButtonStyle}
           disabled={value.paragraphs.length >= CONTENT_LIMITS.paragraphs}
           aria-label={label("add a paragraph")}
           onClick={() => onChange({ ...value, paragraphs: [...value.paragraphs, ""] })}
         >
           Add a paragraph
-        </button>
+        </Button>
         <span style={{ ...mutedStyle, marginLeft: t.space2 }}>
           {value.paragraphs.length} of {CONTENT_LIMITS.paragraphs} paragraphs
         </span>

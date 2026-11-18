@@ -2,7 +2,7 @@
 // The file goes through M22 first (hash, reserve, PUT to storage, complete: a reservation that fails later is aborted), then the returned
 // document is registered as a DRAFT library item under one Idempotency-Key per attempt. A draft is not shown to families until published.
 // While the file is sent, "Cancel upload" aborts the PUT and releases the reservation; closing the dialog does the same.
-import { useApiClient, useAttemptKey } from "@chartwarden/ui";
+import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { errorMessage } from "./bereavement-api";
@@ -12,9 +12,7 @@ import {
   SelectField,
   TextAreaField,
   TextField,
-  ghostButtonStyle,
   mutedStyle,
-  primaryButtonStyle,
 } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, orNull } from "./program-status";
 import {
@@ -108,9 +106,9 @@ export function LibraryUploadModal({
       footer={
         <>
           {cancellable ? (
-            <button
+            <Button
+              tone="secondary"
               type="button"
-              style={ghostButtonStyle}
               disabled={cancelling}
               onClick={() => {
                 setCancelling(true);
@@ -118,16 +116,11 @@ export function LibraryUploadModal({
               }}
             >
               {cancelling ? "Cancelling…" : "Cancel upload"}
-            </button>
+            </Button>
           ) : null}
-          <button
-            type="button"
-            style={primaryButtonStyle}
-            disabled={busy}
-            onClick={() => void submit()}
-          >
+          <Button tone="primary" type="button" disabled={busy} onClick={() => void submit()}>
             {busy ? "Uploading…" : "Upload"}
-          </button>
+          </Button>
         </>
       }
     >

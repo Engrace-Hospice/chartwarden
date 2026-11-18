@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -55,7 +56,6 @@ import {
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   useUnsavedChangesWarning,
 } from "./discipline-ui";
 
@@ -403,19 +403,19 @@ export function AssessmentEditor(): JSX.Element {
 
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {creating ? (
-            <button type="button" style={primaryButtonStyle} onClick={() => void create()}>
+            <Button tone="primary" type="button" onClick={() => void create()}>
               Capture assessment
-            </button>
+            </Button>
           ) : null}
           {assessment && assessment.status === "draft" ? (
-            <button type="button" style={primaryButtonStyle} onClick={() => void sign(assessment)}>
+            <Button tone="primary" type="button" onClick={() => void sign(assessment)}>
               Sign assessment
-            </button>
+            </Button>
           ) : null}
           {assessment && signed ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setAmending(true)}>
+            <Button tone="secondary" type="button" onClick={() => setAmending(true)}>
               Amend
-            </button>
+            </Button>
           ) : null}
         </div>
 
@@ -428,14 +428,14 @@ export function AssessmentEditor(): JSX.Element {
               rows={3}
               hint="Required. The amendment is a new row that supersedes this one; neither is deleted."
             />
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={amendReason.trim() === ""}
-              style={{ ...primaryButtonStyle, opacity: amendReason.trim() === "" ? 0.5 : 1 }}
               onClick={() => void amend(assessment)}
             >
               Record amendment
-            </button>
+            </Button>
           </>
         ) : null}
       </Card>

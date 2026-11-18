@@ -26,6 +26,7 @@
 // obligation as an outstanding fact rather than offering a button that would post it on her behalf, which
 // is the one thing §6 explicitly forbids.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -78,12 +79,10 @@ import {
   TextField,
   Timeline,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   linkStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
 } from "./safety-ui";
 
 type Ceremony = "none" | "edit" | "submit" | "transition" | "osha";
@@ -279,9 +278,9 @@ export function IncidentDetailScreen(): JSX.Element {
             <Link to="/safety/incidents" style={ghostButtonStyle}>
               Back to ledger
             </Link>
-            <button type="button" onClick={() => void load()} style={ghostButtonStyle}>
+            <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
               Reload
-            </button>
+            </Button>
           </div>
         }
       />
@@ -310,35 +309,39 @@ export function IncidentDetailScreen(): JSX.Element {
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             {isDraft ? (
               <>
-                <button type="button" onClick={openEdit} style={ghostButtonStyle}>
+                <Button tone="secondary" size="lg" type="button" onClick={openEdit}>
                   Edit draft
-                </button>
-                <button
+                </Button>
+                <Button
+                  tone="primary"
+                  size="lg"
                   type="button"
                   onClick={() => {
                     setModalError(null);
                     setCeremony("submit");
                   }}
-                  style={primaryButtonStyle}
                 >
                   Submit for review
-                </button>
+                </Button>
               </>
             ) : null}
             {!isDraft ? (
-              <button
+              <Button
+                tone="secondary"
+                size="lg"
                 type="button"
                 onClick={() => {
                   setToState(DEFAULT_INCIDENT_TRANSITION);
                   setModalError(null);
                   setCeremony("transition");
                 }}
-                style={ghostButtonStyle}
               >
                 Change state
-              </button>
+              </Button>
             ) : null}
-            <button
+            <Button
+              tone="secondary"
+              size="lg"
               type="button"
               onClick={() => {
                 setOshaReportable(!incident.oshaReportable);
@@ -346,10 +349,9 @@ export function IncidentDetailScreen(): JSX.Element {
                 setCeremony("osha");
               }}
               disabled={isClosed}
-              style={isClosed ? disabledButtonStyle : ghostButtonStyle}
             >
               OSHA sign-off
-            </button>
+            </Button>
           </div>
         }
       >
@@ -462,14 +464,15 @@ export function IncidentDetailScreen(): JSX.Element {
           title="Edit this draft"
           onClose={() => setCeremony("none")}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void submitEdit()}
               disabled={saving}
-              style={saving ? disabledButtonStyle : primaryButtonStyle}
             >
               {saving ? "Saving…" : "Save draft"}
-            </button>
+            </Button>
           }
         >
           {!incident.narrativeAvailable ? (
@@ -525,14 +528,15 @@ export function IncidentDetailScreen(): JSX.Element {
           title="Submit this incident for review"
           onClose={() => setCeremony("none")}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void doSubmit()}
               disabled={saving}
-              style={saving ? disabledButtonStyle : primaryButtonStyle}
             >
               {saving ? "Submitting…" : "Submit"}
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">
@@ -566,7 +570,9 @@ export function IncidentDetailScreen(): JSX.Element {
           title="Change this incident's state"
           onClose={() => setCeremony("none")}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void doTransition()}
               disabled={
@@ -574,16 +580,9 @@ export function IncidentDetailScreen(): JSX.Element {
                 !meetsMinChars(reason, INCIDENT_TRANSITION_REASON_MIN_CHARS) ||
                 (toState === "closed_with_action_plan" && actionPlan.trim().length === 0)
               }
-              style={
-                saving ||
-                !meetsMinChars(reason, INCIDENT_TRANSITION_REASON_MIN_CHARS) ||
-                (toState === "closed_with_action_plan" && actionPlan.trim().length === 0)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
             >
               {saving ? "Recording…" : "Record transition"}
-            </button>
+            </Button>
           }
         >
           <SelectField
@@ -632,7 +631,9 @@ export function IncidentDetailScreen(): JSX.Element {
           title="OSHA-equivalent sign-off"
           onClose={() => setCeremony("none")}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void doOsha()}
               disabled={
@@ -642,22 +643,13 @@ export function IncidentDetailScreen(): JSX.Element {
                 !Number.isFinite(Number(windowHours)) ||
                 Number(windowHours) < 1
               }
-              style={
-                saving ||
-                !meetsMinChars(oshaReason, OSHA_REASON_MIN_CHARS) ||
-                stateCode.trim().length !== 2 ||
-                !Number.isFinite(Number(windowHours)) ||
-                Number(windowHours) < 1
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
             >
               {saving
                 ? "Signing…"
                 : oshaReportable
                   ? "Sign off as reportable"
                   : "Sign off as NOT reportable"}
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning" assertive>

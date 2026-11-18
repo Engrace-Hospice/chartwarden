@@ -18,6 +18,7 @@
 //     `M21_TEMPLATE_VIOLATES_PLATFORM_FLOOR` and names the medication; pre-empting that client-side would
 //     mean shipping a second copy of the floor definition, which is exactly the drift D3 exists to prevent.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -54,13 +55,11 @@ import {
   TextField,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
   inputStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -244,9 +243,9 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
         title={<span style={pageTitleStyle}>Comfort-kit templates</span>}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button type="button" style={primaryButtonStyle} onClick={startCreate}>
+            <Button tone="primary" type="button" onClick={startCreate}>
               New tenant template
-            </button>
+            </Button>
             <Link to="/supplies" style={ghostButtonStyle}>
               Back to queue
             </Link>
@@ -323,13 +322,9 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                   {selected.isPlatformFloor || selected.systemLocked ? (
                     <StatusPill label="Locked" tone="neutral" />
                   ) : (
-                    <button
-                      type="button"
-                      style={ghostButtonStyle}
-                      onClick={() => startSupersede(selected)}
-                    >
+                    <Button tone="secondary" type="button" onClick={() => startSupersede(selected)}>
                       Revise
-                    </button>
+                    </Button>
                   )}
                 </div>
               }
@@ -402,21 +397,17 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
               }
               actions={
                 <div style={{ display: "flex", gap: t.space2 }}>
-                  <button
+                  <Button
+                    tone="primary"
                     type="button"
                     disabled={!ready || busy}
-                    style={!ready || busy ? disabledButtonStyle : primaryButtonStyle}
                     onClick={() => void save()}
                   >
                     Save
-                  </button>
-                  <button
-                    type="button"
-                    style={ghostButtonStyle}
-                    onClick={() => setEditorMode("none")}
-                  >
+                  </Button>
+                  <Button tone="secondary" type="button" onClick={() => setEditorMode("none")}>
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               }
             >
@@ -525,26 +516,26 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                         />
                       </td>
                       <td style={td}>
-                        <button
+                        <Button
+                          tone="secondary"
                           type="button"
-                          style={ghostButtonStyle}
                           onClick={() => setMeds((prev) => prev.filter((x) => x.key !== m.key))}
                         >
                           Remove
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <div style={{ display: "flex", gap: t.space2 }}>
-                <button
+                <Button
+                  tone="secondary"
                   type="button"
-                  style={ghostButtonStyle}
                   onClick={() => setMeds((prev) => [...prev, blankMed()])}
                 >
                   Add medication
-                </button>
+                </Button>
               </div>
               {meds.some((m) => m.isControlledSubstance) ? (
                 <Notice tone="warning">

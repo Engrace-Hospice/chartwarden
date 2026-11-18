@@ -17,6 +17,7 @@
 // dates, and the catalog list — filtered to include retired rows — IS the history. A second, prettier
 // rendering of the same rows on this page would be a second answer to "which version was in force".
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -60,11 +61,9 @@ import {
   TextField,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -208,16 +207,17 @@ export function TriageProtocolDetailScreen(): JSX.Element {
               <StatusPill label="✓ Platform floor — read-only" tone="critical" />
             ) : (
               <>
-                <button
+                <Button
+                  tone="secondary"
+                  size="lg"
                   type="button"
-                  style={ghostButtonStyle}
                   onClick={() => setEditingHeader(true)}
                 >
                   Edit
-                </button>
-                <button type="button" style={ghostButtonStyle} onClick={() => setAdding(true)}>
+                </Button>
+                <Button tone="secondary" size="lg" type="button" onClick={() => setAdding(true)}>
                   Add a question
-                </button>
+                </Button>
               </>
             )}
             <Link to="/triage/protocols" style={ghostButtonStyle}>
@@ -303,9 +303,10 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                     {q.isSystemLocked || isPlatform ? (
                       <span style={mutedStyle}>not editable</span>
                     ) : (
-                      <button
+                      <Button
+                        tone="secondary"
+                        size="lg"
                         type="button"
-                        style={busy ? disabledButtonStyle : ghostButtonStyle}
                         disabled={busy}
                         onClick={() =>
                           void run(
@@ -315,7 +316,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                         }
                       >
                         {q.required ? "Make optional" : "Make required"}
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>
@@ -338,10 +339,11 @@ export function TriageProtocolDetailScreen(): JSX.Element {
           title="Edit the protocol"
           onClose={() => setEditingHeader(false)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || label.trim().length < 3}
-              style={busy || label.trim().length < 3 ? disabledButtonStyle : primaryButtonStyle}
               onClick={() =>
                 void run(
                   () =>
@@ -356,7 +358,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
               }
             >
               Save
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">This write needs a recent step-up.</Notice>
@@ -382,10 +384,11 @@ export function TriageProtocolDetailScreen(): JSX.Element {
           title="Add a question"
           onClose={() => setAdding(false)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={!canAdd}
-              style={canAdd ? primaryButtonStyle : disabledButtonStyle}
               title={
                 canAdd
                   ? undefined
@@ -416,7 +419,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
               }
             >
               Add
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">This write needs a recent step-up.</Notice>

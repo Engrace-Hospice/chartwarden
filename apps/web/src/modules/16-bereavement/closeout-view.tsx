@@ -12,6 +12,7 @@
 // would have had to call a route that does not exist, or misuse the early-close path — which would record
 // a curtailed obligation as a fulfilled one on the survey record.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -61,7 +62,6 @@ import {
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
 } from "./bereavement-ui";
 
 /** M16's oversight roles (`BEREAVEMENT_OVERSIGHT_ROLES`): the readers the closure route sends the discharge summary's id to. */
@@ -245,14 +245,14 @@ export function BereavementCloseoutView(): JSX.Element {
         ) : (
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             {activeContacts.map((c) => (
-              <button
+              <Button
+                tone="secondary"
                 key={c.contactId}
                 type="button"
-                style={ghostButtonStyle}
                 onClick={() => setComposing(c.contactId)}
               >
                 Compose for {c.displayName}
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -319,9 +319,9 @@ function FinalContactModal({
       title={`Final contact — ${name}`}
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Recording…" : "Record final contact"}
-        </button>
+        </Button>
       }
     >
       <SelectField

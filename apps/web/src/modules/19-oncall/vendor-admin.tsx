@@ -21,6 +21,7 @@
 // different contract. Changing one means creating a new binding, and the screen says that instead of
 // offering fields that will be refused.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -290,10 +291,11 @@ export function ExternalVendorAdminScreen(): JSX.Element {
           title="Bind an external triage vendor"
           onClose={() => setCreating(false)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={!canCreate}
-              style={canCreate ? primaryButtonStyle : disabledButtonStyle}
               title={
                 canCreate
                   ? undefined
@@ -302,7 +304,7 @@ export function ExternalVendorAdminScreen(): JSX.Element {
               onClick={() => void commitCreate()}
             >
               Bind
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">
@@ -356,14 +358,15 @@ export function ExternalVendorAdminScreen(): JSX.Element {
           title={`BAA renewal — ${renewing.name}`}
           onClose={() => setRenewing(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={() => void commitRenew()}
             >
               Save
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">

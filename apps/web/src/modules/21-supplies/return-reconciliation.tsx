@@ -25,6 +25,7 @@
 // — required only for at-home witnessed destruction, and required by §3.1.10's CHECK to be distinct from
 // both the reconciler and the retriever. The form arms it on exactly that method and says why.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -76,13 +77,11 @@ import {
   Timeline,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
   inputNarrowStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -558,7 +557,8 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           />
 
           <div style={{ display: "flex", gap: t.space2, justifyContent: "flex-end" }}>
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={!canReconcile || busy}
               title={
@@ -566,37 +566,36 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
                   ? undefined
                   : "Every line needs a returned quantity, every flagged line an explanation, and at-home destruction a witness."
               }
-              style={!canReconcile || busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={() => void submitReconcile()}
             >
               Reconcile
-            </button>
+            </Button>
           </div>
         </Card>
       ) : null}
 
       <Card title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button
+          <Button
+            tone="secondary"
             type="button"
             disabled={!open}
             title={open ? undefined : "This return has reached a terminal state."}
             aria-disabled={!open}
-            style={open ? ghostButtonStyle : disabledButtonStyle}
             onClick={open ? () => setCeremony("assign-retriever") : undefined}
           >
             Assign retriever
-          </button>
-          <button
+          </Button>
+          <Button
+            tone="secondary"
             type="button"
             disabled={!open}
             title={open ? undefined : "This return has reached a terminal state."}
             aria-disabled={!open}
-            style={open ? ghostButtonStyle : disabledButtonStyle}
             onClick={open ? () => setCeremony("unreturnable") : undefined}
           >
             Declare unreturnable
-          </button>
+          </Button>
         </div>
         <span style={mutedStyle}>
           Writing off a kit that held a CII solution is a different authority from counting one that
@@ -609,14 +608,10 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           title="Assign the retrieving staff member"
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy || retrieverMembershipId.trim() === ""}
-              style={
-                busy || retrieverMembershipId.trim() === ""
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
               onClick={async () => {
                 setBusy(true);
                 setActionError(null);
@@ -633,7 +628,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
               }}
             >
               Assign
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">
@@ -654,12 +649,10 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           title="Declare this kit unreturnable"
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy || unreturnableReason.trim() === ""}
-              style={
-                busy || unreturnableReason.trim() === "" ? disabledButtonStyle : primaryButtonStyle
-              }
               onClick={async () => {
                 setBusy(true);
                 setActionError(null);
@@ -676,7 +669,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
               }}
             >
               Declare unreturnable
-            </button>
+            </Button>
           }
         >
           <Notice tone="error">

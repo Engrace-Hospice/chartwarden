@@ -3,7 +3,7 @@
 // Create carries an `Idempotency-Key`; an edit also carries the group version the page READ in `If-Match`. A 409/404 on an edit means the
 // group moved under the reader: the dialog closes and the page reloads and says why. While a group is open its schedule (recurrence) is fixed:
 // only a draft's schedule can change, and a drop-in group has none. The format itself is chosen once, at creation.
-import { useApiClient, useAttemptKey } from "@chartwarden/ui";
+import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
@@ -15,7 +15,6 @@ import {
   TextAreaField,
   TextField,
   plainFieldset,
-  primaryButtonStyle,
 } from "./bereavement-ui";
 import { intOrNull, isHttpsUrl, isUuid, orNull } from "./program-status";
 import {
@@ -196,14 +195,9 @@ export function GroupFormModal({
       busy={busy}
       dirty
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy}
-          onClick={() => void save()}
-        >
+        <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : group === null ? "Create draft group" : "Save changes"}
-        </button>
+        </Button>
       }
     >
       <fieldset disabled={busy} style={plainFieldset}>

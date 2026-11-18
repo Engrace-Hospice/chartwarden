@@ -17,10 +17,8 @@ import {
   ErrorText,
   Modal,
   SelectField,
-  dangerButtonStyle,
   linkStyle,
   mutedStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -218,14 +216,14 @@ function EnrollModal({
       onClose={onClose}
       busy={busy}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || !chosen}
           onClick={() => void submit()}
         >
           {busy ? "Enrolling…" : "Enroll"}
-        </button>
+        </Button>
       }
     >
       {state.kind === "loading" ? <LoadingSpinner label="Loading open groups" /> : null}
@@ -303,14 +301,9 @@ function WithdrawModal({
       describedBy={descId}
       cancelLabel="Keep enrolled"
       footer={
-        <button
-          type="button"
-          style={dangerButtonStyle}
-          disabled={busy}
-          onClick={() => void submit()}
-        >
+        <Button tone="danger" type="button" disabled={busy} onClick={() => void submit()}>
           {busy ? "Withdrawing…" : "Withdraw"}
-        </button>
+        </Button>
       }
     >
       <span id={descId} style={mutedStyle}>

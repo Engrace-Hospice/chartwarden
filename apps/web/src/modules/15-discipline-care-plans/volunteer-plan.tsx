@@ -1,4 +1,4 @@
-import { StatusPill, t, useApiClient } from "@chartwarden/ui";
+import { Button, StatusPill, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the VOLUNTEER PLAN VIEW + ASSIGNMENT MODAL (§5.1 #9/#10).
 //
 // The 42 CFR §418.78 surface over the shared plan spine, plus the coordinator's assignment ledger and the
@@ -38,9 +38,7 @@ import {
   TextAreaField,
   TextField,
   alertStyle,
-  ghostButtonStyle,
   mutedStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -136,14 +134,15 @@ function AssignmentModal({
       title="Assign volunteer"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
+          style={{ opacity: canSubmit ? 1 : 0.5 }}
           type="button"
           onClick={() => void submit()}
           disabled={!canSubmit}
-          style={{ ...primaryButtonStyle, opacity: canSubmit ? 1 : 0.5 }}
         >
           {busy ? "Assigning…" : needsOverride ? "Assign with override" : "Assign"}
-        </button>
+        </Button>
       }
     >
       <MembershipLookupField
@@ -243,9 +242,9 @@ function AssignmentLedger({
       <Card
         title="Volunteer assignments"
         actions={
-          <button type="button" style={ghostButtonStyle} onClick={() => setOpen(true)}>
+          <Button tone="secondary" type="button" onClick={() => setOpen(true)}>
             Assign volunteer
-          </button>
+          </Button>
         }
       >
         {error ? <p style={alertStyle}>{error}</p> : null}
@@ -284,9 +283,9 @@ function AssignmentLedger({
                   <td style={td}>
                     <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
                       {a.coordinatorAcknowledgedAt ? null : (
-                        <button
+                        <Button
+                          tone="secondary"
                           type="button"
-                          style={ghostButtonStyle}
                           onClick={() =>
                             void patch(
                               a,
@@ -296,12 +295,12 @@ function AssignmentLedger({
                           }
                         >
                           Acknowledge
-                        </button>
+                        </Button>
                       )}
                       {a.inactivatedAt ? (
-                        <button
+                        <Button
+                          tone="secondary"
                           type="button"
-                          style={ghostButtonStyle}
                           onClick={() =>
                             void patch(
                               a,
@@ -311,18 +310,18 @@ function AssignmentLedger({
                           }
                         >
                           Reactivate
-                        </button>
+                        </Button>
                       ) : (
-                        <button
+                        <Button
+                          tone="secondary"
                           type="button"
-                          style={ghostButtonStyle}
                           onClick={() => {
                             setReason("");
                             setInactivating(a);
                           }}
                         >
                           Inactivate
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </td>
@@ -349,10 +348,10 @@ function AssignmentLedger({
           title="Inactivate assignment"
           onClose={() => setInactivating(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={reason.trim().length === 0}
-              style={{ ...primaryButtonStyle, opacity: reason.trim().length === 0 ? 0.5 : 1 }}
               onClick={() => {
                 void patch(
                   inactivating,
@@ -364,7 +363,7 @@ function AssignmentLedger({
               }}
             >
               Inactivate
-            </button>
+            </Button>
           }
         >
           <TextAreaField

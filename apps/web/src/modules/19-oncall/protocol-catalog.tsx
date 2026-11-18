@@ -21,6 +21,7 @@
 //     switches the questions under a call already walking. That is the real mechanism and the screen says
 //     so instead of implying a publish button exists.
 import {
+  Button,
   CodeSearchInput,
   EmptyState,
   Glyph,
@@ -62,7 +63,6 @@ import {
   TextField,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   linkStyle,
   mutedStyle,
@@ -344,10 +344,11 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
           title="Author a tenant protocol"
           onClose={() => setCreating(false)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={!canCreate}
-              style={canCreate ? primaryButtonStyle : disabledButtonStyle}
               title={
                 canCreate
                   ? undefined
@@ -356,7 +357,7 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
               onClick={() => void commitCreate()}
             >
               Create
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">

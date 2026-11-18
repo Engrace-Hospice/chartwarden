@@ -36,15 +36,7 @@ import {
   toInstant,
   toneOf,
 } from "./safety-status";
-import {
-  Modal,
-  Notice,
-  SelectField,
-  TextAreaField,
-  TextField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { Modal, Notice, SelectField, TextAreaField, TextField } from "./safety-ui";
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -340,20 +332,17 @@ export function HighRiskAreasScreen(): JSX.Element {
               title={editing === "new" ? "Draw a high-risk area" : "Edit this area"}
               onClose={() => setEditing(null)}
               footer={
-                <button
+                <Button
+                  tone="primary"
+                  size="lg"
                   type="button"
                   onClick={() => void save()}
                   disabled={
                     saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
                   }
-                  style={
-                    saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
-                      ? disabledButtonStyle
-                      : primaryButtonStyle
-                  }
                 >
                   {saving ? "Saving..." : editing === "new" ? "Create area" : "Save changes"}
-                </button>
+                </Button>
               }
             >
               <SelectField

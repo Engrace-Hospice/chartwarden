@@ -15,7 +15,7 @@
 // THE READ IS DELIBERATE, NOT AUTOMATIC. Loading the screen does not decrypt: the button below does. A
 // screen that decrypted on mount would write an access row every time somebody mis-clicked a link, and an
 // audit trail of accidents is one nobody can read for intent.
-import { EmptyState, PageHeader, useApiClient } from "@chartwarden/ui";
+import { Button, EmptyState, PageHeader, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -28,11 +28,9 @@ import {
   SummaryGrid,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
 } from "./oncall-ui";
 
 /** The verbatim block. A caller's own words are rendered as pre-wrapped text, never parsed or linkified:
@@ -95,14 +93,15 @@ export function TriageTranscriptScreen(): JSX.Element {
             key envelope. Nothing is decrypted until you ask.
           </span>
           <div>
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
               disabled={busy}
               onClick={() => void decrypt()}
             >
               {busy ? "Decrypting…" : "Decrypt the transcript"}
-            </button>
+            </Button>
           </div>
           {error ? <p style={alertStyle}>{error}</p> : null}
         </Card>

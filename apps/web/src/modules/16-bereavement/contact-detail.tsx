@@ -85,7 +85,6 @@ import {
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -302,21 +301,12 @@ function ContactForPlan({
                 : ""}
               . The nightly check only proposes this; nothing changes until a counselor confirms.
             </span>
-            <button
-              type="button"
-              style={primaryButtonStyle}
-              onClick={() => setCeremony("unreachable")}
-            >
+            <Button tone="primary" type="button" onClick={() => setCeremony("unreachable")}>
               Mark unreachable
-            </button>
-            <button
-              type="button"
-              style={ghostButtonStyle}
-              disabled={keepTryingBusy}
-              onClick={keepTrying}
-            >
+            </Button>
+            <Button tone="secondary" type="button" disabled={keepTryingBusy} onClick={keepTrying}>
               {keepTryingBusy ? "Saving…" : "Keep trying"}
-            </button>
+            </Button>
           </div>
           {keepTryingError ? <ErrorText>{keepTryingError}</ErrorText> : null}
         </Notice>
@@ -386,9 +376,9 @@ function ContactForPlan({
             : contact.allowedOutreachKinds.map(outreachKindLabel).join(" · ")}
         </span>
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("channels")}>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("channels")}>
             Edit channels
-          </button>
+          </Button>
         </div>
       </Card>
 
@@ -410,39 +400,34 @@ function ContactForPlan({
       <Card title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {contact.status === "proposed" ? (
-            <button type="button" style={primaryButtonStyle} onClick={() => setCeremony("confirm")}>
+            <Button tone="primary" type="button" onClick={() => setCeremony("confirm")}>
               Confirm contact
-            </button>
+            </Button>
           ) : null}
           {contact.status === "active" ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("opt-out")}>
+            <Button tone="secondary" type="button" onClick={() => setCeremony("opt-out")}>
               Record opt-out
-            </button>
+            </Button>
           ) : null}
           {contact.status === "opted_out" ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("rescind")}>
+            <Button tone="secondary" type="button" onClick={() => setCeremony("rescind")}>
               Rescind opt-out
-            </button>
+            </Button>
           ) : null}
           {contact.status === "active" && !contact.mailingsAllowed ? (
-            <button
-              type="button"
-              style={ghostButtonStyle}
-              disabled={resumeBusy}
-              onClick={resumeMailings}
-            >
+            <Button tone="secondary" type="button" disabled={resumeBusy} onClick={resumeMailings}>
               {resumeBusy ? "Resuming…" : "Resume mailings"}
-            </button>
+            </Button>
           ) : null}
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("log")}>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("log")}>
             Log an ad-hoc contact
-          </button>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("unreachable")}>
+          </Button>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("unreachable")}>
             Mark unreachable
-          </button>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("deceased")}>
+          </Button>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("deceased")}>
             Mark deceased
-          </button>
+          </Button>
         </div>
         {resumeError ? <ErrorText>{resumeError}</ErrorText> : null}
         <span style={mutedStyle}>
@@ -561,30 +546,25 @@ function CarePlanGoals({
             maxLength={CARE_GOAL_MAX_CHARS}
             onChange={(v) => setGoals(goals.map((g, j) => (j === i ? v : g)))}
           />
-          <button
+          <Button
+            tone="secondary"
             type="button"
-            style={ghostButtonStyle}
             aria-label={`Remove care goal ${i + 1}`}
             onClick={() => setGoals(goals.filter((_, j) => j !== i))}
           >
             Remove
-          </button>
+          </Button>
         </div>
       ))}
       <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
         {goals.length < CARE_GOALS_MAX ? (
-          <button type="button" style={ghostButtonStyle} onClick={() => setGoals([...goals, ""])}>
+          <Button tone="secondary" type="button" onClick={() => setGoals([...goals, ""])}>
             Add goal
-          </button>
+          </Button>
         ) : null}
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy || blank || unchanged}
-          onClick={save}
-        >
+        <Button tone="primary" type="button" disabled={busy || blank || unchanged} onClick={save}>
           {busy ? "Saving…" : "Save care goals"}
-        </button>
+        </Button>
       </div>
       {error ? <ErrorText>{error}</ErrorText> : null}
     </div>
@@ -684,9 +664,9 @@ function ConfirmModal({
       title="Confirm bereaved contact"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Confirming…" : "Confirm"}
-        </button>
+        </Button>
       }
     >
       <TextField
@@ -749,14 +729,14 @@ function OptOutModal({
       title={stopsMailings ? "Stop mailings" : "Record opt-out"}
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || (optOutKind === "channel_specific" && channelKinds.length === 0)}
           onClick={submit}
         >
           {busy ? "Recording…" : stopsMailings ? "Stop mailings" : "Record opt-out"}
-        </button>
+        </Button>
       }
     >
       {stopsMailings ? (
@@ -827,9 +807,9 @@ function RescindModal({
       title="Rescind opt-out"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Rescinding…" : "Rescind"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="info">
@@ -875,14 +855,14 @@ function DeceasedModal({
       title="Mark survivor deceased"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || !deceasedAt || deathSource.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Recording…" : "Mark deceased"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="warning">
@@ -946,9 +926,9 @@ function UnreachableModal({
       title="Mark survivor unreachable"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Recording…" : "Mark unreachable"}
-        </button>
+        </Button>
       }
     >
       <TextAreaField label="Note (optional)" value={note} onChange={setNote} />
@@ -996,9 +976,9 @@ function LogDirectModal({
       title="Log an ad-hoc contact"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Logging…" : "Log contact"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="info">
@@ -1078,9 +1058,9 @@ function ChannelsModal({
       title="Outreach preferences"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Saving…" : "Save"}
-        </button>
+        </Button>
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>

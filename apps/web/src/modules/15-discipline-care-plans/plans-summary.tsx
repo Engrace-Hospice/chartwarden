@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -101,9 +102,9 @@ export function DisciplinePlansSummary(): JSX.Element {
           // inline `display: flex` would beat the print stylesheet's `display: none`.
           <div className="wx-print-hide">
             <div style={{ display: "flex", gap: t.space2 }}>
-              <button type="button" style={ghostButtonStyle} onClick={() => window.print()}>
+              <Button tone="secondary" type="button" onClick={() => window.print()}>
                 Print
-              </button>
+              </Button>
               <Link to={`/patients/${patientId}/discipline-plans`} style={ghostButtonStyle}>
                 Back
               </Link>

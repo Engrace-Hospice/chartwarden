@@ -34,16 +34,7 @@ import {
   minutesSince,
   shortId,
 } from "./safety-status";
-import {
-  Modal,
-  Notice,
-  SelectField,
-  SosStatePill,
-  TextAreaField,
-  TextField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { Modal, Notice, SelectField, SosStatePill, TextAreaField, TextField } from "./safety-ui";
 
 const POLL_MS = 15_000;
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -409,18 +400,15 @@ export function ActiveSosScreen(): JSX.Element {
           title={`Acknowledge ${ackFor.who}'s SOS`}
           onClose={() => setAckFor(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void submitAck()}
               disabled={saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)}
-              style={
-                saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
             >
               {saving ? "Recording..." : "Record acknowledgment"}
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">

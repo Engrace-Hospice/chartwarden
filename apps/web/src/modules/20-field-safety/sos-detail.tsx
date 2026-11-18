@@ -26,6 +26,7 @@
 // which of the two it will produce — rather than making a supervisor at 3 a.m. choose between two buttons
 // whose difference is invisible until afterwards.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -77,12 +78,10 @@ import {
   TextAreaField,
   Timeline,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   linkStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -236,9 +235,9 @@ export function SosDetailScreen(): JSX.Element {
             <Link to="/safety/sos" style={ghostButtonStyle}>
               Back to active SOS
             </Link>
-            <button type="button" onClick={() => void load()} style={ghostButtonStyle}>
+            <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
               Reload
-            </button>
+            </Button>
           </div>
         }
       />
@@ -278,22 +277,19 @@ export function SosDetailScreen(): JSX.Element {
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             {canAcknowledge ? (
-              <button
+              <Button
+                tone="primary"
+                size="lg"
                 type="button"
                 onClick={() => setCeremony("acknowledge")}
-                style={primaryButtonStyle}
               >
                 Acknowledge
-              </button>
+              </Button>
             ) : null}
             {canResolve ? (
-              <button
-                type="button"
-                onClick={() => setCeremony("resolve")}
-                style={primaryButtonStyle}
-              >
+              <Button tone="primary" size="lg" type="button" onClick={() => setCeremony("resolve")}>
                 Resolve
-              </button>
+              </Button>
             ) : null}
           </div>
         }
@@ -392,13 +388,14 @@ export function SosDetailScreen(): JSX.Element {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
             <span style={mutedStyle}>No incident is linked to this alert.</span>
-            <button
+            <Button
+              tone="secondary"
+              size="lg"
               type="button"
               onClick={() => navigate(`/safety/incidents/new?sosAlertId=${alert.id}`)}
-              style={ghostButtonStyle}
             >
               Open an incident from this alert
-            </button>
+            </Button>
           </div>
         )}
       </Card>
@@ -408,17 +405,18 @@ export function SosDetailScreen(): JSX.Element {
         title="Location stream"
         actions={
           stream === null ? (
-            <button
+            <Button
+              tone="secondary"
+              size="lg"
               type="button"
               onClick={() => {
                 setAccessReason("");
                 setStreamError(null);
                 setCeremony("coordinates");
               }}
-              style={ghostButtonStyle}
             >
               Request coordinate access
-            </button>
+            </Button>
           ) : null
         }
       >
@@ -498,18 +496,15 @@ export function SosDetailScreen(): JSX.Element {
           title="Acknowledge this SOS"
           onClose={closeCeremony}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void submitAck()}
               disabled={saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)}
-              style={
-                saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
             >
               {saving ? "Recording…" : "Record acknowledgment"}
-            </button>
+            </Button>
           }
         >
           <TextAreaField
@@ -539,22 +534,19 @@ export function SosDetailScreen(): JSX.Element {
           title="Resolve this SOS"
           onClose={closeCeremony}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void submitResolve()}
               disabled={saving || !meetsMinChars(narrative, SOS_RESOLUTION_MIN_CHARS)}
-              style={
-                saving || !meetsMinChars(narrative, SOS_RESOLUTION_MIN_CHARS)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
             >
               {saving
                 ? "Closing…"
                 : openIncident
                   ? "Close and open an incident"
                   : "Close this alert"}
-            </button>
+            </Button>
           }
         >
           <TextAreaField
@@ -596,22 +588,18 @@ export function SosDetailScreen(): JSX.Element {
           title="Read this clinician's coordinates"
           onClose={closeCeremony}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void revealCoordinates()}
               disabled={
                 saving ||
                 (reasonRequired && !meetsMinChars(accessReason, COORD_ACCESS_REASON_MIN_CHARS))
               }
-              style={
-                saving ||
-                (reasonRequired && !meetsMinChars(accessReason, COORD_ACCESS_REASON_MIN_CHARS))
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
             >
               {saving ? "Requesting…" : "I understand — show the coordinates"}
-            </button>
+            </Button>
           }
         >
           {/* SC 3.3.1 error prevention, adapted for a privacy-sensitive READ: the consequence is stated

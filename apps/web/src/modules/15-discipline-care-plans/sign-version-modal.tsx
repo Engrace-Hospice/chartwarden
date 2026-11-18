@@ -1,4 +1,4 @@
-import { StatusPill, t, useApiClient } from "@chartwarden/ui";
+import { Button, StatusPill, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the PLAN VERSION SIGN CEREMONY (§5.1 #4, Track B).
 //
 // One slot of the D11 quorum that was SEALED when the version was finalized. Two server contracts the
@@ -26,7 +26,6 @@ import {
   TextField,
   alertStyle,
   mutedStyle,
-  primaryButtonStyle,
   useUnsavedChangesWarning,
 } from "./discipline-ui";
 
@@ -94,14 +93,15 @@ export function SignVersionModal({
       }}
       closeDisabled={busy}
       footer={
-        <button
+        <Button
+          tone="primary"
+          style={{ opacity: canSubmit ? 1 : 0.5 }}
           type="button"
           onClick={() => void submit()}
           disabled={!canSubmit}
-          style={{ ...primaryButtonStyle, opacity: canSubmit ? 1 : 0.5 }}
         >
           {busy ? "Signing…" : isAcknowledgment ? "Acknowledge" : "Sign"}
-        </button>
+        </Button>
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>

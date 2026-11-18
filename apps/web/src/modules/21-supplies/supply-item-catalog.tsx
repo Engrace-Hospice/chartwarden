@@ -20,6 +20,7 @@
 // overlay rows as first-class entries (they are what `localSkuCode` marks), and M21 publishes no
 // "extensions of this canonical SKU" read to hang a drawer on.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -49,12 +50,10 @@ import {
   TextField,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -160,9 +159,9 @@ export function SupplyItemCatalog(): JSX.Element {
         title={<span style={pageTitleStyle}>Supply catalog</span>}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button
+            <Button
+              tone="primary"
               type="button"
-              style={primaryButtonStyle}
               onClick={() => {
                 setDraft(EMPTY_TENANT_ITEM);
                 setEditing(null);
@@ -171,7 +170,7 @@ export function SupplyItemCatalog(): JSX.Element {
               }}
             >
               New tenant item
-            </button>
+            </Button>
             <Link to="/supplies" style={ghostButtonStyle}>
               Back to queue
             </Link>
@@ -279,9 +278,9 @@ export function SupplyItemCatalog(): JSX.Element {
                   <td style={td}>{i.isActive ? "Yes" : "No"}</td>
                   <td style={td}>{shortDate(i.updatedAt)}</td>
                   <td style={td}>
-                    <button
+                    <Button
+                      tone="secondary"
                       type="button"
-                      style={ghostButtonStyle}
                       onClick={() => {
                         setEditing(i);
                         setCreating(false);
@@ -296,7 +295,7 @@ export function SupplyItemCatalog(): JSX.Element {
                       }}
                     >
                       Edit
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -313,14 +312,14 @@ export function SupplyItemCatalog(): JSX.Element {
             setEditing(null);
           }}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={!ready || busy}
-              style={!ready || busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={() => void save()}
             >
               Save item
-            </button>
+            </Button>
           }
         >
           <TextField

@@ -35,8 +35,6 @@ import {
   SelectField,
   TextAreaField,
   TextField,
-  disabledButtonStyle,
-  primaryButtonStyle,
 } from "./safety-ui";
 
 /**
@@ -396,18 +394,15 @@ export function SafetyPolicyScreen(): JSX.Element {
               title="Edit the safety policy"
               onClose={() => setEditing(false)}
               footer={
-                <button
+                <Button
+                  tone="primary"
+                  size="lg"
                   type="button"
                   onClick={() => void save()}
                   disabled={saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)}
-                  style={
-                    saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)
-                      ? disabledButtonStyle
-                      : primaryButtonStyle
-                  }
                 >
                   {saving ? "Saving..." : "Save new version"}
-                </button>
+                </Button>
               }
             >
               <Notice tone="warning" assertive>

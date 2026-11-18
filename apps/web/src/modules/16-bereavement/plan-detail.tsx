@@ -14,6 +14,7 @@
 // The §5.1 modals live here rather than as registry entries because each needs the plan `version` this
 // screen already read for its `If-Match`.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -77,7 +78,6 @@ import {
   linkStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -275,13 +275,9 @@ export function BereavementPlanDetail(): JSX.Element {
       >
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {plan.firstContactAllowed ? (
-            <button
-              type="button"
-              style={primaryButtonStyle}
-              onClick={() => setCeremony("first-contact")}
-            >
+            <Button tone="primary" type="button" onClick={() => setCeremony("first-contact")}>
               Counselor first contact
-            </button>
+            </Button>
           ) : (
             <button
               type="button"
@@ -297,33 +293,33 @@ export function BereavementPlanDetail(): JSX.Element {
               Seed roster + schedule
             </Link>
           ) : null}
-          <button
+          <Button
+            tone="secondary"
             type="button"
-            style={ghostButtonStyle}
             onClick={() => setCeremony("add-contact")}
             disabled={closed}
           >
             Add bereaved contact
-          </button>
+          </Button>
           {plan.status === "active" ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("pause")}>
+            <Button tone="secondary" type="button" onClick={() => setCeremony("pause")}>
               Pause
-            </button>
+            </Button>
           ) : null}
           {plan.status === "paused" ? (
-            <button type="button" style={ghostButtonStyle} disabled={busy} onClick={doResume}>
+            <Button tone="secondary" type="button" disabled={busy} onClick={doResume}>
               {busy ? "Resuming…" : "Resume"}
-            </button>
+            </Button>
           ) : null}
           {!closed && !earlyCloseRequest ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("close")}>
+            <Button tone="secondary" type="button" onClick={() => setCeremony("close")}>
               Close early
-            </button>
+            </Button>
           ) : null}
           {canCosign ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("cosign")}>
+            <Button tone="secondary" type="button" onClick={() => setCeremony("cosign")}>
               Cosign the early close
-            </button>
+            </Button>
           ) : null}
         </div>
       </Card>
@@ -500,14 +496,14 @@ function AddContactModal({
       title="Add bereaved contact"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || draft.displayName.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Adding…" : "Add contact"}
-        </button>
+        </Button>
       }
     >
       <TextField
@@ -587,14 +583,14 @@ function PauseModal({
       title="Pause bereavement plan"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || reason.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Pausing…" : "Pause"}
-        </button>
+        </Button>
       }
     >
       <SelectField
@@ -649,14 +645,14 @@ function CloseModal({
       title="Close bereavement plan early"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || narrative.trim().length < 40}
           onClick={submit}
         >
           {busy ? "Requesting…" : "Request early close"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="warning">
@@ -713,9 +709,9 @@ function CosignModal({
       title="Cosign the early close"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Cosigning…" : "Cosign"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="warning">
@@ -767,14 +763,9 @@ function FirstContactModal({
       title="Counselor first contact"
       onClose={onClose}
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy || !contactId}
-          onClick={submit}
-        >
+        <Button tone="primary" type="button" disabled={busy || !contactId} onClick={submit}>
           {busy ? "Opening…" : "Open first contact"}
-        </button>
+        </Button>
       }
     >
       {contacts.length === 0 ? (

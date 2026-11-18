@@ -24,6 +24,7 @@
 // DOMAIN raises `M21_LOT_NUMBER_REQUIRED` with its own code on a controlled line, and letting the boundary
 // pre-empt it with a generic "required field" would hide which rule actually refused.
 import {
+  Button,
   DeniedState,
   ErrorState,
   LoadingSpinner,
@@ -74,14 +75,11 @@ import {
   TextField,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   enumOptions,
-  ghostButtonStyle,
   inputNarrowStyle,
   inputStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -477,17 +475,17 @@ export function ComfortKitDispatchCreate(): JSX.Element {
       </Card>
 
       <div style={{ display: "flex", gap: t.space2, justifyContent: "flex-end" }}>
-        <button type="button" style={ghostButtonStyle} onClick={() => navigate("/supplies")}>
+        <Button tone="secondary" type="button" onClick={() => navigate("/supplies")}>
           Back to queue
-        </button>
-        <button
+        </Button>
+        <Button
+          tone="primary"
           type="button"
           disabled={!ready || busy}
-          style={!ready || busy ? disabledButtonStyle : primaryButtonStyle}
           onClick={() => void submit()}
         >
           Dispatch kit
-        </button>
+        </Button>
       </div>
     </div>
   );

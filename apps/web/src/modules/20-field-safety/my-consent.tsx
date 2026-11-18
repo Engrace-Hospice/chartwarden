@@ -30,14 +30,7 @@ import {
   humanize,
   toneOf,
 } from "./safety-status";
-import {
-  Modal,
-  Notice,
-  TextAreaField,
-  TextField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { Modal, Notice, TextAreaField, TextField } from "./safety-ui";
 
 const CONSENT_TEXT: Record<string, string> = {
   sos_coordinates:
@@ -256,7 +249,9 @@ export function MyConsentScreen(): JSX.Element {
               title={consentPurposeLabel(granting)}
               onClose={() => setGranting(null)}
               footer={
-                <button
+                <Button
+                  tone="primary"
+                  size="lg"
                   type="button"
                   onClick={() => void doGrant()}
                   disabled={
@@ -264,16 +259,9 @@ export function MyConsentScreen(): JSX.Element {
                     (granting === "emergency_contact_call" &&
                       (contactName.trim().length === 0 || contactPhone.trim().length === 0))
                   }
-                  style={
-                    saving ||
-                    (granting === "emergency_contact_call" &&
-                      (contactName.trim().length === 0 || contactPhone.trim().length === 0))
-                      ? disabledButtonStyle
-                      : primaryButtonStyle
-                  }
                 >
                   {saving ? "Recording..." : "I consent"}
-                </button>
+                </Button>
               }
             >
               <p style={paragraphStyle}>{CONSENT_TEXT[granting]}</p>
@@ -310,14 +298,15 @@ export function MyConsentScreen(): JSX.Element {
               title={`Withdraw: ${consentPurposeLabel(revoking)}`}
               onClose={() => setRevoking(null)}
               footer={
-                <button
+                <Button
+                  tone="primary"
+                  size="lg"
                   type="button"
                   onClick={() => void doRevoke()}
                   disabled={saving}
-                  style={saving ? disabledButtonStyle : primaryButtonStyle}
                 >
                   {saving ? "Recording..." : "Withdraw my consent"}
-                </button>
+                </Button>
               }
             >
               <Notice tone="info">{withdrawalCopy(revoking)}</Notice>

@@ -15,6 +15,7 @@
 // whole-plan or per-contact — so that is what this screen offers, and it says so rather than shipping a
 // drag affordance that would have to fabricate a per-row PATCH.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -70,7 +71,6 @@ import {
   linkStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -176,13 +176,13 @@ export function BereavementOutreachPlanner(): JSX.Element {
         title={<span style={pageTitleStyle}>Outreach planner</span>}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button
+            <Button
+              tone="secondary"
               type="button"
-              style={ghostButtonStyle}
               onClick={() => setCeremony({ kind: "regenerate" })}
             >
               Regenerate forward schedule
-            </button>
+            </Button>
             <Link to={`/bereavement/plans/${planId}`} style={ghostButtonStyle}>
               Back to plan
             </Link>
@@ -252,9 +252,9 @@ export function BereavementOutreachPlanner(): JSX.Element {
                     <td style={td}>
                       <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
                         {o.status === "scheduled" ? (
-                          <button
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
                             disabled={busy}
                             onClick={() =>
                               inlineAction(
@@ -265,12 +265,12 @@ export function BereavementOutreachPlanner(): JSX.Element {
                             }
                           >
                             {busy ? "…" : "Start"}
-                          </button>
+                          </Button>
                         ) : null}
                         {o.status === "missed" ? (
-                          <button
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
                             disabled={busy}
                             onClick={() =>
                               inlineAction(
@@ -281,41 +281,41 @@ export function BereavementOutreachPlanner(): JSX.Element {
                             }
                           >
                             {busy ? "…" : "Late attempt"}
-                          </button>
+                          </Button>
                         ) : null}
                         {o.status === "in_progress" ? (
                           <>
-                            <button
+                            <Button
+                              tone="primary"
                               type="button"
-                              style={primaryButtonStyle}
                               onClick={() => setCeremony({ kind: "complete", row: o })}
                             >
                               Complete
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              tone="secondary"
                               type="button"
-                              style={ghostButtonStyle}
                               onClick={() => setCeremony({ kind: "decline", row: o })}
                             >
                               Declined
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              tone="secondary"
                               type="button"
-                              style={ghostButtonStyle}
                               onClick={() => setCeremony({ kind: "no-response", row: o })}
                             >
                               No response
-                            </button>
+                            </Button>
                           </>
                         ) : null}
                         {o.status === "scheduled" || o.status === "in_progress" ? (
-                          <button
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
                             onClick={() => setCeremony({ kind: "cancel", row: o })}
                           >
                             Cancel
-                          </button>
+                          </Button>
                         ) : null}
                         {o.renderedDocumentId ? (
                           <span style={mutedStyle}>doc {shortId(o.renderedDocumentId)}</span>
@@ -434,14 +434,14 @@ function CompleteModal({
       title={`Complete — ${outreachKindLabel(row.kind)}`}
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || (inPerson && sourceEncounterId.trim().length === 0)}
           onClick={submit}
         >
           {busy ? "Completing…" : "Complete"}
-        </button>
+        </Button>
       }
     >
       {inPerson ? (
@@ -527,9 +527,9 @@ function OutcomeModal({
       }
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Recording…" : "Record"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="info">
@@ -571,14 +571,14 @@ function CancelModal({
       title="Cancel touchpoint"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || reason.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Cancelling…" : "Cancel touchpoint"}
-        </button>
+        </Button>
       }
     >
       <TextAreaField label="Reason" value={reason} onChange={setReason} />
@@ -633,9 +633,9 @@ function RegenerateModal({
       title="Regenerate forward schedule"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Regenerating…" : "Regenerate"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="warning">

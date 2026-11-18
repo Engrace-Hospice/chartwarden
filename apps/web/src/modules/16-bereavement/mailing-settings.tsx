@@ -18,7 +18,6 @@ import {
   Modal,
   Notice,
   columnStyle,
-  dangerButtonStyle,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
@@ -118,9 +117,9 @@ export function MailingSettings(): JSX.Element | null {
           cancelLabel="Stay on this page"
           onClose={() => blocker.reset()}
           footer={
-            <button type="button" style={dangerButtonStyle} onClick={() => blocker.proceed()}>
+            <Button tone="danger" type="button" onClick={() => blocker.proceed()}>
               {saving ? "Leave anyway" : "Leave without saving"}
-            </button>
+            </Button>
           }
         >
           <span id={leaveDescId}>

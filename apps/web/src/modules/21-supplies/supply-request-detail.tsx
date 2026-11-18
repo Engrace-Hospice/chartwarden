@@ -22,6 +22,7 @@
 // inside a supplies screen would put a second, unaudited copy of the accounting trail in a second place.
 // The lifecycle timeline below is reconstructed from the request's OWN columns and says so.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -80,13 +81,11 @@ import {
   Timeline,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
   linkStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -362,13 +361,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         title="Vendor & routing"
         actions={
           can.assignVendor ? (
-            <button
-              type="button"
-              style={primaryButtonStyle}
-              onClick={() => setCeremony("assign-vendor")}
-            >
+            <Button tone="primary" type="button" onClick={() => setCeremony("assign-vendor")}>
               Override vendor
-            </button>
+            </Button>
           ) : undefined
         }
       >
@@ -518,10 +513,10 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           title="Assign or override the vendor"
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={() =>
                 void run(
                   () =>
@@ -541,7 +536,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               }
             >
               Assign vendor
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">
@@ -584,12 +579,10 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           title="Record the vendor's acceptance"
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy || orderReference.trim() === ""}
-              style={
-                busy || orderReference.trim() === "" ? disabledButtonStyle : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () =>
@@ -601,7 +594,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               }
             >
               Mark ordered
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">
@@ -622,14 +615,10 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           title="Record the shipment"
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy || tracking.trim() === "" || carrier.trim() === ""}
-              style={
-                busy || tracking.trim() === "" || carrier.trim() === ""
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () =>
@@ -642,7 +631,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               }
             >
               Mark in transit
-            </button>
+            </Button>
           }
         >
           <TextField label="Carrier" value={carrier} onChange={setCarrier} />
@@ -655,10 +644,10 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           title="Attest delivery"
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={() =>
                 void run(
                   () =>
@@ -676,7 +665,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               }
             >
               Attest delivery
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">
@@ -705,10 +694,10 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           title="Confirm receipt"
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={() =>
                 void run(
                   () =>
@@ -722,7 +711,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               }
             >
               Confirm receipt
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">
@@ -745,10 +734,10 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           title={ceremony === "cancel" ? "Cancel this request" : "Initiate the kit return"}
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy || reason.trim() === ""}
-              style={busy || reason.trim() === "" ? disabledButtonStyle : primaryButtonStyle}
               onClick={() =>
                 void run(
                   () =>
@@ -766,7 +755,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               }
             >
               {ceremony === "cancel" ? "Cancel request" : "Initiate return"}
-            </button>
+            </Button>
           }
         >
           {ceremony === "cancel" ? (
@@ -797,15 +786,15 @@ function ActionButton({
   onClick,
 }: { label: string; enabled: boolean; precondition: string; onClick: () => void }): JSX.Element {
   return (
-    <button
+    <Button
+      tone="secondary"
       type="button"
       disabled={!enabled}
       title={enabled ? undefined : precondition}
       aria-disabled={!enabled}
-      style={enabled ? ghostButtonStyle : disabledButtonStyle}
       onClick={enabled ? onClick : undefined}
     >
       {label}
-    </button>
+    </Button>
   );
 }

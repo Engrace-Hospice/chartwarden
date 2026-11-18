@@ -1,4 +1,11 @@
-import { StatusPill, localInputToIso, nowLocalInput, t, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  StatusPill,
+  localInputToIso,
+  nowLocalInput,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the AIDE POC VIEW + SUPERVISORY MODAL (§5.1 #2 / #5).
 //
 // The 42 CFR §418.76(h) surface: the current Aide Plan of Care over the shared plan spine, plus the two
@@ -38,9 +45,7 @@ import {
   TextAreaField,
   TextField,
   alertStyle,
-  ghostButtonStyle,
   mutedStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -124,14 +129,15 @@ function SupervisoryVisitModal({
       title="Record supervisory visit"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
+          style={{ opacity: canSubmit ? 1 : 0.5 }}
           type="button"
           onClick={() => void submit()}
           disabled={!canSubmit}
-          style={{ ...primaryButtonStyle, opacity: canSubmit ? 1 : 0.5 }}
         >
           {busy ? "Recording…" : "Record attestation"}
-        </button>
+        </Button>
       }
     >
       <TextField label="Aide membership id" value={aideMembershipId} onChange={setAide} />
@@ -242,9 +248,9 @@ function SupervisoryLedger({
       <Card
         title="RN supervisory attestations"
         actions={
-          <button type="button" style={ghostButtonStyle} onClick={() => setOpen(true)}>
+          <Button tone="secondary" type="button" onClick={() => setOpen(true)}>
             Record supervisory visit
-          </button>
+          </Button>
         }
       >
         <SummaryGrid>
@@ -304,9 +310,9 @@ function SupervisoryLedger({
                   <td style={td}>{dateTime(v.signedAt)}</td>
                   <td style={td}>
                     {v.signedAt ? null : (
-                      <button type="button" style={ghostButtonStyle} onClick={() => void sign(v)}>
+                      <Button tone="secondary" type="button" onClick={() => void sign(v)}>
                         Sign
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>

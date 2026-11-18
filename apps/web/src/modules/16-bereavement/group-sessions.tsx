@@ -14,10 +14,8 @@ import {
   ErrorText,
   Modal,
   TextField,
-  dangerButtonStyle,
   mutedStyle,
   plainFieldset,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -288,14 +286,9 @@ function AddSessionModal({
       busy={write.busy}
       dirty={starts !== "" || ends !== ""}
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={write.busy}
-          onClick={() => void save()}
-        >
+        <Button tone="primary" type="button" disabled={write.busy} onClick={() => void save()}>
           {write.busy ? "Adding…" : "Add session"}
-        </button>
+        </Button>
       }
     >
       <fieldset disabled={write.busy} style={plainFieldset}>
@@ -333,14 +326,9 @@ function CancelSessionModal({
       describedBy={descId}
       cancelLabel="Keep session"
       footer={
-        <button
-          type="button"
-          style={dangerButtonStyle}
-          disabled={write.busy}
-          onClick={() => void confirm()}
-        >
+        <Button tone="danger" type="button" disabled={write.busy} onClick={() => void confirm()}>
           {write.busy ? "Cancelling…" : "Yes, cancel this session"}
-        </button>
+        </Button>
       }
     >
       <span id={descId} style={mutedStyle}>
@@ -402,14 +390,14 @@ function AttendanceModal({
       busy={write.busy}
       dirty={picked.size > 0}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={write.busy || picked.size === 0}
           onClick={() => void save()}
         >
           {write.busy ? "Recording…" : "Record attendance"}
-        </button>
+        </Button>
       }
     >
       {enrolled.length === 0 ? (

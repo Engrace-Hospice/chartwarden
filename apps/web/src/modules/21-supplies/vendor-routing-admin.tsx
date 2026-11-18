@@ -16,6 +16,7 @@
 //   • "Delete" RETIRES. `is_active = false`, `effective_to = now`; the row survives because every historical
 //     `routing_rule_resolved_jsonb` names its id. The verb stays DELETE because §4.1's table says so.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -58,12 +59,10 @@ import {
   TextField,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -195,9 +194,9 @@ export function VendorRoutingAdmin(): JSX.Element {
         title={<span style={pageTitleStyle}>Vendor routing</span>}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button
+            <Button
+              tone="primary"
               type="button"
-              style={primaryButtonStyle}
               onClick={() => {
                 setDraft(EMPTY_DRAFT);
                 setEditing(null);
@@ -206,7 +205,7 @@ export function VendorRoutingAdmin(): JSX.Element {
               }}
             >
               New rule
-            </button>
+            </Button>
             <Link to="/supplies" style={ghostButtonStyle}>
               Back to queue
             </Link>
@@ -306,9 +305,9 @@ export function VendorRoutingAdmin(): JSX.Element {
                         <span style={mutedStyle}>platform</span>
                       ) : (
                         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-                          <button
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
                             onClick={() => {
                               setEditing(r);
                               setCreating(false);
@@ -325,16 +324,16 @@ export function VendorRoutingAdmin(): JSX.Element {
                             }}
                           >
                             Edit
-                          </button>
+                          </Button>
                           {r.isActive ? (
-                            <button
+                            <Button
+                              tone="secondary"
                               type="button"
                               disabled={busy}
-                              style={busy ? disabledButtonStyle : ghostButtonStyle}
                               onClick={() => void retire(r)}
                             >
                               Retire
-                            </button>
+                            </Button>
                           ) : null}
                         </div>
                       )}
@@ -355,14 +354,9 @@ export function VendorRoutingAdmin(): JSX.Element {
             setEditing(null);
           }}
           footer={
-            <button
-              type="button"
-              disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
-              onClick={() => void save()}
-            >
+            <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
               Save rule
-            </button>
+            </Button>
           }
         >
           <SelectField

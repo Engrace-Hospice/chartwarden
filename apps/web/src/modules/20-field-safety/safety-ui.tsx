@@ -14,7 +14,7 @@
 //   • {@link CancelCountdown} — SC 1.4.1's non-colour-only countdown: the ring AND the sentence "N seconds
 //     to cancel", announced through an assertive live region so a screen-reader user gets the same
 //     realtime feedback a sighted one does (SC 4.1.3).
-import { Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
+import { Button, Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
 import type { StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import {
@@ -495,9 +495,9 @@ export function Modal({
         <h2 style={modalTitleStyle}>{title}</h2>
         {children}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
-          <button type="button" onClick={onClose} style={ghostButtonStyle}>
+          <Button tone="secondary" size="lg" type="button" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
           {footer}
         </div>
       </div>
@@ -794,9 +794,9 @@ export function CancelCountdown({
       </div>
       {open ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-          <button type="button" onClick={onCancel} disabled={busy} style={ghostButtonStyle}>
+          <Button tone="secondary" size="lg" type="button" onClick={onCancel} disabled={busy}>
             Cancel this SOS
-          </button>
+          </Button>
           <span style={mutedStyle}>
             {biometricRequired
               ? "Your agency requires a biometric check to cancel. A cancel that fails it is RECORDED and the alert keeps going — that is deliberate, so a phone taken from you cannot silence it."

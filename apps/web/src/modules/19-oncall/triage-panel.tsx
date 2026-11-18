@@ -32,6 +32,7 @@
 // from a second module's data would be a second, unaudited PHI path.
 import {
   AiSuggestionCard,
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -100,13 +101,11 @@ import {
   Timeline,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
   linkStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -482,14 +481,20 @@ export function TriageCallPanel(): JSX.Element {
         ) : null}
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {staff && !staff.patientId ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("identify")}>
+            <Button
+              tone="secondary"
+              size="lg"
+              type="button"
+              onClick={() => setCeremony("identify")}
+            >
               Identify the patient
-            </button>
+            </Button>
           ) : null}
           {call.state === "awaiting_callback" ? (
-            <button
+            <Button
+              tone="secondary"
+              size="lg"
               type="button"
-              style={ghostButtonStyle}
               onClick={() =>
                 void run(
                   () => resumeAfterCallback(client, triageCallId, version),
@@ -498,18 +503,23 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Resume the walk
-            </button>
+            </Button>
           ) : (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("callback")}>
+            <Button
+              tone="secondary"
+              size="lg"
+              type="button"
+              onClick={() => setCeremony("callback")}
+            >
               Park on a callback
-            </button>
+            </Button>
           )}
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("escalate")}>
+          <Button tone="secondary" size="lg" type="button" onClick={() => setCeremony("escalate")}>
             Escalate
-          </button>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("abandon")}>
+          </Button>
+          <Button tone="secondary" size="lg" type="button" onClick={() => setCeremony("abandon")}>
             Caller disconnected
-          </button>
+          </Button>
         </div>
       </Card>
 
@@ -571,13 +581,14 @@ export function TriageCallPanel(): JSX.Element {
               No protocol is pinned. Pinning one FREEZES its version onto this call: a catalog edit
               published mid-call does not switch the questions under you.
             </span>
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
-              style={primaryButtonStyle}
               onClick={() => setCeremony("apply-protocol")}
             >
               Apply a protocol
-            </button>
+            </Button>
           </>
         ) : (
           <>
@@ -697,14 +708,15 @@ export function TriageCallPanel(): JSX.Element {
                   />
                 )}
                 <div>
-                  <button
+                  <Button
+                    tone="primary"
+                    size="lg"
                     type="button"
-                    style={busy ? disabledButtonStyle : primaryButtonStyle}
                     disabled={busy}
                     onClick={() => void submitAnswer()}
                   >
                     Record the answer
-                  </button>
+                  </Button>
                 </div>
                 <span style={mutedStyle}>
                   The server decides which question comes next and evaluates the red-flag predicate
@@ -721,9 +733,10 @@ export function TriageCallPanel(): JSX.Element {
                 </span>
                 {call.state === "protocol_in_progress" ? (
                   <div>
-                    <button
+                    <Button
+                      tone="primary"
+                      size="lg"
                       type="button"
-                      style={busy ? disabledButtonStyle : primaryButtonStyle}
                       disabled={busy}
                       onClick={() =>
                         void run(
@@ -733,7 +746,7 @@ export function TriageCallPanel(): JSX.Element {
                       }
                     >
                       Complete the protocol
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
               </div>
@@ -893,13 +906,10 @@ export function TriageCallPanel(): JSX.Element {
           </span>
         )}
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button
+          <Button
+            tone="primary"
+            size="lg"
             type="button"
-            style={
-              blocked || call.permittedDispositions.length === 0
-                ? disabledButtonStyle
-                : primaryButtonStyle
-            }
             disabled={blocked || call.permittedDispositions.length === 0}
             title={
               blocked
@@ -914,11 +924,16 @@ export function TriageCallPanel(): JSX.Element {
             }}
           >
             Select a disposition
-          </button>
+          </Button>
           {call.state === "disposition_pending" || call.state === "documented_pending_encounter" ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("document")}>
+            <Button
+              tone="secondary"
+              size="lg"
+              type="button"
+              onClick={() => setCeremony("document")}
+            >
               Create the encounter
-            </button>
+            </Button>
           ) : null}
         </div>
         <span style={mutedStyle}>
@@ -960,14 +975,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Identify the patient"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || !UUID_RE.test(patientId) || !UUID_RE.test(admissionId)}
-              style={
-                busy || !UUID_RE.test(patientId) || !UUID_RE.test(admissionId)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () => identifyPatient(client, triageCallId, version, { patientId, admissionId }),
@@ -976,7 +988,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Link
-            </button>
+            </Button>
           }
         >
           <p style={mutedStyle}>
@@ -1007,19 +1019,14 @@ export function TriageCallPanel(): JSX.Element {
           title="Apply a protocol"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={
                 busy ||
                 !protocolChoice ||
                 (overrideNeedsReason && overrideReason.trim().length < AI_OVERRIDE_REASON_MIN_CHARS)
-              }
-              style={
-                busy ||
-                !protocolChoice ||
-                (overrideNeedsReason && overrideReason.trim().length < AI_OVERRIDE_REASON_MIN_CHARS)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
               }
               onClick={() =>
                 void run(
@@ -1033,7 +1040,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Apply
-            </button>
+            </Button>
           }
         >
           <SelectField
@@ -1083,12 +1090,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Park on a callback"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || callbackReason.trim().length < 20}
-              style={
-                busy || callbackReason.trim().length < 20 ? disabledButtonStyle : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () =>
@@ -1103,7 +1109,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Park
-            </button>
+            </Button>
           }
         >
           <TextAreaField
@@ -1127,14 +1133,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Escalate"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || escalationReason.trim().length < 30}
-              style={
-                busy || escalationReason.trim().length < 30
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () =>
@@ -1150,7 +1153,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Raise the page
-            </button>
+            </Button>
           }
         >
           <SelectField
@@ -1189,10 +1192,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Create the encounter"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={() =>
                 void run(
                   () =>
@@ -1204,7 +1208,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Create
-            </button>
+            </Button>
           }
         >
           <p style={mutedStyle}>
@@ -1225,12 +1229,11 @@ export function TriageCallPanel(): JSX.Element {
           title="The caller disconnected"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || abandonReason.trim().length < 1}
-              style={
-                busy || abandonReason.trim().length < 1 ? disabledButtonStyle : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () =>
@@ -1243,7 +1246,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Mark abandoned
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">
@@ -1270,10 +1273,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Select a disposition"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || !dispositionData}
-              style={busy || !dispositionData ? disabledButtonStyle : primaryButtonStyle}
               title={
                 dispositionData ? undefined : "This disposition's required fields are not complete."
               }
@@ -1287,7 +1291,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Commit
-            </button>
+            </Button>
           }
         >
           {/* §5.4 — a radio-group, keyboard-navigable, `aria-required`. The set is the SERVER's. */}

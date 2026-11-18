@@ -34,15 +34,7 @@ import {
   meetsMinChars,
   shortId,
 } from "./safety-status";
-import {
-  CheckInStatusPill,
-  Modal,
-  Notice,
-  SelectField,
-  TextAreaField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { CheckInStatusPill, Modal, Notice, SelectField, TextAreaField } from "./safety-ui";
 
 const HISTORY_DAYS = 90;
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -253,14 +245,15 @@ export function MyCheckInsScreen(): JSX.Element {
               title="Amend this check-in"
               onClose={() => setAmending(null)}
               footer={
-                <button
+                <Button
+                  tone="primary"
+                  size="lg"
                   type="button"
                   onClick={() => void submitAmend()}
                   disabled={saving || !canSave}
-                  style={saving || !canSave ? disabledButtonStyle : primaryButtonStyle}
                 >
                   {saving ? "Recording..." : "Record correction"}
-                </button>
+                </Button>
               }
             >
               <Notice tone="info">

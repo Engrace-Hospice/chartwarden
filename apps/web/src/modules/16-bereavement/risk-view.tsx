@@ -17,6 +17,7 @@
 //     is offered; a server that has the flag off simply returns a deterministic-only row, which this
 //     screen reports rather than pretending a narrative was suppressed for another reason.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -76,7 +77,6 @@ import {
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -192,9 +192,9 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
         title={<span style={pageTitleStyle}>Bereavement risk</span>}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button type="button" style={primaryButtonStyle} onClick={() => setRecomputeOpen(true)}>
+            <Button tone="primary" type="button" onClick={() => setRecomputeOpen(true)}>
               Recompute
-            </button>
+            </Button>
             <Link to={`/bereavement/plans/${planId}`} style={ghostButtonStyle}>
               Back to plan
             </Link>
@@ -347,14 +347,14 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
                   </td>
                   <td style={td}>
                     {task.status === "scheduled" || task.status === "missed" ? (
-                      <button
+                      <Button
+                        tone="secondary"
                         type="button"
-                        style={ghostButtonStyle}
                         aria-label={`Complete assessment: ${assessmentTaskKindLabel(task.taskKind)} for ${nameOf(task.contactId)}`}
                         onClick={() => setCompleting(task)}
                       >
                         Complete assessment
-                      </button>
+                      </Button>
                     ) : (
                       "—"
                     )}
@@ -546,14 +546,9 @@ function RecomputeModal({
       title="Recompute bereavement risk"
       onClose={onClose}
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy || overrideIncomplete}
-          onClick={submit}
-        >
+        <Button tone="primary" type="button" disabled={busy || overrideIncomplete} onClick={submit}>
           {busy ? "Recomputing…" : "Recompute"}
-        </button>
+        </Button>
       }
     >
       <SelectField

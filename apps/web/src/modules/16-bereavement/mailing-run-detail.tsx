@@ -62,11 +62,9 @@ import {
   Notice,
   SummaryGrid,
   columnStyle,
-  dangerButtonStyle,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   useActionStatus,
 } from "./bereavement-ui";
 import { useLoaded } from "./mailing-load";
@@ -617,14 +615,14 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           describedBy={regenerateDescId}
           cancelLabel="Keep this batch"
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
-              style={primaryButtonStyle}
               disabled={busy !== null || !canRegenerate(run.status)}
               onClick={() => void generate()}
             >
               {busy === "generate" ? "Regenerating…" : "Regenerate batch"}
-            </button>
+            </Button>
           }
         >
           <span id={regenerateDescId}>
@@ -643,14 +641,14 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           role="alertdialog"
           describedBy={confirmDescId}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
-              style={primaryButtonStyle}
               disabled={busy !== null || !canConfirmMailed(run.status)}
               onClick={() => void confirmMailed()}
             >
               {busy === "confirm" ? "Confirming…" : "Confirm mailed"}
-            </button>
+            </Button>
           }
         >
           <span id={confirmDescId} style={mutedStyle}>
@@ -676,14 +674,14 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           describedBy={cancelDescId}
           cancelLabel="Keep run"
           footer={
-            <button
+            <Button
+              tone="danger"
               type="button"
-              style={dangerButtonStyle}
               disabled={busy !== null}
               onClick={() => void cancel()}
             >
               {busy === "cancel" ? "Cancelling…" : "Yes, cancel this run"}
-            </button>
+            </Button>
           }
         >
           <span id={cancelDescId} style={mutedStyle}>

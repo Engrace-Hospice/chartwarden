@@ -38,9 +38,7 @@ import {
   TextAreaField,
   TextField,
   alertStyle,
-  ghostButtonStyle,
   mutedStyle,
-  primaryButtonStyle,
 } from "./discipline-ui";
 
 /** The §7.6 bands, stated on the page so the color is never the only signal (Hard Rule §10.10). */
@@ -296,14 +294,15 @@ function HourAdjustmentModal({
       title="Log volunteer hour adjustment"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
+          style={{ opacity: canSubmit ? 1 : 0.5 }}
           type="button"
           onClick={() => void submit()}
           disabled={!canSubmit}
-          style={{ ...primaryButtonStyle, opacity: canSubmit ? 1 : 0.5 }}
         >
           {busy ? "Recording…" : "Record adjustment"}
-        </button>
+        </Button>
       }
     >
       <ProviderEntityLookupField label="Provider entity" value={pe} onChange={setPe} />

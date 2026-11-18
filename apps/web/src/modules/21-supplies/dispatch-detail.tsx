@@ -14,6 +14,7 @@
 // its own permission key (`comfort_kit.perpetual_log.read`) and its own screen: a supply coordinator who may
 // dispatch must not thereby acquire the ledger a diversion investigation reads.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -53,11 +54,9 @@ import {
   Timeline,
   alertStyle,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -280,17 +279,18 @@ export function ComfortKitDispatchDetail(): JSX.Element {
 
       <Card title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button
+          <Button
+            tone="secondary"
             type="button"
             disabled={!canDeploy}
             title={canDeploy ? undefined : "Only a kit still marked dispatched can be deployed."}
             aria-disabled={!canDeploy}
-            style={canDeploy ? ghostButtonStyle : disabledButtonStyle}
             onClick={canDeploy ? () => setCeremony("deploy") : undefined}
           >
             Mark deployed at patient
-          </button>
-          <button
+          </Button>
+          <Button
+            tone="secondary"
             type="button"
             disabled={!canReturn}
             title={
@@ -299,11 +299,10 @@ export function ComfortKitDispatchDetail(): JSX.Element {
                 : "A return opens once the kit is at the patient, and only while something is still out."
             }
             aria-disabled={!canReturn}
-            style={canReturn ? ghostButtonStyle : disabledButtonStyle}
             onClick={canReturn ? () => setCeremony("return") : undefined}
           >
             Initiate return
-          </button>
+          </Button>
         </div>
         <span style={mutedStyle}>
           Reconciliation is not an action here. The physical count, its witness and the disposal
@@ -316,10 +315,10 @@ export function ComfortKitDispatchDetail(): JSX.Element {
           title="Mark deployed at patient"
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={async () => {
                 setBusy(true);
                 setActionError(null);
@@ -341,7 +340,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
               }}
             >
               Mark deployed
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">
@@ -357,10 +356,10 @@ export function ComfortKitDispatchDetail(): JSX.Element {
           title="Open the return obligation"
           onClose={close}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={busy || returnReason.trim() === ""}
-              style={busy || returnReason.trim() === "" ? disabledButtonStyle : primaryButtonStyle}
               onClick={async () => {
                 setBusy(true);
                 setActionError(null);
@@ -378,7 +377,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
               }}
             >
               Open return
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">

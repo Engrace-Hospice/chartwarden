@@ -45,9 +45,7 @@ import {
   TextAreaField,
   TextField,
   alertStyle,
-  ghostButtonStyle,
   mutedStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -275,21 +273,13 @@ export function VolunteerComplianceGates(): JSX.Element {
                       </td>
                       <td style={td}>
                         <div style={{ display: "flex", gap: t.space2 }}>
-                          <button
-                            type="button"
-                            style={ghostButtonStyle}
-                            onClick={() => setEditing(g)}
-                          >
+                          <Button tone="secondary" type="button" onClick={() => setEditing(g)}>
                             Correct
-                          </button>
+                          </Button>
                           {g.revokedAt ? null : (
-                            <button
-                              type="button"
-                              style={ghostButtonStyle}
-                              onClick={() => setRevoking(g)}
-                            >
+                            <Button tone="secondary" type="button" onClick={() => setRevoking(g)}>
                               Revoke
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -440,14 +430,15 @@ function GateFormModal({
       title={title}
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
+          style={{ opacity: canSubmit && !busy ? 1 : 0.5 }}
           type="button"
           onClick={() => void submit()}
           disabled={!canSubmit || busy}
-          style={{ ...primaryButtonStyle, opacity: canSubmit && !busy ? 1 : 0.5 }}
         >
           {busy ? "Saving…" : "Save gate"}
-        </button>
+        </Button>
       }
     >
       {editingExisting ? (
@@ -513,14 +504,15 @@ function RevokeGateModal({
       title={`Revoke ${gateKindLabel(gate.gateKind)}`}
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
+          style={{ opacity: revokedReason.trim() === "" || busy ? 0.5 : 1 }}
           type="button"
           onClick={() => void submit()}
           disabled={revokedReason.trim() === "" || busy}
-          style={{ ...primaryButtonStyle, opacity: revokedReason.trim() === "" || busy ? 0.5 : 1 }}
         >
           {busy ? "Revoking…" : "Revoke gate"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="error">

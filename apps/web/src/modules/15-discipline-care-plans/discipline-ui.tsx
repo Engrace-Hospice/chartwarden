@@ -3,7 +3,7 @@
 // table vocabulary, one card, one field and one modal chrome instead of re-declaring them per file (the
 // M24 medicaid-ui.tsx precedent). Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens`
 // stays green and the twilight dark mode is automatic.
-import { Modal as SharedModal, t } from "@chartwarden/ui";
+import { Button, Modal as SharedModal, t } from "@chartwarden/ui";
 import { useEffect } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 
@@ -399,14 +399,9 @@ export function Modal({
         <h2 style={modalTitleStyle}>{title}</h2>
         {children}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={closeDisabled}
-            style={closeDisabled ? disabledButtonStyle : ghostButtonStyle}
-          >
+          <Button tone="secondary" type="button" onClick={onClose} disabled={closeDisabled}>
             Cancel
-          </button>
+          </Button>
           {footer}
         </div>
       </div>

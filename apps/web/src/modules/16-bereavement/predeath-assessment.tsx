@@ -51,7 +51,6 @@ import {
   columnStyle,
   mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
 } from "./bereavement-ui";
 
 const SUD_KEY = "active_substance_use";
@@ -274,9 +273,9 @@ function PredeathForAdmission({ admissionId }: { admissionId: string | undefined
         </div>
         {editable ? (
           <div style={{ display: "flex", gap: t.space2, alignItems: "center", flexWrap: "wrap" }}>
-            <button type="button" style={primaryButtonStyle} disabled={busy} onClick={save}>
+            <Button tone="primary" type="button" disabled={busy} onClick={save}>
               {busy ? "Saving…" : "Save draft"}
-            </button>
+            </Button>
           </div>
         ) : null}
         <StatusLine message={statusMessage} tone={draft.locked ? "warning" : "success"} />

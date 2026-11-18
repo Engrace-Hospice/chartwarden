@@ -18,7 +18,6 @@ import {
   SelectField,
   TextField,
   mutedStyle,
-  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -200,14 +199,14 @@ function RsvpModal({
       onClose={onClose}
       busy={busy}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || !guestsValid}
           onClick={() => void submit()}
         >
           {busy ? "Saving…" : "Save RSVP"}
-        </button>
+        </Button>
       }
     >
       <span style={mutedStyle}>Record the answer the family gave by phone.</span>

@@ -58,7 +58,6 @@ import {
   ghostButtonStyle,
   linkStyle,
   mutedStyle,
-  primaryButtonStyle,
 } from "./bereavement-ui";
 import { PhysicianLetterReview } from "./physician-letter-review";
 
@@ -592,14 +591,9 @@ function AssignModal({
       title={kind === "counselor" ? "Assign bereavement counselor" : "Assign bereavement volunteer"}
       onClose={onClose}
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy || !userId}
-          onClick={submit}
-        >
+        <Button tone="primary" type="button" disabled={busy || !userId} onClick={submit}>
           {busy ? "Assigning…" : "Assign"}
-        </button>
+        </Button>
       }
     >
       <span style={mutedStyle}>
