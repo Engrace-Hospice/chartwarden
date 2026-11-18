@@ -53,7 +53,6 @@ import {
   tierLabel,
 } from "./oncall-status";
 import {
-  Card,
   CheckboxField,
   CountGrid,
   FilterRow,

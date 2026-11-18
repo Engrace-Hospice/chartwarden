@@ -44,6 +44,17 @@ describe("TextField", () => {
     expect(described[1]).toBe("outside");
   });
 
+  it("sets identifiers in the mono face when mono is given, and not otherwise", () => {
+    render(
+      <>
+        <TextField label="Call id" value="" onChange={() => {}} mono />
+        <TextField label="Note" value="" onChange={() => {}} />
+      </>,
+    );
+    expect(screen.getByLabelText("Call id").getAttribute("style")).toContain("font-mono");
+    expect(screen.getByLabelText("Note").getAttribute("style") ?? "").not.toContain("font-mono");
+  });
+
   it("limits the typed length when maxLength is given", () => {
     render(<TextField label="Code" value="" onChange={() => {}} maxLength={8} />);
     expect(screen.getByLabelText("Code").getAttribute("maxlength")).toBe("8");

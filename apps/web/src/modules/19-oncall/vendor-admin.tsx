@@ -48,7 +48,6 @@ import {
   shortId,
 } from "./oncall-status";
 import {
-  Card,
   CheckboxField,
   Modal,
   Notice,

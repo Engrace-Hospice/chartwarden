@@ -5,6 +5,7 @@ import {
   SelectField as KitSelectField,
   TextAreaField as KitTextAreaField,
   TextField as KitTextField,
+  t,
 } from "@chartwarden/ui";
 import type { JSX } from "react";
 
@@ -26,6 +27,7 @@ export function TextField({
   describedBy,
   hint,
   maxLength,
+  mono,
 }: {
   label: string;
   value: string;
@@ -36,6 +38,8 @@ export function TextField({
   describedBy?: string;
   hint?: string;
   maxLength?: number;
+  /** An identifier or code: set in the mono face. */
+  mono?: boolean;
 }): JSX.Element {
   return (
     <KitTextField
@@ -46,6 +50,7 @@ export function TextField({
       placeholder={placeholder}
       hint={hint}
       maxLength={maxLength}
+      style={mono ? { fontFamily: t.fontMono } : undefined}
       aria-describedby={describedBy}
     />
   );
