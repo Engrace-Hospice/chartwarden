@@ -1217,7 +1217,8 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
                 AND wait_event_type = 'Lock' AND query ILIKE '%for no key update%'`,
           );
           if ((rows[0]?.n ?? 0) >= 1) break;
-          if (Date.now() > deadline) throw new Error("the revision lock never waited on the claim row");
+          if (Date.now() > deadline)
+            throw new Error("the revision lock never waited on the claim row");
           await new Promise((resolve) => setTimeout(resolve, 20));
         }
         await admin.query("COMMIT");
