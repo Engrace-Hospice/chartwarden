@@ -105,4 +105,76 @@ describe("FormDrawer", () => {
     expect(alert.textContent).toBe("The group was not saved.");
     expect(screen.getByRole("complementary").contains(alert)).toBe(true);
   });
+
+  it("keeps the page inert until the LAST busy drawer finishes", () => {
+    const save = <button type="button">Save</button>;
+    const view = render(
+      <div>
+        <main data-testid="page" />
+        <FormDrawer title="first" busy onClose={vi.fn()} save={save}>
+          <p>a</p>
+        </FormDrawer>
+        <FormDrawer title="second" busy onClose={vi.fn()} save={save}>
+          <p>b</p>
+        </FormDrawer>
+      </div>,
+    );
+    const page = screen.getByTestId("page");
+    expect(page.hasAttribute("inert")).toBe(true);
+    view.rerender(
+      <div>
+        <main data-testid="page" />
+        <FormDrawer title="first" busy={false} onClose={vi.fn()} save={save}>
+          <p>a</p>
+        </FormDrawer>
+        <FormDrawer title="second" busy onClose={vi.fn()} save={save}>
+          <p>b</p>
+        </FormDrawer>
+      </div>,
+    );
+    expect(page.hasAttribute("inert")).toBe(true);
+    view.rerender(
+      <div>
+        <main data-testid="page" />
+        <FormDrawer title="first" busy={false} onClose={vi.fn()} save={save}>
+          <p>a</p>
+        </FormDrawer>
+        <FormDrawer title="second" busy={false} onClose={vi.fn()} save={save}>
+          <p>b</p>
+        </FormDrawer>
+      </div>,
+    );
+    expect(page.hasAttribute("inert")).toBe(false);
+  });
+
+  it("leaves live regions announceable and never lifts an inert it did not set", () => {
+    render(
+      <div>
+        <div data-testid="toasts" aria-live="polite" />
+        <div data-testid="banner" role="status" />
+        <aside data-testid="foreign" {...{ inert: "" }} />
+        <main data-testid="page" />
+        <FormDrawer title="t" busy onClose={vi.fn()} save={<button type="button">Save</button>}>
+          <p>body</p>
+        </FormDrawer>
+      </div>,
+    );
+    expect(screen.getByTestId("toasts").hasAttribute("inert")).toBe(false);
+    expect(screen.getByTestId("banner").hasAttribute("inert")).toBe(false);
+    expect(screen.getByTestId("page").hasAttribute("inert")).toBe(true);
+    cleanup();
+    const foreign = document.createElement("aside");
+    foreign.setAttribute("inert", "");
+    document.body.append(foreign);
+    render(
+      <div>
+        <FormDrawer title="t" busy onClose={vi.fn()} save={<button type="button">Save</button>}>
+          <p>body</p>
+        </FormDrawer>
+      </div>,
+    );
+    cleanup();
+    expect(foreign.hasAttribute("inert")).toBe(true);
+    foreign.remove();
+  });
 });

@@ -6,7 +6,12 @@
 // (a row's Edit, an opener, Reload, a link): nothing can swap, unmount or navigate away from the form whose outcome has
 // not landed. A form that is open but idle can still be replaced by choosing another record, like any kit drawer.
 import { Button, Drawer, InlineAlert } from "@chartwarden/ui";
-import { type JSX, type ReactNode, useEffect, useRef } from "react";
+import { type JSX, type ReactNode, useLayoutEffect, useRef } from "react";
+
+/** Live regions (the toast stack, the offline banner) stay announceable while a write is in flight. */
+const LIVE_REGION = "[aria-live], [role='alert'], [role='status']";
+/** How many busy drawers hold each element inert: the last one to finish lifts it, not the first. */
+const holds = new WeakMap<Element, number>();
 
 /** Marks every element outside `node`'s own path to the document body inert; returns the undo. */
 function inertAround(node: Element): () => void {
@@ -15,13 +20,24 @@ function inertAround(node: Element): () => void {
     const parent: Element | null = el.parentElement;
     if (!parent) break;
     for (const sibling of Array.from(parent.children)) {
-      if (sibling === el || sibling.hasAttribute("inert")) continue;
+      if (sibling === el || sibling.matches(LIVE_REGION)) continue;
+      // Inert for another reason (not ours): leave it alone, and never lift it.
+      if (!holds.has(sibling) && sibling.hasAttribute("inert")) continue;
+      holds.set(sibling, (holds.get(sibling) ?? 0) + 1);
       sibling.setAttribute("inert", "");
       marked.push(sibling);
     }
   }
   return () => {
-    for (const el of marked) el.removeAttribute("inert");
+    for (const el of marked) {
+      const left = (holds.get(el) ?? 1) - 1;
+      if (left > 0) {
+        holds.set(el, left);
+        continue;
+      }
+      holds.delete(el);
+      el.removeAttribute("inert");
+    }
   };
 }
 
@@ -43,7 +59,7 @@ export function FormDrawer({
   children: ReactNode;
 }): JSX.Element {
   const marker = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const aside = marker.current?.closest("aside");
     if (!busy || !aside) return;
     return inertAround(aside);
