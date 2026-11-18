@@ -14,6 +14,7 @@ import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment }
 import type { DenialCategory } from "../domain";
 import { decimalDollarsToCents } from "../domain/era-match-review";
 import type { WriteOutboxPort } from "../routes/write-service";
+import { adviceEnvelopeIdentityColumns } from "./advice-envelope-identity";
 import { claimMdEraM25SerializationKey } from "./claimmd-era-duplicate";
 import type {
   ClaimMatchCandidateProvider,
@@ -1070,20 +1071,7 @@ export function buildDrizzleM25IngestService(
         providerEntityId: input.providerEntityId,
         payerId: input.payerId,
         payerKind: input.payerKind,
-        interchangeControlNumber: parsed.interchangeControlNumber,
-        interchangeSenderCode: parsed.interchangeSenderCode ?? null,
-        interchangeReceiverCode: parsed.interchangeReceiverCode ?? null,
-        functionalGroupControlNumber: parsed.functionalGroupControlNumber ?? null,
-        functionalGroupMetadata: {
-          identifierCode: parsed.functionalGroupIdentifierCode ?? null,
-          senderCode: parsed.functionalGroupSenderCode ?? null,
-          receiverCode: parsed.functionalGroupReceiverCode ?? null,
-          creationTime: parsed.functionalGroupCreationTime ?? null,
-          version: parsed.functionalGroupVersion ?? null,
-          position: parsed.functionalGroupPosition ?? null,
-        },
-        transactionSetPosition: parsed.transactionSetPosition ?? null,
-        transactionSetControlNumber: parsed.transactionSetControlNumber,
+        ...adviceEnvelopeIdentityColumns(parsed),
         checkOrEftTraceNumber: parsed.checkOrEftTraceNumber ?? null,
         paymentMethod: parsed.paymentMethod,
         totalPaymentAmount: money(parsed.totalPaymentAmount),

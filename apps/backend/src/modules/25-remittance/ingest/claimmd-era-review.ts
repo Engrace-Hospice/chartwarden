@@ -27,6 +27,11 @@ import {
   isIdempotentMatchDecisionRetry,
 } from "../domain/era-match-review";
 import { providerEntityScopeCondition } from "../routes/scope";
+import {
+  adviceEnvelopeIdentityColumns,
+  claimMdStagePayeeIdentityEvidence,
+  stageEvidenceCodes,
+} from "./advice-envelope-identity";
 import type { M25IngestService } from "./service";
 import { getM25TransactionPostingPort, m25ContentDigestOf } from "./service-drizzle";
 import type {
@@ -756,10 +761,7 @@ export function buildDrizzleClaimMdEraReviewService(
   const derivePostingFacts = async (tx: M25Tx, actor: M25ReadActor, stage: StoredStage) => {
     const detail = projectClaimMdEraReviewItem(stage, cipher);
     const blockers: string[] = [];
-    const factsValue = (stage.sourceEvidence as JsonRecord | null)?.evidenceCodes;
-    const evidenceCodes = Array.isArray(factsValue)
-      ? factsValue.filter((value): value is string => typeof value === "string")
-      : [];
+    const evidenceCodes = stageEvidenceCodes(stage.sourceEvidence);
     if (stage.state !== "staged") blockers.push("STAGE_NOT_DELIVERED");
     if (detail.duplicateClassification !== "none") blockers.push("POSSIBLE_DUPLICATE");
     if (
@@ -2450,6 +2452,19 @@ export function buildDrizzleClaimMdEraReviewService(
             "the staged source lacks a payment effective date",
             409,
           );
+        // The posted advice takes its group identity from the sealed transaction set; the stage row's own
+        // ISA06/ISA08/GS06 columns (what staging deduped on) must agree, or the two would drift apart.
+        if (
+          (stage.interchangeSenderCode ?? null) !== (parsed.interchangeSenderCode ?? null) ||
+          (stage.interchangeReceiverCode ?? null) !== (parsed.interchangeReceiverCode ?? null) ||
+          (stage.functionalGroupControlNumber ?? null) !==
+            (parsed.functionalGroupControlNumber ?? null)
+        )
+          throw new ChartWardenError(
+            "POSTING_SOURCE_INVALID",
+            "the staged source identity does not match its sealed transaction set",
+            409,
+          );
         const [advice] = await tx
           .insert(schema.remittanceAdvice)
           .values({
@@ -2457,13 +2472,18 @@ export function buildDrizzleClaimMdEraReviewService(
             providerEntityId: stage.providerEntityId,
             payerId: facts.payerId,
             payerKind: "commercial",
-            interchangeControlNumber: parsed.interchangeControlNumber,
-            transactionSetControlNumber: parsed.transactionSetControlNumber,
+            ...adviceEnvelopeIdentityColumns(parsed),
             checkOrEftTraceNumber: parsed.checkOrEftTraceNumber,
             paymentMethod: parsed.paymentMethod as "eft" | "check",
             totalPaymentAmount: (paymentCents / 100).toFixed(2),
             plbTotalAmount: "0.00",
             contentDigest: stage.contentDigest,
+            payeeIdentityEvidence: claimMdStagePayeeIdentityEvidence({
+              organizationId: actor.organizationId,
+              providerEntityId: stage.providerEntityId,
+              sourceEvidence: stage.sourceEvidence,
+              verifiedAt: stage.createdAt,
+            }),
             paymentEffectiveDate: parsed.paymentEffectiveDate,
             adjudicationCutoffDate: parsed.adjudicationCutoffDate,
             functionalGroupCreationDate: parsed.functionalGroupCreationDate,

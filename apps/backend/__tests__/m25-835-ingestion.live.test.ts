@@ -63,6 +63,7 @@ import {
   buildM23BackedClaimMatchCandidateProvider,
 } from "../src/modules/25-remittance/index";
 import { buildDrizzleClaimMdEraReviewService } from "../src/modules/25-remittance/ingest/claimmd-era-review";
+import { stageVerifiedClaimMdEra } from "../src/modules/25-remittance/ingest/claimmd-era-stage";
 import {
   MAX_REFUSALS_PER_REMITTANCE,
   pullRemittances,
@@ -562,7 +563,17 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           id: "1999999999",
         },
         interchangeControlNumber: transactionSetControlNumber.padStart(9, "0"),
+        interchangeSenderCode: "SYNTHSENDER",
+        interchangeReceiverCode: "SYNTHRECEIVER",
         transactionSetControlNumber,
+        functionalGroupControlNumber: "941",
+        functionalGroupIdentifierCode: "HP",
+        functionalGroupSenderCode: "SYNTHSENDER",
+        functionalGroupReceiverCode: "SYNTHRECEIVER",
+        functionalGroupCreationTime: "1200",
+        functionalGroupVersion: "005010X221A1",
+        functionalGroupPosition: 1,
+        transactionSetPosition: 1,
         checkOrEftTraceNumber: trace,
         paymentMethod: "eft",
         totalPaymentAmount: 42,
@@ -624,11 +635,13 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       await admin.query(
         `INSERT INTO claimmd_era_m25_stage
           (id, organization_id, provider_entity_id, source_inbox_id, account_reference, usage,
-           era_id, file_index, interchange_control_number, transaction_set_control_number,
+           era_id, file_index, interchange_control_number, interchange_sender_code,
+           interchange_receiver_code, functional_group_control_number,
+           transaction_set_control_number,
            original_835_digest, source_file_digest, resolution_id, resolution_version,
            idempotency_key, source_evidence, protected_details_cipher, content_digest,
            payment_trace_digest, state)
-         VALUES ($1,$2,$3,$4,'synthetic-account','test','9999',0,$5,$6,$7,$8,$9,1,
+         VALUES ($1,$2,$3,$4,'synthetic-account','test','9999',0,$5,'SYNTHSENDER','SYNTHRECEIVER','941',$6,$7,$8,$9,1,
            $10,$11::jsonb,$12,$13,$14,'staged')`,
         [
           stageId,
@@ -642,7 +655,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           resolutionId,
           idempotencyKey,
           JSON.stringify({
-            evidenceCodes: ["EXACT_PAYEE_NPI", "SINGLE_PROVIDER_ARTIFACT"],
+            codes: ["EXACT_PAYEE_NPI", "SINGLE_PROVIDER_ARTIFACT"],
           }),
           protectedDetailsCipher,
           contentDigest,
@@ -1257,7 +1270,10 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         }),
       ]);
       const advice = await admin.query(
-        "SELECT organization_id, provider_entity_id, parse_status, parse_summary FROM remittance_advice WHERE id=$1",
+        `SELECT organization_id, provider_entity_id, parse_status, parse_summary,
+                interchange_sender_code, interchange_receiver_code, functional_group_control_number,
+                functional_group_metadata, transaction_set_position, payee_identity_evidence
+         FROM remittance_advice WHERE id=$1`,
         [posted.adviceId],
       );
       expect(advice.rows[0]).toMatchObject({
@@ -1269,6 +1285,31 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           stageId,
           planId: plan.planId,
           associationEvidence: [{ claimId, evidenceId: expect.any(String), evidenceVersion: 1 }],
+        },
+      });
+      // A Claim.MD-posted advice carries its group identity (GS06 non-null), so it is never taken for a
+      // legacy GS06-less row, and records the payee-identity evidence the central verification produced.
+      expect(advice.rows[0]).toMatchObject({
+        interchange_sender_code: "SYNTHSENDER",
+        interchange_receiver_code: "SYNTHRECEIVER",
+        functional_group_control_number: "941",
+        functional_group_metadata: {
+          identifierCode: "HP",
+          senderCode: "SYNTHSENDER",
+          receiverCode: "SYNTHRECEIVER",
+          creationTime: "1200",
+          version: "005010X221A1",
+          position: 1,
+        },
+        transaction_set_position: 1,
+        payee_identity_evidence: {
+          version: 1,
+          method: "npi",
+          source: "claimmd_stage",
+          organizationId: ORG_A,
+          providerEntityId: PE_A,
+          tinVerified: null,
+          evidenceCodes: ["EXACT_PAYEE_NPI", "SINGLE_PROVIDER_ARTIFACT"],
         },
       });
       const postingEvents = await review.postingHistory(reviewActor, stageId);
@@ -1496,6 +1537,42 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       expect(historyResponse.body).toEqual(
         expect.arrayContaining([expect.objectContaining({ eventType: "posted" })]),
       );
+      // Re-delivering the same component (a new inbox, the same file and group identity) must be
+      // recognised as an exact duplicate of the posted advice, not held as LEGACY_IDENTITY_AMBIGUOUS.
+      const restaged = await stageVerifiedClaimMdEra({
+        tenantDb: handle.db,
+        source: {
+          inboxId: crypto.randomUUID(),
+          accountReference: "synthetic-account",
+          usage: "test",
+          eraId: "9998",
+          fileIndex: 0,
+          digest: createHash("sha256").update(`redelivery-original:${stageId}`).digest("hex"),
+          fileDigest: sourceFileDigest,
+          resolutionId: crypto.randomUUID(),
+          resolutionVersion: 1,
+          idempotencyKey: createHash("sha256").update(`redelivery:${stageId}`).digest("hex"),
+          contentDigest,
+          paymentTraceDigest,
+          interchangeControlNumber: parsed.interchangeControlNumber,
+          interchangeSenderCode: "SYNTHSENDER",
+          interchangeReceiverCode: "SYNTHRECEIVER",
+          functionalGroupControlNumber: "941",
+          transactionSetControlNumber,
+          evidenceCodes: ["EXACT_PAYEE_NPI", "SINGLE_PROVIDER_ARTIFACT"],
+        },
+        owner: { organizationId: ORG_A, providerEntityId: PE_A, locationId: null },
+        duplicateFacts: { paymentTrace: trace, paymentAmount: "42.00", contentDigest },
+        protectedDetails: {},
+        protectedCipher: cipher,
+        protectedKeyId: "m25-private-test",
+        verifyCapturedSource: async () => true,
+        verifyProviderAndLocation: async () => true,
+      });
+      expect(restaged).toMatchObject({
+        outcome: "exact_duplicate",
+        existingAdviceId: posted.adviceId,
+      });
     });
 
     it("blocks a Claim.MD posting plan when the same financial effect was posted by legacy intake first", async () => {
@@ -1726,7 +1803,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           crypto.randomUUID(),
           createHash("sha256").update(`claimmd-legacy-first-${stageId}`).digest("hex"),
           JSON.stringify({
-            evidenceCodes: ["EXACT_PAYEE_NPI", "SINGLE_PROVIDER_ARTIFACT"],
+            codes: ["EXACT_PAYEE_NPI", "SINGLE_PROVIDER_ARTIFACT"],
           }),
           details,
           m25ContentDigestOf(parsed),
