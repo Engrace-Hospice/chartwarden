@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
@@ -32,8 +33,13 @@ import {
  * `visit` / `visit_state_history` are RANGE-partitioned → the throwaway superuser DB needs
  * `max_locks_per_transaction` raised. For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import {
+  type M17WorkerDeps,
+  runRecurringMaterializationCron,
+} from "../src/modules/17-scheduling/jobs/cron-workers";
 import { type CallerAuthority, NO_AUTHORITY } from "../src/modules/17-scheduling/routes/own-vs-any";
 import { createDrizzleCredentialStore } from "../src/modules/17-scheduling/seams/credentials-drizzle-store";
+import { M17_SYSTEM_USER_ID } from "../src/modules/17-scheduling/system-actor";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -1010,12 +1016,12 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       expect(await visitRow(v.id)).toEqual(before);
     });
 
-    it("recurring materialization skips (does not abort on) a policy whose clinician has no legal pair, and writes nothing for it", async () => {
-      const rec = await svc.createRecurring(ORG_A, np, {
+    const recurringPolicy = (member: string, visitPurpose: Purpose) =>
+      svc.createRecurring(ORG_A, member, {
         patientId: PATIENT,
         admissionId: ADMISSION,
-        assignedMembershipId: np,
-        visitPurpose: "huv1",
+        assignedMembershipId: member,
+        visitPurpose,
         visitSetting: "patient_home",
         rrule: "FREQ=DAILY",
         timeOfDayStart: "10:00",
@@ -1023,12 +1029,192 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
         timeZone: "America/Los_Angeles",
         startDate: new Date().toISOString().slice(0, 10),
       });
+    const recurringCount = async () =>
+      (await admin.query("SELECT count(*)::int AS n FROM recurring_visit")).rows[0].n as number;
+    const childCount = async (policyId: string) =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM visit WHERE parent_recurring_visit_id=$1",
+          [policyId],
+        )
+      ).rows[0].n as number;
+    /** A policy created BEFORE the creation guard existed: legal when made, then forced to an illegal pair. */
+    async function legacyUnschedulablePolicy(): Promise<string> {
+      const legacy = await recurringPolicy(np, "f2f");
+      await admin.query("UPDATE recurring_visit SET visit_purpose='huv1' WHERE id=$1", [legacy.id]);
+      return legacy.id;
+    }
+
+    it("createRecurring refuses a policy whose clinician has no legal M8 pair for the purpose (422), writing no policy; a legal pair still creates", async () => {
+      const before = await recurringCount();
+      await expect(recurringPolicy(np, "huv1")).rejects.toMatchObject({
+        code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+        statusCode: 422,
+      });
+      expect(await recurringCount()).toBe(before);
+
+      const ok = await recurringPolicy(np, "f2f");
+      expect(ok.status).toBe("active");
+      await svc.discontinueRecurring(ORG_A, np, ok.id);
+    });
+
+    it("recurring materialization reports a policy with no legal pair (writing nothing for it) and still materializes the healthy policy in the same pass", async () => {
+      const healthyClinician = await clinician(["rn"], ["rn"]);
+      const healthy = await recurringPolicy(healthyClinician, "routine_visit");
+      const legacyId = await legacyUnschedulablePolicy();
+      try {
+        // The cron's own actor: the M17 system sentinel (recorded as a NULL audit actor), as in production.
+        const result = await svc.materializeRecurringVisitsForOrg(ORG_A, M17_SYSTEM_USER_ID, {
+          horizonDays: 3,
+        });
+        expect(result.unschedulablePolicyIds).toContain(legacyId);
+        expect(result.unschedulablePolicyIds).not.toContain(healthy.id);
+        expect(await childCount(legacyId)).toBe(0);
+        expect(await childCount(healthy.id)).toBeGreaterThan(0);
+      } finally {
+        // Leave no active policy behind: a later test asserts exactly which policies the cron reports.
+        await svc.discontinueRecurring(ORG_A, np, legacyId);
+        await svc.discontinueRecurring(ORG_A, healthyClinician, healthy.id);
+      }
+    });
+
+    it("the recurring cron alerts the scheduling roles with ids and a count only, and stays silent once nothing is unschedulable", async () => {
+      const emitted: Array<{ orgId: string } & Parameters<AlertEmitter["emit"]>[1]> = [];
+      const alerts: AlertEmitter = {
+        emit: async (orgId, input) => {
+          emitted.push({ orgId, ...input });
+          return { alertId: "recorded", resolvedRecipientCount: 0 };
+        },
+      };
+      const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M17_OUTBOX_EVENTS]));
+      const outbox: SchedulingWriteOutboxPort = {
+        publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m17" }),
+      };
+      // `connection` (BullMQ) is only read when workers are registered, never by the cron body under test.
+      const deps = {
+        db: handle.db,
+        outbox,
+        alerts,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      } as unknown as M17WorkerDeps;
+
+      const legacyId = await legacyUnschedulablePolicy();
+      await runRecurringMaterializationCron(deps);
+      expect(emitted).toHaveLength(1);
+      const alert = emitted[0];
+      expect(alert).toMatchObject({
+        orgId: ORG_A,
+        eventType: "m17.recurring_policy_unschedulable",
+        severity: "warn",
+      });
+      expect(alert?.payload.policyIds).toEqual([legacyId]);
+      expect(alert?.payload.count).toBe(1);
+      expect(alert?.payload.deepLink).toBe("/scheduling/recurring");
+      // Ids and a count: never the patient, the clinician or any clinical content.
+      expect(JSON.stringify(alert?.payload)).not.toContain(PATIENT);
+      expect(JSON.stringify(alert?.payload)).not.toContain(np);
+
+      await svc.discontinueRecurring(ORG_A, np, legacyId);
+      await runRecurringMaterializationCron(deps);
+      expect(emitted).toHaveLength(1);
+    });
+
+    it("a clinician holding np and lpn (no rn) is stamped lpn on an sfv, not refused as np", async () => {
+      const npAndLpn = await clinician(["np", "lpn"], ["np", "lpn"]);
+      const v = await create(npAndLpn, "sfv");
+      expect((await visitRow(v.id)).discipline).toBe("lpn");
+      expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+        assignedDiscipline: "lpn",
+        encounterType: "routine_visit",
+      });
+    });
+
+    it("rescheduleVisit refuses a replacement clinician with no legal pair (rn huv1 -> np) and leaves the original and the events untouched", async () => {
+      const v = await create(rn, "huv1");
+      const before = { row: await visitRow(v.id), footprint: await footprint() };
+      const w = nextWindow();
+      await expect(
+        svc.rescheduleVisit(ORG_A, rn, v.id, {
+          newAssignedMembershipId: np,
+          newScheduledStartedAt: w.start,
+          newScheduledEndedAt: w.end,
+          reason: "clinician double-booked this slot",
+        }),
+      ).rejects.toMatchObject({ code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED", statusCode: 422 });
+      expect(await visitRow(v.id)).toEqual(before.row);
+      expect(await footprint()).toEqual(before.footprint);
+    });
+
+    it("a visit already stamped np for an HUV before the guard cannot be rescheduled (422, unchanged), only cancelled", async () => {
+      const v = await create(np, "f2f");
+      await admin.query("UPDATE visit SET visit_purpose='huv1' WHERE id=$1", [v.id]);
+      const before = { row: await visitRow(v.id), footprint: await footprint() };
+      const w = nextWindow();
+      await expect(
+        svc.rescheduleVisit(ORG_A, np, v.id, {
+          newScheduledStartedAt: w.start,
+          newScheduledEndedAt: w.end,
+          reason: "clinician double-booked this slot",
+        }),
+      ).rejects.toMatchObject({ code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED", statusCode: 422 });
+      expect(await visitRow(v.id)).toEqual(before.row);
+      expect(await footprint()).toEqual(before.footprint);
+
+      const cancelled = await svc.cancelVisit(
+        ORG_A,
+        np,
+        v.id,
+        "legacy visit has no legal encounter type",
+      );
+      expect(cancelled.status).toBe("cancelled");
+    });
+
+    it("publishProposal refuses a suggested clinician with no legal pair (np huv1): 422, the proposal stays pending, no visit is written", async () => {
+      const proposalId = (
+        await admin.query(
+          `INSERT INTO visit_proposal (organization_id, provider_entity_id, location_id, patient_id, admission_id,
+             source, source_payload, source_idempotency_key, proposed_for_date, proposed_visit_purpose,
+             proposed_discipline, proposed_duration_minutes, suggested_membership_id)
+           VALUES ($1,$2,$3,$4,$5,'frequency_driven_m7','{}'::jsonb,$6,CURRENT_DATE + 3,'huv1','np',60,$7)
+           RETURNING id`,
+          [
+            ORG_A,
+            seeded[ORG_A].pe,
+            seeded[ORG_A].location,
+            PATIENT,
+            ADMISSION,
+            `wf09-pair-${Date.now()}`,
+            np,
+          ],
+        )
+      ).rows[0].id as string;
       const before = await footprint();
-      const result = await svc.materializeRecurringVisitsForOrg(ORG_A, np, { horizonDays: 3 });
-      expect(result.visitsCreated).toBe(0);
-      expect(result.occurrencesSkipped).toBeGreaterThan(0);
+      await expect(svc.publishProposal(ORG_A, np, proposalId)).rejects.toMatchObject({
+        code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+        statusCode: 422,
+      });
+      expect(
+        (await admin.query("SELECT status FROM visit_proposal WHERE id=$1", [proposalId])).rows[0]
+          .status,
+      ).toBe("pending");
       expect(await footprint()).toEqual(before);
-      await svc.discontinueRecurring(ORG_A, np, rec.id);
+    });
+
+    it("the clinician picker marks a clinician with no legal pair CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED, and the same clinician is eligible where a pair exists", async () => {
+      const w = nextWindow();
+      const pick = async (visitPurpose: Purpose, member: string) =>
+        (
+          await svc.eligibleClinicians(ORG_A, {
+            patientId: PATIENT,
+            visitPurpose,
+            scheduledStartedAt: w.start,
+            scheduledEndedAt: w.end,
+          })
+        ).find((c) => c.membershipId === member);
+      const huv = await pick("huv1", np);
+      expect(huv).toMatchObject({ eligible: false });
+      expect(huv?.reasonCodes).toContain("CLINICIAN_ENCOUNTER_TYPE_UNSUPPORTED");
+      expect(await pick("f2f", np)).toMatchObject({ eligible: true, reasonCodes: [] });
     });
 
     it("tenancy on the app role: org B cannot read, reassign or edit org A's visit, and A's row is untouched", async () => {

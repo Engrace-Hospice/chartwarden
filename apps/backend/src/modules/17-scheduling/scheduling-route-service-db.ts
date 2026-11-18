@@ -254,7 +254,14 @@ export interface SchedulingAutomationService {
     orgId: string,
     userId: string,
     options?: { now?: Date; horizonDays?: number },
-  ): Promise<{ policiesScanned: number; visitsCreated: number; occurrencesSkipped: number }>;
+  ): Promise<{
+    policiesScanned: number;
+    visitsCreated: number;
+    /** Occurrences that already had a published child (benign, expected nightly). */
+    occurrencesSkipped: number;
+    /** Policies whose clinician has no legal M8 encounter pair for the purpose: nothing was materialized. */
+    unschedulablePolicyIds: readonly string[];
+  }>;
   generateCarePlanVisitProposals(
     orgId: string,
     userId: string,
@@ -1664,6 +1671,14 @@ export function createDbSchedulingBackend(
           tx,
           input.assignedMembershipId,
         );
+        // A policy none of whose occurrences could ever be scheduled is refused now, not skipped every
+        // night: pair legality depends on the clinician's HELD disciplines only (credentials may change),
+        // so held is passed as both the held and the credentialed set.
+        const held = (await resolveDisciplinesTx(tx, orgId, input.assignedMembershipId)).filter(
+          (discipline) => VISIT_PURPOSE_DISCIPLINES[input.visitPurpose].includes(discipline),
+        );
+        const stamped = selectVisitAssignmentDiscipline(input.visitPurpose, held, held);
+        if (stamped !== null) requireEncounterType(input.visitPurpose, stamped);
         const [inserted] = await tx
           .insert(RV)
           .values({
@@ -1801,6 +1816,7 @@ export function createDbSchedulingBackend(
       );
       let visitsCreated = 0;
       let occurrencesSkipped = 0;
+      const unschedulablePolicyIds: string[] = [];
       for (const policy of policies) {
         const windowStart = localDateInTimeZone(now, policy.timeZone);
         const occurrences = materializeRecurrence(
@@ -1850,21 +1866,27 @@ export function createDbSchedulingBackend(
             });
           } catch (err) {
             // The M8 §2.2 pair refusal is a permanent property of this policy's (purpose, clinician), not a
-            // transient gate miss: skip its occurrences (the tx rolled back, nothing was written) rather than
-            // abort every other policy in the org's pass.
+            // transient gate miss: every occurrence would be refused the same way (the tx rolled back,
+            // nothing was written). Record the policy for the cron to alert on and move to the next policy,
+            // rather than abort every other policy in the org's pass or retry up to 90 occurrences.
             if (
               err instanceof SchedulingStateError &&
               err.code === "VISIT_ENCOUNTER_TYPE_UNSUPPORTED"
             ) {
-              occurrencesSkipped += 1;
-              continue;
+              unschedulablePolicyIds.push(policy.id);
+              break;
             }
             throw err;
           }
           visitsCreated += 1;
         }
       }
-      return { policiesScanned: policies.length, visitsCreated, occurrencesSkipped };
+      return {
+        policiesScanned: policies.length,
+        visitsCreated,
+        occurrencesSkipped,
+        unschedulablePolicyIds,
+      };
     },
 
     async generateCarePlanVisitProposals(

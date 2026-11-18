@@ -45,14 +45,37 @@ export function buildM17WorkerDeps(deps: {
   return { ...deps, now: () => new Date() };
 }
 
+/**
+ * §4.8 `m17.recurring-materialize`. A recurring policy whose clinician has no legal M8 encounter pair for its
+ * purpose can never materialize a visit; the service reports it instead of skipping it silently, and this
+ * cron alerts the scheduling roles (ids and a count only) once per org per day until it is fixed or
+ * discontinued. One org's failure never stops the others (see {@link forEachActiveOrg}).
+ */
 export async function runRecurringMaterializationCron(deps: M17WorkerDeps): Promise<void> {
   const service = createDbSchedulingBackend(deps.db, deps.outbox) as SchedulingAutomationService;
+  const alerts = alertEmitterOf(deps);
   const now = (deps.now ?? (() => new Date()))();
-  for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
-    await service.materializeRecurringVisitsForOrg(organizationId, M17_WORKER_SYSTEM_USER_ID, {
-      now,
+  await forEachActiveOrg(deps, "M17 recurring-materialize", async (organizationId) => {
+    const result = await service.materializeRecurringVisitsForOrg(
+      organizationId,
+      M17_WORKER_SYSTEM_USER_ID,
+      { now },
+    );
+    if (result.unschedulablePolicyIds.length === 0) return;
+    await alerts.emit(organizationId, {
+      eventType: "m17.recurring_policy_unschedulable",
+      severity: "warn",
+      correlationId: `m17:recurring-unschedulable:${organizationId}:${now.toISOString().slice(0, 10)}`,
+      payload: {
+        count: result.unschedulablePolicyIds.length,
+        policyIds: result.unschedulablePolicyIds,
+        detectedAt: now.toISOString(),
+        deepLink: "/scheduling/recurring",
+        message:
+          "Recurring visit policies cannot be scheduled: the assigned clinician has no legal encounter type for the visit purpose.",
+      },
     });
-  }
+  });
 }
 
 export async function runVisitAttentionCron(deps: M17WorkerDeps): Promise<void> {
