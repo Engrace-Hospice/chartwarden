@@ -61,7 +61,11 @@ export const VISIT_PURPOSE_DISCIPLINES: {
 
 /**
  * Select the discipline a visit assignment is actually authorized and credentialed under.
- * Policy order is deterministic when a clinician holds multiple qualifying disciplines.
+ * Policy order is deterministic when a clinician holds multiple qualifying disciplines, except that a
+ * discipline with a legal M8 encounter pair ({@link encounterTypeForVisit}) wins over an earlier one
+ * without (a clinician holding NP and LPN is stamped LPN for an SFV, not refused as NP). When none has a
+ * legal pair the first is still returned, so the stamping gate refuses it with its own
+ * `VISIT_ENCOUNTER_TYPE_UNSUPPORTED` code instead of reporting a generic gate miss.
  */
 export function selectVisitAssignmentDiscipline(
   visitPurpose: VisitPurpose,
@@ -70,10 +74,13 @@ export function selectVisitAssignmentDiscipline(
 ): SchedulingDiscipline | null {
   const held = new Set(heldDisciplines);
   const credentialed = new Set(activeCredentialDisciplines);
+  const eligible = VISIT_PURPOSE_DISCIPLINES[visitPurpose].filter(
+    (discipline) => held.has(discipline) && credentialed.has(discipline),
+  );
   return (
-    VISIT_PURPOSE_DISCIPLINES[visitPurpose].find(
-      (discipline) => held.has(discipline) && credentialed.has(discipline),
-    ) ?? null
+    eligible.find((discipline) => encounterTypeForVisit(visitPurpose, discipline) !== null) ??
+    eligible[0] ??
+    null
   );
 }
 

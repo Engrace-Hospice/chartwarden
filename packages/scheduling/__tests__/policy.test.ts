@@ -23,6 +23,14 @@ describe("HOPE scheduling purposes", () => {
     expect(selectVisitAssignmentDiscipline("sfv", ["lpn"], ["lpn"])).toBe("lpn");
     expect(selectVisitAssignmentDiscipline("huv2", ["rn", "np"], ["np"])).toBe("np");
   });
+
+  it("prefers a discipline with a legal M8 pair over an earlier one without", () => {
+    // sfv lists rn, np, lpn: a clinician holding np and lpn (no rn) is stamped lpn, not refused as np.
+    expect(selectVisitAssignmentDiscipline("sfv", ["np", "lpn"], ["np", "lpn"])).toBe("lpn");
+    // With no legal alternative the unpairable discipline is still selected, so the stamping gate
+    // refuses it with its own VISIT_ENCOUNTER_TYPE_UNSUPPORTED code rather than a generic gate miss.
+    expect(selectVisitAssignmentDiscipline("sfv", ["np"], ["np"])).toBe("np");
+  });
 });
 
 // M8 spec §2.2 / §2.7: a visit's (encounter type, discipline) must be a legal pair, because the M8
@@ -52,6 +60,25 @@ describe("scheduled visit -> encounter type (M8 §2.2 / §2.7 legal pairs)", () 
         }
       }
     }
+  });
+
+  // Purposes with NO schedulable discipline: every discipline M17 allows has no legal M8 pair, so the
+  // purpose is refused (422 VISIT_ENCOUNTER_TYPE_UNSUPPORTED) for every clinician. The two tables
+  // disagree: M17 requires md/np for `recert` and `loc_change`, while M8 §2.2 gives `recert_visit` to RN
+  // (a kickoff visit, "not the F2F itself") and seeds `loc_change` as routine_visit (RN/LPN). Which table
+  // changes is the spec owner's decision, so this is a ratchet: a NEW dead end fails here, and fixing one
+  // must delete its entry.
+  const KNOWN_UNSCHEDULABLE: readonly VisitPurpose[] = ["loc_change", "recert"];
+
+  it("leaves no purpose unschedulable beyond the known, owner-pending dead ends", () => {
+    const unschedulable = (Object.keys(VISIT_PURPOSE_DISCIPLINES) as VisitPurpose[])
+      .filter((purpose) =>
+        VISIT_PURPOSE_DISCIPLINES[purpose].every(
+          (discipline) => encounterTypeForVisit(purpose, discipline) === null,
+        ),
+      )
+      .sort();
+    expect(unschedulable).toEqual([...KNOWN_UNSCHEDULABLE]);
   });
 
   it("keeps RN and LPN HUV/SFV visits on routine_visit (the only legal HUV-capable type)", () => {
