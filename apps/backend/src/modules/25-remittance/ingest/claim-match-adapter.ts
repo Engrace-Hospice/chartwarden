@@ -24,6 +24,7 @@ interface ClaimSubmissionReaderView {
     Array<{
       claimId: string;
       claimControlNumber: string;
+      transmittedControlNumbers?: readonly string[];
       payerClaimControlNumber: string | null;
       serviceFrom: string;
       serviceTo: string;
@@ -47,6 +48,9 @@ export function buildM23BackedClaimMatchCandidateProvider(): ClaimMatchCandidate
           (r): MatchCandidate => ({
             claimId: r.claimId,
             claimControlNumber: r.claimControlNumber,
+            ...(r.transmittedControlNumbers
+              ? { transmittedControlNumbers: r.transmittedControlNumbers }
+              : {}),
             payerIcn: r.payerClaimControlNumber ?? undefined,
             serviceFrom: r.serviceFrom,
             serviceTo: r.serviceTo,
