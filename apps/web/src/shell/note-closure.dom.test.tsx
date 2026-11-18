@@ -122,6 +122,10 @@ describe("closure banner states", () => {
     ]);
     mountBanner(client);
     await waitFor(() => expect(closureCalls()).toHaveLength(1));
+    // Let the answer render before asserting an absence, or a banner shown for `off` could still be on its way.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("alert")?.textContent ?? "").toBe("");
     expect(statusRegion().textContent).toBe("");
