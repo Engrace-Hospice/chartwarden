@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SafetyHighRiskAreaView,
   type SafetyHighRiskCategory,
@@ -36,7 +37,7 @@ import {
   toInstant,
   toneOf,
 } from "./safety-status";
-import { Modal, Notice, SelectField, TextAreaField, TextField } from "./safety-ui";
+import { Notice, SelectField, TextAreaField, TextField } from "./safety-ui";
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -327,84 +328,87 @@ export function HighRiskAreasScreen(): JSX.Element {
               coordinates and validated again by the server.
             </span>
           </div>
-          {editing !== null ? (
-            <Modal
-              title={editing === "new" ? "Draw a high-risk area" : "Edit this area"}
-              onClose={() => setEditing(null)}
-              footer={
-                <Button
-                  tone="primary"
-                  size="lg"
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={
-                    saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
-                  }
-                >
-                  {saving ? "Saving..." : editing === "new" ? "Create area" : "Save changes"}
-                </Button>
-              }
-            >
-              <SelectField
-                label="Category"
-                value={riskCategory}
-                options={HIGH_RISK_CATEGORIES.map((value) => ({ value, label: humanize(value) }))}
-                onChange={setRiskCategory}
-              />
-              <TextField
-                label="Advisory message (<=200 characters)"
-                value={advisoryMessage}
-                onChange={setAdvisoryMessage}
-                hint="This exact sentence is what a clinician reads on the pre-visit card."
-              />
-              <TextAreaField
-                label="Polygon rings"
-                value={ringText}
-                onChange={setRingText}
-                rows={6}
-                hint="One ring per line; each ring is space-separated lon,lat pairs, at least four points, and the last point must repeat the first."
-              />
-              <SelectField
-                label="Visit policy for this area"
-                value={areaPolicy}
-                options={HIGH_RISK_AREA_POLICIES.map((value) => ({
-                  value,
-                  label: humanize(value),
-                }))}
-                onChange={setAreaPolicy}
-              />
-              {areaPolicy === "requires_buddy_visit" ? (
-                <Notice tone="warning">
-                  This raises a flag for scheduling. It does not pair anybody and it does not stop a
-                  solo visit.
-                </Notice>
-              ) : null}
-              {editing === "new" ? (
-                <TextField
-                  label="Effective from"
-                  value={effectiveFrom}
-                  onChange={setEffectiveFrom}
-                  type="datetime-local"
-                  hint="Leave blank for now."
-                />
-              ) : null}
-              <TextField
-                label="Effective to"
-                value={effectiveTo}
-                onChange={setEffectiveTo}
-                type="datetime-local"
-                hint="Retiring an area is an end date, never a delete."
-              />
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
         </div>
       }
       fullPageScroll
+      detail={
+        editing !== null ? (
+          <FormDrawer
+            title={editing === "new" ? "Draw a high-risk area" : "Edit this area"}
+            busy={saving}
+            onClose={() => setEditing(null)}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void save()}
+                disabled={
+                  saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
+                }
+              >
+                {saving ? "Saving..." : editing === "new" ? "Create area" : "Save changes"}
+              </Button>
+            }
+          >
+            <SelectField
+              label="Category"
+              value={riskCategory}
+              options={HIGH_RISK_CATEGORIES.map((value) => ({ value, label: humanize(value) }))}
+              onChange={setRiskCategory}
+            />
+            <TextField
+              label="Advisory message (<=200 characters)"
+              value={advisoryMessage}
+              onChange={setAdvisoryMessage}
+              hint="This exact sentence is what a clinician reads on the pre-visit card."
+            />
+            <TextAreaField
+              label="Polygon rings"
+              value={ringText}
+              onChange={setRingText}
+              rows={6}
+              hint="One ring per line; each ring is space-separated lon,lat pairs, at least four points, and the last point must repeat the first."
+            />
+            <SelectField
+              label="Visit policy for this area"
+              value={areaPolicy}
+              options={HIGH_RISK_AREA_POLICIES.map((value) => ({
+                value,
+                label: humanize(value),
+              }))}
+              onChange={setAreaPolicy}
+            />
+            {areaPolicy === "requires_buddy_visit" ? (
+              <Notice tone="warning">
+                This raises a flag for scheduling. It does not pair anybody and it does not stop a
+                solo visit.
+              </Notice>
+            ) : null}
+            {editing === "new" ? (
+              <TextField
+                label="Effective from"
+                value={effectiveFrom}
+                onChange={setEffectiveFrom}
+                type="datetime-local"
+                hint="Leave blank for now."
+              />
+            ) : null}
+            <TextField
+              label="Effective to"
+              value={effectiveTo}
+              onChange={setEffectiveTo}
+              type="datetime-local"
+              hint="Retiring an area is an end date, never a delete."
+            />
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : undefined
+      }
     />
   );
 }
