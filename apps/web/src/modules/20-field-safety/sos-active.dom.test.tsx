@@ -280,3 +280,35 @@ describe("active SOS board — opening a form that is already open", () => {
     );
   });
 });
+
+describe("active SOS board — recovering from a refused stale version", () => {
+  it("re-reads only the version when the same alert's Acknowledge is clicked again", async () => {
+    let version = 3;
+    let writes = 0;
+    const { post } = mount({
+      alertRead: async () => ok({ version }),
+      post: async () => (writes++ === 0 ? refused("CONFLICT") : ok({})),
+    });
+    const drawer = await ackOf("Maya");
+    record(drawer);
+    await within(drawer).findByText(/The acknowledgment for Maya was not recorded/);
+    // The alert changed while the responder was typing (the poll and escalation can bump it).
+    version = 4;
+    fireEvent.click(await rowButton("Maya"));
+    await within(drawer).findByText(/stamped against version 4/);
+    // What was typed is kept, and the next write carries the new stamp.
+    expect((within(drawer).getByLabelText("What did you do?") as HTMLTextAreaElement).value).toBe(
+      ACTION,
+    );
+    fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    const headers = (name: number) =>
+      (post.mock.calls[name] as unknown as [string, { headers: Record<string, string> }])[1]
+        .headers;
+    expect(headers(0)["If-Match"]).toBe("3");
+    expect(headers(1)["If-Match"]).toBe("4");
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+    );
+  });
+});

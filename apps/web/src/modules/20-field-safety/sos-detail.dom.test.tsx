@@ -466,3 +466,32 @@ describe("SOS detail — another alert, a slower read, and opening a form that i
     ).toBe(reason);
   });
 });
+
+describe("SOS detail — a read that gets no answer", () => {
+  it("ends the spinner with an unavailable message when the first read is rejected", async () => {
+    mount(alertIn("escalation_tier_1", false), {
+      alertRead: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    expect(await screen.findByText("Alert unavailable")).toBeTruthy();
+    expect(screen.getByText(/no answer came back/)).toBeTruthy();
+  });
+
+  it("does not throw when the reload after a recorded acknowledgment is rejected", async () => {
+    let reads = 0;
+    const { post } = mount(alertIn("escalation_tier_1", false), {
+      alertRead: async () => {
+        if (reads++ === 0) return ok(alertIn("escalation_tier_1", false));
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await open("Acknowledge", "Acknowledge this SOS");
+    fireEvent.change(within(drawer).getByLabelText("What did you do?"), {
+      target: { value: ACTION },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Record acknowledgment" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Alert unavailable")).toBeTruthy();
+  });
+});

@@ -94,10 +94,12 @@ export function ActiveSosScreen(): JSX.Element {
 
   const openAck = useCallback(
     async (id: string, who: string) => {
-      // Already open (the drawer is not modal while idle): opening again must not wipe the account typed.
-      if (ackFor?.id === id) return;
+      // Already open (the drawer is not modal while idle): clicking its Acknowledge again only re-reads the version
+      // the write is stamped with, which is how a responder recovers from a refusal of a stale one. Nothing typed
+      // (or refused) is wiped.
+      const refreshing = ackFor?.id === id;
       setAckOpening(id);
-      setModalError(null);
+      if (!refreshing) setModalError(null);
       setOpenError(null);
       const res = await getSosAlert(client, id).catch(() => null);
       setAckOpening(null);
@@ -109,10 +111,16 @@ export function ActiveSosScreen(): JSX.Element {
         );
         return;
       }
+      const { version } = res.alert;
+      if (refreshing) {
+        // Only the stamp changes; if the form was closed while the alert was re-read, it stays closed.
+        setAckFor((current) => (current?.id === id ? { ...current, version } : current));
+        return;
+      }
       setActionTaken("");
       setOutcome(DEFAULT_ACK_OUTCOME);
       setPhoneMasked("");
-      setAckFor({ id, who, version: res.alert.version });
+      setAckFor({ id, who, version });
     },
     [ackFor, client],
   );
@@ -470,8 +478,9 @@ export function ActiveSosScreen(): JSX.Element {
               </Notice>
             ) : null}
             <span style={secondaryTextStyle}>
-              This acknowledgment is stamped against version {ackFor.version} of the alert, read
-              when this form opened.
+              This acknowledgment is stamped against version {ackFor.version} of the alert. If the
+              alert changed and the server refused it, click Acknowledge on that alert again to
+              re-read the version; what you typed is kept.
             </span>
           </FormDrawer>
         ) : undefined

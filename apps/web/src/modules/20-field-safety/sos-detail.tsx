@@ -122,10 +122,15 @@ function SosDetailBody(): JSX.Element {
   const load = useCallback(async () => {
     const readId = ++latestRead.current;
     setLoading(true);
-    const res = await getSosAlert(client, sosAlertId);
+    // The client REJECTS on a network failure; `null` is that, and the newest read must always end `loading`.
+    const res = await getSosAlert(client, sosAlertId).catch(() => null);
     if (readId !== latestRead.current) return;
-    if (res.error || !res.alert) {
-      setError(errorMessage(res.error, "That alert could not be read."));
+    if (!res || res.error || !res.alert) {
+      setError(
+        res
+          ? errorMessage(res.error, "That alert could not be read.")
+          : "That alert could not be read: no answer came back. Check your connection, then retry.",
+      );
       setAlert(null);
     } else {
       setAlert(res.alert);
