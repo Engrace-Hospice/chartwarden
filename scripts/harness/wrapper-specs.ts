@@ -54,6 +54,9 @@ const grammar = (g: Partial<OptionGrammar>): OptionGrammar => ({
 /** `command`, `nohup`, `setsid`, the shell keywords and the like take no option the guard reads: any dash word is a flag. */
 const LAX_NO_OPTIONS: WrapperSpec = { grammar: grammar({ lax: true }) };
 
+/** `command [-p] CMD` runs CMD; `command -v|-V NAME…` only looks the names up (bash and zsh usage: `-p`, `-v`, `-V`), so it runs nothing and stays the program (wave 13, CR-11). */
+const COMMAND: WrapperSpec = { grammar: grammar({ flags: "pvV" }), stays: ["v", "V"] };
+
 /**
  * GNU parallel's long options that take no value (the manual's OPTIONS, names without `--`). GNU parallel is NOT installed here: this and the
  * value list are from the manual and UNVERIFIED (`fixtures/harness-tool-options/unverified-tools.json`); a name that is in neither list asks
@@ -652,7 +655,7 @@ export const WRAPPER_SPECS: ReadonlyMap<string, WrapperSpec> = new Map<string, W
       stays: ["e", "eval"],
     },
   ],
-  ["command", LAX_NO_OPTIONS],
+  ["command", COMMAND],
   // zsh precommand modifiers (wave 11, R8-ADV-7): `noglob`, `nocorrect`, a leading `-` and `repeat N` run the command after them.
   ["noglob", LAX_NO_OPTIONS],
   ["nocorrect", LAX_NO_OPTIONS],

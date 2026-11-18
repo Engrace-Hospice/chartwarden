@@ -472,6 +472,19 @@ allowed("B11: everyday uses of those names stay allowed", [
   "mksh script.sh",
 ]);
 
+allowed("CR-11: command -v and -V look a name up, they run nothing", [
+  "command -v ssh git curl",
+  "command -V ssh git",
+  "command -v mosh et sshpass autossh ssh sftp scp 2>&1",
+  "command git status",
+  "command -p ls",
+]);
+describe("CR-11: command still runs its command", () => {
+  it.each(["command ssh somehost", `command git commit ${NV} -m x`])("%s is not allowed", (cmd) => {
+    expect(rank(cmd), cmd).toBeGreaterThanOrEqual(1);
+  });
+});
+
 // ---------------------------------------------------------------------------------------------------
 // L3: Codex's reason names what it refuses
 // ---------------------------------------------------------------------------------------------------
