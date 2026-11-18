@@ -228,9 +228,10 @@ describe("HOPE v1.00.1 validation engine", () => {
     const SPEC_ITEMS = ["A", "F", "I", "J", "M", "N", "Z"].map((section) => `${section}0001`);
 
     function sectionsContext(input: {
-      readonly rfaKind: "01_admission" | "05_discharge";
-      readonly isc: "HA" | "HD";
+      readonly rfaKind: "01_admission" | "02_huv1" | "04_sfv" | "05_discharge";
+      readonly isc: "HA" | "HUV" | "HD" | "XX";
       readonly items: readonly string[];
+      readonly sectionLabels?: Readonly<Record<string, string>>;
       readonly answered?: readonly string[];
       readonly skipped?: readonly string[];
       readonly otherKindAnswered?: readonly string[];
@@ -241,14 +242,14 @@ describe("HOPE v1.00.1 validation engine", () => {
       const activeItems = [
         ...input.items.map((itemCode) => ({
           itemCode,
-          sectionLabel: itemCode.slice(0, 1),
+          sectionLabel: input.sectionLabels?.[itemCode] ?? itemCode.slice(0, 1),
           kind: "assessment",
           cmsItemTypeCode: "Code",
         })),
         ...otherKind.map((itemCode) => ({
           itemCode,
           sectionLabel: itemCode.slice(0, 1),
-          kind: "Control",
+          kind: "control",
           cmsItemTypeCode: "Code",
         })),
       ];
@@ -376,6 +377,106 @@ describe("HOPE v1.00.1 validation engine", () => {
         ),
       ).toEqual(["Z"]);
     });
+
+    it("reads the Section from the label however it is cased or padded, and from the item code when the label is empty", () => {
+      const withoutF = SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("F"));
+      const base = { rfaKind: "01_admission", isc: "HA" } as const;
+      expect(
+        missingSections(
+          sectionsContext({
+            ...base,
+            items: SPEC_ITEMS,
+            answered: SPEC_ITEMS,
+            sectionLabels: { F0001: " f " },
+          }),
+        ),
+      ).toEqual([]);
+      expect(
+        missingSections(
+          sectionsContext({
+            ...base,
+            items: SPEC_ITEMS,
+            answered: SPEC_ITEMS,
+            sectionLabels: { F0001: "" },
+          }),
+        ),
+      ).toEqual([]);
+      expect(
+        missingSections(
+          sectionsContext({
+            ...base,
+            items: SPEC_ITEMS,
+            answered: withoutF,
+            sectionLabels: { F0001: "  " },
+          }),
+        ),
+      ).toEqual(["F"]);
+    });
+
+    it("counts a Section as documented when every one of its items is skipped", () => {
+      const withoutF = SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("F"));
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: [...SPEC_ITEMS, "F0002"],
+            answered: withoutF,
+            skipped: ["F0001", "F0002"],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    it("still requires Section Z when its other item is unanswered and only the signature date is answered", () => {
+      const withoutZ = SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("Z"));
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: [...withoutZ, "Z0350", "Z0500B"],
+            answered: [...withoutZ, "Z0500B"],
+          }),
+        ),
+      ).toEqual(["Z"]);
+    });
+
+    // The shapes the imported spec really has: HD is A and Z0500B, HUV is A, J, M, N and Z0500B, SFV (XX) is A and Z0500B.
+    it.each([
+      ["05_discharge", "HD", ["A0001", "Z0500B"], ["A"]],
+      ["02_huv1", "HUV", ["A0001", "J0001", "M0001", "N0001", "Z0500B"], ["A", "J", "M", "N"]],
+      ["04_sfv", "XX", ["A0001", "Z0500B"], ["A"]],
+    ] as const)(
+      "requires only the Sections a %s record's instrument defines",
+      (rfaKind, isc, items, definedSections) => {
+        const answeredEverythingButTheSignatureDate = items.filter((item) => item !== "Z0500B");
+        expect(
+          missingSections(
+            sectionsContext({
+              rfaKind,
+              isc,
+              items,
+              answered: answeredEverythingButTheSignatureDate,
+            }),
+          ),
+        ).toEqual([]);
+        for (const section of definedSections) {
+          expect(
+            missingSections(
+              sectionsContext({
+                rfaKind,
+                isc,
+                items,
+                answered: answeredEverythingButTheSignatureDate.filter(
+                  (item) => !item.startsWith(section),
+                ),
+              }),
+            ),
+          ).toEqual([section]);
+        }
+      },
+    );
 
     it("holds a payload-only record (no active items) to the whole matrix", () => {
       expect(

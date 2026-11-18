@@ -280,8 +280,10 @@ const OPTIONAL_ASSESSMENT_ITEMS = new Set([
  * those through answers, so once the record has spec items only a letter its instrument defines is required. A
  * record with no active items (payload-only) is still held to the whole matrix. Items still unanswered inside a
  * documented Section are the item-level rules' findings, not this one's. The workflow-completion item (Z0500B, the
- * signature date) is answered by signing itself, so it neither defines nor documents a Section before then: on an
- * admission, where it is Section Z's only item, Z is not required until the record is signed.
+ * signature date) is answered by signing itself, so it neither defines nor documents a Section: where it is Section
+ * Z's only item (admission and discharge), this rule never requires Z, before or after signing. Readiness injects
+ * the A0050/A0250 workflow answers, so Section A always counts as documented on that path; the item-level
+ * requiredness rule still flags any unanswered Section A item.
  */
 function missingRequiredSectionsFor(ctx: HopeValidationContext): readonly string[] {
   const sectionOfItem = (item: { itemCode: string; sectionLabel: string }): string =>
