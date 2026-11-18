@@ -55,6 +55,7 @@ import {
   type SchedulingSideEffect,
   SchedulingStateError,
   VISIT_PURPOSE_DISCIPLINES,
+  encounterTypeForVisit,
   materializeRecurrence,
   planFrequencyProposals,
   planVisitProposed,
@@ -299,24 +300,23 @@ export interface SchedulingAutomationService {
   ): Promise<{ remindersEmitted: number }>;
 }
 
-const encounterTypeFor = (purpose: VisitPurpose): EncounterType => {
-  switch (purpose) {
-    case "f2f":
-      return "face_to_face";
-    case "recert":
-      return "recert_visit";
-    case "aide_poc":
-      return "chha_visit";
-    case "msw_assessment":
-    case "msw_followup":
-    case "chaplain_assessment":
-    case "chaplain_visit":
-    case "volunteer_visit":
-    case "admission_visit":
-      return purpose;
-    default:
-      return "routine_visit";
+/**
+ * The M8 encounter type the stamped (purpose, discipline) seeds, refusing a pair M8 §2.2 has no legal
+ * encounter type for (§2.7 `INVALID_ENCOUNTER_DISCIPLINE_PAIR`). The M8 seed consumer inserts the draft
+ * directly, so this must refuse BEFORE `m17.visit.published` is emitted. Codes only in the message.
+ */
+const requireEncounterType = (
+  purpose: VisitPurpose,
+  discipline: SchedulingDiscipline,
+): EncounterType => {
+  const encounterType = encounterTypeForVisit(purpose, discipline);
+  if (encounterType === null) {
+    throw new SchedulingStateError(
+      "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+      `no legal encounter type for visit purpose '${purpose}' and discipline '${discipline}'`,
+    );
   }
+  return encounterType;
 };
 
 /**
@@ -636,6 +636,9 @@ export function createDbSchedulingBackend(
       seamFacts.activeCredentialDisciplines,
     );
     if (discipline === null) return null;
+    // Every stamping path (create/publish, edit, reassign) routes through here: a discipline the M8 seed
+    // consumer could not author a legal draft for is never stamped.
+    requireEncounterType(visitPurpose, discipline);
 
     // Credential disciplines are seam-backed and were resolved before this transaction opened.
 
@@ -681,6 +684,7 @@ export function createDbSchedulingBackend(
     const gatePassed = discipline !== null;
     const published = transitionVisit("proposed", { type: "publish", gatePassed });
     if (discipline === null) throw new Error("unreachable after refused pre-schedule transition");
+    const encounterType = requireEncounterType(input.visitPurpose, discipline);
     const timezone = await organizationTimezone(tx, orgId);
     const serviceDate = serviceDateOf(input.scheduledStartedAt, timezone);
 
@@ -743,7 +747,7 @@ export function createDbSchedulingBackend(
       admissionId: input.admissionId,
       assignedMembershipId: input.assignedMembershipId,
       assignedDiscipline: discipline,
-      encounterType: encounterTypeFor(input.visitPurpose),
+      encounterType,
       serviceDate,
       organizationId: orgId,
       providerEntityId,

@@ -5,7 +5,11 @@
 // pre-schedule gate ordering, and the §1.1 D7 EVV-missing self-attest reason floor. The state machine
 // (M17-T03), proposers (M17-T04), and the pre-schedule-gate orchestrator (M17-T07) consume these.
 
-import type { VisitPurpose } from "@chartwarden/types";
+import {
+  type EncounterType,
+  type VisitPurpose,
+  isValidEncounterDisciplinePair,
+} from "@chartwarden/types";
 
 /**
  * The discipline vocabulary (mirrors `encounter_discipline` / the M2-M3 catalog).
@@ -71,6 +75,58 @@ export function selectVisitAssignmentDiscipline(
       (discipline) => held.has(discipline) && credentialed.has(discipline),
     ) ?? null
   );
+}
+
+/**
+ * The M8 encounter type a published visit of this purpose seeds (the `m17.visit.published` payload's
+ * `encounterType`). Exhaustive on purpose: a new `VisitPurpose` fails to compile here instead of silently
+ * falling through to `routine_visit`.
+ *
+ * M8 spec §2.2 names no HUV1/HUV2/SFV, `loc_change`, `pronouncement`, `prn` or `discharge_visit` encounter
+ * type, so those seed the generic `routine_visit`, whose legal authors are RN and LPN only. A NP/MD author
+ * of such a visit has no legal type: {@link encounterTypeForVisit} reports that as `null`.
+ */
+function encounterTypeForPurpose(purpose: VisitPurpose): EncounterType {
+  switch (purpose) {
+    case "f2f":
+      return "face_to_face";
+    case "recert":
+      return "recert_visit";
+    case "aide_poc":
+      return "chha_visit";
+    case "msw_assessment":
+    case "msw_followup":
+    case "chaplain_assessment":
+    case "chaplain_visit":
+    case "volunteer_visit":
+    case "admission_visit":
+      return purpose;
+    case "routine_visit":
+    case "prn":
+    case "discharge_visit":
+    case "loc_change":
+    case "pronouncement":
+    case "huv1":
+    case "huv2":
+    case "sfv":
+      return "routine_visit";
+  }
+}
+
+/**
+ * The encounter type a visit of `purpose` stamped with `discipline` seeds, or `null` when M8 §2.2 has no
+ * legal (encounter type, discipline) pair for it (M8 §2.7 `INVALID_ENCOUNTER_DISCIPLINE_PAIR`). The M8
+ * seed consumer inserts the draft straight into `encounter`, so a visit that would publish an illegal pair
+ * must be refused at scheduling time.
+ */
+export function encounterTypeForVisit(
+  purpose: VisitPurpose,
+  discipline: SchedulingDiscipline,
+): EncounterType | null {
+  const encounterType = encounterTypeForPurpose(purpose);
+  // `pa` is a licence, not an M8 encounter discipline (F-030): it never has a legal pair.
+  if (discipline === "pa") return null;
+  return isValidEncounterDisciplinePair(encounterType, discipline) ? encounterType : null;
 }
 
 /** §1.1 D8 — the seven-predicate pre-schedule gate, in evaluation order (the `visit_overlap` DB backstop is
