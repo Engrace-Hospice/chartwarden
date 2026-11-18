@@ -56,13 +56,17 @@ const deferred = <T,>() => {
   return { promise, resolve };
 };
 
+// The part of the alert's own read the form uses: the version it stamps, and whether the alert still needs answering.
+const alertView = (version: number, over: Record<string, unknown> = {}) =>
+  ok({ version, acknowledgedAt: null, lifecycleState: "escalation_tier_1", ...over });
+
 function mount(opts: { post?: () => Promise<unknown>; alertRead?: () => Promise<unknown> } = {}): {
   post: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
 } {
   const post = vi.fn(opts.post ?? (async () => ok({})));
   const get = vi.fn(async (path: string) =>
-    path === "/api/v1/safety/sos/active" ? ok(board) : (opts.alertRead?.() ?? ok({ version: 3 })),
+    path === "/api/v1/safety/sos/active" ? ok(board) : (opts.alertRead?.() ?? alertView(3)),
   );
   const client = { GET: get, POST: post } as unknown as ApiClient;
   render(
@@ -225,12 +229,12 @@ describe("active SOS board — a write that is pending", () => {
     const write = deferred<unknown>();
     mount({ post: () => write.promise });
     const dialog = await ackOf("Maya");
+    // The scrim never dismisses it. Clicked BEFORE anything is typed, so only `dismissOnScrim` decides.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBe(dialog);
     fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
       target: { value: ACTION },
     });
-    // A click outside never discards what was typed.
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.getByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBe(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
     await waitFor(() =>
       expect(
@@ -259,7 +263,7 @@ describe("active SOS board — a refused stale version", () => {
     let version = 3;
     let writes = 0;
     const { post } = mount({
-      alertRead: async () => ok({ version }),
+      alertRead: async () => alertView(version),
       post: async () => (writes++ === 0 ? refused("STALE_LIFECYCLE_STATE") : ok({})),
     });
     const dialog = await ackOf("Maya");
@@ -267,7 +271,7 @@ describe("active SOS board — a refused stale version", () => {
     version = 4;
     record(dialog);
     const refusal = await within(dialog).findByText(/The acknowledgment for Maya was not recorded/);
-    expect(refusal.textContent).toContain("re-read (version 4)");
+    expect(refusal.textContent).toContain("re-read (now version 4)");
     expect(refusal.getAttribute("role")).toBe("alert");
     expect(dialog.textContent).toContain("stamped against version 4");
     // What was typed is kept and the refusal stays visible, so the responder can submit again.
@@ -291,13 +295,13 @@ describe("active SOS board — a refused stale version", () => {
     let version = 3;
     let writes = 0;
     const { post } = mount({
-      alertRead: async () => ok({ version }),
+      alertRead: async () => alertView(version),
       post: async () => (writes++ === 0 ? refused("CONFLICT") : ok({})),
     });
     const dialog = await ackOf("Maya");
     version = 5;
     record(dialog);
-    await within(dialog).findByText(/re-read \(version 5\)/);
+    await within(dialog).findByText(/re-read \(now version 5\)/);
     fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
     expect(stampOf(post, 1)).toBe("5");
@@ -307,7 +311,7 @@ describe("active SOS board — a refused stale version", () => {
     let reads = 0;
     mount({
       alertRead: async () => {
-        if (reads++ === 0) return ok({ version: 3 });
+        if (reads++ === 0) return alertView(3);
         throw new TypeError("Failed to fetch");
       },
       post: async () => refused("STALE_LIFECYCLE_STATE"),
@@ -318,6 +322,98 @@ describe("active SOS board — a refused stale version", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+    );
+  });
+
+  it("does not claim a change when a bare conflict comes back at the same version", async () => {
+    const { post } = mount({
+      alertRead: async () => alertView(3),
+      post: async () => refused("CONFLICT"),
+    });
+    const dialog = await ackOf("Maya");
+    record(dialog);
+    const refusal = await within(dialog).findByText(/The acknowledgment for Maya was not recorded/);
+    expect(refusal.textContent).toContain("still at version 3");
+    expect(refusal.textContent).not.toContain("re-read");
+    expect(refusal.textContent).not.toContain("changed while you were working");
+    // Nothing is blocked: what was typed is kept and it can be submitted again.
+    expect(
+      (within(dialog).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the alert was already acknowledged, and offers no resubmit, after a lost reply whose attempt landed", async () => {
+    let reads = 0;
+    let writes = 0;
+    const { post } = mount({
+      // The first read opens the form; later reads show the first attempt had landed (and bumped the version).
+      alertRead: async () =>
+        reads++ === 0
+          ? alertView(3)
+          : alertView(4, {
+              acknowledgedAt: "2026-11-18T12:01:00.000Z",
+              lifecycleState: "acknowledged",
+            }),
+      post: async () => {
+        if (writes++ === 0) throw new TypeError("Failed to fetch");
+        return refused("STALE_LIFECYCLE_STATE");
+      },
+    });
+    const dialog = await ackOf("Maya");
+    record(dialog);
+    await within(dialog).findByText(/was not confirmed/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
+    const message = await within(dialog).findByText(/was already acknowledged/);
+    expect(message.textContent).toContain("it may be the one that landed");
+    expect(message.textContent).toContain("There is nothing to submit");
+    expect(message.textContent).not.toContain("changed while you were");
+    // Nothing left to submit: only Cancel remains, and it closes the dialog.
+    expect(
+      (within(dialog).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(post).toHaveBeenCalledTimes(2);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Acknowledge Maya's SOS" })).toBeNull(),
+    );
+  });
+
+  it("says someone else already acknowledged it when no earlier attempt was lost", async () => {
+    let reads = 0;
+    mount({
+      alertRead: async () =>
+        reads++ === 0
+          ? alertView(3)
+          : alertView(4, {
+              acknowledgedAt: "2026-11-18T12:01:00.000Z",
+              lifecycleState: "acknowledged",
+            }),
+      post: async () => refused("STALE_LIFECYCLE_STATE"),
+    });
+    const dialog = await ackOf("Maya");
+    record(dialog);
+    const message = await within(dialog).findByText(/was already acknowledged/);
+    expect(message.textContent).not.toContain("earlier attempt");
+    expect(
+      (within(dialog).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("says the alert is no longer open when it closed meanwhile", async () => {
+    let reads = 0;
+    mount({
+      alertRead: async () =>
+        reads++ === 0 ? alertView(3) : alertView(5, { lifecycleState: "resolved" }),
+      post: async () => refused("STALE_LIFECYCLE_STATE"),
+    });
+    const dialog = await ackOf("Maya");
+    record(dialog);
+    expect((await within(dialog).findByText(/is no longer open/)).textContent).toContain(
+      "Resolved",
     );
   });
 

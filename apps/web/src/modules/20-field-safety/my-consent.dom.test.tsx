@@ -201,10 +201,10 @@ describe.each(CEREMONIES)("my safety consent — $title as a modal", (c) => {
     const write = deferred<unknown>();
     mount({ post: () => write.promise });
     const dialog = await c.open();
-    c.fill(dialog);
-    // A click outside never discards what was typed.
+    // The scrim never dismisses it. Clicked BEFORE anything is typed, so only `dismissOnScrim` decides.
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByRole("dialog", { name: c.title })).toBe(dialog);
+    c.fill(dialog);
     press(dialog);
     await waitFor(() =>
       expect(

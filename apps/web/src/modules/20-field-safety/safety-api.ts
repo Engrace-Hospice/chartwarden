@@ -256,6 +256,28 @@ export function isStaleVersion(error: unknown): boolean {
 }
 
 /**
+ * The words for a write the server refused as stale, after the row was re-read (`freshVersion`, `null` when the re-read
+ * failed). A refusal at an UNCHANGED version is a bare conflict: it must not claim the record changed. `lostReply`: an
+ * earlier attempt in the same dialog got no answer, so the row may have moved because of IT, not someone else.
+ */
+export function staleRefusalMessage(args: {
+  subject: string;
+  staleVersion: number;
+  freshVersion: number | null;
+  lostReply: boolean;
+}): string {
+  const { subject, staleVersion, freshVersion, lostReply } = args;
+  const head = lostReply
+    ? `${subject} was refused, and an earlier attempt got no answer and may have been recorded.`
+    : `${subject} was not recorded.`;
+  if (freshVersion === null)
+    return `${head} The record changed and could not be re-read; cancel and open it again.`;
+  if (freshVersion === staleVersion)
+    return `${head} The server reported a conflict, but the record is still at version ${freshVersion}; what you typed is kept.`;
+  return `${head} The record changed while you were working; it was re-read (now version ${freshVersion}) and what you typed is kept. Submit again if it is still needed.`;
+}
+
+/**
  * `client.POST/PUT/PATCH/DELETE` REJECT on a network failure instead of returning `{ error }`. A write handler runs
  * its call through `.catch(() => null)` so that failure reaches the handler as `null` (and `saving` is reset on
  * every path); this is the sentence for it. Nothing came back, so the write may have landed: the copy says so rather

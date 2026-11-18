@@ -12,7 +12,7 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { FormModal } from "../../shell/form-modal";
@@ -20,11 +20,13 @@ import {
   type ActiveSosView,
   NO_ANSWER,
   type SafetySosAcknowledgeOutcome,
+  type SafetySosAlertView,
   acknowledgeSos,
   errorMessage,
   getSosAlert,
   isStaleVersion,
   listActiveSos,
+  staleRefusalMessage,
 } from "./safety-api";
 import {
   ACKNOWLEDGMENT_OUTCOMES,
@@ -36,6 +38,8 @@ import {
   meetsMinChars,
   minutesSince,
   shortId,
+  sosAlreadySettled,
+  sosSettledMessage,
 } from "./safety-status";
 import { Notice, SelectField, SosStatePill, TextAreaField, TextField } from "./safety-ui";
 
@@ -66,6 +70,10 @@ export function ActiveSosScreen(): JSX.Element {
   const [phoneMasked, setPhoneMasked] = useState("");
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  // The re-read after a stale refusal showed the alert no longer needs this acknowledgment: nothing is left to submit.
+  const [nothingToSubmit, setNothingToSubmit] = useState(false);
+  // An attempt in this dialog got no answer, so it may have landed: a later refusal can be THAT attempt's doing.
+  const lostReply = useRef(false);
 
   const load = useCallback(
     async (background = false) => {
@@ -97,6 +105,8 @@ export function ActiveSosScreen(): JSX.Element {
     async (id: string, who: string) => {
       setAckOpening(id);
       setModalError(null);
+      setNothingToSubmit(false);
+      lostReply.current = false;
       setOpenError(null);
       const res = await getSosAlert(client, id).catch(() => null);
       setAckOpening(null);
@@ -123,6 +133,8 @@ export function ActiveSosScreen(): JSX.Element {
     setOutcome(DEFAULT_ACK_OUTCOME);
     setPhoneMasked("");
     setModalError(null);
+    setNothingToSubmit(false);
+    lostReply.current = false;
   }, []);
 
   const submitAck = useCallback(async () => {
@@ -136,29 +148,44 @@ export function ActiveSosScreen(): JSX.Element {
       outcome: outcome as SafetySosAcknowledgeOutcome,
       ...(phoneMasked.trim() ? { outreachPhoneNumberMasked: phoneMasked.trim() } : {}),
     }).catch(() => null);
-    // The alert moved while the responder typed (the poll and escalation bump its version): re-read it now and
-    // refresh ONLY the stamp, so what was typed is kept and the next submit carries the current version.
-    let refreshedVersion: number | null = null;
-    if (res && isStaleVersion(res.error)) {
-      const fresh = await getSosAlert(client, target.id).catch(() => null);
-      refreshedVersion = fresh?.alert?.version ?? null;
-      if (refreshedVersion !== null) {
-        const version = refreshedVersion;
+    if (!res) lostReply.current = true;
+    // The alert moved while the responder typed (the poll and escalation bump its version), or an earlier attempt's
+    // lost reply had landed: re-read it now and refresh ONLY the stamp, so what was typed is kept and the next submit
+    // carries the current version.
+    let fresh: SafetySosAlertView | null = null;
+    const stale = res !== null && isStaleVersion(res.error);
+    if (stale) {
+      const reread = await getSosAlert(client, target.id).catch(() => null);
+      fresh = reread?.alert ?? null;
+      if (fresh) {
+        const { version } = fresh;
         setAckFor((current) => (current?.id === target.id ? { ...current, version } : current));
       }
     }
     setSaving(false);
     if (!res || res.error) {
       // Names the alert: a failure must never read as another alert's.
-      const lead = `The acknowledgment for ${target.who} was not recorded.`;
+      const subject = `The acknowledgment for ${target.who}`;
+      const settled = fresh !== null && sosAlreadySettled("acknowledge", fresh);
+      if (settled) setNothingToSubmit(true);
       setModalError(
         !res
-          ? `The acknowledgment for ${target.who} was not confirmed. ${NO_ANSWER}`
-          : isStaleVersion(res.error)
-            ? refreshedVersion !== null
-              ? `${lead} The alert changed while you were typing; it was re-read (version ${refreshedVersion}) and what you typed is kept. Submit again if it is still needed.`
-              : `${lead} The alert changed while you were typing and could not be re-read. Cancel and open it again.`
-            : `${lead} ${errorMessage(res.error, "")}`.trim(),
+          ? `${subject} was not confirmed. ${NO_ANSWER}`
+          : fresh && settled
+            ? sosSettledMessage(
+                "acknowledge",
+                `The alert for ${target.who}`,
+                fresh,
+                lostReply.current,
+              )
+            : stale
+              ? staleRefusalMessage({
+                  subject,
+                  staleVersion: target.version,
+                  freshVersion: fresh?.version ?? null,
+                  lostReply: lostReply.current,
+                })
+              : `${subject} was not recorded. ${errorMessage(res.error, "")}`.trim(),
       );
       return;
     }
@@ -455,7 +482,9 @@ export function ActiveSosScreen(): JSX.Element {
               size="lg"
               type="button"
               onClick={() => void submitAck()}
-              disabled={saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)}
+              disabled={
+                saving || nothingToSubmit || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
+              }
             >
               {saving ? "Recording..." : "Record acknowledgment"}
             </Button>

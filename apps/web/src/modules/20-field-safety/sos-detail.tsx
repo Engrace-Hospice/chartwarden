@@ -40,6 +40,7 @@ import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { FormModal } from "../../shell/form-modal";
 import {
+  NO_ANSWER,
   type SafetySosAcknowledgeOutcome,
   type SafetySosAlertView,
   type SafetySosResolveOutcome,
@@ -48,7 +49,9 @@ import {
   errorMessage,
   getLocationStream,
   getSosAlert,
+  isStaleVersion,
   resolveSos,
+  staleRefusalMessage,
   writeErrorMessage,
 } from "./safety-api";
 import {
@@ -66,6 +69,8 @@ import {
   meetsMinChars,
   minutesSince,
   shortId,
+  sosAlreadySettled,
+  sosSettledMessage,
   sosStateLabel,
 } from "./safety-status";
 import {
@@ -117,6 +122,10 @@ function SosDetailBody(): JSX.Element {
   const [accessReason, setAccessReason] = useState("");
   const [stream, setStream] = useState<SosLocationStreamPage | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
+  // The re-read after a stale refusal showed the alert no longer needs this write: nothing is left to submit.
+  const [nothingToSubmit, setNothingToSubmit] = useState(false);
+  // An attempt in this dialog got no answer, so it may have landed: a later refusal can be THAT attempt's doing.
+  const lostReply = useRef(false);
 
   // Only the newest read may write state: a slower earlier one (or a write's post-reload) must not land on top of it.
   const latestRead = useRef(0);
@@ -144,6 +153,16 @@ function SosDetailBody(): JSX.Element {
     void load();
   }, [load]);
 
+  // After a write was refused as stale: re-read the alert (the newest read wins, so a slower one cannot land on top)
+  // and show what the server holds. Only the stamp matters to the write; what was typed lives in its own state.
+  const rereadAlert = useCallback(async (): Promise<SafetySosAlertView | null> => {
+    const readId = ++latestRead.current;
+    const res = await getSosAlert(client, sosAlertId).catch(() => null);
+    if (readId !== latestRead.current || !res?.alert) return null;
+    setAlert(res.alert);
+    return res.alert;
+  }, [client, sosAlertId]);
+
   // Nothing typed or refused in a ceremony outlives it: an audit reason or an account is written fresh each time.
   const resetDrafts = useCallback(() => {
     setActionTaken("");
@@ -154,6 +173,8 @@ function SosDetailBody(): JSX.Element {
     setAccessReason("");
     setStreamError(null);
     setModalError(null);
+    setNothingToSubmit(false);
+    lostReply.current = false;
   }, []);
 
   const openCeremony = useCallback(
@@ -185,16 +206,34 @@ function SosDetailBody(): JSX.Element {
       // `ackOutcome` is always one of the closed vocabulary the SelectField below offers.
       outcome: ackOutcome as SafetySosAcknowledgeOutcome,
     }).catch(() => null);
+    if (!res) lostReply.current = true;
+    const stale = res !== null && isStaleVersion(res.error);
+    const fresh = stale ? await rereadAlert() : null;
     setSaving(false);
     if (!res || res.error) {
-      setModalError(writeErrorMessage(res, "The acknowledgment was not recorded."));
+      const settled = fresh !== null && sosAlreadySettled("acknowledge", fresh);
+      if (settled) setNothingToSubmit(true);
+      setModalError(
+        !res
+          ? NO_ANSWER
+          : fresh && settled
+            ? sosSettledMessage("acknowledge", "This alert", fresh, lostReply.current)
+            : stale
+              ? staleRefusalMessage({
+                  subject: "The acknowledgment",
+                  staleVersion: alert.version,
+                  freshVersion: fresh?.version ?? null,
+                  lostReply: lostReply.current,
+                })
+              : writeErrorMessage(res, "The acknowledgment was not recorded."),
+      );
       return;
     }
     closeIfStill("acknowledge");
     setActionTaken("");
     setAckOutcome(DEFAULT_ACK_OUTCOME);
     await load();
-  }, [ackOutcome, actionTaken, alert, client, closeIfStill, load]);
+  }, [ackOutcome, actionTaken, alert, client, closeIfStill, load, rereadAlert]);
 
   const submitResolve = useCallback(async () => {
     if (!alert) return;
@@ -206,9 +245,27 @@ function SosDetailBody(): JSX.Element {
       outcome: outcome as SafetySosResolveOutcome,
       openIncidentFromOutcome: openIncident,
     }).catch(() => null);
+    if (!res) lostReply.current = true;
+    const stale = res !== null && isStaleVersion(res.error);
+    const fresh = stale ? await rereadAlert() : null;
     setSaving(false);
     if (!res || res.error) {
-      setModalError(writeErrorMessage(res, "The alert was not closed."));
+      const settled = fresh !== null && sosAlreadySettled("resolve", fresh);
+      if (settled) setNothingToSubmit(true);
+      setModalError(
+        !res
+          ? NO_ANSWER
+          : fresh && settled
+            ? sosSettledMessage("resolve", "This alert", fresh, lostReply.current)
+            : stale
+              ? staleRefusalMessage({
+                  subject: "The closure",
+                  staleVersion: alert.version,
+                  freshVersion: fresh?.version ?? null,
+                  lostReply: lostReply.current,
+                })
+              : writeErrorMessage(res, "The alert was not closed."),
+      );
       return;
     }
     closeIfStill("resolve");
@@ -218,7 +275,7 @@ function SosDetailBody(): JSX.Element {
     // The write may have produced an incident; the reload is what tells us its id, so the CTA below can
     // link to a real row rather than to one this screen assumed into existence.
     await load();
-  }, [alert, client, closeIfStill, load, narrative, openIncident, outcome]);
+  }, [alert, client, closeIfStill, load, narrative, openIncident, outcome, rereadAlert]);
 
   /** The D6 reveal. See rule 2 in the module header: the banner precedes the request, never the result. */
   const revealCoordinates = useCallback(async () => {
@@ -245,7 +302,9 @@ function SosDetailBody(): JSX.Element {
     closeIfStill("coordinates");
   }, [accessReason, alert, client, closeIfStill]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first read only: a refetch (Reload, a write's re-read) keeps the page, and so the opener
+  // the modal returns focus to, mounted.
+  if (loading && !alert) return <LoadingSpinner />;
   if (!alert)
     return (
       <EmptyState
@@ -551,7 +610,9 @@ function SosDetailBody(): JSX.Element {
               size="lg"
               type="button"
               onClick={() => void submitAck()}
-              disabled={saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)}
+              disabled={
+                saving || nothingToSubmit || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
+              }
             >
               {saving ? "Recording…" : "Record acknowledgment"}
             </Button>
@@ -586,7 +647,9 @@ function SosDetailBody(): JSX.Element {
               size="lg"
               type="button"
               onClick={() => void submitResolve()}
-              disabled={saving || !meetsMinChars(narrative, SOS_RESOLUTION_MIN_CHARS)}
+              disabled={
+                saving || nothingToSubmit || !meetsMinChars(narrative, SOS_RESOLUTION_MIN_CHARS)
+              }
             >
               {saving
                 ? "Closing…"

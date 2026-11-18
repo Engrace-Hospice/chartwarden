@@ -35,20 +35,23 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { FormDrawer } from "../../shell/form-drawer";
 import { FormModal } from "../../shell/form-modal";
 import {
+  NO_ANSWER,
   type SafetyIncidentCategory,
   type SafetyIncidentSeverity,
   type SafetyIncidentStateTransition,
   type SafetyIncidentView,
   errorMessage,
   getIncident,
+  isStaleVersion,
   oshaSignoff,
   patchIncident,
+  staleRefusalMessage,
   submitIncident,
   transitionIncident,
   writeErrorMessage,
@@ -88,6 +91,7 @@ import {
 type Ceremony = "none" | "edit" | "submit" | "transition" | "osha";
 
 const CLOSED_STATES = INCIDENT_CLOSED_STATES;
+const EDIT_FIRST = "Save or cancel the edit first";
 
 /** Keyed on the incident: another incident starts from scratch, so an open drawer and its drafts never follow the
  *  route to a record they were not written for (Save would stamp `incident.version` of the NEW one). */
@@ -127,9 +131,15 @@ function IncidentDetailBody(): JSX.Element {
   const [stateCode, setStateCode] = useState("");
   const [windowHours, setWindowHours] = useState("24");
 
+  // Only the newest read may write state: a slower earlier one (or a write's re-read) must not land on top of it.
+  const latestRead = useRef(0);
+  // An attempt in this dialog got no answer, so it may have landed: a later refusal can be THAT attempt's doing.
+  const lostReply = useRef(false);
   const load = useCallback(async () => {
+    const readId = ++latestRead.current;
     setLoading(true);
     const res = await getIncident(client, incidentId);
+    if (readId !== latestRead.current) return;
     if (res.error || !res.incident) {
       setError(errorMessage(res.error, "That incident could not be read."));
       setIncident(null);
@@ -143,6 +153,42 @@ function IncidentDetailBody(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // After a write was refused as stale: re-read the incident (the newest read wins) and show what the server holds.
+  // Only the stamp matters to the write; what was typed lives in its own state.
+  const rereadIncident = useCallback(async (): Promise<SafetyIncidentView | null> => {
+    const readId = ++latestRead.current;
+    const res = await getIncident(client, incidentId).catch(() => null);
+    if (readId !== latestRead.current || !res?.incident) return null;
+    setIncident(res.incident);
+    return res.incident;
+  }, [client, incidentId]);
+
+  // What a ceremony's write came back with: `null` when it landed, else the refusal to show. A stale refusal re-reads
+  // the incident first, so the next submit carries the current version and nothing typed is lost.
+  const refusalOf = useCallback(
+    async (
+      res: { error: unknown } | null,
+      subject: string,
+      fallback: string,
+      staleVersion: number,
+    ): Promise<string | null> => {
+      if (res && !res.error) return null;
+      if (!res) {
+        lostReply.current = true;
+        return NO_ANSWER;
+      }
+      if (!isStaleVersion(res.error)) return writeErrorMessage(res, fallback);
+      const fresh = await rereadIncident();
+      return staleRefusalMessage({
+        subject,
+        staleVersion,
+        freshVersion: fresh?.version ?? null,
+        lostReply: lostReply.current,
+      });
+    },
+    [rereadIncident],
+  );
 
   // Nothing typed or refused in a ceremony outlives it: a reason, a state code or a narrative is written fresh each
   // time.
@@ -163,6 +209,7 @@ function IncidentDetailBody(): JSX.Element {
     setStateCode("");
     setWindowHours("24");
     setModalError(null);
+    lostReply.current = false;
   }, []);
 
   const openCeremony = useCallback(
@@ -246,15 +293,21 @@ function IncidentDetailBody(): JSX.Element {
       oshaReportable: incident.oshaReportable,
       ...(finalNarrative.trim() ? { finalNarrative } : {}),
     }).catch(() => null);
+    const refusal = await refusalOf(
+      res,
+      "The submission",
+      "The incident was not submitted.",
+      incident.version,
+    );
     setSaving(false);
-    if (!res || res.error) {
-      setModalError(writeErrorMessage(res, "The incident was not submitted."));
+    if (refusal) {
+      setModalError(refusal);
       return;
     }
     closeIfStill("submit");
     setFinalNarrative("");
     await load();
-  }, [client, closeIfStill, finalNarrative, incident, load]);
+  }, [client, closeIfStill, finalNarrative, incident, load, refusalOf]);
 
   const doTransition = useCallback(async () => {
     if (!incident) return;
@@ -266,16 +319,22 @@ function IncidentDetailBody(): JSX.Element {
       reason,
       ...(toState === "closed_with_action_plan" && actionPlan.trim() ? { actionPlan } : {}),
     }).catch(() => null);
+    const refusal = await refusalOf(
+      res,
+      "The state change",
+      "The transition was refused.",
+      incident.version,
+    );
     setSaving(false);
-    if (!res || res.error) {
-      setModalError(writeErrorMessage(res, "The transition was refused."));
+    if (refusal) {
+      setModalError(refusal);
       return;
     }
     closeIfStill("transition");
     setReason("");
     setActionPlan("");
     await load();
-  }, [actionPlan, client, closeIfStill, incident, load, reason, toState]);
+  }, [actionPlan, client, closeIfStill, incident, load, reason, refusalOf, toState]);
 
   const doOsha = useCallback(async () => {
     if (!incident) return;
@@ -287,17 +346,35 @@ function IncidentDetailBody(): JSX.Element {
       stateCode: stateCode.trim().toUpperCase(),
       reportingWindowHours: Number(windowHours),
     }).catch(() => null);
+    const refusal = await refusalOf(
+      res,
+      "The sign-off",
+      "The sign-off was refused.",
+      incident.version,
+    );
     setSaving(false);
-    if (!res || res.error) {
-      setModalError(writeErrorMessage(res, "The sign-off was refused."));
+    if (refusal) {
+      setModalError(refusal);
       return;
     }
     closeIfStill("osha");
     setOshaReason("");
     await load();
-  }, [client, closeIfStill, incident, load, oshaReason, oshaReportable, stateCode, windowHours]);
+  }, [
+    client,
+    closeIfStill,
+    incident,
+    load,
+    oshaReason,
+    oshaReportable,
+    refusalOf,
+    stateCode,
+    windowHours,
+  ]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first read only: a refetch (Reload, a write's re-read) keeps the page, and so the opener
+  // the modal returns focus to, mounted.
+  if (loading && !incident) return <LoadingSpinner />;
   if (!incident)
     return (
       <EmptyState
@@ -306,6 +383,8 @@ function IncidentDetailBody(): JSX.Element {
       />
     );
 
+  // A ceremony opens with every draft cleared, so the open draft edit would be dropped without a word.
+  const editingDraft = ceremony === "edit";
   const isDraft = incident.lifecycleState === "draft";
   const isClosed = CLOSED_STATES.includes(incident.lifecycleState);
   const filedOnBehalf = incident.affectedClinicianMembershipId !== incident.reportedByMembershipId;
@@ -370,6 +449,8 @@ function IncidentDetailBody(): JSX.Element {
                       size="lg"
                       type="button"
                       onClick={() => openCeremony("submit")}
+                      disabled={editingDraft}
+                      title={editingDraft ? EDIT_FIRST : undefined}
                     >
                       Submit for review
                     </Button>
@@ -381,6 +462,8 @@ function IncidentDetailBody(): JSX.Element {
                     size="lg"
                     type="button"
                     onClick={() => openCeremony("transition")}
+                    disabled={editingDraft}
+                    title={editingDraft ? EDIT_FIRST : undefined}
                   >
                     Change state
                   </Button>
@@ -393,7 +476,8 @@ function IncidentDetailBody(): JSX.Element {
                     openCeremony("osha");
                     setOshaReportable(!incident.oshaReportable);
                   }}
-                  disabled={isClosed}
+                  disabled={isClosed || editingDraft}
+                  title={editingDraft ? EDIT_FIRST : undefined}
                 >
                   OSHA sign-off
                 </Button>

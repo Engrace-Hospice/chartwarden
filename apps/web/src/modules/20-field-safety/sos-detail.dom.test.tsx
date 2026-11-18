@@ -461,10 +461,10 @@ describe.each(CEREMONIES)("SOS detail — $title as a modal", (c) => {
       writing(c.via, () => write.promise),
     );
     const dialog = await open(c.opener, c.title);
-    c.fill(dialog);
-    // A click outside never discards what was typed.
+    // The scrim never dismisses it. Clicked BEFORE anything is typed, so only `dismissOnScrim` decides.
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByRole("dialog", { name: c.title })).toBe(dialog);
+    c.fill(dialog);
     press(dialog);
     await waitFor(() =>
       expect(
@@ -490,5 +490,218 @@ describe.each(CEREMONIES)("SOS detail — $title as a modal", (c) => {
     ).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(gone);
+  });
+});
+
+describe("SOS detail — a refused stale version", () => {
+  const live = (version: number, over: Partial<SafetySosAlertView> = {}) =>
+    ok({ ...alertIn("escalation_tier_1", false), version, ...over });
+  const stampOf = (post: ReturnType<typeof vi.fn>, call: number): string =>
+    (post.mock.calls[call] as unknown as [string, { headers: Record<string, string> }])[1].headers[
+      "If-Match"
+    ] ?? "";
+  const alertReads = (get: ReturnType<typeof vi.fn>): number =>
+    get.mock.calls.filter((c) => c[0] === "/api/v1/safety/sos/{sosAlertId}").length;
+  const typeAccount = (dialog: HTMLElement) =>
+    fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
+      target: { value: ACTION },
+    });
+  const typeNarrative = (dialog: HTMLElement) =>
+    fireEvent.change(within(dialog).getByLabelText("What happened, and how did it end?"), {
+      target: { value: NARRATIVE },
+    });
+
+  it.each([
+    {
+      title: "Acknowledge this SOS",
+      opener: "Acknowledge",
+      save: "Record acknowledgment",
+      field: "What did you do?",
+      typed: ACTION,
+      state: alertIn("escalation_tier_1", false),
+    },
+    {
+      title: "Resolve this SOS",
+      opener: "Resolve",
+      save: "Close this alert",
+      field: "What happened, and how did it end?",
+      typed: NARRATIVE,
+      state: alertIn("acknowledged", true),
+    },
+  ])(
+    "re-reads the version itself for $title, keeps what was typed, and the next submit succeeds",
+    async (c) => {
+      let version = 3;
+      let writes = 0;
+      const { post } = mount(c.state, {
+        alertRead: async () => ok({ ...c.state, version }),
+        post: async () => (writes++ === 0 ? refused("STALE_LIFECYCLE_STATE") : ok({})),
+      });
+      const dialog = await open(c.opener, c.title);
+      version = 4; // the alert changed while the responder was typing
+      fireEvent.change(within(dialog).getByLabelText(c.field), { target: { value: c.typed } });
+      fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+      const refusal = await within(dialog).findByText(/re-read \(now version 4\)/);
+      expect(refusal.getAttribute("role")).toBe("alert");
+      // What was typed is kept and the refusal stays visible, so the responder can submit again.
+      expect((within(dialog).getByLabelText(c.field) as HTMLTextAreaElement).value).toBe(c.typed);
+      expect(
+        (within(dialog).getByRole("button", { name: c.save }) as HTMLButtonElement).disabled,
+      ).toBe(false);
+      fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+      expect(stampOf(post, 0)).toBe("3");
+      expect(stampOf(post, 1)).toBe("4");
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: c.title })).toBeNull());
+    },
+  );
+
+  it("does not claim a change when a bare conflict comes back at the same version", async () => {
+    mount(alertIn("escalation_tier_1", false), {
+      alertRead: async () => live(3),
+      post: async () => refused("CONFLICT"),
+    });
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    typeAccount(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
+    const refusal = await within(dialog).findByText(/The acknowledgment was not recorded/);
+    expect(refusal.textContent).toContain("still at version 3");
+    expect(refusal.textContent).not.toContain("re-read");
+  });
+
+  it("says so when the version cannot be re-read, and the dialog can still be dismissed", async () => {
+    let reads = 0;
+    mount(alertIn("escalation_tier_1", false), {
+      alertRead: async () => {
+        if (reads++ === 0) return live(3);
+        throw new TypeError("Failed to fetch");
+      },
+      post: async () => refused("STALE_LIFECYCLE_STATE"),
+    });
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    typeAccount(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
+    await within(dialog).findByText(/could not be re-read/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Acknowledge this SOS" })).toBeNull(),
+    );
+  });
+
+  it("does not re-read the alert for a refusal that is not about the version", async () => {
+    const { get } = mount(alertIn("escalation_tier_1", false), {
+      post: async () => refused("FORBIDDEN"),
+    });
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    typeAccount(dialog);
+    const readsBefore = alertReads(get);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
+    await within(dialog).findByText(/You do not hold the authority/);
+    expect(alertReads(get)).toBe(readsBefore);
+  });
+
+  it("says it was already acknowledged, and offers no resubmit, after a lost reply whose attempt landed", async () => {
+    let reads = 0;
+    let writes = 0;
+    const { post } = mount(alertIn("escalation_tier_1", false), {
+      alertRead: async () =>
+        reads++ === 0
+          ? live(3)
+          : live(4, {
+              lifecycleState: "acknowledged",
+              acknowledgedAt: "2026-11-18T12:01:00.000Z",
+            }),
+      post: async () => {
+        if (writes++ === 0) throw new TypeError("Failed to fetch");
+        return refused("STALE_LIFECYCLE_STATE");
+      },
+    });
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    typeAccount(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
+    await within(dialog).findByText(/No answer came back/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
+    const message = await within(dialog).findByText(/was already acknowledged/);
+    expect(message.textContent).toContain("it may be the one that landed");
+    expect(
+      (within(dialog).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(post).toHaveBeenCalledTimes(2);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Acknowledge this SOS" })).toBeNull(),
+    );
+  });
+
+  it("says the alert is already closed, and offers no resubmit, when the resolution had landed", async () => {
+    let reads = 0;
+    let writes = 0;
+    mount(alertIn("acknowledged", true), {
+      alertRead: async () =>
+        reads++ === 0
+          ? ok(alertIn("acknowledged", true))
+          : ok({ ...alertIn("resolved", true), version: 5 }),
+      post: async () => {
+        if (writes++ === 0) throw new TypeError("Failed to fetch");
+        return refused("STALE_LIFECYCLE_STATE");
+      },
+    });
+    const dialog = await open("Resolve", "Resolve this SOS");
+    typeNarrative(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close this alert" }));
+    await within(dialog).findByText(/No answer came back/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close this alert" }));
+    const message = await within(dialog).findByText(/is no longer open/);
+    expect(message.textContent).toContain("it may be the one that landed");
+    expect(
+      (within(dialog).getByRole("button", { name: "Close this alert" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+});
+
+describe("SOS detail — the page stays mounted while it re-reads", () => {
+  it.each([
+    {
+      title: "Acknowledge this SOS",
+      opener: "Acknowledge",
+      save: "Record acknowledgment",
+      fill: fillAccount,
+      state: alertIn("escalation_tier_1", false),
+    },
+    {
+      title: "Resolve this SOS",
+      opener: "Resolve",
+      save: "Close this alert",
+      fill: fillNarrative,
+      state: alertIn("acknowledged", true),
+    },
+  ])("returns focus to the opener after $title is recorded", async (c) => {
+    mount(c.state);
+    const opener = await screen.findByRole("button", { name: c.opener });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: c.title });
+    c.fill(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: c.title })).toBeNull());
+    // The re-read after the write did not unmount the page: the opener is the very node focus came from.
+    expect(opener.isConnected).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it("keeps the alert on screen while a reload is in flight", async () => {
+    let reads = 0;
+    const slow = deferred<unknown>();
+    mount(alertIn("escalation_tier_1", false), {
+      alertRead: () =>
+        reads++ === 0 ? Promise.resolve(ok(alertIn("escalation_tier_1", false))) : slow.promise,
+    });
+    const reload = await screen.findByRole("button", { name: "Reload" });
+    fireEvent.click(reload);
+    expect(screen.getByRole("heading", { name: /SOS 11111111/ })).toBeTruthy();
+    expect(reload.isConnected).toBe(true);
+    slow.resolve(ok(alertIn("escalation_tier_1", false)));
   });
 });

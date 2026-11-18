@@ -64,6 +64,11 @@ const deferred = <T,>() => {
 const offline = async (): Promise<never> => {
   throw new TypeError("Failed to fetch");
 };
+const refused = (code: string) => ({
+  data: undefined,
+  error: { error: { code } },
+  response: new Response(null, { status: 409 }),
+});
 
 // Stands in for any navigation from this incident's page to another incident's.
 function GoToAnotherIncident(): JSX.Element {
@@ -77,7 +82,11 @@ function GoToAnotherIncident(): JSX.Element {
 
 function mount(
   state: SafetyIncidentView["lifecycleState"],
-  opts: { post?: () => Promise<unknown>; patch?: () => Promise<unknown> } = {},
+  opts: {
+    post?: () => Promise<unknown>;
+    patch?: () => Promise<unknown>;
+    read?: () => Promise<unknown>;
+  } = {},
 ): {
   get: ReturnType<typeof vi.fn>;
   patch: ReturnType<typeof vi.fn>;
@@ -85,17 +94,16 @@ function mount(
 } {
   const patch = vi.fn(opts.patch ?? (async () => ok({})));
   const post = vi.fn(opts.post ?? (async () => ok({})));
-  const get = vi.fn(async (_path: string, init?: { params?: { path?: { incidentId?: string } } }) =>
-    ok(
+  const get = vi.fn(
+    async (_path: string, init?: { params?: { path?: { incidentId?: string } } }) =>
       init?.params?.path?.incidentId === "inc-2"
-        ? {
+        ? ok({
             ...incident(state),
             id: "22222222-2222-4222-8222-222222222222",
             locationDescription: "Garage door",
             version: 9,
-          }
-        : incident(state),
-    ),
+          })
+        : (opts.read?.() ?? ok(incident(state))),
   );
   const client = { GET: get, PATCH: patch, POST: post } as unknown as ApiClient;
   render(
@@ -392,10 +400,10 @@ describe.each(CEREMONIES)("incident detail — $title as a modal", (c) => {
     const write = deferred<unknown>();
     mount(c.state, { post: () => write.promise });
     const dialog = await open(c.opener, c.title);
-    c.fill(dialog);
-    // A click outside never discards what was typed.
+    // The scrim never dismisses it. Clicked BEFORE anything is typed, so only `dismissOnScrim` decides.
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByRole("dialog", { name: c.title })).toBe(dialog);
+    c.fill(dialog);
     press(dialog);
     await waitFor(() =>
       expect(
@@ -421,5 +429,184 @@ describe.each(CEREMONIES)("incident detail — $title as a modal", (c) => {
     ).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(gone);
+  });
+});
+
+// A write refused as stale (the row moved since it was read): the dialog re-reads the incident itself.
+const STALE_CEREMONIES = [
+  {
+    title: "Submit this incident for review",
+    opener: "Submit for review",
+    state: "draft",
+    save: "Submit",
+    field: "Anything to add before it goes?",
+    typed: "One more detail about the porch step.",
+  },
+  {
+    title: "Change this incident's state",
+    opener: "Change state",
+    state: "submitted",
+    save: "Record transition",
+    field: "Why",
+    typed: REASON,
+  },
+  {
+    title: "OSHA-equivalent sign-off",
+    opener: "OSHA sign-off",
+    state: "submitted",
+    save: "Sign off as reportable",
+    field: /^Reason/,
+    typed: RULE,
+  },
+] as const;
+
+describe.each(STALE_CEREMONIES)("incident detail — $title refused as stale", (c) => {
+  const live = (version: number) => ok({ ...incident(c.state), version });
+  const stampOf = (post: ReturnType<typeof vi.fn>, call: number): string =>
+    (post.mock.calls[call] as unknown as [string, { headers: Record<string, string> }])[1].headers[
+      "If-Match"
+    ] ?? "";
+  const incidentReads = (get: ReturnType<typeof vi.fn>): number =>
+    get.mock.calls.filter((call) => call[0] === "/api/v1/safety/incidents/{incidentId}").length;
+  // The sign-off also needs a state and the form for a state change a reason; fill what the save button waits for.
+  const fillAll = (dialog: HTMLElement): void => {
+    fireEvent.change(within(dialog).getByLabelText(c.field), { target: { value: c.typed } });
+    if (c.opener === "OSHA sign-off")
+      fireEvent.change(within(dialog).getByLabelText("State"), { target: { value: "or" } });
+  };
+  const textOf = (dialog: HTMLElement) =>
+    (within(dialog).getByLabelText(c.field) as HTMLTextAreaElement).value;
+
+  it("re-reads the version itself, keeps what was typed and the refusal, and the next submit succeeds", async () => {
+    let version = 2;
+    let writes = 0;
+    const { post } = mount(c.state, {
+      read: async () => live(version),
+      post: async () => (writes++ === 0 ? refused("STALE_LIFECYCLE_STATE") : ok({})),
+    });
+    const dialog = await open(c.opener, c.title);
+    version = 3; // the incident changed while the dialog was open
+    fillAll(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    const refusal = await within(dialog).findByText(/re-read \(now version 3\)/);
+    expect(refusal.getAttribute("role")).toBe("alert");
+    expect(textOf(dialog)).toBe(c.typed);
+    expect(
+      (within(dialog).getByRole("button", { name: c.save }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(stampOf(post, 0)).toBe("2");
+    expect(stampOf(post, 1)).toBe("3");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: c.title })).toBeNull());
+  });
+
+  it("does not claim a change when a bare conflict comes back at the same version", async () => {
+    mount(c.state, { read: async () => live(2), post: async () => refused("CONFLICT") });
+    const dialog = await open(c.opener, c.title);
+    fillAll(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    const refusal = await within(dialog).findByText(/was not recorded/);
+    expect(refusal.textContent).toContain("still at version 2");
+    expect(refusal.textContent).not.toContain("re-read");
+  });
+
+  it("says so when the version cannot be re-read, and the dialog can still be dismissed", async () => {
+    let reads = 0;
+    mount(c.state, {
+      read: async () => {
+        if (reads++ === 0) return live(2);
+        throw new TypeError("Failed to fetch");
+      },
+      post: async () => refused("STALE_LIFECYCLE_STATE"),
+    });
+    const dialog = await open(c.opener, c.title);
+    fillAll(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    await within(dialog).findByText(/could not be re-read/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: c.title })).toBeNull());
+  });
+
+  it("does not re-read the incident for a refusal that is not about the version", async () => {
+    const { get } = mount(c.state, { post: async () => refused("FORBIDDEN") });
+    const dialog = await open(c.opener, c.title);
+    fillAll(dialog);
+    const readsBefore = incidentReads(get);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    await within(dialog).findByText(/You do not hold the authority/);
+    expect(incidentReads(get)).toBe(readsBefore);
+  });
+
+  it("says an earlier attempt may have landed when a lost reply came first", async () => {
+    let writes = 0;
+    mount(c.state, {
+      read: async () => live(writes === 0 ? 2 : 3),
+      post: async () => {
+        if (writes++ === 0) throw new TypeError("Failed to fetch");
+        return refused("STALE_LIFECYCLE_STATE");
+      },
+    });
+    const dialog = await open(c.opener, c.title);
+    fillAll(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    await within(dialog).findByText(/No answer came back/);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    const refusal = await within(dialog).findByText(/an earlier attempt got no answer/);
+    expect(refusal.textContent).toContain("may have been recorded");
+  });
+
+  it("returns focus to the opener after it is recorded, because the page stayed mounted", async () => {
+    mount(c.state);
+    const opener = await screen.findByRole("button", { name: c.opener });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: c.title });
+    fillAll(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: c.title })).toBeNull());
+    expect(opener.isConnected).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+});
+
+describe("incident detail — the ceremonies wait for an open draft edit", () => {
+  const EDIT_FIRST = "Save or cancel the edit first";
+
+  it("disables Submit for review and OSHA sign-off while the editor is open, and says why", async () => {
+    mount("draft");
+    const drawer = await openDrawer("Edit draft", "Edit this draft");
+    fireEvent.change(within(drawer).getByLabelText("Where"), { target: { value: "Back steps" } });
+    for (const name of ["Submit for review", "OSHA sign-off"]) {
+      const opener = screen.getByRole("button", { name }) as HTMLButtonElement;
+      expect(opener.disabled).toBe(true);
+      expect(opener.title).toBe(EDIT_FIRST);
+      fireEvent.click(opener);
+    }
+    // Nothing opened over the edit, and the typed edit is still there.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect((within(drawer).getByLabelText("Where") as HTMLInputElement).value).toBe("Back steps");
+    // Once the edit is closed they are live again.
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Submit for review" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+  });
+
+  it("disables Change state too if the incident leaves draft while the editor is open", async () => {
+    let reads = 0;
+    mount("draft", {
+      read: async () => ok(incident(reads++ === 0 ? "draft" : "submitted")),
+    });
+    const drawer = await openDrawer("Edit draft", "Edit this draft");
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    const change = (await screen.findByRole("button", {
+      name: "Change state",
+    })) as HTMLButtonElement;
+    expect(change.disabled).toBe(true);
+    expect(change.title).toBe(EDIT_FIRST);
+    expect(drawer.isConnected).toBe(true);
   });
 });

@@ -232,10 +232,8 @@ export function MyConsentScreen(): JSX.Element {
                       key={purpose}
                       purpose={purpose}
                       consent={consent}
-                      // One form at a time: opening one closes the other.
                       onGrant={() => {
                         setModalError(null);
-                        setRevoking(null);
                         setContactName("");
                         setContactPhone("");
                         setContactRelationship("");
@@ -244,7 +242,6 @@ export function MyConsentScreen(): JSX.Element {
                       onRevoke={() => {
                         setRevokeReason("");
                         setModalError(null);
-                        setGranting(null);
                         setRevoking(purpose);
                       }}
                     />
