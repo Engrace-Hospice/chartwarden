@@ -170,8 +170,13 @@ describe("HOPE v1.00.1 validation engine", () => {
         kind: "assessment",
         cmsItemTypeCode: "Code",
       }));
+      // The omitted Section has no payload key AND nothing answered in it: answered items document a Section too.
       const answers = answerMap(
-        Object.fromEntries(activeItems.map((item) => [item.itemCode, "1"])),
+        Object.fromEntries(
+          activeItems
+            .filter((item) => item.sectionLabel !== omittedSection)
+            .map((item) => [item.itemCode, "1"]),
+        ),
       );
       const base = ctx({}, "final");
       const context: HopeValidationContext = {
@@ -217,6 +222,187 @@ describe("HOPE v1.00.1 validation engine", () => {
       expect(missingSections[0]?.itemCode).toBeUndefined();
     },
   );
+
+  describe("required Sections on an answers-only record", () => {
+    // The imported CMS spec defines A, F, I, J, M, N and Z; the answers API never writes the stored payload.
+    const SPEC_ITEMS = ["A", "F", "I", "J", "M", "N", "Z"].map((section) => `${section}0001`);
+
+    function sectionsContext(input: {
+      readonly rfaKind: "01_admission" | "05_discharge";
+      readonly isc: "HA" | "HD";
+      readonly items: readonly string[];
+      readonly answered?: readonly string[];
+      readonly skipped?: readonly string[];
+      readonly otherKindAnswered?: readonly string[];
+      readonly presentSections?: readonly string[];
+    }): HopeValidationContext {
+      const base = ctx({}, "final");
+      const otherKind = input.otherKindAnswered ?? [];
+      const activeItems = [
+        ...input.items.map((itemCode) => ({
+          itemCode,
+          sectionLabel: itemCode.slice(0, 1),
+          kind: "assessment",
+          cmsItemTypeCode: "Code",
+        })),
+        ...otherKind.map((itemCode) => ({
+          itemCode,
+          sectionLabel: itemCode.slice(0, 1),
+          kind: "Control",
+          cmsItemTypeCode: "Code",
+        })),
+      ];
+      const answers = new Map<string, { state: "answered" | "skipped"; value: string | null }>([
+        ...[...(input.answered ?? []), ...otherKind].map(
+          (itemCode) => [itemCode, { state: "answered" as const, value: "1" }] as const,
+        ),
+        ...(input.skipped ?? []).map(
+          (itemCode) => [itemCode, { state: "skipped" as const, value: null }] as const,
+        ),
+      ]);
+      return {
+        ...base,
+        assessment: { ...base.assessment, rfaKind: input.rfaKind, isc: input.isc },
+        presentSections: input.presentSections ?? [],
+        activeItems,
+        answers,
+        applicability: applicabilityEngine.evaluate({
+          isc: input.isc,
+          activeItemCodes: input.items,
+          answers,
+        }),
+      };
+    }
+
+    const missingSections = (context: HopeValidationContext): readonly string[] =>
+      validationEngine
+        .evaluate(context)
+        .filter((finding) => finding.ruleId === HOPE_VALIDATION_RULES.REQUIRED_SECTION_MISSING)
+        .map((finding) => finding.section);
+
+    it("finds no missing Section once every Section's items are answered, with no payload at all", () => {
+      expect(REQUIRED_SECTIONS_BY_RFA["01_admission"]).toContain("B"); // the matrix lists letters the spec lacks
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: SPEC_ITEMS,
+            answered: SPEC_ITEMS,
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    it("flags a Section the spec defines when nothing in it is answered and the payload lacks it", () => {
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: SPEC_ITEMS,
+            answered: SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("F")),
+          }),
+        ),
+      ).toEqual(["F"]);
+    });
+
+    it("counts a skipped item as documenting its Section", () => {
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: SPEC_ITEMS,
+            answered: SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("F")),
+            skipped: ["F0001"],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    it("still counts a Section the stored payload carries", () => {
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: SPEC_ITEMS,
+            answered: SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("F")),
+            presentSections: ["F"],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    it("lets only assessment items document a Section", () => {
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: SPEC_ITEMS,
+            answered: SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("F")),
+            otherKindAnswered: ["F9999"],
+          }),
+        ),
+      ).toEqual(["F"]);
+    });
+
+    it("does not require a Section whose only item is the signature date the workflow answers at signing", () => {
+      const withoutZ = SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("Z"));
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: [...withoutZ, "Z0500B"],
+            answered: withoutZ,
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    it("still requires Section Z when it carries an item besides the signature date", () => {
+      const withoutZ = SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("Z"));
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: [...withoutZ, "Z0350", "Z0500B"],
+            answered: withoutZ,
+          }),
+        ),
+      ).toEqual(["Z"]);
+    });
+
+    it("holds a payload-only record (no active items) to the whole matrix", () => {
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "01_admission",
+            isc: "HA",
+            items: [],
+            presentSections: ["A"],
+          }),
+        ),
+      ).toEqual(REQUIRED_SECTIONS_BY_RFA["01_admission"].filter((section) => section !== "A"));
+    });
+
+    it("applies the same rule to a discharge record", () => {
+      expect(
+        missingSections(
+          sectionsContext({
+            rfaKind: "05_discharge",
+            isc: "HD",
+            items: ["A0001", "Z0001"],
+            answered: ["A0001", "Z0001"],
+          }),
+        ),
+      ).toEqual([]);
+    });
+  });
 
   it("keeps generic item requiredness scoped by the authoritative matrix", () => {
     const answers = answerMap({});
