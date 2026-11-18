@@ -709,17 +709,19 @@ export function MedicareNoticesWorkspace(): JSX.Element {
                                     setIssueActionPending(issue.id);
                                     setIssueActionError(null);
                                     void attempt
-                                      .run(`notice-issue:${issue.id}:acknowledge:${issue.version}`, (key) =>
-                                        client.POST(
-                                        "/api/v1/billing/medicare-notice-issues/{id}/acknowledge",
-                                        {
-                                          params: {
-                                            path: { id: issue.id },
-                                            header: { "Idempotency-Key": key },
-                                          },
-                                          body: { expectedVersion: issue.version },
-                                        },
-                                        ),
+                                      .run(
+                                        `notice-issue:${issue.id}:acknowledge:${issue.version}`,
+                                        (key) =>
+                                          client.POST(
+                                            "/api/v1/billing/medicare-notice-issues/{id}/acknowledge",
+                                            {
+                                              params: {
+                                                path: { id: issue.id },
+                                                header: { "Idempotency-Key": key },
+                                              },
+                                              body: { expectedVersion: issue.version },
+                                            },
+                                          ),
                                       )
                                       .then(({ error }) => {
                                         if (error)

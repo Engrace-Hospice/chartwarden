@@ -871,19 +871,15 @@ describe("M23-CM5-T1 synthetic Claim.MD 837I rehearsal", () => {
     });
     registerPredicate(
       "caseload_or_scope",
-      async (context, target) =>
-        context.organizationId === ORG && target.patientId === PATIENT,
+      async (context, target) => context.organizationId === ORG && target.patientId === PATIENT,
     );
     registerPredicate("step_up_recent", (context, target) =>
       stepUpFreshFor(
         {
           organizationId: context.organizationId,
           sessionId:
-            typeof context.attributes.sessionId === "string"
-              ? context.attributes.sessionId
-              : null,
-          operationKey:
-            typeof target.operationKey === "string" ? target.operationKey : undefined,
+            typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null,
+          operationKey: typeof target.operationKey === "string" ? target.operationKey : undefined,
         },
         () => Date.now(),
       ),

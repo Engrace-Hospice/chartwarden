@@ -2044,7 +2044,9 @@ export function persistedRetryAttempt(
 } | null {
   if (row.dispatchState !== "pending" || row.outcome !== "queued") return null;
   if (!row.externalPatientControlNumber) {
-    throw new Error("persisted retry has no external patient control number; retry requires review");
+    throw new Error(
+      "persisted retry has no external patient control number; retry requires review",
+    );
   }
   return {
     claimControlNumber: row.claimControlNumber,

@@ -729,8 +729,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
   it("S01 (#708): submit -> clearinghouse ack -> payer ack -> 835 matched by CLP01 -> posted exactly once; claim state and ledger agree", async () => {
     const clearinghouse = new InMemoryClearinghouse();
     const deps = depsFor(clearinghouse);
-    const { claimId, submissionId, ccn, externalPatientControlNumber } =
-      await assembleReadyClaim();
+    const { claimId, submissionId, ccn, externalPatientControlNumber } = await assembleReadyClaim();
     await runInOrg((tx) =>
       runClaimSubmit(tx, deps, {
         organizationId: ORG,
