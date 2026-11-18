@@ -37,6 +37,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type DispatchedContentView,
   type ReturnDetail,
@@ -67,7 +68,6 @@ import {
 } from "./supplies-status";
 import {
   Field,
-  Modal,
   Notice,
   SchedulePill,
   SelectField,
@@ -75,7 +75,6 @@ import {
   TextAreaField,
   TextField,
   Timeline,
-  columnStyle,
   enumOptions,
   ghostButtonStyle,
   inputNarrowStyle,
@@ -258,354 +257,360 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
   };
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Comfort-kit return {shortId(ret.returnId)}</span>}
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to={`/supplies/dispatches/${ret.dispatchId}`} style={ghostButtonStyle}>
-              Dispatch
-            </Link>
-            <Link
-              to={`/supplies/dispatches/${ret.dispatchId}/perpetual-log`}
-              style={ghostButtonStyle}
-            >
-              Perpetual log
-            </Link>
-          </div>
-        }
-      />
+    <div
+      className={`wx-list-drawer${ceremony === "assign-retriever" || ceremony === "unreturnable" ? " has-drawer" : ""}`}
+    >
+      <div className="wx-list-drawer-main wx-kit-column">
+        <PageHeader
+          title={<span style={pageTitleStyle}>Comfort-kit return {shortId(ret.returnId)}</span>}
+          actions={
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              <Link to={`/supplies/dispatches/${ret.dispatchId}`} style={ghostButtonStyle}>
+                Dispatch
+              </Link>
+              <Link
+                to={`/supplies/dispatches/${ret.dispatchId}/perpetual-log`}
+                style={ghostButtonStyle}
+              >
+                Perpetual log
+              </Link>
+            </div>
+          }
+        />
 
-      {/* §5.6's non-dismissible banner: this fires on the RECORDED result, not the preview. */}
-      {ret.discrepancyDetected ? (
-        <Notice tone="error" assertive>
-          This reconciliation closed with a controlled-substance discrepancy. An M30 survey
-          investigation has been opened and an M36 high-severity alert published. Nothing on this
-          screen marks it explained — only closing that investigation does.
-        </Notice>
-      ) : null}
-
-      {ret.state === "unreturnable" ? (
-        <Notice tone="error">
-          This kit was written off as unreturnable under the 90-day assumption of loss, on an
-          attested reason from a named person. It is a survey-reportable disposition, not a
-          retrieval still in progress.
-        </Notice>
-      ) : null}
-
-      {ret.daysOverdue > 0 && open ? (
-        <Notice tone="warning">
-          This return is {ret.daysOverdue} day{ret.daysOverdue === 1 ? "" : "s"} past its 30-day
-          boundary.
-        </Notice>
-      ) : null}
-
-      {manifestError ? <Notice tone="error">{manifestError}</Notice> : null}
-      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
-
-      <Panel
-        stack
-        headingLevel={3}
-        title="Return"
-        action={
-          <StatusPill label={humanize(ret.state)} tone={toneOf(RETURN_STATE_TONE, ret.state)} />
-        }
-      >
-        <SummaryGrid>
-          <Field label="Patient" value={shortId(ret.patientId)} mono />
-          <Field label="Admission" value={shortId(ret.admissionId)} mono />
-          <Field label="Dispatch" value={shortId(ret.dispatchId)} mono />
-          <Field label="M13 deployment" value={shortId(ret.m13DeploymentId)} mono />
-          <Field label="Required at" value={dateTime(ret.returnRequiredAt)} />
-          <Field
-            label="Due"
-            value={`${shortDate(ret.returnDueAt)} · ${dueLabel(ret.returnDueAt)}`}
-          />
-          <Field label="Retriever" value={shortId(ret.assignedRetrievingMembershipId)} mono />
-          <Field label="Reconciled by" value={shortId(ret.reconciledByMembershipId)} mono />
-          <Field label="Disposal witness" value={shortId(ret.disposalWitnessMembershipId)} mono />
-          <Field label="Disposal method" value={humanize(ret.disposalMethod)} />
-          <Field label="Receipt document (M22)" value={shortId(ret.receiptDocumentId)} mono />
-          <Field label="Version stamp" value={dateTime(ret.updatedAt)} />
-        </SummaryGrid>
-        <span className="wx-text-muted">
-          The reason this return was opened is captured on the transition, not republished on the
-          read surface — the M4 audit record owns it.
-        </span>
-        {ret.disposalNotes ? (
-          <div>
-            <span className="wx-text-muted">Disposal notes (audit-denylisted free text)</span>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
-              {ret.disposalNotes}
-            </p>
-          </div>
+        {/* §5.6's non-dismissible banner: this fires on the RECORDED result, not the preview. */}
+        {ret.discrepancyDetected ? (
+          <Notice tone="error" assertive>
+            This reconciliation closed with a controlled-substance discrepancy. An M30 survey
+            investigation has been opened and an M36 high-severity alert published. Nothing on this
+            screen marks it explained — only closing that investigation does.
+          </Notice>
         ) : null}
-        {ret.discrepancyNotes ? (
-          <div>
-            <span className="wx-text-muted">Discrepancy notes</span>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
-              {ret.discrepancyNotes}
-            </p>
-          </div>
+
+        {ret.state === "unreturnable" ? (
+          <Notice tone="error">
+            This kit was written off as unreturnable under the 90-day assumption of loss, on an
+            attested reason from a named person. It is a survey-reportable disposition, not a
+            retrieval still in progress.
+          </Notice>
         ) : null}
-        {ret.unreturnableReason ? (
-          <div>
-            <span className="wx-text-muted">
-              Unreturnable — attested by {shortId(ret.unreturnableAttestedByMembershipId)}
-            </span>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
-              {ret.unreturnableReason}
-            </p>
-          </div>
+
+        {ret.daysOverdue > 0 && open ? (
+          <Notice tone="warning">
+            This return is {ret.daysOverdue} day{ret.daysOverdue === 1 ? "" : "s"} past its 30-day
+            boundary.
+          </Notice>
         ) : null}
-      </Panel>
 
-      <Panel stack headingLevel={3} title="Chain of custody">
-        <Timeline entries={timeline} />
-      </Panel>
+        {manifestError ? <Notice tone="error">{manifestError}</Notice> : null}
+        {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
-      {/* Once reconciled, the STORED accounting replaces the worksheet: those numbers are the record. */}
-      {ret.lines.length > 0 ? (
-        <Panel stack headingLevel={3} title="Recorded accounting">
-          <span className="wx-text-muted">
-            As stored. The unaccounted quantity and its share were computed by the database from
-            dispatched − returned − disposed-at-home, and the flag is the server's, not a
-            reconciler's. `discrepancy_pct` is stored as a FRACTION (the trigger compares against
-            0.05) and is converted to a percentage here — printing the raw 0.05 under a "%" heading
-            would understate a controlled-substance shortfall a hundredfold.
-          </span>
-          <table>
-            <thead>
-              <tr>
-                <th>Medication</th>
-                <th>Schedule</th>
-                <th>Lot</th>
-                <th style={thNum}>Dispatched</th>
-                <th style={thNum}>Returned</th>
-                <th style={thNum}>Disposed at home</th>
-                <th style={thNum}>Unaccounted</th>
-                <th style={thNum}>Discrepancy %</th>
-                <th>Flag</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ret.lines.map((l) => (
-                <tr key={l.returnedContentId}>
-                  <td>{l.drugName}</td>
-                  <td>
-                    <SchedulePill
-                      schedule={l.controlledSubstanceSchedule}
-                      isControlled={l.isControlledSubstance}
-                    />
-                  </td>
-                  <td className="wx-data-md">{l.lotNumber ?? "—"}</td>
-                  <td style={tdQty}>{l.dispatchedQuantity}</td>
-                  <td style={tdQty}>{l.quantityReturned}</td>
-                  <td style={tdQty}>{l.quantityDisposedAtHome}</td>
-                  <td style={tdQty}>{l.quantityUnaccounted}</td>
-                  <td style={tdQty}>{fractionAsPct(l.discrepancyPct)}</td>
-                  <td>
-                    {l.discrepancyFlagged ? (
-                      <StatusPill label="Flagged" tone="error" />
-                    ) : (
-                      <StatusPill label="Balanced" tone="success" />
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Panel>
-      ) : null}
-
-      {open && contents.length > 0 ? (
         <Panel
           stack
           headingLevel={3}
-          title="Reconciliation worksheet"
+          title="Return"
           action={
-            anyFlagged ? (
-              <StatusPill
-                label={`≥${DISCREPANCY_THRESHOLD_PCT}% on a controlled line`}
-                tone="error"
-              />
-            ) : undefined
+            <StatusPill label={humanize(ret.state)} tone={toneOf(RETURN_STATE_TONE, ret.state)} />
           }
         >
-          <Notice tone="info">
-            Enter what physically came back and what was destroyed at the bedside under witness.
-            Quantity disposed at home is ACCOUNTED FOR, not missing — leaving it at zero when a
-            family destroyed the remaining morphine turns a legal disposal into a diversion alert.
-          </Notice>
-          {anyFlagged ? (
-            <Notice tone="warning" live>
-              A controlled line is at or above {DISCREPANCY_THRESHOLD_PCT}% unaccounted. Each
-              flagged line needs an explanation before this can be submitted. The figures below are
-              a preview — the database computes and stores the authoritative discrepancy.
-            </Notice>
+          <SummaryGrid>
+            <Field label="Patient" value={shortId(ret.patientId)} mono />
+            <Field label="Admission" value={shortId(ret.admissionId)} mono />
+            <Field label="Dispatch" value={shortId(ret.dispatchId)} mono />
+            <Field label="M13 deployment" value={shortId(ret.m13DeploymentId)} mono />
+            <Field label="Required at" value={dateTime(ret.returnRequiredAt)} />
+            <Field
+              label="Due"
+              value={`${shortDate(ret.returnDueAt)} · ${dueLabel(ret.returnDueAt)}`}
+            />
+            <Field label="Retriever" value={shortId(ret.assignedRetrievingMembershipId)} mono />
+            <Field label="Reconciled by" value={shortId(ret.reconciledByMembershipId)} mono />
+            <Field label="Disposal witness" value={shortId(ret.disposalWitnessMembershipId)} mono />
+            <Field label="Disposal method" value={humanize(ret.disposalMethod)} />
+            <Field label="Receipt document (M22)" value={shortId(ret.receiptDocumentId)} mono />
+            <Field label="Version stamp" value={dateTime(ret.updatedAt)} />
+          </SummaryGrid>
+          <span className="wx-text-muted">
+            The reason this return was opened is captured on the transition, not republished on the
+            read surface — the M4 audit record owns it.
+          </span>
+          {ret.disposalNotes ? (
+            <div>
+              <span className="wx-text-muted">Disposal notes (audit-denylisted free text)</span>
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
+                {ret.disposalNotes}
+              </p>
+            </div>
           ) : null}
-          <table>
-            <thead>
-              <tr>
-                <th>Medication</th>
-                <th>Schedule</th>
-                <th>Lot</th>
-                <th style={thNum}>Dispatched</th>
-                <th style={thNum}>Returned</th>
-                <th style={thNum}>Disposed at home</th>
-                <th style={thNum}>Unaccounted (preview)</th>
-                <th>Explanation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {counts.map((c, i) => {
-                const preview = previews[i];
-                return (
-                  <tr key={c.dispatchedContentId}>
-                    <td>{c.drugName}</td>
+          {ret.discrepancyNotes ? (
+            <div>
+              <span className="wx-text-muted">Discrepancy notes</span>
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
+                {ret.discrepancyNotes}
+              </p>
+            </div>
+          ) : null}
+          {ret.unreturnableReason ? (
+            <div>
+              <span className="wx-text-muted">
+                Unreturnable — attested by {shortId(ret.unreturnableAttestedByMembershipId)}
+              </span>
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
+                {ret.unreturnableReason}
+              </p>
+            </div>
+          ) : null}
+        </Panel>
+
+        <Panel stack headingLevel={3} title="Chain of custody">
+          <Timeline entries={timeline} />
+        </Panel>
+
+        {/* Once reconciled, the STORED accounting replaces the worksheet: those numbers are the record. */}
+        {ret.lines.length > 0 ? (
+          <Panel stack headingLevel={3} title="Recorded accounting">
+            <span className="wx-text-muted">
+              As stored. The unaccounted quantity and its share were computed by the database from
+              dispatched − returned − disposed-at-home, and the flag is the server's, not a
+              reconciler's. `discrepancy_pct` is stored as a FRACTION (the trigger compares against
+              0.05) and is converted to a percentage here — printing the raw 0.05 under a "%"
+              heading would understate a controlled-substance shortfall a hundredfold.
+            </span>
+            <table>
+              <thead>
+                <tr>
+                  <th>Medication</th>
+                  <th>Schedule</th>
+                  <th>Lot</th>
+                  <th style={thNum}>Dispatched</th>
+                  <th style={thNum}>Returned</th>
+                  <th style={thNum}>Disposed at home</th>
+                  <th style={thNum}>Unaccounted</th>
+                  <th style={thNum}>Discrepancy %</th>
+                  <th>Flag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ret.lines.map((l) => (
+                  <tr key={l.returnedContentId}>
+                    <td>{l.drugName}</td>
                     <td>
                       <SchedulePill
-                        schedule={c.controlledSubstanceSchedule}
-                        isControlled={c.isControlledSubstance}
+                        schedule={l.controlledSubstanceSchedule}
+                        isControlled={l.isControlledSubstance}
                       />
                     </td>
-                    <td className="wx-data-md">{c.lotNumber ?? "—"}</td>
-                    <td style={tdQty}>
-                      {c.dispatchedQuantity} {c.dispatchedUnit}
-                    </td>
+                    <td className="wx-data-md">{l.lotNumber ?? "—"}</td>
+                    <td style={tdQty}>{l.dispatchedQuantity}</td>
+                    <td style={tdQty}>{l.quantityReturned}</td>
+                    <td style={tdQty}>{l.quantityDisposedAtHome}</td>
+                    <td style={tdQty}>{l.quantityUnaccounted}</td>
+                    <td style={tdQty}>{fractionAsPct(l.discrepancyPct)}</td>
                     <td>
-                      <input
-                        aria-label={`Quantity returned for ${c.drugName}`}
-                        value={c.quantityReturned}
-                        onChange={(e) => patch(i, { quantityReturned: e.target.value })}
-                        style={inputNarrowStyle}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        aria-label={`Quantity disposed at home for ${c.drugName}`}
-                        value={c.quantityDisposedAtHome}
-                        onChange={(e) => patch(i, { quantityDisposedAtHome: e.target.value })}
-                        style={inputNarrowStyle}
-                      />
-                    </td>
-                    <td style={tdQty}>
-                      {preview
-                        ? `${preview.unaccounted.toFixed(3)} (${preview.pct.toFixed(1)}%)`
-                        : "—"}
-                      {flagged[i] ? (
-                        <div className="wx-text-error" style={{ fontSize: "0.8rem" }}>
-                          at or above the {DISCREPANCY_THRESHOLD_PCT}% threshold
-                        </div>
-                      ) : null}
-                    </td>
-                    <td>
-                      <input
-                        aria-label={`Discrepancy explanation for ${c.drugName}`}
-                        value={c.discrepancyExplanation}
-                        onChange={(e) => patch(i, { discrepancyExplanation: e.target.value })}
-                        placeholder={flagged[i] ? "required for this line" : "optional"}
-                        style={{
-                          ...inputNarrowStyle,
-                          width: "14rem",
-                          textAlign: "left",
-                          fontFamily: "inherit",
-                        }}
-                      />
+                      {l.discrepancyFlagged ? (
+                        <StatusPill label="Flagged" tone="error" />
+                      ) : (
+                        <StatusPill label="Balanced" tone="success" />
+                      )}
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </Panel>
+        ) : null}
 
-          <SelectField
-            label="Disposal method"
-            value={disposalMethod}
-            options={enumOptions(DISPOSAL_METHODS)}
-            onChange={setDisposalMethod}
-          />
-          {witnessRequired ? (
-            <>
-              <Notice tone="warning">
-                At-home witnessed destruction requires a second person, and the schema refuses a
-                witness who is also the reconciler or the retriever — one person attesting to their
-                own count is not a witness.
+        {open && contents.length > 0 ? (
+          <Panel
+            stack
+            headingLevel={3}
+            title="Reconciliation worksheet"
+            action={
+              anyFlagged ? (
+                <StatusPill
+                  label={`≥${DISCREPANCY_THRESHOLD_PCT}% on a controlled line`}
+                  tone="error"
+                />
+              ) : undefined
+            }
+          >
+            <Notice tone="info">
+              Enter what physically came back and what was destroyed at the bedside under witness.
+              Quantity disposed at home is ACCOUNTED FOR, not missing — leaving it at zero when a
+              family destroyed the remaining morphine turns a legal disposal into a diversion alert.
+            </Notice>
+            {anyFlagged ? (
+              <Notice tone="warning" live>
+                A controlled line is at or above {DISCREPANCY_THRESHOLD_PCT}% unaccounted. Each
+                flagged line needs an explanation before this can be submitted. The figures below
+                are a preview — the database computes and stores the authoritative discrepancy.
               </Notice>
-              <TextField
-                label="Disposal witness membership id"
-                value={witnessMembershipId}
-                onChange={setWitnessMembershipId}
-                mono
-              />
-            </>
-          ) : null}
-          <TextAreaField
-            label="Disposal notes"
-            value={disposalNotes}
-            onChange={setDisposalNotes}
-            rows={3}
-            hint="Audit-denylisted free text (D13)."
-          />
-          <TextAreaField
-            label="Discrepancy notes"
-            value={discrepancyNotes}
-            onChange={setDiscrepancyNotes}
-            rows={3}
-          />
+            ) : null}
+            <table>
+              <thead>
+                <tr>
+                  <th>Medication</th>
+                  <th>Schedule</th>
+                  <th>Lot</th>
+                  <th style={thNum}>Dispatched</th>
+                  <th style={thNum}>Returned</th>
+                  <th style={thNum}>Disposed at home</th>
+                  <th style={thNum}>Unaccounted (preview)</th>
+                  <th>Explanation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {counts.map((c, i) => {
+                  const preview = previews[i];
+                  return (
+                    <tr key={c.dispatchedContentId}>
+                      <td>{c.drugName}</td>
+                      <td>
+                        <SchedulePill
+                          schedule={c.controlledSubstanceSchedule}
+                          isControlled={c.isControlledSubstance}
+                        />
+                      </td>
+                      <td className="wx-data-md">{c.lotNumber ?? "—"}</td>
+                      <td style={tdQty}>
+                        {c.dispatchedQuantity} {c.dispatchedUnit}
+                      </td>
+                      <td>
+                        <input
+                          aria-label={`Quantity returned for ${c.drugName}`}
+                          value={c.quantityReturned}
+                          onChange={(e) => patch(i, { quantityReturned: e.target.value })}
+                          style={inputNarrowStyle}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          aria-label={`Quantity disposed at home for ${c.drugName}`}
+                          value={c.quantityDisposedAtHome}
+                          onChange={(e) => patch(i, { quantityDisposedAtHome: e.target.value })}
+                          style={inputNarrowStyle}
+                        />
+                      </td>
+                      <td style={tdQty}>
+                        {preview
+                          ? `${preview.unaccounted.toFixed(3)} (${preview.pct.toFixed(1)}%)`
+                          : "—"}
+                        {flagged[i] ? (
+                          <div className="wx-text-error" style={{ fontSize: "0.8rem" }}>
+                            at or above the {DISCREPANCY_THRESHOLD_PCT}% threshold
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        <input
+                          aria-label={`Discrepancy explanation for ${c.drugName}`}
+                          value={c.discrepancyExplanation}
+                          onChange={(e) => patch(i, { discrepancyExplanation: e.target.value })}
+                          placeholder={flagged[i] ? "required for this line" : "optional"}
+                          style={{
+                            ...inputNarrowStyle,
+                            width: "14rem",
+                            textAlign: "left",
+                            fontFamily: "inherit",
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
-          <div style={{ display: "flex", gap: t.space2, justifyContent: "flex-end" }}>
+            <SelectField
+              label="Disposal method"
+              value={disposalMethod}
+              options={enumOptions(DISPOSAL_METHODS)}
+              onChange={setDisposalMethod}
+            />
+            {witnessRequired ? (
+              <>
+                <Notice tone="warning">
+                  At-home witnessed destruction requires a second person, and the schema refuses a
+                  witness who is also the reconciler or the retriever — one person attesting to
+                  their own count is not a witness.
+                </Notice>
+                <TextField
+                  label="Disposal witness membership id"
+                  value={witnessMembershipId}
+                  onChange={setWitnessMembershipId}
+                  mono
+                />
+              </>
+            ) : null}
+            <TextAreaField
+              label="Disposal notes"
+              value={disposalNotes}
+              onChange={setDisposalNotes}
+              rows={3}
+              hint="Audit-denylisted free text (D13)."
+            />
+            <TextAreaField
+              label="Discrepancy notes"
+              value={discrepancyNotes}
+              onChange={setDiscrepancyNotes}
+              rows={3}
+            />
+
+            <div style={{ display: "flex", gap: t.space2, justifyContent: "flex-end" }}>
+              <Button
+                tone="primary"
+                type="button"
+                disabled={!canReconcile || busy}
+                title={
+                  canReconcile
+                    ? undefined
+                    : "Every line needs a returned quantity, every flagged line an explanation, and at-home destruction a witness."
+                }
+                onClick={() => void submitReconcile()}
+              >
+                Reconcile
+              </Button>
+            </div>
+          </Panel>
+        ) : null}
+
+        <Panel stack headingLevel={3} title="Actions">
+          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <Button
-              tone="primary"
+              tone="secondary"
               type="button"
-              disabled={!canReconcile || busy}
-              title={
-                canReconcile
-                  ? undefined
-                  : "Every line needs a returned quantity, every flagged line an explanation, and at-home destruction a witness."
-              }
-              onClick={() => void submitReconcile()}
+              disabled={!open}
+              title={open ? undefined : "This return has reached a terminal state."}
+              aria-disabled={!open}
+              onClick={open ? () => setCeremony("assign-retriever") : undefined}
             >
-              Reconcile
+              Assign retriever
+            </Button>
+            <Button
+              tone="secondary"
+              type="button"
+              disabled={!open}
+              title={open ? undefined : "This return has reached a terminal state."}
+              aria-disabled={!open}
+              onClick={open ? () => setCeremony("unreturnable") : undefined}
+            >
+              Declare unreturnable
             </Button>
           </div>
+          <span className="wx-text-muted">
+            Writing off a kit that held a CII solution is a different authority from counting one
+            that came back, which is why it is a separate action rather than an option inside
+            reconcile.
+          </span>
         </Panel>
-      ) : null}
-
-      <Panel stack headingLevel={3} title="Actions">
-        <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <Button
-            tone="secondary"
-            type="button"
-            disabled={!open}
-            title={open ? undefined : "This return has reached a terminal state."}
-            aria-disabled={!open}
-            onClick={open ? () => setCeremony("assign-retriever") : undefined}
-          >
-            Assign retriever
-          </Button>
-          <Button
-            tone="secondary"
-            type="button"
-            disabled={!open}
-            title={open ? undefined : "This return has reached a terminal state."}
-            aria-disabled={!open}
-            onClick={open ? () => setCeremony("unreturnable") : undefined}
-          >
-            Declare unreturnable
-          </Button>
-        </div>
-        <span className="wx-text-muted">
-          Writing off a kit that held a CII solution is a different authority from counting one that
-          came back, which is why it is a separate action rather than an option inside reconcile.
-        </span>
-      </Panel>
+      </div>
 
       {ceremony === "assign-retriever" ? (
-        <Modal
+        <FormDrawer
           title="Assign the retrieving staff member"
+          busy={busy}
           onClose={close}
-          footer={
+          save={
             <Button
               tone="primary"
               type="button"
@@ -639,14 +644,14 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
             onChange={setRetrieverMembershipId}
             mono
           />
-        </Modal>
+        </FormDrawer>
       ) : null}
-
       {ceremony === "unreturnable" ? (
-        <Modal
+        <FormDrawer
           title="Declare this kit unreturnable"
+          busy={busy}
           onClose={close}
-          footer={
+          save={
             <Button
               tone="primary"
               type="button"
@@ -681,7 +686,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
             onChange={setUnreturnableReason}
             rows={4}
           />
-        </Modal>
+        </FormDrawer>
       ) : null}
     </div>
   );
