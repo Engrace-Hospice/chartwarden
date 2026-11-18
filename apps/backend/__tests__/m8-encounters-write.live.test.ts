@@ -1931,7 +1931,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     it("through the real dispatcher an illegal-pair m17.visit.published is retried, then parked as failed with no draft and a dead-letter signal", async () => {
       const catalog = buildBootOutboxCatalog([M17_OUTBOX_EVENTS, M8_OUTBOX_EVENTS]);
       const txPublisher = buildTxOutboxPublisher(catalog);
-      const deadLetters: Array<{ eventType: string; attemptCount: number }> = [];
+      const deadLetters: Array<{ eventId: string; eventType: string; attemptCount: number }> = [];
       let nowMs = Date.now();
       const dispatcher = createOutboxDispatcher({
         db: handle.db,
@@ -1947,7 +1947,11 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
           clock: () => nowMs,
           log: () => {},
           onDeadLetter: (e) =>
-            deadLetters.push({ eventType: e.eventType, attemptCount: e.attemptCount }),
+            deadLetters.push({
+              eventId: e.eventId,
+              eventType: e.eventType,
+              attemptCount: e.attemptCount,
+            }),
         },
       });
 
@@ -1979,12 +1983,15 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
       const row = (
         await admin.query(
-          "SELECT status, attempt_count FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm17.visit.published'",
+          "SELECT id, status, attempt_count FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm17.visit.published'",
           [visitId],
         )
       ).rows[0];
       expect(row).toMatchObject({ status: "failed", attempt_count: 2 });
-      expect(deadLetters).toEqual([{ eventType: "m17.visit.published", attemptCount: 2 }]);
+      // Scoped to THIS visit's row: the shared org may hold other rows the dispatcher also drained.
+      expect(deadLetters.filter((d) => d.eventId === row.id)).toEqual([
+        { eventId: row.id, eventType: "m17.visit.published", attemptCount: 2 },
+      ]);
       expect(await draftsFor(visitId)).toHaveLength(0);
     });
   });
