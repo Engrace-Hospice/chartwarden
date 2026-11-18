@@ -34,6 +34,7 @@ import {
   StatusPill,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -41,6 +42,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { FormModal } from "../../shell/form-modal";
 import {
   NO_ANSWER,
+  RELOAD_THEN_RETRY,
   type SafetySosAcknowledgeOutcome,
   type SafetySosAlertView,
   type SafetySosResolveOutcome,
@@ -126,6 +128,9 @@ function SosDetailBody(): JSX.Element {
   const [nothingToSubmit, setNothingToSubmit] = useState(false);
   // An attempt in this dialog got no answer, so it may have landed: a later refusal can be THAT attempt's doing.
   const lostReply = useRef(false);
+  // A write's re-read can remove the opener the modal would hand focus back to (Acknowledge goes once somebody has,
+  // Resolve once the alert is closed): the page takes focus then, instead of <body>.
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
 
   // Only the newest read may write state: a slower earlier one (or a write's post-reload) must not land on top of it.
   const latestRead = useRef(0);
@@ -224,6 +229,7 @@ function SosDetailBody(): JSX.Element {
                   staleVersion: alert.version,
                   freshVersion: fresh?.version ?? null,
                   lostReply: lostReply.current,
+                  ifNotReread: RELOAD_THEN_RETRY,
                 })
               : writeErrorMessage(res, "The acknowledgment was not recorded."),
       );
@@ -263,6 +269,7 @@ function SosDetailBody(): JSX.Element {
                   staleVersion: alert.version,
                   freshVersion: fresh?.version ?? null,
                   lostReply: lostReply.current,
+                  ifNotReread: RELOAD_THEN_RETRY,
                 })
               : writeErrorMessage(res, "The alert was not closed."),
       );
@@ -328,7 +335,13 @@ function SosDetailBody(): JSX.Element {
   }));
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      className="wx-kit-column"
+      aria-busy={loading}
+      style={{ ...columnStyle, outline: "none" }}
+    >
       <PageHeader
         title={<span style={pageTitleStyle}>SOS {shortId(alert.id)}</span>}
         actions={
@@ -611,7 +624,10 @@ function SosDetailBody(): JSX.Element {
               type="button"
               onClick={() => void submitAck()}
               disabled={
-                saving || nothingToSubmit || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
+                saving ||
+                loading ||
+                nothingToSubmit ||
+                !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
               }
             >
               {saving ? "Recording…" : "Record acknowledgment"}
@@ -648,7 +664,10 @@ function SosDetailBody(): JSX.Element {
               type="button"
               onClick={() => void submitResolve()}
               disabled={
-                saving || nothingToSubmit || !meetsMinChars(narrative, SOS_RESOLUTION_MIN_CHARS)
+                saving ||
+                loading ||
+                nothingToSubmit ||
+                !meetsMinChars(narrative, SOS_RESOLUTION_MIN_CHARS)
               }
             >
               {saving

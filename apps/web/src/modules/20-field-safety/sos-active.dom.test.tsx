@@ -426,3 +426,23 @@ describe("active SOS board — a refused stale version", () => {
     expect(alertReads(get)).toBe(readsBefore);
   });
 });
+
+describe("active SOS board — a state this client does not know", () => {
+  it("leaves Record available and says nothing false when the re-read shows one", async () => {
+    let reads = 0;
+    mount({
+      alertRead: async () =>
+        reads++ === 0 ? alertView(3) : alertView(4, { lifecycleState: "brand_new_server_state" }),
+      post: async () => refused("STALE_LIFECYCLE_STATE"),
+    });
+    const dialog = await ackOf("Maya");
+    record(dialog);
+    const message = await within(dialog).findByText(/re-read \(now version 4\)/);
+    expect(message.textContent).not.toContain("no longer open");
+    expect(message.textContent).not.toContain("already acknowledged");
+    expect(
+      (within(dialog).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+});

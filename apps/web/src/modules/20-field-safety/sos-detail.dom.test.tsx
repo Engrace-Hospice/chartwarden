@@ -705,3 +705,95 @@ describe("SOS detail — the page stays mounted while it re-reads", () => {
     slow.resolve(ok(alertIn("escalation_tier_1", false)));
   });
 });
+
+describe("SOS detail — focus after a real success, Save while re-reading, and an unfamiliar state", () => {
+  it.each([
+    {
+      title: "Acknowledge this SOS",
+      opener: "Acknowledge",
+      save: "Record acknowledgment",
+      fill: fillAccount,
+      before: alertIn("escalation_tier_1", false),
+      after: alertIn("acknowledged", true),
+    },
+    {
+      title: "Resolve this SOS",
+      opener: "Resolve",
+      save: "Close this alert",
+      fill: fillNarrative,
+      before: alertIn("acknowledged", true),
+      after: alertIn("resolved", true),
+    },
+  ])("hands focus to the page, not <body>, when $opener goes away after the write", async (c) => {
+    let reads = 0;
+    mount(c.before, { alertRead: async () => ok(reads++ === 0 ? c.before : c.after) });
+    const opener = await screen.findByRole("button", { name: c.opener });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: c.title });
+    c.fill(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: c.save }));
+    // The state advanced, so the opener is no longer offered at all.
+    await waitFor(() => expect(screen.queryByRole("button", { name: c.opener })).toBeNull());
+    const page = screen.getByRole("heading", { name: /SOS 11111111/ }).closest(".wx-kit-column");
+    await waitFor(() => expect(document.activeElement).toBe(page));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it.each([
+    {
+      title: "Acknowledge this SOS",
+      opener: "Acknowledge",
+      save: "Record acknowledgment",
+      fill: fillAccount,
+      state: alertIn("escalation_tier_1", false),
+    },
+    {
+      title: "Resolve this SOS",
+      opener: "Resolve",
+      save: "Close this alert",
+      fill: fillNarrative,
+      state: alertIn("acknowledged", true),
+    },
+  ])(
+    "keeps $save disabled while the page is re-reading, so a stale stamp is not sent",
+    async (c) => {
+      let reads = 0;
+      const slow = deferred<unknown>();
+      mount(c.state, {
+        alertRead: () => (reads++ === 0 ? Promise.resolve(ok(c.state)) : slow.promise),
+      });
+      fireEvent.click(await screen.findByRole("button", { name: "Reload" }));
+      const dialog = await open(c.opener, c.title);
+      c.fill(dialog);
+      const save = within(dialog).getByRole("button", { name: c.save }) as HTMLButtonElement;
+      expect(save.disabled).toBe(true);
+      slow.resolve(ok(c.state));
+      await waitFor(() => expect(save.disabled).toBe(false));
+    },
+  );
+
+  it("leaves Record available when the re-read shows a state this client does not know", async () => {
+    let reads = 0;
+    mount(alertIn("escalation_tier_1", false), {
+      alertRead: async () =>
+        ok({
+          ...alertIn("escalation_tier_1", false),
+          version: reads++ === 0 ? 3 : 4,
+          lifecycleState: reads === 1 ? "escalation_tier_1" : "brand_new_server_state",
+        }),
+      post: async () => refused("STALE_LIFECYCLE_STATE"),
+    });
+    const dialog = await open("Acknowledge", "Acknowledge this SOS");
+    fireEvent.change(within(dialog).getByLabelText("What did you do?"), {
+      target: { value: ACTION },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record acknowledgment" }));
+    const message = await within(dialog).findByText(/re-read \(now version 4\)/);
+    expect(message.textContent).not.toContain("no longer open");
+    expect(
+      (within(dialog).getByRole("button", { name: "Record acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+});

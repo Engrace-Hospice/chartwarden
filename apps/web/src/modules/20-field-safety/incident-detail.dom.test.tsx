@@ -610,3 +610,116 @@ describe("incident detail — the ceremonies wait for an open draft edit", () =>
     expect(drawer.isConnected).toBe(true);
   });
 });
+
+describe("incident detail — a read that gets no answer", () => {
+  it("ends the spinner with an unavailable message when the first read is rejected", async () => {
+    mount("draft", { read: offline });
+    expect(await screen.findByText("Incident unavailable")).toBeTruthy();
+    expect(screen.getByText(/no answer came back/)).toBeTruthy();
+  });
+
+  it("does not present the old incident as current when the refetch after a write is rejected", async () => {
+    let reads = 0;
+    const { post } = mount("draft", {
+      read: async () => {
+        if (reads++ === 0) return ok(incident("draft"));
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const dialog = await open("Submit for review", "Submit this incident for review");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Submit" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Incident unavailable")).toBeTruthy();
+    expect(screen.getByText(/no answer came back/)).toBeTruthy();
+    // No stale draft with a live Submit button left behind.
+    expect(screen.queryByRole("button", { name: "Submit for review" })).toBeNull();
+  });
+
+  it("does not present the old incident as current when a Reload is rejected", async () => {
+    let reads = 0;
+    mount("draft", {
+      read: async () => {
+        if (reads++ === 0) return ok(incident("draft"));
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Reload" }));
+    expect(await screen.findByText("Incident unavailable")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Submit for review" })).toBeNull();
+  });
+});
+
+describe("incident detail — focus after a real success, and Save while re-reading", () => {
+  it("hands focus to the page, not <body>, when Submit for review goes away after the write", async () => {
+    let reads = 0;
+    mount("draft", { read: async () => ok(incident(reads++ === 0 ? "draft" : "submitted")) });
+    const opener = await screen.findByRole("button", { name: "Submit for review" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "Submit this incident for review" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Submit" }));
+    // The incident is no longer a draft, so Submit for review is no longer offered.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Submit for review" })).toBeNull(),
+    );
+    const page = screen
+      .getByRole("heading", { name: /Incident 11111111/ })
+      .closest(".wx-list-drawer-main");
+    await waitFor(() => expect(document.activeElement).toBe(page));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it.each([
+    {
+      title: "Submit this incident for review",
+      opener: "Submit for review",
+      state: "draft",
+      save: "Submit",
+      fill: nothing,
+    },
+    {
+      title: "Change this incident's state",
+      opener: "Change state",
+      state: "submitted",
+      save: "Record transition",
+      fill: fillReason,
+    },
+    {
+      title: "OSHA-equivalent sign-off",
+      opener: "OSHA sign-off",
+      state: "submitted",
+      save: "Sign off as reportable",
+      fill: fillSignOff,
+    },
+  ] as const)(
+    "keeps $save disabled while the page is re-reading, so a stale stamp is not sent",
+    async (c) => {
+      let reads = 0;
+      const slow = deferred<unknown>();
+      mount(c.state, {
+        read: () => (reads++ === 0 ? Promise.resolve(ok(incident(c.state))) : slow.promise),
+      });
+      fireEvent.click(await screen.findByRole("button", { name: "Reload" }));
+      const dialog = await open(c.opener, c.title);
+      c.fill(dialog);
+      const save = within(dialog).getByRole("button", { name: c.save }) as HTMLButtonElement;
+      expect(save.disabled).toBe(true);
+      slow.resolve(ok(incident(c.state)));
+      await waitFor(() => expect(save.disabled).toBe(false));
+    },
+  );
+
+  it("keeps Save draft disabled while the page is re-reading", async () => {
+    let reads = 0;
+    const slow = deferred<unknown>();
+    mount("draft", {
+      read: () => (reads++ === 0 ? Promise.resolve(ok(incident("draft"))) : slow.promise),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Reload" }));
+    const drawer = await openDrawer("Edit draft", "Edit this draft");
+    const save = within(drawer).getByRole("button", { name: "Save draft" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    slow.resolve(ok(incident("draft")));
+    await waitFor(() => expect(save.disabled).toBe(false));
+  });
+});

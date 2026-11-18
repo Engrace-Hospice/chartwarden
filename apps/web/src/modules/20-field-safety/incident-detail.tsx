@@ -34,6 +34,7 @@ import {
   StatusPill,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -42,6 +43,7 @@ import { FormDrawer } from "../../shell/form-drawer";
 import { FormModal } from "../../shell/form-modal";
 import {
   NO_ANSWER,
+  RELOAD_THEN_RETRY,
   type SafetyIncidentCategory,
   type SafetyIncidentSeverity,
   type SafetyIncidentStateTransition,
@@ -130,6 +132,9 @@ function IncidentDetailBody(): JSX.Element {
   const [oshaReason, setOshaReason] = useState("");
   const [stateCode, setStateCode] = useState("");
   const [windowHours, setWindowHours] = useState("24");
+  // A write's re-read can remove the opener the modal would hand focus back to (Submit only shows on a draft): the
+  // page takes focus then, instead of <body>.
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
 
   // Only the newest read may write state: a slower earlier one (or a write's re-read) must not land on top of it.
   const latestRead = useRef(0);
@@ -138,10 +143,16 @@ function IncidentDetailBody(): JSX.Element {
   const load = useCallback(async () => {
     const readId = ++latestRead.current;
     setLoading(true);
-    const res = await getIncident(client, incidentId);
+    // The client REJECTS on a network failure; `null` is that, and the newest read must always end `loading` and
+    // never leave the incident it last held standing as if it were current.
+    const res = await getIncident(client, incidentId).catch(() => null);
     if (readId !== latestRead.current) return;
-    if (res.error || !res.incident) {
-      setError(errorMessage(res.error, "That incident could not be read."));
+    if (!res || res.error || !res.incident) {
+      setError(
+        res
+          ? errorMessage(res.error, "That incident could not be read.")
+          : "That incident could not be read: no answer came back. Check your connection, then retry.",
+      );
       setIncident(null);
     } else {
       setIncident(res.incident);
@@ -185,6 +196,7 @@ function IncidentDetailBody(): JSX.Element {
         staleVersion,
         freshVersion: fresh?.version ?? null,
         lostReply: lostReply.current,
+        ifNotReread: RELOAD_THEN_RETRY,
       });
     },
     [rereadIncident],
@@ -400,7 +412,13 @@ function IncidentDetailBody(): JSX.Element {
   return (
     <>
       <div className={`wx-list-drawer${ceremony === "edit" ? " has-drawer" : ""}`}>
-        <div className="wx-list-drawer-main wx-kit-column">
+        <div
+          ref={focusRef}
+          tabIndex={-1}
+          className="wx-list-drawer-main wx-kit-column"
+          aria-busy={loading}
+          style={{ outline: "none" }}
+        >
           <PageHeader
             title={<span style={pageTitleStyle}>Incident {shortId(incident.id)}</span>}
             actions={
@@ -602,7 +620,7 @@ function IncidentDetailBody(): JSX.Element {
                 size="lg"
                 type="button"
                 onClick={() => void submitEdit()}
-                disabled={saving}
+                disabled={saving || loading}
               >
                 {saving ? "Saving…" : "Save draft"}
               </Button>
@@ -680,7 +698,7 @@ function IncidentDetailBody(): JSX.Element {
               size="lg"
               type="button"
               onClick={() => void doSubmit()}
-              disabled={saving}
+              disabled={saving || loading}
             >
               {saving ? "Submitting…" : "Submit"}
             </Button>
@@ -721,6 +739,7 @@ function IncidentDetailBody(): JSX.Element {
               onClick={() => void doTransition()}
               disabled={
                 saving ||
+                loading ||
                 !meetsMinChars(reason, INCIDENT_TRANSITION_REASON_MIN_CHARS) ||
                 (toState === "closed_with_action_plan" && actionPlan.trim().length === 0)
               }
@@ -779,6 +798,7 @@ function IncidentDetailBody(): JSX.Element {
               onClick={() => void doOsha()}
               disabled={
                 saving ||
+                loading ||
                 !meetsMinChars(oshaReason, OSHA_REASON_MIN_CHARS) ||
                 stateCode.trim().length !== 2 ||
                 !Number.isFinite(Number(windowHours)) ||

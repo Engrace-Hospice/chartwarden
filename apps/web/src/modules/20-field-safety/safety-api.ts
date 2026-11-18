@@ -255,24 +255,34 @@ export function isStaleVersion(error: unknown): boolean {
   return code !== undefined && STALE_VERSION_CODES.has(code);
 }
 
+/** What to do when a stale refusal could not be re-read, on the screens where the page (not opening a dialog) re-reads. */
+export const RELOAD_THEN_RETRY = "Cancel and Reload the page, then try again.";
+
 /**
- * The words for a write the server refused as stale, after the row was re-read (`freshVersion`, `null` when the re-read
- * failed). A refusal at an UNCHANGED version is a bare conflict: it must not claim the record changed. `lostReply`: an
- * earlier attempt in the same dialog got no answer, so the row may have moved because of IT, not someone else.
+ * The words for a write the server refused as stale (a 409 on its `If-Match` version), after the row was re-read
+ * (`freshVersion`, `null` when the re-read failed). Only what is KNOWN is said:
+ *  - a version that moved proves the record changed; one that did NOT move proves nothing did, whatever the cause of the
+ *    conflict, and that an earlier attempt which got no answer (`lostReply`) was not recorded either (it would have bumped
+ *    the version);
+ *  - when the re-read failed nothing is known about why, and `ifNotReread` says how to recover for THIS screen (only some
+ *    screens re-read when a dialog opens).
  */
 export function staleRefusalMessage(args: {
   subject: string;
   staleVersion: number;
   freshVersion: number | null;
   lostReply: boolean;
+  ifNotReread: string;
 }): string {
-  const { subject, staleVersion, freshVersion, lostReply } = args;
-  const head = lostReply
-    ? `${subject} was refused, and an earlier attempt got no answer and may have been recorded.`
-    : `${subject} was not recorded.`;
+  const { subject, staleVersion, freshVersion, lostReply, ifNotReread } = args;
+  const unchanged = freshVersion === staleVersion;
+  const head =
+    lostReply && !unchanged
+      ? `${subject} was refused, and an earlier attempt got no answer and may have been recorded.`
+      : `${subject} was not recorded.`;
   if (freshVersion === null)
-    return `${head} The record changed and could not be re-read; cancel and open it again.`;
-  if (freshVersion === staleVersion)
+    return `${head} The server refused it as conflicting with the record's current state, and the record could not be re-read to see why. ${ifNotReread}`;
+  if (unchanged)
     return `${head} The server reported a conflict, but the record is still at version ${freshVersion}; what you typed is kept.`;
   return `${head} The record changed while you were working; it was re-read (now version ${freshVersion}) and what you typed is kept. Submit again if it is still needed.`;
 }

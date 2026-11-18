@@ -184,6 +184,7 @@ export function ActiveSosScreen(): JSX.Element {
                   staleVersion: target.version,
                   freshVersion: fresh?.version ?? null,
                   lostReply: lostReply.current,
+                  ifNotReread: "Cancel and open it again.",
                 })
               : `${subject} was not recorded. ${errorMessage(res.error, "")}`.trim(),
       );
