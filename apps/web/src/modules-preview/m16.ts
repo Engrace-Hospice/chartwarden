@@ -1,7 +1,11 @@
 // modules-preview fixtures for M16 Bereavement. Typed against the module's own wire shapes so a drifted field fails
 // the typecheck instead of rendering blank. Every name and id is invented.
 import type { PlanDetail, SupervisorDashboard } from "../modules/16-bereavement/bereavement-api";
-import type { GroupListItem } from "../modules/16-bereavement/programs-api";
+import type {
+  GroupListItem,
+  LibraryItem,
+  MemorialListItem,
+} from "../modules/16-bereavement/programs-api";
 import { bereavementScreens } from "../modules/16-bereavement/screens";
 import type { Fixtures } from "./mock-client";
 import type { ModulePreview } from "./types";
@@ -138,8 +142,63 @@ const supervisor: SupervisorDashboard = {
   externalSourceCosignPendingCount: 1,
 };
 
+const libraryItems: LibraryItem[] = [
+  ["i1", "When grief comes in waves", "coping", "pdf", "published"],
+  ["i2", "Helping children through loss", "children_and_teens", "video", "draft"],
+  ["i3", "The first holiday season", "holidays_and_anniversaries", "pdf", "published"],
+].map(([itemId, title, category, kind, status], index) => ({
+  itemId: itemId as string,
+  title: title as string,
+  summary: "A short guide for bereaved families.",
+  category: category as LibraryItem["category"],
+  kind: kind as LibraryItem["kind"],
+  mimeType: kind === "video" ? "video/mp4" : "application/pdf",
+  documentId: `d-${itemId}`,
+  transcriptDocumentId: null,
+  status: status as LibraryItem["status"],
+  sortOrder: index + 1,
+  publishedAt: status === "published" ? iso(-30) : null,
+  version: 2,
+  createdAt: iso(-60),
+  updatedAt: iso(-10),
+}));
+
+const memorials: MemorialListItem[] = [
+  ["s1", "Autumn remembrance evening", "published", 24],
+  ["s2", "Winter candle lighting", "draft", 0],
+].map(([serviceId, title, status, invited]) => ({
+  serviceId: serviceId as string,
+  title: title as string,
+  description: null,
+  startsAt: iso(21),
+  endsAt: iso(21.1),
+  modality: "in_person",
+  venueText: "Chapel room, 2nd floor",
+  hasJoinUrl: false,
+  capacity: 60,
+  rsvpBy: day(14),
+  inviteWindowMonths: 13,
+  status: status as MemorialListItem["status"],
+  publishedAt: status === "published" ? iso(-5) : null,
+  invitedCount: invited as number,
+  rsvpCounts: {
+    invited: invited as number,
+    yes: 11,
+    no: 3,
+    maybe: 2,
+    attended: 0,
+    noShow: 0,
+    guestsExpected: 17,
+  },
+  mailingRunId: null,
+  version: 1,
+  createdAt: iso(-20),
+}));
+
 const fixtures: Fixtures = {
   "/api/v1/bereavement/plans/{planId}": plan,
+  "/api/v1/bereavement/library": libraryItems,
+  "/api/v1/bereavement/memorials": { data: memorials, next_cursor: null, has_more: false },
   "/api/v1/bereavement/groups": { data: groups, next_cursor: null, has_more: false },
   "/api/v1/bereavement/dashboard/supervisor": supervisor,
 };
@@ -149,5 +208,9 @@ export const preview16: ModulePreview = {
   fixtures,
   start: "/bereavement/supervisor",
   // Beyond each screen's read key: the write actions the screens gate their buttons on.
-  extraPermissions: ["bereavement.group.manage"],
+  extraPermissions: [
+    "bereavement.group.manage",
+    "bereavement.memorial.manage",
+    "bereavement.library.manage",
+  ],
 };
