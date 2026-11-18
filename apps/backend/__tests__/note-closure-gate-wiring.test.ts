@@ -88,7 +88,13 @@ describe("the composition root wires the note-closure gate", () => {
 
   it("hands the SAME cache to the encounter routes, so a policy PUT invalidates what the gate sees", () => {
     expect(index).toContain(
-      "mountEncounterRoutes(app,dbHandle.db,m8OutboxPublisher,createHearthnoteCiphers(getTenantKeyProvider()),{...(closurePolicyCache?{policyCache:closurePolicyCache}:{})}",
+      "mountEncounterRoutes(app,dbHandle.db,m8OutboxPublisher,createHearthnoteCiphers(getTenantKeyProvider()),{...(closurePolicyCache?{policyCache:closurePolicyCache}:{}),",
+    );
+  });
+
+  it("hands the encounter routes a reporter for a closure-override denial event that could not be written (class only)", () => {
+    expect(index).toMatch(
+      /mountEncounterRoutes\([^;]*?onDenialAuditFailure:\(error\)=>app\.log\.warn\(\{errorClass:errorinstanceofError\?error\.name:typeoferror\}/,
     );
   });
 });

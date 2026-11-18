@@ -4340,7 +4340,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // ADR-0113 D6 - the visit-note closure gate. ONE policy cache serves the gate and `mountEncounterRoutes` (below), so a policy PUT
   // invalidates what the gate reads. The gate runs the one shared evaluator inside the caller's org context; a failure is logged with
   // the organization id only and the request is refused 503 (the gate fails closed; the one exception is a failed policy refresh for an
-  // organization whose last known mode was off / warn, read under 60s ago, which is served instead).
+  // organization whose last known mode was off / warn, read less than 55s ago (60s worst case), which is served instead).
   const closurePolicyCache = dbHandle ? createDbClosurePolicyCache(dbHandle.db) : undefined;
   // The refusal counter lives on the metrics registry built much later in boot (the outboxDispatcherRef forward-ref precedent):
   // until it is registered a refusal is only logged.
@@ -6650,7 +6650,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             m8OutboxPublisher,
             createHearthnoteCiphers(getTenantKeyProvider()),
             // ADR-0113 D6 - the SAME policy cache the closure gate reads, so a closure-policy PUT invalidates the gate's view.
-            { ...(closurePolicyCache ? { policyCache: closurePolicyCache } : {}) },
+            {
+              ...(closurePolicyCache ? { policyCache: closurePolicyCache } : {}),
+              // ADR-0113 D7 - a refused override grant/revoke leaves a best-effort audit event; if THAT write fails, say so (error class only).
+              onDenialAuditFailure: (error) =>
+                app.log.warn(
+                  { errorClass: error instanceof Error ? error.name : typeof error },
+                  "closure override denial audit event could not be written",
+                ),
+            },
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
           // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox. The M4 legal-hold read gates a

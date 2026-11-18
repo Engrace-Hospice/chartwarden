@@ -1,13 +1,17 @@
 // apps/backend/src/modules/08-encounters/closure/closure-route-service.ts — the production service behind the visit-note closure
 // routes (ADR-0113): it composes the policy, override, reader and board services inside `withOrgContext` so RLS scopes every row
 // as the unprivileged `chartwarden_app` role. The routes (routes/closure-routes.ts) stay thin and a test can fake this interface.
-import type { AuditContext } from "@chartwarden/audit";
+import { type AuditContext, audit as writeAudit } from "@chartwarden/audit";
 import type { DbClient } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
-import type { DocumentationObligationKind } from "@chartwarden/types";
+import { ChartWardenError, type DocumentationObligationKind } from "@chartwarden/types";
 import { evaluateMemberClosure } from "./closure-reader";
 import type { ClosureVerdict, NoteClosureMode, NoteClosureStage } from "./note-clock";
 import { type OverdueBoard, listOverdueNotes } from "./overdue-board";
+import {
+  NOTE_CLOSURE_GRANTOR_BLOCKED_CODE,
+  NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE_CODE,
+} from "./override-grant-guards";
 import {
   type ClosureOverrideView,
   grantClosureOverride,
@@ -23,6 +27,19 @@ import {
 
 /** Slice 1 serves one obligation kind. */
 const VISIT_NOTE = "visit_note" as const;
+
+/** The explicit audit event for a refused override grant or revoke (packages/audit/src/actions/m8.ts). */
+export const CLOSURE_OVERRIDE_DENIED_AUDIT_EVENT = "m8.encounter.closure_override_denied";
+
+/**
+ * The refusals that are an authorization decision worth a trail: a grantor whose own note is past its block instant, and a revoke by a
+ * site-scoped supervisor who did not grant the override. The routine "nothing to lift" (a stale board, a clinician who closed their
+ * note) is not one, so it writes nothing.
+ */
+const AUDITED_DENIAL_CODES: ReadonlySet<string> = new Set([
+  NOTE_CLOSURE_GRANTOR_BLOCKED_CODE,
+  NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE_CODE,
+]);
 
 /** The authenticated caller of a closure route (the route reads it off `request.context`, never the body). */
 export interface ClosureActor {
@@ -150,6 +167,11 @@ export interface ClosureRouteServiceDeps {
   readonly policyCache?: ClosurePolicyCache;
   /** Injected for tests; defaults to the server clock. */
   readonly now?: () => Date;
+  /**
+   * Called when the audit event for a REFUSED grant or revoke could not be written (it is best effort and never changes the refusal
+   * the caller gets). Report the error class only: a database error's message can carry arbitrary text.
+   */
+  readonly onDenialAuditFailure?: (error: unknown) => void;
 }
 
 export function createDbClosureRouteService(deps: ClosureRouteServiceDeps): ClosureRouteService {
@@ -160,6 +182,35 @@ export function createDbClosureRouteService(deps: ClosureRouteServiceDeps): Clos
     withOrgContext(db, { organizationId: actor.organizationId, userId: actor.userId }, (tx) =>
       fn(tx as unknown as DbClient),
     );
+
+  /**
+   * The refused grant or revoke rolled back with its transaction, so its denial event is written on a NEW one (the `hope.sfv_completion_
+   * denied` pattern): ids only, best effort. A failure to write it is reported and NEVER replaces the refusal the caller is about to get.
+   */
+  async function recordDenial(
+    actor: ClosureActor,
+    auditContext: AuditContext,
+    refusal: unknown,
+    resource: { readonly kind: string; readonly id: string },
+    context: Readonly<Record<string, string>>,
+  ): Promise<void> {
+    if (!(refusal instanceof ChartWardenError) || !AUDITED_DENIAL_CODES.has(refusal.code)) return;
+    try {
+      await inOrg(actor, (tx) =>
+        writeAudit(tx, auditContext, {
+          eventType: CLOSURE_OVERRIDE_DENIED_AUDIT_EVENT,
+          resourceKind: resource.kind,
+          resourceId: resource.id,
+          outcome: "denied",
+          severity: "warn",
+          retentionClass: "compliance",
+          context: { denial: refusal.code, obligationKind: VISIT_NOTE, ...context },
+        }),
+      );
+    } catch (auditFailure) {
+      deps.onDenialAuditFailure?.(auditFailure);
+    }
+  }
 
   return {
     async closureStatus(actor) {
@@ -202,33 +253,57 @@ export function createDbClosureRouteService(deps: ClosureRouteServiceDeps): Clos
     },
 
     async grantOverride(actor, request) {
-      const view = await inOrg(actor, (tx) =>
-        grantClosureOverride(tx, {
-          organizationId: actor.organizationId,
-          subjectMembershipId: request.subjectMembershipId,
-          grantedByMembershipId: actor.membershipId,
-          obligationKind: VISIT_NOTE,
-          reason: request.reason,
-          ...(request.hours === undefined ? {} : { hours: request.hours }),
-          locationIds: request.locationIds,
-          audit: request.audit,
-          now: clock(),
-        }),
-      );
+      let view: ClosureOverrideView;
+      try {
+        view = await inOrg(actor, (tx) =>
+          grantClosureOverride(tx, {
+            organizationId: actor.organizationId,
+            subjectMembershipId: request.subjectMembershipId,
+            grantedByMembershipId: actor.membershipId,
+            obligationKind: VISIT_NOTE,
+            reason: request.reason,
+            ...(request.hours === undefined ? {} : { hours: request.hours }),
+            locationIds: request.locationIds,
+            audit: request.audit,
+            now: clock(),
+          }),
+        );
+      } catch (refusal) {
+        await recordDenial(
+          actor,
+          request.audit,
+          refusal,
+          { kind: "membership", id: request.subjectMembershipId },
+          { subjectMembershipId: request.subjectMembershipId },
+        );
+        throw refusal;
+      }
       return overrideWire(view);
     },
 
     async revokeOverride(actor, overrideId, { locationIds, audit }) {
-      const revoked = await inOrg(actor, (tx) =>
-        revokeClosureOverride(tx, {
-          organizationId: actor.organizationId,
-          overrideId,
-          revokedByMembershipId: actor.membershipId,
-          locationIds,
+      let revoked: Awaited<ReturnType<typeof revokeClosureOverride>>;
+      try {
+        revoked = await inOrg(actor, (tx) =>
+          revokeClosureOverride(tx, {
+            organizationId: actor.organizationId,
+            overrideId,
+            revokedByMembershipId: actor.membershipId,
+            locationIds,
+            audit,
+            now: clock(),
+          }),
+        );
+      } catch (refusal) {
+        await recordDenial(
+          actor,
           audit,
-          now: clock(),
-        }),
-      );
+          refusal,
+          { kind: "documentation_obligation_override", id: overrideId },
+          { overrideId },
+        );
+        throw refusal;
+      }
       return {
         ...overrideWire(revoked.override),
         remainingActiveUntil: iso(revoked.remainingActiveUntil),

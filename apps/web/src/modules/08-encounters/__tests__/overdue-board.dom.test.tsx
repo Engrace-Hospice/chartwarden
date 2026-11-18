@@ -725,7 +725,7 @@ describe("what a refused grant says", () => {
     submitGrant(drawer);
     expect(
       await within(drawer).findByText(
-        "This clinician is not blocked right now, so there is nothing to lift.",
+        "There is nothing for you to lift for this clinician right now.",
       ),
     ).toBeTruthy();
     await waitFor(() => expect(boardReads()).toBe(2));

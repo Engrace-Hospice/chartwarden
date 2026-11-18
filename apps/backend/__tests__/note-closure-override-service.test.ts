@@ -341,7 +341,7 @@ describe("grantClosureOverride: who may be released, and by whom", () => {
         409,
       ]);
       expect(failure.message).toBe(
-        "This clinician is not blocked right now, so there is nothing to lift.",
+        "There is nothing for you to lift for this clinician right now.",
       );
       expect(fake.insertedValues()).toHaveLength(0);
     },
@@ -364,16 +364,29 @@ describe("grantClosureOverride: who may be released, and by whom", () => {
     ).toEqual([NOTE_CLOSURE_GRANTOR_BLOCKED_CODE, 403]);
   });
 
-  it("asks the scope's question BEFORE the blocked one: out of scope is 403 whether or not the clinician is blocked, so a site-scoped supervisor learns nothing about them", async () => {
+  it("answers ONE refusal for a clinician outside the grantor's sites, an unblocked one and one with no open note: a site-scoped supervisor learns nothing about a clinician elsewhere", async () => {
+    const answers = new Set<string>();
     for (const verdict of ["clear", "warn", "blocked"] as const) {
       evaluatorSays(GRANTOR_CLEAR, evaluation(verdict, OLDEST_NOTE));
       const fake = fakeTx([[{ id: SUBJECT }], []]); // the scope query finds nothing: the note is outside their sites
-      expect(
-        await failureCode(grantClosureOverride(fake.tx, grantArgs({ locationIds: [SITE] }))),
-        verdict,
-      ).toEqual([NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE_CODE, 403]);
+      const failure = (await failureOf(
+        grantClosureOverride(fake.tx, grantArgs({ locationIds: [SITE] })),
+      )) as ChartWardenError;
+      answers.add(JSON.stringify([failure.code, failure.statusCode, failure.message]));
       expect(fake.insertedValues()).toHaveLength(0);
     }
+    evaluatorSays(GRANTOR_CLEAR, evaluation("clear", null)); // no open note anywhere
+    const noNote = (await failureOf(
+      grantClosureOverride(fakeTx([[{ id: SUBJECT }]]).tx, grantArgs({ locationIds: [SITE] })),
+    )) as ChartWardenError;
+    answers.add(JSON.stringify([noNote.code, noNote.statusCode, noNote.message]));
+    expect([...answers]).toEqual([
+      JSON.stringify([
+        NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE,
+        409,
+        "There is nothing for you to lift for this clinician right now.",
+      ]),
+    ]);
   });
 
   it("an unblocked clinician whose note IS in the grantor's sites is 409 (the scope passed, the verdict is the refusal)", async () => {
@@ -390,16 +403,16 @@ describe("grantClosureOverride: who may be released, and by whom", () => {
     expect(fake.queriesRun()).toBe(3); // membership, insert, audit
   });
 
-  it("a site-scoped grantor is refused when the oldest note is outside their sites: 403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE", async () => {
+  it("a site-scoped grantor is refused when the oldest note is outside their sites: the same 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED as any other nothing-to-lift", async () => {
     const fake = fakeTx([[{ id: SUBJECT }], []]);
     const failure = (await failureOf(
       grantClosureOverride(fake.tx, grantArgs({ locationIds: [SITE] })),
     )) as ChartWardenError;
     expect([failure.code, failure.statusCode]).toEqual([
-      NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE_CODE,
-      403,
+      NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE,
+      409,
     ]);
-    expect(failure.message).toBe("That clinician's note is outside your sites.");
+    expect(failure.message).toBe("There is nothing for you to lift for this clinician right now.");
     expect(fake.insertedValues()).toHaveLength(0);
   });
 
@@ -424,7 +437,7 @@ describe("grantClosureOverride: who may be released, and by whom", () => {
     const failure = (await failureOf(
       grantClosureOverride(fake.tx, grantArgs({ locationIds: [] })),
     )) as ChartWardenError;
-    expect(failure.code).toBe(NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE_CODE);
+    expect(failure.code).toBe(NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE);
     const where = fake.calls.filter((c) => c.op === "where")[1]?.args[0] as SQL;
     expect(new PgDialect().sqlToQuery(where).sql).toContain("false");
   });

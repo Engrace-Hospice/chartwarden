@@ -2990,12 +2990,13 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       const noSite = await blockedClinician(null);
       const before = await overrideCount();
 
+      // out of scope answers the ONE nothing-to-lift refusal (not a distinct 403): nothing about a clinician elsewhere is revealed
       expect(await codeOf(grant(siteSupervisor, outOfScope, [siteOne]))).toBe(
-        "403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE",
+        "409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED",
       );
       // a supervisor with no sites at all is out of scope for every note, a no-site note included (fail closed)
       expect(await codeOf(grant(siteSupervisor, noSite, []))).toBe(
-        "403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE",
+        "409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED",
       );
       expect(await overrideCount()).toBe(before);
 
@@ -3022,12 +3023,12 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
         locationIndex: 0,
       });
       expect(await codeOf(grant(siteSupervisor, mixed, [siteOne]))).toBe(
-        "403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE",
+        "409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED",
       );
       expect(await codeOf(grant(siteSupervisor, mixed, [siteTwo]))).toBe("granted");
     });
 
-    it("the order of refusals is the documented one: grantor blocked, then out of scope, then clinician not blocked", async () => {
+    it("the order of refusals is the documented one: the grantor's own block first, then the single nothing-to-lift refusal", async () => {
       const blockedGrantor = await supervisor(33);
       const clear = await supervisor();
       const outsideSites = await blockedClinician(1);
@@ -3042,7 +3043,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       );
     });
 
-    it("scope is decided BEFORE the blocked question: a site-scoped supervisor gets the same 403 for a blocked and an unblocked clinician outside their sites", async () => {
+    it("a site-scoped supervisor gets the SAME 409 for a blocked, an unblocked and an overridden clinician outside their sites, so it reveals nothing about them", async () => {
       const [siteOne] = org.locationIds;
       const scoped = await supervisor();
       const blockedElsewhere = await blockedClinician(1, 30); // blocked, at site two
@@ -3056,7 +3057,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
         ["overridden", overriddenElsewhere],
       ] as const) {
         expect(await codeOf(grant(scoped, subject, [siteOne])), label).toBe(
-          "403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE",
+          "409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED",
         );
       }
       expect(await overrideCount()).toBe(before);
@@ -3067,6 +3068,95 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
         "409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED",
       );
       expect(await codeOf(grant(scoped, blockedHere, [siteOne]))).toBe("granted");
+    });
+
+    it("a refused grant or revoke leaves an m8.encounter.closure_override_denied event (ids only, its own transaction) for the two authorization refusals, none for 'nothing to lift', and an unwritable one never replaces the refusal", async () => {
+      const failures: unknown[] = [];
+      const service = createDbClosureRouteService({
+        db: handle.db,
+        now: () => NOW,
+        onDenialAuditFailure: (error) => failures.push(error),
+      });
+      const actorOf = (member: Member) => ({
+        organizationId: ORG_G,
+        userId: member.userId,
+        membershipId: member.membershipId,
+      });
+      const tryGrant = (
+        by: Member,
+        subject: Member,
+        auditContext: AuditContext = auditContextOf(ORG_G, by.userId),
+      ) =>
+        codeOf(
+          service.grantOverride(actorOf(by), {
+            subjectMembershipId: subject.membershipId,
+            reason: REASON,
+            locationIds: null,
+            audit: auditContext,
+          }),
+        );
+      const deniedEvents = async (resourceId: string) =>
+        (
+          await admin.query(
+            `SELECT outcome, severity, retention_class, actor_user_id::text AS actor, context FROM audit_event
+              WHERE organization_id=$1 AND event_type='m8.encounter.closure_override_denied' AND resource_id=$2`,
+            [ORG_G, resourceId],
+          )
+        ).rows;
+
+      // 1. a grantor with a note past its block instant: refused, and the refusal is evidence
+      const blockedGrantor = await supervisor(33);
+      const target = await blockedClinician(0);
+      expect(await tryGrant(blockedGrantor, target)).toBe("403 NOTE_CLOSURE_GRANTOR_BLOCKED");
+      const denied = one(await deniedEvents(target.membershipId));
+      expect([denied.outcome, denied.severity, denied.retention_class, denied.actor]).toEqual([
+        "denied",
+        "warn",
+        "compliance",
+        blockedGrantor.userId,
+      ]);
+      expect(denied.context).toEqual({
+        denial: "NOTE_CLOSURE_GRANTOR_BLOCKED",
+        obligationKind: "visit_note",
+        subjectMembershipId: target.membershipId,
+      });
+      expect(JSON.stringify(denied)).not.toContain("Visit ran long");
+
+      // 2. 'nothing to lift' is routine (a stale board): no event
+      const clearGrantor = await supervisor();
+      const fresh = await blockedClinician(0, 2);
+      expect(await tryGrant(clearGrantor, fresh)).toBe("409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED");
+      expect(await deniedEvents(fresh.membershipId)).toHaveLength(0);
+
+      // 3. a revoke by a site-scoped supervisor who did not grant it
+      const [siteOne] = org.locationIds;
+      const granter = await supervisor();
+      const clinician = await blockedClinician(0, 30);
+      const override = await grant(granter, clinician, [siteOne]);
+      const other = await supervisor();
+      expect(
+        await codeOf(
+          service.revokeOverride(actorOf(other), override.id, {
+            locationIds: [siteOne],
+            audit: auditContextOf(ORG_G, other.userId),
+          }),
+        ),
+      ).toBe("403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE");
+      expect(one(await deniedEvents(override.id)).context).toEqual({
+        denial: "NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE",
+        obligationKind: "visit_note",
+        overrideId: override.id,
+      });
+
+      // 4. a denial event that cannot be written is reported (class only) and NEVER replaces the refusal the caller gets
+      const another = await blockedClinician(0);
+      expect(failures).toHaveLength(0);
+      const unwritable = { ...auditContextOf(ORG_G, blockedGrantor.userId), userId: "not-a-uuid" };
+      expect(await tryGrant(blockedGrantor, another, unwritable)).toBe(
+        "403 NOTE_CLOSURE_GRANTOR_BLOCKED",
+      );
+      expect(failures).toHaveLength(1);
+      expect(await deniedEvents(another.membershipId)).toHaveLength(0);
     });
 
     it("a site-scoped supervisor may revoke only what they granted; an org-wide caller may revoke any; a blocked grantor can still revoke their own", async () => {

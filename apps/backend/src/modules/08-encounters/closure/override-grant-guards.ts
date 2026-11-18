@@ -1,18 +1,19 @@
 // apps/backend/src/modules/08-encounters/closure/override-grant-guards.ts — who may lift whose closure block (ADR-0113 D7).
 //
 // Refusals asked of a GRANT, in this order, on the grant's own transaction so RLS scopes every read:
-//   1. NOTE_CLOSURE_GRANTOR_BLOCKED (403)      the granting supervisor has a note past its block instant, ANY override they hold ignored.
+//   1. NOTE_CLOSURE_GRANTOR_BLOCKED (403)      the granting supervisor has a note past its BLOCK INSTANT, ANY override they hold ignored.
 //                                              Grant and revoke are on the gate's allowlist, so without this two blocked supervisors could
 //                                              release each other, and two supervisors who each hold the other's override (so neither is
-//                                              "blocked" any more) could keep releasing each other for ever without closing a note. Only a
-//                                              supervisor who is genuinely clear (nothing past its deadline) may release others.
-//   2. NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE (403) the clinician's oldest open note (the one that decides the block) is outside the grantor's
-//                                              locations, by the same predicate the overdue board uses (a note with no location is in scope
-//                                              for every supervisor). Decided on that note's location whether or not it is blocked yet,
-//                                              and BEFORE the blocked question, so a site-scoped supervisor cannot learn whether a clinician
-//                                              outside their sites is blocked. Org-wide roles see every site.
-//   3. NOTE_CLOSURE_SUBJECT_NOT_BLOCKED (409)  the clinician is not blocked (no open note, clear, warn-only, or already overridden):
-//                                              nothing to lift, and a stray grant would pre-authorize a future block.
+//                                              "blocked" any more) could keep releasing each other for ever without closing a note. A
+//                                              supervisor whose note is past its deadline but not yet past its block instant (the grace
+//                                              window after `block` was enabled) may still release others.
+//   2. NOTE_CLOSURE_SUBJECT_NOT_BLOCKED (409)  nothing for THIS caller to lift, ONE answer for three states: the clinician has no open
+//                                              clocked note, or their oldest open note (the one that decides the block) is outside the
+//                                              grantor's locations (the board's predicate: a note with no location is in scope for every
+//                                              supervisor; org-wide roles see every site), or they are not blocked (clear, warn-only, or
+//                                              already overridden). Identical code, status and message in all three, so a site-scoped
+//                                              supervisor cannot learn whether a clinician outside their sites has an open note or is
+//                                              blocked. A stray grant would also pre-authorize a future block.
 // A REVOKE has one refusal: NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE (403) unless the caller granted that override or covers every site. A blocked
 // supervisor can still revoke what they granted (revoke stays on the allowlist).
 // The verdicts come from the ONE evaluator the gate, the banner and the board share, so "blocked" means the same thing here.
@@ -56,11 +57,13 @@ async function noteInScope(
   return row !== undefined;
 }
 
-const OUT_OF_SCOPE_MESSAGE = "That clinician's note is outside your sites.";
+/** The one sentence for every grant that has nothing to lift for THIS caller (no open note, outside their sites, or not blocked). */
+export const NOTHING_TO_LIFT_MESSAGE =
+  "There is nothing for you to lift for this clinician right now.";
 const REVOKE_OUT_OF_SCOPE_MESSAGE =
   "Only the supervisor who granted this override, or one who covers every site, can revoke it.";
 
-/** Throws the first of the three refusals that applies; returns when the grant may proceed. */
+/** Throws the first of the two refusals that applies (the grantor's own block, then "nothing to lift"); returns when the grant may proceed. */
 export async function assertGrantAllowed(tx: DbClient, input: GrantGuardInput): Promise<void> {
   const { organizationId, now } = input;
   const grantor = await evaluateMemberClosure(tx, {
@@ -82,22 +85,21 @@ export async function assertGrantAllowed(tx: DbClient, input: GrantGuardInput): 
     membershipId: input.subjectMembershipId,
     now,
   });
+  // ONE refusal for "no open note", "the oldest note is outside the grantor's sites" and "not blocked": the answer is the same whatever
+  // the clinician's state, so a site-scoped supervisor cannot probe whether a clinician outside their sites has an open note or is
+  // blocked. Only a clinician who is blocked AND in scope can be released.
   const oldestOpenNote = subject.encounterId;
-  if (oldestOpenNote === null) throw subjectNotBlocked();
+  if (oldestOpenNote === null) throw nothingToLift();
   if (!(await noteInScope(tx, organizationId, oldestOpenNote, input.locationIds))) {
-    throw new ChartWardenError(
-      NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE_CODE,
-      OUT_OF_SCOPE_MESSAGE,
-      HTTP_FORBIDDEN,
-    );
+    throw nothingToLift();
   }
-  if (subject.verdict !== "blocked") throw subjectNotBlocked();
+  if (subject.verdict !== "blocked") throw nothingToLift();
 }
 
-function subjectNotBlocked(): ChartWardenError {
+function nothingToLift(): ChartWardenError {
   return new ChartWardenError(
     NOTE_CLOSURE_SUBJECT_NOT_BLOCKED_CODE,
-    "This clinician is not blocked right now, so there is nothing to lift.",
+    NOTHING_TO_LIFT_MESSAGE,
     HTTP_CONFLICT,
   );
 }

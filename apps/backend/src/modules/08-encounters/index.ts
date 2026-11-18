@@ -34,7 +34,11 @@ export function mountEncounterRoutes(
   db: DbClient,
   outbox?: EncounterWriteOutboxPort,
   ciphers?: HearthnoteCiphers,
-  closure?: { readonly policyCache?: ClosurePolicyCache },
+  closure?: {
+    readonly policyCache?: ClosurePolicyCache;
+    /** Reports (error class only) a refused grant/revoke whose denial audit event could not be written; see closure-route-service.ts. */
+    readonly onDenialAuditFailure?: (error: unknown) => void;
+  },
 ): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
   _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox, ciphers) });
@@ -42,6 +46,9 @@ export function mountEncounterRoutes(
     service: createDbClosureRouteService({
       db,
       ...(closure?.policyCache ? { policyCache: closure.policyCache } : {}),
+      ...(closure?.onDenialAuditFailure
+        ? { onDenialAuditFailure: closure.onDenialAuditFailure }
+        : {}),
     }),
   });
 }

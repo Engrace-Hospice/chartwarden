@@ -207,6 +207,14 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m8.encounter.closure_override_denied",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "A supervisor's visit-note closure override grant or revoke was refused as an authorization decision (denial = NOTE_CLOSURE_GRANTOR_BLOCKED for a grantor with a note past its block instant, or NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE for a revoke by a site-scoped supervisor who did not grant it; obligationKind and subjectMembershipId or overrideId; severity warn, outcome denied; ids only, never the reason; the refused transaction rolled back, so this is written on its own, best effort; the routine 'nothing to lift' refusal writes nothing; ADR-0113 D7). No patient, so never Part 2.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m8.encounter.closure_policy_changed",
     moduleOwner: "m8",
     defaultRetentionClass: "compliance",

@@ -75,8 +75,8 @@ describe("M8-T12 — m8 audit action catalog (§8.1)", () => {
     }
   });
 
-  it("covers all 22 §8.1 events plus the three ADR-0113 closure events (override granted, override revoked, policy changed)", () => {
-    expect(M8_ACTION_CATALOG.length).toBe(25);
+  it("covers all 22 §8.1 events plus the four ADR-0113 closure events (override granted, revoked and denied, policy changed)", () => {
+    expect(M8_ACTION_CATALOG.length).toBe(26);
   });
 
   it("the reason carriers scrub narrative free text", () => {

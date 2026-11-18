@@ -53,9 +53,11 @@ const REFUSAL_COPY: Readonly<Record<string, string>> = {
     "That was refused. You cannot override your own note, and an override needs the supervisor permission.",
   // A supervisor who is blocked on their own notes cannot release anyone else until those are closed.
   NOTE_CLOSURE_GRANTOR_BLOCKED: "Close your own overdue notes before releasing someone else.",
-  // The clinician closed the note (or another supervisor already released them) while the board was open: nothing to lift.
+  // The clinician closed the note (or another supervisor already released them) while the board was open: nothing to lift. The server
+  // gives this ONE answer for every grant that has nothing to lift for this caller (not blocked, no open note, or outside their sites),
+  // so the sentence does not say which.
   NOTE_CLOSURE_SUBJECT_NOT_BLOCKED:
-    "This clinician is not blocked right now, so there is nothing to lift.",
+    "There is nothing for you to lift for this clinician right now.",
   NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE: "That clinician's note is outside your sites.",
 };
 
