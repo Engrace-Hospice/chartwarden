@@ -5,7 +5,7 @@ import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
-import { ErrorText, FormShell, SelectField, TextAreaField, TextField } from "./bereavement-ui";
+import { FormShell, SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { intOrNull, isHttpsUrl, isoToLocal, localToIso, orNull } from "./program-status";
 import { type Memorial, type MemorialBody, createMemorial, updateMemorial } from "./programs-api";
 
@@ -142,6 +142,7 @@ function MemorialForm({
       title={service ? "Edit memorial service" : "New memorial service"}
       onClose={onClose}
       busy={busy}
+      error={error}
       save={
         <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : "Save"}
@@ -181,7 +182,6 @@ function MemorialForm({
         value={draft.inviteWindowMonths}
         onChange={set("inviteWindowMonths")}
       />
-      {error ? <ErrorText>{error}</ErrorText> : null}
     </FormShell>
   );
 }

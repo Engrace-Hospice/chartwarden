@@ -12,6 +12,9 @@ import { GriefLibrary } from "./grief-library";
 const ITEM_ID = "11111111-1111-4111-8111-111111111111";
 const DOC_ID = "22222222-2222-4222-8222-222222222222";
 const UPLOAD_ID = "33333333-3333-4333-8333-333333333333";
+const ITEM_B_ID = "44444444-4444-4444-8444-444444444444";
+const TITLE_A = "When grief comes in waves";
+const TITLE_B = "Walking through the first year";
 const MANAGE = ["bereavement.library.read", "bereavement.library.manage"];
 const LIBRARY = "/api/v1/bereavement/library";
 
@@ -33,6 +36,8 @@ const item = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const itemB = () => item({ itemId: ITEM_B_ID, title: TITLE_B, sortOrder: 2 });
+
 interface Req {
   method: string;
   path: string;
@@ -41,9 +46,9 @@ interface Req {
   ifMatch: string | null;
   idempotencyKey: string | null;
 }
-type Reply = { status: number; body?: unknown };
+type Reply = { status: number; body?: unknown } | "reject";
 
-function mount(handler: (req: Req) => Reply, permissions: string[] = MANAGE) {
+function mount(handler: (req: Req) => Reply | Promise<Reply>, permissions: string[] = MANAGE) {
   const calls: Req[] = [];
   const stub = async (input: RequestInfo | URL): Promise<Response> => {
     const req = input as Request;
@@ -58,7 +63,8 @@ function mount(handler: (req: Req) => Reply, permissions: string[] = MANAGE) {
       idempotencyKey: req.headers.get("idempotency-key"),
     };
     calls.push(recorded);
-    const reply = handler(recorded);
+    const reply = await handler(recorded);
+    if (reply === "reject") throw new TypeError("network down");
     return new Response(JSON.stringify(reply.body ?? {}), {
       status: reply.status,
       headers: { "content-type": "application/json" },
@@ -209,15 +215,30 @@ describe("grief library — writes", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("keeps one form drawer open at a time", async () => {
-    mount(() => ok([item()]));
-    fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
-    await screen.findByRole("complementary", { name: "Edit library item" });
+  it("keeps one form drawer open at a time, and each swap starts the new form clean", async () => {
+    mount(() => ok([item(), itemB()]));
+    const editDrawer = () => screen.getAllByRole("complementary", { name: "Edit library item" });
+    const titleValue = () => (screen.getByLabelText("Title") as HTMLInputElement).value;
+
+    // Edit A -> Edit B: B's own fields, none of A's typed text, and one drawer.
+    fireEvent.click(await screen.findByRole("button", { name: `Edit ${TITLE_A}` }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Typed over A" } });
+    fireEvent.click(screen.getByRole("button", { name: `Edit ${TITLE_B}` }));
+    await waitFor(() => expect(titleValue()).toBe(TITLE_B));
+    expect(editDrawer()).toHaveLength(1);
+
+    // Edit -> Upload: the edit drawer is replaced.
     fireEvent.click(screen.getByRole("button", { name: "Upload item" }));
     expect(
       await screen.findByRole("complementary", { name: "Upload a library item" }),
     ).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "Edit library item" })).toBeNull();
+
+    // Upload -> Edit: the upload drawer is replaced, by the item's own details.
+    fireEvent.click(screen.getByRole("button", { name: `Edit ${TITLE_A}` }));
+    await waitFor(() => expect(titleValue()).toBe(TITLE_A));
+    expect(screen.queryByRole("complementary", { name: "Upload a library item" })).toBeNull();
+    expect(editDrawer()).toHaveLength(1);
   });
 
   it("edits with a PATCH carrying If-Match", async () => {
@@ -539,7 +560,7 @@ describe("grief library — review fixes", () => {
 
 describe("grief library — round 3", () => {
   /** Start an upload whose PUT hangs until aborted; answers the reservation and its release. */
-  const startHangingUpload = async () => {
+  const startHangingUpload = async (rows: unknown[] = []) => {
     vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValue(
       new Uint8Array(32).fill(0xab).buffer,
     );
@@ -567,7 +588,7 @@ describe("grief library — round 3", () => {
           }
         : req.method === "DELETE"
           ? { status: 204 }
-          : ok([]),
+          : ok(rows),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
     const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
@@ -596,6 +617,25 @@ describe("grief library — round 3", () => {
     await waitFor(() => expect(released(calls)).toBe(true));
     expect(calls.some((c) => c.method === "POST" && c.path === LIBRARY)).toBe(false);
     expect(calls.some((c) => c.path.endsWith("/complete"))).toBe(false);
+  });
+
+  it("while the file is sent the page's Upload item and Edit are inert and the drawer cannot be dismissed", async () => {
+    await startHangingUpload([item()]);
+    const drawer = screen.getByRole("complementary", { name: "Upload a library item" });
+
+    for (const name of ["Upload item", `Edit ${TITLE_A}`]) {
+      expect(screen.getByRole("button", { name }).closest("[inert]")).not.toBeNull();
+    }
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "Upload a library item" })).toBeTruthy();
+    // Cancel upload is the drawer's own way out and stays live.
+    expect(
+      within(drawer).getByRole("button", { name: "Cancel upload" }).closest("[inert]"),
+    ).toBeNull();
   });
 
   it.each([409, 404])("a %i on a status change closes the confirm dialog", async (status) => {
@@ -642,5 +682,143 @@ describe("grief library — round 3", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit When grief comes in waves" }));
     expect(await screen.findByRole("complementary", { name: "Edit library item" })).toBeTruthy();
     expect(screen.queryByText("no preview")).toBeNull();
+  });
+});
+
+describe("grief library — writes in flight and failed writes", () => {
+  const inertNow = (name: string) => screen.getByRole("button", { name }).closest("[inert]");
+  const titleValue = () => (screen.getByLabelText("Title") as HTMLInputElement).value;
+
+  it("a save in flight keeps the page inert, and finishing it closes only its own drawer", async () => {
+    let finish: (reply: Reply) => void = () => undefined;
+    const { calls } = mount((req) =>
+      req.method === "PATCH"
+        ? new Promise<Reply>((resolve) => {
+            finish = resolve;
+          })
+        : ok([item(), itemB()]),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: `Edit ${TITLE_A}` }));
+    const drawer = screen.getByRole("complementary", { name: "Edit library item" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+
+    for (const name of ["Upload item", `Edit ${TITLE_A}`, `Edit ${TITLE_B}`]) {
+      expect(inertNow(name)).not.toBeNull();
+    }
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "Edit library item" })).toBeTruthy();
+
+    // Defence in depth: jsdom does not stop a click on an inert control, so force Edit B through. A's save finishing must not
+    // close B's drawer.
+    fireEvent.click(screen.getByRole("button", { name: `Edit ${TITLE_B}` }));
+    await waitFor(() => expect(titleValue()).toBe(TITLE_B));
+    finish(ok(item({ version: 4 })));
+    expect(await screen.findByText(`${TITLE_A} was saved.`)).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "Edit library item" })).toBeTruthy();
+    expect(titleValue()).toBe(TITLE_B);
+  });
+
+  it("an upload's registration finishing closes only the upload drawer, not a form opened since", async () => {
+    vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValue(
+      new Uint8Array(32).fill(0xab).buffer,
+    );
+    vi.stubGlobal("fetch", async () => new Response(null, { status: 200 }));
+    let finish: (reply: Reply) => void = () => undefined;
+    const { calls } = mount((req) => {
+      if (req.path === "/api/v1/document-uploads")
+        return {
+          status: 201,
+          body: {
+            uploadId: UPLOAD_ID,
+            uploadUrl: "https://store.example/put",
+            requiredHeaders: {},
+            expiresAt: "2099-01-01T00:00:00.000Z",
+          },
+        };
+      if (req.path.endsWith("/complete")) return ok({ documentId: DOC_ID });
+      if (req.method === "POST" && req.path === LIBRARY)
+        return new Promise<Reply>((resolve) => {
+          finish = resolve;
+        });
+      return ok([item()]);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
+    const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(8) });
+    fireEvent.change(screen.getByLabelText(/^File/), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Holiday guide" } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === "POST" && c.path === LIBRARY)).toBe(true),
+    );
+    // Registering is part of the write: the page stays inert through it too.
+    expect(inertNow("Upload item")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: `Edit ${TITLE_A}` }));
+    await screen.findByRole("complementary", { name: "Edit library item" });
+    finish(ok(item({ itemId: ITEM_B_ID, title: "Holiday guide" })));
+    expect(
+      await screen.findByText("Holiday guide was added to the library as a draft."),
+    ).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "Edit library item" })).toBeTruthy();
+  });
+
+  it("a save that rejects on a network failure ends in the drawer, which is live and dismissable again", async () => {
+    mount((req) => (req.method === "PATCH" ? "reject" : ok([item()])));
+    fireEvent.click(await screen.findByRole("button", { name: `Edit ${TITLE_A}` }));
+    const drawer = screen.getByRole("complementary", { name: "Edit library item" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("connection dropped");
+    expect(
+      (within(drawer).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(document.querySelector("[inert]")).toBeNull();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Edit library item" })).toBeNull(),
+    );
+  });
+
+  it("an upload whose registration rejects on a network failure ends in the drawer, which is live again", async () => {
+    vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValue(
+      new Uint8Array(32).fill(0xab).buffer,
+    );
+    vi.stubGlobal("fetch", async () => new Response(null, { status: 200 }));
+    mount((req) => {
+      if (req.path === "/api/v1/document-uploads")
+        return {
+          status: 201,
+          body: {
+            uploadId: UPLOAD_ID,
+            uploadUrl: "https://store.example/put",
+            requiredHeaders: {},
+            expiresAt: "2099-01-01T00:00:00.000Z",
+          },
+        };
+      if (req.path.endsWith("/complete")) return ok({ documentId: DOC_ID });
+      if (req.method === "POST" && req.path === LIBRARY) return "reject";
+      return ok([]);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
+    const drawer = screen.getByRole("complementary", { name: "Upload a library item" });
+    const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(8) });
+    fireEvent.change(within(drawer).getByLabelText(/^File/), { target: { files: [file] } });
+    fireEvent.change(within(drawer).getByLabelText("Title"), { target: { value: "Guide" } });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("connection dropped");
+    expect(
+      (within(drawer).getByRole("button", { name: "Upload" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(document.querySelector("[inert]")).toBeNull();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Upload a library item" })).toBeNull(),
+    );
   });
 });

@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { FormDrawer } from "../../shell/form-drawer";
 import { errorMessage } from "./bereavement-api";
-import { ErrorText, SelectField, TextAreaField, TextField } from "./bereavement-ui";
+import { SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, orNull } from "./program-status";
 import {
   LIBRARY_UPLOAD_MIME,
@@ -18,6 +18,7 @@ import {
 } from "./programs-api";
 
 const UPLOAD_STOPPED = "The upload was cancelled. The file was not added to the library.";
+const UPLOAD_FAILED = "The file could not be uploaded. Check your connection and try again.";
 
 export function LibraryUploadDrawer({
   onClose,
@@ -46,28 +47,27 @@ export function LibraryUploadDrawer({
   // The dialog went away mid-upload: stop the PUT and release the reservation; nothing is registered.
   useEffect(() => () => sending.current?.abort(), []);
 
-  const submit = async (): Promise<void> => {
-    const order = intOrNull(sortOrder);
-    if (!file) return setError("Choose a file to upload.");
-    if (!title.trim()) return setError("Give the item a title.");
-    if (order === null || order < 0) return setError("Sort order must be a whole number.");
-    setBusy(true);
-    setError(null);
-    let documentId = uploaded.current?.file === file ? uploaded.current.documentId : null;
+  /** Upload the file (unless an earlier attempt already did) and register it: the new item, or null with `error` set. */
+  const uploadAndRegister = async (chosen: File, order: number): Promise<LibraryItem | null> => {
+    let documentId = uploaded.current?.file === chosen ? uploaded.current.documentId : null;
     if (documentId === null) {
       const controller = new AbortController();
       sending.current = controller;
       setCancellable(true);
-      const result = await uploadLibraryDocument(client, file, title.trim(), controller.signal);
-      sending.current = null;
-      setCancellable(false);
-      setCancelling(false);
+      let result: Awaited<ReturnType<typeof uploadLibraryDocument>>;
+      try {
+        result = await uploadLibraryDocument(client, chosen, title.trim(), controller.signal);
+      } finally {
+        sending.current = null;
+        setCancellable(false);
+        setCancelling(false);
+      }
       // A document committed just as the reader cancelled is kept for a retry, but nothing is registered now.
-      if ("documentId" in result) uploaded.current = { file, documentId: result.documentId };
+      if ("documentId" in result)
+        uploaded.current = { file: chosen, documentId: result.documentId };
       if ("message" in result || controller.signal.aborted) {
-        setBusy(false);
         setError("message" in result ? result.message : UPLOAD_STOPPED);
-        return;
+        return null;
       }
       documentId = result.documentId;
     }
@@ -81,14 +81,33 @@ export function LibraryUploadDrawer({
     };
     const res = await registerLibraryItem(client, body, keys.keyFor(JSON.stringify(body)));
     keys.settle(res.status, res.error);
-    setBusy(false);
     if (res.error || !res.data) {
       setError(
         errorMessage(res.error, "The file was uploaded but could not be added to the library."),
       );
-      return;
+      return null;
     }
-    onRegistered(res.data);
+    return res.data;
+  };
+
+  const submit = async (): Promise<void> => {
+    const order = intOrNull(sortOrder);
+    if (!file) return setError("Choose a file to upload.");
+    if (!title.trim()) return setError("Give the item a title.");
+    if (order === null || order < 0) return setError("Sort order must be a whole number.");
+    // busy spans the whole attempt (hashing, the PUT's progress, completing, registering): FormDrawer keeps the page inert and the
+    // drawer undismissable for that time, and a rejection must not leave it stuck.
+    setBusy(true);
+    setError(null);
+    let registered: LibraryItem | null = null;
+    try {
+      registered = await uploadAndRegister(file, order);
+    } catch {
+      setError(UPLOAD_FAILED);
+    } finally {
+      setBusy(false);
+    }
+    if (registered) onRegistered(registered);
   };
 
   return (
@@ -96,6 +115,7 @@ export function LibraryUploadDrawer({
       title="Upload a library item"
       onClose={onClose}
       busy={busy}
+      error={error}
       save={
         <>
           {cancellable ? (
@@ -140,7 +160,6 @@ export function LibraryUploadDrawer({
       <span className="wx-text-muted">
         The item is added as a draft: families see it once it is published.
       </span>
-      {error ? <ErrorText>{error}</ErrorText> : null}
     </FormDrawer>
   );
 }

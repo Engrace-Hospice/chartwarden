@@ -258,6 +258,7 @@ export function FormShell({
   busy,
   onClose,
   save,
+  error,
   children,
 }: {
   presentation: "modal" | "drawer";
@@ -265,14 +266,17 @@ export function FormShell({
   busy: boolean;
   onClose: () => void;
   save: ReactNode;
+  /** A failed write's refusal: after the fields in the dialog, announced in the drawer beside Save in the drawer. */
+  error?: string | null;
   children: ReactNode;
 }): JSX.Element {
   return presentation === "modal" ? (
     <Modal title={title} onClose={onClose} busy={busy} dirty footer={save}>
       {children}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   ) : (
-    <FormDrawer title={title} busy={busy} onClose={onClose} save={save}>
+    <FormDrawer title={title} busy={busy} onClose={onClose} save={save} error={error}>
       {children}
     </FormDrawer>
   );

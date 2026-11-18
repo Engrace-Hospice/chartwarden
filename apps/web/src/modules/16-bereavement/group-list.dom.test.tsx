@@ -53,7 +53,10 @@ interface Req {
 }
 type Reply = { status: number; body?: unknown } | "reject";
 
-function mount(answer: (req: Req) => Reply, permissions = ["bereavement.group.read"]) {
+function mount(
+  answer: (req: Req) => Reply | Promise<Reply>,
+  permissions = ["bereavement.group.read"],
+) {
   const calls: Req[] = [];
   const stub = async (input: RequestInfo | URL): Promise<Response> => {
     const req = input instanceof Request ? input : new Request(String(input));
@@ -67,7 +70,7 @@ function mount(answer: (req: Req) => Reply, permissions = ["bereavement.group.re
       idempotencyKey: req.headers.get("idempotency-key"),
     };
     calls.push(recorded);
-    const reply = answer(recorded);
+    const reply = await answer(recorded);
     if (reply === "reject") throw new TypeError("network down");
     return new Response(JSON.stringify(reply.body ?? {}), {
       status: reply.status,
@@ -224,6 +227,71 @@ describe("support groups — create a draft", () => {
     fireEvent.click(within(drawer).getByRole("button", { name: "Create draft group" }));
     expect((await within(drawer).findByRole("alert")).textContent).toContain("https://");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+});
+
+describe("support groups — a create in flight, and a create that fails", () => {
+  const fillNewGroup = (drawer: HTMLElement): void => {
+    fireEvent.change(within(drawer).getByLabelText("Name"), { target: { value: "Spring circle" } });
+    fireEvent.change(within(drawer).getByLabelText("Facilitator membership id"), {
+      target: { value: FACILITATOR },
+    });
+    fireEvent.change(within(drawer).getByLabelText("First date"), {
+      target: { value: "2027-03-02" },
+    });
+    fireEvent.change(within(drawer).getByLabelText("Time zone"), {
+      target: { value: "America/Chicago" },
+    });
+  };
+
+  it("keeps the drawer open and the list inert until the POST lands, then opens the new group", async () => {
+    let finish: (reply: Reply) => void = () => undefined;
+    const { calls } = mount(
+      (req) =>
+        req.method === "POST"
+          ? new Promise<Reply>((resolve) => {
+              finish = resolve;
+            })
+          : page([group()]),
+      MANAGE,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "New group" }));
+    const drawer = await screen.findByRole("complementary", { name: "New support group" });
+    fillNewGroup(drawer);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Create draft group" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+
+    expect(
+      screen.getByRole("link", { name: "Tuesday evening circle" }).closest("[inert]"),
+    ).not.toBeNull();
+    expect(screen.getByRole("button", { name: "New group" }).closest("[inert]")).not.toBeNull();
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "New support group" })).toBeTruthy();
+
+    finish({ status: 200, body: { ...group(), status: "draft", joinUrl: null } });
+    expect(await screen.findByText("Group page")).toBeTruthy();
+  });
+
+  it("a POST that rejects on a network failure ends in the drawer, which is live and dismissable again", async () => {
+    mount((req) => (req.method === "POST" ? "reject" : page([group()])), MANAGE);
+    fireEvent.click(await screen.findByRole("button", { name: "New group" }));
+    const drawer = await screen.findByRole("complementary", { name: "New support group" });
+    fillNewGroup(drawer);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Create draft group" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("connection dropped");
+    expect(
+      (within(drawer).getByRole("button", { name: "Create draft group" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(document.querySelector("[inert]")).toBeNull();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New support group" })).toBeNull(),
+    );
   });
 });
 

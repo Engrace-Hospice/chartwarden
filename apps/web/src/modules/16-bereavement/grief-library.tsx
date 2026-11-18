@@ -69,6 +69,11 @@ const TRANSCRIPT_NEEDED = "Add a transcript before publishing this video.";
 const needsTranscript = (item: LibraryItem, next: LibraryStatus): boolean =>
   next === "published" && item.kind === "video" && !item.transcriptDocumentId;
 
+/** The one form drawer beside the list: the upload form or one item's edit form. Opening one replaces the other. */
+type LibraryForm =
+  | { readonly kind: "upload" }
+  | { readonly kind: "edit"; readonly item: LibraryItem };
+
 interface Preview {
   readonly itemId: string;
   readonly title: string;
@@ -87,8 +92,7 @@ export function GriefLibrary(): JSX.Element | null {
     [client, status],
   );
   const { state, reload, patch } = useLoaded<LibraryItem[]>(fetchItems, LOAD_FAILED);
-  const [uploading, setUploading] = useState(false);
-  const [editing, setEditing] = useState<LibraryItem | null>(null);
+  const [form, setForm] = useState<LibraryForm | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -173,14 +177,16 @@ export function GriefLibrary(): JSX.Element | null {
 
   const rows = state.kind === "ready" ? state.data : [];
   const failure = state.kind === "error" ? state.message : state.notice;
-  const drawerOpen = uploading || editing !== null;
-  // A drawer does not block the page the way a dialog does, so opening one form closes the other.
-  const openUpload = (): void => {
-    setEditing(null);
-    setUploading(true);
-  };
+  // A drawer does not block the page the way a dialog does, so opening one form replaces the other (while a write is in flight
+  // FormDrawer makes the page inert instead). A drawer closes itself only if it is still the open one: a write that outlives its
+  // drawer (it was replaced) must not close the form that replaced it.
+  const openUpload = (): void => setForm({ kind: "upload" });
+  const closeUpload = (): void => setForm((open) => (open?.kind === "upload" ? null : open));
+  const closeEdit = (itemId: string): void =>
+    setForm((open) => (open?.kind === "edit" && open.item.itemId === itemId ? null : open));
+  const editItem = form?.kind === "edit" ? form.item : null;
   return (
-    <div className={`wx-list-drawer${drawerOpen ? " has-drawer" : ""}`}>
+    <div className={`wx-list-drawer${form !== null ? " has-drawer" : ""}`}>
       <div className="wx-list-drawer-main">
         <PageHeader
           title={<span style={pageTitleStyle}>Grief library</span>}
@@ -302,8 +308,7 @@ export function GriefLibrary(): JSX.Element | null {
                             aria-label={`Edit ${item.title}`}
                             onClick={() => {
                               setActionError(null);
-                              setUploading(false);
-                              setEditing(item);
+                              setForm({ kind: "edit", item });
                             }}
                           >
                             Edit
@@ -385,28 +390,29 @@ export function GriefLibrary(): JSX.Element | null {
           </Modal>
         ) : null}
       </div>
-      {uploading ? (
+      {form?.kind === "upload" ? (
         <LibraryUploadDrawer
-          onClose={() => setUploading(false)}
+          key="upload"
+          onClose={closeUpload}
           onRegistered={(item) => {
-            setUploading(false);
+            closeUpload();
             void reload();
             announce(`${item.title} was added to the library as a draft.`);
           }}
         />
       ) : null}
-      {editing ? (
+      {editItem ? (
         <LibraryEditDrawer
-          key={editing.itemId}
-          item={editing}
-          onClose={() => setEditing(null)}
+          key={editItem.itemId}
+          item={editItem}
+          onClose={() => closeEdit(editItem.itemId)}
           onStale={(message) => {
-            setEditing(null);
+            closeEdit(editItem.itemId);
             announce(message);
             void reload();
           }}
           onSaved={(saved) => {
-            setEditing(null);
+            closeEdit(editItem.itemId);
             patch((rows) => rows.map((r) => (r.itemId === saved.itemId ? saved : r)));
             announce(`${saved.title} was saved.`);
           }}

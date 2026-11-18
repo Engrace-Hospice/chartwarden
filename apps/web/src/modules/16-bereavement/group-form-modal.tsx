@@ -9,7 +9,6 @@ import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import {
   CheckboxField,
-  ErrorText,
   FormShell,
   SelectField,
   TextAreaField,
@@ -207,6 +206,7 @@ function GroupForm({
       title={group === null ? "New support group" : "Edit support group"}
       onClose={onClose}
       busy={busy}
+      error={error}
       save={
         <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : group === null ? "Create draft group" : "Save changes"}
@@ -319,7 +319,6 @@ function GroupForm({
           onChange={(v) => set("joinUrl", v)}
         />
       </fieldset>
-      {error ? <ErrorText>{error}</ErrorText> : null}
     </FormShell>
   );
 }

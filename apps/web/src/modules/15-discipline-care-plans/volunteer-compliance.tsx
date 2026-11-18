@@ -1,7 +1,6 @@
 import {
   Button,
   CursorPagination,
-  Drawer,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -27,6 +26,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { MembershipLookupField } from "../../shell/entity-lookups";
+import { FormDrawer } from "../../shell/form-drawer";
 import { type GateView, errorMessage, listGates, writeHeaders } from "./discipline-api";
 import {
   FAILING_GATE_STATUSES,
@@ -63,6 +63,12 @@ const EXPIRY_OPTIONS = [
   { value: "30", label: "Expiring within 30 days" },
 ];
 const PAGE_SIZE = 25;
+/** A write whose fetch rejected: the answer, if any, never arrived. The retry is safe (the client keeps its idempotency key). */
+const CONNECTION_DROPPED =
+  "The connection dropped before the server answered, so we can't tell whether it went through. Check your connection and try again.";
+
+/** The one form drawer beside the grid: record a new gate or correct a row's. Opening one replaces the other. */
+type GateForm = { readonly kind: "new" } | { readonly kind: "edit"; readonly gate: GateView };
 
 export function VolunteerComplianceGates(): JSX.Element {
   const client = useApiClient();
@@ -76,9 +82,7 @@ export function VolunteerComplianceGates(): JSX.Element {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<GateView | null>(null);
+  const [form, setForm] = useState<GateForm | null>(null);
   const [revoking, setRevoking] = useState<GateView | null>(null);
 
   const load = useCallback(async () => {
@@ -149,29 +153,28 @@ export function VolunteerComplianceGates(): JSX.Element {
   const drifted = rows.filter((g) => g.storedStatus !== g.effectiveStatus);
 
   // Record / correct a gate opens in the detail rail (a drawer), above the alerts, not over the page.
+  const closeForm = () => setForm(null);
   const gateSaved = () => {
-    setCreating(false);
-    setEditing(null);
+    closeForm();
     void load();
   };
-  const formDrawer = creating ? (
-    <GateFormDrawer
-      key="new"
-      title="Record compliance gate"
-      onClose={() => setCreating(false)}
-      onSaved={gateSaved}
-      onError={setActionError}
-    />
-  ) : editing ? (
-    <GateFormDrawer
-      key={editing.gateId}
-      title={`Correct ${gateKindLabel(editing.gateKind)}`}
-      gate={editing}
-      onClose={() => setEditing(null)}
-      onSaved={gateSaved}
-      onError={setActionError}
-    />
-  ) : null;
+  const formDrawer =
+    form === null ? null : form.kind === "new" ? (
+      <GateFormDrawer
+        key="new"
+        title="Record compliance gate"
+        onClose={closeForm}
+        onSaved={gateSaved}
+      />
+    ) : (
+      <GateFormDrawer
+        key={form.gate.gateId}
+        title={`Correct ${gateKindLabel(form.gate.gateKind)}`}
+        gate={form.gate}
+        onClose={closeForm}
+        onSaved={gateSaved}
+      />
+    );
 
   return (
     <>
@@ -189,7 +192,7 @@ export function VolunteerComplianceGates(): JSX.Element {
                 >
                   Refresh
                 </Button>
-                <Button type="button" onClick={() => setCreating(true)}>
+                <Button type="button" onClick={() => setForm({ kind: "new" })}>
                   Record gate
                 </Button>
               </div>
@@ -239,7 +242,6 @@ export function VolunteerComplianceGates(): JSX.Element {
             </div>
           ) : (
             <div style={tableWrapStyle}>
-              {actionError ? <p className="wx-text-error">{actionError}</p> : null}
               <table>
                 <thead>
                   <tr>
@@ -285,7 +287,11 @@ export function VolunteerComplianceGates(): JSX.Element {
                       </td>
                       <td>
                         <div style={{ display: "flex", gap: t.space2 }}>
-                          <Button tone="secondary" type="button" onClick={() => setEditing(g)}>
+                          <Button
+                            tone="secondary"
+                            type="button"
+                            onClick={() => setForm({ kind: "edit", gate: g })}
+                          >
                             Correct
                           </Button>
                           {g.revokedAt ? null : (
@@ -361,13 +367,11 @@ function GateFormDrawer({
   gate,
   onClose,
   onSaved,
-  onError,
 }: {
   title: string;
   gate?: GateView;
   onClose: () => void;
   onSaved: () => void;
-  onError: (message: string | null) => void;
 }): JSX.Element {
   const client = useApiClient();
   const [volunteerMembershipId, setVolunteer] = useState(gate?.volunteerMembershipId ?? "");
@@ -385,53 +389,53 @@ function GateFormDrawer({
   async function submit(): Promise<void> {
     setBusy(true);
     setError(null);
-    onError(null);
-    const common = {
-      validUntil: validUntil === "" ? null : new Date(validUntil).toISOString(),
-      sourceDocumentId: sourceDocumentId.trim() === "" ? null : sourceDocumentId.trim(),
-      ...(notes.trim() === "" ? {} : { notes }),
-    };
-    const res = editingExisting
-      ? await client.PATCH("/api/v1/volunteer-compliance-gates/{gateId}", {
-          params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
-          body: common,
-        } as never)
-      : await client.POST("/api/v1/volunteer-compliance-gates", {
-          params: { header: writeHeaders() },
-          body: {
-            volunteerMembershipId,
-            gateKind,
-            validFrom: new Date(validFrom).toISOString(),
-            ...common,
-          },
-        } as never);
-    setBusy(false);
-    if (res.error) {
-      setError(errorMessage(res.error, "The gate could not be saved."));
-      return;
+    let saved = false;
+    try {
+      const common = {
+        validUntil: validUntil === "" ? null : new Date(validUntil).toISOString(),
+        sourceDocumentId: sourceDocumentId.trim() === "" ? null : sourceDocumentId.trim(),
+        ...(notes.trim() === "" ? {} : { notes }),
+      };
+      const res = editingExisting
+        ? await client.PATCH("/api/v1/volunteer-compliance-gates/{gateId}", {
+            params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
+            body: common,
+          } as never)
+        : await client.POST("/api/v1/volunteer-compliance-gates", {
+            params: { header: writeHeaders() },
+            body: {
+              volunteerMembershipId,
+              gateKind,
+              validFrom: new Date(validFrom).toISOString(),
+              ...common,
+            },
+          } as never);
+      if (res.error) setError(errorMessage(res.error, "The gate could not be saved."));
+      else saved = true;
+    } catch {
+      // The client rejects on a network failure: without this the drawer would stay busy, and undismissable, for good.
+      setError(CONNECTION_DROPPED);
+    } finally {
+      setBusy(false);
     }
-    onSaved();
+    if (saved) onSaved();
   }
 
   return (
-    <Drawer
+    <FormDrawer
       title={title}
-      label={title}
+      busy={busy}
       onClose={onClose}
-      footer={
-        <>
-          <Button tone="secondary" type="button" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button
-            tone="primary"
-            type="button"
-            onClick={() => void submit()}
-            disabled={!canSubmit || busy}
-          >
-            {busy ? "Saving…" : "Save gate"}
-          </Button>
-        </>
+      error={error}
+      save={
+        <Button
+          tone="primary"
+          type="button"
+          onClick={() => void submit()}
+          disabled={!canSubmit || busy}
+        >
+          {busy ? "Saving…" : "Save gate"}
+        </Button>
       }
     >
       {editingExisting ? (
@@ -461,8 +465,7 @@ function GateFormDrawer({
       />
       <TextField label="Source document id" value={sourceDocumentId} onChange={setSourceDocument} />
       <TextAreaField label="Notes" value={notes} onChange={setNotes} rows={2} />
-      {error ? <p className="wx-text-error">{error}</p> : null}
-    </Drawer>
+    </FormDrawer>
   );
 }
 
@@ -480,16 +483,20 @@ function RevokeGateModal({
   async function submit(): Promise<void> {
     setBusy(true);
     setError(null);
-    const res = await client.POST("/api/v1/volunteer-compliance-gates/{gateId}/revoke", {
-      params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
-      body: { revokedReason },
-    } as never);
-    setBusy(false);
-    if (res.error) {
-      setError(errorMessage(res.error, "The gate could not be revoked."));
-      return;
+    let revoked = false;
+    try {
+      const res = await client.POST("/api/v1/volunteer-compliance-gates/{gateId}/revoke", {
+        params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
+        body: { revokedReason },
+      } as never);
+      if (res.error) setError(errorMessage(res.error, "The gate could not be revoked."));
+      else revoked = true;
+    } catch {
+      setError(CONNECTION_DROPPED);
+    } finally {
+      setBusy(false);
     }
-    onSaved();
+    if (revoked) onSaved();
   }
 
   return (
