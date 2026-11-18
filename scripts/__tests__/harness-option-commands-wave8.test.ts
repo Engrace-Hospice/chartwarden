@@ -106,7 +106,9 @@ describe("scp -S and sftp -S|-D replace a program: any but ssh asks", () => {
   it("programOptionReason is for scp and sftp only", () => {
     expect(programOptionReason("scp", ["-S", "/tmp/x"])).toMatch(/names a program/);
     expect(programOptionReason("scp", ["-S", "ssh"])).toBeNull();
-    expect(programOptionReason("scp", ["-D", "x"])).toBeNull();
+    // wave 13: scp's usage line in OpenSSH_10.6p1 lists `-D sftp_server_path` (a program run here in place of ssh), so scp -D asks like sftp -D
+    expect(programOptionReason("scp", ["-D", "x"])).not.toBeNull();
+    expect(programOptionReason("scp", ["-D", "ssh"])).toBeNull();
     expect(programOptionReason("sftp", ["-D", "x"])).not.toBeNull();
     expect(programOptionReason("ssh", ["-S", "/tmp/ctl"])).toBeNull();
     expect(programOptionReason("cat", ["-S", "x"])).toBeNull();

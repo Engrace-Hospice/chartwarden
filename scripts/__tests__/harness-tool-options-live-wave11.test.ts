@@ -65,6 +65,12 @@ for (const target of TARGETS) {
               ? committed.version
               : "other flavour"
             : installedVersion(bin as string);
+        // Another version than the one recorded (CI runs bun 1.3.5 on Linux, the recordings are from a developer machine) is not what the tables were
+        // proven against: skip with the reason BEFORE any assertion, never fail on a version difference (wave 13, C2). Re-record to compare.
+        if (installed !== committed.version)
+          ctx.skip(
+            `${target.key} ${installed} is installed and the recording is ${committed.version}: re-record with "bun scripts/__tests__/helpers/record-tool-options.ts --write \"${target.key}\"" to compare`,
+          );
         // A name the installed tool lists that the recording does not hold is an option nobody has read yet (a newer tool): fail until re-recorded
         const fresh = COMMANDS_ONLY.has(target.key)
           ? []
@@ -134,14 +140,7 @@ for (const target of TARGETS) {
             (o) => `${o.name}: recorded ${String(was.get(o.name))}, now ${String(o.takesValue)}`,
           );
         expect(live.options.length).toBeGreaterThan(0);
-        if (installed === committed.version) {
-          expect(changed, `${target.key} ${installed}: re-record the fixture`).toEqual([]);
-        } else {
-          // another version: the table was held against the live tool above, but the recording is NOT this tool's: say so, never pass silently (R9-CR-12)
-          ctx.skip(
-            `${target.key} ${installed} is installed and the recording is ${committed.version}: re-record with "bun scripts/__tests__/helpers/record-tool-options.ts --write \"${target.key}\"" to compare the recording itself`,
-          );
-        }
+        expect(changed, `${target.key} ${installed}: re-record the fixture`).toEqual([]);
       },
       LIVE_TIMEOUT_MS,
     );

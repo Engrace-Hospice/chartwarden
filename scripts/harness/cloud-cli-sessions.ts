@@ -26,7 +26,7 @@ const rule = (words: RegExp, unless?: RegExp): CloudRule => ({
 });
 
 /** fly: a shell or sftp session, a proxy, a machine console or exec, and `fly postgres|pg connect|proxy`. */
-const FLY = /^(?:ssh|proxy|console|sftp|machines? exec|(?:postgres|pg) (?:connect|proxy))\b/;
+const FLY = /^(?:ssh|proxy|console|sftp|machines? exec|(?:postgres|pg|mpg) (?:connect|proxy))\b/;
 
 const CLOUD_RULES: ReadonlyMap<string, readonly CloudRule[]> = new Map([
   [
@@ -48,20 +48,24 @@ const CLOUD_RULES: ReadonlyMap<string, readonly CloudRule[]> = new Map([
     "az",
     [
       rule(
-        /^(?:(?:webapp|functionapp) ssh|webapp create-remote-connection|webapp deployment list-publishing-credentials|webapp config (?:appsettings|connection-string) list|containerapp (?:exec|ssh)|aks command|vm run-command|ssh (?:vm|arc)|network bastion (?:ssh|tunnel|rdp)|(?:postgres|mysql) flexible-server (?:connect|execute)|keyvault secret (?:show|list|download))\b/,
+        /^(?:(?:webapp|functionapp) ssh|webapp create-remote-connection|webapp deployment list-publishing-credentials|webapp config (?:appsettings|connection-string) list|containerapp (?:exec|ssh)|container (?:exec|attach)|aks command|vm run-command|ssh (?:vm|arc)|network bastion (?:ssh|tunnel|rdp)|(?:postgres|mysql) flexible-server (?:connect|execute)|keyvault secret (?:show|list|download))\b/,
       ),
     ],
   ],
   [
     "doctl",
-    [rule(/^(?:databases (?:connection|user)|compute ssh|kubernetes cluster kubeconfig)\b/)],
+    [
+      rule(
+        /^(?:databases (?:connection|user)|compute ssh|apps console|kubernetes cluster kubeconfig)\b/,
+      ),
+    ],
   ],
   [
     "aws",
     [
       // all of `rds`, `rds-data` (SQL over the Data API), a remote shell or command, secrets and parameters (decrypted on request), an instance-connect key, a token
       rule(
-        /^(?:rds(?:-data)?(?= |$)|ssm (?:start-session|send-command|start-automation-execution|get-parameters?(?:-by-path)?)\b|ecs execute-command\b|secretsmanager get-secret-value\b|ec2-instance-connect (?:send-ssh-public-key|send-serial-console-ssh-public-key|open-tunnel)\b|ec2 get-password-data\b|eks get-token\b)/,
+        /^(?:rds(?:-data)?(?= |$)|ssm (?:start-session|send-command|start-automation-execution|get-parameters?(?:-by-path)?)\b|ecs execute-command\b|secretsmanager get-secret-value\b|ec2-instance-connect (?:ssh|send-ssh-public-key|send-serial-console-ssh-public-key|open-tunnel)\b|ec2 get-password-data\b|eks get-token\b|sts (?:get-session-token|get-federation-token)\b|configure export-credentials\b)/,
       ),
     ],
   ],
@@ -77,7 +81,7 @@ const CLOUD_RULES: ReadonlyMap<string, readonly CloudRule[]> = new Map([
     "gcloud",
     [
       rule(
-        /^(?:compute (?:ssh|scp|config-ssh|connect-to-serial-port|start-iap-tunnel|copy-files|reset-windows-password)|cloud-shell (?:ssh|scp)|workstations (?:ssh|start-tcp-tunnel)|sql (?:connect|generate-login-token|export|import)|secrets versions access)\b/,
+        /^(?:compute (?:ssh|scp|config-ssh|connect-to-serial-port|start-iap-tunnel|copy-files|reset-windows-password)|cloud-shell (?:ssh|scp)|workstations (?:ssh|start-tcp-tunnel)|sql (?:connect|generate-login-token|export|import)|app instances (?:ssh|scp)|auth (?:print-access-token|print-identity-token|application-default print-access-token)|secrets versions access)\b/,
       ),
     ],
   ],

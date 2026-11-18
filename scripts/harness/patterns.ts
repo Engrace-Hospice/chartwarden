@@ -3125,8 +3125,8 @@ function classifySegment(
   const anyTarget = anyProgramTarget(prog, args, assigns, variableStatements);
   if (anyTarget) return databaseTargetVerdict(anyTarget);
 
-  // --- Remote shells: production access must be a human decision every time.
-  if (/^(ssh|scp|sftp|rsync)$/.test(prog)) {
+  // --- Remote shells: production access must be a human decision every time. (scp and rsync name a remote side in EVERY operand: `remote-operands.ts`.)
+  if (/^(ssh|sftp)$/.test(prog)) {
     const target =
       prog === "ssh"
         ? fileArgs(sshHost(args) === undefined ? [] : [sshHost(args) as string])[0]

@@ -32,6 +32,14 @@ for (const shell of SHELLS) {
         const fixture = JSON.parse(
           readFileSync(join(FIXTURE_DIR, `${shell}.json`), "utf8"),
         ) as ShellFixture;
+        // A different build of the shell (a Linux runner's dash behind `sh`, another bash) or another platform is NOT what was recorded: skip with the
+        // reason, never fail on a difference that is no regression (wave 13, C2). The recording is compared on the machine that made it.
+        const installed = shellVersion(binary as string);
+        const platform = `${process.platform}-${process.arch}`;
+        if (installed !== fixture.version || platform !== fixture.platform)
+          ctx.skip(
+            `${shell} here is "${installed}" on ${platform} and the recording is "${fixture.version}" on ${fixture.platform}: re-record on this machine to compare`,
+          );
         const exact = new Set(exactProbes(shell).map(([args]) => args.join("\u0001")));
         const sample = fixture.probes.filter(
           (p, at) => at % SAMPLE_EVERY === 0 || exact.has(p.args.join("\u0001")),
@@ -44,7 +52,6 @@ for (const shell of SHELLS) {
             ({ p, now }) =>
               `${shell} ${JSON.stringify(p.args)}: recorded ran "${p.ran}", now "${now}"`,
           );
-        const installed = shellVersion(binary as string);
         expect(
           differ.slice(0, 5),
           `${shell}: installed "${installed}", recorded "${fixture.version}" (${fixture.platform}): re-record and correct shell-grammars.ts`,

@@ -13,15 +13,23 @@
 
 /** Option letters of each program that take a value (`ssh`, `scp`, `sftp` `-h` and the manual pages of OpenSSH_10.6p1). */
 const VALUE_LETTERS: Readonly<Record<string, string>> = {
-  ssh: "BbcDEeFIiJLlmOopQRSWw",
-  scp: "cDFiJlOoPSX",
+  ssh: "BbcDEeFIiJLlmOopPQRSWw",
+  // `-O` is a flag of scp (the usage line of OpenSSH_10.6p1 lists it among the flags), not the control command it is for ssh.
+  scp: "cDFiJloPSX",
   sftp: "BbcDFiJloPRSsX",
+  // Wave 13 (B12): `ssh-keyscan [-46cDHqv] [-f file] [-O option] [-p port] [-T timeout] [-t type]`; `ssh-copy-id`'s `-i` takes its value
+  // only sometimes, so it is read as a flag (the host is the LAST word either way): getopts "io:p:F:t:fnsxh?".
+  "ssh-keyscan": "fOpTt",
+  "ssh-copy-id": "oFpt",
 };
 
 interface ShortOption {
   readonly letter: string;
   readonly value: string;
 }
+
+/** The valued option letters of each program, for the fixture test and the readers outside this module. */
+export const SSH_FAMILY_VALUE_LETTERS = VALUE_LETTERS;
 
 /** The option letters of `ssh` that take a value (its own `-h`), for the readers outside this module. */
 export const SSH_VALUE_LETTERS = VALUE_LETTERS.ssh as string;
@@ -49,7 +57,7 @@ export function readCluster(
  * The valued short options of an ssh-family command line, with a cluster read letter by letter (`-NL spec`, `-L5433:…`). For `ssh` the options end at
  * the first word after the host (everything after belongs to the remote command); scp and sftp take options anywhere. Also the operands.
  */
-function scanShortOptions(
+export function scanShortOptions(
   prog: string,
   args: readonly string[],
 ): { options: ShortOption[]; operands: string[] } {
@@ -79,7 +87,7 @@ function scanShortOptions(
 const UNPLACEABLE = /[$`{}*?\s]/;
 
 /** `[user@]host[:port]`, `ssh://[user@]host[:port]`, `[::1]:22`: the host alone (an IPv6 address keeps its brackets); undefined when nothing is left. */
-function hostOf(spec: string): string | undefined {
+export function hostOf(spec: string): string | undefined {
   let rest = spec.replace(/^ssh:\/\//i, "").replace(/\/.*$/, "");
   rest = rest.slice(rest.lastIndexOf("@") + 1);
   const bracket = /^(\[[^\]]*\])/.exec(rest);
@@ -89,9 +97,9 @@ function hostOf(spec: string): string | undefined {
 }
 
 /** What a host word means for the guard: this machine, another one, or not placeable. */
-type Placement = "local" | "remote" | "unplaced";
+export type Placement = "local" | "remote" | "unplaced";
 
-function place(host: string | undefined, isLocalHost: (host: string) => boolean): Placement {
+export function place(host: string | undefined, isLocalHost: (host: string) => boolean): Placement {
   if (host === undefined || UNPLACEABLE.test(host)) return "unplaced";
   return isLocalHost(host) ? "local" : "remote";
 }
