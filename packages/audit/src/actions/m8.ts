@@ -190,4 +190,12 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: [],
     isPartTwoEligible: true,
   },
+  {
+    action: "m8.encounter.closure_override_granted",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "A supervisor lifted the visit-note closure block for one clinician (overrideId, subjectMembershipId, obligationKind, expiresAt; severity warn; the reason is held on the override row and never copied here; ADR-0113 D7). No patient, so never Part 2.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
 ];

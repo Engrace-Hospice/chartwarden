@@ -1373,6 +1373,21 @@ export const M8_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // ADR-0113 (visit-note closure clock): a supervisor lifts the closure BLOCK for one clinician for up to 24 hours (step-up on the
+  // route), and an administrator sets the tenant's mode (off | warn | block) and threshold. Default grants: migration 1511,
+  // pinned to NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS.
+  "encounter.closure_override": {
+    resource: "encounter",
+    action: "closure_override",
+    category: "compliance",
+    abac: "none",
+  },
+  "encounter.closure_policy_admin": {
+    resource: "encounter",
+    action: "closure_policy_admin",
+    category: "compliance",
+    abac: "none",
+  },
   "encounter.read_internal": {
     resource: "encounter",
     action: "read_internal",
