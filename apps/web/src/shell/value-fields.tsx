@@ -7,6 +7,7 @@ import {
   TextField as KitTextField,
   t,
 } from "@chartwarden/ui";
+import { useId } from "react";
 import type { JSX } from "react";
 
 export type TextFieldType =
@@ -86,20 +87,46 @@ export function TextAreaField({
   onChange,
   rows = 4,
   hint,
+  minChars,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   rows?: number;
   hint?: string;
+  /**
+   * The server's minimum length, shown as a live counter. It counts TRIMMED characters, because the database CHECK does
+   * (length(btrim(...))): forty spaces would satisfy a naive length and be refused. A pre-flight aid, never a substitute
+   * for the server's own refusal.
+   */
+  minChars?: number;
 }): JSX.Element {
-  return (
+  const countId = useId();
+  const field = (
     <KitTextAreaField
       label={label}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       rows={rows}
       hint={hint}
+      aria-describedby={minChars === undefined ? undefined : countId}
     />
+  );
+  if (minChars === undefined) return field;
+  const owed = Math.max(0, minChars - value.trim().length);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
+      {field}
+      <output
+        id={countId}
+        aria-live="polite"
+        className={owed > 0 ? "wx-text-error" : "wx-text-muted"}
+        style={{ fontSize: "0.75rem" }}
+      >
+        {owed > 0
+          ? `${owed} more character${owed === 1 ? "" : "s"} required — the server asks for at least ${minChars}.`
+          : `Minimum of ${minChars} characters met.`}
+      </output>
+    </div>
   );
 }

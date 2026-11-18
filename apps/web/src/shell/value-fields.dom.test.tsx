@@ -107,3 +107,57 @@ describe("TextAreaField", () => {
     expect(screen.getByLabelText("Narrative").getAttribute("rows")).toBe("4");
   });
 });
+
+// The server refuses a narrative shorter than its floor, counted on TRIMMED text (a CHECK on length(btrim(...))). The
+// counter tells the clinician before the round trip, never instead of it, so it must count what the database counts.
+describe("TextAreaField minChars counter", () => {
+  const counter = () => document.querySelector("output") as HTMLOutputElement | null;
+
+  it("shows no counter when no minimum is given", () => {
+    render(<TextAreaField label="Narrative" value="abc" onChange={() => {}} />);
+    expect(counter()).toBeNull();
+  });
+
+  it("says how many characters are still owed, in the singular and the plural", () => {
+    const { rerender } = render(
+      <TextAreaField label="Narrative" value="abc" onChange={() => {}} minChars={10} />,
+    );
+    expect(counter()?.textContent).toBe(
+      "7 more characters required — the server asks for at least 10.",
+    );
+    rerender(
+      <TextAreaField label="Narrative" value="abcdefghi" onChange={() => {}} minChars={10} />,
+    );
+    expect(counter()?.textContent).toBe(
+      "1 more character required — the server asks for at least 10.",
+    );
+  });
+
+  it("counts trimmed characters, as the database does", () => {
+    render(
+      <TextAreaField label="Narrative" value="      ab      " onChange={() => {}} minChars={5} />,
+    );
+    expect(counter()?.textContent).toBe(
+      "3 more characters required — the server asks for at least 5.",
+    );
+  });
+
+  it("confirms once the minimum is met", () => {
+    render(<TextAreaField label="Narrative" value="abcde" onChange={() => {}} minChars={5} />);
+    expect(counter()?.textContent).toBe("Minimum of 5 characters met.");
+  });
+
+  it("announces politely and describes the textarea, after its hint", () => {
+    render(
+      <TextAreaField label="Narrative" value="" onChange={() => {}} minChars={5} hint="Be brief" />,
+    );
+    const out = counter() as HTMLOutputElement;
+    expect(out.getAttribute("aria-live")).toBe("polite");
+    const described = (
+      screen.getByLabelText("Narrative").getAttribute("aria-describedby") ?? ""
+    ).split(" ");
+    expect(described).toHaveLength(2);
+    expect(document.getElementById(described[0] as string)?.textContent).toBe("Be brief");
+    expect(described[1]).toBe(out.id);
+  });
+});

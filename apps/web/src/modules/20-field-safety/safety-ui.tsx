@@ -105,18 +105,6 @@ export const selectStyle: CSSProperties = {
   color: t.onSurface,
   fontSize: "0.8125rem",
 };
-export const inputStyle: CSSProperties = { ...selectStyle, minWidth: "9rem" };
-export const textareaStyle: CSSProperties = {
-  width: "100%",
-  padding: "0.5rem 0.6rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.85rem",
-  fontFamily: "inherit",
-  resize: "vertical",
-};
 export const ghostButtonStyle: CSSProperties = {
   // §5.4 — the field clinician is the primary MOBILE user of this module, so every control clears the
   // 44 CSS-px SC 2.5.5 floor (kit `Button` calls here use `size="lg"` for the same reason).
@@ -186,38 +174,8 @@ export function FilterRow({ children }: { children: ReactNode }): JSX.Element {
   return <div className="wx-filter-panel">{children}</div>;
 }
 
-/** A labelled <select> for the filter row / a modal field. */
-export function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  onChange: (v: string) => void;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--color-on-surface)" }}>
-        {label}
-      </span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="wx-select"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
+// The kit-backed string-valued fields (label, hint and counter wiring live in the shared adapter).
+export { SelectField, TextAreaField, TextField } from "../../shell/value-fields";
 
 /** Turn a wire-enum list into `SelectField` options via a labeller. */
 export function enumOptions(
@@ -225,109 +183,6 @@ export function enumOptions(
   label: (v: string) => string = humanize,
 ): { value: string; label: string }[] {
   return values.map((v) => ({ value: v, label: label(v) }));
-}
-
-/** A labelled text/number/date input. */
-export function TextField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  hint,
-  mono,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: "text" | "number" | "date" | "datetime-local" | "email" | "tel";
-  placeholder?: string;
-  hint?: string;
-  mono?: boolean;
-}): JSX.Element {
-  const hintId = hint ? `${label.replace(/\W+/g, "-").toLowerCase()}-hint` : undefined;
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <input
-        aria-label={label}
-        aria-describedby={hintId}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        // A mono field needs its own floor: every glyph is wider, so `inputStyle`'s 9rem clipped the
-        // placeholder that tells the caller what happens if they leave it blank ("all locations in
-        // reach" wanted 180px of a 170px content box). These fields take UUIDs, so 14rem is the
-        // useful minimum rather than a round number.
-        style={mono ? { ...inputStyle, fontFamily: t.fontMono, minWidth: "14rem" } : inputStyle}
-      />
-      {hint ? (
-        <span id={hintId} style={mutedStyle}>
-          {hint}
-        </span>
-      ) : null}
-    </label>
-  );
-}
-
-/**
- * A labelled multi-line field with the SERVER's minimum-length floor rendered as a live counter.
- *
- * The counter mirrors the server's own gate (§4.2's `minLength`, §3.3's `length(btrim(...))` CHECK) so the
- * clinician learns before the round trip — NEVER instead of it. It counts TRIMMED characters, because the
- * CHECK does: forty spaces satisfies a naive `.length` and is refused by the database, which is the worst
- * of both. Errors announce through an assertive live region (SC 3.3.1).
- */
-export function TextAreaField({
-  label,
-  value,
-  onChange,
-  rows = 4,
-  hint,
-  minChars,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  rows?: number;
-  hint?: string;
-  minChars?: number;
-}): JSX.Element {
-  const slug = label.replace(/\W+/g, "-").toLowerCase();
-  const hintId = hint ? `${slug}-hint` : undefined;
-  const owed = minChars === undefined ? 0 : Math.max(0, minChars - value.trim().length);
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <textarea
-        aria-label={label}
-        aria-describedby={[hintId, minChars === undefined ? undefined : `${slug}-count`]
-          .filter(Boolean)
-          .join(" ")}
-        value={value}
-        rows={rows}
-        onChange={(e) => onChange(e.target.value)}
-        style={textareaStyle}
-      />
-      {hint ? (
-        <span id={hintId} style={mutedStyle}>
-          {hint}
-        </span>
-      ) : null}
-      {minChars === undefined ? null : (
-        <output
-          id={`${slug}-count`}
-          aria-live="polite"
-          style={{ ...mutedStyle, color: owed > 0 ? t.error : t.onSurfaceVariant }}
-        >
-          {owed > 0
-            ? `${owed} more character${owed === 1 ? "" : "s"} required — the server asks for at least ${minChars}.`
-            : `Minimum of ${minChars} characters met.`}
-        </output>
-      )}
-    </label>
-  );
 }
 
 /** A labelled checkbox — the boolean capture atom. */
