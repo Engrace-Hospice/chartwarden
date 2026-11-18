@@ -26,6 +26,12 @@ const messageFor = (signal: string, status?: number | null): string => {
     return "This clinician is unavailable during the selected time.";
   if (/CLINICIAN_NOT_IN_CASELOAD|within_caseload_or_unassigned_pool/.test(signal))
     return "This clinician is not currently eligible for this patient.";
+  if (/ADMISSION_(?:INACTIVE|NOT_ACTIVE)|INACTIVE_ADMISSION/.test(signal))
+    return "This patient does not have an active admission for the visit. Review the admission before scheduling.";
+  if (/INVALID_VISIT_PURPOSE|VISIT_PURPOSE_INVALID/.test(signal))
+    return "The selected visit type is not available. Choose another visit type.";
+  if (/PATIENT_(?:OUT_OF_SCOPE|SCOPE_DENIED)/.test(signal))
+    return "You are not authorized to schedule visits for this patient.";
   // The unspecific D8 refusals: `VISIT_PRE_SCHEDULE_GATE_UNMET` on create/publish, a 403 whose message is
   // the bare `PRE_SCHEDULE_GATE_FAILED` on reassign/reschedule. The fix is a different clinician or time,
   // not a retry, so say so rather than falling through to the generic copy.

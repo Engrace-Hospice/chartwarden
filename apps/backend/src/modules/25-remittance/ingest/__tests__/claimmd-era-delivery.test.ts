@@ -50,27 +50,74 @@ function raw835() {
     .join("")}`;
 }
 
+function raw835WithRepeatedSt02AcrossGroups() {
+  const parts = raw835().split("~").filter(Boolean);
+  const start = parts.findIndex((segment) => segment.startsWith("GS*"));
+  const end = parts.findIndex((segment) => segment.startsWith("GE*"));
+  const iea = parts.findIndex((segment) => segment.startsWith("IEA*"));
+  const secondGroup = parts
+    .slice(start, end + 1)
+    .map((segment) =>
+      segment.startsWith("GS*")
+        ? segment.replace("20260616*1200*77*", "20260617*1200*78*")
+        : segment.startsWith("GE*")
+          ? segment.replace("GE*1*77", "GE*1*78")
+          : segment,
+    );
+  parts.splice(iea, 0, ...secondGroup);
+  parts[iea + secondGroup.length] = parts[iea + secondGroup.length]!.replace("IEA*1*", "IEA*2*");
+  return parts.map((segment) => `${segment}~`).join("");
+}
+
 function setup(
-  options: { readonly failFirstCommit?: boolean; readonly resolutionFails?: boolean } = {},
+  options: {
+    readonly failFirstCommit?: boolean;
+    readonly resolutionFails?: boolean;
+    readonly multiGroup?: boolean;
+  } = {},
 ) {
-  const raw = raw835();
+  const raw = options.multiGroup ? raw835WithRepeatedSt02AcrossGroups() : raw835();
   const decision = {
     payeeOutcome: "verified",
     transactionSets: [
       {
         fileIndex: 0,
+        functionalGroupControlNumber: "77",
         transactionSetControlNumber: "0001",
         payee: { npi: "1999999999", taxId: null },
       },
+      ...(options.multiGroup
+        ? [
+            {
+              fileIndex: 0,
+              functionalGroupControlNumber: "78",
+              transactionSetControlNumber: "0001",
+              payee: { npi: "1999999999", taxId: null },
+            },
+          ]
+        : []),
     ],
     claims: [
       {
         fileIndex: 0,
+        functionalGroupControlNumber: "77",
         transactionSetControlNumber: "0001",
         pcn: "PCN-SYNTH",
         outcome: "unmatched",
         claimId: null,
       },
+      ...(options.multiGroup
+        ? [
+            {
+              fileIndex: 0,
+              functionalGroupControlNumber: "78",
+              transactionSetControlNumber: "0001",
+              pcn: "PCN-SYNTH",
+              outcome: "unmatched",
+              claimId: null,
+            },
+          ]
+        : []),
     ],
   };
   const trace: string[] = [];
@@ -170,6 +217,7 @@ describe("BIL-1.4.1B safe M25 delivery", () => {
     expect(x.stagedDetail[0]?.claimOutcomes).toEqual([
       {
         fileIndex: 0,
+        functionalGroupControlNumber: "77",
         transactionSetControlNumber: "0001",
         pcn: "PCN-SYNTH",
         outcome: "unmatched",
@@ -198,6 +246,20 @@ describe("BIL-1.4.1B safe M25 delivery", () => {
         (value as unknown as { source: { idempotencyKey: string } }).source.idempotencyKey,
     );
     expect(new Set(calls).size).toBe(1);
+  });
+
+  it("keeps the same ST02 distinct through delivery when it appears in separate functional groups", async () => {
+    const x = setup({ multiGroup: true });
+    expect(await x.service.deliver(INBOX)).toBe("delivered");
+    expect(x.stageComponent).toHaveBeenCalledTimes(2);
+    const staged = x.stageComponent.mock.calls.map(
+      ([value]) =>
+        value as unknown as {
+          source: { idempotencyKey: string; functionalGroupControlNumber: string };
+        },
+    );
+    expect(staged.map(({ source }) => source.functionalGroupControlNumber)).toEqual(["77", "78"]);
+    expect(new Set(staged.map(({ source }) => source.idempotencyKey)).size).toBe(2);
   });
 
   it("holds when source or verified resolution cannot be revalidated and never calls a posting port", async () => {

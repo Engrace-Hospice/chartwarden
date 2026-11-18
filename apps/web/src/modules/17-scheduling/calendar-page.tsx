@@ -29,8 +29,10 @@ import {
   findLinkedEncounter,
   hasPermission,
 } from "./scheduling-workflow";
+import { SchedulingWorkspaceNav } from "./workspace-nav";
 
 type CalendarView = "day" | "week" | "month" | "list";
+type CalendarDensity = "comfortable" | "compact";
 
 interface PatientSummary {
   id: string;
@@ -90,6 +92,9 @@ const PURPOSES: Record<string, { label: string; discipline: string }> = {
   pronouncement: { label: "Pronouncement", discipline: "rn" },
   admission_visit: { label: "Admission Visit", discipline: "rn" },
   discharge_visit: { label: "Discharge Visit", discipline: "rn" },
+  huv1: { label: "HUV1", discipline: "rn" },
+  huv2: { label: "HUV2", discipline: "rn" },
+  sfv: { label: "SFV", discipline: "rn" },
 };
 const purposeLabel = (p: string): string => PURPOSES[p]?.label ?? stateLabel(p);
 
@@ -185,13 +190,40 @@ export function withCalendarParams(
   return next;
 }
 
+export interface CalendarFilterState {
+  staff: string;
+  purpose: string;
+  setting: string;
+  status: string;
+  showInactive: boolean;
+  density: CalendarDensity;
+}
+
+export function calendarFilterStateFromParams(params: URLSearchParams): CalendarFilterState {
+  const purpose = params.get("purpose") ?? "";
+  const setting = params.get("setting") ?? "";
+  const status = params.get("status") ?? "";
+  return {
+    staff: params.get("staff") ?? "",
+    purpose: purpose in PURPOSES ? purpose : "",
+    setting: setting in SETTINGS ? setting : "",
+    status: status in VISIT_TONE ? status : "",
+    showInactive: params.get("inactive") === "1",
+    density: params.get("density") === "compact" ? "compact" : "comfortable",
+  };
+}
+
 export function CalendarPage(): JSX.Element {
   const client = useApiClient();
   const session = useSession();
   const permissions = session?.permissions;
   const [params, setParams] = useSearchParams();
-  const view: CalendarView =
-    (["day", "month", "list"] as const).find((v) => v === params.get("view")) ?? "week";
+  const requestedView = (["day", "week", "month", "list"] as const).find(
+    (v) => v === params.get("view"),
+  );
+  const narrowDefault =
+    typeof window !== "undefined" && window.matchMedia?.("(max-width: 720px)").matches;
+  const view: CalendarView = requestedView ?? (narrowDefault ? "list" : "week");
   const date = useMemo(() => parseDay(params.get("date")), [params]);
   const range = useMemo(() => rangeOf(view, date), [view, date]);
   const rangeKey = `${dayKey(range.start)}:${range.days}`;
@@ -210,16 +242,24 @@ export function CalendarPage(): JSX.Element {
   });
 
   const [hiddenStaff, setHiddenStaff] = useState<Set<string>>(new Set());
-  const [staffFilter, setStaffFilter] = useState("");
-  const [purposeFilter, setPurposeFilter] = useState("");
-  const [settingFilter, setSettingFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [showInactive, setShowInactive] = useState(false);
+  const filterState = useMemo(() => calendarFilterStateFromParams(params), [params]);
+  const staffFilter = filterState.staff;
+  const purposeFilter = filterState.purpose;
+  const settingFilter = filterState.setting;
+  const statusFilter = filterState.status;
+  const showInactive = filterState.showInactive;
+  const density = filterState.density;
+  const staffPanelRequested = params.get("panel") === "staff";
   const selectedId = params.get("visit");
   const creating = params.get("newVisit") === "1";
   const contextPatientId = params.get("patient");
   const [contextPatient, setContextPatient] = useState<PatientSummary | null>(null);
   const [contextPatientError, setContextPatientError] = useState(false);
+  const staffPanelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (staffPanelRequested) staffPanelRef.current?.focus();
+  }, [staffPanelRequested]);
 
   useEffect(() => {
     let active = true;
@@ -435,15 +475,18 @@ export function CalendarPage(): JSX.Element {
 
   const selected = shown.find((v) => v.id === selectedId) ?? null;
 
-  const filtersActive = Boolean(staffFilter || purposeFilter || settingFilter || statusFilter);
+  const filtersActive = Boolean(
+    staffFilter || purposeFilter || settingFilter || statusFilter || showInactive,
+  );
   const days = [...Array(view === "month" ? 42 : range.days)].map((_, i) =>
     addDays(range.start, i),
   );
   const canCreate = hasPermission(permissions, "visit.create");
 
   return (
-    <div className="wx-sched">
+    <div className={`wx-sched${density === "compact" ? " is-compact" : ""}`}>
       <div className="wx-sched-main">
+        <SchedulingWorkspaceNav patientId={contextPatientId} />
         <header className="wx-page-head">
           <div>
             <h1 style={{ fontSize: "1.875rem" }}>Scheduling</h1>
@@ -459,9 +502,30 @@ export function CalendarPage(): JSX.Element {
                   <input
                     type="checkbox"
                     checked={showInactive}
-                    onChange={(e) => setShowInactive(e.target.checked)}
+                    onChange={(e) =>
+                      updateCalendarParams({ inactive: e.target.checked ? "1" : null })
+                    }
                   />
                   Show cancelled and rescheduled
+                </label>
+                <span className="wx-menu-heading">Density</span>
+                <label>
+                  <input
+                    type="radio"
+                    name="calendar-density"
+                    checked={density === "comfortable"}
+                    onChange={() => updateCalendarParams({ density: null })}
+                  />
+                  Comfortable
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="calendar-density"
+                    checked={density === "compact"}
+                    onChange={() => updateCalendarParams({ density: "compact" })}
+                  />
+                  Compact
                 </label>
               </div>
             </details>
@@ -505,7 +569,7 @@ export function CalendarPage(): JSX.Element {
               <>
                 <strong>Scheduling for </strong>
                 {contextPatient
-                  ? `${patientName(contextPatient) ?? "Patient"}${contextPatient.mrn ? ` · ${contextPatient.mrn}` : ""}`
+                  ? `${patientName(contextPatient) ?? "Patient"}${contextPatient.mrn ? ` · MRN ${maskMrn(contextPatient.mrn)}` : ""}`
                   : "Loading patient…"}
               </>
             )}
@@ -623,6 +687,7 @@ export function CalendarPage(): JSX.Element {
               <TimeGrid
                 days={days}
                 visits={shown}
+                density={density}
                 colorOf={colorOf}
                 patientLabel={patientLabel}
                 selectedId={selectedId}
@@ -657,7 +722,12 @@ export function CalendarPage(): JSX.Element {
         ) : null}
       </div>
 
-      <aside className="wx-sched-rail" aria-label="Scheduling tools">
+      <aside
+        ref={staffPanelRef}
+        className="wx-sched-rail"
+        aria-label="Staff and scheduling tools"
+        tabIndex={-1}
+      >
         <Panel title="Calendar" icon="calendar">
           <MiniCalendar
             selected={date}
@@ -675,10 +745,13 @@ export function CalendarPage(): JSX.Element {
                 type="button"
                 className="wx-link-button"
                 onClick={() => {
-                  setStaffFilter("");
-                  setPurposeFilter("");
-                  setSettingFilter("");
-                  setStatusFilter("");
+                  updateCalendarParams({
+                    staff: null,
+                    purpose: null,
+                    setting: null,
+                    status: null,
+                    inactive: null,
+                  });
                 }}
               >
                 Reset
@@ -687,7 +760,11 @@ export function CalendarPage(): JSX.Element {
           }
         >
           <div className="wx-rail-filters">
-            <RailSelect label="Staff" value={staffFilter} onChange={setStaffFilter}>
+            <RailSelect
+              label="Staff"
+              value={staffFilter}
+              onChange={(value) => updateCalendarParams({ staff: value || null })}
+            >
               <option value="">All staff</option>
               {staff.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -695,7 +772,11 @@ export function CalendarPage(): JSX.Element {
                 </option>
               ))}
             </RailSelect>
-            <RailSelect label="Visit type" value={purposeFilter} onChange={setPurposeFilter}>
+            <RailSelect
+              label="Visit type"
+              value={purposeFilter}
+              onChange={(value) => updateCalendarParams({ purpose: value || null })}
+            >
               <option value="">All visit types</option>
               {Object.entries(PURPOSES).map(([k, p]) => (
                 <option key={k} value={k}>
@@ -703,7 +784,11 @@ export function CalendarPage(): JSX.Element {
                 </option>
               ))}
             </RailSelect>
-            <RailSelect label="Location" value={settingFilter} onChange={setSettingFilter}>
+            <RailSelect
+              label="Location"
+              value={settingFilter}
+              onChange={(value) => updateCalendarParams({ setting: value || null })}
+            >
               <option value="">All locations</option>
               {Object.entries(SETTINGS).map(([k, s]) => (
                 <option key={k} value={k}>
@@ -711,7 +796,11 @@ export function CalendarPage(): JSX.Element {
                 </option>
               ))}
             </RailSelect>
-            <RailSelect label="Status" value={statusFilter} onChange={setStatusFilter}>
+            <RailSelect
+              label="Status"
+              value={statusFilter}
+              onChange={(value) => updateCalendarParams({ status: value || null })}
+            >
               <option value="">All statuses</option>
               {Object.keys(VISIT_TONE).map((s) => (
                 <option key={s} value={s}>
@@ -849,6 +938,7 @@ function StaffLegend({
 function TimeGrid({
   days,
   visits,
+  density,
   colorOf,
   patientLabel,
   selectedId,
@@ -856,11 +946,13 @@ function TimeGrid({
 }: {
   days: Date[];
   visits: VisitView[];
+  density: CalendarDensity;
   colorOf: (v: VisitView) => string;
   patientLabel: (id: string) => string;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): JSX.Element {
+  const hourPx = density === "compact" ? 34 : HOUR_PX;
   const today = new Date();
   // 8 AM – 6 PM by default, widened to fit any visit in range.
   let first = 8;
@@ -884,7 +976,7 @@ function TimeGrid({
         ))}
         <div className="wx-cal-times">
           {hours.map((h) => (
-            <span key={h} style={{ height: HOUR_PX }} className="wx-nums">
+            <span key={h} style={{ height: hourPx }} className="wx-nums">
               {time(new Date(2000, 0, 1, h))}
             </span>
           ))}
@@ -895,8 +987,8 @@ function TimeGrid({
             className={`wx-cal-col${sameDay(d, today) ? " is-today" : ""}`}
             style={
               {
-                height: hours.length * HOUR_PX,
-                "--hour": `${HOUR_PX}px`,
+                height: hours.length * hourPx,
+                "--hour": `${hourPx}px`,
               } as CSSProperties
             }
           >
@@ -915,8 +1007,8 @@ function TimeGrid({
                     style={
                       {
                         "--c": c,
-                        top: (startMin / 60) * HOUR_PX + 2,
-                        height: (dur / 60) * HOUR_PX - 4,
+                        top: (startMin / 60) * hourPx + 2,
+                        height: (dur / 60) * hourPx - 4,
                         left: `calc(${(lane / lanes) * 100}% + 3px)`,
                         width: `calc(${100 / lanes}% - 6px)`,
                       } as CSSProperties
@@ -1072,7 +1164,7 @@ function VisitList({
                 className={v.id === selectedId ? "is-selected" : undefined}
                 aria-current={v.id === selectedId ? "true" : undefined}
               >
-                <td className="wx-nums">
+                <td className="wx-nums" data-label="Date and time">
                   <button type="button" className="wx-link-button" onClick={() => onSelect(v.id)}>
                     {fmt(s, {
                       weekday: "short",
@@ -1082,16 +1174,18 @@ function VisitList({
                     · {time(s)}
                   </button>
                 </td>
-                <td>
+                <td data-label="Patient">
                   <Link to={`/patients/${v.patientId}`}>{patientLabel(v.patientId)}</Link>
                 </td>
-                <td>
+                <td data-label="Visit type">
                   <span className="wx-status-dot" style={{ background: colorOf(v) }} />{" "}
                   {purposeLabel(v.visitPurpose)}
                 </td>
-                <td>{staffName(v.assignedMembershipId)}</td>
-                <td>{SETTINGS[v.visitSetting]?.label ?? stateLabel(v.visitSetting)}</td>
-                <td>
+                <td data-label="Staff">{staffName(v.assignedMembershipId)}</td>
+                <td data-label="Location">
+                  {SETTINGS[v.visitSetting]?.label ?? stateLabel(v.visitSetting)}
+                </td>
+                <td data-label="Status">
                   <StatusPill
                     label={stateLabel(v.status)}
                     tone={VISIT_TONE[v.status] ?? "neutral"}
@@ -1554,7 +1648,7 @@ function StaffAvailability({
                   <strong>{s.name}</strong>
                   <span>{d?.label ?? "Discipline not set"}</span>
                 </div>
-                <span className="wx-avail" style={{ color: st.color }}>
+                <span className="wx-avail">
                   <span className="wx-status-dot" style={{ background: st.color }} />
                   {st.label}
                 </span>

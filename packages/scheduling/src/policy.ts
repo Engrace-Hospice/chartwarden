@@ -48,7 +48,30 @@ export const VISIT_PURPOSE_DISCIPLINES: {
   pronouncement: ["rn", "md", "np"],
   admission_visit: ["rn"],
   discharge_visit: ["rn"],
+  // M10 HOPE author floors: HUV timepoints are RN/NP/MD; the scheduling taxonomy's `lpn`
+  // represents both LPN and LVN for the SFV author set.
+  huv1: ["rn", "np", "md"],
+  huv2: ["rn", "np", "md"],
+  sfv: ["rn", "np", "lpn"],
 } as const;
+
+/**
+ * Select the discipline a visit assignment is actually authorized and credentialed under.
+ * Policy order is deterministic when a clinician holds multiple qualifying disciplines.
+ */
+export function selectVisitAssignmentDiscipline(
+  visitPurpose: VisitPurpose,
+  heldDisciplines: readonly SchedulingDiscipline[],
+  activeCredentialDisciplines: readonly SchedulingDiscipline[],
+): SchedulingDiscipline | null {
+  const held = new Set(heldDisciplines);
+  const credentialed = new Set(activeCredentialDisciplines);
+  return (
+    VISIT_PURPOSE_DISCIPLINES[visitPurpose].find(
+      (discipline) => held.has(discipline) && credentialed.has(discipline),
+    ) ?? null
+  );
+}
 
 /** §1.1 D8 — the seven-predicate pre-schedule gate, in evaluation order (the `visit_overlap` DB backstop is
  * appended at publish time per §2.5; predicate 6 `volunteer_gate_satisfied` is invoked only for

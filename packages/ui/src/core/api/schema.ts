@@ -63118,7 +63118,7 @@ export interface operations {
                             admissionId: string;
                             /** Format: uuid */
                             assignedMembershipId: string;
-                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                             visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                             /** Format: date-time */
                             scheduledStartedAt: string;
@@ -75464,6 +75464,24 @@ export interface operations {
                         /** @constant */
                         outcome: "malformed";
                         reason: string;
+                    } | {
+                        /** @constant */
+                        outcome: "unsupported";
+                        /** @constant */
+                        code: "X12_835_UNSUPPORTED_ROUTING";
+                        reason: string;
+                    } | {
+                        /** @constant */
+                        outcome: "review_required";
+                        stageId: string;
+                        reason: string;
+                    } | {
+                        /** @constant */
+                        outcome: "held_duplicate";
+                        adviceId: string;
+                        existingAdviceId: string;
+                        /** @constant */
+                        reason: "LEGACY_IDENTITY_AMBIGUOUS";
                     };
                 };
             };
@@ -75497,6 +75515,9 @@ export interface operations {
                             paymentMethod: string;
                             /** @description Decimal string — never a float */
                             totalPaymentAmount: string;
+                            paymentEffectiveDate: string | null;
+                            adjudicationCutoffDate: string | null;
+                            functionalGroupCreationDate: string | null;
                             parseStatus: string;
                             /** Format: date-time */
                             receivedAt: string;
@@ -77941,7 +77962,7 @@ export interface operations {
                             admissionId: string;
                             /** Format: uuid */
                             assignedMembershipId: string;
-                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                             visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                             /** Format: date-time */
                             scheduledStartedAt: string;
@@ -108574,7 +108595,7 @@ export interface operations {
                         patientId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         rrule: string;
                         status: "active" | "discontinued";
                         /** Format: uuid */
@@ -108610,7 +108631,7 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     assignedMembershipId: string;
-                    visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                    visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                     visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                     /** Format: uuid */
                     patientAddressId?: string;
@@ -108641,7 +108662,7 @@ export interface operations {
                         patientId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         rrule: string;
                         status: "active" | "discontinued";
                         /** Format: uuid */
@@ -108691,7 +108712,7 @@ export interface operations {
                         patientId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         rrule: string;
                         status: "active" | "discontinued";
                         /** Format: uuid */
@@ -110094,6 +110115,9 @@ export interface operations {
                             paymentMethod: string;
                             /** @description Decimal string — never a float */
                             totalPaymentAmount: string;
+                            paymentEffectiveDate: string | null;
+                            adjudicationCutoffDate: string | null;
+                            functionalGroupCreationDate: string | null;
                             parseStatus: string;
                             /** Format: date-time */
                             receivedAt: string;
@@ -110133,6 +110157,9 @@ export interface operations {
                         paymentMethod: string;
                         /** @description Decimal string — never a float */
                         totalPaymentAmount: string;
+                        paymentEffectiveDate: string | null;
+                        adjudicationCutoffDate: string | null;
+                        functionalGroupCreationDate: string | null;
                         parseStatus: string;
                         /** Format: date-time */
                         receivedAt: string;
@@ -115743,7 +115770,7 @@ export interface operations {
         parameters: {
             query: {
                 patientId: string;
-                visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                 scheduledStartedAt: string;
                 scheduledEndedAt: string;
             };
@@ -125790,7 +125817,7 @@ export interface operations {
                         patientId: string;
                         /** Format: uuid */
                         admissionId: string;
-                        proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         /** Format: date */
                         proposedForDate: string;
                         source?: string;
@@ -125838,7 +125865,7 @@ export interface operations {
                         patientId: string;
                         /** Format: uuid */
                         admissionId: string;
-                        proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         /** Format: date */
                         proposedForDate: string;
                         source?: string;
@@ -125884,7 +125911,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -125936,7 +125963,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -125974,7 +126001,7 @@ export interface operations {
                     externalFacilityId: string | null;
                     /** Format: uuid */
                     assignedMembershipId: string;
-                    visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                    visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                     visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                     /** Format: date-time */
                     scheduledStartedAt: string;
@@ -126005,7 +126032,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -126053,7 +126080,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -126091,7 +126118,7 @@ export interface operations {
                     scheduledEndedAt?: string;
                     /** Format: uuid */
                     assignedMembershipId?: string;
-                    visitPurpose?: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                    visitPurpose?: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                     visitSetting?: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                     schedulerInternalNotes?: string;
                 };
@@ -126115,7 +126142,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -126169,7 +126196,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -126224,7 +126251,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -126278,7 +126305,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -126334,7 +126361,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -126395,7 +126422,7 @@ export interface operations {
                             admissionId: string;
                             /** Format: uuid */
                             assignedMembershipId: string;
-                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                             visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                             /** Format: date-time */
                             scheduledStartedAt: string;
@@ -126420,7 +126447,7 @@ export interface operations {
                             admissionId: string;
                             /** Format: uuid */
                             assignedMembershipId: string;
-                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                             visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                             /** Format: date-time */
                             scheduledStartedAt: string;
@@ -126475,7 +126502,7 @@ export interface operations {
                         admissionId: string;
                         /** Format: uuid */
                         assignedMembershipId: string;
-                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                         visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                         /** Format: date-time */
                         scheduledStartedAt: string;
@@ -126959,7 +126986,7 @@ export interface operations {
                             admissionId: string;
                             /** Format: uuid */
                             assignedMembershipId: string;
-                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit" | "huv1" | "huv2" | "sfv";
                             visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                             /** Format: date-time */
                             scheduledStartedAt: string;

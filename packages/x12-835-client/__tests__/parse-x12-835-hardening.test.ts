@@ -90,6 +90,7 @@ describe("balancing edge cases", () => {
       bpr("1.00"),
       ...HEADER,
       "CLP*PCN-0400*1*1.00*1.00*0.00*MC*ICN-P1",
+      "AMT*I*0.30",
       "PLB*1512345678*20261231*WO:A*0.10*WO:B*0.20*L6:C*-0.30",
     ];
     expect(parse(wrap835(body)).ok).toBe(true);
@@ -125,7 +126,11 @@ describe("envelope gating", () => {
   });
 
   it("rejects a wrong GS01 or GS08", () => {
-    expectDegraded(wrap835(CLEAN_BODY, { gs01: "HC" }), "X12_835_PARSE_FAILED", "GS01");
+    expectDegraded(
+      wrap835(CLEAN_BODY, { gs01: "HC" }),
+      "X12_835_UNSUPPORTED_ROUTING",
+      "not owned by M25",
+    );
     expectDegraded(wrap835(CLEAN_BODY, { gs08: "004010X091A1" }), "X12_835_PARSE_FAILED", "GS08");
   });
 
@@ -204,6 +209,42 @@ describe("payee / payer identity and line identity (#625)", () => {
       ],
     });
     expect(r.value.originatingCompanyId).toBe("1512345678");
+  });
+
+  it("preserves repeated identical payee identifiers", () => {
+    const body = withParty([
+      "REF*TJ*123456789",
+      "REF*TJ*123456789",
+      "REF*PQ*PTAN01",
+      "REF*PQ*PTAN01",
+    ]);
+    const r = parse(wrap835(body));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.payee?.taxId).toBe("123456789");
+    expect(r.value.payee?.payerAssignedId).toBe("PTAN01");
+    expect(r.value.payee?.references).toEqual([
+      { qualifier: "TJ", value: "123456789" },
+      { qualifier: "TJ", value: "123456789" },
+      { qualifier: "PQ", value: "PTAN01" },
+      { qualifier: "PQ", value: "PTAN01" },
+    ]);
+  });
+
+  it("rejects conflicting payee REF*TJ values rather than choosing one", () => {
+    expectDegraded(
+      wrap835(withParty(["REF*TJ*123456789", "REF*TJ*987654321"])),
+      "X12_835_PARSE_FAILED",
+      "conflicting payee REF TJ",
+    );
+  });
+
+  it("rejects conflicting payee REF*PQ values without interpreting either as a verified PTAN", () => {
+    expectDegraded(
+      wrap835(withParty(["REF*PQ*PTAN01", "REF*PQ*PTAN02"])),
+      "X12_835_PARSE_FAILED",
+      "conflicting payee REF PQ",
+    );
   });
 
   it("keeps SVC01 modifiers and the originally submitted SVC06 code", () => {

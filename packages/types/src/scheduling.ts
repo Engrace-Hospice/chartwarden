@@ -63,7 +63,10 @@ export type VisitPurpose =
   | "loc_change"
   | "pronouncement"
   | "admission_visit"
-  | "discharge_visit";
+  | "discharge_visit"
+  | "huv1"
+  | "huv2"
+  | "sfv";
 
 /** The §2.3 service-location class (mirrors `visit_setting`). */
 export type VisitSetting = "patient_home" | "facility" | "inpatient_unit" | "telephonic";

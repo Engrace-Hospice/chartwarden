@@ -39,6 +39,7 @@ import {
   isAssignedClinicianRefusal,
 } from "./visit-attestation";
 import type { VisitRow } from "./visit-table";
+import { SchedulingWorkspaceNav } from "./workspace-nav";
 
 type AttestAction = "start" | "arrive";
 type AttestDraft = { visitId: string; action: AttestAction; reason: string };
@@ -205,16 +206,19 @@ export function MyVisits(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="My Visits">
-            <div
-              style={{
-                color: "var(--color-on-surface-variant)",
-                fontSize: "0.875rem",
-              }}
-            >
-              Review your scheduled visits for today and the upcoming week.
-            </div>
-          </PageHeader>
+          <>
+            <SchedulingWorkspaceNav />
+            <PageHeader title="My Visits">
+              <div
+                style={{
+                  color: "var(--color-on-surface-variant)",
+                  fontSize: "0.875rem",
+                }}
+              >
+                Review your scheduled visits for today and the upcoming week.
+              </div>
+            </PageHeader>
+          </>
         }
         filters={
           <div style={filterShellStyle}>

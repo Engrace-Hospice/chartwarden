@@ -3369,6 +3369,150 @@
     gap: 1rem;
     min-width: 0;
   }
+  .wx-scheduling-workspace-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-width: 0;
+    padding-bottom: 0.625rem;
+    border-bottom: 1px solid var(--color-card-border);
+  }
+  .wx-scheduling-workspace-label {
+    color: var(--color-on-surface);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .wx-scheduling-workspace-links {
+    display: flex;
+    gap: 0.25rem;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .wx-scheduling-workspace-links a {
+    display: inline-flex;
+    min-height: 2.25rem;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--radius-sm);
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .wx-scheduling-workspace-links a:hover {
+    background: var(--color-surface-low);
+    color: var(--color-on-surface);
+  }
+  .wx-scheduling-workspace-links a[aria-current="page"] {
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+  }
+  .wx-visit-wizard-steps {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .wx-visit-wizard-steps li {
+    display: grid;
+    grid-template-columns: 1.75rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.5rem;
+    border-bottom: 2px solid var(--color-outline-variant);
+    color: var(--color-on-surface-variant);
+    font-size: 0.75rem;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+  .wx-visit-wizard-steps li > span {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border: 1px solid var(--color-outline-variant);
+    border-radius: 9999px;
+    background: var(--color-surface-low);
+    color: var(--color-on-surface);
+    font-variant-numeric: tabular-nums;
+  }
+  .wx-visit-wizard-steps li.is-current {
+    border-color: var(--color-primary);
+    color: var(--color-on-surface);
+  }
+  .wx-visit-wizard-steps li.is-current > span {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .wx-visit-wizard-steps li.is-complete > span {
+    border-color: var(--color-success);
+    color: var(--color-success);
+  }
+  .wx-visit-wizard-wide {
+    grid-column: 1 / -1;
+  }
+  .wx-visit-wizard-note,
+  .wx-visit-wizard-review > p {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--color-on-surface-variant);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+  .wx-visit-wizard-state {
+    display: grid;
+    gap: 0.375rem;
+    margin-top: 0.625rem;
+    padding: 0.75rem;
+    border: 1px solid var(--color-outline-variant);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-low);
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-visit-wizard-state strong {
+    color: var(--color-on-surface);
+  }
+  .wx-visit-wizard-state .wx-button {
+    justify-self: start;
+  }
+  .wx-visit-wizard-review {
+    padding: 1rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-low);
+  }
+  .wx-visit-wizard-review h3 {
+    margin: 0 0 0.75rem;
+    color: var(--color-on-surface);
+    font-size: 1rem;
+  }
+  .wx-visit-wizard-review dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+    margin: 0 0 0.875rem;
+  }
+  .wx-visit-wizard-review dl > div {
+    min-width: 0;
+  }
+  .wx-visit-wizard-review dt {
+    color: var(--color-on-surface-variant);
+    font-size: 0.6875rem;
+    font-weight: 650;
+  }
+  .wx-visit-wizard-review dd {
+    margin: 0.2rem 0 0;
+    color: var(--color-on-surface);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+  }
   /* Administration / Users (2026-09-25 redesign) */
   .wx-staff {
     display: grid;
@@ -3524,6 +3668,13 @@
     font-size: 0.8125rem;
     white-space: nowrap;
     cursor: pointer;
+  }
+  .wx-menu-heading {
+    padding: 0.625rem 0.625rem 0.25rem;
+    color: var(--color-muted);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
   }
   .wx-menu-list > a:hover,
   .wx-menu-list > label:hover {
@@ -3936,8 +4087,17 @@
     align-items: center;
     gap: 0.375rem;
     font-size: 0.75rem;
-    font-weight: 500;
+    font-weight: 600;
+    color: var(--color-on-surface-variant);
     white-space: nowrap;
+  }
+  .wx-sched.is-compact .wx-cal-event {
+    gap: 0.25rem;
+    padding: 0.2rem 0.35rem;
+  }
+  .wx-sched.is-compact .wx-list-table th,
+  .wx-sched.is-compact .wx-list-table td {
+    padding-block: 0.4rem;
   }
   .wx-mini-cal-head {
     display: flex;
@@ -4017,6 +4177,86 @@
     }
   }
   @media (max-width: 720px) {
+    .wx-sched {
+      padding: 1rem 0.75rem 1.5rem;
+    }
+    .wx-scheduling-workspace-nav {
+      display: grid;
+      gap: 0.375rem;
+    }
+    .wx-scheduling-workspace-links a {
+      min-height: 2.75rem;
+    }
+    .wx-visit-wizard-steps {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .wx-visit-wizard-review dl {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-sched .wx-page-head {
+      align-items: flex-start;
+    }
+    .wx-sched .wx-cal-range {
+      width: calc(100% - 5rem);
+      margin-left: 0.25rem;
+      font-size: 1.0625rem;
+    }
+    .wx-sched .wx-cal-toolbar .wx-seg {
+      width: 100%;
+    }
+    .wx-sched .wx-cal-toolbar .wx-seg button {
+      flex: 1;
+      min-width: 0;
+    }
+    .wx-sched .wx-list-table-wrap {
+      overflow: visible;
+    }
+    .wx-sched .wx-list-table,
+    .wx-sched .wx-list-table tbody {
+      display: block;
+      width: 100%;
+      min-width: 0;
+    }
+    .wx-sched .wx-list-table thead {
+      display: none;
+    }
+    .wx-sched .wx-list-table tbody {
+      padding: 0.625rem;
+    }
+    .wx-sched .wx-list-table tbody tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 0.625rem 1rem;
+      margin-bottom: 0.625rem;
+      padding: 0.875rem;
+      border: 1px solid var(--color-card-border);
+      border-radius: var(--radius-md);
+      background: var(--color-surface-lowest);
+    }
+    .wx-sched .wx-list-table tbody tr:last-child {
+      margin-bottom: 0;
+    }
+    .wx-sched .wx-list-table tbody td {
+      display: grid;
+      gap: 0.2rem;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      overflow-wrap: anywhere;
+    }
+    .wx-sched .wx-list-table tbody td::before {
+      content: attr(data-label);
+      color: var(--color-muted);
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+    .wx-sched .wx-list-table tbody td > a,
+    .wx-sched .wx-list-table tbody td > button {
+      max-width: 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
     .wx-visit-drawer {
       top: auto;
       bottom: 0;
@@ -4034,6 +4274,11 @@
     }
     .wx-cal-toolbar .wx-seg {
       margin-left: 0;
+    }
+  }
+  @media (max-width: 480px) {
+    .wx-sched .wx-list-table tbody tr {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 }

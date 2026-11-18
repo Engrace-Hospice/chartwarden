@@ -36,6 +36,9 @@ const VISIT_PURPOSE = Type.Union([
   Type.Literal("pronouncement"),
   Type.Literal("admission_visit"),
   Type.Literal("discharge_visit"),
+  Type.Literal("huv1"),
+  Type.Literal("huv2"),
+  Type.Literal("sfv"),
 ]);
 
 /** §3.2 visit setting value set (mirrors `VisitSetting`). */

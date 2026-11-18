@@ -277,6 +277,9 @@ const VISIT_PURPOSE: Record<string, string> = {
   pronouncement: "Pronouncement",
   admission_visit: "Admission visit",
   discharge_visit: "Discharge visit",
+  huv1: "HUV1",
+  huv2: "HUV2",
+  sfv: "SFV",
 };
 
 const CLAIM_SETTLED = /paid|denied|void|cancel|reject|written_off|closed/i;

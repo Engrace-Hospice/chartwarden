@@ -1130,7 +1130,8 @@ const attentionMark: CSSProperties = {
   fontSize: "0.85rem",
   fontWeight: 800,
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  color: "var(--color-error)",
+  // The pill foreground again: plain error on this tint is about 3.7:1 in light theme, the pill token about 4.9:1.
+  color: "var(--color-error-pill-fg)",
 };
 
 const attentionTitle: CSSProperties = {
@@ -1293,8 +1294,10 @@ const sectionNavMeta: CSSProperties = {
   color: "var(--color-on-surface-variant)",
 };
 
+// The pill foreground, not --color-error: on the active step's primary tint plain error is 4.12:1 in light
+// theme (needs 4.5), the pill token is 5.52:1. The two tokens are identical in dark theme.
 const sectionNavMetaRequired: CSSProperties = {
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
 };
 
 const readOnlyHint: CSSProperties = {

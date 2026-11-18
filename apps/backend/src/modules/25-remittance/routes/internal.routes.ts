@@ -116,6 +116,19 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
             .code(409)
             .send({ outcome: result.outcome, stageId: result.stageId, reason: result.reason });
         }
+        if (result.outcome === "unsupported") {
+          return reply
+            .code(422)
+            .send({ outcome: result.outcome, code: result.code, reason: result.reason });
+        }
+        if (result.outcome === "held_duplicate") {
+          return reply.code(409).send({
+            outcome: result.outcome,
+            adviceId: result.adviceId,
+            existingAdviceId: result.existingAdviceId,
+            reason: result.reason,
+          });
+        }
         return reply.code(202).send({ outcome: result.outcome, adviceId: result.adviceId });
       },
     );

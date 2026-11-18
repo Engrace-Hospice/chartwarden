@@ -1,15 +1,22 @@
 import { Button, Glyph, Modal, StatusPill, t, toLocalInput, useApiClient } from "@chartwarden/ui";
 import type { ApiClient, EntityLookupOption } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties, FormEvent, JSX, ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, FormEvent, JSX, ReactNode, RefObject } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   AdmissionLookupField,
   MdmEntityLookupField,
   PatientLookupField,
+  admissionDateLabel,
 } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
+import {
+  type CreateVisitBody,
+  type VisitPurpose,
+  type VisitSetting,
+  createVisit,
+} from "./scheduling-api";
 import { mapSchedulingApiError } from "./scheduling-errors";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
@@ -89,9 +96,36 @@ const VISIT_PURPOSES = [
   "pronouncement",
   "admission_visit",
   "discharge_visit",
-] as const;
+  "huv1",
+  "huv2",
+  "sfv",
+] as const satisfies readonly VisitPurpose[];
 
-const VISIT_SETTINGS = ["patient_home", "facility", "inpatient_unit", "telephonic"] as const;
+const VISIT_SETTINGS = [
+  "patient_home",
+  "facility",
+  "inpatient_unit",
+  "telephonic",
+] as const satisfies readonly VisitSetting[];
+
+type NewVisitStep = 1 | 2 | 3 | 4;
+type EligibilityState = "idle" | "loading" | "ready" | "error";
+type VisitAddress = { id: string; label: string; isPrimary: boolean; current: boolean };
+
+function defaultVisitWindow(): { start: string; end: string } {
+  const now = Date.now();
+  return {
+    start: toLocalInput(new Date(now + 60 * 60 * 1000)),
+    end: toLocalInput(new Date(now + 2 * 60 * 60 * 1000)),
+  };
+}
+
+const NEW_VISIT_STEPS: ReadonlyArray<{ step: NewVisitStep; label: string }> = [
+  { step: 1, label: "Who and why" },
+  { step: 2, label: "When and where" },
+  { step: 3, label: "Who is available" },
+  { step: 4, label: "Review and schedule" },
+];
 
 export function hasPermission(permissions: readonly string[] | undefined, key: string): boolean {
   return permissions?.includes(key) ?? false;
@@ -150,26 +184,28 @@ export function NewVisitModal({
   const [patientId, setPatientId] = useState("");
   const [patientLabel, setPatientLabel] = useState("");
   const [admissionId, setAdmissionId] = useState("");
+  const [admissionLabel, setAdmissionLabel] = useState("");
   const [clinicianId, setClinicianId] = useState("");
   const [clinicianLabel, setClinicianLabel] = useState("");
-  const [visitPurpose, setVisitPurpose] = useState("routine_visit");
-  const [visitSetting, setVisitSetting] = useState("patient_home");
+  const [visitPurpose, setVisitPurpose] = useState<VisitPurpose>("routine_visit");
+  const [visitSetting, setVisitSetting] = useState<VisitSetting>("patient_home");
   const [addressId, setAddressId] = useState("");
-  const [addresses, setAddresses] = useState<
-    Array<{ id: string; label: string; isPrimary: boolean; current: boolean }>
-  >([]);
+  const [addresses, setAddresses] = useState<VisitAddress[]>([]);
   const [facilityId, setFacilityId] = useState("");
-  const [start, setStart] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60 * 1000)));
-  const [end, setEnd] = useState(() => toLocalInput(new Date(Date.now() + 2 * 60 * 60 * 1000)));
+  const [start, setStart] = useState(() => defaultVisitWindow().start);
+  const [end, setEnd] = useState(() => defaultVisitWindow().end);
   const [notes, setNotes] = useState("");
   const [reminder, setReminder] = useState(false);
+  const [step, setStep] = useState<NewVisitStep>(1);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const currentStepRef = useRef<HTMLLIElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [supportReference, setSupportReference] = useState<string | null>(null);
   const [eligibleClinicians, setEligibleClinicians] = useState<EligibleClinician[]>([]);
-  const [eligibilityState, setEligibilityState] = useState<"idle" | "loading" | "ready" | "error">(
-    "idle",
-  );
+  const [eligibilityState, setEligibilityState] = useState<EligibilityState>("idle");
   const [eligibilityHint, setEligibilityHint] = useState<string | null>(null);
+  const [eligibilityRefresh, setEligibilityRefresh] = useState(0);
 
   useEffect(() => {
     if (!open || !initialPatient) return;
@@ -177,24 +213,52 @@ export function NewVisitModal({
     setPatientLabel(initialPatient.label);
   }, [open, initialPatient]);
 
+  // A step change can remove the focused button: advancing 3 -> 4 swaps Continue for Create Visit (distinct
+  // keys, see the footer) and Back is absent on step 1. Focus would fall to <body>, where the modal's Escape
+  // and Tab handling never see it, so land on the current step in the progress list; it also announces the step.
+  const previousStep = useRef(step);
   useEffect(() => {
-    if (!open || !patientId || admissionId) return;
+    if (previousStep.current === step) return;
+    previousStep.current = step;
+    const active = document.activeElement;
+    if (!active || active === document.body) currentStepRef.current?.focus();
+  }, [step]);
+
+  useEffect(() => {
+    let active = true;
+    if (!open || !patientId || admissionId)
+      return () => {
+        active = false;
+      };
     void client
       .GET("/api/v1/patients/{patientId}/admissions", {
         params: { path: { patientId } },
       })
       .then((result) => {
-        const active = ((result.data?.items ?? []) as Array<{ id: string; state: string }>).filter(
-          (admission) => admission.state === "active",
-        );
-        if (active.length === 1) setAdmissionId(active[0]!.id);
+        if (!active) return;
+        const activeAdmissions = (
+          (result.data?.items ?? []) as Array<{
+            id: string;
+            state: string;
+            admissionAt: string | null;
+          }>
+        ).filter((admission) => admission.state === "active");
+        if (activeAdmissions.length === 1) {
+          setAdmissionId(activeAdmissions[0]!.id);
+          setAdmissionLabel(admissionDateLabel(activeAdmissions[0]!.admissionAt));
+        }
       });
+    return () => {
+      active = false;
+    };
   }, [admissionId, client, open, patientId]);
 
   function reset(): void {
+    const window = defaultVisitWindow();
     setPatientId("");
     setPatientLabel("");
     setAdmissionId("");
+    setAdmissionLabel("");
     setClinicianId("");
     setClinicianLabel("");
     setVisitPurpose("routine_visit");
@@ -202,12 +266,21 @@ export function NewVisitModal({
     setAddressId("");
     setAddresses([]);
     setFacilityId("");
+    setStart(window.start);
+    setEnd(window.end);
     setNotes("");
     setReminder(false);
+    setStep(1);
     setError(null);
+    setSupportReference(null);
     setEligibleClinicians([]);
     setEligibilityState("idle");
     setEligibilityHint(null);
+  }
+
+  function closeAndReset(): void {
+    reset();
+    onClose();
   }
 
   // Patient addresses are M5-owned.  Once a patient is chosen, select their current primary address
@@ -257,6 +330,7 @@ export function NewVisitModal({
   // The backend evaluates the same M17 facts as POST /visits. Never derive a second discipline or
   // credential policy in the browser; this only makes known-invalid choices unavailable sooner.
   useEffect(() => {
+    void eligibilityRefresh;
     let cancelled = false;
     const validWindow = Date.parse(isoFromLocal(start)) < Date.parse(isoFromLocal(end));
     if (!patientId || !validWindow) {
@@ -286,27 +360,66 @@ export function NewVisitModal({
       const rows = (result.data ?? []) as EligibleClinician[];
       setEligibleClinicians(rows);
       setEligibilityState("ready");
-      if (
-        clinicianId &&
-        !rows.some((clinician) => clinician.membershipId === clinicianId && clinician.eligible)
-      ) {
-        const selected = rows.find((clinician) => clinician.membershipId === clinicianId);
-        setClinicianId("");
+      setClinicianId((current) => {
+        if (
+          !current ||
+          rows.some((clinician) => clinician.membershipId === current && clinician.eligible)
+        )
+          return current;
+        const selected = rows.find((clinician) => clinician.membershipId === current);
         setClinicianLabel("");
         setEligibilityHint(
           selected
             ? `Selected clinician removed: ${eligibilityReason(selected.reasonCodes)}`
             : "Selected clinician is no longer eligible for this visit.",
         );
-      }
+        return "";
+      });
     })();
     return () => {
       cancelled = true;
     };
-  }, [client, patientId, visitPurpose, start, end, clinicianId]);
+  }, [client, patientId, visitPurpose, start, end, eligibilityRefresh]);
+
+  function advance(): void {
+    setError(null);
+    setSupportReference(null);
+    if (step === 1) {
+      if (!patientId || !admissionId) {
+        setError("Select a patient and active admission before continuing.");
+        return;
+      }
+      setStep(2);
+      return;
+    }
+    if (step === 2) {
+      if (!start || !end || Date.parse(isoFromLocal(end)) <= Date.parse(isoFromLocal(start))) {
+        setError("Scheduled end must be after scheduled start.");
+        return;
+      }
+      setStep(3);
+      return;
+    }
+    if (step === 3) {
+      if (eligibilityState === "loading") {
+        setError("Wait while eligible clinicians are checked.");
+        return;
+      }
+      if (eligibilityState === "error") {
+        setError("Eligible clinicians could not be checked. Retry before continuing.");
+        return;
+      }
+      if (!clinicianId) {
+        setError("Select an eligible clinician before continuing.");
+        return;
+      }
+      setStep(4);
+    }
+  }
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
+    if (step !== 4 || submittingRef.current) return;
     if (!patientId || !admissionId || !clinicianId) {
       setError("Select a patient, active admission, and clinician.");
       return;
@@ -315,41 +428,47 @@ export function NewVisitModal({
       setError("Scheduled end must be after scheduled start.");
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
-    const {
-      data,
-      error: err,
-      response,
-    } = await client.POST("/api/v1/visits", {
-      body: {
-        patientId,
-        admissionId,
-        assignedMembershipId: clinicianId,
-        visitPurpose,
-        visitSetting,
-        scheduledStartedAt: isoFromLocal(start),
-        scheduledEndedAt: isoFromLocal(end),
-        patientAddressId: addressId || null,
-        externalFacilityId: visitSetting === "facility" ? facilityId || null : null,
-        ...(notes.trim() ? { schedulerInternalNotes: notes.trim() } : {}),
-        caregiverReminderOptIn: reminder,
-      },
-    } as never);
-    setSubmitting(false);
-    if (err || !data) {
-      setError(mapSchedulingApiError(err, response?.status).message);
-      return;
+    setSupportReference(null);
+    const body: CreateVisitBody = {
+      patientId,
+      admissionId,
+      assignedMembershipId: clinicianId,
+      visitPurpose,
+      visitSetting,
+      scheduledStartedAt: isoFromLocal(start),
+      scheduledEndedAt: isoFromLocal(end),
+      patientAddressId: addressId || null,
+      externalFacilityId: visitSetting === "facility" ? facilityId || null : null,
+      ...(notes.trim() ? { schedulerInternalNotes: notes.trim() } : {}),
+      caregiverReminderOptIn: reminder,
+    };
+    try {
+      const result = await createVisit(client, body);
+      if (!result.ok) {
+        setError(result.message);
+        setSupportReference(result.correlationId ?? null);
+        return;
+      }
+      reset();
+      onCreated(result.value as VisitView);
+    } catch {
+      setError(
+        "The visit could not be scheduled because the server could not be reached. Your draft is safe; try again.",
+      );
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
     }
-    reset();
-    onCreated(data as VisitView);
   }
 
   if (!open) return null;
   return (
     <Modal
       open={open}
-      onClose={submitting ? undefined : onClose}
+      onClose={submitting ? undefined : closeAndReset}
       ariaLabel="New Visit"
       width="42rem"
     >
@@ -358,188 +477,454 @@ export function NewVisitModal({
           <div>
             <h2 style={modalTitle}>New Visit</h2>
             <p style={muted}>
-              Schedule ownership stays in M17; Encounter draft seeding is backend-owned.
+              Create a visit in four steps. Final eligibility and conflict checks happen when you
+              schedule.
             </p>
           </div>
-          <button type="button" onClick={onClose} disabled={submitting} style={iconButton}>
+          <button type="button" onClick={closeAndReset} disabled={submitting} style={iconButton}>
             <Glyph name="close" size={16} label="Close" />
           </button>
         </div>
+        <NewVisitProgress current={step} currentRef={currentStepRef} />
         {error ? (
           <div role="alert" style={errorBanner}>
-            {error}
+            <strong>{error}</strong>
+            {supportReference ? (
+              <span style={{ display: "block", marginTop: "0.3rem", fontSize: "0.75rem" }}>
+                Support reference: {supportReference}
+              </span>
+            ) : null}
           </div>
         ) : null}
         <div style={grid2}>
-          <PatientLookupField
-            label="Patient"
-            value={patientId}
-            valueLabel={patientLabel}
-            onChange={(value, option) => {
-              setPatientId(value);
-              setPatientLabel(option?.searchLabel ?? "");
-              setAdmissionId("");
-              setAddressId("");
-              setClinicianId("");
-              setClinicianLabel("");
-            }}
-            required
-          />
-          <AdmissionLookupField
-            label="Active admission"
-            patientId={patientId}
-            state="active"
-            value={admissionId}
-            onChange={(value) => setAdmissionId(value)}
-            required
-            disabled={!patientId}
-          />
-          <label style={field}>
-            <span style={label}>Visit purpose *</span>
-            <select
-              value={visitPurpose}
-              onChange={(e) => setVisitPurpose(e.target.value)}
-              style={input}
-            >
-              {VISIT_PURPOSES.map((p) => (
-                <option key={p} value={p}>
-                  {stateLabel(p)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={field}>
-            <span style={label}>Visit setting *</span>
-            <select
-              value={visitSetting}
-              onChange={(e) => setVisitSetting(e.target.value)}
-              style={input}
-            >
-              {VISIT_SETTINGS.map((p) => (
-                <option key={p} value={p}>
-                  {stateLabel(p)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={field}>
-            <span style={label}>Scheduled start *</span>
-            <input
-              type="datetime-local"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              style={input}
+          {step === 1 ? (
+            <WhoAndWhyStep
+              patientId={patientId}
+              patientLabel={patientLabel}
+              admissionId={admissionId}
+              admissionLabel={admissionLabel}
+              visitPurpose={visitPurpose}
+              onPatientChange={(value, option) => {
+                setPatientId(value);
+                setPatientLabel(option?.searchLabel ?? "");
+                setAdmissionId("");
+                setAdmissionLabel("");
+                setAddressId("");
+                setClinicianId("");
+                setClinicianLabel("");
+              }}
+              onAdmissionChange={(value, option) => {
+                setAdmissionId(value);
+                setAdmissionLabel(option?.searchLabel ?? "");
+              }}
+              onPurposeChange={setVisitPurpose}
             />
-          </label>
-          <label style={field}>
-            <span style={label}>Scheduled end *</span>
-            <input
-              type="datetime-local"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              style={input}
+          ) : null}
+          {step === 2 ? (
+            <WhenAndWhereStep
+              patientId={patientId}
+              visitSetting={visitSetting}
+              start={start}
+              end={end}
+              addressId={addressId}
+              addresses={addresses}
+              facilityId={facilityId}
+              onSettingChange={setVisitSetting}
+              onStartChange={setStart}
+              onEndChange={setEnd}
+              onAddressChange={setAddressId}
+              onFacilityChange={setFacilityId}
             />
-          </label>
-          <label style={field}>
-            <span style={label}>Assigned clinician *</span>
-            <select
-              value={clinicianId}
-              onChange={(e) => {
+          ) : null}
+          {step === 3 ? (
+            <ClinicianStep
+              clinicianId={clinicianId}
+              clinicians={eligibleClinicians}
+              state={eligibilityState}
+              hint={eligibilityHint}
+              onChange={(value) => {
                 const selected = eligibleClinicians.find(
-                  (clinician) => clinician.membershipId === e.target.value,
+                  (clinician) => clinician.membershipId === value,
                 );
-                setClinicianId(e.target.value);
+                setClinicianId(value);
                 setClinicianLabel(selected?.displayName ?? "");
               }}
-              style={input}
-              disabled={eligibilityState !== "ready"}
-            >
-              <option value="">
-                {eligibilityState === "loading"
-                  ? "Checking eligible clinicians…"
-                  : "Select an eligible clinician…"}
-              </option>
-              {eligibleClinicians
-                .filter((clinician) => clinician.eligible)
-                .map((clinician) => (
-                  <option key={clinician.membershipId} value={clinician.membershipId}>
-                    {clinician.displayName} ·{" "}
-                    {clinician.disciplines
-                      .map((discipline) => discipline.toUpperCase())
-                      .join(" / ")}
-                  </option>
-                ))}
-            </select>
-            {eligibilityState === "ready" &&
-            eligibleClinicians.filter((clinician) => clinician.eligible).length === 0 ? (
-              <small style={muted}>
-                No eligible clinicians for this patient and visit context. Review the care team,
-                credentials, or selected time.
-              </small>
-            ) : null}
-            {eligibilityState === "error" ? (
-              <small style={muted}>
-                Eligible clinicians could not be checked. Try again before creating the visit.
-              </small>
-            ) : null}
-            {eligibilityHint ? <output style={muted}>{eligibilityHint}</output> : null}
-          </label>
-          {visitSetting === "facility" ? (
-            <MdmEntityLookupField
-              kind="facility"
-              label="External facility"
-              value={facilityId}
-              onChange={(value) => setFacilityId(value)}
+              onRetry={() => setEligibilityRefresh((value) => value + 1)}
             />
-          ) : (
-            <label style={field}>
-              <span style={label}>Patient address</span>
-              <select
-                value={addressId}
-                onChange={(e) => setAddressId(e.target.value)}
-                style={input}
-                disabled={!patientId}
-              >
-                <option value="">
-                  {patientId ? "No address selected" : "Select a patient first"}
-                </option>
-                {addresses.map((address) => (
-                  <option key={address.id} value={address.id}>
-                    {address.label}
-                    {address.current && address.isPrimary ? " (primary)" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          ) : null}
+          {step === 4 ? (
+            <NewVisitReview
+              patientLabel={patientLabel}
+              visitPurpose={visitPurpose}
+              visitSetting={visitSetting}
+              start={start}
+              end={end}
+              clinicianLabel={clinicianLabel}
+              locationLabel={
+                visitSetting === "facility"
+                  ? facilityId
+                    ? "Selected facility"
+                    : "No facility selected"
+                  : (addresses.find((address) => address.id === addressId)?.label ??
+                    "No address selected")
+              }
+            />
+          ) : null}
         </div>
-        <label style={field}>
-          <span style={label}>Scheduler notes</span>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            style={textarea}
-          />
-        </label>
-        <label style={checkRow}>
-          <input
-            type="checkbox"
-            checked={reminder}
-            onChange={(e) => setReminder(e.target.checked)}
-          />
-          Caregiver reminder requested
-        </label>
+        {step === 4 ? (
+          <>
+            <label style={field}>
+              <span style={label}>Scheduler notes</span>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                maxLength={1000}
+                style={textarea}
+              />
+            </label>
+            <label style={checkRow}>
+              <input
+                type="checkbox"
+                checked={reminder}
+                onChange={(e) => setReminder(e.target.checked)}
+              />
+              Caregiver reminder requested
+            </label>
+          </>
+        ) : null}
         <div style={actions}>
-          <Button tone="tertiary" onClick={onClose} disabled={submitting}>
+          <Button tone="tertiary" onClick={closeAndReset} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" loading={submitting}>
-            <Glyph name="check" size={14} /> Create Visit
-          </Button>
+          <span style={{ flex: 1 }} />
+          {step > 1 ? (
+            <Button
+              tone="tertiary"
+              onClick={() => {
+                setError(null);
+                setSupportReference(null);
+                setStep((step - 1) as NewVisitStep);
+              }}
+              disabled={submitting}
+            >
+              Back
+            </Button>
+          ) : null}
+          {/* Distinct keys: without them React reuses one <button> for both, and a real click on
+              "Continue to review" flips it to type="submit" before the click's default action runs,
+              submitting the form and skipping the review step. */}
+          {step < 4 ? (
+            <Button key="advance" onClick={advance} disabled={submitting}>
+              {step === 1
+                ? "Continue to time and location"
+                : step === 2
+                  ? "Continue to clinician"
+                  : "Continue to review"}
+            </Button>
+          ) : (
+            <Button key="create" type="submit" loading={submitting} disabled={submitting}>
+              <Glyph name="check" size={14} /> Create Visit
+            </Button>
+          )}
         </div>
       </form>
     </Modal>
+  );
+}
+
+function NewVisitProgress({
+  current,
+  currentRef,
+}: {
+  current: NewVisitStep;
+  currentRef: RefObject<HTMLLIElement>;
+}): JSX.Element {
+  return (
+    <ol className="wx-visit-wizard-steps" aria-label="Visit scheduling progress">
+      {NEW_VISIT_STEPS.map((item) => (
+        <li
+          key={item.step}
+          ref={item.step === current ? currentRef : undefined}
+          tabIndex={item.step === current ? -1 : undefined}
+          className={
+            item.step === current ? "is-current" : item.step < current ? "is-complete" : ""
+          }
+          aria-current={item.step === current ? "step" : undefined}
+        >
+          <span aria-hidden="true">{item.step}</span>
+          {item.label}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+interface WhoAndWhyStepProps {
+  patientId: string;
+  patientLabel: string;
+  admissionId: string;
+  admissionLabel: string;
+  visitPurpose: VisitPurpose;
+  onPatientChange: (value: string, option: EntityLookupOption | null) => void;
+  onAdmissionChange: (value: string, option: EntityLookupOption | null) => void;
+  onPurposeChange: (value: VisitPurpose) => void;
+}
+
+function WhoAndWhyStep({
+  patientId,
+  patientLabel,
+  admissionId,
+  admissionLabel,
+  visitPurpose,
+  onPatientChange,
+  onAdmissionChange,
+  onPurposeChange,
+}: WhoAndWhyStepProps): JSX.Element {
+  return (
+    <>
+      <PatientLookupField
+        label="Patient"
+        value={patientId}
+        valueLabel={patientLabel}
+        onChange={onPatientChange}
+        required
+      />
+      <AdmissionLookupField
+        label="Active admission"
+        patientId={patientId}
+        state="active"
+        value={admissionId}
+        valueLabel={admissionLabel}
+        onChange={onAdmissionChange}
+        required
+        disabled={!patientId}
+      />
+      <label style={field}>
+        <span style={label}>Visit purpose *</span>
+        <select
+          value={visitPurpose}
+          onChange={(event) => onPurposeChange(event.target.value as VisitPurpose)}
+          style={input}
+        >
+          {VISIT_PURPOSES.map((purpose) => (
+            <option key={purpose} value={purpose}>
+              {stateLabel(purpose)}
+            </option>
+          ))}
+        </select>
+      </label>
+    </>
+  );
+}
+
+interface WhenAndWhereStepProps {
+  patientId: string;
+  visitSetting: VisitSetting;
+  start: string;
+  end: string;
+  addressId: string;
+  addresses: readonly VisitAddress[];
+  facilityId: string;
+  onSettingChange: (value: VisitSetting) => void;
+  onStartChange: (value: string) => void;
+  onEndChange: (value: string) => void;
+  onAddressChange: (value: string) => void;
+  onFacilityChange: (value: string) => void;
+}
+
+function WhenAndWhereStep({
+  patientId,
+  visitSetting,
+  start,
+  end,
+  addressId,
+  addresses,
+  facilityId,
+  onSettingChange,
+  onStartChange,
+  onEndChange,
+  onAddressChange,
+  onFacilityChange,
+}: WhenAndWhereStepProps): JSX.Element {
+  return (
+    <>
+      <label style={field}>
+        <span style={label}>Visit setting *</span>
+        <select
+          value={visitSetting}
+          onChange={(event) => onSettingChange(event.target.value as VisitSetting)}
+          style={input}
+        >
+          {VISIT_SETTINGS.map((setting) => (
+            <option key={setting} value={setting}>
+              {stateLabel(setting)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={field}>
+        <span style={label}>Scheduled start *</span>
+        <input
+          type="datetime-local"
+          value={start}
+          onChange={(event) => onStartChange(event.target.value)}
+          style={input}
+          required
+        />
+      </label>
+      <label style={field}>
+        <span style={label}>Scheduled end *</span>
+        <input
+          type="datetime-local"
+          value={end}
+          onChange={(event) => onEndChange(event.target.value)}
+          style={input}
+          required
+        />
+      </label>
+      {visitSetting === "facility" ? (
+        <MdmEntityLookupField
+          kind="facility"
+          label="External facility"
+          value={facilityId}
+          onChange={onFacilityChange}
+        />
+      ) : (
+        <label style={field}>
+          <span style={label}>Patient address</span>
+          <select
+            value={addressId}
+            onChange={(event) => onAddressChange(event.target.value)}
+            style={input}
+            disabled={!patientId}
+          >
+            <option value="">{patientId ? "No address selected" : "Select a patient first"}</option>
+            {addresses.map((address) => (
+              <option key={address.id} value={address.id}>
+                {address.label}
+                {address.current && address.isPrimary ? " (primary)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <p className="wx-visit-wizard-note">
+        Times use your current local time zone. The server confirms the final assignment and
+        conflict checks when the visit is created.
+      </p>
+    </>
+  );
+}
+
+interface ClinicianStepProps {
+  clinicianId: string;
+  clinicians: readonly EligibleClinician[];
+  state: EligibilityState;
+  hint: string | null;
+  onChange: (value: string) => void;
+  onRetry: () => void;
+}
+
+function ClinicianStep({
+  clinicianId,
+  clinicians,
+  state,
+  hint,
+  onChange,
+  onRetry,
+}: ClinicianStepProps): JSX.Element {
+  const eligible = clinicians.filter((clinician) => clinician.eligible);
+  return (
+    <div className="wx-visit-wizard-wide">
+      <label style={field}>
+        <span style={label}>Assigned clinician *</span>
+        <select
+          value={clinicianId}
+          onChange={(event) => onChange(event.target.value)}
+          style={input}
+          disabled={state !== "ready"}
+        >
+          <option value="">
+            {state === "loading"
+              ? "Checking eligible clinicians…"
+              : "Select an eligible clinician…"}
+          </option>
+          {eligible.map((clinician) => (
+            <option key={clinician.membershipId} value={clinician.membershipId}>
+              {clinician.displayName} ·{" "}
+              {clinician.disciplines.map((discipline) => discipline.toUpperCase()).join(" / ")}
+            </option>
+          ))}
+        </select>
+      </label>
+      {state === "loading" ? <output>Checking credentials and availability…</output> : null}
+      {state === "ready" && eligible.length === 0 ? (
+        <output className="wx-visit-wizard-state">
+          <strong>No eligible clinicians found</strong>
+          <span>
+            Review the care team, credentials, visit purpose, or selected time. No assignment has
+            been accepted yet.
+          </span>
+        </output>
+      ) : null}
+      {state === "error" ? (
+        <div className="wx-visit-wizard-state" role="alert">
+          <strong>Clinician availability could not be checked</strong>
+          <span>Your draft is safe. Retry before scheduling this visit.</span>
+          <Button size="sm" tone="tertiary" onClick={onRetry}>
+            Retry clinician check
+          </Button>
+        </div>
+      ) : null}
+      {hint ? <output className="wx-visit-wizard-state">{hint}</output> : null}
+    </div>
+  );
+}
+
+interface NewVisitReviewProps {
+  patientLabel: string;
+  visitPurpose: VisitPurpose;
+  visitSetting: VisitSetting;
+  start: string;
+  end: string;
+  clinicianLabel: string;
+  locationLabel: string;
+}
+
+function NewVisitReview({
+  patientLabel,
+  visitPurpose,
+  visitSetting,
+  start,
+  end,
+  clinicianLabel,
+  locationLabel,
+}: NewVisitReviewProps): JSX.Element {
+  const rows = [
+    ["Patient", patientLabel || "Selected patient"],
+    ["Visit", stateLabel(visitPurpose)],
+    ["When", `${formatInstant(isoFromLocal(start))} – ${formatInstant(isoFromLocal(end))}`],
+    ["Clinician", clinicianLabel || "Selected clinician"],
+    ["Setting", stateLabel(visitSetting)],
+    ["Location", locationLabel],
+  ] as const;
+  return (
+    <div className="wx-visit-wizard-review wx-visit-wizard-wide">
+      <h3>Confirm visit details</h3>
+      <dl>
+        {rows.map(([term, value]) => (
+          <div key={term}>
+            <dt>{term}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p>
+        Scheduling remains pending until the server accepts credentials, caseload, time off, and
+        overlap checks.
+      </p>
+    </div>
   );
 }
 

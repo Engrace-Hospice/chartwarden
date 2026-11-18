@@ -286,16 +286,19 @@ describe("MyVisits web workflow", () => {
     fireEvent.focus(screen.getByLabelText(/active admission/i));
     await waitFor(() => expect(screen.getByText(/Admitted Jan 2, 2026/i)).toBeTruthy());
     fireEvent.click(screen.getByText(/Admitted Jan 2, 2026/i));
-    await waitFor(() => expect(screen.getByRole("option", { name: /nurse one/i })).toBeTruthy());
-    fireEvent.change(screen.getByLabelText(/assigned clinician/i), {
-      target: { value: visit.assignedMembershipId },
-    });
+    fireEvent.click(screen.getByRole("button", { name: /continue to time and location/i }));
     fireEvent.change(screen.getByLabelText(/scheduled start/i), {
       target: { value: "2026-08-31T10:00" },
     });
     fireEvent.change(screen.getByLabelText(/scheduled end/i), {
       target: { value: "2026-08-31T11:00" },
     });
+    fireEvent.click(screen.getByRole("button", { name: /continue to clinician/i }));
+    await waitFor(() => expect(screen.getByRole("option", { name: /nurse one/i })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(/assigned clinician/i), {
+      target: { value: visit.assignedMembershipId },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /continue to review/i }));
     fireEvent.click(screen.getByRole("button", { name: /create visit/i }));
 
     await waitFor(() =>

@@ -24,10 +24,24 @@ describe("BIL-1.4.1B cross-source duplicate classification", () => {
     };
     expect(claimMdEraM25SerializationKey(identity)).toBe(claimMdEraM25SerializationKey(identity));
     expect(claimMdEraM25SerializationKey({ ...identity, paymentTrace: null })).toContain(
-      "ISA:000000001|ST:0001",
+      "ISA:::000000001|GS:|ST:0001",
     );
     expect(claimMdEraM25SerializationKey({ ...identity, organizationId: "tenant-b" })).not.toBe(
       claimMdEraM25SerializationKey(identity),
+    );
+  });
+
+  it("keeps a reused ST02 distinct when its GS06 changes", () => {
+    const identity = {
+      organizationId: "tenant-a",
+      providerEntityId: "provider-a",
+      paymentTrace: null,
+      interchangeControlNumber: "000000001",
+      functionalGroupControlNumber: "77",
+      transactionSetControlNumber: "0001",
+    };
+    expect(claimMdEraM25SerializationKey(identity)).not.toBe(
+      claimMdEraM25SerializationKey({ ...identity, functionalGroupControlNumber: "78" }),
     );
   });
 

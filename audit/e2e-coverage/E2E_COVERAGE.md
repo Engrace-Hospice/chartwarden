@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 220 statically-routable `web` screen(s) — 205/220 E2E-reached, 205/220 axe-reached.
+**Coverage:** 220 statically-routable `web` screen(s) — 206/220 E2E-reached, 206/220 axe-reached.
 
 ## Zero E2E coverage
 
@@ -13,7 +13,6 @@
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
 | `billing.medicare-notices` | 23-billing-medicare | `/billing/medicare-notices` | (none) |
 | `billing.operations` | 23-billing-medicare | `/billing/operations` | (none) |
-| `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `messaging.family-contact` | 36-messaging | `/family/open` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
@@ -33,7 +32,6 @@
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
 | `billing.medicare-notices` | 23-billing-medicare | `/billing/medicare-notices` | (none) |
 | `billing.operations` | 23-billing-medicare | `/billing/operations` | (none) |
-| `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `messaging.family-contact` | 36-messaging | `/family/open` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |

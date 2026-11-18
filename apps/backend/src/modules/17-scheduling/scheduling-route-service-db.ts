@@ -25,11 +25,10 @@
 //       `*_by` field on the aggregate / outbox payload where a column exists);
 //   (2) the `visit` / `recurring_visit` siting (provider_entity_id + location_id, both NOT NULL) is resolved
 //       from the assigned membership's `default_provider_entity_id` + `default_location_ids[0]` (M1 §3.7);
-//       `assigned_discipline_at_assignment` is captured as the first eligible discipline for the visit purpose
-//       (`VISIT_PURPOSE_DISCIPLINES[purpose][0]`) — the real M2 discipline resolver is not threaded here;
+//       the assignment stamp is the membership's real role/active-credential discipline selected by policy;
 //   (3) GAP-030/GAP-031: both the ROUTE-LAYER §4.7 ABAC predicates on `POST /visits` (the
-//       `SchedulingAbacResolver` methods below, GAP-030) AND the SERVICE-LAYER `preScheduleGatePassed`
-//       gate (reassign/edit/publish/reschedule, GAP-031) now resolve real data for `discipline_matches_
+//       `SchedulingAbacResolver` methods below, GAP-030) AND the SERVICE-LAYER pre-schedule gate
+//       (reassign/edit/publish/reschedule, GAP-031) now resolve real data for `discipline_matches_
 //       visit` (M3 membership_role→role, the GAP-021 precedent), `not_on_pto`, and `within_caseload_or_
 //       unassigned_pool` (the M17 `allow_unassigned_pool_assignment` org setting + the M5 CaseloadProvider
 //       seam) — via the SAME `resolveDisciplinesTx`/`allowsUnassignedPoolTx` tx-scoped helpers plus the
@@ -59,6 +58,7 @@ import {
   materializeRecurrence,
   planFrequencyProposals,
   planVisitProposed,
+  selectVisitAssignmentDiscipline,
   transitionTimeOff,
   transitionVisit,
 } from "@chartwarden/scheduling";
@@ -153,8 +153,8 @@ const ALL_SCHEDULING_DISCIPLINES = new Set<string>(Object.values(VISIT_PURPOSE_D
 /** The two D8 gate facts that come from CROSS-MODULE seams, resolved with no transaction open (the seams
  *  each take their own pooled connection) and then handed to the gate running inside the write tx. */
 interface PreScheduleSeamFacts {
-  /** M17's own `CredentialReader`: an ACTIVE credential for one of the qualifying disciplines. */
-  readonly credentialsActive: boolean;
+  /** M17's own `CredentialReader`: ACTIVE credential disciplines qualifying for this purpose. */
+  readonly activeCredentialDisciplines: readonly SchedulingDiscipline[];
   /** M5's `CaseloadProvider`: the patient is in this membership's caseload. */
   readonly inCaseload: boolean;
 }
@@ -299,11 +299,6 @@ export interface SchedulingAutomationService {
   ): Promise<{ remindersEmitted: number }>;
 }
 
-/** The first eligible discipline for a visit purpose — the captured `assigned_discipline_at_assignment`
- * (compromise #2: the real M2 discipline resolver is not threaded into the DB backend). */
-const disciplineFor = (purpose: VisitPurpose): SchedulingDiscipline =>
-  VISIT_PURPOSE_DISCIPLINES[purpose][0] as SchedulingDiscipline;
-
 const encounterTypeFor = (purpose: VisitPurpose): EncounterType => {
   switch (purpose) {
     case "f2f":
@@ -413,7 +408,7 @@ export function createDbSchedulingBackend(
   }
 
   // ── §4.7 fact resolvers, tx-scoped (GAP-030/GAP-031) ────────────────────────────────────────────────────
-  // Shared by `preScheduleGatePassed` (runs directly against the caller's already-open `tx` — the M11
+  // Shared by the pre-schedule gate (runs directly against the caller's already-open `tx` — the M11
   // "read within tx" precedent: a fact this gate needs must never be resolved via a SEPARATE
   // `withOrgContext`/transaction, or it risks missing a write made earlier in the SAME enclosing tx) and
   // the `backend.resolveDiscipline`/`allowsUnassignedPool` ABAC-resolver methods below (which wrap these
@@ -513,26 +508,38 @@ export function createDbSchedulingBackend(
   // M31) shares, so a future change to what "active" means has one home. That seam opens its own
   // `withOrgContext`, hence the no-transaction-open contract below.
   /** NO transaction may be open when this is called — see the block comment above `membershipUserIdTx`. */
+  async function activeCredentialDisciplines(
+    orgId: string,
+    membershipId: string,
+    disciplines: readonly SchedulingDiscipline[],
+    asOfDate: string,
+  ): Promise<SchedulingDiscipline[]> {
+    if (disciplines.length === 0) return [];
+    const creds = await getSeam("CredentialReader").activeCredentialsAsOf({
+      organizationId: orgId,
+      membershipId,
+      asOf: asOfDate,
+    });
+    const activeKinds = new Set(creds.map((credential) => credential.kind));
+    return disciplines.filter((discipline) => activeKinds.has(discipline));
+  }
+
   async function credentialActive(
     orgId: string,
     membershipId: string,
     disciplines: readonly SchedulingDiscipline[],
     asOfDate: string,
   ): Promise<boolean> {
-    if (disciplines.length === 0) return false; // no qualifying discipline → nothing to credential
-    const creds = await getSeam("CredentialReader").activeCredentialsAsOf({
-      organizationId: orgId,
-      membershipId,
-      asOf: asOfDate,
-    });
-    return creds.some((c) => disciplines.includes(c.kind as SchedulingDiscipline));
+    return (
+      (await activeCredentialDisciplines(orgId, membershipId, disciplines, asOfDate)).length > 0
+    );
   }
 
   /**
    * Resolve the two SEAM-backed halves of the D8 gate with no transaction open.
    *
    * Every write path calls this BEFORE opening its `withOrgContext`, then hands the verdicts to
-   * {@link preScheduleGatePassed}, which still resolves everything else (disciplines, PTO, unassigned-pool
+   * the pre-schedule gate, which still resolves everything else (disciplines, PTO, unassigned-pool
    * policy) inside the write tx where the M11 "read within tx" rule applies.
    *
    * Splitting the gate this way is safe because neither fact is written by an M17 transaction:
@@ -596,18 +603,18 @@ export function createDbSchedulingBackend(
       },
     );
     // Transaction closed. Both seams may now take their own connection without contending for ours.
-    const [credentialsActive, inCaseloadNow] = await Promise.all([
-      credentialActive(orgId, membershipId, qualifying, serviceDate),
+    const [credentialed, inCaseloadNow] = await Promise.all([
+      activeCredentialDisciplines(orgId, membershipId, qualifying, serviceDate),
       inCaseload(orgId, userId, patientId),
     ]);
-    return { credentialsActive, inCaseload: inCaseloadNow };
+    return { activeCredentialDisciplines: credentialed, inCaseload: inCaseloadNow };
   }
 
   /** The D8 pre-schedule gate the service enforces (GAP-031/GAP-093). Checks the same facts GAP-030
    *  wired into the route-layer ABAC predicates — `clinician_credentials_active`,
    *  `discipline_matches_visit`, `not_on_pto`, `within_caseload_or_unassigned_pool` — against real
    *  data, reused from the SAME tx-scoped resolvers above so the two layers can never drift. */
-  async function preScheduleGatePassed(
+  async function preScheduleGateDiscipline(
     tx: DbClient,
     orgId: string,
     membershipId: string,
@@ -616,17 +623,21 @@ export function createDbSchedulingBackend(
     startsAt: string,
     endsAt: string,
     seamFacts: PreScheduleSeamFacts,
-  ): Promise<boolean> {
+  ): Promise<SchedulingDiscipline | null> {
     // The clinician qualifies if ANY discipline they hold is accepted for this visit purpose, and the
     // credential check then runs against that same qualifying set — a membership holding `msw` + `rn`
     // passes an `admission_visit` on its `rn` role and `rn` licence, whichever order the rows arrive in.
     const qualifying = (await resolveDisciplinesTx(tx, orgId, membershipId)).filter((d) =>
       VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(d),
     );
-    if (qualifying.length === 0) return false;
+    const discipline = selectVisitAssignmentDiscipline(
+      visitPurpose,
+      qualifying,
+      seamFacts.activeCredentialDisciplines,
+    );
+    if (discipline === null) return null;
 
-    // Seam-backed, resolved by `resolvePreScheduleSeamFacts` before this transaction opened.
-    if (!seamFacts.credentialsActive) return false;
+    // Credential disciplines are seam-backed and were resolved before this transaction opened.
 
     const overlapRows = await tx
       .select({ id: TO.id })
@@ -640,10 +651,10 @@ export function createDbSchedulingBackend(
         ),
       )
       .limit(1);
-    if (overlapRows.length > 0) return false; // an approved PTO row overlaps the window
+    if (overlapRows.length > 0) return null; // an approved PTO row overlaps the window
 
-    if (await allowsUnassignedPoolTx(tx, orgId)) return true; // org opened the unassigned pool
-    return seamFacts.inCaseload;
+    if (await allowsUnassignedPoolTx(tx, orgId)) return discipline;
+    return seamFacts.inCaseload ? discipline : null;
   }
 
   /** Insert a `proposed` visit then run the D8 gate + `publish` transition in the same tx (§2.2.1). Reused by
@@ -657,7 +668,19 @@ export function createDbSchedulingBackend(
     seamFacts: PreScheduleSeamFacts,
   ): Promise<VisitView> {
     const { providerEntityId, locationId } = await resolveSiting(tx, input.assignedMembershipId);
-    const discipline = disciplineFor(input.visitPurpose);
+    const discipline = await preScheduleGateDiscipline(
+      tx,
+      orgId,
+      input.assignedMembershipId,
+      input.visitPurpose,
+      input.patientId,
+      input.scheduledStartedAt,
+      input.scheduledEndedAt,
+      seamFacts,
+    );
+    const gatePassed = discipline !== null;
+    const published = transitionVisit("proposed", { type: "publish", gatePassed });
+    if (discipline === null) throw new Error("unreachable after refused pre-schedule transition");
     const timezone = await organizationTimezone(tx, orgId);
     const serviceDate = serviceDateOf(input.scheduledStartedAt, timezone);
 
@@ -702,17 +725,6 @@ export function createDbSchedulingBackend(
 
     // §2.2.1 publish — the D8 gate verdict feeds the machine (proposed → published), which fires the
     // caseload-contribution + visit-seeding stream. The D6 overlap EXCLUDE backstops this on the leaf.
-    const gatePassed = await preScheduleGatePassed(
-      tx,
-      orgId,
-      input.assignedMembershipId,
-      input.visitPurpose,
-      input.patientId,
-      input.scheduledStartedAt,
-      input.scheduledEndedAt,
-      seamFacts,
-    );
-    const published = transitionVisit("proposed", { type: "publish", gatePassed });
     await tx
       .update(V)
       .set({ status: published.to, version: 1, updatedAt: new Date() })
@@ -1101,14 +1113,15 @@ export function createDbSchedulingBackend(
         const tx = txRaw as DbClient;
         const v = await loadVisit(tx, visitId);
         const timezone = await organizationTimezone(tx, orgId);
-        const reassigned =
-          input.assignedMembershipId !== undefined || input.scheduledStartedAt !== undefined;
+        const requiresGate =
+          input.assignedMembershipId !== undefined || input.visitPurpose !== undefined;
         const nextMembership = (input.assignedMembershipId ?? v.assignedMembershipId) as string;
         const nextStart = input.scheduledStartedAt ?? iso(v.scheduledStartedAt as Date);
         const nextEnd = input.scheduledEndedAt ?? iso(v.scheduledEndedAt as Date);
-        if (reassigned) {
+        let assignmentDiscipline: SchedulingDiscipline | null = null;
+        if (requiresGate) {
           const nextPurpose = (input.visitPurpose ?? v.visitPurpose) as VisitPurpose;
-          const passed = await preScheduleGatePassed(
+          assignmentDiscipline = await preScheduleGateDiscipline(
             tx,
             orgId,
             nextMembership,
@@ -1118,7 +1131,7 @@ export function createDbSchedulingBackend(
             nextEnd,
             seamFacts,
           );
-          if (!passed) throw new ForbiddenError("PRE_SCHEDULE_GATE_FAILED");
+          if (assignmentDiscipline === null) throw new ForbiddenError("PRE_SCHEDULE_GATE_FAILED");
         }
         const set: Record<string, unknown> = {
           version: (v.version as number) + 1,
@@ -1131,11 +1144,10 @@ export function createDbSchedulingBackend(
         if (input.scheduledEndedAt) set.scheduledEndedAt = new Date(input.scheduledEndedAt);
         if (input.assignedMembershipId) {
           set.assignedMembershipId = input.assignedMembershipId;
-          set.assignedDisciplineAtAssignment = disciplineFor(
-            (input.visitPurpose ?? v.visitPurpose) as VisitPurpose,
-          );
         }
         if (input.visitPurpose) set.visitPurpose = input.visitPurpose;
+        if (assignmentDiscipline !== null)
+          set.assignedDisciplineAtAssignment = assignmentDiscipline;
         if (input.visitSetting) set.visitSetting = input.visitSetting;
         await tx.update(V).set(set).where(eq(V.id, visitId));
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
@@ -1422,7 +1434,7 @@ export function createDbSchedulingBackend(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const v = await loadVisit(tx, visitId);
-        const passed = await preScheduleGatePassed(
+        const assignmentDiscipline = await preScheduleGateDiscipline(
           tx,
           orgId,
           newAssignedMembershipId,
@@ -1432,12 +1444,12 @@ export function createDbSchedulingBackend(
           iso(v.scheduledEndedAt as Date),
           seamFacts,
         );
-        if (!passed) throw new ForbiddenError("PRE_SCHEDULE_GATE_FAILED");
+        if (assignmentDiscipline === null) throw new ForbiddenError("PRE_SCHEDULE_GATE_FAILED");
         await tx
           .update(V)
           .set({
             assignedMembershipId: newAssignedMembershipId,
-            assignedDisciplineAtAssignment: disciplineFor(v.visitPurpose as VisitPurpose),
+            assignedDisciplineAtAssignment: assignmentDiscipline,
             version: (v.version as number) + 1,
             updatedAt: new Date(),
           })
@@ -1518,7 +1530,7 @@ export function createDbSchedulingBackend(
             pre.patientId,
             `${pre.proposedForDate}T13:00:00.000Z`,
           )
-        : { credentialsActive: false, inCaseload: false };
+        : { activeCredentialDisciplines: [], inCaseload: false };
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [p] = await tx.select().from(VP).where(eq(VP.id, proposalId)).limit(1);
@@ -2441,11 +2453,11 @@ export function createDbSchedulingBackend(
     // loadMemberRoleKeys / GAP-021 precedent + the M5 CaseloadProvider seam).
     // GAP-093 — credentialsActiveForPurpose now reads real data too (the new M17 CredentialReader seam
     // over `membership_credential`), reusing the SAME `credentialActive`/`resolveDisciplinesTx`
-    // resolvers `preScheduleGatePassed` uses so the two layers can't drift (the GAP-031 pattern).
+    // resolvers the pre-schedule gate uses so the two layers can't drift (the GAP-031 pattern).
     // Both seam-backed predicates CLOSE their transaction before calling the seam (code review
     // 2026-08-14) — the seam takes its own pooled connection, and holding ours while it does is the
     // M36 `syncCareTeamChannel` deadlock.
-    // GAP-031 — these now delegate to the SAME resolvers `preScheduleGatePassed` uses (defined
+    // GAP-031 — these now delegate to the SAME resolvers the pre-schedule gate uses (defined
     // above, near `appendHistory`), each wrapped in its own `withOrgContext` since these are called
     // standalone from the route-layer ABAC predicates (`abac-predicates.ts`), never nested inside an
     // existing tx — that's the opposite call shape from the service-layer gate, hence the two wrappers.
@@ -2576,7 +2588,8 @@ export function createDbSchedulingBackend(
           );
           const reasonCodes: string[] = [];
           if (!qualifying.length) reasonCodes.push("CLINICIAN_DISCIPLINE_NOT_ALLOWED");
-          else if (!facts.credentialsActive) reasonCodes.push("CLINICIAN_CREDENTIAL_MISSING");
+          else if (!facts.activeCredentialDisciplines.length)
+            reasonCodes.push("CLINICIAN_CREDENTIAL_MISSING");
           if (pto) reasonCodes.push("CLINICIAN_ON_PTO");
           if (!pool && !facts.inCaseload) reasonCodes.push("CLINICIAN_NOT_IN_CASELOAD");
           return {

@@ -60,6 +60,8 @@ const visit = () => ({
 let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
 let writeFailure: { status: number; body: unknown } | null = null;
+let rejectWrite = false;
+let admissionReadBarrier: Promise<void> | null = null;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
   if (typeof input === "string")
@@ -179,6 +181,9 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const { url, method } = requestOf(input, init);
   const path = new URL(url, "http://localhost").pathname;
   calls.push(`${method} ${path}`);
+  if (method === "GET" && path.endsWith("/admissions") && admissionReadBarrier) {
+    await admissionReadBarrier;
+  }
   if (method !== "GET") {
     const req = typeof input === "object" && "clone" in input ? (input as Request) : null;
     const raw = req ? await req.clone().text() : typeof init?.body === "string" ? init.body : "";
@@ -189,6 +194,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         // Every M17 write sends JSON; recording nothing is honest if one ever does not.
       }
     }
+    if (rejectWrite) throw new TypeError("network unavailable");
     if (writeFailure) {
       return new Response(JSON.stringify(writeFailure.body), {
         status: writeFailure.status,
@@ -251,6 +257,8 @@ beforeEach(() => {
   calls = [];
   bodies = [];
   writeFailure = null;
+  rejectWrite = false;
+  admissionReadBarrier = null;
   visitStatus = "published";
   proposalStatus = "pending";
   timeOffState = "requested";
@@ -260,6 +268,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   writeFailure = null;
+  rejectWrite = false;
+  admissionReadBarrier = null;
 });
 
 // The create flow is main's `NewVisitModal` (scheduling-workflow.tsx), opened from its retained action.
@@ -299,16 +309,31 @@ async function choosePatient(dialog: HTMLElement): Promise<void> {
   );
 }
 
-async function fillValidVisit(dialog: HTMLElement): Promise<void> {
+async function fillValidVisit(dialog: HTMLElement, advanceToReview = true): Promise<void> {
   await choosePatient(dialog);
   await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
+  fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
   fireEvent.change(within(dialog).getByLabelText(/scheduled start/i), {
     target: { value: "2026-08-28T09:00" },
   });
   fireEvent.change(within(dialog).getByLabelText(/scheduled end/i), {
     target: { value: "2026-08-28T10:00" },
   });
+  await waitFor(() =>
+    expect(
+      [...(within(dialog).getByLabelText(/patient address/i) as HTMLSelectElement).options].some(
+        (option) => option.value === ADDRESS,
+      ),
+    ).toBe(true),
+  );
+  fireEvent.change(within(dialog).getByLabelText(/patient address/i), {
+    target: { value: ADDRESS },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: /continue to clinician/i }));
   await chooseClinician(dialog, /assigned clinician/i, MEMBER);
+  if (advanceToReview) {
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to review/i }));
+  }
 }
 
 describe("shared Scheduling navigation", () => {
@@ -319,6 +344,67 @@ describe("shared Scheduling navigation", () => {
 });
 
 describe("#91 — a visit can be scheduled", () => {
+  it("uses four explicit steps and keeps the draft when moving backward", async () => {
+    const dialog = await openNewVisit();
+    expect(within(dialog).getByText("Who and why")).toBeTruthy();
+    expect(within(dialog).getByText("When and where")).toBeTruthy();
+    expect(within(dialog).getByText("Who is available")).toBeTruthy();
+    expect(within(dialog).getByText("Review and schedule")).toBeTruthy();
+    expect(within(dialog).getByRole("option", { name: "HUV1" })).toBeTruthy();
+    expect(within(dialog).getByRole("option", { name: "HUV2" })).toBeTruthy();
+    expect(within(dialog).getByRole("option", { name: "SFV" })).toBeTruthy();
+
+    await choosePatient(dialog);
+    await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /back/i }));
+
+    expect(
+      (within(dialog).getByRole("combobox", { name: PATIENT_FIELD }) as HTMLInputElement).value,
+    ).toBe("Vance, Ada");
+    expect(
+      (within(dialog).getByRole("combobox", { name: /active admission/i }) as HTMLInputElement)
+        .value,
+    ).toBe("Admitted Aug 1, 2026");
+  });
+
+  it("clears the draft when the wizard is cancelled and reopened", async () => {
+    const dialog = await openNewVisit();
+    await choosePatient(dialog);
+    await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New Visit" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "New Visit" }));
+    const reopened = await screen.findByRole("dialog", { name: "New Visit" });
+    expect(within(reopened).getByText("Who and why")).toBeTruthy();
+    expect(
+      (within(reopened).getByRole("combobox", { name: PATIENT_FIELD }) as HTMLInputElement).value,
+    ).toBe("");
+  });
+
+  it("ignores an admission response that arrives after the wizard is cancelled", async () => {
+    let releaseAdmissionRead = (): void => undefined;
+    admissionReadBarrier = new Promise<void>((resolve) => {
+      releaseAdmissionRead = resolve;
+    });
+    const dialog = await openNewVisit();
+    await choosePatient(dialog);
+    await waitFor(() => expect(calls).toContain(`GET /api/v1/patients/${PATIENT}/admissions`));
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+    releaseAdmissionRead();
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New Visit" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "New Visit" }));
+    const reopened = await screen.findByRole("dialog", { name: "New Visit" });
+    await Promise.resolve();
+    expect(
+      (within(reopened).getByRole("combobox", { name: /active admission/i }) as HTMLInputElement)
+        .value,
+    ).toBe("");
+  });
+
   it("choosing a patient scopes the admission lookup to that patient's ACTIVE admissions", async () => {
     admissions = [
       {
@@ -343,6 +429,21 @@ describe("#91 — a visit can be scheduled", () => {
     expect(within(dialog).queryByText("Admitted Jan 1, 2025")).toBeNull();
   });
 
+  it("shows a readable label when the only active admission is selected automatically", async () => {
+    const dialog = await openNewVisit();
+    await choosePatient(dialog);
+
+    await waitFor(() =>
+      expect(
+        (
+          within(dialog).getByRole("combobox", {
+            name: /active admission/i,
+          }) as HTMLInputElement
+        ).value,
+      ).toBe("Admitted Aug 1, 2026"),
+    );
+  });
+
   it("a patient with no open admission is told why, offered a path, and the create is refused", async () => {
     admissions = [];
     const dialog = await openNewVisit();
@@ -354,24 +455,19 @@ describe("#91 — a visit can be scheduled", () => {
         .getByRole("link", { name: /direct admission/i })
         .getAttribute("href"),
     ).toBe(`/admissions/new?patientId=${PATIENT}`);
-    // The admission is a required field, so the browser's own constraint validation refuses the
-    // submit before `submit()` (and its "Select a patient, active admission, and clinician." guard)
-    // is even reached.
+    // The first step refuses to advance before any create request can be made.
     const admission = within(dialog).getByRole("combobox", {
       name: /active admission/i,
     }) as HTMLInputElement;
     expect(admission.validity.valueMissing).toBe(true);
-    fireEvent.click(within(dialog).getByRole("button", { name: /create visit/i }));
-    await new Promise((r) => setTimeout(r, 50));
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
+    expect(within(dialog).getByRole("alert").textContent).toMatch(/active admission/i);
     expect(writes()).toEqual([]);
   });
 
   it("the create carries the purpose, setting, assignee and the address", async () => {
     const dialog = await openNewVisit();
     await fillValidVisit(dialog);
-    fireEvent.change(within(dialog).getByLabelText(/patient address/i), {
-      target: { value: ADDRESS },
-    });
     fireEvent.click(within(dialog).getByRole("button", { name: /create visit/i }));
     await waitFor(() => expect(writes()).toContain("POST /api/v1/visits"));
     expect(bodies[0]?.patientId).toBe(PATIENT);
@@ -388,12 +484,15 @@ describe("#91 — a visit can be scheduled", () => {
     // discipline/licence rule, it only hides what the server already said no to.
     const dialog = await openNewVisit();
     await choosePatient(dialog);
+    await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
     fireEvent.change(within(dialog).getByLabelText(/scheduled start/i), {
       target: { value: "2026-08-28T09:00" },
     });
     fireEvent.change(within(dialog).getByLabelText(/scheduled end/i), {
       target: { value: "2026-08-28T10:00" },
     });
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to clinician/i }));
     expect(await within(dialog).findByText(/R\. Okonkwo/)).toBeTruthy();
     expect(calls).toContain("GET /api/v1/scheduling/eligible-clinicians");
     expect(within(dialog).queryByText(/Former Staff/)).toBeNull();
@@ -407,6 +506,7 @@ describe("#91 — a visit can be scheduled", () => {
         error: {
           code: "VISIT_PRE_SCHEDULE_GATE_UNMET",
           message: "the pre-schedule gate (D8) must pass before a proposed visit can be published",
+          correlationId: "corr-schedule-1",
         },
       },
     };
@@ -416,6 +516,62 @@ describe("#91 — a visit can be scheduled", () => {
     expect((await within(dialog).findByRole("alert")).textContent).toMatch(
       /discipline, active licence/i,
     );
+    expect(within(dialog).getByRole("alert").textContent).toContain("corr-schedule-1");
+  });
+
+  it("keeps the draft retryable when the create request cannot reach the server", async () => {
+    rejectWrite = true;
+    const dialog = await openNewVisit();
+    await fillValidVisit(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: /create visit/i }));
+
+    expect((await within(dialog).findByRole("alert")).textContent).toMatch(/could not be reached/i);
+    expect(within(dialog).getByRole("button", { name: /create visit/i })).not.toBeDisabled();
+    expect(within(dialog).getByText("Confirm visit details")).toBeTruthy();
+  });
+
+  it("submits a review only once when the create action is activated repeatedly", async () => {
+    const dialog = await openNewVisit();
+    await fillValidVisit(dialog);
+    const create = within(dialog).getByRole("button", { name: /create visit/i });
+    fireEvent.click(create);
+    fireEvent.click(create);
+    await waitFor(() => expect(writes()).toContain("POST /api/v1/visits"));
+    expect(writes().filter((call) => call === "POST /api/v1/visits")).toHaveLength(1);
+  });
+
+  it("opens the review step with a new button instead of reusing the Continue node", async () => {
+    // A real click skipped this step in the browser (found by the WF09 runtime pass): React flushed
+    // setStep(4) before the click's default action, so the reused <button> had flipped from type "button"
+    // to "submit" and submitted the form. jsdom cannot replay that ordering (it needs a microtask
+    // checkpoint between the listener and the activation behaviour), so assert the cause: Create Visit
+    // must be a different element. The browser journey (e2e/specs/encounters.spec.ts) asserts the effect.
+    const dialog = await openNewVisit();
+    await fillValidVisit(dialog, false);
+    const advance = within(dialog).getByRole("button", { name: /continue to review/i });
+    fireEvent.click(advance);
+    const create = await within(dialog).findByRole("button", { name: /create visit/i });
+    expect(create).not.toBe(advance);
+    expect(advance.isConnected).toBe(false);
+  });
+
+  it("keeps keyboard focus inside the dialog when the review step replaces the focused button", async () => {
+    const dialog = await openNewVisit();
+    await fillValidVisit(dialog, false);
+    const advance = within(dialog).getByRole("button", { name: /continue to review/i });
+    advance.focus();
+    fireEvent.click(advance);
+    await within(dialog).findByRole("button", { name: /create visit/i });
+    // Focus must not fall to <body>: the modal's Escape and Tab handling only see keys inside the dialog.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement?.getAttribute("aria-current")).toBe("step");
+  });
+
+  it("does not move focus when the dialog opens", async () => {
+    const dialog = await openNewVisit();
+    // The modal's own initial focus stands; the step-change effect must not claim it on mount.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement?.getAttribute("aria-current")).toBeNull();
   });
 });
 

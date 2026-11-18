@@ -1146,7 +1146,7 @@
       "moduleId": 17,
       "id": "scheduling.calendar",
       "path": "/calendar",
-      "permission": "(none)"
+      "permission": "visit.read"
     },
     {
       "app": "web",

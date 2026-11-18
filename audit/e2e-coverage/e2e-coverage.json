@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
   "totalStaticWebScreens": 220,
-  "e2eReachedCount": 205,
-  "axeReachedCount": 205,
+  "e2eReachedCount": 206,
+  "axeReachedCount": 206,
   "zeroE2eCoverage": [
     {
       "id": "saas.help",
@@ -40,14 +40,6 @@
       "id": "billing.operations",
       "module": "23-billing-medicare",
       "path": "/billing/operations",
-      "permission": "(none)",
-      "e2eReached": false,
-      "axeReached": false
-    },
-    {
-      "id": "scheduling.calendar",
-      "module": "17-scheduling",
-      "path": "/calendar",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -162,14 +154,6 @@
       "id": "billing.operations",
       "module": "23-billing-medicare",
       "path": "/billing/operations",
-      "permission": "(none)",
-      "e2eReached": false,
-      "axeReached": false
-    },
-    {
-      "id": "scheduling.calendar",
-      "module": "17-scheduling",
-      "path": "/calendar",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -1059,9 +1043,9 @@
       "id": "scheduling.calendar",
       "module": "17-scheduling",
       "path": "/calendar",
-      "permission": "(none)",
-      "e2eReached": false,
-      "axeReached": false
+      "permission": "visit.read",
+      "e2eReached": true,
+      "axeReached": true
     },
     {
       "id": "cap.dashboard",

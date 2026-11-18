@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withCalendarParams } from "./calendar-page";
+import { calendarFilterStateFromParams, withCalendarParams } from "./calendar-page";
 
 describe("calendar URL state", () => {
   const base = () => new URLSearchParams("view=week&date=2026-10-04&patient=patient-1");
@@ -25,5 +25,37 @@ describe("calendar URL state", () => {
     expect(afterCreate.toString()).toBe(
       "view=week&date=2026-10-05&patient=patient-1&visit=visit-2",
     );
+  });
+
+  it("reads shareable non-PHI filters and density from the URL", () => {
+    expect(
+      calendarFilterStateFromParams(
+        new URLSearchParams(
+          "staff=membership-1&purpose=routine_visit&setting=patient_home&status=published&inactive=1&density=compact",
+        ),
+      ),
+    ).toEqual({
+      staff: "membership-1",
+      purpose: "routine_visit",
+      setting: "patient_home",
+      status: "published",
+      showInactive: true,
+      density: "compact",
+    });
+  });
+
+  it("uses safe defaults for absent or unsupported filter values", () => {
+    expect(
+      calendarFilterStateFromParams(
+        new URLSearchParams("purpose=unknown&setting=unknown&status=unknown&density=huge"),
+      ),
+    ).toEqual({
+      staff: "",
+      purpose: "",
+      setting: "",
+      status: "",
+      showInactive: false,
+      density: "comfortable",
+    });
   });
 });
