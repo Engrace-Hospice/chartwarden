@@ -4203,6 +4203,26 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       expect(later.backlog).toEqual([standing]);
       expect(await cursors.quarantineBacklog(key)).toEqual({ UNSUPPORTED_ROUTING: 1 });
       expect(await cursors.quarantineBacklog({ ...key, organizationId: ORG_B })).toEqual({});
+
+      // The documented DISMISS (runbook): an operator who judged the file non-ingestible deletes its refusal row on
+      // the admin connection (DATABASE_ADMIN_URL: a superuser/BYPASSRLS role, which `admin` is here; the NOLOGIN
+      // `chartwarden_admin` carrier has no policy on this FORCE-RLS table). The row trigger audits it, the cursor
+      // is NOT rewound, and the standing backlog clears.
+      const dismissed = await admin.query(
+        `DELETE FROM remittance_pull_refusal
+          WHERE organization_id=$1 AND provider_entity_id=$2 AND vendor=$3 AND usage=$4 AND remittance_id='ERA-U-2'`,
+        [ORG_A, PE_A, key.vendor, key.usage],
+      );
+      expect(dismissed.rowCount).toBe(1);
+      expect(await cursors.quarantineBacklog(key)).toEqual({});
+      expect((await pullRemittances(deps, ORG_A)).backlog).toEqual([]);
+      expect(await cursors.get(key)).toBe("3"); // not rewound: the file is not read again
+      const deleteAudit = await admin.query(
+        `SELECT count(*)::int AS n FROM audit_event
+          WHERE resource_kind='remittance_pull_refusal' AND organization_id=$1 AND event_type='remittance_pull_refusal.delete'`,
+        [ORG_A],
+      );
+      expect(deleteAudit.rows[0].n).toBe(1);
     });
 
     it("zeroes a file's refusal count once it is accepted, and the cursor advances", async () => {

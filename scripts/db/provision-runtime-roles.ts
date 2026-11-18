@@ -45,7 +45,7 @@
  * ENUMERATED below — it is not `chartwarden_admin`. If a platform code path hits a missing grant it
  * fails loudly with 42501 and the fix is one line HERE, reviewed — never a blanket ALL.
  * ONE deliberate exception is a role MEMBERSHIP rather than an enumerated grant: `claimmd_capture` (the NOLOGIN role that
- * owns the central Claim.MD stream, inbox and ERA-staging privileges, enumerated in migrations 1350/1353/1356/1357/1358/1360),
+ * owns the central Claim.MD stream, inbox and ERA-staging privileges, enumerated in migrations 1350/1351/1353/1354/1356/1357/1358/1360/1396),
  * granted here exactly as those migrations grant it when the carrier already exists. It carries those tables' grants for the
  * platform login (table-wide SELECT on `claimmd_era_m25_stage`, so across tenants), which is what `m23-claimmd-webhook.live`
  * proves is present after migrate-then-provision; compliance/controls.yaml CW-AC-10 names it.
