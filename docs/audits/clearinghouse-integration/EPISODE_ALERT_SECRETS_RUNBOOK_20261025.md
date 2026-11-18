@@ -1,31 +1,33 @@
 # Episode Alert secrets and configuration runbook (issue #762)
 
-**Date:** 2026-10-25 · **Status:** what the code reads today and what the adapters will need. Read from
-`packages/x12-837-client/src/clearinghouse/episode-alert-transport.ts` and `packages/x12-837-client/src/dde/provider-registry.ts` on 2026-10-25. No
-credential exists yet and none belongs in this repository, a ticket or a chat; a person handles the real value
+**Date:** 2026-10-25 · **Safety update:** 2026-11-18 · **Status:** configuration names and activation limits. Read from
+`packages/x12-837-client/src/clearinghouse/episode-alert-transport.ts`, `packages/x12-837-client/src/dde/episode-alert-dde-provider.ts`
+and the registries on 2026-11-18. No credential belongs in this repository, a ticket or a chat; a person handles any real value
 ([onboarding runbook](./EPISODE_ALERT_ONBOARDING_RUNBOOK_20261025.md)).
 
 ## Names the code reads today
 
 | Name | Read by | Meaning | Secret? |
 |---|---|---|---|
-| `EPISODE_ALERT_API_KEY` | `createEpisodeAlertTransportFromEnv` | The platform API credential, sent in the `Authorization` header (scheme UNVERIFIED, a placeholder until the trial docs name it). Required; the factory throws when blank | Yes |
-| `EPISODE_ALERT_BASE_URL` | `createEpisodeAlertTransportFromEnv` | The vendor API root from the signup docs. Required, never defaulted; must be `https://` with no query or fragment | No, but keep it with the key |
+| `EPISODE_ALERT_API_KEY` | `createEpisodeAlertTransportFromEnv` | Intended platform API credential; the factory currently refuses before reading it because the wire and destination are unverified | Yes |
+| `EPISODE_ALERT_BASE_URL` | `createEpisodeAlertTransportFromEnv` | Intended vendor API root; HTTPS URL syntax is checked by the adapter, but no origin is approved | No, but keep it with the key |
+| `EPISODE_ALERT_DDE_API_KEY` | `createEpisodeAlertDdeProviderFromEnv` | Intended platform DDE API credential; the factory refuses before reading it because the wire and destination are unverified | Yes |
+| `EPISODE_ALERT_DDE_BASE_URL` | `createEpisodeAlertDdeProviderFromEnv` | Intended DDE API root; HTTPS URL syntax is checked, but no origin is approved | No, but keep it with the key |
 | `DDE_PROVIDER` | `bindDdeProvider` / `parseDdeProvider` | `manual` (or unset or blank), `in_memory` (refused when `NODE_ENV=production`) or `episode_alert` | No |
 
 Verified in the source:
 
-- **Nothing in `apps/` reads these yet.** A search of `apps/` for `EPISODE_ALERT`, `DDE_PROVIDER`,
-  `createEpisodeAlertTransportFromEnv` and `bindDdeProvider` finds nothing; they are exported from `packages/x12-837-client`
-  only. Wiring is #760. Setting the variables today has no effect.
-- **`DDE_PROVIDER=episode_alert` cannot be set yet.** There is no Episode Alert `DdeAccessProvider` adapter (#759), so the
-  registry throws at boot ("no adapter is registered for it in this build"). That is the fail-closed design. Leave
-  `DDE_PROVIDER` unset.
+- **Nothing in `apps/` consumes the Episode Alert eligibility registry or binds the DDE provider.** M23 HETS remains
+  `M23_HETS_TRANSPORT`. The package-level `ELIGIBILITY_VENDOR` registry is a seam only; setting it does not route application
+  calls today.
+- **The DDE adapter is a fail-closed skeleton.** `DDE_PROVIDER=episode_alert` cannot bind through the application; the package
+  factory throws while the wire or exact destination is unverified. Leave `DDE_PROVIDER` unset/manual.
 - **`CLEARINGHOUSE_VENDOR=episode_alert` is not bindable,** by design: the transport is eligibility-only and the setting would
-  route claim submission through it (`transport-registry.ts` leaves it out). A separate eligibility-vendor setting is
-  #760's job; do not invent one here.
-- **The adapter has no test mode.** `usage: "test"` is refused unless built with `allowTestUsage` (conformance tests only), so a
-  trial key calls the real service: synthetic data only until the BAA is signed.
+  route claim submission through it (`transport-registry.ts` leaves it out). The package-level `ELIGIBILITY_VENDOR` setting
+  exists, but no backend consumer binds it and its production factory currently refuses the unverified adapter.
+- **There is no verified Episode Alert sandbox.** Test usage is refused unless a local `LocalFakeHttpClient` is injected by a
+  test; it returns scripted in-memory responses and cannot open a socket. `allowTestUsage` and environment variables cannot
+  enable vendor calls. A trial account must not be treated as a sandbox.
 - **Platform-held, not per tenant** (ADR-0103 D2). Per-operator DDE IDs are a separate matter (D4) and are not ChartWarden
   secrets; if the vendor needs any, that is a design change to decide after the vendor answers.
 
@@ -47,23 +49,24 @@ style of `STEDI_API_KEY=replace-with-...`; the `EPISODE_ALERT_*` and `DDE_PROVID
 
 ## Procedure for the platform operator
 
-1. Receive the key through the vendor's account page, never by email or chat. If it arrives in the clear anywhere, treat it as
-   exposed and have the vendor reissue it.
-2. Write `EPISODE_ALERT_API_KEY` and `EPISODE_ALERT_BASE_URL` into the encrypted production secret store and the inventory. For
-   local work a developer uses the trial key only in an untracked `.env`, with synthetic data.
-3. Confirm the application sees them without printing them. The Episode Alert tests assert the key is not in the URL or any
-   result (`episode-alert.test.ts`); the platform must not log it either.
-4. Keep `DDE_PROVIDER` unset until #759 ships and ADR-0103 is ratified.
+1. Do not receive, inspect or place a real key as part of adapter development. The vendor account owner handles it through the
+   approved channel; an exposed key must be revoked/reissued.
+2. Do not place Episode Alert values in production configuration until the wire, approved origin, vendor authorization,
+   contractual conditions and activation plan have been reviewed. The current factory intentionally refuses to bind.
+3. Local work uses only `LocalFakeHttpClient` and synthetic fixtures; never place a vendor key in `.env`, a test process or a
+   test artifact. The tests assert that synthetic key/MBI values do not enter results.
+4. Keep `DDE_PROVIDER` unset/manual and do not bind `ELIGIBILITY_VENDOR=episode_alert` into the backend. Manual DDE and the
+   existing M23 HETS path remain the operational baseline.
 
 ## Rotation
 
 Proposed: every 90 days and on suspicion, or the vendor contract cadence if shorter. Ask the vendor (EA 13) whether two keys can
-be valid at once. If so: issue the new key, deploy it, confirm a call, then revoke the old one. If not, schedule a short window
-and expect eligibility calls to fail during it (the adapter answers a degraded code, never a guess). Record the date in the
-inventory.
+be valid at once. After the integration is separately approved for activation, plan rotation to issue the new key, verify it
+through the approved safe procedure, then revoke the old one. Until then, do not deploy or test a vendor key through ChartWarden;
+the current adapter is intentionally unbound. Record any future rotation date in the inventory.
 
 ## Leak response
 
-Revoke at the vendor first, reissue, update the store, then search repository history and logs for the old value. The vendor sees
-the beneficiary identifiers we send, so also review the vendor's access log for calls we did not make and tell the compliance
-officer.
+For an approved active integration, revoke at the vendor first, reissue, update the store, then search repository history and
+logs for the old value. Once an authorized integration is active, the vendor may receive beneficiary identifiers; review vendor
+access logs for calls not initiated by ChartWarden and tell the compliance officer. The current adapter has not been activated.

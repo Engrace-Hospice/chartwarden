@@ -1,6 +1,6 @@
 # Episode Alert vendor onboarding runbook (issue #762)
 
-**Date:** 2026-10-25 · **Status:** checklist for a person. An engineering session may not contact the vendor, start a trial,
+**Date:** 2026-10-25 · **Safety update:** 2026-11-18 · **Status:** checklist for a person. An engineering session may not contact the vendor, start a trial,
 sign anything, create an account or handle a credential; every step below is human work.
 Questions to send: [`EPISODE_ALERT_QUESTIONS_TO_SEND_20261025.md`](./EPISODE_ALERT_QUESTIONS_TO_SEND_20261025.md).
 Secrets: [`EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md`](./EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md).
@@ -18,8 +18,9 @@ Decisions this feeds: [ADR-0103](../../adr/ADR-0103-dde-access-provider-port.md)
 
 ## Checklist (in order; stop at any failed gate)
 
-1. **PHI gate first.** Decide in writing that trial traffic uses synthetic data only until step 5. The adapter has no test
-   mode (it refuses `usage: "test"`), so a trial call is a real HETS-backed call: no real MBI before the BAA.
+1. **PHI and test-isolation gates first.** Decide in writing that all trial traffic uses synthetic data until contractual
+   review. A trial account is not automatically a sandbox; the current adapter has no verified test mode, and its production
+   factory refuses to bind. No real MBI may be sent before the applicable BAA and authorization gates are satisfied.
 2. **Start the 14-day trial** (business owner) with a company-owned shared mailbox, not a personal address. Record trial start
    and end dates, the account email and the vendor contact in the answers file. Put a reminder on day 10; the trial is short
    and the questions must be answered inside it.
@@ -30,7 +31,9 @@ Decisions this feeds: [ADR-0103](../../adr/ADR-0103-dde-access-provider-port.md)
    executed agreements (not in this repository). Only after this may a real MBI go to the vendor.
 6. **Credentials.** The platform operator stores the key and base URL exactly as the secrets runbook says: nothing in the
    repository, a ticket, a chat, an email or a log.
-7. **Record the answers** (below) and update the build.
+7. **Record the answers** (below). Local engineering can continue with fixtures and `LocalFakeHttpClient`; that fake has no
+   network path and does not verify the vendor contract. Do not enable application calls based on environment variables or a
+   trial key.
 8. **Decide.** Engineering reads the answers against the blocking table in the questions document and updates ADR-0103 D7:
    either per-operator write endpoints exist (unblocks #759) or they do not (the port stays `manual` and only the documented
    API is used). The product owner confirms; label #762 `needs-decision` while waiting on that call.
@@ -56,8 +59,9 @@ One file per round, `EPISODE_ALERT_ANSWERS_<yyyymmdd>.md`, with a heading per qu
 
 - add the file to the table in [`README.md`](./README.md);
 - change the UNVERIFIED comments and placeholders in `packages/x12-837-client/src/clearinghouse/episode-alert-transport.ts`
-  (path, auth scheme) and `episode-alert-eligibility.ts` (element names) only after a response from the trial account confirms
-  them, never from an email alone (the DoseSpot precedent, `docs/history/m12-dosespot-adapter.md`);
+  (path, auth scheme, request body, exact approved origin) and `episode-alert-eligibility.ts` (root/element names) only after
+  written documentation and a controlled synthetic response support them; a trial credential or email alone does not establish
+  a sandbox or authorize activation (see the DoseSpot precedent, `docs/history/m12-dosespot-adapter.md`);
 - update ADR-0103 D7 and the #755 task list.
 
 ## Exit criteria for #762

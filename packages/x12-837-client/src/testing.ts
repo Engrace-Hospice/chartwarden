@@ -5,3 +5,4 @@ export { createInMemoryHarness, InMemoryClearinghouse } from "./clearinghouse/in
 export type { InMemoryClearinghouseOptions } from "./clearinghouse/in-memory-transport";
 export { createInMemoryDdeHarness, InMemoryDdeProvider } from "./dde/in-memory-provider";
 export type { InMemoryDdeOptions } from "./dde/in-memory-provider";
+export { LocalFakeHttpClient } from "./testing/local-fake-http-client";
