@@ -35,7 +35,7 @@ A database whose ledger is empty (a first deploy) is exempt, since no old writer
 
 ## Migrate, start, and verify
 
-1. With old writers stopped, run the checked production migrate job from the deploy directory, with the NEW release's backend image (the held deploy prints this exact command with the digest filled in; it has put the env file back on the previous release's image, which does not contain 1508, so the override is required). Production migrates through the Docker job, never host `db:migrate`. Do not invoke a manual/down migration.
+1. With old writers stopped, run the checked production migrate job from the deploy directory, with the NEW release's backend image (the held deploy prints this exact command with the digest filled in; it has put the env file back on the previous release's image, which does not contain 1508, so the override is required). Take the digest only from that banner: it is the digest `deploy.sh` verified with cosign against the release workflow's identity. A digest from anywhere else must pass `cosign verify` the same way first, because this job runs DDL as the database owner from that image. Record the change ticket id with the retained verification record: the ledger row in `_chartwarden_migration` has no operator, so the ticket is the attribution. Production migrates through the Docker job, never host `db:migrate`. Do not invoke a manual/down migration.
 
    ```sh
    CHARTWARDEN_IMAGE='<new backend image: ghcr.io/…/chartwarden@sha256:…>' \
@@ -45,9 +45,35 @@ A database whose ledger is empty (a first deploy) is exempt, since no old writer
 2. Confirm migration 1508 is recorded with its checksum. Rerun the read-only preflight; confirm all new columns, scope constraints, and unique index definitions, and verify the old conflict target is no longer present.
 3. Start the compatible API and worker image by its immutable digest: re-run the held deploy (with 1508 now in the ledger nothing is pending, so `deploy.sh` recreates `api`, `worker` and `web` on the new image). Confirm all replicas use that digest before resuming intake.
 4. Verify service health and M25 worker/outbox bindings. Exercise the approved 835 receive path with a controlled, authorized operational sample only when the business owner has approved one. Confirm the advice is scoped to the expected tenant/provider, identity evidence contains no raw NPI/TIN, dates retain their separate values, and the advice reaches the expected review/posting state. Do not use a synthetic fixture as proof of MAC compatibility.
-5. Monitor non-retryable identity refusals, parse degradation, `42P10`, held duplicates, cross-source duplicate holds, failed postings, and outbox lag. The 835 pull cron reports a held file (`LEGACY_IDENTITY_AMBIGUOUS`, `CLAIMMD_ERA_STAGE_MATCH`) **once**, on the tick that receives it: that attempt fails and BullMQ retries it, and a retry that finds nothing new completes, so a held file shows as one failed attempt, not necessarily a failed job. It is not repeated on later ticks. The held file waits unposted for an operator, so do not rely on the cron to keep it visible after that first report. A quarantined file is different: the cron fails on **every** tick while one exists, with `N quarantined remittance(s) awaiting operator release (UNSUPPORTED_ROUTING=n, RECEIVE_REFUSED=n)`, because a quarantined file is no longer offered by the vendor and money is waiting on an operator. The reason code tells a routing refusal (a non-HP functional group in the interchange) from a content one. Resolve each quarantined file on the admin connection (`DATABASE_ADMIN_URL`: a superuser or BYPASSRLS role; the NOLOGIN `chartwarden_admin` carrier role has no policy on this row-level-secured table and would change zero rows), one of two ways:
-   - **Release** it to be read again: the admin SQL in the header of migration 1256, which also rewinds the cursor. A refused file is refused again up to the refusal cap and re-quarantined, so release only after the cause is fixed (an unsupported-routing file stays unsupported until M25 routes that group).
-   - **Dismiss** a file you have judged non-ingestible, or one superseded by a corrected file that was ingested: `DELETE FROM remittance_pull_refusal WHERE organization_id = :org AND provider_entity_id = :pe AND vendor = :vendor AND usage = :usage AND remittance_id = :id;` The row trigger audits it with the deleted row as its before image. Do **not** rewind the cursor: the file must not be read again. The standing line clears on the next tick.
+5. Monitor non-retryable identity refusals, parse degradation, `42P10`, held duplicates, cross-source duplicate holds, failed postings, and outbox lag. The 835 pull cron reports a held file (`LEGACY_IDENTITY_AMBIGUOUS`, `CLAIMMD_ERA_STAGE_MATCH`) **once**, on the tick that receives it: that attempt fails and BullMQ retries it, and a retry that finds nothing new completes, so a held file shows as one failed attempt, not necessarily a failed job. It is not repeated on later ticks. The held file waits unposted for an operator, so do not rely on the cron to keep it visible after that first report. A quarantined file is different: the cron fails on **every** tick while one exists, with `N quarantined remittance(s) awaiting operator release (UNSUPPORTED_ROUTING=n, RECEIVE_REFUSED=n)`, because a quarantined file is no longer offered by the vendor and money is waiting on an operator. The reason code tells a routing refusal (a non-HP functional group in the interchange) from a content one. Resolve each quarantined file on the admin connection (`DATABASE_ADMIN_URL`: a superuser or BYPASSRLS role; the NOLOGIN `chartwarden_admin` carrier role has no policy on this row-level-secured table and would change zero rows), reached under the same rule as the preflight above (a loopback tunnel, or `sslmode=verify-full`). Read the file's key first on that connection (`SELECT organization_id, provider_entity_id, vendor, usage, remittance_id, file_sha256, reason_code FROM remittance_pull_refusal WHERE quarantined_at IS NOT NULL`). Resolve it in ONE transaction that names the change ticket, and commit only if every statement reports exactly one row:
+
+   ```sql
+   BEGIN;
+   -- The row trigger records no actor on this connection: this correlation id is the attribution.
+   SELECT set_config('app.correlation_id', 'm25-835-<release|dismiss>:<CHANGE-TICKET>', true);
+   -- the statement(s) of ONE of the two ways below, each reporting 1 row
+   COMMIT;  -- ROLLBACK instead if any count is not 1
+   ```
+
+   - **Release** it to be read again. This is the migration 1256 header's SQL with `usage`, the file hash and the quarantined check added (the header's refusal update omits `usage`, so on its own it could touch the other usage's row), and it rewinds the cursor to just before the file. A refused file is refused again up to the refusal cap and re-quarantined, so release only after the cause is fixed (an unsupported-routing file stays unsupported until M25 routes that group).
+
+     ```sql
+     UPDATE remittance_pull_refusal SET quarantined_at = NULL, refusal_count = 0
+      WHERE organization_id = :org AND provider_entity_id = :pe AND vendor = :vendor AND usage = :usage
+        AND remittance_id = :id AND file_sha256 = :sha AND quarantined_at IS NOT NULL;  -- UPDATE 1
+     UPDATE remittance_pull_cursor SET cursor = :cursor_before_the_file, updated_at = now()
+      WHERE organization_id = :org AND provider_entity_id = :pe AND vendor = :vendor AND usage = :usage;  -- UPDATE 1
+     ```
+
+   - **Dismiss** a file you have judged non-ingestible, or one superseded by a corrected file that was ingested. A dismissed payment file is gone from the ingest path, so first record on the ticket why, and for a superseded file the advice id or ISA13 of the corrected file that was ingested, and have a second person review the ticket. Do **not** rewind the cursor: the file must not be read again. The standing line clears on the next tick.
+
+     ```sql
+     DELETE FROM remittance_pull_refusal
+      WHERE organization_id = :org AND provider_entity_id = :pe AND vendor = :vendor AND usage = :usage
+        AND remittance_id = :id AND file_sha256 = :sha AND quarantined_at IS NOT NULL;  -- DELETE 1
+     ```
+
+   The row trigger records each change as a `remittance_pull_refusal.update` or `.delete` event in `audit_event` (the deleted row is the before image) with the correlation id you set; `actor_user_id` is NULL because the operator acts on a database connection, so the ticket is the attribution. Find the rows with `SELECT * FROM audit_event WHERE correlation_id LIKE 'm25-835-%:<CHANGE-TICKET>'`.
 
    An unresolved quarantined file keeps the cron failing by design. Compare counts to the normal operational baseline and retain the migration checksum, image digest, preflight output, and verification record.
 

@@ -4205,24 +4205,66 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       expect(await cursors.quarantineBacklog({ ...key, organizationId: ORG_B })).toEqual({});
 
       // The documented DISMISS (runbook): an operator who judged the file non-ingestible deletes its refusal row on
-      // the admin connection (DATABASE_ADMIN_URL: a superuser/BYPASSRLS role, which `admin` is here; the NOLOGIN
-      // `chartwarden_admin` carrier has no policy on this FORCE-RLS table). The row trigger audits it, the cursor
-      // is NOT rewound, and the standing backlog clears.
-      const dismissed = await admin.query(
-        `DELETE FROM remittance_pull_refusal
-          WHERE organization_id=$1 AND provider_entity_id=$2 AND vendor=$3 AND usage=$4 AND remittance_id='ERA-U-2'`,
-        [ORG_A, PE_A, key.vendor, key.usage],
-      );
-      expect(dismissed.rowCount).toBe(1);
+      // the admin connection (DATABASE_ADMIN_URL: a superuser/BYPASSRLS role, which `admin` is here), in ONE
+      // transaction that names the change ticket, guarded by the file's hash and its quarantined state. The row
+      // trigger audits it, the cursor is NOT rewound, and the standing backlog clears.
+      const fileKey = [ORG_A, PE_A, key.vendor, key.usage, "ERA-U-2"];
+      const sha = (
+        await admin.query(
+          `SELECT file_sha256 FROM remittance_pull_refusal
+            WHERE organization_id=$1 AND provider_entity_id=$2 AND vendor=$3 AND usage=$4 AND remittance_id=$5
+              AND quarantined_at IS NOT NULL`,
+          fileKey,
+        )
+      ).rows[0].file_sha256 as string;
+      const deleteRow = `DELETE FROM remittance_pull_refusal
+          WHERE organization_id=$1 AND provider_entity_id=$2 AND vendor=$3 AND usage=$4 AND remittance_id=$5
+            AND file_sha256=$6 AND quarantined_at IS NOT NULL`;
+
+      // The NOLOGIN `chartwarden_admin` carrier has no policy on this FORCE-RLS table, so it changes ZERO rows
+      // (the runbook says to use the superuser connection, not the carrier). Proved, not assumed.
+      await admin.query("BEGIN");
+      try {
+        await admin.query("SET LOCAL ROLE chartwarden_admin");
+        const asCarrier = await admin.query(deleteRow, [...fileKey, sha]);
+        expect(asCarrier.rowCount).toBe(0);
+      } finally {
+        await admin.query("ROLLBACK");
+      }
+
+      const ticket = "m25-835-dismiss:CHG-TEST-1";
+      await admin.query("BEGIN");
+      try {
+        await admin.query("SELECT set_config('app.correlation_id', $1, true)", [ticket]);
+        const dismissed = await admin.query(deleteRow, [...fileKey, sha]);
+        expect(dismissed.rowCount).toBe(1);
+        await admin.query("COMMIT");
+      } catch (err) {
+        await admin.query("ROLLBACK");
+        throw err;
+      }
       expect(await cursors.quarantineBacklog(key)).toEqual({});
       expect((await pullRemittances(deps, ORG_A)).backlog).toEqual([]);
       expect(await cursors.get(key)).toBe("3"); // not rewound: the file is not read again
+      // The delete is audited for THIS file, with the deleted row as its before image and the ticket as the
+      // only attribution (an operator on a database connection carries no user id).
       const deleteAudit = await admin.query(
-        `SELECT count(*)::int AS n FROM audit_event
-          WHERE resource_kind='remittance_pull_refusal' AND organization_id=$1 AND event_type='remittance_pull_refusal.delete'`,
+        `SELECT actor_user_id, correlation_id, before->>'remittance_id' AS remittance_id,
+                before->>'reason_code' AS reason_code, after
+           FROM audit_event
+          WHERE resource_kind='remittance_pull_refusal' AND organization_id=$1
+            AND event_type='remittance_pull_refusal.delete' AND before->>'remittance_id'='ERA-U-2'`,
         [ORG_A],
       );
-      expect(deleteAudit.rows[0].n).toBe(1);
+      expect(deleteAudit.rows).toEqual([
+        {
+          actor_user_id: null,
+          correlation_id: ticket,
+          remittance_id: "ERA-U-2",
+          reason_code: "UNSUPPORTED_ROUTING",
+          after: null,
+        },
+      ]);
     });
 
     it("zeroes a file's refusal count once it is accepted, and the cursor advances", async () => {
