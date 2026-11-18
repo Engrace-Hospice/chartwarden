@@ -7,6 +7,7 @@ import {
   Button,
   GateStepper,
   PageHeader,
+  Panel,
   StepperWorkflowLayout,
   StickyFooterActions,
   useApiClient,
@@ -34,7 +35,7 @@ import {
   nowLocalInput,
   toInstant,
 } from "./safety-status";
-import { Notice } from "./safety-ui";
+import { Field, Notice, SelectField, SummaryGrid, TextAreaField, TextField } from "./safety-ui";
 
 const FORM_ID = "new-safety-incident-form";
 const STEP_TITLES = ["Incident", "Details", "Context & Review"] as const;
@@ -363,7 +364,7 @@ function IncidentStep({
           }
         />
         <div style={gridStyle}>
-          <TextInput
+          <TextField
             label="Occurred at"
             value={occurredAt}
             onChange={setOccurredAt}
@@ -375,7 +376,7 @@ function IncidentStep({
                 : null
             }
           />
-          <SelectInput
+          <SelectField
             label="Category"
             value={category}
             onChange={setCategory}
@@ -384,7 +385,7 @@ function IncidentStep({
               label: incidentCategoryLabel(value),
             }))}
           />
-          <SelectInput
+          <SelectField
             label="Severity"
             value={severity}
             onChange={setSeverity}
@@ -413,27 +414,27 @@ function DetailsStep({
   return (
     <section style={sectionStyle} aria-labelledby={STEP_HEADING_IDS[1]}>
       <SectionTitle id={STEP_HEADING_IDS[1]} title="What happened?" />
-      <TextAreaInput
+      <TextAreaField
         label="Describe what happened"
         value={narrative}
         onChange={setNarrative}
         required
-        minRows={5}
+        rows={5}
         error={showErrors && !complete ? "The narrative must be at least 200 characters." : null}
-        footer={
-          <div style={counterRowStyle}>
-            <span style={complete ? successTextStyle : helpTextStyle}>
+        hint={
+          <span style={counterRowStyle}>
+            <span className={complete ? "wx-text-success" : undefined}>
               {characterCounter(narrative, INCIDENT_NARRATIVE_MIN_CHARS)}
             </span>
-            <span style={helpTextStyle}>Stored encrypted under your agency key.</span>
-          </div>
+            <span>Stored encrypted under your agency key.</span>
+          </span>
         }
       />
-      <TextAreaInput
+      <TextAreaField
         label="Witnesses"
         value={witnesses}
         onChange={setWitnesses}
-        minRows={3}
+        rows={3}
         placeholder="Names, roles, or none known."
       />
     </section>
@@ -490,27 +491,23 @@ function ReviewStep({
   return (
     <section style={sectionStyle} aria-labelledby={STEP_HEADING_IDS[2]}>
       <SectionTitle id={STEP_HEADING_IDS[2]} title="Context & Review" />
-      <div style={summaryPanelStyle}>
-        <h3 style={panelTitleStyle}>Incident summary</h3>
-        <div style={summaryGridStyle}>
-          <ReviewField
-            label="Affected clinician"
-            value={affectedName || affected.trim() || "Missing"}
-          />
-          <ReviewField
+      <Panel stack headingLevel={3} title="Incident summary">
+        <SummaryGrid>
+          <Field label="Affected clinician" value={affectedName || affected.trim() || "Missing"} />
+          <Field
             label="Occurred at"
             value={occurredAt.trim() ? localDateTimeLabel(occurredAt) : "Missing"}
           />
-          <ReviewField label="Category" value={incidentCategoryLabel(category)} />
-          <ReviewField label="Severity" value={humanize(severity)} />
-          <ReviewField label="Narrative" value={narrativeComplete ? "Completed" : "Missing"} />
-        </div>
-        {!ready ? <p style={warningTextStyle}>Required information is still missing.</p> : null}
-        <p style={helpTextStyle}>
+          <Field label="Category" value={incidentCategoryLabel(category)} />
+          <Field label="Severity" value={humanize(severity)} />
+          <Field label="Narrative" value={narrativeComplete ? "Completed" : "Missing"} />
+        </SummaryGrid>
+        {!ready ? <p className="wx-text-error">Required information is still missing.</p> : null}
+        <p className="wx-text-muted">
           This creates a draft only. OSHA reportability is reviewed later on the incident detail
           page.
         </p>
-      </div>
+      </Panel>
 
       <section style={collapsibleStyle}>
         <button
@@ -524,26 +521,25 @@ function ReviewStep({
         </button>
         {optionalOpen ? (
           <div style={gridStyle}>
-            <TextInput
+            <TextField
               label="Location"
               value={locationDescription}
               onChange={setLocationDescription}
               placeholder="Front porch, second landing, driveway..."
               hint="Plain words are enough; do not enter coordinates here."
             />
-            <TextInput label="Visit" value={visitId} onChange={setVisitId} mono />
+            <TextField label="Visit" value={visitId} onChange={setVisitId} mono />
             <PatientLookupField
               label="Patient"
               value={patientId}
               onChange={(id) => setPatientId(id)}
             />
-            <TextInput label="Linked SOS alert" value={sosAlertId} onChange={setSosAlertId} mono />
+            <TextField label="Linked SOS alert" value={sosAlertId} onChange={setSosAlertId} mono />
           </div>
         ) : null}
       </section>
 
-      <section style={summaryPanelStyle} aria-label="Workers' compensation">
-        <h3 style={panelTitleStyle}>Workers' compensation</h3>
+      <Panel stack headingLevel={3} title="Workers' compensation">
         <label style={checkStyle}>
           <input
             type="checkbox"
@@ -553,7 +549,7 @@ function ReviewStep({
           <span>A workers' compensation claim has already been initiated</span>
         </label>
         {wcInitiated ? (
-          <TextInput
+          <TextField
             label="Claim reference"
             value={wcReference}
             onChange={setWcReference}
@@ -561,7 +557,7 @@ function ReviewStep({
             hint="Reference from the claim system, insurer, or internal workflow."
           />
         ) : null}
-      </section>
+      </Panel>
     </section>
   );
 }
@@ -574,136 +570,6 @@ function SectionTitle({ id, title }: { id: string; title: string }): JSX.Element
         {title}
       </h2>
     </div>
-  );
-}
-
-function ReviewField({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}): JSX.Element {
-  return (
-    <div style={reviewFieldStyle}>
-      <span style={labelStyle}>{label}</span>
-      <span style={mono ? monoValueStyle : reviewValueStyle}>{value}</span>
-    </div>
-  );
-}
-
-function TextInput({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  mono,
-  required,
-  hint,
-  error,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: "text" | "datetime-local";
-  placeholder?: string;
-  mono?: boolean;
-  required?: boolean;
-  hint?: string;
-  error?: string | null;
-}): JSX.Element {
-  return (
-    <label style={fieldStyle}>
-      <span style={labelRowStyle}>
-        <span style={labelStyle}>
-          {label}
-          {required ? " *" : ""}
-        </span>
-      </span>
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        required={required}
-        aria-invalid={error ? true : undefined}
-        onChange={(event) => onChange(event.target.value)}
-        style={mono ? { ...inputStyle, fontFamily: "var(--font-mono)" } : inputStyle}
-      />
-      {error ? (
-        <span style={warningTextStyle}>{error}</span>
-      ) : hint ? (
-        <span style={helpTextStyle}>{hint}</span>
-      ) : null}
-    </label>
-  );
-}
-
-function TextAreaInput({
-  label,
-  value,
-  onChange,
-  placeholder,
-  required,
-  minRows,
-  error,
-  footer,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  required?: boolean;
-  minRows: number;
-  error?: string | null;
-  footer?: JSX.Element;
-}): JSX.Element {
-  return (
-    <label style={fieldStyle}>
-      <span style={labelStyle}>
-        {label}
-        {required ? " *" : ""}
-      </span>
-      <textarea
-        value={value}
-        rows={minRows}
-        onChange={(event) => onChange(event.target.value)}
-        style={textareaStyle}
-        aria-label={label}
-        aria-invalid={error ? true : undefined}
-        required={required}
-        placeholder={placeholder}
-      />
-      {error ? <span style={warningTextStyle}>{error}</span> : null}
-      {footer}
-    </label>
-  );
-}
-
-function SelectInput({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  onChange: (value: string) => void;
-}): JSX.Element {
-  return (
-    <label style={fieldStyle}>
-      <span style={labelStyle}>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 
@@ -768,97 +634,12 @@ const gridStyle: CSSProperties = {
   gridTemplateColumns: "repeat(auto-fit, minmax(13rem, 1fr))",
   gap: "0.75rem",
 };
-const fieldStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.3rem",
-};
-const labelStyle: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.75rem",
-  fontWeight: 650,
-};
-const labelRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.5rem",
-};
-const inputStyle: CSSProperties = {
-  minHeight: "2.5rem",
-  padding: "0.45rem 0.6rem",
-  border: "none",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-low)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
-};
-const textareaStyle: CSSProperties = {
-  width: "100%",
-  minHeight: "7rem",
-  maxHeight: "16rem",
-  padding: "0.55rem 0.65rem",
-  border: "none",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-low)",
-  color: "var(--color-on-surface)",
-  fontFamily: "inherit",
-  fontSize: "0.875rem",
-  resize: "vertical",
-};
-const helpTextStyle: CSSProperties = {
-  margin: 0,
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.8rem",
-  lineHeight: 1.45,
-};
-const warningTextStyle: CSSProperties = {
-  ...helpTextStyle,
-  color: "var(--color-error)",
-};
-const successTextStyle: CSSProperties = {
-  ...helpTextStyle,
-  color: "var(--color-success)",
-};
 const counterRowStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   alignItems: "center",
   justifyContent: "space-between",
   gap: "0.5rem",
-};
-const summaryPanelStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.75rem",
-  padding: "1rem",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-lowest)",
-  boxShadow: "var(--shadow-soft)",
-};
-const panelTitleStyle: CSSProperties = {
-  margin: 0,
-  color: "var(--color-on-surface)",
-  fontSize: "0.95rem",
-  fontWeight: 650,
-};
-const summaryGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
-  gap: "0.85rem 1rem",
-};
-const reviewFieldStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.2rem",
-};
-const reviewValueStyle: CSSProperties = {
-  color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
-};
-const monoValueStyle: CSSProperties = {
-  ...reviewValueStyle,
-  fontFamily: "var(--font-mono)",
 };
 const collapsibleStyle: CSSProperties = {
   display: "flex",

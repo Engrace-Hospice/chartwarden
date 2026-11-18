@@ -197,6 +197,17 @@ const fixtures: Fixtures = {
   "/api/v1/safety/high-risk-areas": page(areas),
   "/api/v1/safety/supervisor-subscriptions": page(subscriptions),
   "/api/v1/safety/policy": policy,
+  "/api/v1/orgs/{id}/members": {
+    members: [
+      {
+        membershipId: "m-lopez",
+        userId: "u-lopez",
+        displayName: "Maria Lopez",
+        email: "maria.lopez@example.test",
+        status: "active",
+      },
+    ],
+  },
   "/api/v1/safety/check-ins/me/today": myDay,
   "/api/v1/safety/check-ins/{checkInId}": { ...checkIn, amendableUntil: iso(0.08) },
 };
