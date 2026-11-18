@@ -73,6 +73,8 @@ export type WriteResult<T> =
       readonly status: number | null;
       readonly code: string | null;
       readonly message: string;
+      readonly correlationId?: string;
+      readonly fieldErrors?: Readonly<Record<string, string>>;
     };
 
 /**
@@ -91,6 +93,8 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
     status: httpStatus,
     code: mapped.code ?? null,
     message: mapped.message,
+    ...(mapped.correlationId ? { correlationId: mapped.correlationId } : {}),
+    ...(Object.keys(mapped.fieldErrors).length ? { fieldErrors: mapped.fieldErrors } : {}),
   };
 }
 

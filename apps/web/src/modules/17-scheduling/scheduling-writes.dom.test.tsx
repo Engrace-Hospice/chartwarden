@@ -302,13 +302,26 @@ async function choosePatient(dialog: HTMLElement): Promise<void> {
 async function fillValidVisit(dialog: HTMLElement): Promise<void> {
   await choosePatient(dialog);
   await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
+  fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
   fireEvent.change(within(dialog).getByLabelText(/scheduled start/i), {
     target: { value: "2026-08-28T09:00" },
   });
   fireEvent.change(within(dialog).getByLabelText(/scheduled end/i), {
     target: { value: "2026-08-28T10:00" },
   });
+  await waitFor(() =>
+    expect(
+      [...(within(dialog).getByLabelText(/patient address/i) as HTMLSelectElement).options].some(
+        (option) => option.value === ADDRESS,
+      ),
+    ).toBe(true),
+  );
+  fireEvent.change(within(dialog).getByLabelText(/patient address/i), {
+    target: { value: ADDRESS },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: /continue to clinician/i }));
   await chooseClinician(dialog, /assigned clinician/i, MEMBER);
+  fireEvent.click(within(dialog).getByRole("button", { name: /continue to review/i }));
 }
 
 describe("shared Scheduling navigation", () => {
@@ -319,6 +332,27 @@ describe("shared Scheduling navigation", () => {
 });
 
 describe("#91 — a visit can be scheduled", () => {
+  it("uses four explicit steps and keeps the draft when moving backward", async () => {
+    const dialog = await openNewVisit();
+    expect(within(dialog).getByText("Who and why")).toBeTruthy();
+    expect(within(dialog).getByText("When and where")).toBeTruthy();
+    expect(within(dialog).getByText("Who is available")).toBeTruthy();
+    expect(within(dialog).getByText("Review and schedule")).toBeTruthy();
+
+    await choosePatient(dialog);
+    await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /back/i }));
+
+    expect(
+      (within(dialog).getByRole("combobox", { name: PATIENT_FIELD }) as HTMLInputElement).value,
+    ).toBe("Vance, Ada");
+    expect(
+      (within(dialog).getByRole("combobox", { name: /active admission/i }) as HTMLInputElement)
+        .value,
+    ).toBe("Admitted Aug 1, 2026");
+  });
+
   it("choosing a patient scopes the admission lookup to that patient's ACTIVE admissions", async () => {
     admissions = [
       {
@@ -354,24 +388,19 @@ describe("#91 — a visit can be scheduled", () => {
         .getByRole("link", { name: /direct admission/i })
         .getAttribute("href"),
     ).toBe(`/admissions/new?patientId=${PATIENT}`);
-    // The admission is a required field, so the browser's own constraint validation refuses the
-    // submit before `submit()` (and its "Select a patient, active admission, and clinician." guard)
-    // is even reached.
+    // The first step refuses to advance before any create request can be made.
     const admission = within(dialog).getByRole("combobox", {
       name: /active admission/i,
     }) as HTMLInputElement;
     expect(admission.validity.valueMissing).toBe(true);
-    fireEvent.click(within(dialog).getByRole("button", { name: /create visit/i }));
-    await new Promise((r) => setTimeout(r, 50));
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
+    expect(within(dialog).getByRole("alert").textContent).toMatch(/active admission/i);
     expect(writes()).toEqual([]);
   });
 
   it("the create carries the purpose, setting, assignee and the address", async () => {
     const dialog = await openNewVisit();
     await fillValidVisit(dialog);
-    fireEvent.change(within(dialog).getByLabelText(/patient address/i), {
-      target: { value: ADDRESS },
-    });
     fireEvent.click(within(dialog).getByRole("button", { name: /create visit/i }));
     await waitFor(() => expect(writes()).toContain("POST /api/v1/visits"));
     expect(bodies[0]?.patientId).toBe(PATIENT);
@@ -388,12 +417,15 @@ describe("#91 — a visit can be scheduled", () => {
     // discipline/licence rule, it only hides what the server already said no to.
     const dialog = await openNewVisit();
     await choosePatient(dialog);
+    await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to time and location/i }));
     fireEvent.change(within(dialog).getByLabelText(/scheduled start/i), {
       target: { value: "2026-08-28T09:00" },
     });
     fireEvent.change(within(dialog).getByLabelText(/scheduled end/i), {
       target: { value: "2026-08-28T10:00" },
     });
+    fireEvent.click(within(dialog).getByRole("button", { name: /continue to clinician/i }));
     expect(await within(dialog).findByText(/R\. Okonkwo/)).toBeTruthy();
     expect(calls).toContain("GET /api/v1/scheduling/eligible-clinicians");
     expect(within(dialog).queryByText(/Former Staff/)).toBeNull();
@@ -407,6 +439,7 @@ describe("#91 — a visit can be scheduled", () => {
         error: {
           code: "VISIT_PRE_SCHEDULE_GATE_UNMET",
           message: "the pre-schedule gate (D8) must pass before a proposed visit can be published",
+          correlationId: "corr-schedule-1",
         },
       },
     };
@@ -416,6 +449,17 @@ describe("#91 — a visit can be scheduled", () => {
     expect((await within(dialog).findByRole("alert")).textContent).toMatch(
       /discipline, active licence/i,
     );
+    expect(within(dialog).getByRole("alert").textContent).toContain("corr-schedule-1");
+  });
+
+  it("submits a review only once when the create action is activated repeatedly", async () => {
+    const dialog = await openNewVisit();
+    await fillValidVisit(dialog);
+    const create = within(dialog).getByRole("button", { name: /create visit/i });
+    fireEvent.click(create);
+    fireEvent.click(create);
+    await waitFor(() => expect(writes()).toContain("POST /api/v1/visits"));
+    expect(writes().filter((call) => call === "POST /api/v1/visits")).toHaveLength(1);
   });
 });
 
