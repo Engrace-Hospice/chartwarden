@@ -1,68 +1,52 @@
-// Stedi sandbox contract test (#727). SKIPPED unless ALL THREE switches are set, so CI and a plain `bun run test` never
-// reach the network:
-//
-//   STEDI_TEST_API_KEY=<a Stedi TEST-mode API key from a PRODUCTION Stedi account>
-//   STEDI_CONTRACT_CONFIRM=synthetic-only      (you confirm the fixtures are synthetic)
-//   STEDI_CONTRACT_KEY_IS_TEST=yes             (you confirm the key was created as a Stedi TEST-mode API key)
-//   [STEDI_CONTRACT_RESULTS_FILE=/path/results.json]   (a PHI-free record of what Stedi answered, for the results template)
-//
-// Runbook: docs/audits/clearinghouse-integration/STEDI_SANDBOX_RUNBOOK_20261025.md. What it proves is only what the
-// vendor's answers can contradict: that the transport's assumptions (U items in STEDI_TRANSPORT_CONTRACT) hold against a
-// real test-mode account. It never sets live sending: the platform binding (CLEARINGHOUSE_VENDOR) is untouched, the
-// transport is built here from the test key, every submission is `usage: "test"` (ISA15 T, checked locally before the
-// send) and the fixtures are the repo's synthetic interchanges. Stedi's docs say the mode is inferred from the API key
-// type; this transport has one base URL, so NOTHING here can detect a production key. Only the operator's
-// STEDI_CONTRACT_KEY_IS_TEST confirmation stands between a production key and a (ISA15 T) request; what Stedi does with
-// that is the unverified Q14 question.
-//
-// The assertions are deliberately tolerant about shapes nobody has observed yet (a success body, the 277CA): they
-// record what happened and fail only on a broken invariant (test traffic, key leakage, a duplicate send).
+// Vendor-facing qualification contract for issue #727. Ordinary Vitest and CI skip all network calls.
+// See docs/audits/clearinghouse-integration/STEDI_SANDBOX_RUNBOOK_20261025.md.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { X12WorkerResult } from "../types";
+import { build837iClaim } from "../claims/build-837i-claim";
+import { CLAIM_INPUT } from "../claims/claim-fixture-input";
+import { tokenizeInterchange } from "../eligibility/x12-envelope";
 import { InMemoryAttemptStore } from "./attempt-store";
+import { compareStediClaimJsonToX12 } from "./stedi-claim-agreement";
+import { buildStediClaimJson } from "./stedi-claim-json";
+import {
+  classifyVendorSubmission,
+  contractRunGates,
+  localScenario,
+  summarizeQualification,
+} from "./stedi-contract-qualification";
+import type { ContractScenarioResult } from "./stedi-contract-qualification";
 import { StediTransport } from "./stedi-transport";
 import { CH } from "./types";
-import type { ClearinghouseContext, ClearinghouseSubmission, SubmissionReceipt } from "./types";
+import type { ClearinghouseContext, ClearinghouseSubmission } from "./types";
 
-const KEY = process.env.STEDI_TEST_API_KEY?.trim();
-const CONFIRMED = process.env.STEDI_CONTRACT_CONFIRM === "synthetic-only";
-const RESULTS_FILE = process.env.STEDI_CONTRACT_RESULTS_FILE;
-const KEY_CONFIRMED_TEST = process.env.STEDI_CONTRACT_KEY_IS_TEST === "yes";
-const RUN = Boolean(KEY) && CONFIRMED && KEY_CONFIRMED_TEST;
-const SKIP_REASON =
-  "set STEDI_TEST_API_KEY (a Stedi test-mode key from a production account), STEDI_CONTRACT_CONFIRM=synthetic-only and STEDI_CONTRACT_KEY_IS_TEST=yes to run the live Stedi contract test; see STEDI_SANDBOX_RUNBOOK_20261025.md";
+const gates = contractRunGates(process.env);
+const RUN = gates.ready;
+const KEY = RUN ? process.env.STEDI_TEST_API_KEY?.trim() : undefined;
+const RESULTS_FILE = RUN ? process.env.STEDI_CONTRACT_RESULTS_FILE?.trim() : undefined;
+const REQUIRED_VENDOR_SCENARIOS = ["raw_x12_claim", "json_837i_claim", "noe_81a"] as const;
+const STEDI_ORIGIN = "https://healthcare.us.stedi.com";
+const STEDI_PATH = "/2024-04-01/change/medicalnetwork/institutionalclaims/v1";
 
 const fixture = (name: string): string =>
   readFileSync(join(__dirname, "__fixtures__", `stedi-${name}.x12`), "utf8");
-
-/** A control number unique per run (9 digits), so a re-run never collides with an earlier test claim. */
 const RUN_ID = String(Date.now() % 1_000_000_000).padStart(9, "0");
 const withIsa13 = (x12: string, controlNumber: string): string =>
   x12.replace(/^(ISA(?:\*[^*]*){12}\*)[^*]*/, `$1${controlNumber}`);
 
 const CTX: ClearinghouseContext = {
-  organizationId: "contract-org",
-  providerEntityId: "contract-provider",
+  organizationId: "contract-org-synthetic",
+  providerEntityId: "contract-provider-synthetic",
   payerId: "STEDI",
   correlationId: `contract-${RUN_ID}`,
   usage: "test",
+  billingNpi: "1234567893",
 };
 
-const record: { step: string; ok: boolean; code?: string; replayed?: boolean; note?: string }[] =
-  [];
-const note = (
-  step: string,
-  r: X12WorkerResult<SubmissionReceipt>,
-  extra: { note?: string } = {},
-) => {
-  record.push(
-    r.ok
-      ? { step, ok: true, replayed: r.data.replayed, ...extra }
-      : { step, ok: false, code: r.degraded.code, ...extra },
-  );
-};
+const vendorScenarios: ContractScenarioResult[] = [];
+const localScenarios: ContractScenarioResult[] = [];
+const sentByScenario = new Map<string, number>();
+let currentScenario = "unassigned";
 
 function submission(
   kind: ClearinghouseSubmission["kind"],
@@ -78,96 +62,361 @@ function submission(
   };
 }
 
-describe.skipIf(!RUN)(
-  `Stedi sandbox contract (synthetic data, test key) ${RUN ? "" : `- ${SKIP_REASON}`}`,
-  () => {
+/** The same mapper and agreement check used by M23's Stedi JSON dispatch path. */
+function productionJsonSubmission(): ClearinghouseSubmission & {
+  readonly jsonDocument: ReturnType<typeof buildStediClaimJson>;
+} {
+  const patientControlNumber = `WX${RUN_ID}`;
+  const input = {
+    ...CLAIM_INPUT,
+    envelope: { ...CLAIM_INPUT.envelope, usage: "T" as const },
+    claim: { ...CLAIM_INPUT.claim, controlNumber: patientControlNumber },
+  };
+  const x12 = build837iClaim(input);
+  const document = buildStediClaimJson(input);
+  const differences = compareStediClaimJsonToX12(document, x12);
+  if (differences.length > 0) throw new Error("synthetic JSON/X12 mapper agreement failed");
+  return {
+    kind: "claim",
+    controlNumber: patientControlNumber,
+    idempotencyKey: `contract-json-${RUN_ID}`,
+    payload: { format: "json", document },
+    jsonDocument: document,
+  };
+}
+
+function recordVendor(
+  scenario: string,
+  result: Awaited<ReturnType<StediTransport["submitClaim"]>>,
+): void {
+  const outcome = classifyVendorSubmission(
+    scenario,
+    result,
+    (sentByScenario.get(scenario) ?? 0) > 0,
+  );
+  vendorScenarios.push(outcome);
+}
+
+function safeLiveFetch(): typeof fetch {
+  return async (input, init) => {
+    const url = new URL(
+      typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+    );
+    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    const body =
+      typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : null;
+    const allowedPath =
+      `${STEDI_PATH}/raw-x12-submission` === url.pathname ||
+      `${STEDI_PATH}/submission` === url.pathname;
+    if (
+      url.origin !== STEDI_ORIGIN ||
+      !allowedPath ||
+      method !== "POST" ||
+      init?.redirect !== "error" ||
+      !body
+    ) {
+      throw new Error("Stedi contract network boundary refused an unexpected request");
+    }
+    if (url.pathname.endsWith("/raw-x12-submission")) {
+      const x12 = body.x12;
+      if (
+        typeof x12 !== "string" ||
+        tokenizeInterchange(x12).segments.find((s) => s[0] === "ISA")?.[15] !== "T"
+      ) {
+        throw new Error("Stedi contract network boundary refused non-Test X12");
+      }
+    } else if (body.usageIndicator !== "T") {
+      throw new Error("Stedi contract network boundary refused non-Test JSON");
+    }
+    sentByScenario.set(currentScenario, (sentByScenario.get(currentScenario) ?? 0) + 1);
+    return fetch(input, init);
+  };
+}
+
+function localTransport() {
+  let requests = 0;
+  const transport = new StediTransport({
+    apiKey: "local-only-never-sent",
+    attempts: new InMemoryAttemptStore(),
+    fetch: (async () => {
+      requests += 1;
+      throw new Error("local contract assertion attempted network access");
+    }) as typeof fetch,
+  });
+  return { transport, requests: () => requests };
+}
+
+describe.skipIf(!RUN)("Stedi Test-mode vendor qualification (#727)", () => {
+  it("records raw X12, production JSON 837I and NOE vendor outcomes without false PASS", async () => {
     const attempts = new InMemoryAttemptStore();
-    const transport = new StediTransport({ apiKey: KEY ?? "", attempts });
-    const claim = submission("claim", "claim", "1");
+    const transport = new StediTransport({ apiKey: KEY ?? "", attempts, fetch: safeLiveFetch() });
+    const rawClaim = submission("claim", "claim", "1");
+    const jsonClaim = productionJsonSubmission();
     const noe = submission("noe", "NOE_81A", "2");
 
-    it("files a synthetic test claim, or answers with a known degraded code (Q14)", async () => {
-      const r = await transport.submitClaim(CTX, claim);
-      note("claim", r);
-      if (!r.ok) {
-        // CH_NOT_PROVISIONED here means the key is a sandbox key, not a production account's test key (Q14).
-        expect([CH.NOT_PROVISIONED, CH.INVALID_REQUEST, CH.NOT_WIRED, CH.UNAVAILABLE]).toContain(
-          r.degraded.code,
-        );
-        return;
-      }
-      expect(r.data.replayed).toBe(false);
-      expect(r.data.clearinghouseSubmissionId.length).toBeGreaterThan(0);
-    });
+    for (const [name, x12Submission] of [
+      ["raw_x12_claim", rawClaim],
+      ["noe_81a", noe],
+    ] as const) {
+      currentScenario = name;
+      const isa =
+        x12Submission.payload.format === "x12"
+          ? tokenizeInterchange(x12Submission.payload.x12).segments.find((s) => s[0] === "ISA")
+          : undefined;
+      const segments =
+        x12Submission.payload.format === "x12"
+          ? tokenizeInterchange(x12Submission.payload.x12).segments
+          : [];
+      const transaction = segments.find((s) => s[0] === "ST");
+      const bht = segments.find((s) => s[0] === "BHT");
+      const expectedBht06 = name === "raw_x12_claim" ? "CH" : "RP";
+      const localEnvelopeValid =
+        isa?.[13]?.trim() === x12Submission.controlNumber &&
+        isa?.[15] === "T" &&
+        transaction?.[1] === "837" &&
+        bht?.[6] === expectedBht06;
+      localScenarios.push(
+        localScenario(
+          `${name}_local_envelope`,
+          localEnvelopeValid ? "PASS" : "FAIL",
+          "isa13_isa15_st_837_and_bht06",
+        ),
+      );
+      expect(localEnvelopeValid, `${name} local X12 safety validation`).toBe(true);
+      const result =
+        x12Submission.kind === "claim"
+          ? await transport.submitClaim(CTX, x12Submission)
+          : await transport.submitNotice(CTX, x12Submission);
+      recordVendor(name, result);
+    }
 
-    it("an identical resubmission replays locally and does not send again", async () => {
-      const first = await transport.submitClaim(CTX, claim);
-      note("claim-replay", first);
-      if (first.ok) expect(first.data.replayed).toBe(true);
-    });
+    currentScenario = "json_837i_claim";
+    const document = jsonClaim.jsonDocument;
+    const claimInformation = document.claimInformation;
+    const billing = document.billing;
+    localScenarios.push(
+      localScenario(
+        "json_837i_mapping_and_identity",
+        document.usageIndicator === "T" &&
+          billing?.npi === CTX.billingNpi &&
+          claimInformation?.patientControlNumber === jsonClaim.controlNumber &&
+          compareStediClaimJsonToX12(
+            document,
+            build837iClaim({
+              ...CLAIM_INPUT,
+              envelope: { ...CLAIM_INPUT.envelope, usage: "T" },
+              claim: { ...CLAIM_INPUT.claim, controlNumber: jsonClaim.controlNumber },
+            }),
+          ).length === 0
+          ? "PASS"
+          : "FAIL",
+        "production_mapper_json_x12_agreement_and_test_identity",
+      ),
+    );
+    const jsonResult = await transport.submitClaim(CTX, jsonClaim);
+    recordVendor("json_837i_claim", jsonResult);
 
-    it("a reused key with another body conflicts, never sends", async () => {
-      const r = await transport.submitClaim(CTX, {
-        ...claim,
+    // Identical replay and changed-body conflict are local attempt-store behavior. They never prove vendor replay semantics.
+    if (jsonResult.ok) {
+      const sendsBeforeReplay = sentByScenario.get("json_837i_claim") ?? 0;
+      const replay = await transport.submitClaim(CTX, jsonClaim);
+      localScenarios.push(
+        localScenario(
+          "json_local_replay",
+          replay.ok &&
+            replay.data.replayed &&
+            (sentByScenario.get("json_837i_claim") ?? 0) === sendsBeforeReplay
+            ? "PASS"
+            : "FAIL",
+          "same_local_attempt_no_second_request",
+        ),
+      );
+      const changed = {
+        ...jsonClaim,
         payload: {
-          format: "x12",
-          x12: `${claim.payload.format === "x12" ? claim.payload.x12 : ""} `,
+          format: "json" as const,
+          document: {
+            ...(jsonClaim.payload.format === "json"
+              ? (jsonClaim.payload.document as Record<string, unknown>)
+              : {}),
+            changedSyntheticField: true,
+          },
         },
+      };
+      const changedBody = await transport.submitClaim(CTX, changed);
+      localScenarios.push(
+        localScenario(
+          "json_changed_body_same_key",
+          !changedBody.ok && changedBody.degraded.code === CH.IDEMPOTENCY_CONFLICT
+            ? "PASS"
+            : "FAIL",
+          "local_identity_conflict_without_vendor_replay_claim",
+        ),
+      );
+      const reusedControlNumber = await transport.submitClaim(CTX, {
+        ...jsonClaim,
+        idempotencyKey: `contract-json-reused-${RUN_ID}`,
       });
-      note("claim-conflict", r);
-      if (!r.ok) expect(r.degraded.code).toBe(CH.IDEMPOTENCY_CONFLICT);
-    });
+      localScenarios.push(
+        localScenario(
+          "control_number_reuse_conflict",
+          !reusedControlNumber.ok && reusedControlNumber.degraded.code === CH.IDEMPOTENCY_CONFLICT
+            ? "PASS"
+            : "FAIL",
+          "control_number_reserved_locally",
+        ),
+      );
+    } else {
+      localScenarios.push(
+        localScenario("json_local_replay", "NOT_RUN", "vendor_submission_did_not_succeed"),
+        localScenario("json_changed_body_same_key", "NOT_RUN", "vendor_submission_did_not_succeed"),
+        localScenario(
+          "control_number_reuse_conflict",
+          "NOT_RUN",
+          "vendor_submission_did_not_succeed",
+        ),
+      );
+    }
 
-    it("files a synthetic NOE 81A as raw X12 (BHT06 RP) or answers with a known code (Q21)", async () => {
-      const r = await transport.submitNotice(CTX, noe);
-      note("noe", r);
-      if (!r.ok) {
-        expect([CH.NOT_PROVISIONED, CH.INVALID_REQUEST, CH.NOT_WIRED, CH.UNAVAILABLE]).toContain(
-          r.degraded.code,
-        );
-      }
+    const local = localTransport();
+    const productionJson = {
+      ...jsonClaim,
+      idempotencyKey: `contract-json-production-${RUN_ID}`,
+      payload: {
+        format: "json" as const,
+        document: {
+          ...document,
+          usageIndicator: "P",
+          claimInformation: { ...claimInformation, patientControlNumber: `WP${RUN_ID}` },
+        },
+      },
+    };
+    const prodResult = await local.transport.submitClaim(CTX, productionJson);
+    localScenarios.push(
+      localScenario(
+        "production_json_refused_before_request",
+        !prodResult.ok && prodResult.degraded.code === CH.INVALID_REQUEST && local.requests() === 0
+          ? "PASS"
+          : "FAIL",
+        "usage_mismatch_no_network",
+        local.requests() > 0,
+      ),
+    );
+    const wrongNpi = await local.transport.submitClaim(
+      { ...CTX, billingNpi: "1000000004" },
+      { ...jsonClaim, idempotencyKey: `contract-json-npi-${RUN_ID}` },
+    );
+    localScenarios.push(
+      localScenario(
+        "provider_identity_mismatch_refused_before_request",
+        !wrongNpi.ok && wrongNpi.degraded.code === CH.INVALID_REQUEST && local.requests() === 0
+          ? "PASS"
+          : "FAIL",
+        "billing_npi_mismatch_no_network",
+        local.requests() > 0,
+      ),
+    );
+    const malformed = await local.transport.submitClaim(CTX, {
+      ...rawClaim,
+      idempotencyKey: `contract-malformed-${RUN_ID}`,
+      payload: { format: "x12", x12: "ISA*not-a-valid-interchange" },
     });
-
-    it("refuses a production-marked interchange before anything is sent (usage test)", async () => {
-      const asProduction =
-        claim.payload.format === "x12" ? claim.payload.x12.replace("*T*:~", "*P*:~") : "";
-      const r = await transport.submitClaim(CTX, {
-        ...claim,
-        controlNumber: `${RUN_ID.slice(0, 8)}9`,
-        idempotencyKey: `contract-prod-${RUN_ID}`,
-        payload: { format: "x12", x12: withIsa13(asProduction, `${RUN_ID.slice(0, 8)}9`) },
-      });
-      note("production-isa15-refused", r);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.degraded.code).toBe(CH.INVALID_REQUEST);
+    localScenarios.push(
+      localScenario(
+        "malformed_x12_refused_before_request",
+        !malformed.ok && malformed.degraded.code === CH.INVALID_REQUEST && local.requests() === 0
+          ? "PASS"
+          : "FAIL",
+        "invalid_x12_no_network",
+        local.requests() > 0,
+      ),
+    );
+    const adjustment = await local.transport.submitClaim(CTX, {
+      ...jsonClaim,
+      idempotencyKey: `contract-adjustment-${RUN_ID}`,
+      adjustment: { kind: "replacement", originalControlNumber: jsonClaim.controlNumber },
     });
-
-    it("refuses a replacement (frequency 7) without sending (Q17 open)", async () => {
-      const r = await transport.submitClaim(CTX, {
-        ...claim,
-        idempotencyKey: `contract-adj-${RUN_ID}`,
-        adjustment: { kind: "replacement", originalControlNumber: claim.controlNumber },
-      });
-      note("adjustment-refused", r);
-      expect(r.ok).toBe(false);
+    const voidAdjustment = await local.transport.submitClaim(CTX, {
+      ...jsonClaim,
+      idempotencyKey: `contract-void-${RUN_ID}`,
+      adjustment: { kind: "void", originalControlNumber: jsonClaim.controlNumber },
     });
-
-    it("never leaks the key into any result, and writes the PHI-free record", () => {
-      expect(JSON.stringify(record)).not.toContain(KEY ?? "never");
-      if (RESULTS_FILE) {
-        writeFileSync(
-          RESULTS_FILE,
-          `${JSON.stringify({ runId: RUN_ID, ranAt: new Date().toISOString(), steps: record }, null, 2)}\n`,
-        );
-      }
+    localScenarios.push(
+      localScenario(
+        "frequency_7_replacement_refused_before_request",
+        !adjustment.ok && adjustment.degraded.code === CH.INVALID_REQUEST && local.requests() === 0
+          ? "PASS"
+          : "FAIL",
+        "adjustment_remains_fail_closed_pending_q17_q28",
+        local.requests() > 0,
+      ),
+      localScenario(
+        "frequency_8_void_refused_before_request",
+        !voidAdjustment.ok &&
+          voidAdjustment.degraded.code === CH.INVALID_REQUEST &&
+          local.requests() === 0
+          ? "PASS"
+          : "FAIL",
+        "adjustment_remains_fail_closed_pending_q17_q28",
+        local.requests() > 0,
+      ),
+    );
+    const notrControlNumber = `${RUN_ID.slice(0, 8)}3`;
+    const notrTransport = new StediTransport({
+      apiKey: "local-only-never-sent",
+      attempts: new InMemoryAttemptStore(),
+      fetch: (async () =>
+        Response.json({ claimReference: { correlationId: "local-notr-receipt" } })) as typeof fetch,
     });
-  },
-);
+    const notr = await notrTransport.submitNotice(CTX, {
+      kind: "notr",
+      controlNumber: notrControlNumber,
+      idempotencyKey: `contract-local-notr-${RUN_ID}`,
+      payload: {
+        format: "x12",
+        x12: withIsa13(fixture("NOTR_81B"), notrControlNumber),
+      },
+    });
+    const notrBht06 = tokenizeInterchange(
+      withIsa13(fixture("NOTR_81B"), notrControlNumber),
+    ).segments.find((s) => s[0] === "BHT")?.[6];
+    localScenarios.push(
+      localScenario(
+        "notr_81b_local_transport_shape",
+        notr.ok && notrBht06 === "RP" ? "PASS" : "FAIL",
+        "fake_http_bht06_rp_vendor_behavior_not_verified",
+      ),
+    );
 
-// Always-on guard: the skipped suite must stay skipped by default (CI sets neither variable).
-describe("Stedi sandbox contract gating", () => {
-  it("does not run without all three switches", () => {
-    if (RUN) return;
-    expect(RUN).toBe(false);
+    const all = [...localScenarios, ...vendorScenarios];
+    const summary = summarizeQualification(all, REQUIRED_VENDOR_SCENARIOS, true);
+    const artifact = {
+      schemaVersion: 1,
+      runId: RUN_ID,
+      executedAt: new Date().toISOString(),
+      authorizationRef: gates.authorizationRef,
+      vendorConfirmationRef: gates.vendorConfirmationRef,
+      overallQualification: summary.overall,
+      process: {
+        runner: "vitest",
+        exitCode: null,
+        note: "final exit code is written by the wrapper after Vitest exits",
+      },
+      localAssertions: localScenarios,
+      vendorObservations: vendorScenarios,
+      requiredVendorScenarios: REQUIRED_VENDOR_SCENARIOS,
+      responseRetrieval: { initial277ca: "NOT_RUN", payer277ca: "NOT_RUN", era835: "NOT_RUN" },
+      liveSendingEnabled: false,
+    };
+    if (!RESULTS_FILE) throw new Error("result artifact path missing despite execution gates");
+    writeFileSync(RESULTS_FILE, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
+    expect(summary.overall, `vendor qualification outcome: ${summary.overall}`).toBe("PASS");
+  });
+});
+
+describe("Stedi contract safety gating", () => {
+  it("does not run the vendor suite unless every human and environment prerequisite is present", () => {
+    expect(RUN).toBe(gates.ready);
+    if (!RUN) expect(gates.reasonCodes.length).toBeGreaterThan(0);
   });
 });
