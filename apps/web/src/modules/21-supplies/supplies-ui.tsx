@@ -121,6 +121,9 @@ export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element 
   );
 }
 
+/** The title of an opener held back while a form is open: opening another step would silently drop what was typed. */
+export const FORM_OPEN_FIRST = "Save or cancel this form first";
+
 /** A failed read. `attempt` counts consecutive failures, so an identical repeat failure is a new message. */
 export interface LoadError {
   message: string;

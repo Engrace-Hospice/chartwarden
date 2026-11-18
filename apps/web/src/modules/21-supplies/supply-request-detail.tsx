@@ -31,7 +31,6 @@ import {
   nowLocalInput,
   t,
   useApiClient,
-  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -73,6 +72,7 @@ import {
   toneOf,
 } from "./supplies-status";
 import {
+  FORM_OPEN_FIRST,
   Field,
   Notice,
   SelectField,
@@ -85,6 +85,7 @@ import {
   pageTitleStyle,
 } from "./supplies-ui";
 import { useLatestRead } from "./use-latest-read";
+import { useSettledFocus } from "./use-settled-focus";
 import { useWrite } from "./use-write";
 
 type Ceremony =
@@ -123,7 +124,7 @@ function SupplyRequestBody({
   const [actionError, setActionError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
   const startRead = useLatestRead();
-  const focusRef = useReloadFocus<HTMLDivElement>(loading);
+  const focusRef = useSettledFocus<HTMLDivElement>(loading);
 
   // ceremony fields
   const [vendorId, setVendorId] = useState("");
@@ -206,6 +207,8 @@ function SupplyRequestBody({
   };
 
   const openCeremony = (next: Exclude<Ceremony, null>) => {
+    // The step already open: its opener is a no-op, never a reset of what was typed in it.
+    if (ceremony === next) return;
     resetDrafts();
     setActionError(null);
     setCeremony(next);
@@ -273,6 +276,9 @@ function SupplyRequestBody({
   // are focus-trapped modals (DESIGN.md §7.4), rendered outside the drawer frame.
   const drawerOpen =
     ceremony === "assign-vendor" || ceremony === "mark-ordered" || ceremony === "mark-in-transit";
+  // While a drawer form is open, every OTHER opener waits: opening another step would silently drop what was typed.
+  // (A modal ceremony blocks the page itself.)
+  const blockedFor = (target: Exclude<Ceremony, null>) => drawerOpen && ceremony !== target;
 
   return (
     <>
@@ -421,7 +427,13 @@ function SupplyRequestBody({
             title="Vendor & routing"
             action={
               can.assignVendor ? (
-                <Button tone="primary" type="button" onClick={() => openCeremony("assign-vendor")}>
+                <Button
+                  tone="primary"
+                  type="button"
+                  disabled={blockedFor("assign-vendor")}
+                  title={blockedFor("assign-vendor") ? FORM_OPEN_FIRST : undefined}
+                  onClick={() => openCeremony("assign-vendor")}
+                >
                   Override vendor
                 </Button>
               ) : undefined
@@ -531,6 +543,7 @@ function SupplyRequestBody({
             <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
               <ActionButton
                 label="Assign / override vendor"
+                blocked={blockedFor("assign-vendor")}
                 enabled={can.assignVendor}
                 precondition="Only a request still in `requested` can have its vendor assigned."
                 onClick={() => openCeremony("assign-vendor")}
@@ -539,30 +552,35 @@ function SupplyRequestBody({
                 names, and two buttons with one accessible name cannot be told apart by voice control. */}
               <ActionButton
                 label="Mark ordered…"
+                blocked={blockedFor("mark-ordered")}
                 enabled={can.markOrdered}
                 precondition="A vendor must be assigned before an order can be placed."
                 onClick={() => openCeremony("mark-ordered")}
               />
               <ActionButton
                 label="Mark in transit…"
+                blocked={blockedFor("mark-in-transit")}
                 enabled={can.markInTransit}
                 precondition="The vendor must have accepted the order first."
                 onClick={() => openCeremony("mark-in-transit")}
               />
               <ActionButton
                 label="Record delivery"
+                blocked={blockedFor("mark-delivered")}
                 enabled={can.markDelivered}
                 precondition="Only a shipment in transit can be attested as delivered."
                 onClick={() => openCeremony("mark-delivered")}
               />
               <ActionButton
                 label="Confirm receipt…"
+                blocked={blockedFor("confirm-received")}
                 enabled={can.confirmReceived}
                 precondition="Receipt is confirmed after delivery is attested."
                 onClick={() => openCeremony("confirm-received")}
               />
               <ActionButton
                 label="Initiate kit return"
+                blocked={blockedFor("return")}
                 enabled={can.initiateReturn}
                 precondition={
                   isKit
@@ -573,6 +591,7 @@ function SupplyRequestBody({
               />
               <ActionButton
                 label="Cancel this request…"
+                blocked={blockedFor("cancel")}
                 enabled={can.cancel}
                 precondition="This request has already reached a state cancellation cannot touch."
                 onClick={() => openCeremony("cancel")}
@@ -866,17 +885,26 @@ function SupplyRequestBody({
 function ActionButton({
   label,
   enabled,
+  blocked = false,
   precondition,
   onClick,
-}: { label: string; enabled: boolean; precondition: string; onClick: () => void }): JSX.Element {
+}: {
+  label: string;
+  enabled: boolean;
+  /** Another form is open: the opener waits (and says so) rather than dropping what was typed there. */
+  blocked?: boolean;
+  precondition: string;
+  onClick: () => void;
+}): JSX.Element {
+  const available = enabled && !blocked;
   return (
     <Button
       tone="secondary"
       type="button"
-      disabled={!enabled}
-      title={enabled ? undefined : precondition}
-      aria-disabled={!enabled}
-      onClick={enabled ? onClick : undefined}
+      disabled={!available}
+      title={available ? undefined : blocked ? FORM_OPEN_FIRST : precondition}
+      aria-disabled={!available}
+      onClick={available ? onClick : undefined}
     >
       {label}
     </Button>

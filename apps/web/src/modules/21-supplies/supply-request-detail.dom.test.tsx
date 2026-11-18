@@ -252,16 +252,27 @@ describe("supply request — lifecycle steps", () => {
     await modalGone("Initiate the kit return");
   });
 
-  it("keeps one step open at a time and never carries a typed reason into the next", async () => {
+  it("holds the other openers while a drawer form is open, so typed text is never dropped", async () => {
     mount("requested");
     const first = await open("Assign / override vendor", "Assign or override the vendor");
-    fireEvent.change(within(first).getByLabelText("Override reason"), {
-      target: { value: "Vendor of record is closed this week." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel this request…" }));
-    const second = await screen.findByRole("dialog", { name: "Cancel this request" });
-    // The modal ceremony replaces the drawer step: the frame closes with it.
-    expect(screen.queryByRole("complementary")).toBeNull();
+    const reason = within(first).getByLabelText("Override reason") as HTMLTextAreaElement;
+    fireEvent.change(reason, { target: { value: "Vendor of record is closed this week." } });
+    // Another step's opener waits, and says why; clicking it opens nothing.
+    const other = screen.getByRole("button", { name: "Cancel this request…" }) as HTMLButtonElement;
+    expect(other.disabled).toBe(true);
+    expect(other.title).toBe("Save or cancel this form first");
+    fireEvent.click(other);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The open step's own opener is a no-op, not a reset.
+    fireEvent.click(screen.getByRole("button", { name: "Assign / override vendor" }));
+    expect(screen.getByRole("complementary", { name: "Assign or override the vendor" })).toBe(
+      first,
+    );
+    expect(reason.value).toBe("Vendor of record is closed this week.");
+    // Once the form is cancelled the other opener is live again, and the form opens blank.
+    fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(other.disabled).toBe(false));
+    const second = await openModal("Cancel this request…", "Cancel this request");
     expect((within(second).getByLabelText("Reason") as HTMLTextAreaElement).value).toBe("");
   });
 
@@ -701,5 +712,37 @@ describe("supply request — lifecycle steps", () => {
     expect(opener.isConnected).toBe(true);
     expect(screen.getByRole("button", { name: "Cancel this request…" })).toBe(opener);
     expect(document.activeElement).toBe(opener);
+  });
+
+  it("moves focus to the page when the write switches off the opener that launched it", async () => {
+    let status: SupplyRequestDetail["status"] = "requested";
+    const { post, get } = mount(
+      "requested",
+      "supply",
+      async () => {
+        status = "cancelled";
+        return ok({});
+      },
+      async () => ok(requestIn(status)),
+    );
+    const opener = (await screen.findByRole("button", {
+      name: "Cancel this request…",
+    })) as HTMLButtonElement;
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "Cancel this request" });
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "The family declined the equipment." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel request" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await modalGone("Cancel this request");
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    await settle();
+    // The reload advanced the status: the opener is now disabled, so focus must not be left on it (or on <body>).
+    expect(opener.disabled).toBe(true);
+    expect(document.activeElement).not.toBe(opener);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(document.querySelector(".wx-list-drawer-main"));
   });
 });

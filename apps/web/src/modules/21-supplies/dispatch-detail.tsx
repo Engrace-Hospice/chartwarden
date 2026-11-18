@@ -23,7 +23,6 @@ import {
   nowLocalInput,
   t,
   useApiClient,
-  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -60,6 +59,7 @@ import {
   thNum,
 } from "./supplies-ui";
 import { useLatestRead } from "./use-latest-read";
+import { useSettledFocus } from "./use-settled-focus";
 import { useWrite } from "./use-write";
 
 type Ceremony = "deploy" | "return" | null;
@@ -87,7 +87,7 @@ function DispatchBody({ dispatchId }: { dispatchId: string | undefined }): JSX.E
   const [actionError, setActionError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
   const startRead = useLatestRead();
-  const focusRef = useReloadFocus<HTMLDivElement>(loading);
+  const focusRef = useSettledFocus<HTMLDivElement>(loading);
   const [when, setWhen] = useState(nowLocalInput);
   const [returnReason, setReturnReason] = useState("");
 

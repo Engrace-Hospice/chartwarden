@@ -33,7 +33,6 @@ import {
   StatusPill,
   t,
   useApiClient,
-  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -69,6 +68,7 @@ import {
   unaccountedPreview,
 } from "./supplies-status";
 import {
+  FORM_OPEN_FIRST,
   Field,
   Notice,
   SchedulePill,
@@ -85,6 +85,7 @@ import {
   thNum,
 } from "./supplies-ui";
 import { useLatestRead } from "./use-latest-read";
+import { useSettledFocus } from "./use-settled-focus";
 import { useWrite } from "./use-write";
 
 type Ceremony = "assign-retriever" | "unreturnable" | null;
@@ -146,7 +147,7 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
   const { busy, run: runWrite } = useWrite();
   const { busy: inlineBusy, run: runInline } = useWrite();
   const startRead = useLatestRead();
-  const focusRef = useReloadFocus<HTMLDivElement>(loading);
+  const focusRef = useSettledFocus<HTMLDivElement>(loading);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
 
   const [disposalMethod, setDisposalMethod] = useState(DEFAULT_DISPOSAL_METHOD);
@@ -246,6 +247,8 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
   // While a reload is in flight the page still shows the previous read; its version stamp is about to change, so no
   // stamped write is sent from it (the openers stay live, so the modal can hand focus back to the one that launched it).
   const writable = open && !loading;
+  // While the retriever drawer is open the write-off opener waits: opening the modal would silently drop what was typed.
+  const retrieverOpen = ceremony === "assign-retriever";
   const witnessRequired = disposalMethod === WITNESS_REQUIRED_DISPOSAL_METHOD;
   const explanationsPresent = counts.every(
     (c, i) => !flagged[i] || c.discrepancyExplanation.trim() !== "",
@@ -272,6 +275,8 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
   };
 
   const openCeremony = (next: Exclude<Ceremony, null>) => {
+    // The step already open: its opener is a no-op, never a reset of what was typed in it.
+    if (ceremony === next) return;
     resetDrafts();
     setActionError(null);
     setCeremony(next);
@@ -684,10 +689,16 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
               <Button
                 tone="secondary"
                 type="button"
-                disabled={!open}
-                title={open ? undefined : "This return has reached a terminal state."}
-                aria-disabled={!open}
-                onClick={open ? () => openCeremony("unreturnable") : undefined}
+                disabled={!open || retrieverOpen}
+                title={
+                  retrieverOpen
+                    ? FORM_OPEN_FIRST
+                    : open
+                      ? undefined
+                      : "This return has reached a terminal state."
+                }
+                aria-disabled={!open || retrieverOpen}
+                onClick={open && !retrieverOpen ? () => openCeremony("unreturnable") : undefined}
               >
                 {/* The ellipsis marks the opener: the open drawer's save button carries the plain name. */}
                 Declare unreturnable…

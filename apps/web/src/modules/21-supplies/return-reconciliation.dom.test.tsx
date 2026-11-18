@@ -203,12 +203,30 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
     await modalGone(WRITE_OFF);
   });
 
-  it("keeps one step open at a time: the write-off modal replaces the retriever drawer", async () => {
+  it("holds the write-off opener while the retriever drawer is open, so typed text is never dropped", async () => {
     mount();
-    await open("Assign retriever", "Assign the retrieving staff member");
-    fireEvent.click(screen.getByRole("button", { name: "Declare unreturnable…" }));
-    expect(await screen.findByRole("dialog", { name: WRITE_OFF })).toBeTruthy();
-    expect(screen.queryByRole("complementary")).toBeNull();
+    const drawer = await open("Assign retriever", "Assign the retrieving staff member");
+    const membership = within(drawer).getByLabelText(
+      "Retrieving membership id",
+    ) as HTMLInputElement;
+    fireEvent.change(membership, { target: { value: "m-okafor" } });
+    const writeOff = screen.getByRole("button", {
+      name: "Declare unreturnable…",
+    }) as HTMLButtonElement;
+    expect(writeOff.disabled).toBe(true);
+    expect(writeOff.title).toBe("Save or cancel this form first");
+    fireEvent.click(writeOff);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The open step's own opener is a no-op, not a reset.
+    fireEvent.click(screen.getByRole("button", { name: "Assign retriever" }));
+    expect(screen.getByRole("complementary", { name: "Assign the retrieving staff member" })).toBe(
+      drawer,
+    );
+    expect(membership.value).toBe("m-okafor");
+    // Once the drawer is cancelled the write-off opener is live again.
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(writeOff.disabled).toBe(false));
+    expect(await openModal("Declare unreturnable…", WRITE_OFF)).toBeTruthy();
   });
 
   it("holds the drawer and everything beside it while a write is in flight", async () => {
@@ -363,12 +381,9 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reconcile" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(get).toHaveBeenCalledTimes(4));
-    await waitFor(() =>
-      expect(
-        (screen.getByRole("button", { name: "Declare unreturnable…" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false),
-    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(screen.getByRole("complementary", { name: "Assign the retrieving staff member" })).toBe(
       drawer,
     );
@@ -607,5 +622,42 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
     expect(opener.isConnected).toBe(true);
     expect(screen.getByRole("button", { name: "Declare unreturnable…" })).toBe(opener);
     expect(document.activeElement).toBe(opener);
+  });
+
+  it("moves focus to the page when the write-off switches off the opener that launched it", async () => {
+    let unreturnable = false;
+    const { post, get } = mount({
+      onPost: async () => {
+        unreturnable = true;
+        return ok({});
+      },
+      onGet: (path, _id, respond) =>
+        Promise.resolve(
+          unreturnable && path === "/api/v1/supplies/comfort-kit-returns/{returnId}"
+            ? ok({ ...returnRow, state: "unreturnable" })
+            : respond(path),
+        ),
+    });
+    const opener = (await screen.findByRole("button", {
+      name: "Declare unreturnable…",
+    })) as HTMLButtonElement;
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: WRITE_OFF });
+    fireEvent.change(within(dialog).getByLabelText("Attested reason"), {
+      target: { value: "The family could not be reached after three attempts." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Declare unreturnable" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await modalGone(WRITE_OFF);
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(4));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // The reload advanced the state: the opener is now disabled, so focus must not be left on it (or on <body>).
+    expect(opener.disabled).toBe(true);
+    expect(document.activeElement).not.toBe(opener);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(document.querySelector(".wx-list-drawer-main"));
   });
 });

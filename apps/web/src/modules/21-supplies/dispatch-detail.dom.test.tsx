@@ -309,4 +309,34 @@ describe("comfort-kit dispatch — deploy and return", () => {
     expect(screen.getByRole("button", { name: "Mark deployed at patient" })).toBe(opener);
     expect(document.activeElement).toBe(opener);
   });
+
+  it("moves focus to the page when the write switches off the opener that launched it", async () => {
+    let status: DispatchDetail["dispatchStatus"] = "dispatched";
+    const { post, get } = mount(
+      "dispatched",
+      async () => {
+        status = "deployed_at_patient";
+        return ok({});
+      },
+      async () => ok(dispatchIn(status)),
+    );
+    const opener = (await screen.findByRole("button", {
+      name: "Mark deployed at patient",
+    })) as HTMLButtonElement;
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "Mark deployed at patient" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark deployed" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await gone("Mark deployed at patient");
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // The reload advanced the status: the opener is now disabled, so focus must not be left on it (or on <body>).
+    expect(opener.disabled).toBe(true);
+    expect(document.activeElement).not.toBe(opener);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(document.querySelector(".wx-kit-column"));
+  });
 });
