@@ -28,7 +28,8 @@
 // release themselves), starting or scheduling visits and checking IN to one (a new visit is new work), the triage, investigation,
 // resolution and closure of a quality incident (only the reporter's routes are here), applying a NEW inpatient restraint, hospice
 // election revocation, discharge, allergy writes and consent revocation (each is a decision that can wait for the note; the owner
-// decided to keep them refused, and note-closure-gate-routes.test.ts pins each with its reason), HOPE / billing / referral /
+// decided to keep them refused, and note-closure-gate-routes.test.ts pins each with its reason), confirming the delivery mode of a
+// note signed earlier (`.../visit-modality`: signing carries the modality in its own body), HOPE / billing / referral /
 // reporting / messaging administration, and the organization-wide dashboards, KPIs and compliance trackers.
 import { SESSION_PLUMBING_ROUTES } from "./onboarding-org-gate";
 

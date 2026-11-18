@@ -24,6 +24,8 @@
 -- board index, the 500-character reason cap). Reset such a database, or hand-apply the missing statements from this file. Nothing
 -- released ever carried an earlier copy. The same goes for a dev database that ran `db:sync:permissions` before it skipped
 -- `encounter.closure_override`: its org_admin / administrator keep that grant (the sync only ever adds), so remove it by hand or reset.
+-- Likewise a dev database that applied these three files as 1510, 1511 and 1512 (before SIA took 1510-1513 and they became 1514-1516):
+-- the runner records the ordinal, so it would skip SIA's real 1510-1512 and then fail here with "already exists". Reset it.
 -- Lock behaviour (accepted, not restructured): ADD COLUMN ... CHECK on encounter scans the table once under ACCESS EXCLUSIVE, and
 -- each CREATE INDEX (not CONCURRENTLY) holds a SHARE lock for its build (both indexes are partial: they hold only open clocked notes). Both columns are NULL for every existing row and the previous
 -- release never writes them, so the change is expand-safe; encounter is small relative to the deploy window and the runner is
