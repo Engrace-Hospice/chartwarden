@@ -2,7 +2,7 @@
 // "ChartWarden is the warden." Guards explain, gates checklist, blockers stop, ceremonies attest, and
 // clocks count down — one consistent, legible visual language. Token-driven + No-Line; every
 // colored signal carries a glyph partner (§10.10). These map 1:1 to the D1-ceremonies board.
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { ghostBorder, t, tint } from "../theme/tokens";
 import { Glyph, type GlyphName } from "./glyphs";
@@ -454,8 +454,13 @@ export interface CeremonyModalProps {
   /** Marks this as an EPCS ceremony (controlled-substance) — uses alert accent, not gold (§2.2). */
   epcs?: boolean;
   commitLabel?: string;
-  /** Prevents a second irreversible commit while the first request is still in flight. */
+  /** Prevents a second irreversible commit while the first request is still in flight (also disables Cancel). */
   commitDisabled?: boolean;
+  /**
+   * The act cannot be committed YET (a required field in the body is incomplete or invalid). Disables only the
+   * commit button: unlike `commitDisabled` it never traps the signer, who can always Cancel.
+   */
+  commitBlocked?: boolean;
   onCommit: (stepUpValue?: string) => void;
   onCancel: () => void;
 }
@@ -469,6 +474,7 @@ export function CeremonyModal({
   epcs = false,
   commitLabel = "Sign & commit",
   commitDisabled = false,
+  commitBlocked = false,
   onCommit,
   onCancel,
 }: CeremonyModalProps): JSX.Element | null {
@@ -476,11 +482,21 @@ export function CeremonyModal({
   const [affirmed, setAffirmed] = useState(false);
   const stepUpId = useId();
   const affirmId = useId();
+  // This component stays mounted while closed (it returns null), so without this the attestation tick and the
+  // typed credential would survive a Cancel and a reopen: a signer must attest afresh every time the ceremony opens.
+  useEffect(() => {
+    if (open) return;
+    setAffirmed(false);
+    setCredential("");
+  }, [open]);
   if (!open) return null;
   const accent = epcs ? t.alert : t.primary;
   const needsStepUp = Boolean(stepUp);
   const commitReady =
-    !commitDisabled && (!needsStepUp || credential.trim().length > 0) && (!legalText || affirmed);
+    !commitDisabled &&
+    !commitBlocked &&
+    (!needsStepUp || credential.trim().length > 0) &&
+    (!legalText || affirmed);
   return (
     <Modal
       open={open}

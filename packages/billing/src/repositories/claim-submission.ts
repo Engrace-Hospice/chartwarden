@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 // DB-native lowercase enums with no domain-alphabet divergence, so rows pass through UN-mapped (no codec;
 // contrast `claim.state`). No PHI / MBI is ever stored here (D13, §8.7).
 import * as schema from "@chartwarden/db/schema";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import type { BillingDb } from "./db";
 
 const S = schema.claimSubmission;
@@ -218,17 +218,26 @@ export class ClaimSubmissionRepository {
 
   /**
    * The highest-`attempt_index` submission for a `(provider_entity, control_number)` (so the worker can
-   * compute the next attempt index for a retry), or `null` when none has been dispatched yet.
+   * compute the next attempt index for a retry, and an acknowledgment can find its attempt), or `null`
+   * when none has been dispatched yet. The control number is what was transmitted: the attempt's external
+   * patient control number, or the internal claim control number for a historical row that has none
+   * (ADR-0053 M23-CM5-T1.2C; a notice attempt carries no external PCN either).
    */
   async findLatestAttempt(
     providerEntityId: string,
-    claimControlNumber: string,
+    controlNumber: string,
   ): Promise<schema.ClaimSubmission | null> {
     const [row] = await this.db
       .select()
       .from(S)
       .where(
-        and(eq(S.providerEntityId, providerEntityId), eq(S.claimControlNumber, claimControlNumber)),
+        and(
+          eq(S.providerEntityId, providerEntityId),
+          or(
+            eq(S.externalPatientControlNumber, controlNumber),
+            and(isNull(S.externalPatientControlNumber), eq(S.claimControlNumber, controlNumber)),
+          ),
+        ),
       )
       .orderBy(desc(S.attemptIndex))
       .limit(1);

@@ -6,7 +6,12 @@
 import type { IsoDate, LevelOfCare } from "../contracts";
 import type { BillabilityState } from "../rules/types";
 import type { VisitChargeDiscipline } from "../visit-charges";
-import { type VisitRevenueCode, visitCodeFor, visitUnitsForMinutes } from "./visit-codes";
+import {
+  type VisitModality,
+  type VisitRevenueCode,
+  visitCodeFor,
+  visitUnitsForMinutes,
+} from "./visit-codes";
 
 export interface VisitEncounterInput {
   readonly encounterId: string;
@@ -14,6 +19,8 @@ export interface VisitEncounterInput {
   readonly billability: BillabilityState;
   readonly discipline: string;
   readonly encounterType: string | null;
+  /** The delivery mode the clinician recorded; a `telephonic` visit is never reported as an in-person RN line. */
+  readonly modality?: VisitModality | null;
   /** Documented visit minutes (start-to-end bracket); `null`/`0` = not documented. */
   readonly durationMinutes: number | null;
 }
@@ -80,6 +87,7 @@ export function buildVisitLines(input: BuildVisitLinesInput): VisitLinesResult {
     const code = visitCodeFor({
       discipline: encounter.discipline,
       encounterType: encounter.encounterType,
+      modality: encounter.modality ?? null,
     });
     if (code === null) continue;
     if (input.inpatientHospiceFacility) {

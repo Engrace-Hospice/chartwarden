@@ -119,7 +119,7 @@ export {
   type NewEligibilityCheckInput,
 } from "./eligibility-check";
 export { PerDiemRateCalculationRepository } from "./per-diem-rate-calculation";
-export { SiaCalculationRepository } from "./sia-calculation";
+export { SiaCalculationRepository, type SiaSnapshotInput } from "./sia-calculation";
 export { SequestrationPolicyRepository } from "./sequestration-policy";
 export { HospiceRateTableRepository } from "./hospice-rate-table";
 export { HospiceVisitChargeScheduleRepository } from "./hospice-visit-charge-schedule";

@@ -170,7 +170,11 @@ export function buildDirectMacGateway(deps: DirectMacGatewayDeps): DirectMacGate
   }
 }
 
-/** Our control number for a submission row, read under the org's RLS envelope (system actor); null when unknown. */
+/**
+ * The control number a submission row was transmitted under, read under the org's RLS envelope (system actor); null when
+ * unknown. That is the attempt's external patient control number, or the claim control number for a historical attempt and a
+ * notice, which carry none: the same number an acknowledgment is routed back by (`ClaimSubmissionRepository.findLatestAttempt`).
+ */
 export function buildSubmissionControlNumberReader(
   db: DbClient,
 ): DirectMacGatewayDeps["controlNumberOf"] {
@@ -179,6 +183,6 @@ export function buildSubmissionControlNumberReader(
       const row = await new repositories.ClaimSubmissionRepository(tx as never).findById(
         submissionId,
       );
-      return row?.claimControlNumber ?? null;
+      return row?.externalPatientControlNumber ?? row?.claimControlNumber ?? null;
     });
 }

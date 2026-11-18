@@ -11953,7 +11953,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sign the encounter (Layer-3 gate; D13 step-up) */
+        /** Sign the encounter (Layer-3 gate; D13 step-up); `visitModality` is required (422 MODALITY_CONFIRMATION_REQUIRED) for a Medicare-countable discipline that has no confirmed modality, and in person / video is refused on a telephonic encounter type (422 MODALITY_CONFLICTS_WITH_VISIT_TYPE; telephonic is always allowed); optional `startedAt`/`endedAt` are the clinician's documented visit times, both or neither, each an ISO-8601 date-time with an explicit UTC offset (`Z` or +hh:mm / -hh:mm), ordered, not in the future, starting on the encounter's org-local service date and ending on that date or the next, and at most 8 hours apart (422 VISIT_TIME_INVALID otherwise); they are ignored when an M18 EVV bracket exists (EVV always wins) and never defaulted or padded; typed times are refused with 503 EVV_BRACKET_UNAVAILABLE while the M18 EVV lookup cannot be reached (retry, or sign without times) and with 422 VISIT_TIME_OVERLAP when an in-person / video bracket overlaps another the same author documented */
         post: operations["postApiV1EncountersByEncounterIdSign"];
         delete?: never;
         options?: never;
@@ -11972,6 +11972,23 @@ export interface paths {
         get: operations["getApiV1EncountersByEncounterIdTemplate"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/visit-modality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** One-time confirmation of how an already-signed visit was delivered, for a legacy visit whose delivery mode is still unconfirmed (author only; writes only the modality columns); a visit whose delivery mode is already confirmed answers 409 MODALITY_ALREADY_CONFIRMED and is left unchanged (a confirmed mode is not correctable through this route), the guard being part of the same UPDATE so two concurrent calls cannot both win; in person / video is refused on a telephonic encounter type (422 MODALITY_CONFLICTS_WITH_VISIT_TYPE; telephonic is always allowed); an encounter that is not signed answers 409 ILLEGAL_TRANSITION */
+        post: operations["postApiV1EncountersByEncounterIdVisitmodality"];
         delete?: never;
         options?: never;
         head?: never;
@@ -50648,10 +50665,48 @@ export interface operations {
                                 } | null;
                             } | null;
                             sia: {
+                                basis: "minutes_v1" | "units_v2";
+                                revision: number;
+                                /** Format: date */
                                 windowStart: string;
+                                /** Format: date */
+                                windowEnd: string;
+                                paidUnits: number | null;
+                                eligibleUnits: number | null;
+                                truncatedUnits: number | null;
+                                chcHourlyRateCents: number | null;
+                                wageIndexFiscalYear: number | null;
+                                amountCents: number;
                                 totalQualifyingMinutes: number;
-                                siaAddOnCents: number;
+                                /** Format: date-time */
                                 calculatedAt: string;
+                                policy: {
+                                    unitTieBreak: string;
+                                    videoEligible: boolean;
+                                    visitDating: string;
+                                    wageBasis: string;
+                                } | null;
+                                visits: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    /** Format: date */
+                                    date: string;
+                                    discipline: string;
+                                    minutes: number | null;
+                                    timeSource: "evv" | "clinician" | null;
+                                    units: number | null;
+                                    paidUnits: number;
+                                    counted: boolean;
+                                    reason: string | null;
+                                }[];
+                                priorClaimAdvisory: {
+                                    /** Format: date */
+                                    from: string;
+                                    /** Format: date */
+                                    to: string;
+                                    units: number;
+                                    cents: number | null;
+                                } | null;
                             } | null;
                         };
                         createdAt: string;
@@ -66534,6 +66589,10 @@ export interface operations {
                             isF2f: boolean;
                             signedAt: string | null;
                             cosignedAt: string | null;
+                            visitModality?: ("in_person" | "telephonic" | "video") | null;
+                            visitModalityConfirmed?: boolean;
+                            timeSource?: ("evv" | "clinician") | null;
+                            evvBracketPresent?: boolean;
                             selections?: {
                                 [key: string]: unknown;
                             } | null;
@@ -66648,6 +66707,10 @@ export interface operations {
                         isF2f: boolean;
                         signedAt: string | null;
                         cosignedAt: string | null;
+                        visitModality?: ("in_person" | "telephonic" | "video") | null;
+                        visitModalityConfirmed?: boolean;
+                        timeSource?: ("evv" | "clinician") | null;
+                        evvBracketPresent?: boolean;
                         selections?: {
                             [key: string]: unknown;
                         } | null;
@@ -67583,6 +67646,11 @@ export interface operations {
                     /** @constant */
                     attestationConfirmed: true;
                     lateEntryReason?: string;
+                    visitModality?: "in_person" | "telephonic" | "video";
+                    /** Format: date-time */
+                    startedAt?: string;
+                    /** Format: date-time */
+                    endedAt?: string;
                 };
             };
         };
@@ -67641,6 +67709,41 @@ export interface operations {
                                 slots: string[];
                             }[];
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdVisitmodality: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    attestationConfirmed: true;
+                    visitModality: "in_person" | "telephonic" | "video";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        visitModality: "in_person" | "telephonic" | "video";
+                        visitModalityConfirmedAt: string;
                     };
                 };
             };
@@ -67869,6 +67972,10 @@ export interface operations {
                             isF2f: boolean;
                             signedAt: string | null;
                             cosignedAt: string | null;
+                            visitModality?: ("in_person" | "telephonic" | "video") | null;
+                            visitModalityConfirmed?: boolean;
+                            timeSource?: ("evv" | "clinician") | null;
+                            evvBracketPresent?: boolean;
                             selections?: {
                                 [key: string]: unknown;
                             } | null;
@@ -67934,6 +68041,10 @@ export interface operations {
                             isF2f: boolean;
                             signedAt: string | null;
                             cosignedAt: string | null;
+                            visitModality?: ("in_person" | "telephonic" | "video") | null;
+                            visitModalityConfirmed?: boolean;
+                            timeSource?: ("evv" | "clinician") | null;
+                            evvBracketPresent?: boolean;
                             selections?: {
                                 [key: string]: unknown;
                             } | null;
@@ -75357,6 +75468,10 @@ export interface operations {
                             isF2f: boolean;
                             signedAt: string | null;
                             cosignedAt: string | null;
+                            visitModality?: ("in_person" | "telephonic" | "video") | null;
+                            visitModalityConfirmed?: boolean;
+                            timeSource?: ("evv" | "clinician") | null;
+                            evvBracketPresent?: boolean;
                             selections?: {
                                 [key: string]: unknown;
                             } | null;

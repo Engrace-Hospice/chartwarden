@@ -535,7 +535,53 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
 
   // ── the MAC's answer: the 999 / 277CA crons route a NOE's acknowledgment to the NOE ────────────────────────
 
-  /** A drafted NOE, made READY and transmitted by the REAL `noe.submit` processor (as chartwarden_app). */
+  /**
+   * The database effects the `noe.submit` worker had when it transmitted: the notice row locked, its attempt closed as sent, the
+   * notice SUBMITTED, `m23.noe.submitted` announced. The real processor now stops short of transmitting (it throws
+   * M23_NOTICE_DISPATCH_NOT_AUTHORIZED until CM-4A wires an authoritative source), so a fixture that needs a transmitted notice
+   * stages it through the same repository calls, as chartwarden_app. `holdLock` runs after the read and before the commit, so a
+   * test can keep the row lock open.
+   */
+  async function stageNoeTransmission(
+    org: string,
+    noeId: string,
+    submissionId: string,
+    holdLock: () => Promise<void> = async () => {},
+  ): Promise<void> {
+    const outbox = workerDeps.outbox;
+    if (!outbox) throw new Error("the suite's worker deps carry no outbox");
+    await withOrgContext(handle.db as never, { organizationId: org, userId: "" }, async (tx) => {
+      const noes = new repositories.NoeRepository(tx as never);
+      const submissions = new repositories.ClaimSubmissionRepository(tx as never);
+      const noe = await noes.findByIdForUpdate(noeId);
+      if (!noe) throw new Error(`noe_record ${noeId} not found`);
+      await holdLock();
+      const now = new Date();
+      const submission = await submissions.terminalize(submissionId, {
+        outcome: "submitted",
+        outcomeReason: null,
+        generatedFileUri: `s3://notices/${noe.noeControlNumber}.x12`,
+        submittedAt: now,
+        workerCorrelationId: `corr-${noeId}`,
+      });
+      const moved = await noes.transitionToState(noeId, noe.version, "submitted", {
+        latestSubmissionId: submission.id,
+      });
+      if (!moved.ok) throw new Error(`noe ${noeId} version conflict on submit`);
+      await outbox.publish(
+        tx as never,
+        {
+          eventName: "m23.noe.submitted",
+          organizationId: org,
+          aggregateKind: "noe",
+          aggregateId: noeId,
+          payload: { noeId, submissionId: submission.id, submittedAt: now.toISOString() },
+        } as never,
+      );
+    });
+  }
+
+  /** A drafted NOE, made READY and transmitted (staged, see {@link stageNoeTransmission}) as chartwarden_app. */
   async function submittedNoe(org: string): Promise<{
     admissionId: string;
     noeId: string;
@@ -559,13 +605,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       await noes.transitionToState(drafted.id, noe?.version ?? 0, "ready");
     });
     const queued = await m23.submitNoe(actorOf(org), drafted.id);
-    await withOrgContext(handle.db as never, { organizationId: org, userId: "" }, async (tx) => {
-      await runNoeSubmit(tx as never, workerDeps, {
-        organizationId: org,
-        noeId: drafted.id,
-        submissionId: queued.submissionId!,
-      });
-    });
+    await stageNoeTransmission(org, drafted.id, queued.submissionId!);
     const { rows } = await admin.query(
       "SELECT id FROM claim_submission WHERE noe_id=$1 AND kind='noe' AND outcome='submitted'",
       [drafted.id],
@@ -935,15 +975,9 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     );
     expect(audit).toEqual([{ actor_user_id: USER, corrects: noeId }]);
 
-    // Through the ordinary submit queue, the worker and the ack routing.
+    // Through the ordinary submit queue, a staged transmission and the ack routing.
     const queued = await m23.submitNoe(actorOf(ORG_A), correctedId);
-    await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
-      runNoeSubmit(tx as never, workerDeps, {
-        organizationId: ORG_A,
-        noeId: correctedId,
-        submissionId: queued.submissionId!,
-      }),
-    );
+    await stageNoeTransmission(ORG_A, correctedId, queued.submissionId!);
     // Medicare accepts it on day +7 (two days late); we pull the 277CA a day later.
     const payerDate = addDays(admission, 7);
     const late = { ...workerDeps, now: () => new Date(`${addDays(admission, 8)}T14:00:00.000Z`) };
@@ -1032,13 +1066,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     const filed = await m23.correctNoe(actorOf(ORG_A), noeId, { reason: REASON });
     const correctedId = filed.notice.noeId;
     const queued = await m23.submitNoe(actorOf(ORG_A), correctedId);
-    await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
-      runNoeSubmit(tx as never, workerDeps, {
-        organizationId: ORG_A,
-        noeId: correctedId,
-        submissionId: queued.submissionId!,
-      }),
-    );
+    await stageNoeTransmission(ORG_A, correctedId, queued.submissionId!);
     const onTime = { ...workerDeps, now: () => new Date(`${addDays(admission, 4)}T14:00:00.000Z`) };
     parsed999 = [
       {
@@ -1607,7 +1635,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       sent: boolean;
     }[];
 
-  it("park, switch back to a vendor, resubmit: the new transmission is recorded on a NEW attempt and the parked attempt stays closed", async () => {
+  it("park, switch back to a vendor, resubmit: a NEW attempt is queued, the worker holds it without transmitting, and the parked attempt stays closed", async () => {
     const id = await seedNoe(ORG_A, { state: "DRAFT" });
     const vendor = externalFilingService(false);
 
@@ -1639,26 +1667,22 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       { attempt_index: 1, outcome: "queued", id: second.submissionId },
     ]);
 
-    // the worker records the transmission on THAT attempt
-    await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
-      runNoeSubmit(tx as never, workerDeps, {
-        organizationId: ORG_A,
-        noeId: id,
-        submissionId: second.submissionId as string,
-      }),
-    );
+    // the worker holds THAT attempt: dispatch is not authorized (CM-4A), so nothing is transmitted and nothing is recorded as sent
+    await expect(
+      withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
+        runNoeSubmit(tx as never, workerDeps, {
+          organizationId: ORG_A,
+          noeId: id,
+          submissionId: second.submissionId as string,
+        }),
+      ),
+    ).rejects.toThrow("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
     expect(await attemptsOf(id)).toMatchObject([
       { attempt_index: 0, outcome: "failed_worker", outcome_reason: "PARKED_FOR_EXTERNAL_FILING" },
-      { attempt_index: 1, outcome: "submitted", id: second.submissionId, sent: true },
+      { attempt_index: 1, outcome: "queued", id: second.submissionId, sent: false },
     ]);
-    const { rows } = await admin.query(
-      "SELECT state, latest_submission_id FROM noe_record WHERE id=$1",
-      [id],
-    );
-    expect(rows[0]).toMatchObject({
-      state: "SUBMITTED",
-      latest_submission_id: second.submissionId,
-    });
+    expect(await noeRow(id)).toMatchObject({ state: "READY", external_filing_status: null });
+    expect(await eventRows("m23.noe.submitted", "noeId", id)).toHaveLength(0);
   }, 60_000);
 
   it("a notice recorded as filed while a vendor-era attempt is queued: the job (outside: the park; vendor again: the submit worker) ends without transmitting and closes its OWN attempt", async () => {
@@ -1706,48 +1730,43 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     }
   }, 60_000);
 
+  it.todo(
+    "CM-4A re-enables dispatch: runNoeSubmit holds the NOE row (findByIdForUpdate) across a slow macPortal.upload, so a concurrent record / park waits and then loses",
+  );
+
   // Round 3, L1a: the worker read the notice, checked it, then spent a network call on the upload before it wrote anything, so a
   // record / park of the same notice could commit in between and the notice would be transmitted AND recorded as filed. The worker
   // now takes the row's lock with its read and holds it to its commit: the concurrent write waits, and then loses (412).
+  // The processor no longer reaches the upload (dispatch is not authorized, CM-4A), so the transmitting transaction is staged with
+  // the repository calls it made, and the test holds its lock open where the upload used to be. This proves the rival's side only:
+  // when CM-4A re-enables dispatch, restore the variant that drives `runNoeSubmit` with a slow `macPortal.upload` (this test as of
+  // cacc0a9bb), so a worker that drops its `findByIdForUpdate` is caught again.
   it.each(["record", "park"] as const)(
-    "the submit worker holds the NOE row from its read to its commit: a concurrent %s waits for the upload and then loses, so the notice is never transmitted AND filed",
+    "a transmitting transaction holds the NOE row from its read to its commit: a concurrent %s waits for it and then loses, so the notice is never transmitted AND filed",
     async (concurrent) => {
       const vendor = externalFilingService(false);
       const outside = externalFilingService(true);
       const id = await seedNoe(ORG_A, { state: "DRAFT" });
       const queued = await vendor.service.submitNoe(actorOf(ORG_A), id);
 
-      let reachedUpload!: () => void;
-      const atUpload = new Promise<void>((resolve) => {
-        reachedUpload = resolve;
+      let reachedLockHold!: () => void;
+      const atLockHold = new Promise<void>((resolve) => {
+        reachedLockHold = resolve;
       });
-      let finishUpload!: () => void;
-      const uploadMayFinish = new Promise<void>((resolve) => {
-        finishUpload = resolve;
+      let releaseLock!: () => void;
+      const lockMayRelease = new Promise<void>((resolve) => {
+        releaseLock = resolve;
       });
-      const portal = workerDeps.macPortal as NonNullable<M23WorkerDeps["macPortal"]>;
-      const slowDeps: M23WorkerDeps = {
-        ...workerDeps,
-        macPortal: {
-          ...portal,
-          upload: async (input) => {
-            reachedUpload();
-            await uploadMayFinish;
-            return { accepted: true, generatedFileUri: `s3://notices/${input.controlNumber}.x12` };
-          },
+      const transmitting = stageNoeTransmission(
+        ORG_A,
+        id,
+        queued.submissionId as string,
+        async () => {
+          reachedLockHold();
+          await lockMayRelease;
         },
-      };
-      const worker = withOrgContext(
-        handle.db as never,
-        { organizationId: ORG_A, userId: "" },
-        (tx) =>
-          runNoeSubmit(tx as never, slowDeps, {
-            organizationId: ORG_A,
-            noeId: id,
-            submissionId: queued.submissionId as string,
-          }),
       );
-      await atUpload; // the worker has read and checked the notice and is mid-upload
+      await atLockHold; // the transaction has read the notice and holds its row lock where the upload used to be
 
       let outcome = "pending";
       const rival =
@@ -1763,18 +1782,18 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
         },
       );
       await new Promise((resolve) => setTimeout(resolve, 600));
-      const outcomeWhileUploading = outcome;
-      finishUpload(); // always let the worker end, so a failing assertion cannot strand its connection
-      const workerResult = await worker.then(
+      const outcomeWhileLocked = outcome;
+      releaseLock(); // always let the transaction end, so a failing assertion cannot strand its connection
+      const transmittingResult = await transmitting.then(
         () => "done",
         (error: unknown) => String(error),
       );
       await settledRival;
       expect(
-        outcomeWhileUploading,
-        "the concurrent write must wait behind the worker's row lock",
+        outcomeWhileLocked,
+        "the concurrent write must wait behind the transmitting transaction's row lock",
       ).toBe("pending");
-      expect(workerResult).toBe("done");
+      expect(transmittingResult).toBe("done");
       expect(outcome).toBe("VERSION_CONFLICT");
       expect(await noeRow(id)).toMatchObject({ state: "SUBMITTED", external_filing_status: null });
       expect(await eventRows("m23.noe.submitted", "noeId", id)).toHaveLength(1);

@@ -18,6 +18,7 @@ export * from "./claim-void";
 
 // claim read routes (#2 / #3 / #10 / #11 / #12 / #13)
 export * from "./claim-read";
+export * from "./sia-view";
 
 // validation routes (#6 / #14 / #15 / #16 / #17)
 export * from "./validate";

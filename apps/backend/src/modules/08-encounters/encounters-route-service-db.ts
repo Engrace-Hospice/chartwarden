@@ -32,6 +32,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type AdmissionSummary,
   type CarePlanOverdueStatus,
+  type EncounterVisitModality,
   type EvvBracketResolution,
   ForbiddenError,
   type LocalDate,
@@ -49,12 +50,15 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNotNull,
   isNull,
+  lt,
   lte,
   ne,
+  or,
   sql,
 } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
@@ -72,6 +76,7 @@ import {
   promotionHasDraft,
   requireReview,
 } from "./chart-promotion";
+import { seedModalityFor } from "./consumers/seed-modality";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
 import { deriveEvvAtSign } from "./evv-at-sign";
@@ -117,6 +122,13 @@ import {
   getEvvBracketResolver,
   getLatestAssessmentProvider,
 } from "./seams/index";
+import {
+  assertModalityFitsVisitType,
+  confirmedModalityColumns,
+  deliveryViewFields,
+  evvTimesAtSign,
+  planDeliveryAtSign,
+} from "./visit-delivery";
 
 const ENC = schema.encounters;
 const LINK = schema.encounterCarePlanLinks;
@@ -326,6 +338,10 @@ const encounterCols = {
   faceToFaceEncounterId: ENC.faceToFaceEncounterId,
   signedAt: ENC.signedAt,
   cosignedAt: ENC.cosignedAt,
+  visitModality: ENC.visitModality,
+  visitModalityConfirmedAt: ENC.visitModalityConfirmedAt,
+  timeSource: ENC.timeSource,
+  evvBracketState: ENC.evvBracketState,
 } as const;
 
 type EncounterRow = {
@@ -344,6 +360,10 @@ type EncounterRow = {
   faceToFaceEncounterId: string | null;
   signedAt: Date | string | null;
   cosignedAt: Date | string | null;
+  visitModality: EncounterVisitModality | null;
+  visitModalityConfirmedAt: Date | string | null;
+  timeSource: string | null;
+  evvBracketState: string | null;
 };
 
 /** Timestamptz → ISO string (drizzle returns a Date for `withTimezone` columns); mirror the in-memory shape. */
@@ -369,6 +389,7 @@ const toView = (r: EncounterRow): EncounterView => ({
   isF2f: r.encounterType === "face_to_face" || r.faceToFaceEncounterId !== null,
   signedAt: iso(r.signedAt),
   cosignedAt: iso(r.cosignedAt),
+  ...deliveryViewFields(r),
 });
 
 function admissionServiceStart(summary: AdmissionSummary): LocalDate {
@@ -824,20 +845,133 @@ export function createDbEncounterRouteService(
 
   /** GAP-070 — the M18 bracket for the encounter's visit, or null (no visit / nothing bracketed / M18
    *  unreachable). Unreachable reads as "not resolved": EVV is never a sign gate (ADR-0008), and an
-   *  unresolved bracket reports `evv_missing_documented`, so it can never count as EVV-verified. */
+   *  unresolved bracket reports `evv_missing_documented`, so it can never count as EVV-verified.
+   *  `askFailure` (non-null) says the null is "could not ask", not "nothing there": sign must not let a clinician's typed
+   *  times stand in for a bracket M18 may hold (EVV always wins), so it refuses them while the lookup is down. The failure
+   *  is kept (not swallowed) so the 503 sign answers with carries it as its `cause` into the server log. */
   async function resolveEvvBracketFor(
     organizationId: string,
     encounterId: string,
-  ): Promise<EvvBracketResolution | null> {
+  ): Promise<{
+    readonly resolution: EvvBracketResolution | null;
+    readonly askFailure: { readonly cause: unknown } | null;
+  }> {
     const row = await loadRow(organizationId, encounterId);
-    if (!row?.visitId) return null;
+    if (!row?.visitId) return { resolution: null, askFailure: null };
     try {
-      return await getEvvBracketResolver().resolveBracket({
+      const resolution = await getEvvBracketResolver().resolveBracket({
         organizationId,
         visitId: row.visitId,
       });
-    } catch {
-      return null;
+      return { resolution, askFailure: null };
+    } catch (cause) {
+      return { resolution: null, askFailure: { cause } };
+    }
+  }
+
+  /** Is an M18 EVV bracket on file for this encounter? A stored state is the answer; an unsigned row with no
+   *  stored state asks M18 (the same resolution sign will use, so the ceremony and the write agree). */
+  async function evvBracketPresentFor(
+    organizationId: string,
+    r: Pick<EncounterRow, "id" | "status" | "evvBracketState">,
+  ): Promise<boolean> {
+    if (r.evvBracketState !== null) return r.evvBracketState === "evv_present";
+    if (r.status !== "draft" && r.status !== "finalized") return false;
+    const { resolution } = await resolveEvvBracketFor(organizationId, r.id);
+    return deriveEvvAtSign(null, resolution).state === "evv_present";
+  }
+
+  /** The delivery columns sign writes (visit-delivery.ts), resolved over the org clock and timezone. Throws the
+   *  422s BEFORE any write, so a refused sign leaves nothing behind. */
+  async function deliveryColumnsAtSign(
+    t: DbClient,
+    organizationId: string,
+    r: typeof ENC.$inferSelect,
+    args: Parameters<EncounterRouteService["sign"]>[3],
+    evvAtSign: ReturnType<typeof deriveEvvAtSign>,
+    evvAskFailure: { readonly cause: unknown } | null,
+    signerMembershipId: string,
+  ): Promise<Partial<typeof ENC.$inferInsert>> {
+    // "EVV always wins" holds only if M18 was asked. With the lookup down and no stored EVV state, typed times could be
+    // standing in for a bracket that exists (and that nothing reconciles later), so they are refused, retryably; signing
+    // without times is unaffected.
+    if (
+      evvAskFailure !== null &&
+      r.evvBracketState === null &&
+      (args.startedAt !== undefined || args.endedAt !== undefined)
+    ) {
+      throw new EncounterStateError(
+        "EVV_BRACKET_UNAVAILABLE",
+        "the visit's check-in/check-out record could not be reached, so typed visit times cannot be accepted right now; try again in a moment, or sign without times",
+        undefined,
+        { cause: evvAskFailure.cause },
+      );
+    }
+    const timeZone = await organizationTimezone(t, organizationId);
+    const columns = planDeliveryAtSign(
+      args,
+      {
+        discipline: r.discipline,
+        encounterType: r.encounterType,
+        serviceDate: r.serviceDate as LocalDate,
+        visitModalityConfirmedAt: r.visitModalityConfirmedAt,
+      },
+      {
+        signerMembershipId,
+        now: clock(),
+        localDateOf: (instant) => localDateInTimeZone(instant, timeZone) as LocalDate,
+        evvTimes: evvTimesAtSign(r, evvAtSign),
+      },
+    );
+    // A telephonic visit is never counted, so only an in-person / video bracket is held to the one-place-at-a-time rule.
+    if (
+      columns.timeSource === "clinician" &&
+      columns.startedAt !== undefined &&
+      columns.endedAt !== undefined &&
+      (columns.visitModality ?? r.visitModality) !== "telephonic"
+    ) {
+      await assertNoOverlappingVisit(t, r, columns.startedAt, columns.endedAt);
+    }
+    return columns;
+  }
+
+  /** One person is in one place at a time: typed times may not overlap another in-person / video bracket the SAME author
+   *  documented (signed visits on the service date or a day either side, since a visit may cross midnight). The other
+   *  visit is not named: it may be another patient's. One author's typed signs are serialised on a transaction advisory lock
+   *  (org + author), so two racing in the same instant cannot both pass the read: the second waits for the first to commit
+   *  and then sees its row. Only TYPED times are checked: an EVV bracket is a device record and never a sign gate (ADR-0008),
+   *  so one that overlaps a typed bracket signed EARLIER is not detected here, and claim validation does not compare brackets
+   *  either (a known limit, recorded on CW-PI-05). */
+  async function assertNoOverlappingVisit(
+    t: DbClient,
+    r: typeof ENC.$inferSelect,
+    startedAt: Date,
+    endedAt: Date,
+  ): Promise<void> {
+    await t.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m8-visit-bracket:${r.organizationId}:${r.authoredByMembershipId}`}, 0))`,
+    );
+    const [clash] = await t
+      .select({ id: ENC.id })
+      .from(ENC)
+      .where(
+        and(
+          ne(ENC.id, r.id),
+          eq(ENC.authoredByMembershipId, r.authoredByMembershipId),
+          inArray(ENC.status, ["signed", "cosign_pending", "cosigned"]),
+          sql`${ENC.serviceDate} BETWEEN ${r.serviceDate}::date - 1 AND ${r.serviceDate}::date + 1`,
+          isNotNull(ENC.startedAt),
+          lt(ENC.startedAt, endedAt),
+          gt(ENC.endedAt, startedAt),
+          or(isNull(ENC.visitModality), ne(ENC.visitModality, "telephonic")),
+        ),
+      )
+      .limit(1);
+    if (clash) {
+      throw new EncounterStateError(
+        "VISIT_TIME_OVERLAP",
+        "these visit times overlap another visit you documented; correct the times, or sign without times",
+      );
     }
   }
 
@@ -1173,12 +1307,17 @@ export function createDbEncounterRouteService(
   return {
     // ── Encounter reads ────────────────────────────────────────────────────────────────────────────
     async getEncounter(organizationId, encounterId) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const { view, row } = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [r] = await t.select(encounterCols).from(ENC).where(eq(ENC.id, encounterId)).limit(1);
         if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
-        return { ...toView(r), ...(await workspaceFieldsFor(t, organizationId, encounterId)) };
+        return {
+          view: { ...toView(r), ...(await workspaceFieldsFor(t, organizationId, encounterId)) },
+          row: r,
+        };
       });
+      // Resolved AFTER the read tx: the M18 resolver opens its own tenant context (no nesting).
+      return { ...view, evvBracketPresent: await evvBracketPresentFor(organizationId, row) };
     },
     // ── M22 render seam (§4.1 route 31) ────────────────────────────────────────────────────────────
     //
@@ -1357,6 +1496,8 @@ export function createDbEncounterRouteService(
               faceToFaceEncounterId: args.faceToFaceEncounterId ?? null,
               bereavementPlanId: args.bereavementPlanId ?? null,
               status: "draft",
+              // Only a telephonic encounter type implies a modality at creation; confirmed_at stays NULL.
+              visitModality: seedModalityFor({ encounterType: args.encounterType }),
             })
             .returning(),
           "encounter insert returned no row",
@@ -1964,8 +2105,13 @@ export function createDbEncounterRouteService(
     async sign(organizationId, encounterId, actor, args) {
       // GAP-070 — the M18 bracket is resolved BEFORE the write tx (the resolver opens its own tenant
       // context; nesting it would bind the GUC on an already-bound connection).
-      const evvResolution = await resolveEvvBracketFor(organizationId, encounterId);
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const { resolution: evvResolution, askFailure: evvAskFailure } = await resolveEvvBracketFor(
+        organizationId,
+        encounterId,
+      );
+      // The real caller is the audit actor: this UPDATE carries the modality, its confirmer and the documented
+      // times, so it must not be audited with a NULL actor (the confirm route does the same).
+      return withOrgContext(db, { organizationId, userId: actor.userId ?? "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         // GAP-028 — defence in depth behind the route's `is_author` guard: only the author signs.
@@ -2032,6 +2178,15 @@ export function createDbEncounterRouteService(
             stepUpFresh: provenance.stepUpFresh,
             at: args.at,
           });
+          const delivery = await deliveryColumnsAtSign(
+            t,
+            organizationId,
+            r,
+            args,
+            evvAtSign,
+            evvAskFailure,
+            signedByMembershipId,
+          );
           await t
             .update(ENC)
             .set({
@@ -2040,6 +2195,7 @@ export function createDbEncounterRouteService(
               updatedAt: now,
               ...lateColumns,
               ...evvPersistence(evvAtSign),
+              ...delivery,
             })
             .where(eq(ENC.id, encounterId));
           await t.insert(SIG).values({
@@ -2093,6 +2249,15 @@ export function createDbEncounterRouteService(
           at: args.at,
         });
         const requiresCosign = trans.to === "cosign_pending";
+        const delivery = await deliveryColumnsAtSign(
+          t,
+          organizationId,
+          r,
+          args,
+          evvAtSign,
+          evvAskFailure,
+          signedByMembershipId,
+        );
         await t
           .update(ENC)
           .set({
@@ -2101,6 +2266,7 @@ export function createDbEncounterRouteService(
             updatedAt: now,
             ...lateColumns,
             ...evvPersistence(evvAtSign),
+            ...delivery,
           })
           .where(eq(ENC.id, encounterId));
         await t.insert(SIG).values({
@@ -2178,6 +2344,57 @@ export function createDbEncounterRouteService(
     },
 
     // ── Late-entry tier overrides (§2.5 D4) ────────────────────────────────────────────────────────────
+    // ── Legacy confirm (rows signed before migration 1510) ───────────────────────────────────────────────
+    // Writes ONLY the three modality columns on an already-signed row: a deliberate carve-out of
+    // `checkMutableForEdit` (the clinical note is untouched, so no addendum is warranted). The encounter
+    // audit trigger records the write; the actor is the signing user so the audit row names who confirmed.
+    async confirmVisitModality(organizationId, encounterId, actor, args) {
+      return withOrgContext(db, { organizationId, userId: actor.userId ?? "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadEnc(t, encounterId);
+        // GAP-028 — defence in depth behind the route's `is_author` guard: only the author confirms.
+        if (r.authoredByMembershipId !== actor.membershipId) {
+          throw new ForbiddenError(
+            "only the author of an encounter may confirm its visit modality",
+          );
+        }
+        if (r.status !== "signed" && r.status !== "cosign_pending" && r.status !== "cosigned") {
+          throw new EncounterStateError(
+            "ILLEGAL_TRANSITION",
+            "visit modality is confirmed at signing; this encounter is not signed",
+          );
+        }
+        // A ONE-TIME confirmation of an UNCONFIRMED (legacy) visit. Without this an author could flip a
+        // confirmed `telephonic` to `in_person` and unlock the SIA payment. A confirmed mode is final here.
+        const alreadyConfirmed = (): EncounterStateError =>
+          new EncounterStateError(
+            "MODALITY_ALREADY_CONFIRMED",
+            "the delivery mode of this visit is already confirmed and cannot be changed here",
+          );
+        if (r.visitModalityConfirmedAt !== null) throw alreadyConfirmed();
+        assertModalityFitsVisitType(r.encounterType, args.visitModality);
+        const confirmedAt = clock();
+        const columns = confirmedModalityColumns(
+          args.visitModality,
+          actor.membershipId,
+          confirmedAt,
+        );
+        // The loaded row above is a read, not a lock: the guard is repeated in the UPDATE so two concurrent
+        // confirms cannot both win (the loser re-evaluates the predicate after the winner commits, matches
+        // no row, and gets the same 409).
+        const updated = await t
+          .update(ENC)
+          .set({ ...columns, updatedAt: confirmedAt })
+          .where(and(eq(ENC.id, encounterId), isNull(ENC.visitModalityConfirmedAt)))
+          .returning({ id: ENC.id });
+        if (updated.length === 0) throw alreadyConfirmed();
+        return {
+          visitModality: columns.visitModality,
+          visitModalityConfirmedAt: columns.visitModalityConfirmedAt.toISOString(),
+        };
+      });
+    },
+
     async lateEntryOverride(organizationId, encounterId, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;

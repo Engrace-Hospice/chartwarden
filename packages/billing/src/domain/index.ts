@@ -4,3 +4,5 @@
 export * from "./money";
 // D6 / D7 pure ISO calendar-date helpers (epoch-day math; day-of-stay bucketing; last-7-days window).
 export * from "./dates";
+// The one canonical (M8 enum) discipline code every SIA / visit-line caller compares against.
+export * from "./discipline";

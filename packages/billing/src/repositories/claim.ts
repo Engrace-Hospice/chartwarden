@@ -14,7 +14,7 @@
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@chartwarden/db/schema";
 import { ChartWardenError } from "@chartwarden/types";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import type { ClaimAssemblySnapshot } from "../claim-lines/claim-snapshot";
 import type { ClaimPhysicianNpis } from "../claim-lines/physician-npis";
 import type { ClaimState, TypeOfBill } from "../contracts";
@@ -32,9 +32,13 @@ import {
 } from "./db";
 
 const C = schema.claim;
+const SUB = schema.claimSubmission;
 
-/** The states in which the physician / diagnosis snapshot may still change (it follows the NPIs until submission). */
-const SNAPSHOT_MUTABLE_STATES: readonly ClaimState[] = ["draft", "validating", "ready"];
+/**
+ * The states in which the physician / diagnosis snapshot may still change (it follows the NPIs until submission). The SIA
+ * revision writer shares the set: migration 1512's `trg_sia_calculation_insert_guard` accepts a revision in the same states.
+ */
+export const SNAPSHOT_MUTABLE_STATES: readonly ClaimState[] = ["draft", "validating", "ready"];
 const SNAPSHOT_MUTABLE_DB_STATES = SNAPSHOT_MUTABLE_STATES.map((s) => claimStateCodec.toDb(s));
 
 /** The domain-cased `claim` row: identical to `schema.Claim` except `state` is the lowercase `ClaimState`. */
@@ -88,6 +92,12 @@ function toClaimRecord(row: schema.Claim): ClaimRecord {
 export interface ClaimMatchCandidateRow {
   readonly claimId: string;
   readonly claimControlNumber: string;
+  /**
+   * The external patient control numbers the claim's submission attempts were transmitted under (ADR-0053
+   * M23-CM5-T1.2C). An 835's CLP01 echoes the transmitted CLM01, so it is one of these for a claim sent since
+   * then, and `claimControlNumber` only for a historical attempt. Empty when no attempt carries one.
+   */
+  readonly transmittedControlNumbers: readonly string[];
   readonly payerClaimControlNumber: string | null;
   readonly serviceFrom: string;
   readonly serviceTo: string;
@@ -144,9 +154,11 @@ export class ClaimRepository {
   /**
    * WX-PR-012 — M25's 835-to-claim D3 auto-match candidates: claims in this org+provider entity whose
    * `claim_control_number` (CLP01) or `payer_claim_control_number` (CLP07/ICN) matches one of the line's
-   * keys. Returns the UNION of both — `autoMatch`'s own precedence/ambiguity logic (payer-ICN first, then
-   * claim-control-number, each requiring an UNAMBIGUOUS single hit) decides which strategy, if any, binds.
-   * Neither key present → empty (never scans the whole provider entity).
+   * keys, or that were transmitted under the line's CLP01 (a submission attempt's external patient control
+   * number, which the 835 echoes for a claim sent since ADR-0053 M23-CM5-T1.2C and which only
+   * `claim_submission` holds). Returns the UNION — `autoMatch`'s own precedence/ambiguity logic (payer-ICN
+   * first, then control number, each requiring an UNAMBIGUOUS single hit) decides which strategy, if any,
+   * binds. Neither key present → empty (never scans the whole provider entity).
    */
   async findMatchCandidates(
     organizationId: string,
@@ -154,6 +166,19 @@ export class ClaimRepository {
     keys: { readonly payerClaimControlNumber?: string; readonly claimControlNumber?: string },
   ): Promise<ClaimMatchCandidateRow[]> {
     if (!keys.payerClaimControlNumber && !keys.claimControlNumber) return [];
+    const sentUnderLineKey = keys.claimControlNumber
+      ? await this.db
+          .select({ claimId: SUB.claimId })
+          .from(SUB)
+          .where(
+            and(
+              eq(SUB.organizationId, organizationId),
+              eq(SUB.providerEntityId, providerEntityId),
+              eq(SUB.externalPatientControlNumber, keys.claimControlNumber),
+            ),
+          )
+      : [];
+    const sentUnderLineKeyIds = sentUnderLineKey.flatMap((r) => (r.claimId ? [r.claimId] : []));
     const rows = await this.db
       .select({
         claimId: C.id,
@@ -173,10 +198,31 @@ export class ClaimRepository {
               ? eq(C.payerClaimControlNumber, keys.payerClaimControlNumber)
               : undefined,
             keys.claimControlNumber ? eq(C.claimControlNumber, keys.claimControlNumber) : undefined,
+            sentUnderLineKeyIds.length > 0 ? inArray(C.id, sentUnderLineKeyIds) : undefined,
           ),
         ),
       );
-    return rows;
+    if (rows.length === 0) return [];
+    const transmitted = await this.db
+      .select({ claimId: SUB.claimId, controlNumber: SUB.externalPatientControlNumber })
+      .from(SUB)
+      .where(
+        and(
+          eq(SUB.organizationId, organizationId),
+          eq(SUB.providerEntityId, providerEntityId),
+          inArray(
+            SUB.claimId,
+            rows.map((r) => r.claimId),
+          ),
+          isNotNull(SUB.externalPatientControlNumber),
+        ),
+      );
+    const byClaim = new Map<string, string[]>();
+    for (const t of transmitted) {
+      if (!t.claimId || !t.controlNumber) continue;
+      byClaim.set(t.claimId, [...(byClaim.get(t.claimId) ?? []), t.controlNumber]);
+    }
+    return rows.map((r) => ({ ...r, transmittedControlNumbers: byClaim.get(r.claimId) ?? [] }));
   }
 
   /** WX-PR-012 — the claim's `patient_id` only (PR-ledger seeding), narrower than {@link findById}. */
@@ -444,6 +490,43 @@ export class ClaimRepository {
     throw new ChartWardenError(
       "CLAIM_SNAPSHOT_IMMUTABLE",
       `the snapshot of a claim in state '${current.state}' cannot be changed; only a draft, validating or ready claim's can`,
+      409,
+    );
+  }
+
+  /**
+   * Keep the claim's expected payment (`total_expected_payment_cents`: what Medicare is expected to pay — the per-diem lines
+   * plus the SIA add-on) in step with the newest `sia_calculation` revision, so a visit fact or CHC rate that changed after
+   * assembly does not leave a stale number on the claim. A derived projection like {@link refreshSnapshot}: no version bump
+   * (the write-audit trigger records the change), a no-op when nothing changed, and the same state guard — writable while the
+   * claim is DRAFT, VALIDATING or READY and frozen from SUBMITTED onward, guarded in the statement (`state IN (...)`). Returns
+   * whether the row changed (`false` also when the claim does not exist); a claim in a frozen state throws
+   * `CLAIM_EXPECTED_PAYMENT_IMMUTABLE` (409). `expectedCents` must be a non-negative whole number of cents.
+   */
+  async refreshExpectedPayment(id: string, expectedCents: number): Promise<boolean> {
+    if (!Number.isSafeInteger(expectedCents) || expectedCents < 0) {
+      throw new RangeError(
+        `refreshExpectedPayment: expectedCents must be a non-negative integer, got ${expectedCents}`,
+      );
+    }
+    const rows = await this.db
+      .update(C)
+      .set({ totalExpectedPaymentCents: expectedCents, updatedAt: new Date() })
+      .where(
+        and(
+          eq(C.id, id),
+          inArray(C.state, SNAPSHOT_MUTABLE_DB_STATES),
+          ne(C.totalExpectedPaymentCents, expectedCents),
+        ),
+      )
+      .returning({ id: C.id });
+    if (rows.length > 0) return true;
+    const current = await this.findById(id);
+    if (current === null) return false;
+    if (SNAPSHOT_MUTABLE_STATES.includes(current.state)) return false; // unchanged
+    throw new ChartWardenError(
+      "CLAIM_EXPECTED_PAYMENT_IMMUTABLE",
+      `the expected payment of a claim in state '${current.state}' cannot be changed; only a draft, validating or ready claim's can`,
       409,
     );
   }

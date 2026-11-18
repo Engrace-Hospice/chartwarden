@@ -6,6 +6,7 @@ import {
   canonicalRuleKey,
   claimStateCodec,
   repositories,
+  siaViewOf,
   storedRuleKeySpellings,
 } from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/routes/read-service-drizzle.ts — the Drizzle-backed
@@ -658,7 +659,9 @@ export function buildDrizzleM23ReadService(
         const perDiemClass = await new repositories.PerDiemRateCalculationRepository(
           tx,
         ).findByClaim(claimId);
-        const sia = await new repositories.SiaCalculationRepository(tx).findByClaim(claimId);
+        const sia = await new repositories.SiaCalculationRepository(tx).findLatestSiaByClaim(
+          claimId,
+        );
         return {
           ...mapClaimSummary(row),
           electionPeriodIdFrom: row.electionPeriodIdFrom,
@@ -679,14 +682,7 @@ export function buildDrizzleM23ReadService(
             perDiemClass: perDiemClass
               ? perDiemClassPricingView(perDiemClass, { admissionId: row.admissionId })
               : null,
-            sia: sia
-              ? {
-                  windowStart: sia.windowStart,
-                  totalQualifyingMinutes: sia.totalQualifyingMinutes,
-                  siaAddOnCents: sia.siaAddOnCents,
-                  calculatedAt: isoReq(sia.calculatedAt),
-                }
-              : null,
+            sia: sia ? siaViewOf(sia) : null,
           },
           createdAt: isoReq(row.createdAt),
           updatedAt: isoReq(row.updatedAt),

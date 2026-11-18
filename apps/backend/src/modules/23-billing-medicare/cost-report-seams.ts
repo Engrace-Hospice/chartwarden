@@ -74,8 +74,9 @@ export function buildM23ClaimLineReader(db: DbClient): ClaimLineReader {
 
 /** The M23 → M25 835-to-claim match seam (WX-PR-012). Opaque in the M1 registry (`unknown`); M25 casts to
  *  its own `ClaimMatchCandidateProvider` consumer view. `candidatesForLine` is the D3 auto-match candidate
- *  set (claim-control-number / payer-ICN exact matches only — M25's pure `autoMatch` decides which, if
- *  any, strategy binds); `patientIdForClaim` resolves a matched claim's patient id (WX-PR-012 PR-ledger
+ *  set (claim-control-number / payer-ICN exact matches only — `keys.claimControlNumber` is the line's
+ *  CLP01, which may be the claim's internal number or an external patient control number it was
+ *  transmitted under; M25's pure `autoMatch` decides which, if any, strategy binds); `patientIdForClaim` resolves a matched claim's patient id (WX-PR-012 PR-ledger
  *  seeding). PHI: `patientIdForClaim` returns a patient id, `candidatesForLine` does not. */
 export interface ClaimSubmissionReader {
   candidatesForLine(
