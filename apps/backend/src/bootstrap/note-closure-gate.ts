@@ -422,7 +422,9 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
       knownPolicies.remember(organizationId, policy, asOfMs);
       return policy;
     } catch (error) {
-      const stale = knownPolicies.usableAsStale(organizationId, asOfMs);
+      // Judged NOW, not at the request's start: the read just spent up to its 5 s deadline, and a policy that was fresh when the request
+      // began must not be served once it is older than the stale window (60 s worst case, as documented), only 65 s.
+      const stale = knownPolicies.usableAsStale(organizationId, now().getTime());
       if (stale === undefined) throw error;
       reportFailure({ organizationId, error, servedStale: true }, asOfMs);
       return stale;

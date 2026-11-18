@@ -881,6 +881,26 @@ describe("the gate - a hung evaluation cannot poison a member (deadline)", () =>
     expect(h.onFailure).toHaveBeenCalledWith(expect.objectContaining({ servedStale: true }));
   });
 
+  it("judges the stale bound when the read TIMES OUT, not when the request began (a policy that has aged past the bound meanwhile is refused 503)", async () => {
+    const { scheduled, timers } = fakeTimers();
+    let hang = false;
+    const never = new Promise<{ mode: DocumentationObligationMode }>(() => {});
+    const h = harness({
+      timers,
+      policy: () => (hang ? never : Promise.resolve({ mode: "warn" as const })),
+    });
+    await h.gate.assertMayCall(request()); // read at t0
+    hang = true;
+    h.advance(NOTE_CLOSURE_POLICY_STALE_MS - 1_000); // the request starts with the remembered policy still inside the bound
+    const second = refusalOf(h.gate.assertMayCall(request()));
+    await vi.waitFor(() => expect(scheduled).toHaveLength(1));
+    h.advance(5_000); // ... and the 5 s deadline fires after it has aged past the bound
+    scheduled[0]?.callback();
+    const error = await second;
+    expect(error.code).toBe(NOTE_CLOSURE_UNAVAILABLE_CODE);
+    expect(error.statusCode).toBe(503);
+  });
+
   it("a late answer from a call that already timed out is ignored (no throw, no effect on the next request)", async () => {
     const { scheduled, timers } = fakeTimers();
     const slow = deferredEvaluation();
@@ -949,9 +969,16 @@ describe("the gate - refusals leave evidence that the control enforces (throttle
     for (let i = 0; i < NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND; i++) {
       await refusalOf(over.gate.assertMayCall(request()));
     }
-    const reportedBefore = over.onRefusal.mock.calls.length;
     await expect(over.gate.assertMayCall(request())).rejects.toBeInstanceOf(RateLimitedError);
-    expect(over.onRefusal.mock.calls).toHaveLength(reportedBefore);
+    // The report throttle (30 s) swallows every call after the first within the interval, so comparing call counts right after the 429
+    // proves nothing. Read the COUNT instead: after the interval, the next refusal's report carries the 19 held back + itself (20); a
+    // 429 that were counted as a refusal would make it 21.
+    over.advance(NOTE_CLOSURE_REFUSAL_LOG_INTERVAL_MS);
+    await refusalOf(over.gate.assertMayCall(request()));
+    expect(over.onRefusal).toHaveBeenLastCalledWith({
+      organizationId: ORG,
+      refused: NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND,
+    });
   });
 });
 
