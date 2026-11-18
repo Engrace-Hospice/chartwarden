@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { CH, DEFAULT_SCOPE } from "@chartwarden/x12-837-client";
 import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
+import type { ParsedRemittanceAdvice, X12835WorkerClient } from "@chartwarden/x12-835-client";
 import { describe, expect, it } from "vitest";
 import {
   MAX_REFUSALS_PER_REMITTANCE,
@@ -16,6 +17,7 @@ import type {
   ReceiveAdviceInput,
   ReceiveAdviceResult,
 } from "../src/modules/25-remittance/ingest/service";
+import { buildDrizzleM25IngestService } from "../src/modules/25-remittance/ingest/service-drizzle";
 import { buildRawEdi } from "./_edi835-fixture";
 
 const ORG = DEFAULT_SCOPE.organizationId;
@@ -38,6 +40,7 @@ function cursorStore(initial: string | null = null) {
       initial,
     );
   const refusals = new Map<string, { count: number; quarantined: boolean }>();
+  const reasonCodes: string[] = [];
   const store: RemittanceCursorStore = {
     get: async (k) => saved.get(keyOf(k)) ?? null,
     set: async (k, c) => {
@@ -50,7 +53,8 @@ function cursorStore(initial: string | null = null) {
       const cur = refusals.get(ref);
       if (cur && !cur.quarantined) refusals.set(ref, { count: 0, quarantined: false });
     },
-    recordRefusal: async (k, id, sha, _code, cap) => {
+    recordRefusal: async (k, id, sha, code, cap) => {
+      reasonCodes.push(code);
       const ref = `${keyOf(k)}|${id}|${sha}`;
       const count = (refusals.get(ref)?.count ?? 0) + 1;
       const next = { count, quarantined: count >= cap };
@@ -58,11 +62,16 @@ function cursorStore(initial: string | null = null) {
       return next;
     },
   };
-  return { store, current: () => [...saved.values()][0] ?? null };
+  return { store, reasonCodes, current: () => [...saved.values()][0] ?? null };
 }
 
 function ingestDouble(
-  opts: { malformedFor?: string; cause?: "content" | "environment" | undefined } = {},
+  opts: {
+    malformedFor?: string;
+    cause?: "content" | "environment" | undefined;
+    unsupportedFor?: string;
+    heldFor?: { readonly suffix: string; readonly result: ReceiveAdviceResult };
+  } = {},
 ) {
   const seen = new Map<string, string>();
   const received: ReceiveAdviceInput[] = [];
@@ -74,6 +83,16 @@ function ingestDouble(
         input: ReceiveAdviceInput,
       ): Promise<ReceiveAdviceResult> {
         received.push(input);
+        if (opts.unsupportedFor && input.minioObjectKey.endsWith(opts.unsupportedFor)) {
+          return {
+            outcome: "unsupported",
+            code: "X12_835_UNSUPPORTED_ROUTING",
+            reason: "synthetic group routing",
+          };
+        }
+        if (opts.heldFor && input.minioObjectKey.endsWith(opts.heldFor.suffix)) {
+          return opts.heldFor.result;
+        }
         if (opts.malformedFor && input.minioObjectKey.endsWith(opts.malformedFor)) {
           return {
             outcome: "malformed",
@@ -99,15 +118,18 @@ function setup(
     cursor?: string | null;
     malformedFor?: string;
     cause?: "content" | "environment" | undefined;
+    unsupportedFor?: string;
+    heldFor?: { readonly suffix: string; readonly result: ReceiveAdviceResult };
   } = {},
 ) {
   const far = new InMemoryClearinghouse();
   const cursors = cursorStore(over.cursor ?? null);
-  const ingest = ingestDouble(
-    "cause" in over
-      ? { malformedFor: over.malformedFor, cause: over.cause }
-      : { malformedFor: over.malformedFor },
-  );
+  const ingest = ingestDouble({
+    malformedFor: over.malformedFor,
+    ...("cause" in over ? { cause: over.cause } : {}),
+    ...(over.unsupportedFor ? { unsupportedFor: over.unsupportedFor } : {}),
+    ...(over.heldFor ? { heldFor: over.heldFor } : {}),
+  });
   const deps = {
     transport: far,
     vendor: "in_memory",
@@ -299,6 +321,63 @@ describe("pullRemittances", () => {
     }
   });
 
+  it("quarantines a file with an unsupported functional group under its own reason, so it cannot pin the cursor forever", async () => {
+    const { far, deps, cursors } = setup({ unsupportedFor: "ERA-3" });
+    for (const n of [1, 2, 3, 4]) {
+      await far.control.deliverRemittance(`ERA-${n}`, buildRawEdi(String(n), "0001"));
+    }
+
+    for (let i = 1; i < MAX_REFUSALS_PER_REMITTANCE; i++) {
+      const transient = await pullRemittances(deps, ORG);
+      expect(transient.failures[0]).toContain("ERA-3 has unsupported X12 group routing");
+      expect(transient.quarantined).toEqual([]);
+      expect(cursors.current()).toBe("2"); // retried, not yet past it
+    }
+    const final = await pullRemittances(deps, ORG);
+
+    expect(final.failures).toEqual([]);
+    expect(final.quarantined).toEqual([
+      `org ${ORG} provider ${PE}: remittance ERA-3 REMITTANCE_QUARANTINED`,
+    ]);
+    expect(final.queued).toBe(1); // ERA-3 is skipped, ERA-4 behind it is received
+    expect(cursors.current()).toBe("4"); // the chain moved past the unroutable file
+    expect(new Set(cursors.reasonCodes)).toEqual(new Set(["UNSUPPORTED_ROUTING"]));
+  });
+
+  it("reports a held file (legacy identity, Claim.MD stage match) apart from duplicates, with an id and a code only", async () => {
+    const heldCases = [
+      {
+        result: {
+          outcome: "held_duplicate",
+          adviceId: "adv-held",
+          existingAdviceId: "adv-legacy",
+          reason: "LEGACY_IDENTITY_AMBIGUOUS",
+        },
+        code: "LEGACY_IDENTITY_AMBIGUOUS",
+      },
+      {
+        result: {
+          outcome: "review_required",
+          stageId: "stage-1",
+          reason: "CLAIMMD_ERA_STAGE_MATCH",
+        },
+        code: "CLAIMMD_ERA_STAGE_MATCH",
+      },
+    ] as const;
+    for (const { result: heldResult, code } of heldCases) {
+      const { far, deps, cursors } = setup({ heldFor: { suffix: "ERA-2", result: heldResult } });
+      await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+      await far.control.deliverRemittance("ERA-2", buildRawEdi("2", "0001"));
+
+      const result = await pullRemittances(deps, ORG);
+
+      expect(result.held).toEqual([`org ${ORG} provider ${PE}: remittance ERA-2 ${code}`]);
+      expect(result).toMatchObject({ queued: 1, duplicates: 0, failures: [], quarantined: [] });
+      expect(cursors.current()).toBe("2"); // received, so the cursor moves on
+      expect(JSON.stringify(result)).not.toContain("ISA*"); // no file content
+    }
+  });
+
   it("retries a re-offered file whose content changed (new hash) instead of treating it as quarantined", async () => {
     const { deps, cursors, ingest } = setup({ malformedFor: "ERA-1" });
     const offer = { body: buildRawEdi("1", "0001") };
@@ -402,6 +481,142 @@ describe("pullRemittances", () => {
 
     expect(result.failures).toHaveLength(1);
     expect(cursors.current()).toBe("0");
+  });
+});
+
+// receiveAdvice classifies each payee refusal as the file's own content (the pull may quarantine it) or tenant
+// configuration (transient: never counted). The refusals below return before the database, so the real service runs
+// against no db, exactly as payee-check.test.ts does.
+describe("pullRemittances through the real receive: payee refusals and the quarantine cap", () => {
+  const TENANT_NPI = "1234567893";
+  const OTHER_NPI = "1999999984";
+  const INVALID_NPI = "1234567890";
+  const TENANT_TIN = "987654321";
+
+  function payeeAdvice(payee: ParsedRemittanceAdvice["payee"]): ParsedRemittanceAdvice {
+    return {
+      payerProgram: "medicare",
+      interchangeControlNumber: "000000001",
+      transactionSetControlNumber: "0001",
+      paymentMethod: "eft",
+      totalPaymentAmount: 0,
+      paymentEffectiveDate: "2026-06-15",
+      productionDate: "2026-06-15",
+      payee,
+      claims: [],
+    };
+  }
+
+  function realReceive(
+    payee: ParsedRemittanceAdvice["payee"],
+    config: { npi: () => Promise<string | null>; tin: () => Promise<string | null> },
+  ) {
+    const client: X12835WorkerClient = {
+      parse835: async () => ({ ok: true, value: payeeAdvice(payee) }),
+      parse277ca: async () => {
+        throw new Error("unused");
+      },
+    };
+    const far = new InMemoryClearinghouse();
+    const cursors = cursorStore();
+    const deps = {
+      transport: far,
+      vendor: "in_memory",
+      contexts: { providerEntitiesFor: async () => [PE], contextFor: async () => ctx },
+      payers: { medicarePayerId: async () => PAYER },
+      cursors: cursors.store,
+      ingest: buildDrizzleM25IngestService({} as never, {
+        client,
+        payeeNpi: config.npi,
+        payeeTin: config.tin,
+      }),
+    };
+    return { far, deps, cursors };
+  }
+
+  const tenantConfig = {
+    npi: async () => TENANT_NPI as string | null,
+    tin: async () => TENANT_TIN as string | null,
+  };
+
+  it.each([
+    ["an invalid payee NPI", { idQualifier: "XX", id: INVALID_NPI }, tenantConfig],
+    ["a payee with no NPI (N103 XX)", { idQualifier: "FI", id: "123456789" }, tenantConfig],
+    [
+      "a REF*TJ that is not the tenant's",
+      { idQualifier: "XX", id: TENANT_NPI, taxId: "111111111" },
+      tenantConfig,
+    ],
+    [
+      "a REF*TJ that is not a 9-digit TIN",
+      { idQualifier: "XX", id: TENANT_NPI, taxId: "12-34" },
+      tenantConfig,
+    ],
+  ])("quarantines %s after the cap (the file's own content) and moves on", async (_name, payee, config) => {
+    const { far, deps, cursors } = realReceive(
+      { name: "Synthetic Hospice", ...payee } as ParsedRemittanceAdvice["payee"],
+      config,
+    );
+    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+
+    for (let i = 1; i < MAX_REFUSALS_PER_REMITTANCE; i++) {
+      const transient = await pullRemittances(deps, ORG);
+      expect(transient.failures[0]).toContain("ERA-1 refused at receive");
+      expect(transient.quarantined).toEqual([]);
+      expect(cursors.current()).toBeNull();
+    }
+    const final = await pullRemittances(deps, ORG);
+
+    expect(final.failures).toEqual([]);
+    expect(final.quarantined).toEqual([
+      `org ${ORG} provider ${PE}: remittance ERA-1 REMITTANCE_QUARANTINED`,
+    ]);
+    expect(cursors.current()).toBe("1");
+  });
+
+  it.each([
+    [
+      "the tenant NPI cannot be read",
+      { idQualifier: "XX", id: TENANT_NPI },
+      {
+        npi: async (): Promise<string | null> => {
+          throw new Error("synthetic outage");
+        },
+        tin: tenantConfig.tin,
+      },
+    ],
+    ["the tenant has no NPI on file", { idQualifier: "XX", id: TENANT_NPI }, {
+      npi: async (): Promise<string | null> => null,
+      tin: tenantConfig.tin,
+    }],
+    [
+      "the payee NPI is valid but not the tenant's",
+      { idQualifier: "XX", id: OTHER_NPI },
+      tenantConfig,
+    ],
+    [
+      "the tenant TIN cannot be read",
+      { idQualifier: "XX", id: TENANT_NPI, taxId: TENANT_TIN },
+      {
+        npi: tenantConfig.npi,
+        tin: async (): Promise<string | null> => {
+          throw new Error("synthetic outage");
+        },
+      },
+    ],
+  ])("never counts a refusal toward the cap when %s (tenant configuration, transient)", async (_name, payee, config) => {
+    const { far, deps, cursors } = realReceive(
+      { name: "Synthetic Hospice", ...payee } as ParsedRemittanceAdvice["payee"],
+      config,
+    );
+    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+
+    for (let i = 0; i < MAX_REFUSALS_PER_REMITTANCE + 3; i++) {
+      const result = await pullRemittances(deps, ORG);
+      expect(result.failures[0]).toContain("ERA-1 refused at receive");
+      expect(result.quarantined).toEqual([]);
+    }
+    expect(cursors.current()).toBeNull(); // never advanced past it
   });
 });
 
@@ -569,6 +784,7 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
       duplicates: 0,
       unsupported: 0,
       quarantined: [],
+      held: [],
       failures: [],
     });
     expect(touched).toBe(0);

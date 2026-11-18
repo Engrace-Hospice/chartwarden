@@ -118,7 +118,8 @@ export async function runRemittancePullCron(deps: M25WorkerDeps): Promise<void> 
   const failures: string[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
     const result = await pullRemittances(pull, organizationId);
-    failures.push(...result.failures, ...result.quarantined);
+    // A held file (an operator must review it) is as visible to ops as a quarantined one; ids and a code only.
+    failures.push(...result.failures, ...result.quarantined, ...result.held);
   }
   if (failures.length > 0) throw new Error(`remittance pull failed: ${failures.join("; ")}`);
 }
