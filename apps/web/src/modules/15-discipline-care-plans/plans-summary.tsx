@@ -3,6 +3,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -39,7 +40,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Notice,
   alertStyle,
   columnStyle,
@@ -132,10 +132,12 @@ export function DisciplinePlansSummary(): JSX.Element {
         />
       ) : (
         summaries.map((s) => (
-          <Card
+          <Panel
+            stack
+            headingLevel={3}
             key={s.planId}
             title={kindLabel(s.kind)}
-            actions={<span style={mutedStyle}>{kindRegulation(s.kind)}</span>}
+            action={<span style={mutedStyle}>{kindRegulation(s.kind)}</span>}
           >
             <span style={mutedStyle}>Plan status: {humanize(s.status)}</span>
 
@@ -220,7 +222,7 @@ export function DisciplinePlansSummary(): JSX.Element {
                 </tbody>
               </table>
             )}
-          </Card>
+          </Panel>
         ))
       )}
     </div>

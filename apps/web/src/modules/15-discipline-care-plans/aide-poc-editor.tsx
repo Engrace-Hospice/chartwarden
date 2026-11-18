@@ -3,6 +3,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   StickyFooterActions,
   t,
@@ -42,7 +43,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SelectField,
@@ -269,7 +269,7 @@ export function AidePocEditor(): JSX.Element {
         </p>
       ) : null}
 
-      <Card title="Assignment">
+      <Panel stack headingLevel={3} title="Assignment">
         <SummaryGrid>
           <Field label="Assigned aide" value={shortId(plan.aideMembershipId)} mono />
           <Field label="Supervising RN" value={shortId(plan.supervisingRnMembershipId)} mono />
@@ -282,9 +282,9 @@ export function AidePocEditor(): JSX.Element {
           The aide and supervising RN bindings are set at bootstrap and moved by an IDG decision;
           they are not editable from this screen.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title="Aide tasks">
+      <Panel stack headingLevel={3} title="Aide tasks">
         {plan.interventions.length === 0 ? (
           <span style={mutedStyle}>No tasks on this plan yet.</span>
         ) : (
@@ -352,9 +352,9 @@ export function AidePocEditor(): JSX.Element {
             Add task
           </Button>
         </div>
-      </Card>
+      </Panel>
 
-      <Card title="Goals">
+      <Panel stack headingLevel={3} title="Goals">
         {plan.goals.length === 0 ? (
           <span style={mutedStyle}>No goals on this plan yet.</span>
         ) : (
@@ -433,7 +433,7 @@ export function AidePocEditor(): JSX.Element {
           A discipline goal refines an IPOC problem owned by the interdisciplinary care plan (M7);
           the problem id comes from that plan.
         </span>
-      </Card>
+      </Panel>
 
       <StickyFooterActions>
         <Link

@@ -3,6 +3,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   WorkQueueLayout,
   t,
@@ -28,7 +29,6 @@ import { MembershipLookupField, ProviderEntityLookupField } from "../../shell/en
 import { type HourRatioView, errorMessage, getHourRatio, writeHeaders } from "./discipline-api";
 import { RATIO_STATUS_TONE, hours, humanize, pct, toneOf } from "./discipline-status";
 import {
-  Card,
   Field,
   FilterRow,
   Modal,
@@ -148,9 +148,11 @@ export function VolunteerHourRatio(): JSX.Element {
             </div>
           ) : (
             <div style={contentStyle}>
-              <Card
+              <Panel
+                stack
+                headingLevel={3}
                 title="418.78(e) ratio"
-                actions={
+                action={
                   <StatusPill
                     label={humanize(ratio.status)}
                     tone={toneOf(RATIO_STATUS_TONE, ratio.status)}
@@ -183,13 +185,13 @@ export function VolunteerHourRatio(): JSX.Element {
                   <Field label="Fiscal year" value={String(ratio.fiscalYear)} />
                   <Field label="Provider entity" value={ratio.providerEntityId} mono />
                 </SummaryGrid>
-              </Card>
+              </Panel>
             </div>
           )
         }
         detail={
           <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
-            <Card title="Bands">
+            <Panel stack headingLevel={3} title="Bands">
               {BANDS.map((b) => (
                 <div
                   key={b.label}
@@ -208,14 +210,14 @@ export function VolunteerHourRatio(): JSX.Element {
                 An unavailable ratio never pages: alerting on a missing denominator would train the
                 recipients to ignore a real breach.
               </span>
-            </Card>
-            <Card title="Numerator sources">
+            </Panel>
+            <Panel stack headingLevel={3} title="Numerator sources">
               <span style={mutedStyle}>
                 Signed volunteer visits are ledgered nightly; administrative volunteer time is its
                 own typed source; a manual adjustment is the audited correction path and is the only
                 entry that may carry negative minutes.
               </span>
-            </Card>
+            </Panel>
           </div>
         }
         fullPageScroll

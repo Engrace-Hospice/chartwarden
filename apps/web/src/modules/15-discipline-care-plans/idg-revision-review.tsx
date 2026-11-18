@@ -3,6 +3,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -44,7 +45,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SummaryGrid,
@@ -164,9 +164,11 @@ export function IdgRevisionReview(): JSX.Element {
         </p>
       ) : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title={`Version ${version.sequence}`}
-        actions={
+        action={
           <StatusPill
             label={humanize(version.status)}
             tone={toneOf(VERSION_STATUS_TONE, version.status)}
@@ -206,9 +208,9 @@ export function IdgRevisionReview(): JSX.Element {
               .join(" · ")}
           </span>
         ) : null}
-      </Card>
+      </Panel>
 
-      <Card title="Most recently authored goals">
+      <Panel stack headingLevel={3} title="Most recently authored goals">
         {recentGoals.length === 0 ? (
           <span style={mutedStyle}>No goals on this plan.</span>
         ) : (
@@ -240,9 +242,9 @@ export function IdgRevisionReview(): JSX.Element {
             </table>
           </TableScroll>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Most recently authored interventions">
+      <Panel stack headingLevel={3} title="Most recently authored interventions">
         {recentInterventions.length === 0 ? (
           <span style={mutedStyle}>No interventions on this plan.</span>
         ) : (
@@ -277,7 +279,7 @@ export function IdgRevisionReview(): JSX.Element {
         <span style={{ ...mutedStyle, color: t.onSurfaceVariant }}>
           Ordered by authorship time; the plan read carries no per-mutation IDG attribution.
         </span>
-      </Card>
+      </Panel>
     </div>
   );
 }

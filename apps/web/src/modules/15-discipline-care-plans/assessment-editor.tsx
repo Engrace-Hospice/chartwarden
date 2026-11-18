@@ -3,6 +3,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   isoToLocalInput,
   localInputToIso,
@@ -44,7 +45,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SelectField,
@@ -304,9 +304,11 @@ export function AssessmentEditor(): JSX.Element {
       ) : null}
 
       {assessment ? (
-        <Card
+        <Panel
+          stack
+          headingLevel={3}
           title="Record"
-          actions={
+          action={
             <StatusPill
               label={humanize(assessment.status)}
               tone={toneOf(ASSESSMENT_STATUS_TONE, assessment.status)}
@@ -338,10 +340,14 @@ export function AssessmentEditor(): JSX.Element {
               . Colleagues without the matching consent do not receive it at all.
             </Notice>
           ) : null}
-        </Card>
+        </Panel>
       ) : null}
 
-      <Card title={creating ? "New assessment" : signed ? "Content (signed record)" : "Content"}>
+      <Panel
+        stack
+        headingLevel={3}
+        title={creating ? "New assessment" : signed ? "Content (signed record)" : "Content"}
+      >
         {creating ? (
           <>
             <div
@@ -438,7 +444,7 @@ export function AssessmentEditor(): JSX.Element {
             </Button>
           </>
         ) : null}
-      </Card>
+      </Panel>
     </div>
   );
 }

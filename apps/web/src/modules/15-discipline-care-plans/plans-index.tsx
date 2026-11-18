@@ -2,6 +2,7 @@ import {
   Button,
   EmptyState,
   LoadingSpinner,
+  Panel,
   PatientWorkspaceLayout,
   StatusPill,
   t,
@@ -41,7 +42,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SummaryGrid,
@@ -193,11 +193,12 @@ export function DisciplinePlansIndex(): JSX.Element {
               const presentation = overviewPresentation(kind, plan);
               const versionIntent = plan ? openVersionIntent(plan) : null;
               return (
-                <Card
+                <Panel
+                  stack
                   key={kind}
                   title={kindLabel(kind)}
                   headingLevel={2}
-                  actions={
+                  action={
                     plan ? (
                       <StatusPill label={presentation.statusLabel} tone={presentation.statusTone} />
                     ) : (
@@ -308,7 +309,7 @@ export function DisciplinePlansIndex(): JSX.Element {
                       <span style={mutedStyle}>{presentation.description}</span>
                     </div>
                   )}
-                </Card>
+                </Panel>
               );
             })}
           </div>

@@ -2,6 +2,7 @@ import {
   Button,
   EmptyState,
   LoadingSpinner,
+  Panel,
   PatientWorkspaceLayout,
   StatusPill,
   t,
@@ -60,7 +61,6 @@ import {
   versionRowActions,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SummaryGrid,
@@ -267,7 +267,7 @@ export function DisciplinePlanWorkspace({
 
           {renderExtras?.(plan, load)}
 
-          <Card title="Goals" headingLevel={2}>
+          <Panel stack title="Goals" headingLevel={2}>
             {plan.goals.length === 0 ? (
               <span style={mutedStyle}>No goals on this plan.</span>
             ) : (
@@ -309,9 +309,9 @@ export function DisciplinePlanWorkspace({
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
 
-          <Card title="Interventions" headingLevel={2}>
+          <Panel stack title="Interventions" headingLevel={2}>
             {plan.interventions.length === 0 ? (
               <span style={mutedStyle}>No interventions on this plan.</span>
             ) : (
@@ -348,9 +348,9 @@ export function DisciplinePlanWorkspace({
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
 
-          <Card title="Assessments" headingLevel={2}>
+          <Panel stack title="Assessments" headingLevel={2}>
             {plan.assessments.length === 0 ? (
               <span style={mutedStyle}>No assessments captured on this plan.</span>
             ) : (
@@ -404,12 +404,13 @@ export function DisciplinePlanWorkspace({
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
 
-          <Card
+          <Panel
+            stack
             title="Version chain"
             headingLevel={2}
-            actions={
+            action={
               openVersion &&
               ((openVersion.status === "draft" && canFinalize) ||
                 (openVersion.status === "in_review" && canSign)) ? (
@@ -504,7 +505,7 @@ export function DisciplinePlanWorkspace({
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
         </section>
       </div>
 

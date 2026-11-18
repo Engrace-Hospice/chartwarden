@@ -83,22 +83,6 @@ export function useUnsavedChangesWarning(dirty: boolean): () => boolean {
 }
 
 // ── card + section chrome ──────────────────────────────────────────────────────────────────────────────
-export const cardStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: t.space2,
-  background: t.surfaceLowest,
-  border: `1px solid ${t.cardBorder}`,
-  borderRadius: t.radiusLg,
-  padding: `${t.space4} ${t.space5}`,
-};
-export const cardTitleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontSans,
-  fontSize: "1rem",
-  fontWeight: 600,
-  color: t.onSurface,
-};
 export const pageTitleStyle: CSSProperties = {
   // Matches PageHeader's own title (the redesign's bold sans heading).
   margin: 0,
@@ -198,37 +182,6 @@ export function Field({
         {value}
       </span>
     </div>
-  );
-}
-
-/** A titled card — the aside/panel atom. */
-export function Card({
-  title,
-  actions,
-  children,
-  headingLevel = 3,
-}: {
-  title: string;
-  actions?: ReactNode;
-  children: ReactNode;
-  headingLevel?: 2 | 3;
-}): JSX.Element {
-  const Heading = headingLevel === 2 ? "h2" : "h3";
-  return (
-    <section style={cardStyle}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: t.space3,
-        }}
-      >
-        <Heading style={cardTitleStyle}>{title}</Heading>
-        {actions}
-      </div>
-      {children}
-    </section>
   );
 }
 

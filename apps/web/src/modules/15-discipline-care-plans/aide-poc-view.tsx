@@ -1,5 +1,6 @@
 import {
   Button,
+  Panel,
   StatusPill,
   localInputToIso,
   nowLocalInput,
@@ -36,7 +37,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Modal,
   Notice,
@@ -239,9 +239,11 @@ function SupervisoryLedger({
 
   return (
     <>
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="RN supervisory attestations"
-        actions={
+        action={
           <Button tone="secondary" type="button" onClick={() => setOpen(true)}>
             Record supervisory visit
           </Button>
@@ -314,7 +316,7 @@ function SupervisoryLedger({
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
       {open ? (
         <SupervisoryVisitModal
           plan={plan}

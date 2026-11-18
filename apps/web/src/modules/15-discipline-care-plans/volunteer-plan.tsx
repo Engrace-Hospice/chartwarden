@@ -1,4 +1,4 @@
-import { Button, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import { Button, Panel, StatusPill, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the VOLUNTEER PLAN VIEW + ASSIGNMENT MODAL (§5.1 #9/#10).
 //
 // The 42 CFR §418.78 surface over the shared plan spine, plus the coordinator's assignment ledger and the
@@ -32,7 +32,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Modal,
   Notice,
   TextAreaField,
@@ -233,9 +232,11 @@ function AssignmentLedger({
 
   return (
     <>
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Volunteer assignments"
-        actions={
+        action={
           <Button tone="secondary" type="button" onClick={() => setOpen(true)}>
             Assign volunteer
           </Button>
@@ -324,7 +325,7 @@ function AssignmentLedger({
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
 
       {open ? (
         <AssignmentModal

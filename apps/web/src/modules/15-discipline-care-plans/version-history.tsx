@@ -4,6 +4,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   PatientWorkspaceLayout,
   StatusPill,
   t,
@@ -47,7 +48,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   SummaryGrid,
   TableScroll,
@@ -184,7 +184,7 @@ export function DisciplineVersionHistory(): JSX.Element {
             </p>
           ) : null}
 
-          <Card title="Versions" headingLevel={2}>
+          <Panel stack title="Versions" headingLevel={2}>
             {rows.length === 0 ? (
               <span style={mutedStyle}>This plan has no versions yet.</span>
             ) : (
@@ -241,10 +241,10 @@ export function DisciplineVersionHistory(): JSX.Element {
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
 
           {selected ? (
-            <Card title={`Version ${selected.sequence} — sealed snapshot`} headingLevel={2}>
+            <Panel stack title={`Version ${selected.sequence} — sealed snapshot`} headingLevel={2}>
               <SummaryGrid>
                 <Field label="Status" value={humanize(selected.status)} />
                 <Field label="Finalized" value={dateTime(selected.finalizedAt)} />
@@ -343,11 +343,15 @@ export function DisciplineVersionHistory(): JSX.Element {
               >
                 {JSON.stringify(selected.stateSnapshot ?? {}, null, 2)}
               </pre>
-            </Card>
+            </Panel>
           ) : null}
 
           {selected && compare ? (
-            <Card title={`Diff — v${compare.sequence} → v${selected.sequence}`} headingLevel={2}>
+            <Panel
+              stack
+              title={`Diff — v${compare.sequence} → v${selected.sequence}`}
+              headingLevel={2}
+            >
               {diff.length === 0 ? (
                 <span style={mutedStyle}>
                   The two sealed snapshots are identical at the top level.
@@ -384,7 +388,7 @@ export function DisciplineVersionHistory(): JSX.Element {
               >
                 Clear comparison by reloading
               </Link>
-            </Card>
+            </Panel>
           ) : null}
         </section>
       </div>
