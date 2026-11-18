@@ -138,6 +138,22 @@ export const HOPE_SFV_COMPLETION_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/**
+ * M8 `POST /encounters/closure-overrides` and `POST /encounters/closure-overrides/:overrideId/revoke` (ADR-0113 D7), ONE bucket for both:
+ * 10/min/user and 100/min/org. A refused grant (the grantor's own block) or refused revoke (outside the revoker's scope) writes an immutable
+ * compliance-retention `m8.encounter.closure_override_denied` audit row per request, and fresh Idempotency-Keys defeat the replay cache,
+ * so this caps how many such rows one supervisor can add: at most 10 a minute, where a supervisor lifts a handful of blocks an hour (a
+ * retry after a validation 422 still counts and is nowhere near 10 a minute). 100/min/org leaves room for every supervisor of a large
+ * agency lifting blocks at the start of a shift. Fail-OPEN: an availability control; lifting a block that stops a clinician from seeing
+ * patients must not be refused because the limiter's store is down (the grant still needs a fresh step-up and writes its own audit event).
+ */
+export const CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 10,
+  perOrg: 100,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 /** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */
 export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 20,

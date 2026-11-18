@@ -4,6 +4,7 @@
 // @chartwarden/types from T01); HearthNote Layer 1 (T05), cosignature workflow (T06), late-entry tiers
 // (T07), seams (T08), routes (T09) all compose over this pure core.
 import type { DbClient } from "@chartwarden/db";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predicates";
 import { createDbClosureRouteService } from "./closure/closure-route-service";
@@ -38,11 +39,18 @@ export function mountEncounterRoutes(
     readonly policyCache?: ClosurePolicyCache;
     /** Reports (error class only) a refused grant/revoke whose denial audit event could not be written; see closure-route-service.ts. */
     readonly onDenialAuditFailure?: (error: unknown) => void;
+    /**
+     * The per-actor limiter for the override grant and revoke routes (`createRouteRateLimit`, which the composition root builds over
+     * its rate-limit store; note-closure-gate-wiring.test.ts pins that it does). Absent, the two routes are unlimited: a mount that
+     * is not the composition root (a test) only.
+     */
+    readonly overrideRateLimit?: PreHandler;
   },
 ): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
   _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox, ciphers) });
   _registerM8ClosureRoutes(app, {
+    overrideRateLimit: closure?.overrideRateLimit ?? (async () => {}),
     service: createDbClosureRouteService({
       db,
       ...(closure?.policyCache ? { policyCache: closure.policyCache } : {}),

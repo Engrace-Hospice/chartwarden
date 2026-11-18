@@ -388,6 +388,7 @@ import {
   CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
+  CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
   EMERGENCY_ROUTE_RATE_LIMIT,
@@ -6658,6 +6659,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   { errorClass: error instanceof Error ? error.name : typeof error },
                   "closure override denial audit event could not be written",
                 ),
+              // ADR-0113 D7 - fail-open (an availability control): 10/min/user, 100/min/org on the override grant and revoke routes, which
+              // bounds the immutable denied-attempt audit rows one supervisor can add (fresh Idempotency-Keys defeat the replay cache).
+              overrideRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT,
+                keyPrefix: "m8-closure-override",
+              }),
             },
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox

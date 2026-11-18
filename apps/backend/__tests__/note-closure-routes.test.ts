@@ -15,10 +15,16 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { STEP_UP_POLICY } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import {
+  CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT,
+  createRouteRateLimit,
+} from "../src/bootstrap/plugins/route-rate-limit";
 import { __resetSeamsForTest, getSeam, registerSeam } from "../src/bootstrap/seams/registry";
 import type { ClosureRouteService } from "../src/modules/08-encounters/closure/closure-route-service";
 import {
@@ -142,7 +148,7 @@ function fakeService(): { [K in keyof ClosureRouteService]: ReturnType<typeof vi
   };
 }
 
-function makeServer() {
+function makeServer(overrideRateLimit: PreHandler = async () => {}) {
   const backend = createInMemoryEncounterBackend({
     encounters: [
       {
@@ -189,7 +195,10 @@ function makeServer() {
     service: backend.service,
     caseloadPatientIds: async () => [PATIENT],
   });
-  registerClosureRoutes(app, { service: service as unknown as ClosureRouteService });
+  registerClosureRoutes(app, {
+    service: service as unknown as ClosureRouteService,
+    overrideRateLimit,
+  });
   return { app, service, sessions };
 }
 
@@ -544,6 +553,81 @@ describe("step-up on the override routes", () => {
       payload: {},
     });
     expect(res.json().remainingActiveUntil).toBe(until);
+  });
+});
+
+describe("the per-actor limiter on the override grant and revoke routes (bounds the immutable denied-attempt audit rows)", () => {
+  const limiter = (perUser: number, keyPrefix: string): PreHandler =>
+    createRouteRateLimit({
+      store: createInMemoryRateLimitStore(),
+      limit: { perUser, perOrg: 100, windowMs: 60_000, failMode: "open" },
+      keyPrefix,
+    }) as PreHandler;
+  // A FRESH Idempotency-Key per request, as an abuser would send: the same key and body would be replayed from the cache before the limiter runs.
+  let keySeq = 0;
+  const grant = (app: ReturnType<typeof makeServer>["app"], headers: Record<string, string>) => {
+    keySeq += 1;
+    return app.inject({
+      method: "POST",
+      url: "/api/v1/encounters/closure-overrides",
+      headers: { ...headers, "idempotency-key": `closure-limiter-key-${keySeq}` },
+      payload: { subjectMembershipId: SUBJECT, reason: GOOD_REASON },
+    });
+  };
+  const revoke = (app: ReturnType<typeof makeServer>["app"], headers: Record<string, string>) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/closure-overrides/${OVERRIDE_ID}/revoke`,
+      headers,
+      payload: {},
+    });
+
+  it("answers the grants within the limit as before, then a 429 that never reaches the service", async () => {
+    const { app, service } = makeServer(limiter(3, "test-closure-grant"));
+    const answers = [];
+    for (let i = 0; i < 3; i++) answers.push((await grant(app, SUPERVISOR)).statusCode);
+    expect(answers).toEqual([201, 201, 201]);
+    const refused = await grant(app, SUPERVISOR);
+    expect(refused.statusCode).toBe(429);
+    expect(refused.headers["retry-after"]).toBe("60");
+    expect(service.grantOverride).toHaveBeenCalledTimes(3);
+  });
+
+  it("is ONE bucket for a grant and a revoke (a supervisor cannot double the cap by alternating)", async () => {
+    const { app, service } = makeServer(limiter(2, "test-closure-shared"));
+    expect((await grant(app, SUPERVISOR)).statusCode).toBe(201);
+    expect((await revoke(app, SUPERVISOR)).statusCode).toBe(200);
+    expect((await revoke(app, SUPERVISOR)).statusCode).toBe(429);
+    expect((await grant(app, SUPERVISOR)).statusCode).toBe(429);
+    expect(service.grantOverride).toHaveBeenCalledTimes(1);
+    expect(service.revokeOverride).toHaveBeenCalledTimes(1);
+  });
+
+  it("is per actor: one supervisor's spent budget does not refuse another", async () => {
+    const { app } = makeServer(limiter(1, "test-closure-per-actor"));
+    expect((await grant(app, SUPERVISOR)).statusCode).toBe(201);
+    expect((await grant(app, SUPERVISOR)).statusCode).toBe(429);
+    expect((await grant(app, DON)).statusCode).toBe(201);
+  });
+
+  it("sits after the permission and AI guards: a caller they refuse never spends the budget", async () => {
+    const { app, service } = makeServer(limiter(1, "test-closure-order"));
+    const noPermission = await grant(app, VIEWER);
+    const again = await grant(app, VIEWER);
+    const ai = await grant(app, { ...DON, "x-test-actor-kind": "ai_agent" });
+    expect([noPermission.statusCode, again.statusCode, ai.statusCode]).toEqual([403, 403, 403]);
+    // the one request that clears the guards still has its whole budget
+    expect((await grant(app, SUPERVISOR)).statusCode).toBe(201);
+    expect(service.grantOverride).toHaveBeenCalledTimes(1);
+  });
+
+  it("the production limit is 10 a minute per user, 100 a minute per org, fail-open", () => {
+    expect(CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT).toEqual({
+      perUser: 10,
+      perOrg: 100,
+      windowMs: 60_000,
+      failMode: "open",
+    });
   });
 });
 

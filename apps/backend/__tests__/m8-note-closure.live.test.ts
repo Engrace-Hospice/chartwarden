@@ -2349,6 +2349,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       });
       registerClosureRoutes(app, {
         service: createDbClosureRouteService({ db: handle.db, now: () => NOW }),
+        overrideRateLimit: async () => {}, // the limiter is proven in note-closure-routes.test.ts; this suite drives the database
       });
       await app.ready();
     }, 120_000);

@@ -92,6 +92,13 @@ describe("the composition root wires the note-closure gate", () => {
     );
   });
 
+  it("hands the encounter routes the per-actor limiter for the override grant and revoke routes (it bounds the denied-attempt audit rows)", () => {
+    // without it the two routes are unlimited (mountEncounterRoutes defaults to a no-op), and nothing else in the suite would notice
+    expect(index).toMatch(
+      /mountEncounterRoutes\([^;]*?overrideRateLimit:createRouteRateLimit\(\{store:rateLimitStore\?\?createInMemoryRateLimitStore\(\),limit:CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT,keyPrefix:"m8-closure-override"\}\)/,
+    );
+  });
+
   it("hands the encounter routes a reporter for a closure-override denial event that could not be written (class only)", () => {
     expect(index).toMatch(
       /mountEncounterRoutes\([^;]*?onDenialAuditFailure:\(error\)=>app\.log\.warn\(\{errorClass:errorinstanceofError\?error\.name:typeoferror\}/,

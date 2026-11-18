@@ -32,6 +32,14 @@ import { parse } from "./encounters-typebox";
 
 export interface ClosureRouteDeps {
   readonly service: ClosureRouteService;
+  /**
+   * A per-actor limiter for the override grant and revoke routes (`createRouteRateLimit`, bound at the composition root). A refused
+   * grant or revoke writes an immutable compliance-retention `m8.encounter.closure_override_denied` row per request, and fresh
+   * Idempotency-Keys defeat the replay cache, so this bounds how many such rows one supervisor can add. It runs after the
+   * permission and AI guards and before the step-up, so a caller those refuse never spends the budget.
+   * REQUIRED, so a future mount cannot leave the routes unlimited by omission (a test that wants none passes a no-op).
+   */
+  readonly overrideRateLimit: PreHandler;
 }
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -123,7 +131,15 @@ export function registerClosureRoutes(app: FastifyInstance, deps: ClosureRouteDe
 
   app.post(
     "/api/v1/encounters/closure-overrides",
-    { preHandler: [CLOSURE_OVERRIDE, NO_AI, STEP_UP(CLOSURE_OVERRIDE_STEP_UP_KEY), IDEMPOTENT] },
+    {
+      preHandler: [
+        CLOSURE_OVERRIDE,
+        NO_AI,
+        deps.overrideRateLimit,
+        STEP_UP(CLOSURE_OVERRIDE_STEP_UP_KEY),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const actor = closureActorOf(request);
       const body = parse(GrantClosureOverrideSchema, request.body);
@@ -140,7 +156,14 @@ export function registerClosureRoutes(app: FastifyInstance, deps: ClosureRouteDe
 
   app.post(
     "/api/v1/encounters/closure-overrides/:overrideId/revoke",
-    { preHandler: [CLOSURE_OVERRIDE, NO_AI, STEP_UP(CLOSURE_OVERRIDE_STEP_UP_KEY)] },
+    {
+      preHandler: [
+        CLOSURE_OVERRIDE,
+        NO_AI,
+        deps.overrideRateLimit,
+        STEP_UP(CLOSURE_OVERRIDE_STEP_UP_KEY),
+      ],
+    },
     async (request) => {
       const actor = closureActorOf(request);
       const { overrideId } = parse(ClosureOverrideParamsSchema, request.params);
