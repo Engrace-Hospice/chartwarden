@@ -65,6 +65,7 @@ import {
   classifyBash,
   describeFindings,
   globReachesSecret,
+  interactiveShellReason,
   isInteractiveShell,
   isProtectedPath,
   scanContent,
@@ -301,7 +302,8 @@ function checkCodexShell(cmd: string, root: string, workdir: string, log: Log): 
   if (isInteractiveShell(cmd)) {
     refuse(
       log,
-      "A bare interactive shell or REPL is refused. Non-empty write_stdin input also fails closed, but refusing the persistent process at creation is defence in depth. Run the command you need directly.",
+      interactiveShellReason(cmd) ??
+        "A bare interactive shell or REPL is refused. Non-empty write_stdin input also fails closed, but refusing the persistent process at creation is defence in depth. Run the command you need directly.",
       undefined,
       cmd,
     );

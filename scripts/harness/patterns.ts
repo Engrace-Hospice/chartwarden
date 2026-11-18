@@ -1559,6 +1559,31 @@ function interactiveInvocation(p: Parsed): boolean {
 export const isInteractiveShell = (cmd: string): boolean =>
   segments(cmd).some((seg) => interactiveInvocation(parseSegment(seg)));
 
+const CODEX_COMMAND_STRING_REASON =
+  "Codex refuses a shell command string (`bash -c '…'`, `sh -c`, and the wrappers that hand one to a shell: `xargs … sh -c`, `watchexec -- bash -c`), because the string can expand variables and run substitutions after the guard has read it. Run the command directly or put it in a script file.";
+const CODEX_STDIN_SCRIPT_REASON =
+  "Codex refuses a shell or interpreter that reads its script from stdin (`echo '…' | bash`, `bash <<< '…'`, `… | bash -o pipefail`): the guard judges the text, but Codex must run a command directly or from a reviewable script file.";
+
+/**
+ * Why Codex refuses this command as an interactive shell, when the real reason is not a bare shell (wave 13, L3: `echo hi | bash -o pipefail`, `… | xargs -I{} sh -c '{}'` and
+ * `watchexec -- bash -c '…'` were all refused as "a bare interactive shell or REPL", which hid the reason a reader needs); null for a bare shell or REPL (the caller's text).
+ */
+export function interactiveShellReason(cmd: string): string | null {
+  for (const part of splitSegments(cmd).parts) {
+    const p = parseSegment(part.text);
+    if (!interactiveInvocation(p)) continue;
+    if (
+      SHELL.test(p.prog) &&
+      p.args.some((a) => a === "-c" || /^-[A-Za-z]*c/.test(a) || a.startsWith("--command"))
+    )
+      return CODEX_COMMAND_STRING_REASON;
+    if (part.joiner === "|" || p.strings.length + p.docs.length + p.ins.length > 0)
+      return CODEX_STDIN_SCRIPT_REASON;
+    return null;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Paths: where a write lands once `cd`, `..`, `~`, `$HOME` and `$PWD` are accounted for
 // ---------------------------------------------------------------------------------------------------
