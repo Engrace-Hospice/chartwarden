@@ -951,14 +951,14 @@ guard enforces its own deadline. `pre-tool-guard.ts` is a small entry thread
 (`hard-deadline.ts`): it arms a 6.5 s timer before it reads stdin, runs the judgement (`guard-judge.ts`) in a Bun
 worker (`guard-worker.ts`), and when the timer fires, the worker dies or errors without answering, or stdin never
 ends, it prints the standard deny JSON, a stderr line and EXITS 2 (a block in both agents), whatever the worker is
-stuck in. After the deny is out it runs `emergency-ledger.ts` as a child process (the three bun flags, output thrown away, SIGKILL after 1 s) that writes ONE ledger line for it (the cause, the tool name, the
+stuck in. After the deny is out it runs `emergency-ledger.ts` as a child process (the three bun flags, output thrown away, SIGKILL after 0.5 s since wave 13 part B2) that writes ONE ledger line for it (the cause, the tool name, the
 SHA-256 of a Bash command and never its text); a locked, unwritable or hung ledger loses the line and never changes the deny or its exit code, and the two denies the worker makes about its own state (an
 input it cannot parse, an internal error) are logged by the worker (wave 12 part G). The worker makes `process.exit` a throw: on bun 1.3.5 (what CI pins) a `process.exit(0)` called in a
 worker ended the WHOLE process silently with status 0, which both agents read as an allow. Normal answers are unchanged (JSON for a deny or an ask, nothing for an allow, exit 0); the extra
 latency was about 5 ms per call when the deadline was added (median 21 to 26 ms over 35 runs on macOS, bun 1.3.5; measured once, not
 re-measured since, and machine-dependent). A worker needs neither `--config` nor `--tsconfig-override` of its own: it is
 started by the already-hardened entry, and the hostile-config tests run through it. Test seams, never set in
-production and forbidden in the shared `env`: `CW_HARNESS_TEST_FAULT` (`hang`, `exit`, `process-exit`, `throw`, `malformed`), `CW_HARNESS_TEST_LEDGER_FAULT` (`hang`: the ledger child hangs, to prove its 1 s
+production and forbidden in the shared `env`: `CW_HARNESS_TEST_FAULT` (`hang`, `exit`, `process-exit`, `throw`, `malformed`), `CW_HARNESS_TEST_LEDGER_FAULT` (`hang`: the ledger child hangs, to prove its 0.5 s
 bound; refused by the allow-list of `env`, not by name: `FORBIDDEN_ENV` in `scripts/check-compliance-controls.ts` does not list it) and
 `CW_HARNESS_DEADLINE_MS_FOR_TESTS` (it can only shorten the deadline); `harness-hard-deadline.test.ts` forces each
 through the entry point and through both real pinned commands. A `bun` that is missing, a module that cannot be
@@ -1863,9 +1863,10 @@ line of the shape the asks use (event `pre_tool`, tool, decision `deny`, a reaso
 - The two denies the worker itself makes (`empty or unparseable hook input`, `internal error (TypeError)`) are logged in the worker by `logOwnDeny` in `guard-judge.ts`; the reason carries the kind of
   error, not its text.
 - The entry thread (`hard-deadline.ts`) writes the deny to stdout and stderr FIRST, then runs `emergency-ledger.ts` as a child process (`process.execPath` with the three bun flags of the pinned commands,
-  stdout and stderr thrown away, SIGKILL after `LEDGER_TIMEOUT_MS` = 1,000 ms) and exits 2. The deny never waits on the ledger and cannot change: a locked ledger (the child waits its 50 x 10 ms and skips),
-  an unwritable directory, a hung file system (the child is killed) or a child that cannot be started loses the line only. 6.5 s (`DEADLINE_MS`) plus the 1 s bound stays under Codex's 8 s alarm and Claude's
-  10 s hook timeout. A child is used rather than an append in the entry thread because a file system that hangs cannot be bounded from inside the thread that waits on it, and a guard killed at Claude's
+  stdout and stderr thrown away, SIGKILL after `LEDGER_TIMEOUT_MS` = 500 ms since wave 13 part B2, 1,000 ms before) and exits 2. The deny never waits on the ledger and cannot change: a locked ledger (the child waits its 10 x 10 ms and skips),
+  an unwritable directory, a hung file system (the child is killed) or a child that cannot be started loses the line only. 6.5 s (`DEADLINE_MS`) plus the 0.5 s bound plus bun's start is about 7.1 to 7.4 s,
+  which stays under Codex's 8 s alarm and Claude's 10 s hook timeout (it was about 7.6 s with the 1 s bound). The child loads `io.ts` and `synthetic-registry.ts` only, so a corrupted `patterns.ts` no longer
+  loses the line (wave 13, CR-8). The pinned shell tail's own refusals (a syntax error in `pre-tool-guard.ts` or `hard-deadline.ts`, a corrupted `io.ts`) and Codex's alarm leave no line. A child is used rather than an append in the entry thread because a file system that hangs cannot be bounded from inside the thread that waits on it, and a guard killed at Claude's
   timeout lets the call run.
 - The line names the cause: `deadline`, `worker error`, `worker closed`, `malformed answer`, `worker could not start`; an unparseable input and an internal error have their own reasons. A call whose input
   never ended names no tool. Claude lines say `Bash`, Codex lines `codex/Bash`; the root is the one every other line uses (`codexRoot` moved to `io.ts` for it).
@@ -1916,7 +1917,7 @@ or a 3 s per-probe timeout for `dropdb` and `dropuser`, would remove most of it;
 
 What is NOT done after wave 12, measured at commit `bd8b9d2cc` (the tip of the pull-request branch when this section was written; the figures below move when the structure work lands).
 
-- **No cold review of the wave-12 changes had run when the pull request was opened.** Round 10 follows. Every part above was reviewed only by its own author and by the orchestrator's spot-check scripts.
+- **No cold review of the wave-12 changes had run when the pull request was opened.** Round 10 ran afterwards (see "Wave 13 and what is NOT done" below); the wave-13 changes themselves have had no cold review. Every part above was reviewed only by its own author and by the orchestrator's spot-check scripts.
 - **`usql --no-psqlrc <URI>` still asks, so the Codex guard denies it.** `usql` is an unverified client (`unverified.json`), and `--no-psqlrc` is not in its documentation-derived option table, so the word
   behind it cannot be placed. `usql <URI>` allows. (`drizzle-kit` and `prisma` `--name` and `--port` were fixed after the merge: `harness-db-orm-names-wave12.test.ts`.)
 - **`sftp sftp://localhost/file` asks.** The older remote-target rule of `patterns.ts` (`ssh|scp|sftp|rsync`) takes the first word that holds a `:` or an `@` and reads the scheme `sftp` of the URL as the host
@@ -1959,3 +1960,86 @@ What is NOT done after wave 12, measured at commit `bd8b9d2cc` (the tip of the p
 - **Unverified, because the tool or platform is not installed here** (each part lists its own): GNU `env` and every GNU userland tool, Linux in general, `yarn`, GNU `parallel`, `nerdctl`, `mosh`, `et`,
   `heroku`, `railway`, `render`, `az`, `doctl`, `aws`, `supabase`, `fly`, `fish`, `pwsh`, `powershell`, `ash`, `gawk`, `mawk` and PostgreSQL 17 (PostgreSQL 16.13 and 18.4 are recorded). Their option tables
   and subcommand lists come from documentation (`unverified-tools.json`, `awk-unverified.json`, the cloud-CLI lists of `cloud-cli-sessions.ts`) and an option they do not list asks.
+
+## Wave 13 part A
+
+Round 10 (adversarial review R10-ADV; its rows were scratch scripts, not committed). Every row of the ids below ends non-allow in Claude mode; the everyday neighbours stay allow (`scripts/__tests__/harness-shell-words-wave13a.test.ts`). Where a wave-13 statement conflicts with an earlier section, the wave-13 text is current.
+
+**What changed**
+- A1, program word in upper case: `programName` and the `prog` of `command-words.ts` fold the BASE NAME to lower case, so every table lookup (wrappers, runners, rules) sees `git` for `GIT` (macOS APFS is case-insensitive; on Linux the fold only makes the guard stricter). `word` (as typed) is kept; a reason that prints the program prints the folded name. The project's permission rules (`git push *`, `gh pr merge *`, `gh secret *`) match text, so `permission-asks.ts` asks for those three commands when the program word is not lower case, when the words are not in a row (`gh pr -R x merge`), or when a reading (below) is what spells them. `PlistBuddy` is now matched as `plistbuddy`.
+- A2 and A3, words the shell builds: `word-readings.ts` writes a simple command out as the command the shell makes of it and `patterns.ts` judges that text too (`readingVerdicts`, one call site in `judgePart`). Known values come from EARLIER statements only (`NAME=literal`, `export`, `set --`, an array assignment, at most 8 readings, over the cap asks); a backslash before an ordinary character is removed; an expansion no statement places is removed only where it is spliced into a word that is then the program, a subcommand (`PLAIN_WORD`), an option (starts with `-`) or a protected or secret path. A reading that only guessed (a removed expansion) is capped at ask; a reading the command itself determines keeps its deny. A reading is not read again (`judgingReading`) and does not use the 300-line judge budget. The narrowness is the point: `git log --since=$d`, `git checkout $branch`, `git commit -m "$msg"` and `psql "postgres://localhost:$PORT/db"` have no reading.
+- A4: `readsScriptFromStdin` reads a shell's options with the per-shell scan of `shell-command-string.ts` (`shellOperandReadings`), so `bash -o pipefail`, `-euo pipefail`, `-O extglob`, `+o noglob`, `--rcfile F`, `-s -- a b` read their script from stdin. `-s` is new in the scan (`sawS`).
+- A5 and B9: `eval` reads `"$(echo CMD)"` and `$(printf '%s' CMD)` as CMD (the substitution reader of `bash -c`), asks on a downloader (`curl`, `wget`, `fetch`, `http`, `xh`, `aria2c`, `nc`, `ncat`, `socat`) inside a substitution, and `source <(curl …)` asks (`download-script.ts`). `eval "$(ssh-agent -s)"`, `direnv hook`, `fnm env`, `brew shellenv` and `source <(kubectl completion bash)` stay allow. A known variable as the eval string is the A3 reading.
+- A7: `XDG_CONFIG_HOME` asks next to a git command (`git-exec-strings.ts`, `CONFIG_HOME_VARIABLES`), also when an earlier statement exported it. Probed in a scratch repo with git 2.53.0 and HOME in scratch: a `core.hooksPath` of `/dev/null` in `$XDG_CONFIG_HOME/git/config`, in `GIT_CONFIG_GLOBAL`, in `GIT_CONFIG_SYSTEM`, in `GIT_CONFIG_COUNT/KEY_0/VALUE_0`, in `GIT_CONFIG_PARAMETERS` and in `$HOME/.gitconfig` each skipped a failing pre-commit hook; `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG` (old), `GIT_DIR` and `GIT_CEILING_DIRECTORIES` did not. When the repository's own config sets `core.hooksPath`, the global ones did not win (local wins), so the hole exists only where the local config names none.
+- A8: `git update-index --stdin` and `--index-info` (any unambiguous prefix) ask like `git add --pathspec-from-file=-` (the names come from stdin).
+- A9: `xargs-feed.ts`: the text a print hands `xargs` is part of the command: `-I REPL` (BSD; `-i`, `--replace` GNU, unverified) replaces REPL in the arguments with each line, `-J` with all items, otherwise the items are appended; the command lines made are judged. A text the guard cannot see asks only when the replacement string STARTS the program word or a word of a shell, `ssh`, `eval`, a wrapper or a container command (`sh -c '{}'`); `sh -c 'echo {}'` and `find … | xargs rm` stay allow.
+- A11: the words of a `shellLine` runner (`watchexec`, `bun exec`) are read joined as typed AND quoted back (`runners.ts`), so `watchexec -- bash -c 'CMD'` judges CMD.
+- B8: `@` is HEAD in a push (`git-push-refs.ts`; git's spelling, probed with `--dry-run`); a destination built by `$(` or a backtick asks whatever the options say.
+- B10: `screen`, `tmux` (new-session, new-window, split-window, run-shell, send-keys, respawn-*, if-shell, display-popup, pipe-pane, `-c`) and `open … --args` hand a command line on (`terminal-multiplexers.ts`, judged); `make -f -`, `awk -f -`, `expect` and `osascript` that are fed a script on stdin ask (`stdin-script-tools.ts`). screen's value letters come from its usage text; tmux and `open` were not run.
+- B11: `shellFamily` reads `bash-5.2`, `rbash`, `ksh93`, `mksh`, `pdksh`, `oksh`, `busybox` (as `sh`) like the shell they are, and `xonsh`, `elvish`, `nu` like `ash` (judged and asked). `COMMAND_SHELLS` is a family pattern now.
+- L3: Codex's refusal says which rule fired (`interactiveShellReason`): a shell command string (`-c`, also behind `xargs`/`watchexec`), a script on stdin, or a bare shell.
+- CR-11: `command -v` and `command -V` are lookups, not runs (no false ask for `command -v ssh git curl`).
+
+**Statements elsewhere in this document that this part changes**
+- "What the guard covers": an upper-case program word (`GIT`, `PSQL`) is judged as the tool; a word the shell builds from a known variable, an array, `set --`, a backslash or a spliced empty expansion is judged as the command it makes; `xargs` is judged with the text a print feeds it; the "judged" sentence for a command word built around a substitution now also holds for an option or a subcommand word.
+- A shell given an option with a value (`bash -o pipefail`, `-O extglob`, `--rcfile F`, `-s`) is read as a shell that reads stdin (it was read as a script file). `source <(curl …)`, `. <(curl …)` and `eval "$(curl …)"` ask; `source <(kubectl completion bash)` still passes.
+- The wrappers and runners list gains `screen`, `tmux` and `open --args`; `watchexec` and `bun exec` read their words joined as typed and quoted.
+- The Codex section's "A bare interactive shell or REPL is refused" names three reasons now (a shell command string, a script on stdin, a bare shell).
+- Decision table, "Claude asks every `git push`": the permission rule matches the text `git push …` only; `git -C dir push` is not matched by it.
+- `harness-env-wave12e1.test.ts` compares the program word in lower case (`a.b=x`); two `EMPTY=''` rows of `harness-source-git-wave11.test.ts` (D7) were `ask` and are `deny` now (the empty literal is known; rows moved to `harness-shell-words-wave13a.test.ts`, A3q and A3r).
+
+**Residuals (documented, not closed)**
+- A value that comes from a command substitution (`A=$(echo --x); git commit $A`) or from the environment is not read; an unplaced expansion standing alone as an argument (`git commit $FLAGS`) is not read (narrowness). A function body is read with its arguments unknown.
+- The permission rules still do not match `git -C dir push` (not asked here: everyday, and Codex has no such rule).
+- `busybox -c 'CMD'` is not a real busybox form (no applet `-c`); `busybox sh -c` is read.
+- GNU xargs (`-i`, `--replace`), tmux, `open`, `screen` behaviour and every shell other than the installed ones are unverified live.
+
+## Wave 13 part B
+
+Branch `fix/harness-review3-w13b`; commits `b99aea28c` (A6), `95473dfdb` (C2), `cf6f74966` (the ssh family: A10, CR-1, CR-2, CR-3, B12 ssh part; this commit carries a "wip" subject) and `6b2e6472f` (B12 cloud names, L1, C4).
+
+**What changed**
+- A6. `metaCommands` (`postgres-commands.ts`) ends a backslash command's arguments at the first backslash outside quotes, so `\x\c db user H`, `\timing\c ...`, `\set x 1\c ...` read the chained `\c`. A single-quoted argument takes a backslash as an escape; double and back quotes do not. The line end is found once per line (a 200,000-command line is linear).
+- A10, CR-2. New `remote-operands.ts` reads EVERY scp and rsync operand (`host:path` with the colon before any slash, `scp://`, `rsync://`, `host::module`, `[::1]:path`); an unplaceable host (`$HOST:dir`) asks. The old first-operand rule in `patterns.ts` now covers ssh and sftp only (so `scp scp://localhost/f ./g` no longer asks falsely).
+- CR-1, CR-3. `ssh -P tag` takes a value; `scp -O` is a flag. Recorded from the usage lines of the two OpenSSH builds on this machine (Homebrew OpenSSH_10.6p1 first on PATH, Apple OpenSSH_10.3p1 in /usr/bin) under `scripts/__tests__/fixtures/harness-ssh-options/`, with the recorder `scripts/__tests__/helpers/record-ssh-usage.ts`. A no-tool test compares every table to every recording; a live test compares the installed usage text and skips with a named reason when the build is not recorded.
+- B12 (ssh family). `ssh-keyscan` (every host, a comma list too; `-f FILE` asks), `ssh-copy-id` (the last word is the host; letters read from the installed script `getopts "io:p:F:t:fnsxh?"`), `sshfs` (not installed: every operand with a colon before a slash), and `scp -D` now asks like `sftp -D` (`option-commands.ts` reads `SD` for both; the old pin that said `scp -D` passes was changed because scp's usage line lists `-D sftp_server_path`).
+- B12 cloud names, L1, C4 (`cloud-cli-sessions.ts`): `az container exec|attach`, `gcloud app instances ssh|scp`, `doctl apps console`, `fly mpg connect|proxy`, `aws ec2-instance-connect ssh`, and the credential printers `gcloud auth print-access-token|print-identity-token`, `gcloud auth application-default print-access-token`, `aws sts get-session-token|get-federation-token`, `aws configure export-credentials`. UNVERIFIED against a binary: aws, az, doctl and fly are not installed, and gcloud's offline `--help` did not print these names.
+- C2 (CI portability). The live shell test, the `ssh -G` tests and the bun live test compare the installed version (and platform for shells) with the recording first and skip with a named reason on a difference; they no longer fail on a Linux runner. Proven by editing a fixture version and seeing 2 skips (bash, dash). Nothing has run on Linux.
+
+**Statements elsewhere that this part changes**
+- The wave-12 part E2 text and `ssh-hops.ts` say the option letters of ssh, scp and sftp come from "the manual pages of OpenSSH_10.6p1": they come from the recorded usage lines (two builds, 10.6p1 and 10.3p1); `ssh -P` is valued and `scp -O` is a flag.
+- "What the guard covers" (remote shells): scp and rsync are judged on every operand (`remote-operands.ts`); ssh and sftp keep the first-operand rule.
+- `harness-option-commands-wave8.test.ts` pinned `programOptionReason("scp", ["-D", "x"])` as null; it is not null now (`-D ssh` is still null).
+- The wave-12 live-test statements that the live shell test fails on a changed answer: it skips with a named reason on another version or platform; likewise the `ssh -G` tests and the bun live test.
+- Remote session tools: `cloud-cli-sessions.ts` lists more named subcommands than wave 12 part E2 names (above).
+
+**Residuals** `scp -qD prog` (a cluster) is not read by the program-option reader (same as `-qS`); rsync's `-e CMD` and `--rsh` are not read for a `-J` jump; an rsync option value that looks like `host:x` after a separate word (`--exclude a:b`) asks (every non-dash word is an operand); `ssh-copy-id -i FILE HOST` is read by the last word, so a key file given last is read as the host.
+
+## Wave 13 part B2 (stopped early)
+
+Branch `fix/harness-review3-w13b2`, three commits `9c1c6b159`, `1f83e3bfd`, `a72da3466`. The part was stopped by the owner's decision to end the wave-by-wave rounds; what is listed here is what landed, and nothing else of its list was started. Its merge broke one existing contract, found by the full run and fixed in the merge: L2's refusal of a non-object `tool_input` also refused Claude-mode MCP calls, which only ask (`harness-mcp-claude.test.ts`); the refusal now leaves Claude-mode MCP calls to their ask.
+
+- **L4, CR-8, L2 (ledger timing and fail-closed input).** `LEDGER_TIMEOUT_MS` is 500 (was 1,000): the entry deadline (6.5 s) + the child's bound (0.5 s) + bun's start is about 7.1 to 7.4 s against Codex's 8 s alarm (it was about 7.6 s). The registry types and `EMPTY_REGISTRY`/`registryFrom` moved to `synthetic-registry.ts` (no imports), so the emergency-ledger child loads `io.ts` and that file only: a corrupted `patterns.ts` no longer loses the ledger line. `appendLedger` gives up at once on a lock it cannot create (a read-only `.claude/audit` cost about 0.5 s per emergency) and takes the number of lock tries; the emergency child waits 10 x 10 ms. A `tool_input` that is not an object, or a Bash command that is not text (missing included), is denied and ledgered in both modes, except a Claude-mode MCP call (it asks). Claude mode used to read a missing command as empty and allow.
+- **B4, CR-6 (remote-session global options).** `cloud-global-options.ts` holds the global value options of kubectl, gcloud and aws, recorded from `kubectl options` (v1.36.1) and `gcloud --help` (SDK 561.0.0) by `helpers/record-cloud-options.ts` (fixtures `harness-cloud-options`); aws is not installed, its list is documentation and the fixture says unverified. An option before the subcommand that no table knows asks.
+- **B3 (docker short options with an attached value).** `engine-short-options.ts` reads the valued short letter of docker, podman and docker-compose with its value attached (`-cprod`), after an equals sign (`-c=prod`) or clustered behind flag letters (`-Dc prod`), as pflag does. The letters are recorded from `docker --help` (29.9.3), `podman --help` (6.0.2) and `docker-compose --help` (5.1.0) by `helpers/record-engine-options.ts` (fixtures `harness-engine-options`); nerdctl and podman's hidden `-r` are documentation, unverified.
+
+## Wave 13 and what is NOT done
+
+Round 10 (cold review of the wave-12 delta, tip `bd8b9d2cc`) ran once: adversarial (about 25 holes, 10 CRITICAL, none a regression of wave 12), code review (15 findings), compliance review (wording W1 to W7, C1 to C4). Parts A, B and B2 above fix the findings they name. **The wave-13 changes have NOT had their own cold review.** The rounds were stopped on purpose: each cold round found about twenty new holes in the text heuristics, because a text classifier cannot be closed. The register's position stands: the guard is a speed bump; the sandbox and the permission settings are the boundary.
+
+Not done (named, with the review's ids; the repro rows were scratch scripts and are not committed):
+
+- **CR-4 (CRITICAL), stdin text through compound commands is lost.** `(psql) <<< '\c db user H'`, `( cd /tmp; psql ) <<< …`, `echo '\c db user H' | ( cd /tmp; psql )`, `… | { cd /tmp; psql; }`, `… | if true; then psql; fi`, `|&` as a pipe, and the shell forms (`(bash) <<< 'CMD'`, `echo 'CMD' | ( cd /tmp; bash )`, `echo 'CMD' | tee >(bash)`, `echo 'CMD' | /bin/b?sh`) are read as a program with no input. Wave 12 reads `{ psql; } <<<`, `f(){ psql; }; f <<<` and `psql < <(echo …)` only.
+- **CR-5 (CRITICAL), a variable as the command word**: `x='CMD'; $x`, `x='CMD'; env $x`, `eval "$UNDEFINED"`, `x=$(echo 'CMD'); eval "$x"`. Part A reads known literals for options and subcommands (A2, A3); a value from a substitution or the environment is not read.
+- **CR-7 (HIGH)**: `echo '…' | bun run -`, `bun run /dev/stdin`, `lldb` fed a script on stdin (`platform shell`).
+- **CR-9 (MEDIUM), the wave-12 caps turn a deny into an ask**: `echo 'CMD' | cat x8 | bash` (wave 11 denied), nine `cat` stages into a psql reconnect, 257 junk assignments before `export PGHOST=H; psql -c 1`. Padding can turn a hard deny into a human click; Codex still denies.
+- **CR-10 (MEDIUM), a false ask (a Codex lockout) introduced by wave 12**: `cat > n.md <<'EOF'` whose body says `use $DATABASE_URL here`, then `wc -l n.md` or `grep -c x n.md` asks (a quoted-delimiter body is literal; `wc` and `grep -c` print no content). 4 of the 10 new corpus asks of wave 12 have this shape.
+- **B1, B2 (HIGH), PostgreSQL gaps**: `oid2name -h H`, `vacuumlo -h H x`, `pg_rewind --source-server='host=H'`; `psql -c` SQL that connects out (`dblink_connect($$host=H$$)`, `dblink_exec`, `create server … options (host …)`, `create subscription … connection 'host=H'`).
+- **B5 (HIGH)**: a variable that is the whole argument of a client (`X='\c db user H'; psql -c "$X"`, `redis-cli $X`, `mongosh --eval "connect('$H')"`).
+- **B7 (HIGH)**: guarded-variable prints through `set -- $KEK; echo "$1"`, functions, and interpreter aliases (`php -r`, `python3 -c 'from os import environ as e'`, `perl -e 'my %e = %ENV'`, `awk ENVIRON[e]`).
+- **B12 rest**: `redis-server --replicaof H`, `mongofiles --host H`, `et` and `mosh` forms.
+- **C1 (MEDIUM)**: `f() { psql "postgres://localhost/$1"; }; f "db?host=H"` (a positional parameter in a URI path is exempted since wave 11).
+- **CR-12, CR-13 (LOW)**: `bun run build && git commit -m "is read PGSERVICEFILE ask"` asks (words inside a quoted text read as `read NAME`); `psql "postgres://app@localhost:${PORT:-55432}/x"` denies.
+- **CR-14, CR-15, C3 (LOW)**: `git add --a`/`--no-a` differ from git's ambiguity answer; dead code (`engineVariableWords` and its plumbing; `MAX_READINGS` copied in three modules); `CW_HARNESS_TEST_LEDGER_FAULT` is not in `FORBIDDEN_ENV` of `scripts/check-compliance-controls.ts` (the allow-list covers it); `it.skipIf(fixture.exactLong !== true)` in `harness-db-options-wave11.test.ts` is dead (18 skipped tests).
+- The corpus differential was not re-run at the final tip (the cache was deleted), so the 95 "other" deny-to-allow commands of the corpus diff against main are untriaged.
+- The wave-12 follow-up items above (`usql --no-psqlrc`, `sftp sftp://localhost/file`, structure, test timing bounds, wrapper-peel superlinearity) are unchanged.
