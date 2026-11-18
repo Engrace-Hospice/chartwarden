@@ -30,15 +30,7 @@ const ACCEPTED_ADVISORIES: ReadonlyArray<{
   readonly ghsaId: string;
   readonly reason: string;
   readonly until: string;
-}> = [
-  {
-    ghsaId: "GHSA-fc5q-39xc-vjpf",
-    reason:
-      "No patched Picomatch release exists as of 2026-11-17. The dependency is transitive through build/test tooling (Vite, Vitest, dependency-cruiser, and Storybook); ChartWarden does not expose attacker-supplied glob evaluation through an application route.",
-    until:
-      "Remove when Picomatch publishes a fixed release; reassess this exception no later than 2026-12-17.",
-  },
-];
+}> = [];
 
 const result = spawnSync("bun", ["audit", "--json"], { encoding: "utf8" });
 // bun audit exits 1 when it finds ANY advisory — that is not itself a failure for this gate; only an
