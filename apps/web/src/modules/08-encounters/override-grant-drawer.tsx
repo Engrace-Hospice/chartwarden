@@ -3,7 +3,8 @@
 //   POST /api/v1/encounters/closure-overrides  { subjectMembershipId, reason (>= 40 chars), hours }  (fresh step-up, Idempotency-Key)
 //   POST /api/v1/encounters/closure-overrides/{id}/revoke                                              (fresh step-up)
 // The override lifts only the block for that clinician: the note stays open and its alerts and deadline do not change. A grant is held
-// here only for the session (there is no list-overrides route yet), so Revoke is offered for the grant just made.
+// here only for the session (there is no list-overrides route yet), so Revoke is offered for the grant just made; a revoke that goes to
+// /step-up stashes that grant (in memory, like the form's draft) and the board re-seeds it on the return, so Revoke is still there.
 // STEP-UP: a refusal stashes what was typed (in memory only: the reason is free text) and sends the supervisor to /step-up; the board
 // reopens this drawer from `?note=` and the form is restored, and nothing is sent for them. IDEMPOTENCY: the grant runs under
 // `useAttemptKey`, so a retry of the SAME attempt after a lost reply carries the same key and an edit starts a new one.
@@ -68,11 +69,42 @@ import { useIsMounted } from "./use-is-mounted";
 
 /** The step-up draft action of the grant form; the board discards an abandoned draft of it. */
 export const GRANT_OVERRIDE_ACTION = "encounters.closure.override";
-export const CLOSURE_DRAFT_ACTIONS: readonly string[] = [GRANT_OVERRIDE_ACTION];
+/** The step-up draft action of a revoke: it stashes the grant being revoked, so the board still offers Revoke after the round trip. */
+export const REVOKE_OVERRIDE_ACTION = "encounters.closure.revoke";
+export const CLOSURE_DRAFT_ACTIONS: readonly string[] = [
+  GRANT_OVERRIDE_ACTION,
+  REVOKE_OVERRIDE_ACTION,
+];
 
 /** The step-up draft key of the grant form for the note `encounterId` (null when there is no session to scope it to). */
 export const grantDraftKey = (owner: StepUpDraftOwner | null, encounterId: string): string | null =>
   stepUpDraftKey(owner, GRANT_OVERRIDE_ACTION, encounterId);
+
+/** The step-up draft key of the revoke for the note `encounterId`: the grant the supervisor was revoking. */
+export const revokeDraftKey = (
+  owner: StepUpDraftOwner | null,
+  encounterId: string,
+): string | null => stepUpDraftKey(owner, REVOKE_OVERRIDE_ACTION, encounterId);
+
+const isHeldOverride = (value: unknown): value is HeldOverride => {
+  if (typeof value !== "object" || value === null) return false;
+  const held = value as Record<string, unknown>;
+  return (
+    typeof held.id === "string" &&
+    typeof held.subjectMembershipId === "string" &&
+    typeof held.expiresAt === "string" &&
+    (held.revokedAt === null || typeof held.revokedAt === "string")
+  );
+};
+
+/** The grant stashed for a revoke that went to step-up on note `encounterId`, or null (none, expired, not this session's). */
+export function stashedGrant(
+  owner: StepUpDraftOwner | null,
+  encounterId: string,
+): HeldOverride | null {
+  const stashed = peekStepUpDraft<unknown>(revokeDraftKey(owner, encounterId));
+  return isHeldOverride(stashed) ? stashed : null;
+}
 
 interface Fields {
   reason: string;
@@ -140,6 +172,7 @@ export function OverrideGrantDrawer({
   const active = grant !== null && isGrantActive(grant, now);
   const close = (): void => {
     clearStepUpDraft(grantDraftKey(owner, note.encounterId)); // closing abandons the draft
+    clearStepUpDraft(revokeDraftKey(owner, note.encounterId)); // and the grant a revoke had stashed
     onClose();
   };
   // Escape closes through the same path as Close and Cancel (so it abandons the stashed draft too), and a grant or a revoke resets the
@@ -186,7 +219,11 @@ export function OverrideGrantDrawer({
       <div className="wx-drawer-body">
         <NoteFacts note={note} patientName={patientName} clinicianName={clinicianName} />
         {active && grant ? (
-          <ActiveGrant grant={grant} onRevoked={settled(onRevoked)} />
+          <ActiveGrant
+            grant={grant}
+            encounterId={note.encounterId}
+            onRevoked={settled(onRevoked)}
+          />
         ) : (
           <section className="wx-drawer-card">
             <h3>Lift the block for a while</h3>
@@ -259,14 +296,17 @@ function Fact({ label, children }: { label: string; children: ReactNode }): JSX.
 
 function ActiveGrant({
   grant,
+  encounterId,
   onRevoked,
 }: {
   grant: HeldOverride;
+  encounterId: string;
   onRevoked: (grant: RevokedOverrideView) => void;
 }): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
+  const owner = useStepUpOwner();
   const mounted = useIsMounted();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -281,6 +321,7 @@ function ActiveGrant({
     inFlight.current = false;
     if (mounted.current) setBusy(false);
     if (outcome.ok) {
+      clearStepUpDraft(revokeDraftKey(owner, encounterId));
       onRevoked(outcome.data); // the board keeps it even if the drawer was closed meanwhile
       return;
     }
@@ -291,6 +332,9 @@ function ActiveGrant({
     }
     const stepUp = stepUpRedirectFor(outcome.error, `${location.pathname}${location.search}`);
     if (stepUp) {
+      // The board unmounts for the round trip and the grants it holds are only in its state: stash this one, so on return the drawer
+      // still shows "Override active" with Revoke, not a grant form that would answer 409 for a clinician who is already overridden.
+      stashStepUpDraft(revokeDraftKey(owner, encounterId), grant);
       navigate(stepUp);
       return;
     }

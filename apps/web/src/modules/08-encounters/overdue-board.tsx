@@ -56,6 +56,8 @@ import {
   type NoteBoardState,
   OverrideGrantDrawer,
   grantDraftKey,
+  revokeDraftKey,
+  stashedGrant,
 } from "./override-grant-drawer";
 import { useIsMounted } from "./use-is-mounted";
 import { useNow } from "./use-now";
@@ -100,7 +102,12 @@ export function OverdueBoard(): JSX.Element {
   const [announcement, setAnnouncement] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [grants, setGrants] = useState<Grants>({});
+  // The grants this session knows of live only here (no list route). A revoke that went to step-up stashed its grant, so back from
+  // /step-up the drawer still offers Revoke for it.
+  const [grants, setGrants] = useState<Grants>(() => {
+    const held = returning ? stashedGrant(owner, params.get(NOTE_PARAM) ?? "") : null;
+    return held ? { [held.subjectMembershipId]: held } : {};
+  });
   const [kept, setKept] = useState<OverdueNote | null>(null);
   const staffNames = useStaffNames();
   const now = useNow(COUNTDOWN_TICK_MS);
@@ -152,6 +159,7 @@ export function OverdueBoard(): JSX.Element {
   useEffect(() => {
     if (!forbidden || noteParam === "") return;
     clearStepUpDraft(grantDraftKey(owner, noteParam));
+    clearStepUpDraft(revokeDraftKey(owner, noteParam));
     setKept(null);
     setParams(
       (previous) => {

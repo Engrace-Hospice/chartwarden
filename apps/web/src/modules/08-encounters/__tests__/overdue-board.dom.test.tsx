@@ -454,6 +454,48 @@ describe("step-up", () => {
     await screen.findByText("elsewhere");
     expect(document.body.dataset.where).toContain("/step-up?returnTo=");
   });
+
+  describe("after a revoke's round trip", () => {
+    let ceremonyDone = false;
+    const revoke: Responder = () =>
+      ceremonyDone
+        ? { body: overrideView({ revokedAt: hoursFromNow(0) }) }
+        : { status: 403, body: { error: { code: "STEP_UP_REQUIRED" } } };
+
+    /** Grant, press Revoke, get sent to step-up, and leave the board (it unmounts, and its held grants with it). */
+    async function revokeSentToStepUp(): Promise<void> {
+      ceremonyDone = false;
+      mount({ revoke });
+      const drawer = await openDrawer();
+      typeReason(drawer, LONG_REASON);
+      submitGrant(drawer);
+      fireEvent.click(await within(drawer).findByRole("button", { name: "Revoke override" }));
+      await screen.findByText("elsewhere");
+      expect(stepUpDraftKeys().length).toBe(1);
+      cleanup();
+    }
+
+    it("still offers Revoke for the grant, and the revoke goes through", async () => {
+      await revokeSentToStepUp();
+      ceremonyDone = true;
+      markStepUpReturn(entry);
+      mount({ entry, revoke });
+      const back = await drawerFor("Rowan Test");
+      fireEvent.click(await within(back).findByRole("button", { name: "Revoke override" }));
+      await within(back).findByText(/Override revoked/);
+      expect(within(back).queryByRole("button", { name: "Revoke override" })).toBeNull();
+      expect(stepUpDraftKeys().length).toBe(0);
+    });
+
+    it("does not bring the grant back on an ordinary visit, and forgets it", async () => {
+      await revokeSentToStepUp();
+      mount({ entry, revoke });
+      const fresh = await drawerFor("Rowan Test");
+      expect(within(fresh).queryByRole("button", { name: "Revoke override" })).toBeNull();
+      expect(reasonBox(fresh).value).toBe("");
+      expect(stepUpDraftKeys().length).toBe(0);
+    });
+  });
 });
 
 const heading = (drawer: HTMLElement): HTMLElement =>
