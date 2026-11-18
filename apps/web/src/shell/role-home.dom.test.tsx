@@ -314,6 +314,29 @@ describe("RoleHome operational dashboard", () => {
 
     expect(await screen.findByText(/2 missed visits/i)).toBeTruthy();
   });
+  it("labels today's visits with the shared purpose wording, not the raw enum", async () => {
+    const soon = new Date(Date.now() + 60 * 60_000).toISOString();
+    const visit = (id: string, patientId: string, visitPurpose: string) => ({
+      id,
+      patientId,
+      visitPurpose,
+      scheduledStartedAt: soon,
+      scheduledEndedAt: soon,
+      status: "published",
+    });
+    const client = clientFor({
+      "/api/v1/visits": [visit("v1", "p1", "recert"), visit("v2", "p2", "f2f")],
+    });
+    renderHome(
+      { ...adminSession, permissions: ["visit.read"], roles: ["rn"], isAdmin: false },
+      client,
+    );
+
+    expect((await screen.findAllByText("Recert Kickoff (RN)")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Face-to-Face")).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^Recert$/)).toBeNull();
+    expect(screen.queryByText(/^F2f$/i)).toBeNull();
+  });
   it("alerts a clinician to overdue and closing-soon certification windows", async () => {
     const win = (id: string, windowKind: string, state: string) => ({
       id,
