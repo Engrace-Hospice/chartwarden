@@ -9,7 +9,7 @@
 | Free Sandbox account/key | Mock eligibility and portal exploration; not provisioned to submit test claims | Not sufficient |
 | Production Stedi account + Test-mode API key | Synthetic Test-mode claims, not routed to payers, subject to the account's enabled features | Required, after Stedi confirms account eligibility |
 | Production-mode API key | Can send real payer transactions | Prohibited |
-| OAuth Integrated Account token | OAuth requests use a Production account; current OAuth setup does not provide this Test-mode contract path | Prohibited |
+| OAuth Integrated Account token | Separate future customer-onboarding path; not the API-key Test-mode contract path described by Stedi's test-claim workflow | Prohibited for this contract runner |
 
 Public docs explain these product modes; they do not prove that ChartWarden's account is enabled or that its hospice workflows are supported. Q14 written confirmation and a vendor authorization reference are prerequisites.
 
