@@ -361,7 +361,8 @@ function makeServer(
   registerEvvRoutes(app, {
     service: service ?? backend,
     deviceAttestationEnforced,
-    ...(assertMayStartVisit ? { assertMayStartVisit } : {}),
+    // required by the routes: a suite that does not exercise the closure guard says so with a guard that always resolves
+    assertMayStartVisit: assertMayStartVisit ?? (async () => undefined),
   });
   return { app, backend };
 }

@@ -75,9 +75,10 @@ export interface EvvRouteDeps {
    * clinician must be able to upload, and they also accept `check_in` events (which start a visit). The composition root injects the gate's
    * policy+evaluator half here (this module imports nothing from the gate); a batch that contains any `check_in` event calls it first and
    * is refused with the gate's own 403 NOTE_CLOSURE_REQUIRED / 503 NOTE_CLOSURE_UNAVAILABLE when it throws. A check-out-only batch never
-   * calls it. Resolves when the clinician is not blocked.
+   * calls it. Resolves when the clinician is not blocked. REQUIRED, not optional: a registration that left it out would silently leave
+   * check-in batches ungated, so every mount site must say what it asks (a test that does not care passes a function that resolves).
    */
-  assertMayStartVisit?: (actor: EvvVisitStartActor) => Promise<void>;
+  assertMayStartVisit: (actor: EvvVisitStartActor) => Promise<void>;
 }
 
 /** Who is posting an offline batch, as the closure gate needs it (ids only). */
@@ -193,7 +194,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     request: FastifyRequest,
     events: readonly { readonly kind: string }[],
   ): Promise<void> => {
-    if (!deps.assertMayStartVisit || !events.some((event) => event.kind === "check_in")) return;
+    if (!events.some((event) => event.kind === "check_in")) return;
     const { organizationId, userId, membershipId } = writeActorOf(request);
     await deps.assertMayStartVisit({ organizationId, userId, membershipId });
   };

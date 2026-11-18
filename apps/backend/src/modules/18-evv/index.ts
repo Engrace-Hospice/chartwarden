@@ -31,16 +31,19 @@ import { type EvvRouteDeps, registerEvvRoutes as _registerM18Routes } from "./ro
 export function mountEvvRoutes(
   app: FastifyInstance,
   db: DbClient,
-  outbox?: EvvWriteOutboxPort,
+  outbox: EvvWriteOutboxPort | undefined,
   options: {
     readonly deviceAttestationEnforced?: boolean;
     /** GAP-133 — the §D10 coordinate envelope; unbound ⇒ captures are refused (fail closed). */
     readonly coordsCipher?: EvvCoordsCipher;
     /** Where the location list reports a coordinate it could not open (default: a process warning). */
     readonly onCoordsFault?: EvvCoordsFaultReporter;
-    /** ADR-0113 D6 - the visit-note closure gate's "not blocked" check, run before an offline batch that starts a visit. */
-    readonly assertMayStartVisit?: EvvRouteDeps["assertMayStartVisit"];
-  } = {},
+    /**
+     * ADR-0113 D6 - the visit-note closure gate's "not blocked" check, run before an offline batch that starts a visit. REQUIRED: leaving
+     * it out would silently leave check-in batches ungated.
+     */
+    readonly assertMayStartVisit: EvvRouteDeps["assertMayStartVisit"];
+  },
 ): void {
   // GAP-055 follow-up: ONE value (from validated server config, default OFF) feeds BOTH the routes' attestation
   // gate and the service-layer guard, so they cannot disagree.
@@ -54,7 +57,7 @@ export function mountEvvRoutes(
   _registerM18Routes(app, {
     service: backend,
     deviceAttestationEnforced,
-    ...(options.assertMayStartVisit ? { assertMayStartVisit: options.assertMayStartVisit } : {}),
+    assertMayStartVisit: options.assertMayStartVisit,
   });
 }
 
