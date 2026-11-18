@@ -102,7 +102,8 @@ export function closureVerdict(
   asOf: Date,
 ): ClosureVerdict {
   if (mode === "off") return "clear";
-  const pastBlockFrom = decision.blockFrom !== null && asOf.getTime() >= decision.blockFrom.getTime();
+  const pastBlockFrom =
+    decision.blockFrom !== null && asOf.getTime() >= decision.blockFrom.getTime();
   if (mode === "block" && pastBlockFrom && !overrideActive) return "blocked";
   return decision.stage === "overdue" || decision.stage === "escalated" ? "warn" : "clear";
 }
