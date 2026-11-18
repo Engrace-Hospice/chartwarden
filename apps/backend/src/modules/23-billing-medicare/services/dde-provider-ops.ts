@@ -3,12 +3,75 @@
 // each provider error code, and how a provider outcome maps onto the queue. No IO, no clock, no PHI.
 import { isRealCalendarDate, medicareReceiptDay, validateDdeCodes } from "@chartwarden/billing";
 import { ChartWardenError } from "@chartwarden/types";
-import { DDE, type DdeOutcome } from "@chartwarden/x12-837-client";
+import { DDE, type DdeOutcome, type DdeReceipt } from "@chartwarden/x12-837-client";
 
 /** The provider's opaque operation id as we store it (matches the `provider_reference` CHECK). */
 export const PROVIDER_REFERENCE_PATTERN = /^[A-Za-z0-9:._-]{1,64}$/;
 const RTP_CODE_PATTERN = /^[A-Z0-9]{1,8}$/;
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const RECEIPT_TIMESTAMP =
+  /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/;
+
+/** A receipt timestamp is an RFC 3339 instant with a real calendar date and bounded time/offset fields. */
+function isReceiptTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = RECEIPT_TIMESTAMP.exec(value);
+  if (!match || !isRealCalendarDate(match[1]!)) return false;
+  const hour = Number(match[2]);
+  const minute = Number(match[3]);
+  const second = Number(match[4]);
+  if (hour > 23 || minute > 59 || second > 59) return false;
+  if (match[6] !== undefined) {
+    const offsetHour = Number(match[6]);
+    const offsetMinute = Number(match[7]);
+    if (offsetHour > 23 || offsetMinute > 59) return false;
+  }
+  return Number.isFinite(Date.parse(value));
+}
+
+/**
+ * A provider is an external boundary: validate its full receipt and its binding to this exact attempt before clearing
+ * the durable in-doubt marker. A usable reference by itself does not prove that the receipt belongs to this request.
+ */
+export function isUsableDdeReceipt(
+  value: unknown,
+  expected: Pick<DdeReceipt, "idempotencyKey" | "controlNumber">,
+): value is DdeReceipt {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const receipt = value as Partial<DdeReceipt>;
+  return (
+    typeof receipt.providerReference === "string" &&
+    PROVIDER_REFERENCE_PATTERN.test(receipt.providerReference) &&
+    receipt.idempotencyKey === expected.idempotencyKey &&
+    receipt.controlNumber === expected.controlNumber &&
+    isReceiptTimestamp(receipt.receivedAt) &&
+    typeof receipt.replayed === "boolean"
+  );
+}
+
+export type ProviderSubmissionResponse =
+  | { readonly kind: "success"; readonly data: unknown }
+  | { readonly kind: "degraded"; readonly code: string }
+  | { readonly kind: "invalid" };
+
+/** Parse only safe control fields from the provider result; never surface its reason or payload. */
+export function classifyProviderSubmissionResponse(value: unknown): ProviderSubmissionResponse {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return { kind: "invalid" };
+  }
+  const envelope = value as Record<string, unknown>;
+  if (envelope.ok === true && "data" in envelope) {
+    return { kind: "success", data: envelope.data };
+  }
+  if (envelope.ok === false) {
+    const degraded = envelope.degraded;
+    if (degraded !== null && typeof degraded === "object" && !Array.isArray(degraded)) {
+      const code = (degraded as Record<string, unknown>).code;
+      if (typeof code === "string") return { kind: "degraded", code };
+    }
+  }
+  return { kind: "invalid" };
+}
 
 /**
  * One key per queue item AND attempt. `controlNumber` is not unique per operation (repeat corrections of one claim
@@ -32,6 +95,7 @@ export const DDE_PROVIDER_CALL_TIMEOUT_MS = 30_000;
  */
 export const REFUSED_BEFORE_SEND: ReadonlySet<string> = new Set([
   DDE.NOT_WIRED,
+  DDE.NOT_READY,
   DDE.NOT_PROVISIONED,
   DDE.OPERATOR_NOT_ENROLLED,
   DDE.INVALID_REQUEST,
@@ -81,6 +145,11 @@ const REFUSALS: Readonly<Record<string, Refusal>> = {
   [DDE.NOT_WIRED]: {
     status: 503,
     message: "no DDE access provider is bound for this platform; key the item manually",
+  },
+  [DDE.NOT_READY]: {
+    status: 503,
+    message:
+      "the configured DDE provider is not qualified for this operation; key the item manually",
   },
   [DDE.NOT_PROVISIONED]: {
     status: 503,

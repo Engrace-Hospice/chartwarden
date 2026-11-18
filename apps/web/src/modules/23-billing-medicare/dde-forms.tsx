@@ -39,21 +39,31 @@ function FormFooter({
 
 export function SubmissionForm({
   busy,
+  resolvingInDoubt = false,
   draft,
   onDraft,
   onCancel,
   onSubmit,
 }: {
   busy: boolean;
+  resolvingInDoubt?: boolean;
   draft: SubmissionDraft;
   onDraft: (d: SubmissionDraft) => void;
   onCancel: () => void;
   onSubmit: (d: SubmissionDraft) => void;
 }): JSX.Element {
   const [errors, setErrors] = useState<Partial<Record<keyof SubmissionDraft, string>>>({});
+  const [confirmationError, setConfirmationError] = useState<string | null>(null);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    if (resolvingInDoubt && draft.confirmedExistingTransaction !== true) {
+      setConfirmationError(
+        "Confirm that you found this transaction in DDE before resolving the uncertain attempt.",
+      );
+      return;
+    }
+    setConfirmationError(null);
     const found = validateSubmission(draft);
     setErrors(found);
     if (Object.keys(found).length === 0) onSubmit(draft);
@@ -63,12 +73,35 @@ export function SubmissionForm({
       className="wx-form-stack"
       onSubmit={submit}
       noValidate
-      aria-label="Record as keyed in DDE"
+      aria-label={resolvingInDoubt ? "Record confirmed submission" : "Record manual submission"}
     >
       <p className="wx-row-sub">
-        This records that you keyed the item in DDE. ChartWarden cannot check it, so it is your word
-        and it is audited. It needs a recent re-authentication.
+        {resolvingInDoubt
+          ? "Use this only after you verify the transaction exists in DDE. This resolves the uncertain attempt; it does not send anything. It needs a recent re-authentication."
+          : "Complete the transaction in Medicare DDE first. This records what happened; ChartWarden does not submit anything to Medicare. It is your attestation and is audited. A recent re-authentication is required."}
       </p>
+      {resolvingInDoubt ? (
+        <div>
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.confirmedExistingTransaction === true}
+              aria-invalid={confirmationError ? true : undefined}
+              aria-describedby={confirmationError ? "dde-confirm-existing-error" : undefined}
+              onChange={(e) => {
+                onDraft({ ...draft, confirmedExistingTransaction: e.target.checked });
+                if (e.target.checked) setConfirmationError(null);
+              }}
+            />
+            I verified this transaction exists in DDE
+          </label>
+          {confirmationError ? (
+            <p id="dde-confirm-existing-error" role="alert">
+              {confirmationError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <TextField
         label="DCN / ICN / receipt number"
         name="dcn"
@@ -88,13 +121,19 @@ export function SubmissionForm({
         error={errors.notes}
         onChange={(e) => onDraft({ ...draft, notes: e.target.value })}
       />
-      <FormFooter busy={busy} label="Record as keyed" onCancel={onCancel} />
+      <FormFooter
+        busy={busy}
+        label={resolvingInDoubt ? "Confirm submission" : "Record submission"}
+        onCancel={onCancel}
+      />
     </form>
   );
 }
 
 export function OutcomeForm({
   item,
+  resolvingInDoubt = false,
+  canRecordAcceptance,
   busy,
   draft,
   onDraft,
@@ -102,6 +141,8 @@ export function OutcomeForm({
   onSubmit,
 }: {
   item: DdeItem;
+  resolvingInDoubt?: boolean;
+  canRecordAcceptance: boolean;
   busy: boolean;
   draft: OutcomeDraft;
   onDraft: (d: OutcomeDraft) => void;
@@ -109,15 +150,58 @@ export function OutcomeForm({
   onSubmit: (d: OutcomeDraft) => void;
 }): JSX.Element {
   const [errors, setErrors] = useState<Partial<Record<keyof OutcomeDraft, string>>>({});
+  const [confirmationError, setConfirmationError] = useState<string | null>(null);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    if (resolvingInDoubt && draft.confirmedExistingTransaction !== true) {
+      setConfirmationError(
+        "Confirm that you found this transaction and outcome in DDE before resolving the uncertain attempt.",
+      );
+      return;
+    }
+    setConfirmationError(null);
+    if (draft.outcome === "accepted" && !canRecordAcceptance) {
+      setErrors({ outcome: "You do not have permission to record MAC acceptance." });
+      return;
+    }
     const found = validateOutcome(draft, item);
     setErrors(found);
     if (Object.keys(found).length === 0) onSubmit(draft);
   };
   return (
-    <form className="wx-form-stack" onSubmit={submit} noValidate aria-label="Record what came back">
+    <form
+      className="wx-form-stack"
+      onSubmit={submit}
+      noValidate
+      aria-label={resolvingInDoubt ? "Record confirmed outcome" : "Record what came back"}
+    >
+      {resolvingInDoubt ? (
+        <div>
+          <p className="wx-row-sub">
+            Record an outcome only after confirming this transaction and its current status in DDE.
+            This does not submit anything.
+          </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.confirmedExistingTransaction === true}
+              aria-invalid={confirmationError ? true : undefined}
+              aria-describedby={confirmationError ? "dde-confirm-outcome-error" : undefined}
+              onChange={(e) => {
+                onDraft({ ...draft, confirmedExistingTransaction: e.target.checked });
+                if (e.target.checked) setConfirmationError(null);
+              }}
+            />
+            I verified this transaction and outcome in DDE
+          </label>
+          {confirmationError ? (
+            <p id="dde-confirm-outcome-error" role="alert">
+              {confirmationError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <SelectField
         label="What came back"
         name="outcome"
@@ -126,7 +210,9 @@ export function OutcomeForm({
         error={errors.outcome}
         options={[
           { value: "", label: "Select…" },
-          { value: "accepted", label: "Accepted by the MAC (needs re-authentication)" },
+          ...(canRecordAcceptance
+            ? [{ value: "accepted", label: "Accepted by the MAC (needs re-authentication)" }]
+            : []),
           { value: "returned", label: "Returned / rejected" },
         ]}
         onChange={(e) => onDraft({ ...draft, outcome: e.target.value as OutcomeDraft["outcome"] })}

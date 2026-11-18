@@ -1,8 +1,8 @@
 // apps/web/src/modules/23-billing-medicare — the DDE work queue (ADR-0052): the Medicare Direct Data Entry (FISS)
 // work a biller must key by hand — NOE/NOTR, claim entry, RTP corrections, adjustments, cancels, ADR responses. A
 // cursor-paginated worklist (patient · work type · deadline · status) and a right rail for the selected item.
-// HUMAN WORK TRACKING ONLY: ChartWarden never connects to DDE, so "recorded as keyed" is the operator's word, and
-// recording it (or an acceptance) needs a fresh step-up. An NOE/NOTR is on time only once the MAC acceptance date
+// Manual DDE remains the operational baseline. A provider-assisted path appears only when the server reports an
+// explicitly enabled capability; operator-recorded actions retain the existing step-up. An NOE/NOTR is on time only once the MAC acceptance date
 // is recorded; a keyed item with no acceptance date stays "at risk". No MBI is shown or accepted here; notes are
 // never logged. 2026-09-25 redesign pattern (the admissions census + drawer); kit components and wx-* classes only.
 // The server evaluates every rule and is the only authorization point (ADR-0030).
@@ -21,13 +21,14 @@ import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { ItemRail } from "./dde-item-rail";
-import { providerBadge } from "./dde-provider-model";
+import { UNKNOWN_PROVIDER_CAPABILITY, providerBadge } from "./dde-provider-model";
 import { DdeProviderStatus } from "./dde-provider-status";
 import {
   DEADLINE_TONE,
   type DdeItem,
   type DdeItemDetail,
   type DdeItemType,
+  type DdeProviderCapability,
   type DdeState,
   REQUEUED_LABEL,
   STATE_LABEL,
@@ -56,6 +57,9 @@ export function DdeQueue(): JSX.Element {
   const client = useApiClient();
   const [params, setParams] = useSearchParams();
   const [items, setItems] = useState<DdeItem[]>([]);
+  const [providerCapability, setProviderCapability] = useState<DdeProviderCapability>(
+    UNKNOWN_PROVIDER_CAPABILITY,
+  );
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [state, setState] = useState<"" | DdeState>("");
@@ -96,6 +100,7 @@ export function DdeQueue(): JSX.Element {
     setError(null);
     setMoreError(null);
     setLoadingMore(false);
+    setProviderCapability(UNKNOWN_PROVIDER_CAPABILITY);
     void client
       .GET("/api/v1/billing/dde-items", { params: { query: filterQuery() } })
       .then(({ data, error: err }) => {
@@ -103,10 +108,12 @@ export function DdeQueue(): JSX.Element {
         if (err || !data) {
           setError("The DDE queue could not be loaded. You may lack billing scope.");
           setItems([]);
+          setProviderCapability(UNKNOWN_PROVIDER_CAPABILITY);
           setHasMore(false);
           setNextCursor(null);
         } else {
           setItems(data.items as DdeItem[]);
+          setProviderCapability(data.providerCapability ?? UNKNOWN_PROVIDER_CAPABILITY);
           setHasMore(data.hasMore);
           setNextCursor(data.nextCursor ?? null);
         }
@@ -115,6 +122,7 @@ export function DdeQueue(): JSX.Element {
       .catch(() => {
         if (active) {
           setError("The DDE queue could not be loaded. Check your connection.");
+          setProviderCapability(UNKNOWN_PROVIDER_CAPABILITY);
           setLoading(false);
         }
       });
@@ -213,9 +221,9 @@ export function DdeQueue(): JSX.Element {
           <div>
             <h1 className="wx-headline-lg">DDE Work Queue</h1>
             <p>
-              Medicare Direct Data Entry work. Key it by hand and record what you keyed and what
-              came back, or send it through the DDE provider when one is configured. A notice is on
-              time only once the MAC acceptance date is recorded.
+              Medicare Direct Data Entry work. Complete transactions in DDE, then record the
+              submission and outcome here. A notice is on time only once the MAC acceptance date is
+              recorded.
             </p>
           </div>
         </header>
@@ -223,6 +231,13 @@ export function DdeQueue(): JSX.Element {
         <BillingTabs />
         <ClaimsBillingNotice />
         <DdeProviderStatus />
+
+        {!loading ? (
+          <output className="wx-row-sub" aria-label="DDE operating mode">
+            <strong>{providerCapability.label}</strong>
+            <span> — {providerCapability.explanation}</span>
+          </output>
+        ) : null}
 
         <div className="wx-filter-panel">
           <label className="wx-filter-field">
@@ -355,6 +370,9 @@ export function DdeQueue(): JSX.Element {
                             <StatusPill label={REQUEUED_LABEL} tone="warning" />
                           ) : null}
                           <StatusPill label={badge.label} tone={badge.tone} />
+                          {n.providerInDoubt ? (
+                            <StatusPill label="Verify in DDE" tone="warning" />
+                          ) : null}
                         </td>
                       </tr>
                     );
@@ -378,6 +396,7 @@ export function DdeQueue(): JSX.Element {
         <ItemRail
           key={detail.ddeWorkItemId}
           item={detail}
+          providerCapability={providerCapability}
           patientName={patientLabel(names[detail.patientId], detail.patientId)}
           notInList={notInList}
           onClose={() => select(null)}

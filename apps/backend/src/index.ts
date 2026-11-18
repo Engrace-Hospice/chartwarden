@@ -8289,7 +8289,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // The receiving hospice's Medicare transfer notice (TOB 8xC / 8xD, CMS Pub. 100-04 ch. 11
                 // §20.1.3–§20.1.4). Submission rides the same durable outbox → BullMQ bridge as NOE/NOTR;
                 // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
-                // ADR-0052 — the DDE work queue (human work tracking; no DDE integration or credential).
+                // ADR-0052 — manual DDE remains the operational baseline; the generic ADR-0103 provider port exists,
+                // but Episode Alert is unverified and remains unbound from production execution.
                 attemptResolutionService: buildClearinghouseAttemptResolutionService(
                   createDrizzleAttemptStore(dbHandle.db),
                 ),

@@ -932,8 +932,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       dcn: nullableStr,
       rtpReasonCode: nullableStr,
       outcomeCode: nullableStr,
-      // ADR-0103 D5: who vouches for "submitted" ("manual" attestation | "provider" verified) and the provider's
-      // opaque operation id. No MBI, no notes. Absent on events from before migration 1271.
+      // ADR-0103 D5: known submission channel (manual operator report or provider receipt) and the provider's opaque
+      // operation id. A missing mode preserves unknown provenance. No MBI, no notes. Absent before migration 1271.
       submissionMode: Type.Optional(nullableStr),
       providerReference: Type.Optional(nullableStr),
     }),

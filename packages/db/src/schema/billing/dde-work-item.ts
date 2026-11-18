@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 // @chartwarden/db — `dde_work_item` (M23 Billing-Medicare; ADR-0052; non-partitioned; retention class
 // `compliance`). One piece of Medicare Direct Data Entry (FISS) work a biller must key by hand: an NOE/NOTR,
-// a claim entry, an RTP correction, an adjustment, a cancel or an ADR response. HUMAN WORK TRACKING ONLY — no
-// DDE credential or integration exists; `submitted` is an operator attestation.
+// a claim entry, an RTP correction, an adjustment, a cancel or an ADR response. Manual DDE is the baseline;
+// `submitted` records submission evidence and does not by itself imply provider verification.
 // ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS, ENABLED + FORCEd).
 //
 // CROSS-MODULE FK POLICY: only `organization_id` (core) gets a real `.references(...)`. `provider_entity_id`
@@ -52,8 +52,8 @@ export type DdeStateValue = (typeof DDE_STATE_VALUES)[number];
 export const DDE_SOURCE_VALUES = ["manual", "watchdog"] as const;
 export type DdeSourceValue = (typeof DDE_SOURCE_VALUES)[number];
 
-// Who vouches for "submitted" (ADR-0103 D5): an operator who keyed it (an attestation) or a DdeAccessProvider that
-// answered for it (provider-verified). Migration 1271.
+// Submission channel when known (ADR-0103 D5): manual or provider. Null preserves unknown channel provenance, such
+// as when an operator confirms an existing transaction while resolving an ambiguous provider attempt. Migration 1271.
 export const DDE_SUBMISSION_MODE_VALUES = ["manual", "provider"] as const;
 export type DdeSubmissionModeValue = (typeof DDE_SUBMISSION_MODE_VALUES)[number];
 
@@ -82,8 +82,8 @@ export const ddeWorkItem = pgTable(
     deadlineAt: date("deadline_at"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     macAcceptedOn: date("mac_accepted_on"),
-    // The CURRENT attempt's submission path (cleared by a retry). `provider_reference` is the provider's opaque
-    // operation id; set iff `submission_mode = 'provider'` (CHECK). Migration 1271.
+    // The CURRENT attempt's submission path when known (cleared by a retry). `provider_reference` is the provider's
+    // opaque operation id; set iff `submission_mode = 'provider'` (CHECK). Migration 1271.
     submissionMode: text("submission_mode").$type<DdeSubmissionModeValue>(),
     providerReference: text("provider_reference"),
     // Durable "possibly sent" marker: set before a provider call, cleared when its outcome is applied. Migration 1272.
