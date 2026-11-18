@@ -226,6 +226,74 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       await rm(migrationsDir, { force: true, recursive: true });
     }
   }, 60_000);
+
+  const relationOf = async (table: string): Promise<string | null> =>
+    (
+      await db.query<{ relation: string | null }>("SELECT to_regclass($1) AS relation", [
+        `public.${table}`,
+      ])
+    ).rows[0]!.relation;
+
+  it("--hold-contract refuses a batch with a non-expand migration before running any of it", async () => {
+    const migrationsDir = await mkdtemp(join(tmpdir(), "chartwarden-migrate-hold-"));
+    const expandFile = "9011_hold_expand_first.sql";
+    const contractFile = "9012_hold_contract_second.sql";
+    const expandTable = "migrate_hold_expand_first";
+    const contractTable = "migrate_hold_contract_second";
+    const contractSql = `-- compat: contract\nCREATE TABLE ${contractTable} (id integer);\n`;
+
+    try {
+      await writeFile(
+        join(migrationsDir, expandFile),
+        `-- compat: expand\nCREATE TABLE ${expandTable} (id integer);\n`,
+      );
+      await writeFile(join(migrationsDir, contractFile), contractSql);
+
+      // The ledger holds the full chain, so old writers may exist: the whole batch is refused, the expand
+      // file that sorts BEFORE the contract one included (a mid-batch hold would half-advance the schema).
+      await expect(
+        applyMigrations(db, { migrationsDir, holdContract: true }),
+      ).rejects.toMatchObject({ name: "ContractMigrationHold", files: [contractFile] });
+      expect(await relationOf(expandTable)).toBeNull();
+      expect(await relationOf(contractTable)).toBeNull();
+
+      // An expand-only batch passes the hold.
+      await rm(join(migrationsDir, contractFile));
+      await expect(
+        applyMigrations(db, { migrationsDir, holdContract: true }),
+      ).resolves.toMatchObject({ ran: [expandFile] });
+
+      // The operator applies the held migration by hand, after the drain: no flag, no hold.
+      await writeFile(join(migrationsDir, contractFile), contractSql);
+      await expect(applyMigrations(db, { migrationsDir })).resolves.toMatchObject({
+        ran: [contractFile],
+      });
+    } finally {
+      await db.query(`DROP TABLE IF EXISTS ${expandTable}, ${contractTable}`);
+      await db.query("DELETE FROM _chartwarden_migration WHERE filename = ANY($1)", [
+        [expandFile, contractFile],
+      ]);
+      await rm(migrationsDir, { force: true, recursive: true });
+    }
+  }, 60_000);
+
+  it("--hold-contract exempts a database with an empty ledger (a fresh environment has no old writers)", async () => {
+    // Last test of this block: it empties the schema, which the later tests do not depend on.
+    await resetSchema();
+    const migrationsDir = await mkdtemp(join(tmpdir(), "chartwarden-migrate-hold-fresh-"));
+    const file = "9013_hold_fresh_contract.sql";
+    try {
+      await writeFile(
+        join(migrationsDir, file),
+        "-- compat: contract\nCREATE TABLE migrate_hold_fresh (id integer);\n",
+      );
+      await expect(
+        applyMigrations(db, { migrationsDir, holdContract: true }),
+      ).resolves.toMatchObject({ ran: [file] });
+    } finally {
+      await rm(migrationsDir, { force: true, recursive: true });
+    }
+  }, 60_000);
 });
 
 // The ledger rename (_wardenx_migration -> _chartwarden_migration) must keep rows/checksums, and the

@@ -406,6 +406,23 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
     expect(o.out).toContain("migrations did not complete");
   });
 
+  it("runs the migrate step with --hold-contract so an unattended deploy never applies a non-expand migration", () => {
+    const o = deploy({});
+    const migrate = o.calls.find((c) => c.includes("scripts/db/migrate.ts"));
+    expect(migrate, o.out).toContain("--hold-contract");
+  });
+
+  it("a hold from the runner (exit 75, nothing applied) -> exit 75, previous release untouched, not a rollback refusal", () => {
+    const o = deploy({ migrateExit: 75 });
+    expect(o.code, o.out).toBe(75);
+    expect(o.out).toContain("DEPLOY HELD BEFORE ANY SCHEMA CHANGE");
+    expect(o.out).not.toContain("AUTOMATIC ROLLBACK REFUSED");
+    expect(o.env).toContain(`CHARTWARDEN_IMAGE=${OLD_API}`);
+    expect(oldRestarts(o), o.out).toBe(0);
+    expect(o.calls.some((c) => c.includes("run --rm --no-deps provision"))).toBe(false);
+    expect(o.previousReleaseSaved).toBe(false);
+  });
+
   it("failure before migrating (new-release env validation) -> clean rollback, migrate never ran", () => {
     const o = deploy({ envExit: 1 });
     expectRolledBack(o, false);

@@ -33,6 +33,9 @@
  *   --strict        checksum drift on an already-applied file is a hard failure, not a warning
  *   --schema-only   apply pending migrations only; skip the chartwarden_app LOGIN/password/BYPASSRLS
  *                   bootstrap (the per-deploy step — see header)
+ *   --hold-contract refuse (exit 75, nothing applied) when any pending migration from 1288 on is not a
+ *                   verified `-- compat: expand`; deploy.sh sets it. An empty ledger is exempt. An operator
+ *                   applies a held migration by hand, without this flag, after the drain it needs.
  *
  * Env (Bun auto-loads `.env`):
  *   DATABASE_ADMIN_URL   superuser/owner conn string for DDL (falls back to DATABASE_URL)
@@ -50,6 +53,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import { pendingNeedingOperator } from "../check-migration-compat";
 import { firstRow } from "./lib/query-rows";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -215,6 +219,28 @@ export interface ApplyMigrationsOptions {
   readonly strict?: boolean;
   /** An applied ledger row whose migration file no longer exists throws instead of only warning. */
   readonly strictOrphans?: boolean;
+  /**
+   * Refuse, before executing anything, a batch whose pending files are not all proven `expand`
+   * (see pendingNeedingOperator). deploy.sh sets it. A DB with an empty ledger is exempt: it has no
+   * old writers to drain. An operator applies a held migration by hand (no flag) after the drain.
+   */
+  readonly holdContract?: boolean;
+}
+
+/** Exit status of a refusal that needs an operator (deploy.sh's HOLD_EXIT, EX_TEMPFAIL). */
+export const CONTRACT_HOLD_EXIT = 75;
+
+export class ContractMigrationHold extends Error {
+  constructor(readonly files: readonly string[]) {
+    super(
+      [
+        `${files.length} pending migration(s) are not proven expand-compatible and were NOT applied: ${files.join(", ")}.`,
+        "Applying one can break the running release (its header says what must be drained first; see docs/runbooks).",
+        "Drain as the migration's header and runbook require, then apply it by hand with `bun run db:migrate:deploy`.",
+      ].join(" "),
+    );
+    this.name = "ContractMigrationHold";
+  }
 }
 
 export interface ApplyMigrationsResult {
@@ -350,6 +376,15 @@ export async function applyMigrations(
     );
   }
 
+  // All-or-nothing and before the first DDL: migrations commit one by one, so a hold found mid-batch would
+  // leave the schema half-advanced for a release that was never deployed against it.
+  if (opts.holdContract && applied.size > 0) {
+    const held = pendingNeedingOperator(
+      pending.map((file) => ({ file, sql: readFileSync(join(migrationsDir, file), "utf8") })),
+    );
+    if (held.length > 0) throw new ContractMigrationHold(held);
+  }
+
   const ran: string[] = [];
   for (const f of pending) {
     const sql = readFileSync(join(migrationsDir, f), "utf8");
@@ -435,6 +470,7 @@ const BASELINE = process.argv.includes("--baseline");
 const STRICT = process.argv.includes("--strict");
 const STRICT_ORPHANS = process.argv.includes("--strict-orphans");
 const SCHEMA_ONLY = process.argv.includes("--schema-only");
+const HOLD_CONTRACT = process.argv.includes("--hold-contract");
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const BYPASSRLS_REQUESTED = process.env.CHARTWARDEN_DEV_BYPASSRLS === "1";
 
@@ -463,6 +499,7 @@ async function main(): Promise<void> {
       baseline: BASELINE,
       strict: STRICT,
       strictOrphans: STRICT_ORPHANS,
+      holdContract: HOLD_CONTRACT,
     });
     if (SCHEMA_ONLY) {
       console.log(
@@ -485,6 +522,10 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((err) => {
+    if (err instanceof ContractMigrationHold) {
+      console.error(`!! DEPLOY HOLD: ${err.message}`);
+      process.exit(CONTRACT_HOLD_EXIT);
+    }
     console.error(err);
     process.exit(1);
   });

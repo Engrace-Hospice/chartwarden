@@ -673,14 +673,31 @@ if ! { docker compose --env-file .env.production -f compose.yml up -d --no-recre
 fi
 deploy_step=migrate
 if docker compose --env-file .env.production -f compose.yml run --rm --no-deps migrate \
-  bun run scripts/db/migrate.ts --strict --schema-only; then
+  bun run scripts/db/migrate.ts --strict --schema-only --hold-contract; then
   migrate_ok=1
   assess_schema_change "$ledger_before"
   rm -f "$ledger_before" "$ledger_before.after"
 else
+  migrate_rc=$?
   # A multi-file run can have committed earlier files before failing on a later one; the ledger says which.
   assess_schema_change "$ledger_before"
   rm -f "$ledger_before" "$ledger_before.after"
+  # --hold-contract refuses the WHOLE batch before the first DDL when a pending migration is not a verified
+  # `expand` (1508 needs its old M25 writers drained, and this script never stops them before migrating). Nothing
+  # was applied, so the clean restore below leaves the running release untouched; the exit code tells the alert
+  # and the operator it is a decision, not a fault.
+  if [ "$migrate_rc" -eq "$HOLD_EXIT" ]; then
+    {
+      echo ""
+      echo "!! DEPLOY HELD BEFORE ANY SCHEMA CHANGE: a pending migration is not proven expand-compatible."
+      echo "!! Nothing was applied and the running release is untouched. Drain whatever the migration's header and"
+      echo "!! runbook name (1508: docs/runbooks/m25-835-deployment.md), apply it by hand with"
+      echo "!! 'bun run db:migrate:deploy' (no --hold-contract), then re-run this deploy."
+      echo ""
+    } >&2
+    restore_previous_release
+    exit "$HOLD_EXIT"
+  fi
   restore_previous_release
   exit 1
 fi
