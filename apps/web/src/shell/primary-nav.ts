@@ -106,7 +106,13 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         label: "Assessments",
         icon: "clipboard-check",
         to: "/hope",
-        claims: ["/hope", "/work/drafts", "/work/cosignatures", "/admin/scales"],
+        claims: [
+          "/hope",
+          "/work/drafts",
+          "/work/overdue-notes",
+          "/work/cosignatures",
+          "/admin/scales",
+        ],
       },
       {
         key: "care-plans",
