@@ -17,6 +17,18 @@ import { DOSESPOT_ALERT_RULES } from "./alert-rules-dosespot";
 
 export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 
+// The M8 cosignature alerts' audience: every supervisor role key M8 recognises. The canonical DON key is
+// `director_of_nursing` (packages/auth/src/roles/templates.ts); `don`/`clinical_lead` are the legacy
+// aliases. packages/messaging cannot import from apps/backend, so this is a literal copy of
+// SUPERVISOR_ROLE_KEYS (apps/backend/src/modules/08-encounters/supervisor-roles.ts) — keep them in step
+// (alert-rules-seed.test.ts pins it).
+const M8_SUPERVISOR_ROLE_KEYS = [
+  "clinical_supervisor",
+  "director_of_nursing",
+  "don",
+  "clinical_lead",
+] as const;
+
 /**
  * The platform-default alert rules (§3.10). Each org's effective catalog is the union of these
  * rows plus its own overrides; cloning to per-org rows happens on first override edit. The three
@@ -1128,7 +1140,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_routine",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    resolverArgs: { roleKeys: M8_SUPERVISOR_ROLE_KEYS },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -1138,7 +1150,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    resolverArgs: { roleKeys: M8_SUPERVISOR_ROLE_KEYS },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -1148,7 +1160,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    resolverArgs: { roleKeys: M8_SUPERVISOR_ROLE_KEYS },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -1158,7 +1170,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "critical",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    resolverArgs: { roleKeys: M8_SUPERVISOR_ROLE_KEYS },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,

@@ -4,10 +4,11 @@ import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { CosignatureStatus } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { and, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { transitionCosignature } from "../cosignature/cosignature";
 import { decideCosignatureSlaStage, hoursBetween } from "../cosignature/sla-clock";
 import type { EncounterWriteOutboxPort } from "../encounters-route-service-db";
+import { SUPERVISOR_ROLE_KEYS } from "../supervisor-roles";
 import { M8_JOB_SCHEDULES, M8_QUEUES, M8_QUEUE_PARAMS } from "./index";
 
 export interface ActiveOrgListPort {
@@ -66,11 +67,13 @@ async function supervisorMembershipId(
         and(
           eq(M.organizationId, organizationId),
           eq(M.status, "active"),
-          inArray(R.key, ["clinical_lead", "don", "org_admin"]),
+          inArray(R.key, [...SUPERVISOR_ROLE_KEYS, "org_admin"]),
           eq(R.enabled, true),
           or(isNull(MR.expiresAt), gt(MR.expiresAt, new Date())),
         ),
       )
+      // A real supervisor wins over a bare org_admin; invitedAt/id make the pick stable across runs.
+      .orderBy(sql`(${R.key} = 'org_admin')`, asc(M.invitedAt), asc(M.id))
       .limit(1);
     return row?.membershipId ?? null;
   });

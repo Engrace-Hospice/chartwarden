@@ -23,6 +23,7 @@ import {
 import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
+import { hasSupervisorRole } from "../supervisor-roles";
 
 import {
   AddendumParamsSchema,
@@ -122,8 +123,7 @@ const today = (): string => new Date().toISOString().slice(0, 10);
 
 const isRn = (roles: readonly string[]): boolean =>
   roles.includes("rn") || roles.includes("rn_case_manager");
-const isSupervisor = (roles: readonly string[]): boolean =>
-  roles.includes("clinical_supervisor") || roles.includes("don");
+const isSupervisor = hasSupervisorRole;
 
 /**
  * The encounter disciplines the caller's ROLE KEYS entitle them to author as (GAP-029). The create body's

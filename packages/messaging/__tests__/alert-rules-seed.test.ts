@@ -430,6 +430,26 @@ describe("M36-T05 §7.4 system_locked floors", () => {
     );
     expect(validateAlertRuleSeed(missing).map((x) => x.type)).toContain("missing_system_locked");
   });
+
+  // The canonical DON key is `director_of_nursing` (packages/auth/src/roles/templates.ts). The cosign rules
+  // must reach every supervisor key M8 recognises: this literal mirrors SUPERVISOR_ROLE_KEYS in
+  // apps/backend/src/modules/08-encounters/supervisor-roles.ts (messaging cannot import apps/backend).
+  it("the m8 cosignature alerts reach the four-key supervisor set, including director_of_nursing", () => {
+    const supervisorKeys = ["clinical_lead", "clinical_supervisor", "director_of_nursing", "don"];
+    const cosignEventTypes = [
+      "m8.encounter.cosignature_routed",
+      "m8.encounter.cosignature_overdue",
+      "m8.encounter.cosignature_escalated",
+      "m8.encounter.cosignature_hard_cap_reached",
+    ];
+    for (const eventType of cosignEventTypes) {
+      const rule = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
+      expect(rule, `${eventType} must be seeded`).toBeDefined();
+      expect(rule!.recipientResolver).toBe("role_set");
+      const roleKeys = (rule!.resolverArgs as { roleKeys: string[] }).roleKeys;
+      expect([...roleKeys].sort(), eventType).toEqual(supervisorKeys);
+    }
+  });
 });
 
 describe("m17.recurring_policy_unschedulable audience", () => {
