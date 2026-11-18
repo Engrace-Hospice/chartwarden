@@ -1,4 +1,4 @@
-// Migration 1510 (ADR-0113) is the source of truth for the documentation-obligation enums and bounds; the Drizzle pgEnums and
+// Migration 1514 (ADR-0113) is the source of truth for the documentation-obligation enums and bounds; the Drizzle pgEnums and
 // the @chartwarden/types mirrors restate them because neither package can read SQL. This pins all three to the migration so a
 // value added to one place and not the others fails here, not in production.
 import { readFileSync } from "node:fs";
@@ -18,7 +18,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 const MIGRATION = readFileSync(
-  join(__dirname, "../../../packages/db/migrations/1510_m8_note_closure_clock.sql"),
+  join(__dirname, "../../../packages/db/migrations/1514_m8_note_closure_clock.sql"),
   "utf8",
 );
 
@@ -27,14 +27,14 @@ function sqlEnumValues(typeName: string): string[] {
   const match = new RegExp(`CREATE TYPE "public"\\."${typeName}" AS ENUM \\(([^)]*)\\)`).exec(
     MIGRATION,
   );
-  if (!match) throw new Error(`migration 1510 does not create enum ${typeName}`);
+  if (!match) throw new Error(`migration 1514 does not create enum ${typeName}`);
   return [...(match[1] as string).matchAll(/'([a-z_]+)'/g)].map((m) => m[1] as string);
 }
 
 const { documentationObligationKind, documentationObligationMode, encounterClockStartSource } =
   schema;
 
-describe("documentation-obligation enums match migration 1510", () => {
+describe("documentation-obligation enums match migration 1514", () => {
   it.each([
     [
       "encounter_clock_start_source",
@@ -61,7 +61,7 @@ describe("documentation-obligation enums match migration 1510", () => {
   );
 });
 
-describe("documentation-obligation bounds match migration 1510", () => {
+describe("documentation-obligation bounds match migration 1514", () => {
   it("pins the threshold CHECK and its defaults to the shared constants", () => {
     expect(MIGRATION).toContain(
       `"threshold_hours" BETWEEN ${DOCUMENTATION_OBLIGATION_MIN_THRESHOLD_HOURS} AND ${DOCUMENTATION_OBLIGATION_MAX_THRESHOLD_HOURS}`,

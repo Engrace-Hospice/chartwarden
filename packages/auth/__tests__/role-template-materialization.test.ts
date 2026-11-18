@@ -103,7 +103,7 @@ describe("planRoleTemplateMaterialization", () => {
     const templated = ROLE_TEMPLATES.filter((t) =>
       (NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS as readonly string[]).includes(t.key),
     ).map((t) => t.key);
-    // Only the DON is a template today; clinical_supervisor / don / clinical_lead get the override from migration 1511 where a tenant created them.
+    // Only the DON is a template today; clinical_supervisor / don / clinical_lead get the override from migration 1515 where a tenant created them.
     expect(templated).toEqual(["director_of_nursing"]);
     const holders = (key: string) =>
       plan()

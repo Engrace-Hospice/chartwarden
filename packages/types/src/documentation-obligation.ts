@@ -1,7 +1,7 @@
-// @chartwarden/types — documentation obligations (M8, ADR-0113, migration 1510): the leaf contracts for the visit-note closure
+// @chartwarden/types — documentation obligations (M8, ADR-0113, migration 1514): the leaf contracts for the visit-note closure
 // clock. A clinical note must be closed within N hours of the clinician's arrival; a per-tenant policy says what an overdue
 // note does, and a supervisor can lift the block for one clinician for a short time. These are the value mirrors of the three
-// pgEnums and the bounds migration 1510 pins as CHECKs (a pin test in apps/backend/__tests__ keeps them equal to the SQL).
+// pgEnums and the bounds migration 1514 pins as CHECKs (a pin test in apps/backend/__tests__ keeps them equal to the SQL).
 // packages/types cannot import @chartwarden/db, so the enums are restated here.
 
 /** Which signal started an encounter's documentation clock; the first to arrive wins (mirrors `encounter_clock_start_source`). */

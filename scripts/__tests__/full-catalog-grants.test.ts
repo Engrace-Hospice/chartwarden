@@ -1,5 +1,5 @@
 // ADR-0113 D7 / CW-AC-48 — a full-catalog dev role (administrator, org_admin) never holds `encounter.closure_override`, whichever dev
-// script built it. Migration 1511, the role materializer and the permission sync already withhold it; the two seed scripts
+// script built it. Migration 1515, the role materializer and the permission sync already withhold it; the two seed scripts
 // (`db:seed`, `db:seed:org-admin`) once handed the whole catalog out, so a reseeded demo tenant gave its admins the supervisor key.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

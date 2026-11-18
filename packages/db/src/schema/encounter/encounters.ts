@@ -101,7 +101,7 @@ export const encounters = pgTable(
 
     documentId: uuid("document_id"), // back-reference to the M22-rendered PDF when M22 publishes
 
-    // The documentation clock (migration 1510, ADR-0113): when the clinician's duty to close this note began and which signal
+    // The documentation clock (migration 1514, ADR-0113): when the clinician's duty to close this note began and which signal
     // said so. Both set or both null (no backfill: a note older than the migration has no clock and never alerts or blocks).
     // The deadline is computed from this and the tenant policy on every read, never stored.
     clockStartedAt: timestamp("clock_started_at", { withTimezone: true }),

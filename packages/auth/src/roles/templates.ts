@@ -380,7 +380,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     // WP 4.1 (ADR-0068): the supervisory nurse may raise and receive an urgent clinical message, as migration 1105 grants.
     // WP 5.8 (ADR-0087): the supervisory nurse may open a break-glass read grant, as migration 1140 grants.
     // D-2 (CW-AC-44): the DON can open, author and finalize a care plan on a fresh tenant, as migration 1494 grants.
-    // ADR-0113 D7: the DON can lift a blocked clinician's visit-note closure and set the tenant's closure mode, as migration 1511
+    // ADR-0113 D7: the DON can lift a blocked clinician's visit-note closure and set the tenant's closure mode, as migration 1515
     // grants. `closure_override` is in FULL_CATALOG_EXCLUDED_KEYS (org_admin / administrator do not hold it); the administrators
     // derive `closure_policy_admin` from the full catalog.
     grants: [

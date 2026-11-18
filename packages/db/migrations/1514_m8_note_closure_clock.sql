@@ -19,7 +19,7 @@
 -- Tenancy: both new tables are organization-level configuration or supervisor action with no patient column, so they carry
 -- organization_id only (the tenant_sbar_policy precedent, migration 1099). The override reason is the one free-text field and is
 -- treated as potentially identifying (see above). The encounter keeps its own three columns.
--- DEV DATABASES: this file was edited in place before it was ever released, so a database that applied an EARLIER copy of 1510 (the
+-- DEV DATABASES: this file was edited in place before it was ever released, so a database that applied an EARLIER copy of 1514 (the
 -- runner records the ordinal, not the content) does not have the later pieces (the write-once clock trigger, the override org guard, the
 -- board index, the 500-character reason cap). Reset such a database, or hand-apply the missing statements from this file. Nothing
 -- released ever carried an earlier copy. The same goes for a dev database that ran `db:sync:permissions` before it skipped

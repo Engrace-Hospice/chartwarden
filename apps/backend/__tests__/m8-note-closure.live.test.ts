@@ -15,13 +15,13 @@
  *   8. The `m17.visit.started` stamp consumer behind the real catalog-validating publisher and the real outbox dispatcher.
  *   9. GET overdue-notes lands one `encounter.viewed` read event per distinct patient and honours location scope, a note with no
  *      location included.
- *  10. Migration 1511 grants the override to the four supervisor role keys, and the policy key to the DON keys and the administrators
+ *  10. Migration 1515 grants the override to the four supervisor role keys, and the policy key to the DON keys and the administrators
  *      (never to clinical_supervisor / clinical_lead), and to nobody else.
- *  11. Migration 1510's triggers: a revoked override stays revoked, an override's members belong to its organization, the clock is
+ *  11. Migration 1514's triggers: a revoked override stays revoked, an override's members belong to its organization, the clock is
  *      write-once (each with a negative control).
  *  12. The grant refuses a blocked grantor, an unblocked clinician and a note outside the grantor's sites, in that order.
  *  13. The supervisor board plans on `encounter_open_clock_board_idx` and does not sort the backlog (EXPLAIN as the app role).
- *  14. Migration 1512 disables the two retired alert rules (platform and tenant clones) and deletes nothing.
+ *  14. Migration 1516 disables the two retired alert rules (platform and tenant clones) and deletes nothing.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m8:note-closure:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1. Never point this at the shared Docker cluster.
@@ -898,7 +898,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       );
       const row = one(trigger.rows);
       expect(JSON.stringify(row.after)).not.toContain("on-call crisis");
-      // recorded as changed, never as text (migration 1510's audit_scrub on the `reason` key)
+      // recorded as changed, never as text (migration 1514's audit_scrub on the `reason` key)
       expect((row.after as Record<string, unknown>).reason).toBe("<changed>");
       expect(row.after).toMatchObject({ id: granted.id });
       // The reason itself is stored for the supervisors' own record.
@@ -2499,9 +2499,9 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
   });
 
   // ===============================================================================================================
-  // 10. migration 1511
+  // 10. migration 1515
   // ===============================================================================================================
-  describe("10. migration 1511 mirrors the two permissions: the override to the four supervisor keys, the policy key to the DON keys and the administrators", () => {
+  describe("10. migration 1515 mirrors the two permissions: the override to the four supervisor keys, the policy key to the DON keys and the administrators", () => {
     const KEYS = ["encounter.closure_override", "encounter.closure_policy_admin"];
     const [OVERRIDE, POLICY_ADMIN] = KEYS as [string, string];
     // ADR-0113 D7: who holds what once the migration has run over a tenant that already has these roles
@@ -2515,7 +2515,7 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
       rn: [],
     };
     const migration = () =>
-      readFileSync(join(MIGRATIONS_DIR, "1511_m8_note_closure_permissions.sql"), "utf8");
+      readFileSync(join(MIGRATIONS_DIR, "1515_m8_note_closure_permissions.sql"), "utf8");
     const grantsFor = async (roleKey: string, orgId: string | null) =>
       (
         await admin.query(
@@ -2581,9 +2581,9 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
   });
 
   // ===============================================================================================================
-  // 11. database hardening: the two guard triggers (three rules) of migration 1510
+  // 11. database hardening: the two guard triggers (three rules) of migration 1514
   // ===============================================================================================================
-  describe("11. migration 1510's triggers: a revoked override stays revoked, an override's members belong to its organization, the clock is write-once", () => {
+  describe("11. migration 1514's triggers: a revoked override stays revoked, an override's members belong to its organization, the clock is write-once", () => {
     let subject: Member;
     let grantor: Member;
     let otherTenantMember: Member;
@@ -3342,16 +3342,16 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
   });
 
   // ===============================================================================================================
-  // 14. migration 1512
+  // 14. migration 1516
   // ===============================================================================================================
-  describe("14. migration 1512 retires the two superseded alert rules, platform row and tenant clones, and deletes nothing", () => {
+  describe("14. migration 1516 retires the two superseded alert rules, platform row and tenant clones, and deletes nothing", () => {
     const OLD_TYPES = ["m8.encounter.unsigned", "m8.encounter.documentation_late"];
     const CONTROL_TYPE = "m8.encounter.closure_control_rule";
     const migration = () =>
       readFileSync(
         join(
           MIGRATIONS_DIR,
-          readdirSync(MIGRATIONS_DIR).find((name) => name.startsWith("1512_")) as string,
+          readdirSync(MIGRATIONS_DIR).find((name) => name.startsWith("1516_")) as string,
         ),
         "utf8",
       );

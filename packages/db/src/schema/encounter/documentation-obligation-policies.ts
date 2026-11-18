@@ -1,9 +1,9 @@
-// @chartwarden/db — `documentation_obligation_policy` (M8, migration 1510, ADR-0113). A tenant's rule for one kind of
+// @chartwarden/db — `documentation_obligation_policy` (M8, migration 1514, ADR-0113). A tenant's rule for one kind of
 // documentation duty: what an overdue note does (off | warn | block) and how many hours the clinician has. One row per
 // (organization, obligation kind); an absent row means warn / 24 hours, applied in code. `enforce_from` is set by the
 // service whenever the mode moves to block, so notes that are already overdue get a fresh window instead of locking
 // clinicians out on the switch. Org-level configuration with no patient and no PHI: organization_id only (like
-// tenant_sbar_policy). RLS + grants + audit trigger land in migration 1510.
+// tenant_sbar_policy). RLS + grants + audit trigger land in migration 1514.
 import { sql } from "drizzle-orm";
 import { check, integer, pgTable, primaryKey, timestamp, uuid } from "drizzle-orm/pg-core";
 import { documentationObligationKind, documentationObligationMode } from "../../enums";

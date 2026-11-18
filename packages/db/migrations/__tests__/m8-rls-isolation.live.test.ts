@@ -6,7 +6,7 @@
  * grant that leaks across tenants. This applies the real migrations to a real Postgres and drives the policies
  * as the unprivileged `chartwarden_app` role (no BYPASSRLS), covering all TEN clinical M8 tables. The last
  * describe block adds the two org-level closure-clock tables (`documentation_obligation_policy` / `_override`,
- * migration 1510, ADR-0113) plus the `encounter` clock columns.
+ * migration 1514, ADR-0113) plus the `encounter` clock columns.
  *
  * Two of the ten carry the risk that makes this worth more than a checkbox:
  *   • `encounter` is the signed clinical visit note — the CoP-418.104 legal record CMS and surveyors read.
@@ -369,8 +369,8 @@ describe.skipIf(!DB_URL)("M8 Encounters — RLS cross-tenant denial — LIVE Pos
     expect(r.rows[0].n).toBeGreaterThan(0);
   });
 
-  // ── migration 1510 / ADR-0113: the closure clock, tenant policy and supervisor override ──────────────────────────────
-  describe("documentation clock (migration 1510)", () => {
+  // ── migration 1514 / ADR-0113: the closure clock, tenant policy and supervisor override ──────────────────────────────
+  describe("documentation clock (migration 1514)", () => {
     const REASON = "Clinician is mid-emergency and cannot chart; lifting the block for the shift.";
     let subjectA: string;
     let granterA: string;

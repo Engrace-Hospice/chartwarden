@@ -1,5 +1,5 @@
 // ADR-0113 — "an open visit note" has ONE definition (closure/open-status.ts). The partial index `encounter_open_clock_idx` carries the
-// same predicate in two places (migration 1510 and the Drizzle schema), and the planner only uses the index for a literal list, so a
+// same predicate in two places (migration 1514 and the Drizzle schema), and the planner only uses the index for a literal list, so a
 // drift between the constant and either copy would silently turn the gate's and the sweep's query into a sequential scan. These tests
 // parse both predicates and fail when they disagree with the constant.
 import { readFileSync } from "node:fs";
@@ -12,7 +12,7 @@ import {
 } from "../src/modules/08-encounters/closure/open-status";
 
 const MIGRATION = readFileSync(
-  join(__dirname, "../../../packages/db/migrations/1510_m8_note_closure_clock.sql"),
+  join(__dirname, "../../../packages/db/migrations/1514_m8_note_closure_clock.sql"),
   "utf8",
 );
 const SCHEMA = readFileSync(
@@ -32,7 +32,7 @@ function statusesAfter(source: string, marker: string): readonly string[] {
 const sorted = (values: readonly string[]): readonly string[] => [...values].sort();
 
 describe("OPEN_NOTE_STATUSES against the partial index predicate", () => {
-  it("equals the status list in migration 1510's CREATE INDEX encounter_open_clock_idx", () => {
+  it("equals the status list in migration 1514's CREATE INDEX encounter_open_clock_idx", () => {
     const predicate = statusesAfter(MIGRATION, 'CREATE INDEX "encounter_open_clock_idx"');
     expect(sorted(predicate)).toEqual(sorted(OPEN_NOTE_STATUSES));
   });

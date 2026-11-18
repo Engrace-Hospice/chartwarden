@@ -90,4 +90,4 @@ fallback:
 - It does not touch an override already granted; an active override simply stops mattering when nothing blocks. Revoke one from the
   board if it should end sooner.
 - It does not undo a deploy. Moving back to the previous release leaves the clock columns and the policy rows in place (they are
-  harmless to it); see the notes on migration 1512 in ADR-0113 D5 for the alert rules.
+  harmless to it); see the notes on migration 1516 in ADR-0113 D5 for the alert rules.

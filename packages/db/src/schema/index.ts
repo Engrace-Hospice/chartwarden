@@ -314,7 +314,7 @@ export * from "./encounter/mileage";
 export * from "./encounter/hearthnote-selections";
 export * from "./encounter/hearthnote-assembled-outputs";
 export * from "./encounter/hearthnote-llm-modifications";
-// ADR-0113 / migration 1510: the visit-note closure clock's tenant policy and supervisor override (org-level, no patient).
+// ADR-0113 / migration 1514: the visit-note closure clock's tenant policy and supervisor override (org-level, no patient).
 export * from "./encounter/documentation-obligation-policies";
 export * from "./encounter/documentation-obligation-overrides";
 

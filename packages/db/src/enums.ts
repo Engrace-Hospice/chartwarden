@@ -1358,7 +1358,7 @@ export const evvBracketState = pgEnum("evv_bracket_state", [
   "evv_missing_documented",
 ]);
 
-/** `encounter_clock_start_source` — which signal started an encounter's documentation clock (migration 1510, ADR-0113): EVV check-in,
+/** `encounter_clock_start_source` — which signal started an encounter's documentation clock (migration 1514, ADR-0113): EVV check-in,
  * the M17 visit start, the first authoring write on a seeded draft, ad-hoc creation. The first to arrive wins (write-once); there is
  * no precedence between them. */
 export const encounterClockStartSource = pgEnum("encounter_clock_start_source", [
@@ -1368,7 +1368,7 @@ export const encounterClockStartSource = pgEnum("encounter_clock_start_source", 
   "draft_created",
 ]);
 
-/** `documentation_obligation_kind` — which documentation duty a policy/override governs (migration 1510, ADR-0113).
+/** `documentation_obligation_kind` — which documentation duty a policy/override governs (migration 1514, ADR-0113).
  * Only `visit_note` is accepted by the API in slice 1; the rest are reserved for later slices. */
 export const documentationObligationKind = pgEnum("documentation_obligation_kind", [
   "visit_note",

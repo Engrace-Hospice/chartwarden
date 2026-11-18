@@ -1,8 +1,8 @@
-// @chartwarden/db — `documentation_obligation_override` (M8, migration 1510, ADR-0113). A supervisor lifts the BLOCK for one
+// @chartwarden/db — `documentation_obligation_override` (M8, migration 1514, ADR-0113). A supervisor lifts the BLOCK for one
 // clinician and one obligation kind for at most 24 hours; alerts and deadlines are unchanged. Append-only: the application
 // role inserts a grant and may only stamp the two revocation columns, it has no DELETE. `reason` is free text a supervisor
 // typed (40 to 500 chars) and is scrubbed from the row's own audit snapshot (the screened text rides only on the explicit grant event). No patient column: organization_id only (like
-// tenant_sbar_policy). RLS + grants + audit trigger land in migration 1510.
+// tenant_sbar_policy). RLS + grants + audit trigger land in migration 1514.
 import { sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { documentationObligationKind } from "../../enums";

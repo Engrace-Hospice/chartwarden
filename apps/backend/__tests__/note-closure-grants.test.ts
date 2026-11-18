@@ -1,4 +1,4 @@
-// ADR-0113 D7 — migration 1511's catalog rows and default grants are pinned to the code: the two permission keys, their catalog entries in
+// ADR-0113 D7 — migration 1515's catalog rows and default grants are pinned to the code: the two permission keys, their catalog entries in
 // M8_CONTRIBUTED_PERMISSIONS, and the role-key constants (the 0379 / 1294 precedent). The SQL role lists and the constants cannot drift
 // apart. Two keys, two owners: `closure_override` to the four supervisor keys; `closure_policy_admin` to the DON keys and the two
 // full-catalog administrator roles, never to clinical_supervisor / clinical_lead.
@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { SUPERVISOR_ROLE_KEYS } from "../src/modules/08-encounters/supervisor-roles";
 
 const sql = readFileSync(
-  join(__dirname, "../../../packages/db/migrations/1511_m8_note_closure_permissions.sql"),
+  join(__dirname, "../../../packages/db/migrations/1515_m8_note_closure_permissions.sql"),
   "utf8",
 );
 const quoted = (text: string): string[] =>
@@ -35,7 +35,7 @@ function grantedRoleKeys(permission: string): string[] {
   return quoted(list);
 }
 
-describe("note-closure default grants (migration 1511)", () => {
+describe("note-closure default grants (migration 1515)", () => {
   it("grants closure_override to exactly NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS", () => {
     expect(grantedRoleKeys(OVERRIDE).sort()).toEqual([...NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS].sort());
   });
@@ -104,7 +104,7 @@ describe("NOTE_CLOSURE_DEFAULT_GRANTS", () => {
   });
 });
 
-describe("note-closure permission catalog (migration 1511 mirror rows)", () => {
+describe("note-closure permission catalog (migration 1515 mirror rows)", () => {
   it.each(NOTE_CLOSURE_PERMISSION_KEYS)(
     "%s is a compliance-category M8 key mirrored by the migration",
     (key) => {

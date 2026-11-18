@@ -8,7 +8,7 @@
 --   closure_policy_admin   the DON keys (director_of_nursing, don) AND the tenant administrators (org_admin, administrator, the way
 --                          1329 / 1429 grant a new catalog key to both). NOT clinical_supervisor or clinical_lead: the policy is set by
 --                          the tenant-level owners, not by the field supervisors.
--- DEV DATABASES: this file was edited in place before it was ever released (see the note in 1510). A database that applied an EARLIER
+-- DEV DATABASES: this file was edited in place before it was ever released (see the note in 1514). A database that applied an EARLIER
 -- copy keeps closure_policy_admin on clinical_supervisor / clinical_lead and lacks it on org_admin / administrator, and
 -- `db:sync:permissions` only ADDS grants, so nothing corrects it: reset such a database, or hand-fix those role_permission rows.
 -- Single source: NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS, NOTE_CLOSURE_POLICY_ADMIN_SUPERVISOR_ROLE_KEYS and FULL_CATALOG_ROLE_KEYS in

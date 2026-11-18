@@ -12,11 +12,11 @@
 //                                    clock like any supervisor and still holds it: deliberate, guarded by step-up and an audit event.)
 //
 // Three paths deliver them, all pinned to this file:
-//   - an existing tenant: migration `1511` grants the keys to whichever of those roles the tenant already created (and the policy key
+//   - an existing tenant: migration `1515` grants the keys to whichever of those roles the tenant already created (and the policy key
 //     to its existing org_admin / administrator roles, the way earlier migrations grant a new catalog key);
 //   - a tenant provisioned later: the GAP-006 materializer builds roles from ROLE_TEMPLATES. Only `director_of_nursing` is a template,
 //     so templates.ts spreads NOTE_CLOSURE_DEFAULT_GRANTS into it; org_admin / administrator derive the policy key from the full catalog
-//     (clinical_supervisor / don / clinical_lead are not templates; a role created by hand after migration 1511 receives nothing, as
+//     (clinical_supervisor / don / clinical_lead are not templates; a role created by hand after migration 1515 receives nothing, as
 //     with the care plan and code-status grants);
 //   - the dev permission sync and the two dev seeds (scripts/db/sync-permission-catalog.ts, seed.ts, seed-org-admin.ts), which apply
 //     the same exclusion through scripts/db/lib/full-catalog-grants.ts (the whole-catalog roles) and scripts/db/lib/idg-role-grants.ts
@@ -25,7 +25,7 @@
 // Aides, volunteers and compliance roles hold neither key. A tenant tightens by removing a grant from a role it owns. NOT a
 // `system_locked` floor.
 
-/** The four role keys that hold `encounter.closure_override` by default (migration 1511, the DON template). */
+/** The four role keys that hold `encounter.closure_override` by default (migration 1515, the DON template). */
 export const NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS = [
   "clinical_supervisor",
   "director_of_nursing",
@@ -39,7 +39,7 @@ export const NOTE_CLOSURE_POLICY_ADMIN_SUPERVISOR_ROLE_KEYS = [
   "don",
 ] as const;
 
-/** The two permission keys migration 1511 mirrors into the catalog. */
+/** The two permission keys migration 1515 mirrors into the catalog. */
 export const NOTE_CLOSURE_PERMISSION_KEYS = [
   "encounter.closure_override",
   "encounter.closure_policy_admin",
@@ -50,7 +50,7 @@ const POLICY_ADMIN_SUPERVISORS: readonly string[] = NOTE_CLOSURE_POLICY_ADMIN_SU
 
 /**
  * Role key -> the closure keys it holds by default among the supervisor roles: the override for all four, the policy key for the DON
- * keys only. The DON template (templates.ts) and migration `1511` are pinned to it.
+ * keys only. The DON template (templates.ts) and migration `1515` are pinned to it.
  */
 export const NOTE_CLOSURE_DEFAULT_GRANTS: Readonly<Record<string, readonly string[]>> =
   Object.freeze(

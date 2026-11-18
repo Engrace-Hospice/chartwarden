@@ -1,4 +1,4 @@
-// ADR-0113 — static pins for what migrations 1510 / 1511 / 1512 carry that no gate reads: the supervisor board's partial index
+// ADR-0113 — static pins for what migrations 1514 / 1515 / 1516 carry that no gate reads: the supervisor board's partial index
 // predicate (SQL and Drizzle mirror) against the one definition of "open note", the hardening triggers, and who holds the grants. These
 // assert STRUCTURE (statements, names, constants), never the wording of a comment or an error message, so editing a migration's prose
 // cannot break them. The behaviour itself is proven live (m8-note-closure.live.test.ts, blocks 11 to 14).
@@ -14,9 +14,9 @@ import { OPEN_NOTE_STATUSES } from "../src/modules/08-encounters/closure/open-st
 
 const MIGRATIONS = join(__dirname, "../../../packages/db/migrations");
 const read = (name: string): string => readFileSync(join(MIGRATIONS, name), "utf8");
-const CLOCK = read("1510_m8_note_closure_clock.sql");
-const PERMISSIONS = read("1511_m8_note_closure_permissions.sql");
-const RETIRE = read("1512_m36_retire_unsigned_and_documentation_late_alert_rules.sql");
+const CLOCK = read("1514_m8_note_closure_clock.sql");
+const PERMISSIONS = read("1515_m8_note_closure_permissions.sql");
+const RETIRE = read("1516_m36_retire_unsigned_and_documentation_late_alert_rules.sql");
 const SCHEMA = readFileSync(
   join(__dirname, "../../../packages/db/src/schema/encounter/encounters.ts"),
   "utf8",
@@ -30,7 +30,7 @@ const statusesAfter = (source: string, marker: string): readonly string[] => {
 };
 const sorted = (values: readonly string[]) => [...values].sort();
 
-describe("migration 1510: the supervisor board's partial index", () => {
+describe("migration 1514: the supervisor board's partial index", () => {
   it("carries the one definition of an open note, in SQL and in the Drizzle mirror", () => {
     expect(sorted(statusesAfter(CLOCK, 'CREATE INDEX "encounter_open_clock_board_idx"'))).toEqual(
       sorted(OPEN_NOTE_STATUSES),
@@ -50,7 +50,7 @@ describe("migration 1510: the supervisor board's partial index", () => {
   });
 });
 
-describe("migration 1510: hardening", () => {
+describe("migration 1514: hardening", () => {
   it("declares the override org guard and the encounter clock write-once triggers, each over its own function", () => {
     expect(CLOCK).toContain('CREATE TRIGGER "trg_documentation_obligation_override_org_guard"');
     expect(CLOCK).toContain('BEFORE INSERT OR UPDATE ON "documentation_obligation_override"');
@@ -76,8 +76,8 @@ describe("migration 1510: hardening", () => {
   });
 });
 
-describe("migrations 1511 and 1512", () => {
-  it("1511 grants both closure keys, and the code-side owners agree: the DON template carries them, only the override key is withheld from the administrators' full catalog", () => {
+describe("migrations 1515 and 1516", () => {
+  it("1515 grants both closure keys, and the code-side owners agree: the DON template carries them, only the override key is withheld from the administrators' full catalog", () => {
     for (const key of NOTE_CLOSURE_PERMISSION_KEYS) expect(PERMISSIONS).toContain(`'${key}'`);
     const don = ROLE_TEMPLATES.find((template) => template.key === "director_of_nursing");
     for (const key of NOTE_CLOSURE_PERMISSION_KEYS) expect(don?.grants).toContain(key);
@@ -85,7 +85,7 @@ describe("migrations 1511 and 1512", () => {
     expect(FULL_CATALOG_EXCLUDED_KEYS.has("encounter.closure_policy_admin")).toBe(false);
   });
 
-  it("1512 is an expand that disables the two retired rules by event type and deletes nothing", () => {
+  it("1516 is an expand that disables the two retired rules by event type and deletes nothing", () => {
     expect(RETIRE.startsWith("-- compat: expand")).toBe(true);
     expect(RETIRE).toMatch(/UPDATE "alert_rule"\s+SET "enabled" = false/);
     expect(RETIRE).toContain("'m8.encounter.unsigned', 'm8.encounter.documentation_late'");

@@ -41,7 +41,7 @@ export const FULL_CATALOG_EXCLUDED_KEYS: ReadonlySet<string> = new Set([
   "messaging.redact.request",
   "messaging.redact.approve",
   // ADR-0113 D7: lifting a blocked clinician's visit-note closure belongs to the clinical supervisors who answer for the duty (migration
-  // 1511, NOTE_CLOSURE_DEFAULT_GRANTS); an administrator is not a clinical supervisor, so never an org-admin or superadmin default.
+  // 1515, NOTE_CLOSURE_DEFAULT_GRANTS); an administrator is not a clinical supervisor, so never an org-admin or superadmin default.
   // `encounter.closure_policy_admin` is deliberately NOT here: administrators and the DON set the tenant's closure policy.
   "encounter.closure_override",
 ]);
