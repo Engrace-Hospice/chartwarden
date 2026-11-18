@@ -979,13 +979,17 @@ export function createDbSchedulingBackend(
     });
   }
 
+  // `md_np` is deliberately absent: no visit purpose schedules a physician/NP care-plan intervention. The only
+  // md/np purpose with a legal M8 pair that is not an RN visit is `f2f`, a regulatory encounter that dual-writes
+  // an F2F record to M6, so it must never stand in for an arbitrary physician intervention, and any RN purpose
+  // would hand the intervention to the wrong discipline. (It used to map to `recert`, which no md/np clinician
+  // could be stamped for, and which is now an RN kickoff visit.)
   const proposalDisciplines: readonly InterventionDiscipline[] = [
     "rn",
     "lpn",
     "chha",
     "msw",
     "chaplain",
-    "md_np",
     "pt",
     "ot",
     "st",
@@ -1005,8 +1009,6 @@ export function createDbSchedulingBackend(
         return "chaplain_visit";
       case "volunteer":
         return "volunteer_visit";
-      case "md_np":
-        return "recert";
       default:
         return "routine_visit";
     }
@@ -1680,16 +1682,18 @@ export function createDbSchedulingBackend(
           tx,
           input.assignedMembershipId,
         );
-        // A policy whose clinician holds qualifying disciplines but NONE with a legal M8 pair is refused now,
-        // not skipped every night: pair legality depends on the clinician's HELD disciplines only (credentials
-        // may change), so held is passed as both the held and the credentialed set. A clinician holding no
-        // qualifying discipline at all is deliberately not refused here (roles and credentials change after
-        // creation); the nightly pass reports such a policy as failed instead.
+        // A policy that could never schedule a visit is refused now, not failed every night: a clinician who
+        // holds NO discipline the purpose accepts is the one-off create gate's 403 PRE_SCHEDULE_GATE_FAILED,
+        // and one who holds qualifying disciplines but NONE with a legal M8 pair is 422
+        // VISIT_ENCOUNTER_TYPE_UNSUPPORTED. Both judge the clinician's HELD disciplines only (credentials may
+        // lapse or arrive after creation, and each occurrence re-checks them), so held is passed as both the
+        // held and the credentialed set.
         const held = (await resolveDisciplinesTx(tx, orgId, input.assignedMembershipId)).filter(
           (discipline) => VISIT_PURPOSE_DISCIPLINES[input.visitPurpose].includes(discipline),
         );
         const stamped = selectVisitAssignmentDiscipline(input.visitPurpose, held, held);
-        if (stamped !== null) requireEncounterType(input.visitPurpose, stamped);
+        if (stamped === null) throw new ForbiddenError("PRE_SCHEDULE_GATE_FAILED");
+        requireEncounterType(input.visitPurpose, stamped);
         const [inserted] = await tx
           .insert(RV)
           .values({

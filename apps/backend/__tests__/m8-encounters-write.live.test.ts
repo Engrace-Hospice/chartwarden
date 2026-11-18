@@ -1891,6 +1891,24 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       });
     });
 
+    // What an RN recert visit (recert_visit) and an RN level-of-care-change visit (routine_visit) publish.
+    it.each([
+      ["recert_visit", "rn"],
+      ["routine_visit", "rn"],
+    ])(
+      "the pair an RN recert or loc_change visit publishes (%s, %s) seeds a draft",
+      async (encounterType, discipline) => {
+        const visitId = randomUUID();
+        await consumer().handle({
+          organizationId: ORG_A,
+          payload: published(visitId, encounterType, discipline),
+        });
+        expect(await draftsFor(visitId)).toMatchObject([
+          { encounter_type: encounterType, discipline, status: "draft" },
+        ]);
+      },
+    );
+
     it.each([
       ["routine_visit", "np"],
       ["routine_visit", "md"],

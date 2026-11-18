@@ -87,7 +87,7 @@ const PURPOSES: Record<string, { label: string; discipline: string }> = {
   chaplain_assessment: { label: "Chaplain Assessment", discipline: "chaplain" },
   volunteer_visit: { label: "Volunteer Visit", discipline: "volunteer" },
   f2f: { label: "Face-to-Face", discipline: "md" },
-  recert: { label: "Recertification", discipline: "md" },
+  recert: { label: "Recertification", discipline: "rn" },
   loc_change: { label: "LOC Change", discipline: "rn" },
   pronouncement: { label: "Pronouncement", discipline: "rn" },
   admission_visit: { label: "Admission Visit", discipline: "rn" },

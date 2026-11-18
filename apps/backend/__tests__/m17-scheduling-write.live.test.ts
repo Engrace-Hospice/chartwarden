@@ -924,9 +924,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       expect(await footprint()).toEqual(before);
     });
 
-    // M8 spec §2.2: routine_visit admits rn|lpn only and no other §2.2 type is an HUV/SFV/recert/loc_change/
-    // pronouncement visit. The M8 seed consumer inserts the draft directly, so scheduling must refuse these
-    // BEFORE publishing m17.visit.published.
+    // M8 spec §2.2: routine_visit admits rn|lpn only and no other §2.2 type is an HUV/SFV/pronouncement visit.
+    // The M8 seed consumer inserts the draft directly, so scheduling must refuse these BEFORE publishing
+    // m17.visit.published.
     it.each([
       ["np", "huv1"],
       ["md", "huv1"],
@@ -935,8 +935,6 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       ["np", "sfv"],
       ["np", "pronouncement"],
       ["md", "pronouncement"],
-      ["np", "loc_change"],
-      ["md", "recert"],
     ] as const)(
       "%s cannot be scheduled for %s: no legal M8 encounter pair, refused with VISIT_ENCOUNTER_TYPE_UNSUPPORTED, nothing written",
       async (who, purpose) => {
@@ -944,6 +942,41 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
         const before = await footprint();
         await expect(create(member, purpose)).rejects.toMatchObject({
           code: "VISIT_ENCOUNTER_TYPE_UNSUPPORTED",
+          statusCode: 422,
+        });
+        expect(await footprint()).toEqual(before);
+      },
+    );
+
+    // M8 §2.2: `recert_visit` is the RN recertification-kickoff visit ("not the F2F itself") and a level-of-care
+    // change seeds `routine_visit` (RN/LPN), so both purposes are RN visits. They used to require md/np, which no
+    // M8 type accepts, so neither could be scheduled for anyone.
+    it.each([
+      ["recert", "recert_visit"],
+      ["loc_change", "routine_visit"],
+    ] as const)(
+      "an rn is stamped for %s and the published event carries the legal M8 type %s",
+      async (purpose, encounterType) => {
+        const v = await create(rn, purpose);
+        expect(await visitRow(v.id)).toMatchObject({ visit_purpose: purpose, discipline: "rn" });
+        expect(await eventPayload(v.id, "m17.visit.published")).toMatchObject({
+          assignedDiscipline: "rn",
+          encounterType,
+        });
+      },
+    );
+
+    it.each([
+      ["np", "recert"],
+      ["md", "recert"],
+      ["np", "loc_change"],
+      ["md", "loc_change"],
+    ] as const)(
+      "%s is not an eligible discipline for %s (the discipline gate, VISIT_PRE_SCHEDULE_GATE_UNMET), nothing written",
+      async (who, purpose) => {
+        const before = await footprint();
+        await expect(create(who === "np" ? np : md, purpose)).rejects.toMatchObject({
+          code: "VISIT_PRE_SCHEDULE_GATE_UNMET",
           statusCode: 422,
         });
         expect(await footprint()).toEqual(before);
@@ -1058,6 +1091,44 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       await svc.discontinueRecurring(ORG_A, np, ok.id);
     });
 
+    it("createRecurring refuses a clinician who holds no discipline the purpose accepts (403 PRE_SCHEDULE_GATE_FAILED), writing no policy", async () => {
+      const before = await recurringCount();
+      // rn holds no md/np; md/np hold no rn: neither could ever be stamped for the purpose.
+      for (const [member, purpose] of [
+        [rn, "f2f"],
+        [md, "recert"],
+        [np, "loc_change"],
+      ] as const) {
+        await expect(recurringPolicy(member, purpose)).rejects.toMatchObject({
+          message: "PRE_SCHEDULE_GATE_FAILED",
+          statusCode: 403,
+        });
+      }
+      expect(await recurringCount()).toBe(before);
+    });
+
+    it("createRecurring accepts an rn for recert and loc_change (RN visits), and they materialize with the legal M8 type", async () => {
+      const nurse = await clinician(["rn"], ["rn"]);
+      const policies = [
+        await recurringPolicy(nurse, "recert"),
+        await recurringPolicy(await clinician(["rn"], ["rn"]), "loc_change"),
+      ];
+      try {
+        const result = await svc.materializeRecurringVisitsForOrg(ORG_A, M17_SYSTEM_USER_ID, {
+          horizonDays: 2,
+        });
+        for (const policy of policies) {
+          expect(result.unschedulablePolicyIds).not.toContain(policy.id);
+          expect(result.failedPolicies.map((f) => f.policyId)).not.toContain(policy.id);
+          expect(await childCount(policy.id)).toBeGreaterThan(0);
+        }
+      } finally {
+        for (const policy of policies) {
+          await svc.discontinueRecurring(ORG_A, policy.assignedMembershipId, policy.id);
+        }
+      }
+    });
+
     it("recurring materialization reports a policy with no legal pair (writing nothing for it) and still materializes the healthy policy in the same pass", async () => {
       const healthyClinician = await clinician(["rn"], ["rn"]);
       const healthy = await recurringPolicy(healthyClinician, "routine_visit");
@@ -1130,9 +1201,13 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     it("one policy failing for another reason does not stop the pass: the unschedulable and the healthy policies are still handled, and the failure is reported by id and code", async () => {
       const healthyClinician = await clinician(["rn"], ["rn"]);
       const healthy = await recurringPolicy(healthyClinician, "routine_visit");
-      // An rn assigned an f2f policy holds no qualifying discipline (md/np): createRecurring does not refuse it
-      // (roles and credentials change after creation), and every occurrence then misses the pre-schedule gate.
-      const noDiscipline = await recurringPolicy(await clinician(["rn"], ["rn"]), "f2f");
+      // A policy created BEFORE the creation guard existed whose clinician holds no qualifying discipline (an rn
+      // on an f2f policy): createRecurring refuses it now, so force it legacy-style, and every occurrence then
+      // misses the pre-schedule gate.
+      const noDiscipline = await recurringPolicy(await clinician(["rn"], ["rn"]), "routine_visit");
+      await admin.query("UPDATE recurring_visit SET visit_purpose='f2f' WHERE id=$1", [
+        noDiscipline.id,
+      ]);
       const legacyId = await legacyUnschedulablePolicy();
       try {
         const result = await svc.materializeRecurringVisitsForOrg(ORG_A, M17_SYSTEM_USER_ID, {

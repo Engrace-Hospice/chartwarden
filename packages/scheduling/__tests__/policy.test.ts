@@ -38,8 +38,6 @@ describe("HOPE scheduling purposes", () => {
 // encounter type; RN/LPN fall to `routine_visit` (legal), NP/MD have no legal type and are refused.
 describe("scheduled visit -> encounter type (M8 §2.2 / §2.7 legal pairs)", () => {
   const UNSUPPORTED: Partial<Record<VisitPurpose, readonly SchedulingDiscipline[]>> = {
-    recert: ["md", "np"],
-    loc_change: ["md", "np"],
     pronouncement: ["md", "np"],
     huv1: ["np", "md"],
     huv2: ["np", "md"],
@@ -62,15 +60,12 @@ describe("scheduled visit -> encounter type (M8 §2.2 / §2.7 legal pairs)", () 
     }
   });
 
-  // Purposes with NO schedulable discipline: every discipline M17 allows has no legal M8 pair, so the
-  // purpose is refused (422 VISIT_ENCOUNTER_TYPE_UNSUPPORTED) for every clinician. The two tables
-  // disagree: M17 requires md/np for `recert` and `loc_change`, while M8 §2.2 gives `recert_visit` to RN
-  // (a kickoff visit, "not the F2F itself") and seeds `loc_change` as routine_visit (RN/LPN). Which table
-  // changes is the spec owner's decision, so this is a ratchet: a NEW dead end fails here, and fixing one
-  // must delete its entry.
-  const KNOWN_UNSCHEDULABLE: readonly VisitPurpose[] = ["loc_change", "recert"];
-
-  it("leaves no purpose unschedulable beyond the known, owner-pending dead ends", () => {
+  // A purpose whose every allowed discipline has no legal M8 pair is refused (422
+  // VISIT_ENCOUNTER_TYPE_UNSUPPORTED) for every clinician: a dead end. M17 used to require md/np for
+  // `recert` and `loc_change` while M8 §2.2 gives `recert_visit` to RN (a kickoff visit, "not the F2F
+  // itself") and seeds `loc_change` as routine_visit (RN/LPN), so both were dead ends. This ratchet keeps
+  // the list empty: a new purpose or discipline edit that creates a dead end fails here.
+  it("leaves no purpose unschedulable: every purpose has at least one discipline with a legal M8 pair", () => {
     const unschedulable = (Object.keys(VISIT_PURPOSE_DISCIPLINES) as VisitPurpose[])
       .filter((purpose) =>
         VISIT_PURPOSE_DISCIPLINES[purpose].every(
@@ -78,7 +73,18 @@ describe("scheduled visit -> encounter type (M8 §2.2 / §2.7 legal pairs)", () 
         ),
       )
       .sort();
-    expect(unschedulable).toEqual([...KNOWN_UNSCHEDULABLE]);
+    expect(unschedulable).toEqual([]);
+  });
+
+  it("schedules recert and loc_change for an RN only (M8: recert_visit is RN; loc_change seeds routine_visit)", () => {
+    expect(VISIT_PURPOSE_DISCIPLINES.recert).toEqual(["rn"]);
+    expect(VISIT_PURPOSE_DISCIPLINES.loc_change).toEqual(["rn"]);
+    expect(encounterTypeForVisit("recert", "rn")).toBe("recert_visit");
+    expect(encounterTypeForVisit("loc_change", "rn")).toBe("routine_visit");
+    // The physician or NP encounter of a recertification is the f2f purpose, not recert.
+    expect(selectVisitAssignmentDiscipline("recert", ["md", "np"], ["md", "np"])).toBeNull();
+    expect(selectVisitAssignmentDiscipline("loc_change", ["md", "np"], ["md", "np"])).toBeNull();
+    expect(selectVisitAssignmentDiscipline("recert", ["rn", "np"], ["rn", "np"])).toBe("rn");
   });
 
   it("keeps RN and LPN HUV/SFV visits on routine_visit (the only legal HUV-capable type)", () => {

@@ -16,7 +16,7 @@ import {
  *
  * `md` is PHYSICIAN — MD *or* DO. They are the same level with the same scope, which is why
  * {@link VISIT_PURPOSE_DISCIPLINES} below has always documented its physician-intent purposes as
- * "MD/DO or NP" while listing one value; splitting them would stop those four purposes accepting
+ * "MD/DO or NP" while listing one value; splitting them would stop those purposes accepting
  * osteopathic physicians. `pa` is a distinct licence BELOW MD/DO and appears in no purpose list
  * (F-030): recording the licence is not granting visit authority, and the Medicare hospice
  * face-to-face encounter is physician-or-NP only (42 CFR 418.22(a)(4)).
@@ -34,7 +34,14 @@ export type SchedulingDiscipline =
 
 /** §1.1 D8 predicate 3 (`discipline_matches_visit`) — the acceptable clinician disciplines for each
  * `visit_purpose`. An RN visit needs RN; an aide POC needs CHHA; a volunteer visit needs Volunteer; the
- * physician-intent purposes (`f2f`/`recert`/`loc_change`/`pronouncement`) need MD/DO or NP. */
+ * physician-intent purpose `f2f` needs MD/DO or NP.
+ *
+ * `recert` and `loc_change` are RN visits, not physician-intent ones: M8 §2.2 defines `recert_visit` as the
+ * recertification-period KICKOFF visit "(not the F2F itself)", documented with PPS/ESAS/prognosis indicators,
+ * and gives it to RN only; M8 has no level-of-care-change type, so `loc_change` seeds `routine_visit`, whose
+ * legal authors are RN/LPN, and a level-of-care change is an RN assessment (so RN only). The physician or NP
+ * encounter of a recertification is the `f2f` purpose. These two used to list md/np, which no M8 type accepts,
+ * so neither purpose could be scheduled for anyone. */
 export const VISIT_PURPOSE_DISCIPLINES: {
   readonly [K in VisitPurpose]: readonly SchedulingDiscipline[];
 } = {
@@ -47,8 +54,8 @@ export const VISIT_PURPOSE_DISCIPLINES: {
   chaplain_assessment: ["chaplain"],
   volunteer_visit: ["volunteer"],
   f2f: ["md", "np"],
-  recert: ["md", "np"],
-  loc_change: ["md", "np"],
+  recert: ["rn"],
+  loc_change: ["rn"],
   pronouncement: ["rn", "md", "np"],
   admission_visit: ["rn"],
   discharge_visit: ["rn"],
