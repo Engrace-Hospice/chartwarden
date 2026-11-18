@@ -12,13 +12,16 @@ const ORG = "00000000-0000-4000-8000-0000000000a1";
 const MEMBER = "00000000-0000-4000-8000-0000000000b1";
 const NOTE_OLD = "00000000-0000-4000-8000-0000000000e1";
 const NOTE_NEW = "00000000-0000-4000-8000-0000000000e2";
+const PATIENT = "00000000-0000-4000-8000-0000000000c1";
 const OVERRIDE_ID = "00000000-0000-4000-8000-0000000000d1";
 const NOW = new Date("2026-11-17T12:00:00.000Z");
 const HOUR_MS = 3_600_000;
 
 const hoursAgo = (h: number): Date => new Date(NOW.getTime() - h * HOUR_MS);
-const note = (id: string, ageHours: number | null) => ({
+const note = (id: string, ageHours: number | null, status = "draft") => ({
   id,
+  patientId: PATIENT,
+  status,
   clockStartedAt: ageHours === null ? null : hoursAgo(ageHours),
 });
 const policy = (mode: ClosurePolicy["mode"], over: Partial<ClosurePolicy> = {}): ClosurePolicy => ({
@@ -55,6 +58,18 @@ describe("evaluateOpenNotes (the pure half)", () => {
     expect(out.overdueCount).toBe(2);
   });
 
+  it("carries the oldest note's patient and status, and both are null when no note is clocked", () => {
+    const withNote = evaluateOpenNotes(
+      [note(NOTE_OLD, 40, "finalized"), note(NOTE_NEW, 26)],
+      policy("warn"),
+      NOW,
+    );
+    expect(withNote).toMatchObject({ patientId: PATIENT, encounterStatus: "finalized" });
+
+    const none = evaluateOpenNotes([note("legacy", null)], policy("warn"), NOW);
+    expect(none).toMatchObject({ encounterId: null, patientId: null, encounterStatus: null });
+  });
+
   it("an un-clocked row (legacy) never counts and never decides", () => {
     const out = evaluateOpenNotes([note("legacy", null)], policy("block"), NOW);
     expect(out.encounterId).toBeNull();
@@ -76,6 +91,8 @@ describe("evaluateMemberClosure", () => {
       mode: "off",
       verdict: "clear",
       encounterId: null,
+      patientId: null,
+      encounterStatus: null,
       overdueCount: 0,
     });
     expect(fake.queriesRun()).toBe(0);
@@ -95,7 +112,13 @@ describe("evaluateMemberClosure", () => {
   it("no clocked open notes is clear and never looks for an override", async () => {
     const fake = fakeTx([[]]);
     const out = await evaluateMemberClosure(fake.tx, input(policy("block")));
-    expect(out).toMatchObject({ verdict: "clear", encounterId: null, overdueCount: 0 });
+    expect(out).toMatchObject({
+      verdict: "clear",
+      encounterId: null,
+      patientId: null,
+      encounterStatus: null,
+      overdueCount: 0,
+    });
     expect(fake.queriesRun()).toBe(1);
   });
 
@@ -126,6 +149,8 @@ describe("evaluateMemberClosure", () => {
     const out = await evaluateMemberClosure(fake.tx, input(policy("block")));
     expect(out.verdict).toBe("blocked");
     expect(out.encounterId).toBe(NOTE_OLD);
+    expect(out.patientId).toBe(PATIENT);
+    expect(out.encounterStatus).toBe("draft");
     expect(out.overrideExpiresAt).toBeNull();
     expect(fake.queriesRun()).toBe(2);
   });

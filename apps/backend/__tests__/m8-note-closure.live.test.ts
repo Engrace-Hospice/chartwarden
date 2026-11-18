@@ -2373,8 +2373,13 @@ describe.skipIf(!DB_URL)("M8 visit-note closure clock (ADR-0113) — LIVE Postgr
         verdict: "blocked",
         stage: "escalated",
         encounterId: noteIds.overdueTwo,
+        // the banner links the oldest note from these two, so it never has to read the (read-audited) encounter itself
+        patientId: (await patientsOf([noteIds.overdueTwo]))[0],
+        encounterStatus: "draft",
         overdueCount: 2,
       });
+      // the author's own position is not a per-patient read: no encounter.viewed event for the patient the answer names
+      expect(await viewEvents(authorR)).toEqual([]);
     });
 
     it("a note with no location is on every supervisor's board, site-scoped ones included (the alert falls back org-wide for it); no sites still sees nothing; another tenant's is never shown", async () => {

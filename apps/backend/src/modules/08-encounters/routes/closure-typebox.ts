@@ -61,6 +61,9 @@ export const ClosureStatusResponseSchema = Type.Object({
   stage: Stage,
   /** The caller's oldest clocked open note, or null. */
   encounterId: Type.Union([Type.String(), Type.Null()]),
+  /** That note's patient id and lifecycle status (draft | finalized), so the banner can link it without a read-audited GET; both null exactly when `encounterId` is null. */
+  patientId: Type.Union([Type.String(), Type.Null()]),
+  encounterStatus: Type.Union([Type.String(), Type.Null()]),
   deadlineAt: NullableInstant,
   hoursOverdue: Type.Number(),
   overdueCount: Type.Integer(),

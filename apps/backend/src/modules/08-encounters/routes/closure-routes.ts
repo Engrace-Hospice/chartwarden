@@ -88,7 +88,7 @@ export function registerClosureRoutes(app: FastifyInstance, deps: ClosureRouteDe
       preHandler: [AUTHOR],
       config: {
         auditRead: {
-          none: "the caller's own clock position: one encounter id and deadline instants, no patient content",
+          none: "the caller's own clock position: the oldest open note's encounter id, patient id (an opaque uuid) and draft/finalized status, plus deadline instants; the caller authored that note and nothing here names or describes the patient (the web banner polls this instead of a read-audited encounter GET)",
         },
       },
     },

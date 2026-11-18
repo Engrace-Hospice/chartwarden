@@ -36,6 +36,10 @@ const E = schema.encounters;
 /** One clocked open note as SQL returns it. */
 export interface ClockedOpenNote {
   readonly id: string;
+  /** Opaque uuid; read here so the banner can link the oldest note without a second (read-audited) encounter GET. */
+  readonly patientId: string;
+  /** The lifecycle status (`draft` or `finalized` here): the banner links a draft to the composer, a finalized note to the read screen. */
+  readonly status: string;
   readonly clockStartedAt: Date | null;
 }
 
@@ -47,6 +51,10 @@ export interface MemberClosureEvaluation {
   readonly decision: NoteClosureDecision;
   /** The oldest clocked open note, or null. */
   readonly encounterId: string | null;
+  /** That note's patient id, null exactly when `encounterId` is null. An id only, never a name or any chart content. */
+  readonly patientId: string | null;
+  /** That note's lifecycle status, null exactly when `encounterId` is null. */
+  readonly encounterStatus: string | null;
   /** Clocked open notes past their deadline (stage overdue or escalated), capped at {@link OPEN_NOTE_SCAN_LIMIT}. */
   readonly overdueCount: number;
   /** When a supervisor override is lifting the block right now, its expiry; otherwise null. */
@@ -83,7 +91,13 @@ export function evaluateOpenNotes(
   notes: readonly ClockedOpenNote[],
   policy: ClosurePolicy,
   now: Date,
-): { decision: NoteClosureDecision; encounterId: string | null; overdueCount: number } {
+): {
+  decision: NoteClosureDecision;
+  encounterId: string | null;
+  patientId: string | null;
+  encounterStatus: string | null;
+  overdueCount: number;
+} {
   const clocked = notes.filter((n) => n.clockStartedAt !== null);
   const oldest = clocked[0];
   const overdueCount = clocked.filter((n) =>
@@ -92,6 +106,8 @@ export function evaluateOpenNotes(
   return {
     decision: decide(oldest?.clockStartedAt ?? null, policy, now),
     encounterId: oldest?.id ?? null,
+    patientId: oldest?.patientId ?? null,
+    encounterStatus: oldest?.status ?? null,
     overdueCount,
   };
 }
@@ -102,7 +118,12 @@ async function loadClockedOpenNotes(
   membershipId: string,
 ): Promise<readonly ClockedOpenNote[]> {
   return tx
-    .select({ id: E.id, clockStartedAt: E.clockStartedAt })
+    .select({
+      id: E.id,
+      patientId: E.patientId,
+      status: E.status,
+      clockStartedAt: E.clockStartedAt,
+    })
     .from(E)
     .where(
       and(
@@ -123,6 +144,8 @@ const CLEAR_WITHOUT_NOTES = (policy: ClosurePolicy, now: Date): MemberClosureEva
   verdict: "clear",
   decision: decide(null, policy, now),
   encounterId: null,
+  patientId: null,
+  encounterStatus: null,
   overdueCount: 0,
   overrideExpiresAt: null,
 });
@@ -141,7 +164,11 @@ export async function evaluateMemberClosure(
   if (policy.mode === "off") return CLEAR_WITHOUT_NOTES(policy, now);
 
   const notes = await loadClockedOpenNotes(tx, organizationId, membershipId);
-  const { decision, encounterId, overdueCount } = evaluateOpenNotes(notes, policy, now);
+  const { decision, encounterId, patientId, encounterStatus, overdueCount } = evaluateOpenNotes(
+    notes,
+    policy,
+    now,
+  );
   const override =
     policy.mode === "block" && isPastDeadline(decision)
       ? await findActiveOverride(tx, organizationId, membershipId, VISIT_NOTE, now)
@@ -152,6 +179,8 @@ export async function evaluateMemberClosure(
     verdict: closureVerdict(policy.mode, decision, override !== null, now),
     decision,
     encounterId,
+    patientId,
+    encounterStatus,
     overdueCount,
     overrideExpiresAt: override?.expiresAt ?? null,
   };

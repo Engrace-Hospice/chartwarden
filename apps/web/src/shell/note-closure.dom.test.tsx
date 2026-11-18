@@ -47,6 +47,8 @@ const status = (over: Partial<NoteClosureStatus> = {}): NoteClosureStatus => ({
   verdict: "clear",
   stage: "ok",
   encounterId: null,
+  patientId: null,
+  encounterStatus: null,
   deadlineAt: null,
   hoursOverdue: 0,
   overdueCount: 0,
@@ -58,6 +60,8 @@ const BLOCKED = status({
   verdict: "blocked",
   stage: "overdue",
   encounterId: OLDEST,
+  patientId: PATIENT,
+  encounterStatus: "draft",
   deadlineAt: "2026-11-17T06:00:00.000Z",
   hoursOverdue: 6,
   overdueCount: 2,
@@ -65,16 +69,10 @@ const BLOCKED = status({
 
 type Call = { path: string; headers?: Record<string, string> };
 
-const DRAFT_NOTE = { patientId: PATIENT, status: "draft" };
+const ENCOUNTER_READ = "/api/v1/encounters/{encounterId}";
 
-/**
- * A stand-in client: `closure-status` answers from `answers` (the last repeats), the encounter read answers its patient and status
- * (`encounter`, a draft by default).
- */
-function mockClient(
-  answers: (NoteClosureStatus | "fail")[],
-  encounter: { patientId: string; status: string } = DRAFT_NOTE,
-) {
+/** A stand-in client: `closure-status` answers from `answers` (the last repeats); every other path answers an empty inbox. */
+function mockClient(answers: (NoteClosureStatus | "fail")[]) {
   const calls: Call[] = [];
   let closureReads = 0;
   const GET = vi.fn(async (path: string, init?: { headers?: Record<string, string> }) => {
@@ -85,15 +83,13 @@ function mockClient(
       if (answer === "fail") throw new TypeError("Failed to fetch");
       return { data: answer, error: undefined, response: new Response() };
     }
-    if (path === "/api/v1/encounters/{encounterId}") {
-      return { data: encounter, error: undefined, response: new Response() };
-    }
     return { data: { alerts: [] }, error: undefined, response: new Response() };
   });
   const client = { GET, POST: vi.fn() } as unknown as ApiClient;
   const closureCalls = (): Call[] =>
     calls.filter((c) => c.path === "/api/v1/encounters/closure-status");
-  return { client, closureCalls };
+  const encounterReads = (): Call[] => calls.filter((c) => c.path === ENCOUNTER_READ);
+  return { client, closureCalls, encounterReads };
 }
 
 function mountBanner(client: ApiClient, session: Session = author) {
@@ -159,20 +155,38 @@ describe("closure banner states", () => {
     expect(await within(alert).findByText(/your access is limited/i)).toBeTruthy();
     expect(alert.textContent).toMatch(/ask a supervisor for a temporary override/i);
     const link = within(alert).getByRole("link", { name: "Open the oldest note" });
-    await waitFor(() =>
-      expect(link.getAttribute("href")).toBe(`/patients/${PATIENT}/encounters/${OLDEST}/compose`),
-    );
+    expect(link.getAttribute("href")).toBe(`/patients/${PATIENT}/encounters/${OLDEST}/compose`);
   });
 
   it("blocked: a finalized oldest note links to the read screen where it is signed, not the read-only composer", async () => {
-    const { client } = mockClient([BLOCKED], { patientId: PATIENT, status: "finalized" });
+    const { client } = mockClient([{ ...BLOCKED, encounterStatus: "finalized" }]);
     mountBanner(client);
     const link = within(await screen.findByRole("alert")).getByRole("link", {
       name: "Open the oldest note",
     });
-    await waitFor(() =>
-      expect(link.getAttribute("href")).toBe(`/patients/${PATIENT}/encounters/${OLDEST}`),
-    );
+    expect(link.getAttribute("href")).toBe(`/patients/${PATIENT}/encounters/${OLDEST}`);
+  });
+
+  it("blocked with no note named: the link goes to My notes", async () => {
+    const { client } = mockClient([
+      { ...BLOCKED, encounterId: null, patientId: null, encounterStatus: null },
+    ]);
+    mountBanner(client);
+    const link = within(await screen.findByRole("alert")).getByRole("link", {
+      name: "Open the oldest note",
+    });
+    expect(link.getAttribute("href")).toBe("/work/drafts");
+  });
+
+  it("blocked: never reads the encounter itself (a read-audited GET would log a view nobody made)", async () => {
+    const { client, closureCalls, encounterReads } = mockClient([BLOCKED]);
+    mountBanner(client);
+    await screen.findByRole("alert");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(closureCalls()).toHaveLength(1);
+    expect(encounterReads()).toHaveLength(0);
   });
 
   it("an active override shows its expiry", async () => {
@@ -401,7 +415,6 @@ function mountShell(at: string, refusal: { status: number; code: string }) {
   const fetchStub = async (request: Request): Promise<Response> => {
     const url = request.url;
     if (url.includes("/closure-status")) return json(200, BLOCKED, url);
-    if (url.includes("/api/v1/encounters/")) return json(200, { patientId: PATIENT }, url);
     if (url.includes("/scheduling/")) {
       return json(
         refusal.status,

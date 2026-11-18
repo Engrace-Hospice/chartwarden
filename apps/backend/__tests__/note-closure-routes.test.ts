@@ -43,6 +43,8 @@ const STATUS = {
   verdict: "blocked",
   stage: "overdue",
   encounterId: ENCOUNTER,
+  patientId: PATIENT,
+  encounterStatus: "draft",
   deadlineAt: NOW,
   hoursOverdue: 2,
   overdueCount: 1,
@@ -226,6 +228,40 @@ describe("static closure paths are not swallowed by /api/v1/encounters/:encounte
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(STATUS);
     expect(service.closureStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("GET closure-status passes the oldest note's patient and status through, and both stay null when there is no note", async () => {
+    const { app, service } = makeServer();
+    const withNote = await app.inject({
+      method: "GET",
+      url: "/api/v1/encounters/closure-status",
+      headers: AUTHOR,
+    });
+    expect(withNote.json()).toMatchObject({
+      encounterId: ENCOUNTER,
+      patientId: PATIENT,
+      encounterStatus: "draft",
+    });
+
+    service.closureStatus.mockResolvedValueOnce({
+      ...STATUS,
+      verdict: "clear",
+      stage: "ok",
+      encounterId: null,
+      patientId: null,
+      encounterStatus: null,
+      deadlineAt: null,
+    });
+    const noNote = await app.inject({
+      method: "GET",
+      url: "/api/v1/encounters/closure-status",
+      headers: AUTHOR,
+    });
+    expect(noNote.json()).toMatchObject({
+      encounterId: null,
+      patientId: null,
+      encounterStatus: null,
+    });
   });
 
   it("GET overdue-notes and GET closure-policy reach the closure service", async () => {

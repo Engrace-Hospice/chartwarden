@@ -4,6 +4,7 @@
 // `ok` stage says nothing at all.
 import { formatClosureInstant } from "./closure-instant";
 import type { NoteClosureStatus } from "./note-closure";
+import { noteHref } from "./note-href";
 
 export type ClosureBannerTone = "info" | "warning" | "error";
 
@@ -13,8 +14,14 @@ export interface ClosureBannerModel {
   readonly detail: string;
   /** The clinician is blocked right now: the banner links straight to the oldest note and says to ask a supervisor for an override. */
   readonly blocked: boolean;
-  /** The oldest open note (the link target when `blocked`). */
+  /** The oldest open note. */
   readonly encounterId: string | null;
+  /**
+   * Where "Open the oldest note" goes (blocked only; null otherwise, and the link then goes to My notes): the composer for a draft, the
+   * read screen for a finalized note. Built from the status answer itself (the server sends the note's patient and status), so no
+   * encounter read; null too when the answer names no note.
+   */
+  readonly oldestNoteHref: string | null;
 }
 
 const notesPhrase = (count: number): string => (count === 1 ? "visit note" : "visit notes");
@@ -25,6 +32,12 @@ function oldestDueSentence(status: NoteClosureStatus): string {
   return status.deadlineAt === null
     ? ""
     : ` The oldest was due ${formatClosureInstant(status.deadlineAt)}.`;
+}
+
+function oldestNoteHrefOf(status: NoteClosureStatus): string | null {
+  const { encounterId, patientId, encounterStatus } = status;
+  if (encounterId === null || patientId === null || encounterStatus === null) return null;
+  return noteHref({ id: encounterId, patientId, status: encounterStatus });
 }
 
 function blockedModel(status: NoteClosureStatus): ClosureBannerModel {
@@ -39,6 +52,7 @@ function blockedModel(status: NoteClosureStatus): ClosureBannerModel {
     ].join(" "),
     blocked: true,
     encounterId: status.encounterId,
+    oldestNoteHref: oldestNoteHrefOf(status),
   };
 }
 
@@ -53,6 +67,7 @@ function overrideModel(status: NoteClosureStatus, expiresAt: string): ClosureBan
     ].join(" "),
     blocked: false,
     encounterId: status.encounterId,
+    oldestNoteHref: null,
   };
 }
 
@@ -69,6 +84,7 @@ function overdueModel(status: NoteClosureStatus): ClosureBannerModel {
     detail: `Close ${count === 1 ? "it" : "them"} as soon as you can.${oldestDueSentence(status)}${limitSentence}`,
     blocked: false,
     encounterId: status.encounterId,
+    oldestNoteHref: null,
   };
 }
 
@@ -80,6 +96,7 @@ function atRiskModel(status: NoteClosureStatus): ClosureBannerModel {
     detail: `Your oldest open note is due ${due}. Sign it to close it.`,
     blocked: false,
     encounterId: status.encounterId,
+    oldestNoteHref: null,
   };
 }
 

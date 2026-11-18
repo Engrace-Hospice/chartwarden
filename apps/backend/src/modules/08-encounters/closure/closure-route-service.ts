@@ -39,6 +39,9 @@ export interface ClosureStatusView {
   readonly verdict: ClosureVerdict;
   readonly stage: NoteClosureStage;
   readonly encounterId: string | null;
+  /** The oldest open note's patient id and status; both null exactly when `encounterId` is null. */
+  readonly patientId: string | null;
+  readonly encounterStatus: string | null;
   readonly deadlineAt: string | null;
   readonly hoursOverdue: number;
   readonly overdueCount: number;
@@ -176,6 +179,8 @@ export function createDbClosureRouteService(deps: ClosureRouteServiceDeps): Clos
         verdict: evaluation.verdict,
         stage: evaluation.decision.stage,
         encounterId: evaluation.encounterId,
+        patientId: evaluation.patientId,
+        encounterStatus: evaluation.encounterStatus,
         deadlineAt: iso(evaluation.decision.deadlineAt),
         hoursOverdue: evaluation.decision.hoursOverdue,
         overdueCount: evaluation.overdueCount,

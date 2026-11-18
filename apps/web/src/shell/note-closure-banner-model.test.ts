@@ -8,6 +8,7 @@ import { closureBannerModel } from "./note-closure-banner-model";
 
 const NOW = new Date("2026-11-17T12:00:00.000Z");
 const OLDEST = "e0000000-0000-4000-8000-000000000001";
+const PATIENT = "11111111-1111-4111-8111-111111111111";
 
 const status = (over: Partial<NoteClosureStatus> = {}): NoteClosureStatus => ({
   mode: "warn",
@@ -15,6 +16,8 @@ const status = (over: Partial<NoteClosureStatus> = {}): NoteClosureStatus => ({
   verdict: "clear",
   stage: "ok",
   encounterId: null,
+  patientId: null,
+  encounterStatus: null,
   deadlineAt: null,
   hoursOverdue: 0,
   overdueCount: 0,
@@ -103,6 +106,45 @@ describe("closureBannerModel", () => {
     expect(text(model!)).toMatch(/access is limited/i);
     expect(text(model!)).toContain("3 visit notes are past the deadline");
     expect(text(model!)).toMatch(/ask a supervisor for a temporary override/i);
+  });
+
+  describe("the oldest-note link, built from the status answer alone", () => {
+    const blocked = (over: Partial<NoteClosureStatus>) =>
+      closureBannerModel(
+        status({ mode: "block", verdict: "blocked", stage: "overdue", overdueCount: 1, ...over }),
+        NOW,
+      );
+
+    it("a draft links to the composer", () => {
+      const model = blocked({ encounterId: OLDEST, patientId: PATIENT, encounterStatus: "draft" });
+      expect(model?.oldestNoteHref).toBe(`/patients/${PATIENT}/encounters/${OLDEST}/compose`);
+    });
+
+    it("a finalized note links to the read screen where it is signed", () => {
+      const model = blocked({
+        encounterId: OLDEST,
+        patientId: PATIENT,
+        encounterStatus: "finalized",
+      });
+      expect(model?.oldestNoteHref).toBe(`/patients/${PATIENT}/encounters/${OLDEST}`);
+    });
+
+    it("no note named by the server means no link (the banner falls back to My notes)", () => {
+      expect(blocked({})?.oldestNoteHref).toBeNull();
+    });
+
+    it("a state that is not blocked carries no note link", () => {
+      const model = closureBannerModel(
+        status({
+          stage: "at_risk",
+          encounterId: OLDEST,
+          patientId: PATIENT,
+          encounterStatus: "draft",
+        }),
+        NOW,
+      );
+      expect(model?.oldestNoteHref).toBeNull();
+    });
   });
 
   it("an active override shows its expiry instead of the blocking wording", () => {

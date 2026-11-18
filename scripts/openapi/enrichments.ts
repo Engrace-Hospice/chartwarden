@@ -5773,7 +5773,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // ADR-0113 — the visit-note closure clock. Static `/encounters/<segment>` paths: they win over `/encounters/:encounterId`.
   "GET /api/v1/encounters/closure-status": {
     summary:
-      "The caller's own visit-note closure position (mode, stage, deadline, the oldest open clocked note, the count overdue) — the shell banner polls it",
+      "The caller's own visit-note closure position (mode, stage, deadline, the oldest open clocked note, the count overdue) — the shell banner polls it. `patientId` and `encounterStatus` (draft | finalized) describe that oldest note, null exactly when `encounterId` is null, so the banner can link it without a read-audited `GET /encounters/{encounterId}`. Not read-audited (the caller's own position; opaque ids and an enum, no patient content)",
     response: M8ClosureStatusResponseSchema,
   },
   "GET /api/v1/encounters/overdue-notes": {
