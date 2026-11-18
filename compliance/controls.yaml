@@ -258,8 +258,10 @@ controls:
       - file: apps/backend/src/modules/41-billing-commercial/jobs/ack-worker.org-binding.test.ts
       - file: apps/backend/__tests__/m23-clearinghouse-injection.test.ts
       - file: apps/backend/__tests__/m25-clearinghouse-pull.test.ts
+      - file: scripts/db/provision-runtime-roles.ts
+      - file: apps/backend/__tests__/m23-claimmd-webhook.live.test.ts
     gap:
-      reason: The dispatcher is disabled by default and source-level ownership checks exist, but private PostgreSQL NOBYPASSRLS and platform-role transaction tests, synthetic account response certification, and BIL-1.1 capture runtime wiring are still required before activation. A tenant's own Claim.MD account is polled by the legacy provider poller, which main judged unable to label Claim.MD's normalized events as X12; M23 records those acknowledgments as ack_999 / ack_277ca and M41 records them as unknown_legacy (owner decision 2026-11-08). The database blocks reuse of a credential, not of a vendor account. Where a vendor issues several keys for one account (Stedi may; not confirmed against its documentation), a second organization could connect that account with a different key.
+      reason: The platform carrier reaches the central Claim.MD tables through MEMBERSHIP of the NOLOGIN `claimmd_capture` role (migrations 1350/1356 when the carrier already exists, and the runtime-role provisioner, which repeats the grant so migrate-then-provision on a fresh database leaves it in place; m23-claimmd-webhook.live asserts the membership, its idempotence and that the carrier is still not chartwarden_admin). That membership is wider than an enumerated column grant list in one respect that stays open — the platform login is BYPASSRLS, so it holds table-wide SELECT on claimmd_era_m25_stage (including its sealed protected_details_cipher) across every tenant, and no live test proves the platform-role boundary beyond that membership. The dispatcher is disabled by default and source-level ownership checks exist, but private PostgreSQL NOBYPASSRLS and platform-role transaction tests, synthetic account response certification, and BIL-1.1 capture runtime wiring are still required before activation. A tenant's own Claim.MD account is polled by the legacy provider poller, which main judged unable to label Claim.MD's normalized events as X12; M23 records those acknowledgments as ack_999 / ack_277ca and M41 records them as unknown_legacy (owner decision 2026-11-08). The database blocks reuse of a credential, not of a vendor account. Where a vendor issues several keys for one account (Stedi may; not confirmed against its documentation), a second organization could connect that account with a different key.
       owner: platform
       review_by: 2027-01-31
 
@@ -638,6 +640,45 @@ controls:
       # audit event. Known limit: the submission list caps at 500 batches (SUBMISSION_LIST_LIMIT in hope-route-service-db.ts,
       # no route filter or pagination yet), and `rejected` and `partially_accepted` batches are never treated as closed, so
       # an organization with more than 500 unfinished batches at once would see newer accepted ones fall out of the list.
+
+  - id: CW-PI-03
+    title: >-
+      M25 835 remittance intake keeps its integrity before money is recorded: a non-zero payment without BPR16 (its payment effective
+      date) is refused at receive, never stored with NULL dates; an advice's envelope identity (ISA13 with ISA06, ISA08, GS06 and ST02)
+      is part of the dedupe key, and an advice posted from a staged Claim.MD ERA carries the same identity (a stage staged before
+      migration 1508 stays executable; a recorded identity that disagrees with the sealed set is refused); the payee must be the
+      tenant's by NPI and, when the 835 sends one, by the sealed TIN, and the evidence kept holds no NPI or TIN value; a file the pull
+      cannot ingest is quarantined after a bounded number of refusals under a durable, audited reason code, and a well-formed NPI or
+      TIN that is not the tenant's is never quarantined (it keeps the cursor pinned and loud); and every cron tick keeps reporting
+      held files and standing quarantines by id and code only. Claim.MD controlled posting needs a stored plan, an approver other than
+      its creator and an executor other than the approver, each with a step-up, re-derives and re-compares the plan digest under a
+      stage row lock before inserting, and is refused at boot when enabled under NODE_ENV=production.
+    hipaa: ["164.312(c)(1)"]
+    soc2: ["PI1.2", "PI1.3"]
+    status: partial
+    evidence:
+      - script: test:m25:835-ingestion:live
+      - script: test:m25:835-golden:live
+      - script: test:rls:live:m25
+      - script: test:db:migrate:live
+      - file: packages/db/migrations/1256_m25_remittance_pull_refusal.sql
+      - file: packages/db/migrations/1508_m25_835_group_identity_dates.sql
+      - file: apps/backend/src/modules/25-remittance/ingest/service-drizzle.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/advice-envelope-identity.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/clearinghouse-pull.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/pull-cursor-store.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/claimmd-era-review.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/claimmd-era-config.ts
+      - file: apps/backend/src/modules/25-remittance/jobs/cron-workers.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/__tests__/receive-bpr16.test.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/__tests__/stage-identity.test.ts
+      - file: apps/backend/src/modules/25-remittance/ingest/__tests__/claimmd-era-stage-legacy.test.ts
+      - file: apps/backend/__tests__/m25-clearinghouse-pull.test.ts
+      - file: apps/backend/__tests__/m25-835-ingestion.live.test.ts
+    gap:
+      reason: Proved with synthetic 835s only; no live proof against a real payer's 835, and a payer that omits BPR16 on a non-zero payment is refused for the whole file with no accept path short of the payer reissuing it. Controlled Claim.MD posting stays disabled in production (the boot refusal), so its approval and execution are proved in non-production only; approval is recorded even while posting is disabled, and an approval does not expire. A quarantined file is released only by admin SQL (migration 1256 header) and an unreleased one keeps the pull cron failing every tick by design; there is no in-app list, and alerting on that failure is CW-MON-01 (a gap). A file whose interchange mixes a non-HP functional group with an HP one is refused whole (X12_835_UNSUPPORTED_ROUTING), so a supported group sharing it is quarantined with it. The Claim.MD ownership-evidence gate rests on the resolver and the delivery-time revalidation (the delivery service writes the evidence codes), and executing a plan does not re-check the payee NPI/TIN the way receive does at post time.
+      owner: engineering
+      review_by: 2027-01-31
 
   - id: CW-AC-19
     title: >-
@@ -1365,8 +1406,14 @@ controls:
       - file: scripts/__tests__/deploy-rust-image-verify.test.ts
       - file: scripts/db/migrate.ts
       - file: scripts/__tests__/deploy-schema-rollback.test.ts
+      - script: arch:migration-compat
+      - script: test:db:migrate:live
+      - file: scripts/check-migration-compat.ts
+      - file: scripts/__tests__/check-migration-compat.test.ts
+      - file: deploy/production/deploy.sh
+      - file: deploy/production/compose.yml
     gap:
-      reason: deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path — EXCEPT while deploy.yml carries a ci-waived release-gate line (owner decision 2026-10-30, `verify` is commented out so main deploys without tests or live suites, but release still needs the `quality` job running typecheck and lint, which arch:release-gate pins; lift the waiver by restoring `verify`). While it stands arch:fitness, the tests and the live suites (including the NOBYPASSRLS cross-tenant proof) run only through the opt-in pre-push hook, whose e2e step is also disabled (2026-10-30, to be restored). What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented. The CW-RUST-M02 Rust image (ghcr chartwarden-rust, built in that repo) is verified by deploy.sh with cosign against that repository's own workflow identity and rolled only by the verified digest, never under the unverified opt-out (deploy-rust-image-verify.test.ts); it still cannot start today (compose profile + unpullable digest placeholder, arch:compose-policy), and that the chartwarden-rust workflow signs its images is not verifiable from this repo (see CW-AC-07). Also open — the Postgres image (ghcr chartwarden-postgres) is scanned, signed and SBOM-attested by .github/workflows/postgres-image.yml, but deploy.sh never touches postgres, so no automated step verifies it on the host; the operator runs cosign verify and verify-attestation per deploy/production/README.md (Postgres image, migration runbook step 1) and keeps the output as the change record. backup-image.yml now defines the equivalent scanned, signed and SBOM-attested GHCR publication, and compose.backup.yml requires one digest-pinned reference instead of a host-built local tag; the first successful main publication, operator cosign verification and production pin are still required before this part has runtime evidence.
+      reason: A pending migration that is not a verified `expand` (per its compat header) is refused before any DDL (migrate.ts --hold-contract, exit 75; deploy.sh and the compose migrate service default both pass it; db-migrate.live runs the real CLI and asserts the exit and that nothing changed), so an unattended deploy cannot apply, for example, 1508 while the old M25 writers still run. What stays open there is that the classifier is a heuristic (a `contract` migration falsely declared `expand` still auto-applies; the arch gate catches only obviously contracting DDL), that the hold has only been exercised against a stubbed docker, not the real VPS, that the alert reaches a person only when DEPLOY_ALERT_WEBHOOK_URL is configured, and that while any held migration is pending every push to main is held, a security fix included, until an operator applies it by hand. deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path — EXCEPT while deploy.yml carries a ci-waived release-gate line (owner decision 2026-10-30, `verify` is commented out so main deploys without tests or live suites, but release still needs the `quality` job running typecheck and lint, which arch:release-gate pins; lift the waiver by restoring `verify`). While it stands arch:fitness, the tests and the live suites (including the NOBYPASSRLS cross-tenant proof) run only through the opt-in pre-push hook, whose e2e step is also disabled (2026-10-30, to be restored). What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented. The CW-RUST-M02 Rust image (ghcr chartwarden-rust, built in that repo) is verified by deploy.sh with cosign against that repository's own workflow identity and rolled only by the verified digest, never under the unverified opt-out (deploy-rust-image-verify.test.ts); it still cannot start today (compose profile + unpullable digest placeholder, arch:compose-policy), and that the chartwarden-rust workflow signs its images is not verifiable from this repo (see CW-AC-07). Also open — the Postgres image (ghcr chartwarden-postgres) is scanned, signed and SBOM-attested by .github/workflows/postgres-image.yml, but deploy.sh never touches postgres, so no automated step verifies it on the host; the operator runs cosign verify and verify-attestation per deploy/production/README.md (Postgres image, migration runbook step 1) and keeps the output as the change record. backup-image.yml now defines the equivalent scanned, signed and SBOM-attested GHCR publication, and compose.backup.yml requires one digest-pinned reference instead of a host-built local tag; the first successful main publication, operator cosign verification and production pin are still required before this part has runtime evidence.
       owner: engineering
       review_by: 2026-12-15
 
