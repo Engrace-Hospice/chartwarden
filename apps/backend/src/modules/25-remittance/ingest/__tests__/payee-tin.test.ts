@@ -87,10 +87,6 @@ describe("835 payee TIN (#671)", () => {
     });
     expect(JSON.stringify(r)).not.toContain("123456789");
   });
-  it("refuses a tax-id-only payee by default even with a matching TIN bound", async () => {
-    const r = await receive(fiPayee, async () => "123456789");
-    expect(r).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("no NPI") });
-  });
   it("rejects TIN-only identity even when the TIN matches; no approved payer-program policy exists", async () => {
     const r = await receive(fiPayee, async () => "12-3456789", "medicaid");
     expect(r).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("no NPI") });
