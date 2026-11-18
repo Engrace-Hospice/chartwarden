@@ -26,6 +26,32 @@ export function adviceEnvelopeIdentityColumns(parsed: ParsedRemittanceAdvice) {
 }
 
 /**
+ * True when a stage row's recorded ISA06/ISA08/GS06 disagrees with the sealed transaction set it was staged from.
+ * A NULL column is unrecorded, not different: migration 1508 added the columns as nullable, so a stage staged before
+ * it has NULLs while its sealed set may carry the values, and refusing it would strand an approved plan. Only a
+ * recorded value that disagrees is a mismatch.
+ */
+export function stageIdentityDiffersFromSealedSet(
+  stage: {
+    readonly interchangeSenderCode: string | null;
+    readonly interchangeReceiverCode: string | null;
+    readonly functionalGroupControlNumber: string | null;
+  },
+  sealed: Pick<
+    ParsedRemittanceAdvice,
+    "interchangeSenderCode" | "interchangeReceiverCode" | "functionalGroupControlNumber"
+  >,
+): boolean {
+  const differs = (recorded: string | null, sealedValue: string | undefined) =>
+    recorded !== null && recorded !== (sealedValue ?? null);
+  return (
+    differs(stage.interchangeSenderCode, sealed.interchangeSenderCode) ||
+    differs(stage.interchangeReceiverCode, sealed.interchangeReceiverCode) ||
+    differs(stage.functionalGroupControlNumber, sealed.functionalGroupControlNumber)
+  );
+}
+
+/**
  * The ownership evidence codes a staged Claim.MD ERA carries. `stageVerifiedClaimMdEra` seals them as
  * `source_evidence = { codes: [...] }`; this is the one reader of that shape (the posting plan's ownership
  * gate and the payee-identity evidence of a posted advice).

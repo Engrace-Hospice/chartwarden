@@ -31,6 +31,7 @@ import {
   adviceEnvelopeIdentityColumns,
   claimMdStagePayeeIdentityEvidence,
   stageEvidenceCodes,
+  stageIdentityDiffersFromSealedSet,
 } from "./advice-envelope-identity";
 import { stagedPaymentDate } from "./claimmd-era-payment-date";
 import type { M25IngestService } from "./service";
@@ -2455,12 +2456,7 @@ export function buildDrizzleClaimMdEraReviewService(
           );
         // The posted advice takes its group identity from the sealed transaction set; the stage row's own
         // ISA06/ISA08/GS06 columns (what staging deduped on) must agree, or the two would drift apart.
-        if (
-          (stage.interchangeSenderCode ?? null) !== (parsed.interchangeSenderCode ?? null) ||
-          (stage.interchangeReceiverCode ?? null) !== (parsed.interchangeReceiverCode ?? null) ||
-          (stage.functionalGroupControlNumber ?? null) !==
-            (parsed.functionalGroupControlNumber ?? null)
-        )
+        if (stageIdentityDiffersFromSealedSet(stage, parsed))
           throw new ChartWardenError(
             "POSTING_SOURCE_INVALID",
             "the staged source identity does not match its sealed transaction set",
