@@ -1,27 +1,43 @@
-/** Read-only M25-671 migration preflight. It never creates a ledger, runs SQL migrations, or changes data. */
+/**
+ * Read-only M25-671 migration preflight. It never creates a ledger, runs SQL migrations, or changes data.
+ *
+ * Preconditions it enforces (exit 2, nothing read): a non-local host must be reached with sslmode=verify-full, and the
+ * connected role must be a superuser or BYPASSRLS (under RLS the data checks would see no rows and print a clean 0/0).
+ *
+ * Known limitation: it compares the ledger by exact filename. It does NOT model ledger-alias adoption (a database whose
+ * ledger records a migration under an older or alternate name); such a migration is reported as pending/orphaned and an
+ * operator decides, as for any other ledger drift.
+ */
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import { analyze } from "./check-migration-numbering";
+import { bypassesRls, connectionRefusal, targetMigrationState } from "./lib/m25-preflight-guards";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "packages/db/migrations");
 const TARGET = "1508_m25_835_group_identity_dates.sql";
 const DB_URL = process.env.M25_PREFLIGHT_DATABASE_URL;
 if (!DB_URL) throw new Error("Set M25_PREFLIGHT_DATABASE_URL to the database being inspected.");
+const refusal = connectionRefusal(DB_URL, process.env);
+if (refusal) {
+  console.error(`PREFLIGHT: BLOCKED — ${refusal}`);
+  process.exit(2);
+}
+
+/** A precondition failure: reported on stdout, exit 2, and nothing further is read. */
+class PreflightBlocked extends Error {}
 
 const files = readdirSync(MIGRATIONS)
   .filter((name) => /^\d{4}_[a-z0-9][a-z0-9_]*\.sql$/.test(name))
   .sort();
-const ordinals = new Map<string, string[]>();
-for (const file of files) {
-  const ordinal = file.slice(0, 4);
-  const names = ordinals.get(ordinal) ?? [];
-  names.push(file);
-  ordinals.set(ordinal, names);
-}
-const ordinalConflicts = [...ordinals].filter(([, names]) => names.length > 1);
+// The frozen historical pairs (HISTORICAL_DUPLICATE_ORDINALS, applied under those exact names in production) are not
+// conflicts; only a duplicate the numbering gate itself would fail counts.
+const ordinalConflicts = [...analyze(files).duplicates].map(
+  ([ordinal, names]) => [String(ordinal).padStart(4, "0"), names] as const,
+);
 
 const db = new Client({ connectionString: DB_URL, options: "-c default_transaction_read_only=on" });
 try {
@@ -35,6 +51,15 @@ try {
   console.log(
     `Read-only target: database=${identity?.database_name ?? "unknown"}, PostgreSQL=${identity?.server_version_num ?? "unknown"}`,
   );
+  const role = (
+    await db.query<{ rolname: string; rolsuper: boolean; rolbypassrls: boolean }>(
+      "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user",
+    )
+  ).rows[0];
+  if (!role || !bypassesRls(role))
+    throw new PreflightBlocked(
+      `PREFLIGHT: BLOCKED — connected as role ${role?.rolname ?? "unknown"}, which is neither a superuser nor BYPASSRLS. Row-level security hides every tenant row from it (app.org_id is unset), so the data checks would report 0 and look clean. Re-run as a role that bypasses RLS; this tool still makes no changes.`,
+    );
   const ledger = await db.query<{ exists: boolean }>(
     "SELECT to_regclass('_chartwarden_migration') IS NOT NULL AS exists",
   );
@@ -248,6 +273,33 @@ try {
       process.exitCode = 2;
     }
 
+    // Claim.MD stages still in flight (not yet posted) when 1508 lands. Their delivery idempotency key was derived before
+    // it carried GS06, so a redelivery after the deploy will not match them and is staged afresh (or held as a duplicate of
+    // a posted legacy advice); an operator should know how many are open and finish or reconcile them first.
+    const stagePresent = (
+      await db.query<{ stage: boolean; event: boolean }>(
+        "SELECT to_regclass('claimmd_era_m25_stage') IS NOT NULL AS stage, to_regclass('claimmd_era_posting_event') IS NOT NULL AS event",
+      )
+    ).rows[0];
+    if (stagePresent?.stage) {
+      const unposted = stagePresent.event
+        ? " AND NOT EXISTS (SELECT 1 FROM claimmd_era_posting_event e WHERE e.stage_id = s.id AND e.event_type = 'posted')"
+        : "";
+      const groupless = stageSet.has("functional_group_control_number")
+        ? "s.functional_group_control_number IS NULL"
+        : "true";
+      const inFlight = (
+        await db.query<{ total: number; pre_group: number }>(
+          `SELECT count(*)::int AS total, count(*) FILTER (WHERE ${groupless})::int AS pre_group FROM claimmd_era_m25_stage s WHERE s.state IN ('staged','held','possible_duplicate')${unposted}`,
+        )
+      ).rows[0];
+      console.log(
+        `IN-FLIGHT CLAIM.MD STAGES non_terminal=${inFlight?.total ?? "?"}; without_group_identity=${inFlight?.pre_group ?? "?"} (a redelivery after 1508 will not match their idempotency key)`,
+      );
+    } else {
+      console.log("IN-FLIGHT CLAIM.MD STAGES: table claimmd_era_m25_stage is absent.");
+    }
+
     if (adviceSet.has("interchange_sender_code") && stageSet.has("interchange_sender_code")) {
       const [partialAdvice, partialStage, adviceDuplicates, stageDuplicates] = await Promise.all([
         db.query(
@@ -289,18 +341,16 @@ try {
       );
       process.exitCode = 2;
     }
-    if (
-      historicalPending.length ||
-      orphaned.length ||
-      drifted.length ||
-      !pending.includes(TARGET)
-    ) {
-      if (historicalPending.length || orphaned.length || drifted.length) process.exitCode = 2;
-    }
-    console.log(
-      `TARGET ${TARGET}: ${applied.has(TARGET) ? "APPLIED" : pending.includes(TARGET) ? "PENDING" : "MISSING"}`,
-    );
+    if (historicalPending.length || orphaned.length || drifted.length) process.exitCode = 2;
+    // MISSING (neither applied nor a file on disk) means there is nothing to apply: never a clean pass.
+    const target = targetMigrationState(TARGET, new Set(applied.keys()), pending);
+    console.log(`TARGET ${TARGET}: ${target}`);
+    if (target === "MISSING") process.exitCode = 2;
   }
+} catch (err) {
+  if (!(err instanceof PreflightBlocked)) throw err;
+  console.log(err.message);
+  process.exitCode = 2;
 } finally {
   await db.end().catch(() => {});
 }
