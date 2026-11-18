@@ -12,7 +12,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 import type { GateItem, GateStatus } from "@chartwarden/ui";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { MembershipLookupField, PatientLookupField } from "../../shell/entity-lookups";
@@ -38,6 +38,8 @@ import { Notice } from "./safety-ui";
 
 const FORM_ID = "new-safety-incident-form";
 const STEP_TITLES = ["Incident", "Details", "Context & Review"] as const;
+// The heading id each step's SectionTitle renders (and its section is labelled by); a step change moves focus onto it.
+const STEP_HEADING_IDS = ["incident-step-h", "details-step-h", "review-step-h"] as const;
 
 function stepStatus(stepIndex: number, activeIndex: number): GateStatus {
   if (stepIndex < activeIndex) return "complete";
@@ -150,6 +152,18 @@ export function IncidentNewScreen(): JSX.Element {
     wcReference,
     witnesses,
   ]);
+
+  // Changing step replaces the focused Continue/Back button (distinct keys in the footer, and Back is absent on
+  // step 0). Focus would fall to <body> and the new step go unannounced: land on its heading instead.
+  const previousStep = useRef(step);
+  useEffect(() => {
+    if (previousStep.current === step) return;
+    previousStep.current = step;
+    const active = document.activeElement;
+    const headingId = STEP_HEADING_IDS[step];
+    if (headingId && (!active || active === document.body))
+      document.getElementById(headingId)?.focus();
+  }, [step]);
 
   const continueFromIncident = (): void => {
     setIncidentAttempted(true);
@@ -336,8 +350,8 @@ function IncidentStep({
   showErrors: boolean;
 }): JSX.Element {
   return (
-    <section style={sectionStyle} aria-labelledby="incident-step-h">
-      <SectionTitle id="incident-step-h" title="Who was affected and when?" />
+    <section style={sectionStyle} aria-labelledby={STEP_HEADING_IDS[0]}>
+      <SectionTitle id={STEP_HEADING_IDS[0]} title="Who was affected and when?" />
       <div style={stackStyle}>
         <MembershipLookupField
           label="Affected clinician"
@@ -397,8 +411,8 @@ function DetailsStep({
 }): JSX.Element {
   const complete = meetsMinChars(narrative, INCIDENT_NARRATIVE_MIN_CHARS);
   return (
-    <section style={sectionStyle} aria-labelledby="details-step-h">
-      <SectionTitle id="details-step-h" title="What happened?" />
+    <section style={sectionStyle} aria-labelledby={STEP_HEADING_IDS[1]}>
+      <SectionTitle id={STEP_HEADING_IDS[1]} title="What happened?" />
       <TextAreaInput
         label="Describe what happened"
         value={narrative}
@@ -474,8 +488,8 @@ function ReviewStep({
   ready: boolean;
 }): JSX.Element {
   return (
-    <section style={sectionStyle} aria-labelledby="review-step-h">
-      <SectionTitle id="review-step-h" title="Context & Review" />
+    <section style={sectionStyle} aria-labelledby={STEP_HEADING_IDS[2]}>
+      <SectionTitle id={STEP_HEADING_IDS[2]} title="Context & Review" />
       <div style={summaryPanelStyle}>
         <h3 style={panelTitleStyle}>Incident summary</h3>
         <div style={summaryGridStyle}>
@@ -556,7 +570,7 @@ function SectionTitle({ id, title }: { id: string; title: string }): JSX.Element
   return (
     <div style={toolbarTitleStyle}>
       <span style={toolbarEyebrowStyle}>Step</span>
-      <h2 id={id} style={sectionTitleStyle}>
+      <h2 id={id} tabIndex={-1} style={sectionTitleStyle}>
         {title}
       </h2>
     </div>

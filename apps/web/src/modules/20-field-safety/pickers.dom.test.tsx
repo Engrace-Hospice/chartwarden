@@ -82,4 +82,44 @@ describe("the incident wizard footer", () => {
     expect(create).not.toBe(advance);
     expect(advance.isConnected).toBe(false);
   });
+
+  it("moves focus to the new step's heading when the focused button is replaced", async () => {
+    mount(<IncidentNewScreen />);
+    const field = screen.getByLabelText(/^Affected clinician/) as HTMLInputElement;
+    fireEvent.focus(field);
+    fireEvent.click(await screen.findByRole("option", { name: /Jordan Clinician/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(await screen.findByLabelText(/^Describe what happened/), {
+      target: { value: "x".repeat(200) },
+    });
+    const advance = screen.getByRole("button", { name: "Continue" });
+    advance.focus();
+    fireEvent.click(advance);
+    const heading = await screen.findByRole("heading", { name: "Context & Review" });
+    expect(document.activeElement).toBe(heading);
+  });
+
+  it("leaves focus alone when the page first renders", () => {
+    mount(<IncidentNewScreen />);
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("moves focus to the heading of the step it lands on, forwards and back", async () => {
+    mount(<IncidentNewScreen />);
+    const field = screen.getByLabelText(/^Affected clinician/) as HTMLInputElement;
+    fireEvent.focus(field);
+    fireEvent.click(await screen.findByRole("option", { name: /Jordan Clinician/ }));
+    const next = screen.getByRole("button", { name: "Continue" });
+    next.focus();
+    fireEvent.click(next);
+    expect(await screen.findByRole("heading", { name: "What happened?" })).toBe(
+      document.activeElement,
+    );
+    const back = screen.getByRole("button", { name: "Back" });
+    back.focus();
+    fireEvent.click(back);
+    expect(await screen.findByRole("heading", { name: "Who was affected and when?" })).toBe(
+      document.activeElement,
+    );
+  });
 });
