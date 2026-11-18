@@ -44,15 +44,15 @@ describe("My Visits purpose wording", () => {
   it("offers the filter options and finds visits by the labels the table shows", async () => {
     mount();
 
+    // The filter bar renders before the visits load, so wait for a loaded option, not for the select itself.
     const filter = await screen.findByLabelText("Visit purpose");
-    const options = within(filter)
-      .getAllByRole("option")
-      .map((o) => o.textContent);
-    expect(options).toEqual(
-      expect.arrayContaining(["Face-to-Face", "HHA Visit", "Recert Kickoff (RN)"]),
-    );
-    expect(options).not.toContain("F2f");
-    expect(options).not.toContain("Aide Poc");
+    await within(filter).findByRole("option", { name: "Recert Kickoff (RN)" });
+    // Alphabetical by the label the clinician reads (HHA Visit sorts after Face-to-Face, though aide_poc < f2f).
+    expect(
+      within(filter)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["All", "Face-to-Face", "HHA Visit", "Recert Kickoff (RN)"]);
 
     fireEvent.change(screen.getByLabelText("Search my visits"), { target: { value: "kickoff" } });
 

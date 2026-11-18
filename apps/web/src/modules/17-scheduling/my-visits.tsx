@@ -98,7 +98,10 @@ export function MyVisits(): JSX.Element {
   }, [load]);
 
   const purposeOptions = useMemo(
-    () => [...new Set(visits.map((v) => v.visitPurpose).filter(Boolean))].sort(),
+    () =>
+      [...new Set(visits.map((v) => v.visitPurpose).filter(Boolean))].sort((a, b) =>
+        purposeLabel(a).localeCompare(purposeLabel(b)),
+      ),
     [visits],
   );
 
