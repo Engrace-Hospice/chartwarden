@@ -546,6 +546,9 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const sourceInboxId = crypto.randomUUID();
       const resolutionId = crypto.randomUUID();
       const claimId = crypto.randomUUID();
+      // Production's resolver seals the owning claim's immutable send-evidence ids with each claim
+      // outcome (claimmd-era-resolution.ts); the review requires exactly one to verify the attempt.
+      const historicalSubmissionEvidenceId = crypto.randomUUID();
       const payerId = "f0000000-0000-4000-8000-00000000fee1";
       const pcn = `SYNTHETIC-CLAIMMD-PCN-${stageId.slice(0, 8)}`;
       const trace = `SYNTHETIC-CLAIMMD-TRACE-${stageId.slice(0, 8)}`;
@@ -612,6 +615,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
                 billingModule: "M41",
                 fileIndex: 0,
                 transactionSetControlNumber,
+                submissionEvidenceIds: [historicalSubmissionEvidenceId],
               },
             ],
           }),
@@ -703,7 +707,6 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           crypto.randomUUID(),
         ],
       );
-      const historicalSubmissionEvidenceId = crypto.randomUUID();
       await admin.query(
         `INSERT INTO claimmd_submission_evidence
           (id,organization_id,provider_entity_id,claim_id,billing_module,submission_id,attempt_key,vendor,
@@ -1500,6 +1503,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const stageId = crypto.randomUUID();
       const sourceInboxId = crypto.randomUUID();
       const claimId = crypto.randomUUID();
+      const historicalSubmissionEvidenceId = crypto.randomUUID();
       const payerId = crypto.randomUUID();
       const trace = `SYNTHETIC-LEGACY-FIRST-${suffix}`;
       const pcn = `SYNTHETIC-LEGACY-PCN-${suffix}`;
@@ -1595,7 +1599,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
          VALUES ($1,$2,$3,$4,'M41',$5,$6,'claimmd','synthetic-legacy-account','test','1999999999',repeat('x',48),
            $7,'institutional',$8,'000000941',$9,$10,'20260301','20260331',$11,'x12',$12,now())`,
         [
-          crypto.randomUUID(),
+          historicalSubmissionEvidenceId,
           ORG_A,
           PE_A,
           claimId,
@@ -1691,6 +1695,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
                 billingModule: "M41",
                 fileIndex: 0,
                 transactionSetControlNumber: st02,
+                submissionEvidenceIds: [historicalSubmissionEvidenceId],
               },
             ],
           }),
