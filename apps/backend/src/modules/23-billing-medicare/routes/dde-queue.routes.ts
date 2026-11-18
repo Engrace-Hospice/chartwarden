@@ -1,10 +1,10 @@
 // apps/backend/src/modules/23-billing-medicare/routes/dde-queue.routes.ts — the DDE work queue (ADR-0052): human
-// work tracking for Medicare Direct Data Entry items (NOE, NOTR, claim entry, RTP correction, adjustment, cancel,
-// ADR response). ChartWarden never calls DDE; these routes record what an operator did and what came back.
+// work tracking for Medicare Direct Data Entry items. Manual DDE is the baseline; provider actions remain unavailable
+// unless their operation is explicitly qualified and enabled.
 //
 // SUBMIT-VIA-PROVIDER (step-up) and SYNC-PROVIDER gate `billing.dde.submit_via_provider`.
 // Reads gate `billing.dde.read`; create / claim / start / outcome / retry / cancel / close gate `billing.dde.work`;
-// RECORD SUBMISSION and RECORD ACCEPTANCE (the attestations that an item was keyed / accepted) gate `billing.dde.mark_submitted` + the §D14
+// RECORD SUBMISSION and RECORD ACCEPTANCE (operator-recorded evidence) gate `billing.dde.mark_submitted` + the §D14
 // step-up; assigning an item to someone else gates `billing.dde.admin`. Every object route composes
 // `provider_entity_billing_scope` over the item's provider entity (a denied object is a 404), every mutation the
 // §D13 AI-block + `Idempotency-Key`. Reads are read-audited with a `resourceIdParam`. Org / actor / membership are
@@ -80,6 +80,15 @@ async function ddeWriteActorOf(request: FastifyRequest, reply: FastifyReply) {
 
 export function registerDdeQueueRoutes(app: FastifyInstance, deps: DdeQueueRouteDeps): void {
   const service = deps.ddeQueueService;
+  const providerSubmissionPreflight = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = parse(DdeItemIdParamsSchema, request.params);
+    const { expectedVersion } = parse(SubmitDdeViaProviderBodySchema, request.body);
+    await service.assertProviderSubmissionAllowed(
+      await ddeWriteActorOf(request, reply),
+      id,
+      expectedVersion,
+    );
+  };
 
   app.get(
     "/api/v1/billing/dde-items",
@@ -158,17 +167,18 @@ export function registerDdeQueueRoutes(app: FastifyInstance, deps: DdeQueueRoute
     },
   );
 
-  // SEND THROUGH THE PROVIDER (ADR-0103, #760): keys the item via the bound DdeAccessProvider as the acting operator.
-  // As privileged as keying it by hand, so its own permission plus the step-up. Unbound => 503 DDE_NOT_WIRED.
+  // SEND THROUGH THE PROVIDER (ADR-0103, #760): sends through the explicitly qualified provider as the acting operator.
+  // As privileged as keying it by hand, so its own permission plus the step-up. Manual/unqualified => refused before send.
   app.post(
     "/api/v1/billing/dde-items/:id/submit-via-provider",
     {
       preHandler: [
         SUBMIT_PROVIDER,
         SUBMIT_PROVIDER_ABAC,
-        SUBMIT_PROVIDER_STEPUP,
         NO_AI,
         IDEMPOTENT,
+        providerSubmissionPreflight,
+        SUBMIT_PROVIDER_STEPUP,
       ],
     },
     async (request, reply) => {

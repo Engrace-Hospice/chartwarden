@@ -1,36 +1,31 @@
-// @chartwarden/x12-837-client — Episode Alert eligibility response -> the port's outcome (#758, ADR-0053).
-//
-// Episode Alert translates the CMS HETS 271 into XML and documents the report sections publicly
-// (https://episodealert.com/medicare-eligibility.aspx): "Part A & B" carries Part A/B eligibility start and end dates.
-// The XML schema itself is given only after signup, so the element names below are UNVERIFIED guesses from the sample
-// report's labels. They are the ONE place to correct once a trial account returns a real response; the matching
-// fixtures live in episode-alert.test.ts. Anything unrecognised yields "unknown", never "active".
+// Episode Alert's XML schema is not available in the repository or confirmed by the vendor. These names and the root
+// used by local fixtures are assumptions only; this parser is not evidence of a valid vendor or hospice response.
+import { SaxesParser } from "saxes";
 import type { EligibilityOutcome } from "../types";
 
-/** UNVERIFIED element names (local names; any namespace prefix is accepted). First match wins. */
-export const EPISODE_ALERT_ELIGIBILITY_FIELDS = {
+/** UNVERIFIED element names from the public sample report labels; namespaces are matched by local name. */
+const EPISODE_ALERT_ELIGIBILITY_FIELDS = {
   partAStart: ["PartAEligibilityStartDate", "PartAStartDate", "PartAEffectiveDate"],
   partAEnd: ["PartAEligibilityEndDate", "PartAEndDate", "PartATerminationDate"],
 } as const;
 
-const MAX_XML_CHARS = 1_000_000;
+const MAX_XML_BYTES = 1_000_000;
+const MAX_XML_NODES = 10_000;
+const MAX_XML_DEPTH = 64;
+const MAX_FIELD_CHARS = 32;
+const EXPECTED_FIXTURE_ROOT = "eligibilityresponse";
 
-type Element = { kind: "absent" } | { kind: "unreadable" } | { kind: "value"; value: string };
+type XmlNode = {
+  readonly localName: string;
+  readonly attributes: number;
+  readonly children: XmlNode[];
+  text: string;
+};
 
-/**
- * Reads exactly one element from any of `localNames`. Absent means no such tag; anything that is not one plain text
- * value (a repeat, an empty or self-closing tag, nested children, a value over 32 chars) is unreadable, never absent,
- * so a changed response cannot read as "no end date".
- */
-function readElement(xml: string, localNames: readonly string[]): Element {
-  const open = new RegExp(`<(?:[A-Za-z0-9_]+:)?(?:${localNames.join("|")})(?=[\\s>/])[^>]*>`, "gi");
-  const tags = [...xml.matchAll(open)];
-  if (tags.length === 0) return { kind: "absent" };
-  const tag = tags[0];
-  if (tags.length > 1 || !tag || tag[0].endsWith("/>")) return { kind: "unreadable" };
-  const text = /^\s*([^<]{1,32}?)\s*</.exec(xml.slice((tag.index ?? 0) + tag[0].length));
-  return text?.[1] ? { kind: "value", value: text[1] } : { kind: "unreadable" };
-}
+export type EpisodeAlertEligibilityXmlResult =
+  | { readonly kind: "outcome"; readonly outcome: EligibilityOutcome }
+  | { readonly kind: "unsupported" }
+  | { readonly kind: "malformed" };
 
 /** `20260101`, `2026-01-01` or `01/01/2026` -> `2026-01-01`; null for anything else or an impossible date. */
 export function toIsoDate(raw: string): string | null {
@@ -47,23 +42,116 @@ export function toIsoDate(raw: string): string | null {
   return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== iso ? null : iso;
 }
 
-/**
- * Part A active on `serviceDate` (ISO) when it started on or before it and has not ended before it. Started later,
- * or ended earlier, is inactive. A missing or unreadable start date is unknown, so a changed schema fails safe.
- */
-export function eligibilityOutcomeFromXml(xml: string, serviceDate: string): EligibilityOutcome {
-  // Comments, CDATA and DTDs can hide or fake elements; this reader does not parse them, so it does not guess.
-  if (xml.length > MAX_XML_CHARS || /<!--|<!\[CDATA\[|<!DOCTYPE|<!ENTITY/i.test(xml)) {
-    return "unknown";
+function parseXml(xml: string): XmlNode | null {
+  if (Buffer.byteLength(xml, "utf8") > MAX_XML_BYTES || xml.trim().length === 0) return null;
+
+  let root: XmlNode | undefined;
+  const stack: XmlNode[] = [];
+  let nodes = 0;
+  let textChars = 0;
+  let outsideText = "";
+  try {
+    const parser = new SaxesParser({ xmlns: true });
+    parser.on("doctype", () => {
+      throw new Error("DTD is not accepted");
+    });
+    parser.on("opentag", (tag) => {
+      nodes += 1;
+      if (nodes > MAX_XML_NODES || stack.length + 1 > MAX_XML_DEPTH) {
+        throw new Error("XML structural limits exceeded");
+      }
+      const node: XmlNode = {
+        localName: (tag.local || tag.name).toLowerCase(),
+        attributes: Object.keys(tag.attributes).length,
+        children: [],
+        text: "",
+      };
+      const parent = stack.at(-1);
+      if (parent) parent.children.push(node);
+      else if (root) throw new Error("multiple XML roots");
+      else root = node;
+      stack.push(node);
+    });
+    const appendText = (value: string) => {
+      textChars += value.length;
+      if (textChars > MAX_XML_BYTES) throw new Error("XML text limit exceeded");
+      const current = stack.at(-1);
+      if (current) current.text += value;
+      else outsideText += value;
+      if (outsideText.trim().length > 0) throw new Error("text outside root");
+    };
+    parser.on("text", appendText);
+    parser.on("cdata", appendText);
+    parser.on("closetag", () => {
+      if (stack.pop() === undefined) throw new Error("unexpected closing tag");
+    });
+    parser.on("error", (error) => {
+      throw error;
+    });
+    parser.write(xml).close();
+  } catch {
+    return null;
   }
+  return root && stack.length === 0 ? root : null;
+}
+
+type Field =
+  | { readonly kind: "absent" }
+  | { readonly kind: "value"; readonly value: string }
+  | { readonly kind: "invalid" };
+
+function readDirectField(root: XmlNode, aliases: readonly string[]): Field {
+  const names = new Set(aliases.map((name) => name.toLowerCase()));
+  const matches = root.children.filter((child) => names.has(child.localName));
+  if (matches.length === 0) return { kind: "absent" };
+  if (matches.length !== 1) return { kind: "invalid" };
+  const node = matches[0];
+  if (!node || node.children.length > 0 || node.attributes !== 0) return { kind: "invalid" };
+  const value = node.text.trim();
+  return value.length > 0 && value.length <= MAX_FIELD_CHARS
+    ? { kind: "value", value }
+    : { kind: "invalid" };
+}
+
+/**
+ * Validates local fixture XML structurally, then evaluates only the guessed Part A dates. A valid XML document with an
+ * unrecognized root is unsupported; malformed/contradictory data cannot become active or inactive evidence.
+ */
+export function parseEpisodeAlertEligibilityXml(
+  xml: string,
+  serviceDate: string,
+): EpisodeAlertEligibilityXmlResult {
   const day = toIsoDate(serviceDate);
-  const rawStart = readElement(xml, EPISODE_ALERT_ELIGIBILITY_FIELDS.partAStart);
-  const rawEnd = readElement(xml, EPISODE_ALERT_ELIGIBILITY_FIELDS.partAEnd);
-  if (day === null || rawStart.kind !== "value" || rawEnd.kind === "unreadable") return "unknown";
-  const start = toIsoDate(rawStart.value);
-  const end = rawEnd.kind === "value" ? toIsoDate(rawEnd.value) : null;
-  if (start === null || (rawEnd.kind === "value" && end === null)) return "unknown";
-  if (start > day) return "inactive";
-  if (end !== null && end < day) return "inactive";
-  return "active";
+  if (day === null) return { kind: "malformed" };
+  const root = parseXml(xml);
+  if (!root) return { kind: "malformed" };
+  if (root.localName !== EXPECTED_FIXTURE_ROOT) return { kind: "unsupported" };
+
+  const startField = readDirectField(root, EPISODE_ALERT_ELIGIBILITY_FIELDS.partAStart);
+  const endField = readDirectField(root, EPISODE_ALERT_ELIGIBILITY_FIELDS.partAEnd);
+  if (startField.kind === "invalid" || endField.kind === "invalid") return { kind: "malformed" };
+  if (startField.kind === "absent") return { kind: "outcome", outcome: "unknown" };
+
+  const start = toIsoDate(startField.value);
+  const end = endField.kind === "value" ? toIsoDate(endField.value) : null;
+  if (
+    start === null ||
+    (endField.kind === "value" && end === null) ||
+    (end !== null && end < start)
+  ) {
+    return { kind: "malformed" };
+  }
+  if (start > day || (end !== null && end < day)) {
+    return { kind: "outcome", outcome: "inactive" };
+  }
+  return { kind: "outcome", outcome: "active" };
+}
+
+/** Local fixture helper only; intentionally absent from the package's public barrel. */
+export function unverifiedFixtureEligibilityOutcome(
+  xml: string,
+  serviceDate: string,
+): EligibilityOutcome {
+  const parsed = parseEpisodeAlertEligibilityXml(xml, serviceDate);
+  return parsed.kind === "outcome" ? parsed.outcome : "unknown";
 }

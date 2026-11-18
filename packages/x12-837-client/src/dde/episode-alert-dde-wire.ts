@@ -6,11 +6,13 @@
 //
 // So this file invents nothing. Every builder and parser below answers `unverified`, and `verified` is false, which is
 // what keeps `DDE_PROVIDER=episode_alert` refusing to bind (see ./episode-alert-dde-provider). To finish the adapter once
-// the documentation is in hand:
+// documentation and an approved isolated test environment are in hand:
 //   1. fill `EA_DDE_FACTS` from the vendor guide (each entry names the question that answers it);
 //   2. implement the six functions of {@link EpisodeAlertDdeWire} in this file, nothing else;
-//   3. flip `verified` to true only after ./episode-alert-dde-contract.test.ts passes against the trial account;
-//   4. register the factory in apps/backend/src/index.ts (`bindDdeProvider(process.env, { episode_alert: ... })`).
+//   3. add an explicitly reviewed vendor qualification harness; environment variables or a trial credential alone cannot
+//      enable it, and do not flip `verified` until required vendor evidence is recorded;
+//   4. record the approved exact API origin in source-reviewed configuration, then register the factory in
+//      apps/backend/src/index.ts (`bindDdeProvider(process.env, { episode_alert: ... })`) only after ADR-0103 is ratified.
 import type { Page } from "../clearinghouse/types";
 import type { DdeContext, DdeOperation, DdeOperationStatus, DdeOutcome, DdeReceipt } from "./types";
 
@@ -33,7 +35,7 @@ export interface WireRequest {
 }
 
 /** The vendor facts the adapter depends on, each with the question that settles it. All unknown. */
-export const EA_DDE_FACTS = {
+export const EA_DDE_FACTS = Object.freeze({
   /** D7: are NOE/NOTR, RTP correction, cancel, adjustment API operations at all? */
   writeOperationsExist: null as boolean | null,
   /** D7: can it key under each operator's own DDE ID (ADR-0103 D4)? If a single vendor session, stop and revisit D4. */
@@ -46,7 +48,7 @@ export const EA_DDE_FACTS = {
   auth: null as string | null,
   /** How an idempotency key is carried (the port requires a replay to send nothing twice). */
   idempotency: null as string | null,
-} as const;
+} as const);
 
 export interface EpisodeAlertDdeWire {
   /** True only when every fact above is recorded AND the contract kit passes against the vendor. */
@@ -65,12 +67,12 @@ export interface EpisodeAlertDdeWire {
 
 const unverified = <T>(): WireResult<T> => ({ ok: false, code: WIRE_UNVERIFIED });
 
-export const EA_DDE_WIRE: EpisodeAlertDdeWire = {
+export const EA_DDE_WIRE: EpisodeAlertDdeWire = Object.freeze({
   verified: false,
-  buildSubmit: () => unverified(),
-  parseReceipt: () => unverified(),
-  buildChangeReport: () => unverified(),
-  parseChangeReport: () => unverified(),
-  buildStatus: () => unverified(),
-  parseStatus: () => unverified(),
-};
+  buildSubmit: () => unverified<WireRequest>(),
+  parseReceipt: () => unverified<DdeReceipt>(),
+  buildChangeReport: () => unverified<WireRequest>(),
+  parseChangeReport: () => unverified<Page<DdeOutcome>>(),
+  buildStatus: () => unverified<WireRequest>(),
+  parseStatus: () => unverified<DdeOperationStatus>(),
+});

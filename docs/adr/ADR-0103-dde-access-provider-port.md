@@ -189,6 +189,60 @@ outbox event, audit entry or log (asserted live). No MBI on file refuses the sen
 to port code). Every vendor-specific fact is isolated in `episode-alert-dde-wire.ts`, which invents nothing: its functions answer
 "unverified", so the adapter fails closed with `DDE_NOT_WIRED` and `createEpisodeAlertDdeProviderFromEnv` throws, which keeps
 `DDE_PROVIDER=episode_alert` refusing to boot. D7 stays unanswered (issue #759): whether write operations exist, per-operator
-DDE IDs, a sandbox, push or poll, paging and cursor shape, authentication and idempotency. A contract kit
-(`episode-alert-dde-contract.test.ts`) is skipped unless a trial key is supplied. The conformance suite gained D14 (an outcome
-names the operation it answers) and has mutant tests.
+DDE IDs, a sandbox, push or poll, paging and cursor shape, authentication and idempotency. The Episode Alert contract kit is
+not currently executable; a trial key alone does not establish an isolated test environment. The conformance suite gained D14
+(an outcome names the operation it answers) and has mutant tests.
+
+## Amendment 2026-11-18 — Episode Alert adapter safety (EPA-755-L1)
+
+No vendor wire, sandbox or approved API origin has been verified. The default `EA_DDE_WIRE` remains frozen with
+`verified: false`; the production factory refuses to bind unless the wire and exact destination are approved in code. No
+environment variable, trial credential, `usage: "test"` flag or operator attestation can enable it. The DDE contract suite
+does not read credentials from the process environment and remains statically skipped until a separately reviewed
+qualification procedure exists.
+
+The provider plumbing now shares a streaming byte-bounded response reader with the eligibility adapter. Local adapter tests
+use `LocalFakeHttpClient`, a response-only test double with no global `fetch` or socket path. This validates local safety and
+fixture behavior only; it does not qualify the Episode Alert service, establish per-operator support or ratify this ADR. Manual
+DDE remains the operational baseline, and the ADR status remains **Proposed**.
+
+## Amendment 2026-11-18 — evidence boundary and scoped activation prerequisite (EPA-755-L3)
+
+The current public Episode Alert pages advertise eligibility, claim-status/remittance services, hosted DDE/SmartDDE, and API
+access. They do not provide the reviewed API guide, exact request/response contract, approved API destination, test isolation,
+write-operation list, or account-specific authorization. Publicly advertised hosted DDE is not evidence of a programmatic DDE
+write API. The public BAA page is a template, not an executed ChartWarden agreement. The consolidated source review and blocker
+matrix are in [`EPISODE_ALERT_ARCHITECTURE_AND_EVIDENCE_20261118.md`](../audits/clearinghouse-integration/EPISODE_ALERT_ARCHITECTURE_AND_EVIDENCE_20261118.md).
+
+ADR-0103 D2 remains a **proposed** platform-held credential model. ADR-0053 continues to govern tenant-owned clearinghouse
+selection and does not decide DDE account ownership. No final choice among tenant-owned accounts, isolated partner subaccounts,
+or a shared platform credential is made here. Prefer tenant-owned or demonstrably isolated subaccounts; a shared platform
+credential requires explicit vendor/legal authorization and independently enforced tenant, provider, and operator isolation.
+
+Before any qualified operation is wired, the platform-level `QualifiedDdeOperations` snapshot must be supplemented by a
+request-time evaluator for the tenant/account binding, provider entity, exact operation, applicable Medicare/MAC enrollment,
+acting operator and individual DDE authorization, ChartWarden permission, item scope/state/version, step-up, and in-doubt status.
+Unknown or revoked authorization fails closed. A queue capability snapshot is informational and cannot grant mutation authority.
+The current composition root injects no qualified operations and registers no Episode Alert DDE factory, so no real Episode Alert
+operation is reachable today. This amendment documents a mandatory pre-activation dependency; it does not implement the evaluator,
+change D2, ratify this ADR, or alter manual DDE behavior.
+
+For Medicare eligibility submitted through a third-party HETS vendor, CMS's 2026-05-11 validation requires a current enrollment
+relationship for each NPI with that vendor. That requirement is distinct from DDE identity, Medicare provider enrollment, and
+institutional claim/ERA authorization. Oregon is HH+H J6; current CMS material identifies Wellpoint Federal (formerly NGS) for
+HH+H J6 effective 2026-04-01. Provider-specific payer and enrollment records still require verification; no historical Oregon
+Part A identifier is hardcoded by this ADR.
+
+## Product-priority note — 2026-11-18 (EPA-755 engineering finalization)
+
+The maintainer reports that Episode Alert's primary intended product role is hospice NOE/NOTR submission, tracking, correction,
+and reconciliation. This is a product-priority statement, not a vendor confirmation and not an amendment to D1-D7. The actual
+route remains undetermined: documented institutional EDI, individually attributed DDE API operation, hosted/manual DDE, or
+read-only reporting may have different ports and authorization requirements. ADR-0103 applies only if the supported path is a
+vendor-hosted DDE operation; do not force EDI notices through this DDE port.
+
+Preserve ADR-0053's tenant-selected ordinary claim clearinghouse. Episode Alert is not presumed to replace it. A future notice
+router must designate one authoritative path for each notice attempt and prohibit a second submission through another provider
+while the first is accepted or in doubt. Eligibility/hospice history, general claim status, adjustments/cancellations, ERA and
+ordinary claim submission remain secondary questions, not cancelled requirements. The current manual workflow and all vendors
+remain unchanged pending documented contracts and qualification.

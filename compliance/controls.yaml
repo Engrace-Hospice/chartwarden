@@ -1097,6 +1097,24 @@ controls:
       - file: apps/backend/__tests__/operator-free-text-phi-screen.test.ts
       - file: scripts/db/provision-runtime-roles.ts
 
+  - id: CW-TX-04
+    title: Episode Alert adapters remain fail-closed until the vendor wire and approved destination are verified; local test requests use inert fixtures, response reads are byte-bounded, and XML parsing rejects structurally unsafe input
+    hipaa: ["164.312(e)(1)", "164.312(c)(1)"]
+    soc2: ["CC6.7", "CC7.2"]
+    status: partial
+    evidence:
+      - file: packages/x12-837-client/src/clearinghouse/episode-alert-transport.ts
+      - file: packages/x12-837-client/src/clearinghouse/episode-alert-eligibility.ts
+      - file: packages/x12-837-client/src/dde/episode-alert-dde-provider.ts
+      - file: packages/x12-837-client/src/http/read-bounded-response-text.ts
+      - file: packages/x12-837-client/src/testing/local-fake-http-client.ts
+      - file: packages/x12-837-client/src/clearinghouse/episode-alert.test.ts
+      - file: packages/x12-837-client/src/dde/episode-alert-dde-hardening.test.ts
+    gap:
+      reason: Episode Alert has not supplied a verified API wire, approved destination or confirmed isolated test environment. Code-owned gates keep both environment factories unavailable, the adapter is not bound into backend runtime paths, and no vendor or MAC qualification has run; future activation requires reviewed vendor documentation and a separate qualification decision.
+      owner: engineering
+      review_by: 2027-01-31
+
   - id: CW-AC-35
     title: >-
       The claims-billing add-on's patient census is a bulk read of every active patient id of an org by a scheduled job, so it leaves its own read trail and never persists an identifier: each pass writes ONE m35.patient_census.run audit event per org on the system actor (the organization, the period key and the seen/inserted counts only, never a patient id or pseudonym; a pass that fails for any reason, including a missing pseudonym key before any id is read, writes a failure event that records that a pass was ATTEMPTED and still raises its ORIGINAL error even if that event cannot be written (the audit failure is logged); a pass whose success event cannot be written is a failure ops sees: the error is thrown after the drift check, which does not depend on it, and the other orgs of the fan-out are unaffected), registered in the action catalog with compliance retention. M5's reader returns ids only (no name, MRN or DOB) under the org's RLS scope, every id is HMAC-pseudonymized in memory with the billing key and only the 32-hex pseudonym is written to patient_active_period (a rerun inserts nothing; no raw id reaches the table or a log); the pseudonym key is a random 32-byte key minted once platform-wide, wrapped under the separate M35_PSEUDONYM_KEY_KEK ring and stored in the platform-only patient_pseudonym_key table (no tenant grant; without the KEK the provider fails closed and no census runs), the epoch of the key that produced each row is stored beside it, and the counter reads only the newest epoch recorded for a period. KEY ROTATION: a new key epoch starts a new pseudonym space, so a patient discharged before a mid-period rotation exists only under the old epoch and drops out of that period's count (accepted while keys rotate yearly)

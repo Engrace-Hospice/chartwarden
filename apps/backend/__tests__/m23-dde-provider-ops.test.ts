@@ -1,8 +1,10 @@
 import { DDE, type DdeOutcome } from "@chartwarden/x12-837-client";
 import { describe, expect, it } from "vitest";
 import {
+  classifyProviderSubmissionResponse,
   ddeIdempotencyKey,
   ddeProviderRefusal,
+  isUsableDdeReceipt,
   planProviderOutcome,
   runWithTimeout,
 } from "../src/modules/23-billing-medicare/services/dde-provider-ops";
@@ -42,6 +44,43 @@ describe("DDE provider ops (#760)", () => {
     expect(ddeProviderRefusal("SOMETHING_ELSE")).toMatchObject({
       code: "DDE_PROVIDER_ERROR",
       statusCode: 502,
+    });
+  });
+
+  it("accepts only complete receipts bound to the expected attempt and control number", () => {
+    const expected = { idempotencyKey: "dde:item-1:2", controlNumber: "CN-1" };
+    const valid = {
+      providerReference: "ref-1",
+      ...expected,
+      receivedAt: "2026-01-17T15:00:00Z",
+      replayed: false,
+    };
+    expect(isUsableDdeReceipt(valid, expected)).toBe(true);
+    expect(isUsableDdeReceipt(undefined, expected)).toBe(false);
+    expect(isUsableDdeReceipt({ ...valid, providerReference: undefined }, expected)).toBe(false);
+    expect(isUsableDdeReceipt({ ...valid, idempotencyKey: "dde:other:2" }, expected)).toBe(false);
+    expect(isUsableDdeReceipt({ ...valid, controlNumber: "CN-OTHER" }, expected)).toBe(false);
+    expect(isUsableDdeReceipt({ ...valid, receivedAt: "2026-02-30T15:00:00Z" }, expected)).toBe(
+      false,
+    );
+    expect(isUsableDdeReceipt({ ...valid, replayed: "false" }, expected)).toBe(false);
+  });
+
+  it("classifies malformed provider envelopes without trusting their payloads", () => {
+    expect(classifyProviderSubmissionResponse(null)).toEqual({ kind: "invalid" });
+    expect(classifyProviderSubmissionResponse({ ok: true })).toEqual({ kind: "invalid" });
+    expect(classifyProviderSubmissionResponse({ ok: false, degraded: null })).toEqual({
+      kind: "invalid",
+    });
+    expect(classifyProviderSubmissionResponse({ ok: false, degraded: { code: 17 } })).toEqual({
+      kind: "invalid",
+    });
+    expect(
+      classifyProviderSubmissionResponse({ ok: false, degraded: { code: "UNAVAILABLE" } }),
+    ).toEqual({ kind: "degraded", code: "UNAVAILABLE" });
+    expect(classifyProviderSubmissionResponse({ ok: true, data: { raw: "ignored" } })).toEqual({
+      kind: "success",
+      data: { raw: "ignored" },
     });
   });
 

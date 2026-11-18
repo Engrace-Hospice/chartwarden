@@ -15,11 +15,13 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import { EligibilityPanel } from "./dde-eligibility-panel";
 import { OutcomeForm, SubmissionForm } from "./dde-forms";
 import {
   IN_DOUBT_GUIDANCE,
   type ProviderState,
+  canSubmitViaProvider,
   canSyncProvider,
   evidenceOf,
   providerBadge,
@@ -31,6 +33,7 @@ import {
   DEADLINE_TONE,
   type DdeItem,
   type DdeItemDetail,
+  type DdeProviderCapability,
   EVENT_LABEL,
   type OutcomeDraft,
   REQUEUED_LABEL,
@@ -55,7 +58,11 @@ interface Drafts {
   outcome: OutcomeDraft;
 }
 
-const EMPTY_SUBMISSION: SubmissionDraft = { dcn: "", notes: "" };
+const EMPTY_SUBMISSION: SubmissionDraft = {
+  dcn: "",
+  notes: "",
+  confirmedExistingTransaction: false,
+};
 const emptyOutcome = (item: DdeItem): OutcomeDraft => ({
   outcome: "",
   macAcceptedOn: "",
@@ -69,7 +76,7 @@ interface RunOptions {
   /** A send that may have reached the provider: a lost response leaves it in doubt, so never offer another send. */
   sends?: boolean;
   /** A provider call: map the DDE_* refusals to plain language (and remember an in-doubt send). */
-  provider?: boolean;
+  providerOperation?: "submission" | "status";
   /** The success body, before the item is reloaded. */
   onData?: (data: unknown) => void;
 }
@@ -85,6 +92,7 @@ function Row({ term, children }: { term: string; children: ReactNode }): JSX.Ele
 
 export function ItemRail({
   item: n,
+  providerCapability,
   patientName,
   notInList,
   onClose,
@@ -92,6 +100,7 @@ export function ItemRail({
   onConflict,
 }: {
   item: DdeItemDetail;
+  providerCapability: DdeProviderCapability | null;
   patientName: string;
   notInList: boolean;
   onClose: () => void;
@@ -99,6 +108,7 @@ export function ItemRail({
   onConflict: (message: string) => void;
 }): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
   const navigate = useNavigate();
   const location = useLocation();
   const [drafts, setDrafts] = useState<Drafts>(() => {
@@ -116,7 +126,34 @@ export function ItemRail({
   // that reload fails, and the server's answer replaces it as soon as the item version changes.
   const [sentUnsure, setSentUnsure] = useState(false);
   const inDoubt = n.providerInDoubt === true || sentUnsure;
-  const can = (a: DdeItem["allowedActions"][number]) => n.allowedActions.includes(a);
+  const permissions = session?.permissions ?? [];
+  const assignedToOther =
+    n.assigneeMembershipId !== null &&
+    n.assigneeMembershipId !== session?.membershipId &&
+    !permissions.includes("billing.dde.admin");
+  const requiredPermission: Record<DdeItem["allowedActions"][number], string> = {
+    claim: "billing.dde.work",
+    assign: "billing.dde.admin",
+    start: "billing.dde.work",
+    record_submission: "billing.dde.mark_submitted",
+    record_outcome: "billing.dde.work",
+    record_acceptance: "billing.dde.mark_submitted",
+    submit_via_provider: "billing.dde.submit_via_provider",
+    sync_provider: "billing.dde.submit_via_provider",
+    retry: "billing.dde.work",
+    cancel: "billing.dde.work",
+    close: "billing.dde.work",
+  };
+  const can = (a: DdeItem["allowedActions"][number]) =>
+    n.allowedActions.includes(a) && permissions.includes(requiredPermission[a]) && !assignedToOther;
+  const canSendViaProvider =
+    can("submit_via_provider") &&
+    canSubmitViaProvider(
+      n.itemType,
+      providerCapability,
+      permissions.includes("billing.dde.submit_via_provider"),
+      assignedToOther,
+    );
   const note = deadlineNote(n);
   const badge = providerBadge(n);
   const evidence = evidenceOf(n);
@@ -178,7 +215,9 @@ export function ItemRail({
           onConflict("This item changed since you opened it. It has been reloaded; try again.");
           return;
         }
-        const refusal = opts.provider ? providerRefusal(error, fallback) : null;
+        const refusal = opts.providerOperation
+          ? providerRefusal(error, fallback, opts.providerOperation)
+          : null;
         setActionError(refusal?.message ?? errorMessage(error, fallback));
         // The server marked the send in doubt (a send moves the version by 2): reload to read the marker.
         if (refusal?.inDoubt) {
@@ -197,7 +236,12 @@ export function ItemRail({
         );
         setSentUnsure(true);
         onChanged();
-      } else setActionError(`${fallback} Check your connection.`);
+      } else
+        setActionError(
+          opts.providerOperation === "status"
+            ? "The status check did not complete. The recorded submission and outcome are unchanged. Try the read-only check again later."
+            : `${fallback} Check your connection.`,
+        );
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -235,7 +279,7 @@ export function ItemRail({
           body: { expectedVersion: n.version },
         }),
       "The item could not be sent through the provider.",
-      { provider: true, sends: true },
+      { providerOperation: "submission", sends: true },
     );
 
   const syncProvider = (): Promise<void> =>
@@ -244,7 +288,7 @@ export function ItemRail({
       (key) => client.POST("/api/v1/billing/dde-items/{id}/sync-provider", { params: params(key) }),
       "The provider could not be checked.",
       {
-        provider: true,
+        providerOperation: "status",
         onData: (d) => {
           const state = (d as { providerState?: ProviderState } | undefined)?.providerState;
           setSyncNote(state ? syncMessage(state) : null);
@@ -261,6 +305,7 @@ export function ItemRail({
               params: params(key),
               body: {
                 expectedVersion: n.version,
+                ...(inDoubt ? { confirmedExistingTransaction: true } : {}),
                 ...(d.macAcceptedOn ? { macAcceptedOn: d.macAcceptedOn } : {}),
                 ...(d.dcn ? { dcn: d.dcn } : {}),
                 ...(d.notes ? { notes: d.notes } : {}),
@@ -277,6 +322,7 @@ export function ItemRail({
                 expectedVersion: n.version,
                 outcome: "returned",
                 rtpReasonCode: d.rtpReasonCode,
+                ...(inDoubt ? { confirmedExistingTransaction: true } : {}),
                 ...(d.dcn ? { dcn: d.dcn } : {}),
                 ...(d.notes ? { notes: d.notes } : {}),
               },
@@ -328,6 +374,7 @@ export function ItemRail({
                 <span className="wx-row-sub">{note}</span>
               </Row>
             ) : null}
+            <Row term="Submission channel">{badge.label}</Row>
             <Row term="Keyed in DDE">{n.submittedAt ? fmtDateTime(n.submittedAt) : "Not yet"}</Row>
             <Row term="MAC accepted on">{fmtDay(n.macAcceptedOn)}</Row>
             <Row term="DCN / ICN">
@@ -339,7 +386,7 @@ export function ItemRail({
               </Row>
             ) : null}
             {evidence ? (
-              <Row term="Evidence">
+              <Row term="Outcome evidence">
                 <span>{evidence.label}</span>
               </Row>
             ) : null}
@@ -389,6 +436,21 @@ export function ItemRail({
                   <span className="wx-checklist-text">
                     {EVENT_LABEL[e.event] ?? e.event}
                     <span className="wx-row-sub wx-nums">{fmtDateTime(e.occurredAt)}</span>
+                    {e.actorKind ? (
+                      <span className="wx-row-sub">
+                        {e.detail?.outcomeSource === "provider"
+                          ? "Provider-reported"
+                          : e.detail?.submissionSource === "operator_verified_existing"
+                            ? "Operator confirmed existing transaction; channel unknown"
+                            : e.event === "submit" && e.detail?.submissionMode === "provider"
+                              ? "Submitted via provider"
+                              : e.actorKind === "user"
+                                ? "Recorded by staff"
+                                : e.actorKind === "system"
+                                  ? "System update"
+                                  : "Source unknown"}
+                      </span>
+                    ) : null}
                   </span>
                 </li>
               ))}
@@ -401,9 +463,8 @@ export function ItemRail({
             <h3>Actions</h3>
             {inDoubt ? (
               <div role="alert">
-                <InlineAlert tone="warning">
-                  {IN_DOUBT_GUIDANCE} Sending again, checking the provider, reopening and cancelling
-                  are blocked until you record it.
+                <InlineAlert tone="warning" live={false}>
+                  {IN_DOUBT_GUIDANCE}
                 </InlineAlert>
               </div>
             ) : null}
@@ -416,6 +477,7 @@ export function ItemRail({
             {drafts.panel === "submit" ? (
               <SubmissionForm
                 busy={busy}
+                resolvingInDoubt={inDoubt}
                 draft={drafts.submit}
                 onDraft={(submit) => setDrafts((d) => ({ ...d, submit }))}
                 onCancel={() => setPanel("none")}
@@ -427,6 +489,7 @@ export function ItemRail({
                         params: params(key),
                         body: {
                           expectedVersion: n.version,
+                          ...(inDoubt ? { confirmedExistingTransaction: true } : {}),
                           ...(d.dcn ? { dcn: d.dcn } : {}),
                           ...(d.notes ? { notes: d.notes } : {}),
                         },
@@ -438,6 +501,8 @@ export function ItemRail({
             ) : drafts.panel === "outcome" ? (
               <OutcomeForm
                 item={n}
+                resolvingInDoubt={inDoubt}
+                canRecordAcceptance={can("record_acceptance")}
                 busy={busy}
                 draft={drafts.outcome}
                 onDraft={(outcome) => setDrafts((d) => ({ ...d, outcome }))}
@@ -467,22 +532,26 @@ export function ItemRail({
                 ) : null}
                 {can("record_submission") ? (
                   <Button disabled={busy} onClick={() => setPanel("submit")}>
-                    Record as keyed in DDE
+                    {inDoubt ? "Record confirmed submission" : "Record manual submission"}
                   </Button>
                 ) : null}
-                {can("submit_via_provider") && !inDoubt ? (
+                {canSendViaProvider && !inDoubt ? (
                   <Button disabled={busy} onClick={sendViaProvider}>
                     Send via provider
                   </Button>
                 ) : null}
-                {canSyncProvider(n) && !inDoubt ? (
+                {canSyncProvider(
+                  n,
+                  providerCapability,
+                  permissions.includes("billing.dde.submit_via_provider") && !assignedToOther,
+                ) && !inDoubt ? (
                   <Button tone="secondary" disabled={busy} onClick={syncProvider}>
                     Check provider status
                   </Button>
                 ) : null}
                 {can("record_outcome") ? (
                   <Button disabled={busy} onClick={() => setPanel("outcome")}>
-                    Record what came back
+                    {inDoubt ? "Record confirmed outcome" : "Record what came back"}
                   </Button>
                 ) : null}
                 {can("retry") && !inDoubt ? (

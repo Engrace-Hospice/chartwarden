@@ -1,3 +1,6 @@
+import { readBoundedResponseText } from "../http/read-bounded-response-text";
+import { parseSafeHttpsBaseUrl } from "../http/url-safety";
+import { type LocalFakeHttpClient, isLocalFakeHttpClient } from "../testing/local-fake-http-client";
 // @chartwarden/x12-837-client — the Episode Alert ClearinghouseTransport (#758, ADR-0053). Eligibility only.
 //
 // Episode Alert (https://episodealert.com, a CMS Network Service Vendor) publishes a REST API of POST calls whose
@@ -16,12 +19,10 @@
 // submit workers and acknowledgment crons through the one vendor, so binding an eligibility-only adapter there would
 // stop claim submission. It is bound through the separate ELIGIBILITY_VENDOR setting (./eligibility-vendor-registry) instead.
 //
-// Safety: the MBI exists only inside the request body of one call and never appears in a result, reason or log; the
-// response body is never echoed. Episode Alert documents no test mode, so `usage: "test"` is refused unless the
-// adapter is explicitly built with `allowTestUsage` (conformance tests only), because the port requires `test` to
-// reach only vendor test mode.
+// Safety: the MBI exists only inside a request and never appears in a result, reason or log; response bodies are never
+// echoed. No test mode is confirmed. Test-usage calls need LocalFakeHttpClient, which cannot perform network I/O.
 import { type X12WorkerResult, degraded } from "../types";
-import { eligibilityOutcomeFromXml, toIsoDate } from "./episode-alert-eligibility";
+import { parseEpisodeAlertEligibilityXml, toIsoDate } from "./episode-alert-eligibility";
 import {
   type AckEvent,
   CH,
@@ -46,6 +47,9 @@ const ELIGIBILITY_PATH = "/eligibility"; // UNVERIFIED
 const REQUEST_TIMEOUT_MS = 30_000;
 const MBI_SHAPE = /^[A-Za-z0-9]{4}-?[A-Za-z0-9]{3}-?[A-Za-z0-9]{4}$/;
 const MAX_BODY_BYTES = 1_000_000;
+// No vendor contract or approved API origin has been verified. These are code-owned gates, never environment flags.
+const ELIGIBILITY_WIRE_VERIFIED = false;
+const APPROVED_API_ORIGIN: string | null = null;
 /** Statuses that mean "you may not use this" (credential or plan), not "try again". */
 const NOT_PROVISIONED_STATUSES: ReadonlySet<number> = new Set([401, 402, 403]);
 const REFUSED_STATUSES: ReadonlySet<number> = new Set([400, 404, 422]);
@@ -57,14 +61,15 @@ export interface EpisodeAlertTransportOptions {
   readonly apiKey: string;
   /** The vendor's API root, from signup (no trailing slash needed). */
   readonly baseUrl: string;
-  /** Injected so tests own the network. Defaults to the global fetch. */
-  readonly fetch?: typeof fetch;
-  /** Lets `usage: "test"` through; the vendor has no test mode, so only conformance tests set this. */
-  readonly allowTestUsage?: boolean;
 }
 
 /** Builds the transport from the platform environment, reading only EPISODE_ALERT_API_KEY and _BASE_URL. */
 export function createEpisodeAlertTransportFromEnv(env: EnvMap): EpisodeAlertTransport {
+  if (!ELIGIBILITY_WIRE_VERIFIED || APPROVED_API_ORIGIN === null) {
+    throw new Error(
+      "Episode Alert eligibility cannot be bound: its vendor wire and approved API destination are unverified (see issue #758)",
+    );
+  }
   const apiKey = env[EPISODE_ALERT_API_KEY_ENV]?.trim();
   if (!apiKey) {
     throw new Error(`${EPISODE_ALERT_API_KEY_ENV} is required for Episode Alert`);
@@ -75,16 +80,9 @@ export function createEpisodeAlertTransportFromEnv(env: EnvMap): EpisodeAlertTra
       `${EPISODE_ALERT_BASE_URL_ENV} is required for Episode Alert (from the vendor's signup docs)`,
     );
   }
-  let url: URL;
-  try {
-    url = new URL(baseUrl);
-  } catch {
-    throw new Error(`${EPISODE_ALERT_BASE_URL_ENV} must be an https:// URL`);
-  }
-  if (url.protocol !== "https:" || url.search || url.hash) {
-    throw new Error(
-      `${EPISODE_ALERT_BASE_URL_ENV} must be an https:// URL with no query or fragment`,
-    );
+  const url = parseSafeHttpsBaseUrl(baseUrl, EPISODE_ALERT_BASE_URL_ENV);
+  if (url.origin !== APPROVED_API_ORIGIN) {
+    throw new Error(`${EPISODE_ALERT_BASE_URL_ENV} is not an approved Episode Alert API origin`);
   }
   return new EpisodeAlertTransport({ apiKey, baseUrl });
 }
@@ -99,23 +97,27 @@ export class EpisodeAlertTransport implements ClearinghouseTransport {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
-  private readonly allowTestUsage: boolean;
+  private readonly localTestClient: LocalFakeHttpClient | null;
 
-  constructor(options: EpisodeAlertTransportOptions) {
+  constructor(options: EpisodeAlertTransportOptions, localTestClient?: LocalFakeHttpClient) {
+    parseSafeHttpsBaseUrl(options.baseUrl, EPISODE_ALERT_BASE_URL_ENV);
+    if (localTestClient !== undefined && !isLocalFakeHttpClient(localTestClient)) {
+      throw new Error("Episode Alert local tests require LocalFakeHttpClient");
+    }
     this.apiKey = options.apiKey;
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
-    this.fetchImpl = options.fetch ?? fetch;
-    this.allowTestUsage = options.allowTestUsage ?? false;
+    this.localTestClient = localTestClient ?? null;
+    this.fetchImpl = this.localTestClient?.fetch ?? fetch;
   }
 
   async checkEligibility(
     ctx: ClearinghouseContext,
     req: ClearinghouseEligibilityRequest,
   ): Promise<X12WorkerResult<ClearinghouseEligibilityResult>> {
-    if (ctx.usage === "test" && !this.allowTestUsage) {
+    if (ctx.usage === "test" && this.localTestClient === null) {
       return degraded(
         CH.INVALID_REQUEST,
-        "episode_alert has no test mode, so a test-usage call is refused",
+        "Episode Alert has no verified test mode; test usage is refused",
       );
     }
     if (isCommercialEligibilityRequest(req)) {
@@ -124,6 +126,19 @@ export class EpisodeAlertTransport implements ClearinghouseTransport {
     }
     if (!MBI_SHAPE.test(req.mbi) || toIsoDate(req.serviceDate) !== req.serviceDate) {
       return degraded(CH.INVALID_REQUEST, "the eligibility request is malformed");
+    }
+    // Guessed wire assumptions can execute only against the response-only local fake. No environment switch approves
+    // the vendor endpoint, authentication or payload mapping.
+    if (
+      this.localTestClient === null &&
+      (!ELIGIBILITY_WIRE_VERIFIED ||
+        APPROVED_API_ORIGIN === null ||
+        new URL(this.baseUrl).origin !== APPROVED_API_ORIGIN)
+    ) {
+      return degraded(
+        CH.NOT_WIRED,
+        "Episode Alert eligibility is unavailable until its wire and destination are verified",
+      );
     }
     let res: Response;
     try {
@@ -150,20 +165,26 @@ export class EpisodeAlertTransport implements ClearinghouseTransport {
       return degraded(CH.INVALID_REQUEST, "Episode Alert refused the eligibility request");
     }
     if (!res.ok) return degraded(CH.UNAVAILABLE, "Episode Alert is unavailable");
-    let body: string;
-    try {
-      if (Number(res.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
-        await res.body?.cancel().catch(() => undefined);
-        return { ok: true, data: { outcome: "unknown", asOfDate: req.serviceDate } };
-      }
-      body = await res.text();
-    } catch {
+    const body = await readBoundedResponseText(res, MAX_BODY_BYTES);
+    if (!body.ok) {
+      return degraded(
+        CH.UNAVAILABLE,
+        body.reason === "too_large"
+          ? "the Episode Alert response is too large"
+          : "the Episode Alert response could not be read",
+      );
+    }
+    const parsed = parseEpisodeAlertEligibilityXml(body.text, req.serviceDate);
+    if (parsed.kind === "malformed") {
       return degraded(CH.UNAVAILABLE, "the Episode Alert response could not be read");
+    }
+    if (parsed.kind === "unsupported") {
+      return degraded(CH.NOT_WIRED, "the Episode Alert response contract is not verified");
     }
     return {
       ok: true,
       data: {
-        outcome: eligibilityOutcomeFromXml(body, req.serviceDate),
+        outcome: parsed.outcome,
         asOfDate: req.serviceDate,
       },
     };

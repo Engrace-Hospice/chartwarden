@@ -202,10 +202,6 @@ export {
   createEpisodeAlertTransportFromEnv,
 } from "./clearinghouse/episode-alert-transport";
 export type { EpisodeAlertTransportOptions } from "./clearinghouse/episode-alert-transport";
-export {
-  EPISODE_ALERT_ELIGIBILITY_FIELDS,
-  eligibilityOutcomeFromXml,
-} from "./clearinghouse/episode-alert-eligibility";
 export { checkStediEdits } from "./clearinghouse/stedi-edit-rules";
 export type { StediEditFinding, StediEditRule } from "./clearinghouse/stedi-edit-rules";
 export type {
