@@ -432,6 +432,17 @@ applied and causes a false hold. This is the safe direction.
 The compatibility contract (each new migration declares `expand` or `contract`, enforced by
 `bun run arch:migration-compat`) is described in `packages/db/migrations/README.md`.
 
+#### A deploy held BEFORE any schema change (exit 75)
+
+`deploy.sh` runs `migrate.ts --hold-contract`, which refuses the whole pending batch, before the first DDL, when any
+pending migration from 1288 on is not a verified `-- compat: expand` (a `contract`, an undeclared, or a falsely
+claimed `expand`). The log shows `DEPLOY HELD BEFORE ANY SCHEMA CHANGE`; nothing was applied, the previous release
+keeps running and `.env.production` is restored. A contract migration can need its old writers drained first (1508:
+`docs/runbooks/m25-835-deployment.md`) and nothing in a deploy stops them before the schema changes, so there is no
+acknowledge-and-proceed switch: back up, drain what the migration's header names, apply it by hand with
+`bun run db:migrate:deploy` (it does not pass `--hold-contract`), then re-run the held deploy. A database with an empty
+ledger is exempt (no old writers exist).
+
 #### When a deploy halts for an operator decision
 
 The log shows `DEPLOY HALTED FOR AN OPERATOR DECISION: AUTOMATIC ROLLBACK REFUSED` and lists the migrations it

@@ -4,6 +4,10 @@ Migration `1508_m25_835_group_identity_dates.sql` changes the unique conflict ta
 
 This procedure is for a reviewed release containing both migration 1508 and the matching M25 writer. No deployment is authorized by this document.
 
+## What a merge to `main` does with 1508
+
+`deploy.yml` deploys every push to `main`, and `deploy.sh` runs its migrate step with `--hold-contract`. With 1508 pending, that step refuses the whole batch and exits 75 **before any DDL**: the job fails with `DEPLOY HELD BEFORE ANY SCHEMA CHANGE`, the previous release keeps running, and the database is unchanged. Every deploy stays held, loudly, until an operator applies 1508 by hand with the sections below (`bun run db:migrate:deploy` does not pass `--hold-contract`). Once 1508 is in `_chartwarden_migration`, re-run the held deploy: nothing is pending, so `deploy.sh` proceeds normally. There is deliberately no "acknowledge and proceed" switch, because `deploy.sh` does not stop the old writers before it migrates.
+
 ## Before the maintenance window
 
 1. Confirm the exact immutable ChartWarden image digest contains the new writer and the migration. Confirm an operator with database and application access is present.
@@ -29,7 +33,7 @@ This procedure is for a reviewed release containing both migration 1508 and the 
 
 1. With old writers stopped, run the normal checked production migration command (`bun run db:migrate:deploy`) using the approved database owner connection. Do not invoke a manual/down migration.
 2. Confirm migration 1508 is recorded with its checksum. Rerun the read-only preflight; confirm all new columns, scope constraints, and unique index definitions, and verify the old conflict target is no longer present.
-3. Start the compatible API and worker image by its immutable digest. Confirm all replicas use that digest before resuming intake.
+3. Start the compatible API and worker image by its immutable digest: re-run the held deploy (with 1508 now in the ledger nothing is pending, so `deploy.sh` recreates `api`, `worker` and `web` on the new image). Confirm all replicas use that digest before resuming intake.
 4. Verify service health and M25 worker/outbox bindings. Exercise the approved 835 receive path with a controlled, authorized operational sample only when the business owner has approved one. Confirm the advice is scoped to the expected tenant/provider, identity evidence contains no raw NPI/TIN, dates retain their separate values, and the advice reaches the expected review/posting state. Do not use a synthetic fixture as proof of MAC compatibility.
 5. Monitor non-retryable identity refusals, parse degradation, `42P10`, held duplicates, cross-source duplicate holds, failed postings, and outbox lag. Compare counts to the normal operational baseline and retain the migration checksum, image digest, preflight output, and verification record.
 
