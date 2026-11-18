@@ -44,6 +44,7 @@ import { createDrizzleEncounterEraseStore } from "../src/modules/08-encounters/e
 import {
   type EncounterWriteOutboxPort,
   M8_OUTBOX_EVENTS,
+  buildM8VisitPublishedConsumer,
   createDbEncounterRouteService,
   createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
@@ -1823,5 +1824,104 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         ).rejects.toMatchObject({ message: "problem is not valid for this encounter" });
       });
     });
+  });
+
+  // ── M17 -> M8 visit-publication seed consumer (`m8.seed-visit-encounter`) ────────────────────────────
+  // The consumer INSERTs the draft straight into `encounter`, bypassing `checkEncounterDisciplinePair`
+  // (which guards only the route and the EncounterCreator seam), and there is no DB CHECK on the pair. So
+  // an `m17.visit.published` event that carries a pair M8 spec §2.2/§2.7 calls illegal must be refused
+  // here, or a draft with that pair is minted. A throw is this module's bad-payload convention: the relay
+  // retries, then parks the row as `failed` (never silently dropped).
+  describe("m8.seed-visit-encounter — the legal-pair guard (M8 §2.2 / §2.7), as the app role", () => {
+    const VISIT_SEED_DATE = "2026-01-14";
+    const consumer = () => {
+      const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M8_OUTBOX_EVENTS]));
+      return buildM8VisitPublishedConsumer({
+        db: handle.db,
+        outbox: {
+          publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m8" }),
+        },
+        isAdmissionActive: async () => true,
+      });
+    };
+    const published = (visitId: string, encounterType: string, assignedDiscipline: string) => ({
+      visitId,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      assignedMembershipId: membershipOf[ORG_A],
+      assignedDiscipline,
+      encounterType,
+      serviceDate: VISIT_SEED_DATE,
+      organizationId: ORG_A,
+      providerEntityId: SITING_A.providerEntityId,
+      locationId: SITING_A.locationId,
+    });
+    const draftsFor = async (visitId: string) =>
+      (
+        await admin.query(
+          "SELECT id, encounter_type, discipline, status FROM encounter WHERE visit_id = $1",
+          [visitId],
+        )
+      ).rows;
+
+    it("a legal pair seeds a draft and publishes m8.encounter.created with the same pair", async () => {
+      const visitId = randomUUID();
+      await consumer().handle({
+        organizationId: ORG_A,
+        payload: published(visitId, "routine_visit", "lpn"),
+      });
+      const drafts = await draftsFor(visitId);
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0]).toMatchObject({
+        encounter_type: "routine_visit",
+        discipline: "lpn",
+        status: "draft",
+      });
+      const { rows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm8.encounter.created'",
+        [drafts[0].id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload).toMatchObject({
+        encounterType: "routine_visit",
+        discipline: "lpn",
+        visitId,
+      });
+    });
+
+    it.each([
+      ["routine_visit", "np"],
+      ["routine_visit", "md"],
+      ["recert_visit", "np"],
+      ["face_to_face", "rn"],
+      ["chha_visit", "rn"],
+    ])(
+      "an illegal pair (%s, %s) is refused with INVALID_ENCOUNTER_DISCIPLINE_PAIR: no draft, no m8.encounter.created",
+      async (encounterType, discipline) => {
+        const visitId = randomUUID();
+        const eventsBefore = (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM outbox_event WHERE event_type = 'm8.encounter.created'",
+          )
+        ).rows[0].n as number;
+        const err = await consumer()
+          .handle({ organizationId: ORG_A, payload: published(visitId, encounterType, discipline) })
+          .then(
+            () => null,
+            (e: unknown) => e as Error,
+          );
+        expect(err?.message).toMatch(/INVALID_ENCOUNTER_DISCIPLINE_PAIR/);
+        // ids and codes only: the message names the visit and the two enum codes, nothing else.
+        expect(err?.message).toContain(visitId);
+        expect(err?.message).not.toContain(PATIENT);
+        expect(await draftsFor(visitId)).toHaveLength(0);
+        const eventsAfter = (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM outbox_event WHERE event_type = 'm8.encounter.created'",
+          )
+        ).rows[0].n as number;
+        expect(eventsAfter).toBe(eventsBefore);
+      },
+    );
   });
 });
