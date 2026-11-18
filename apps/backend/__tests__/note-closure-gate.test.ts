@@ -285,6 +285,32 @@ describe("the gate - step 3: block mode", () => {
     expect(h.evaluate).toHaveBeenCalledTimes(2);
   });
 
+  it("a joiner of a SLOW evaluation trusts the answer no longer than the call that started it would: the window counts from the starter's instant", async () => {
+    const overrideExpiresAt = new Date(NOW.getTime() + 60 * 60 * 1000);
+    const slow = deferredEvaluation();
+    let calls = 0;
+    const h = harness({
+      evaluation: () => {
+        calls += 1;
+        return calls === 1
+          ? slow.promise
+          : Promise.resolve({ ...blocked, verdict: "warn" as const, overrideExpiresAt });
+      },
+    });
+    const starter = h.gate.assertMayCall(request());
+    await vi.waitFor(() => expect(h.evaluate).toHaveBeenCalledTimes(1));
+    h.advance(4_000); // the call is still running when a second request arrives and joins it
+    const joiner = h.gate.assertMayCall(request());
+    await vi.waitFor(() => expect(h.get).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    slow.resolve({ ...blocked, verdict: "warn", overrideExpiresAt });
+    await Promise.all([starter, joiner]);
+    expect(h.evaluate).toHaveBeenCalledTimes(1); // the joiner shared the running call
+    h.advance(1_000); // 5s after the STARTER's instant, though only 1s after the joiner's
+    await h.gate.assertMayCall(request());
+    expect(h.evaluate).toHaveBeenCalledTimes(2);
+  });
+
   it("never caches a blocked verdict, even one that carries an override expiry", async () => {
     const overrideExpiresAt = new Date(NOW.getTime() + 60 * 60 * 1000);
     const h = harness({ evaluation: async () => ({ ...blocked, overrideExpiresAt }) });
@@ -732,18 +758,26 @@ describe("the gate - the evaluation budget (a blocked verdict is never cached, s
 });
 
 describe("the gate - a hung evaluation cannot poison a member (deadline)", () => {
+  type FakeTimer = { callback: () => void; ms: number; cleared: boolean };
+  /** `all` is every timer ever set; `scheduled` only those still waiting (a call that settles clears its own, a policy read included). */
   function fakeTimers() {
-    const scheduled: { callback: () => void; ms: number; cleared: boolean }[] = [];
+    const all: FakeTimer[] = [];
+    const scheduled: FakeTimer[] = [];
     return {
+      all,
       scheduled,
       timers: {
         set: (callback: () => void, ms: number) => {
           const entry = { callback, ms, cleared: false };
+          all.push(entry);
           scheduled.push(entry);
           return entry;
         },
         clear: (handle: unknown) => {
-          (handle as { cleared: boolean }).cleared = true;
+          const entry = handle as FakeTimer;
+          entry.cleared = true;
+          const index = scheduled.indexOf(entry);
+          if (index >= 0) scheduled.splice(index, 1);
         },
       },
     };
@@ -765,7 +799,8 @@ describe("the gate - a hung evaluation cannot poison a member (deadline)", () =>
       },
     });
     const hung = refusalOf(h.gate.assertMayCall(request()));
-    await vi.waitFor(() => expect(scheduled).toHaveLength(1));
+    await vi.waitFor(() => expect(h.evaluate).toHaveBeenCalledTimes(1)); // the evaluator's own timer, the policy read's already cleared
+    expect(scheduled).toHaveLength(1);
     expect(scheduled[0]?.ms).toBe(NOTE_CLOSURE_EVALUATION_TIMEOUT_MS);
     scheduled[0]?.callback(); // the deadline fires
     const error = await hung;
@@ -781,7 +816,8 @@ describe("the gate - a hung evaluation cannot poison a member (deadline)", () =>
     const never = deferredEvaluation();
     const h = harness({ timers, evaluation: () => never.promise });
     const first = refusalOf(h.gate.assertMayCall(request()));
-    await vi.waitFor(() => expect(scheduled).toHaveLength(1));
+    await vi.waitFor(() => expect(h.evaluate).toHaveBeenCalledTimes(1)); // the evaluator's own timer, the policy read's already cleared
+    expect(scheduled).toHaveLength(1);
     const joiner = refusalOf(h.gate.assertMayCall(request()));
     // let the joiner finish its (async) policy read and join the running call before the deadline fires
     await vi.waitFor(() => expect(h.get).toHaveBeenCalledTimes(2));
@@ -795,11 +831,12 @@ describe("the gate - a hung evaluation cannot poison a member (deadline)", () =>
   });
 
   it("clears the timer when the evaluation settles, answer or failure, so no timer outlives the call", async () => {
-    const { scheduled, timers } = fakeTimers();
+    const { all, scheduled, timers } = fakeTimers();
     const h = harness({ timers });
     await refusalOf(h.gate.assertMayCall(request())); // resolves blocked
-    expect(scheduled).toHaveLength(1);
-    expect(scheduled[0]?.cleared).toBe(true);
+    expect(all).toHaveLength(2); // the policy read's and the evaluation's
+    expect(all.every((timer) => timer.cleared)).toBe(true);
+    expect(scheduled).toHaveLength(0);
     const failing = fakeTimers();
     const f = harness({
       timers: failing.timers,
@@ -808,7 +845,40 @@ describe("the gate - a hung evaluation cannot poison a member (deadline)", () =>
       },
     });
     await refusalOf(f.gate.assertMayCall(request()));
-    expect(failing.scheduled[0]?.cleared).toBe(true);
+    expect(failing.all.every((timer) => timer.cleared)).toBe(true);
+    expect(failing.scheduled).toHaveLength(0);
+  });
+
+  it("a policy read that never settles answers 503 when the deadline fires: it never holds the request open and never passes", async () => {
+    const { scheduled, timers } = fakeTimers();
+    const never = new Promise<{ mode: DocumentationObligationMode }>(() => {});
+    const h = harness({ timers, policy: () => never });
+    const hung = refusalOf(h.gate.assertMayCall(request()));
+    await vi.waitFor(() => expect(scheduled).toHaveLength(1));
+    expect(scheduled[0]?.ms).toBe(NOTE_CLOSURE_EVALUATION_TIMEOUT_MS);
+    scheduled[0]?.callback(); // the deadline fires
+    const error = await hung;
+    expect(error.code).toBe(NOTE_CLOSURE_UNAVAILABLE_CODE);
+    expect(error.statusCode).toBe(503);
+    expect(h.evaluate).not.toHaveBeenCalled();
+  });
+
+  it("a policy read that hangs after a good warn read serves that last known policy (it refuses nothing) and reports it", async () => {
+    const { scheduled, timers } = fakeTimers();
+    let hang = false;
+    const never = new Promise<{ mode: DocumentationObligationMode }>(() => {});
+    const h = harness({
+      timers,
+      policy: () => (hang ? never : Promise.resolve({ mode: "warn" as const })),
+    });
+    await h.gate.assertMayCall(request()); // a good read is remembered
+    hang = true;
+    h.advance(1_000);
+    const second = h.gate.assertMayCall(request());
+    await vi.waitFor(() => expect(scheduled).toHaveLength(1));
+    scheduled[0]?.callback();
+    await expect(second).resolves.toBeUndefined();
+    expect(h.onFailure).toHaveBeenCalledWith(expect.objectContaining({ servedStale: true }));
   });
 
   it("a late answer from a call that already timed out is ignored (no throw, no effect on the next request)", async () => {
@@ -823,7 +893,8 @@ describe("the gate - a hung evaluation cannot poison a member (deadline)", () =>
       },
     });
     const hung = refusalOf(h.gate.assertMayCall(request()));
-    await vi.waitFor(() => expect(scheduled).toHaveLength(1));
+    await vi.waitFor(() => expect(h.evaluate).toHaveBeenCalledTimes(1)); // the evaluator's own timer, the policy read's already cleared
+    expect(scheduled).toHaveLength(1);
     scheduled[0]?.callback();
     await hung;
     slow.resolve(blocked); // arrives too late
@@ -873,6 +944,14 @@ describe("the gate - refusals leave evidence that the control enforces (throttle
     });
     await refusalOf(down.gate.assertMayCall(request()));
     expect(down.onRefusal).not.toHaveBeenCalled();
+    // a 429: spend the budget on a clear-less (blocked) member, then the over-budget call is refused 429 and not counted as a refusal
+    const over = harness({});
+    for (let i = 0; i < NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND; i++) {
+      await refusalOf(over.gate.assertMayCall(request()));
+    }
+    const reportedBefore = over.onRefusal.mock.calls.length;
+    await expect(over.gate.assertMayCall(request())).rejects.toBeInstanceOf(RateLimitedError);
+    expect(over.onRefusal.mock.calls).toHaveLength(reportedBefore);
   });
 });
 

@@ -6,18 +6,22 @@
 // for `staff` sessions only, after the not-live-organization confinement; the machine-credential path returns before it.
 //
 // ORDER OF CHECKS, cheapest first:
-//   1. an allowlisted METHOD + route template: pass with ZERO IO (so an allowlisted route can never 503);
+//   1. an allowlisted METHOD + route template: pass with ZERO IO (so an allowlisted route can never 503 HERE; the one allowlisted
+//      route that is only partly allowed, the two EVV offline-sync routes for a batch that carries a check_in, asks `assertNotBlocked`
+//      itself and can answer 403, 429 or 503);
 //   2. the policy mode (read through the shared 5s cache): `off` / `warn` pass;
 //   3. `block`: a cached PASSING verdict (5s per organization + member) passes; otherwise ask the one evaluator the banner and the
 //      board also use. `blocked` refuses; `clear` / `warn` pass. A `clear` is cached until the earlier of 5s and `blockFrom`; a `warn`
 //      (an overridden clinician, or the grace window after `block` was enabled) only on a proven bound, the end of the override or the
 //      block instant ahead, so an overridden clinician does not cost a transaction per request. Never `blocked`: a signature or an
 //      override GRANT takes effect on the very next request on every replica (an override REVOKE reaches a replica that cached the
-//      overridden member within the 5s TTL). Concurrent evaluations for one organization + member share
+//      overridden member within the 5s TTL, counted from the instant the evaluation is AS OF: a joiner of a slow call trusts the answer
+//      no longer than the call that started it would). Concurrent evaluations for one organization + member share
 //      ONE in-flight evaluator call (a settled result is never reused), so a burst of blocked requests costs one transaction. A
 //      joiner can therefore inherit a block computed just before a signature or an override committed; the window is one evaluator
-//      call, and the client's refresh-on-403 recovers it. A started evaluation is bounded by NOTE_CLOSURE_EVALUATION_TIMEOUT_MS (a hung
-//      one answers 503 and frees its key, so it cannot poison that member), and each organization + member may START at most
+//      call, and the client's refresh-on-403 recovers it. A started evaluation, and the policy read before it, are each bounded by
+//      NOTE_CLOSURE_EVALUATION_TIMEOUT_MS (a hung one answers 503, or serves the stale off / warn policy of 4, and an evaluation frees
+//      its key, so it cannot poison that member), and each organization + member may START at most
 //      NOTE_CLOSURE_EVALUATION_BUDGET_PER_SECOND evaluator calls a second: a block is never cached (so a signature or an override takes
 //      effect at once), which means a refusal sits in front of the rate limiter, and a client looping sequentially would otherwise cost
 //      one transaction per request. Over the budget the request is refused 429 RATE_LIMITED with Retry-After 1, never passed.
@@ -76,7 +80,7 @@ export const NOTE_CLOSURE_FAILURE_LOG_INTERVAL_MS = 30_000;
 /** At most one `onRefusal` call per organization per this long; the refusals in between are counted into the next call's `refused`. */
 export const NOTE_CLOSURE_REFUSAL_LOG_INTERVAL_MS = 30_000;
 
-/** How long one evaluator call may run before it answers 503 and frees its single-flight key. */
+/** How long one evaluator call, or one policy read, may run before it fails (503, or the stale off / warn policy) and an evaluation frees its single-flight key. */
 export const NOTE_CLOSURE_EVALUATION_TIMEOUT_MS = 5_000;
 
 /** The most evaluator calls one organization + member may START per second (cache hits and single-flight joiners do not count). */
@@ -278,6 +282,12 @@ function trustedUntil(nowMs: number, evaluation: NoteClosureGateEvaluation): num
   return bounds.length === 0 ? nowMs : Math.min(ttlEnd, ...bounds);
 }
 
+/** An evaluator answer with the instant it is AS OF: a request that joins the call inherits it and must not trust it past that instant's window. */
+interface TimedEvaluation {
+  readonly evaluation: NoteClosureGateEvaluation;
+  readonly asOfMs: number;
+}
+
 /** Remembers, per organization, the last policy a read returned and when. Mutable by nature; it never leaves this module. */
 function createKnownPolicies<Policy extends NoteClosureGatePolicy>() {
   const byOrganization = new Map<string, { readonly policy: Policy; readonly readAtMs: number }>();
@@ -396,12 +406,19 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
   };
   const evaluationTimeoutMs = deps.evaluationTimeoutMs ?? NOTE_CLOSURE_EVALUATION_TIMEOUT_MS;
   /** Evaluations in flight per organization + member: concurrent callers await the same promise; it is dropped the moment it settles. */
-  const evaluationsInFlight = new Map<string, Promise<NoteClosureGateEvaluation>>();
+  const evaluationsInFlight = new Map<string, Promise<TimedEvaluation>>();
 
-  /** The organization's policy; on a failed read, its last known `off` / `warn` policy while fresh, else the failure is rethrown. */
+  /**
+   * The organization's policy; on a failed read, its last known `off` / `warn` policy while fresh, else the failure is rethrown. The
+   * read is bounded like an evaluation: a read that never settles (a half-open connection) times out into the same failure path
+   * instead of holding the request open. The shared cache drops a pending read after its own TTL, so the next request starts afresh.
+   */
   async function policyFor(organizationId: string, asOfMs: number): Promise<Policy> {
     try {
-      const policy = await deps.policyCache.get(organizationId, VISIT_NOTE);
+      const policy = await withDeadline(
+        deps.policyCache.get(organizationId, VISIT_NOTE),
+        () => undefined,
+      );
       knownPolicies.remember(organizationId, policy, asOfMs);
       return policy;
     } catch (error) {
@@ -417,19 +434,16 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
    * evaluation instead of joining a hung one) and the caller gets the failure that maps to 503; a late answer, if one ever comes,
    * is ignored.
    */
-  function withDeadline(
-    running: Promise<NoteClosureGateEvaluation>,
-    release: () => void,
-  ): Promise<NoteClosureGateEvaluation> {
-    return new Promise<NoteClosureGateEvaluation>((resolve, reject) => {
+  function withDeadline<T>(running: Promise<T>, release: () => void): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
       const handle = timers.set(() => {
         release();
-        reject(new Error("note-closure evaluation timed out"));
+        reject(new Error("note-closure read timed out"));
       }, evaluationTimeoutMs);
       running.then(
-        (evaluation) => {
+        (value) => {
           timers.clear(handle);
-          resolve(evaluation);
+          resolve(value);
         },
         (error: unknown) => {
           timers.clear(handle);
@@ -443,7 +457,7 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
     key: string,
     input: NoteClosureEvaluateInput<Policy>,
     nowMs: number,
-  ): Promise<NoteClosureGateEvaluation> {
+  ): Promise<TimedEvaluation> {
     const joined = evaluationsInFlight.get(key);
     if (joined) return joined;
     // Only a call that is actually STARTED spends budget: a cache hit and a joiner above never reach here.
@@ -457,10 +471,10 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
     const release = (): void => {
       if (evaluationsInFlight.get(key) === bounded) evaluationsInFlight.delete(key);
     };
-    const bounded: Promise<NoteClosureGateEvaluation> = withDeadline(
-      deps.evaluate(input),
-      release,
-    ).finally(release);
+    // The answer carries the instant it was computed AS OF (this starter's `nowMs`), so a joiner that arrives later trusts it no longer
+    // than the starter would have.
+    const timed = deps.evaluate(input).then((evaluation) => ({ evaluation, asOfMs: nowMs }));
+    const bounded: Promise<TimedEvaluation> = withDeadline(timed, release).finally(release);
     evaluationsInFlight.set(key, bounded);
     return bounded;
   }
@@ -476,7 +490,7 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
 
     const cacheKey = `${request.organizationId}:${request.membershipId}`;
     if (clearCache.isClear(cacheKey, asOf.getTime())) return null;
-    const evaluation = await evaluateOnce(
+    const { evaluation, asOfMs } = await evaluateOnce(
       cacheKey,
       {
         organizationId: request.organizationId,
@@ -491,7 +505,7 @@ export function createNoteClosureGate<Policy extends NoteClosureGatePolicy>(
     if (evaluation.verdict !== "clear" && evaluation.verdict !== "warn") {
       throw new RangeError("unknown note-closure verdict");
     }
-    const trustedUntilMs = trustedUntil(asOf.getTime(), evaluation);
+    const trustedUntilMs = trustedUntil(asOfMs, evaluation);
     if (trustedUntilMs > asOf.getTime()) {
       clearCache.remember(cacheKey, asOf.getTime(), trustedUntilMs);
     }
