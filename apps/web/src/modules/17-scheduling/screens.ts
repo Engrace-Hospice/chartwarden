@@ -107,6 +107,7 @@ export const schedulingScreens: ScreenRegistryModule<ComponentType> = {
       path: "/calendar",
       title: "Calendar",
       navGroup: "Scheduling",
+      requiredPermission: "visit.read",
       screen: CalendarPage,
     },
     {

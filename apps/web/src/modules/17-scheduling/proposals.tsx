@@ -18,6 +18,7 @@ import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { dismissProposal, publishProposal } from "./scheduling-api";
 import { PROPOSAL_TONE, stateLabel } from "./scheduling-status";
+import { SchedulingWorkspaceNav } from "./workspace-nav";
 
 interface ProposalRow {
   id: string;
@@ -87,23 +88,26 @@ export function SchedulingProposals(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Proposal Inbox">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Pending visit proposals awaiting publish
-            {patient ? ` for patient ${patient.slice(0, 8)}` : ""}.
-          </div>
-          {notice ? (
-            <output
-              style={{
-                display: "block",
-                color: "var(--color-on-surface-variant)",
-                fontSize: "0.8rem",
-              }}
-            >
-              {notice}
-            </output>
-          ) : null}
-        </PageHeader>
+        <>
+          <SchedulingWorkspaceNav patientId={patient} />
+          <PageHeader title="Needs scheduling">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Pending visit proposals awaiting publish
+              {patient ? " for the selected patient" : ""}.
+            </div>
+            {notice ? (
+              <output
+                style={{
+                  display: "block",
+                  color: "var(--color-on-surface-variant)",
+                  fontSize: "0.8rem",
+                }}
+              >
+                {notice}
+              </output>
+            ) : null}
+          </PageHeader>
+        </>
       }
       filters={
         <div style={filterShellStyle}>

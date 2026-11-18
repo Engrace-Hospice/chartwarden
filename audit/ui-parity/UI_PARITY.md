@@ -164,7 +164,7 @@
 | web | 16-bereavement | `bereavement.contact.screen` | `/bereavement/plans/:planId/contacts/:contactId/screen` | `bereavement.contact.flag_complicated_grief` | ✅ |
 | web | 16-bereavement | `bereavement.plan.history` | `/bereavement/plans/:planId/history` | `bereavement.plan.read` | ✅ |
 | web | 17-scheduling | `scheduling.clinician-credentials` | `/scheduling/clinician-credentials` | `membership_credential.read` | ✅ |
-| web | 17-scheduling | `scheduling.calendar` | `/calendar` | `(none)` | ✅ |
+| web | 17-scheduling | `scheduling.calendar` | `/calendar` | `visit.read` | ✅ |
 | web | 17-scheduling | `scheduling.day` | `/scheduling/day` | `visit.read_team` | ✅ |
 | web | 17-scheduling | `scheduling.week` | `/scheduling/week` | `visit.read_team` | ✅ |
 | web | 17-scheduling | `scheduling.proposals` | `/scheduling/proposals` | `visit.proposal.read` | ✅ |
