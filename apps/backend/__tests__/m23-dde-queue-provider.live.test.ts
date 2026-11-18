@@ -488,16 +488,39 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     expect((await post(`/${id}/sync-provider`, asA())).statusCode).toBe(409);
   });
 
-  it("DDE_IN_DOUBT from the provider, a throwing adapter and an unusable receipt all leave the marker", async () => {
+  it("DDE_IN_DOUBT from the provider, a throwing adapter and invalid receipts all leave the marker", async () => {
     const cases: SubmitHook[] = [
       () => Promise.resolve(degraded(DDE.IN_DOUBT, "unconfirmed")),
       () => Promise.reject(new Error("socket hang up")),
+      () => Promise.resolve(null as unknown as X12WorkerResult<DdeReceipt>),
       (_ctx, op) =>
         Promise.resolve({
           ok: true,
           data: {
             providerReference: "has space",
             idempotencyKey: op.idempotencyKey,
+            controlNumber: op.controlNumber,
+            receivedAt: "2026-01-17T15:00:00Z",
+            replayed: false,
+          },
+        } as X12WorkerResult<DdeReceipt>),
+      (_ctx, op) =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            providerReference: undefined,
+            idempotencyKey: op.idempotencyKey,
+            controlNumber: op.controlNumber,
+            receivedAt: "2026-01-17T15:00:00Z",
+            replayed: false,
+          },
+        } as unknown as X12WorkerResult<DdeReceipt>),
+      (_ctx, op) =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            providerReference: "ref-1",
+            idempotencyKey: "different-attempt",
             controlNumber: op.controlNumber,
             receivedAt: "2026-01-17T15:00:00Z",
             replayed: false,
@@ -532,7 +555,7 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     expect(retry.json()).toMatchObject({ state: "submitted", providerInDoubt: false });
   });
 
-  it("a manual record-submission resolves the marker and says so in the history", async () => {
+  it("a confirmed manual reconciliation resolves the marker without inventing submission provenance", async () => {
     const { id } = await inProgress();
     spy.onSubmit = () => Promise.reject(new Error("boom"));
     await submitProvider(id, 2);
@@ -540,11 +563,12 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     expect(inDoubt.provider_in_doubt_at).not.toBeNull();
     const res = await post(`/${id}/record-submission`, asA(stepUp), {
       expectedVersion: inDoubt.version,
+      confirmedExistingTransaction: true,
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
       state: "submitted",
-      submissionMode: "manual",
+      submissionMode: null,
       providerInDoubt: false,
     });
     expect(await row(id)).toMatchObject({
@@ -665,7 +689,12 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     // While send 1 is in flight: a person keys it by hand, it is returned, retried (attempt 2) ...
     let v = (await row(id)).version as number;
     expect(
-      (await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode,
+      (
+        await post(`/${id}/record-submission`, asA(stepUp), {
+          expectedVersion: v,
+          confirmedExistingTransaction: true,
+        })
+      ).statusCode,
     ).toBe(200);
     v = (await row(id)).version;
     expect(
@@ -700,7 +729,12 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     await held.started;
     const v = (await row(id)).version as number;
     expect(
-      (await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode,
+      (
+        await post(`/${id}/record-submission`, asA(stepUp), {
+          expectedVersion: v,
+          confirmedExistingTransaction: true,
+        })
+      ).statusCode,
     ).toBe(200);
     expect((await row(id)).provider_in_doubt_at).toBeNull();
     held.finish("ok");
@@ -708,7 +742,7 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe("DDE_IN_DOUBT");
     const after = await row(id);
-    expect(after).toMatchObject({ state: "submitted", submission_mode: "manual" });
+    expect(after).toMatchObject({ state: "submitted", submission_mode: null });
     expect(after.provider_in_doubt_at).not.toBeNull();
     const inDoubtEvents = await eventsOf(id, "provider_in_doubt");
     expect(inDoubtEvents[0].detail.reason).toMatch(/^item_changed:dde-ref-/);

@@ -66,12 +66,13 @@ import { type QualifiedDdeOperations, ddeProviderCapability } from "./dde-provid
 import type { DdeProviderCapability } from "./dde-provider-capability";
 import {
   DDE_PROVIDER_CALL_TIMEOUT_MS,
-  PROVIDER_REFERENCE_PATTERN,
   type PlannedOutcome,
   REFUSED_BEFORE_SEND,
+  classifyProviderSubmissionResponse,
   ddeIdempotencyKey,
   ddeProviderAnswerRejected,
   ddeProviderRefusal,
+  isUsableDdeReceipt,
   planProviderOutcome,
   runWithTimeout,
 } from "./dde-provider-ops";
@@ -1064,7 +1065,7 @@ export function buildDdeQueueService(
       if (bounded.kind !== "done") {
         return leaveInDoubt(actor, marked, bounded.kind, ddeProviderRefusal(DDE.IN_DOUBT));
       }
-      const result = bounded.value;
+      const result = classifyProviderSubmissionResponse(bounded.value);
 
       // Phase 3 (short transaction): apply the outcome against the item as it is NOW (fresh version). Only the very
       // send that set the marker may clear it: same state, same attempt, same marker timestamp.
@@ -1072,16 +1073,19 @@ export function buildDdeQueueService(
         cur.state === marked.state &&
         cur.attemptNumber === marked.attemptNumber &&
         cur.providerInDoubtAt?.getTime() === marked.providerInDoubtAt?.getTime();
-      if (!result.ok) {
+      if (result.kind === "invalid") {
+        return leaveInDoubt(
+          actor,
+          marked,
+          "invalid_response",
+          ddeProviderAnswerRejected("the provider's response could not be validated"),
+        );
+      }
+      if (result.kind === "degraded") {
         // Only a code that PROVES the operation never left (allowlist) clears the marker. UNAVAILABLE may be a
         // timeout after the request was written and IDEMPOTENCY_CONFLICT means a vendor operation exists: both stay in doubt.
-        if (!REFUSED_BEFORE_SEND.has(result.degraded.code)) {
-          return leaveInDoubt(
-            actor,
-            marked,
-            result.degraded.code,
-            ddeProviderRefusal(DDE.IN_DOUBT),
-          );
+        if (!REFUSED_BEFORE_SEND.has(result.code)) {
+          return leaveInDoubt(actor, marked, result.code, ddeProviderRefusal(DDE.IN_DOUBT));
         }
         await inOrg(actor, async (tx) => {
           const current = await loadItem(tx, actor, id);
@@ -1095,20 +1099,28 @@ export function buildDdeQueueService(
             current.state,
             current.attemptNumber,
             { providerInDoubtAt: null, providerOperatorMembershipId: null },
-            { code: result.degraded.code },
+            { code: result.code },
           );
         });
-        throw ddeProviderRefusal(result.degraded.code);
+        throw ddeProviderRefusal(result.code);
       }
-      const reference = result.data.providerReference;
-      if (!PROVIDER_REFERENCE_PATTERN.test(reference)) {
+      const expectedIdempotencyKey = ddeIdempotencyKey(marked.id, marked.attemptNumber);
+      if (
+        !isUsableDdeReceipt(result.data, {
+          idempotencyKey: expectedIdempotencyKey,
+          controlNumber,
+        })
+      ) {
         return leaveInDoubt(
           actor,
           marked,
-          "unusable_reference",
-          ddeProviderAnswerRejected("the provider's operation reference is not usable"),
+          "invalid_receipt",
+          ddeProviderAnswerRejected(
+            "the provider's receipt is invalid or does not match this attempt",
+          ),
         );
       }
+      const reference = result.data.providerReference;
       const applied = await inOrg(actor, async (tx) => {
         const current = await loadItem(tx, actor, id);
         // Someone moved the item while the vendor worked (a cancel, a manual submit): the operation exists at the
