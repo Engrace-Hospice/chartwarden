@@ -243,10 +243,52 @@ export interface PerDiemRateCalculationRhcCarryOver {
 }
 
 // sia_calculation.qualifying_visits — last-7-days-of-life qualifying RN/MSW visits (NOT NULL, no default).
+// `units` / `paidUnits` are written by the units model (basis 'units_v2'); legacy 'minutes_v1' rows do not carry them.
 export interface SiaQualifyingVisit {
   encounterId: string; // M8 logical FK
   visitDate: string; // ISO date
   discipline: string; // e.g. RN | MSW
   durationMinutes: number;
+  units?: number;
+  paidUnits?: number;
 }
 export type SiaCalculationQualifyingVisits = SiaQualifyingVisit[];
+
+// sia_calculation.basis — how the row was computed: 'minutes_v1' (legacy, minutes) or 'units_v2' (15-minute units).
+export type SiaCalculationBasis = "minutes_v1" | "units_v2";
+
+// sia_calculation.visit_outcomes[] — EVERY visit in the window with its counted/excluded verdict (units_v2 only).
+// `excluded` is the engine's SiaExclusionReason code, kept as a string here so @chartwarden/db does not depend on billing.
+export interface SiaVisitOutcomeRecord {
+  encounterId: string; // M8 logical FK
+  serviceDate: string; // ISO date
+  discipline: string;
+  durationMinutes: number | null;
+  /** Who supplied the documented minutes: the M18 EVV bracket or the signing clinician. Absent on a revision written
+   *  before this was recorded (an additive jsonb key, no migration); `null` = none or unknown. */
+  timeSource?: "evv" | "clinician" | null;
+  units: number | null;
+  paidUnits: number;
+  counted: boolean;
+  excluded: string | null;
+}
+export type SiaCalculationVisitOutcomes = SiaVisitOutcomeRecord[];
+
+// sia_calculation.policy — the open-question parameters the row was computed under (mirrors the engine's SiaPolicy).
+export interface SiaCalculationPolicy {
+  unitTieBreak: string;
+  videoEligible: boolean;
+  visitDating: string;
+  wageBasis: string;
+}
+
+// sia_calculation.prior_claim_advisory — set when death fell in the first 7 days of a month, so part of the window sits on the
+// PRIOR month's claim. Medicare adjusts that claim; it is NOT added to this claim's expected payment. `from`/`to` are the
+// prior-month days of the window, `units`/`cents` what they would pay. `cents` is null when the death year's CHC rate or
+// wage index was unavailable (not priced; never a fabricated 0): an advisory never blocks the claim it rides on.
+export interface SiaPriorClaimAdvisory {
+  from: string; // ISO date
+  to: string; // ISO date
+  units: number;
+  cents: number | null;
+}

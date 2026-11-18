@@ -83654,23 +83654,255 @@
                             {
                               "type": "object",
                               "required": [
+                                "basis",
+                                "revision",
                                 "windowStart",
+                                "windowEnd",
+                                "paidUnits",
+                                "eligibleUnits",
+                                "truncatedUnits",
+                                "chcHourlyRateCents",
+                                "wageIndexFiscalYear",
+                                "amountCents",
                                 "totalQualifyingMinutes",
-                                "siaAddOnCents",
-                                "calculatedAt"
+                                "calculatedAt",
+                                "policy",
+                                "visits",
+                                "priorClaimAdvisory"
                               ],
                               "properties": {
+                                "basis": {
+                                  "anyOf": [
+                                    {
+                                      "const": "minutes_v1",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "units_v2",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "revision": {
+                                  "type": "integer"
+                                },
                                 "windowStart": {
+                                  "format": "date",
                                   "type": "string"
+                                },
+                                "windowEnd": {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                "paidUnits": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "eligibleUnits": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "truncatedUnits": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "chcHourlyRateCents": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "wageIndexFiscalYear": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "amountCents": {
+                                  "type": "integer"
                                 },
                                 "totalQualifyingMinutes": {
                                   "type": "integer"
                                 },
-                                "siaAddOnCents": {
-                                  "type": "integer"
-                                },
                                 "calculatedAt": {
+                                  "format": "date-time",
                                   "type": "string"
+                                },
+                                "policy": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "required": [
+                                        "unitTieBreak",
+                                        "videoEligible",
+                                        "visitDating",
+                                        "wageBasis"
+                                      ],
+                                      "properties": {
+                                        "unitTieBreak": {
+                                          "type": "string"
+                                        },
+                                        "videoEligible": {
+                                          "type": "boolean"
+                                        },
+                                        "visitDating": {
+                                          "type": "string"
+                                        },
+                                        "wageBasis": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "visits": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "id",
+                                      "date",
+                                      "discipline",
+                                      "minutes",
+                                      "timeSource",
+                                      "units",
+                                      "paidUnits",
+                                      "counted",
+                                      "reason"
+                                    ],
+                                    "properties": {
+                                      "id": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "date": {
+                                        "format": "date",
+                                        "type": "string"
+                                      },
+                                      "discipline": {
+                                        "type": "string"
+                                      },
+                                      "minutes": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "timeSource": {
+                                        "anyOf": [
+                                          {
+                                            "const": "evv",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "clinician",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "units": {
+                                        "anyOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "paidUnits": {
+                                        "type": "integer"
+                                      },
+                                      "counted": {
+                                        "type": "boolean"
+                                      },
+                                      "reason": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                "priorClaimAdvisory": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "required": [
+                                        "from",
+                                        "to",
+                                        "units",
+                                        "cents"
+                                      ],
+                                      "properties": {
+                                        "from": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
+                                        "to": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
+                                        "units": {
+                                          "type": "integer"
+                                        },
+                                        "cents": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               }
                             },

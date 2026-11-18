@@ -14,7 +14,7 @@
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@chartwarden/db/schema";
 import { ChartWardenError } from "@chartwarden/types";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { ClaimAssemblySnapshot } from "../claim-lines/claim-snapshot";
 import type { ClaimPhysicianNpis } from "../claim-lines/physician-npis";
 import type { ClaimState, TypeOfBill } from "../contracts";
@@ -33,8 +33,11 @@ import {
 
 const C = schema.claim;
 
-/** The states in which the physician / diagnosis snapshot may still change (it follows the NPIs until submission). */
-const SNAPSHOT_MUTABLE_STATES: readonly ClaimState[] = ["draft", "validating", "ready"];
+/**
+ * The states in which the physician / diagnosis snapshot may still change (it follows the NPIs until submission). The SIA
+ * revision writer shares the set: migration 1512's `trg_sia_calculation_insert_guard` accepts a revision in the same states.
+ */
+export const SNAPSHOT_MUTABLE_STATES: readonly ClaimState[] = ["draft", "validating", "ready"];
 const SNAPSHOT_MUTABLE_DB_STATES = SNAPSHOT_MUTABLE_STATES.map((s) => claimStateCodec.toDb(s));
 
 /** The domain-cased `claim` row: identical to `schema.Claim` except `state` is the lowercase `ClaimState`. */
@@ -444,6 +447,43 @@ export class ClaimRepository {
     throw new ChartWardenError(
       "CLAIM_SNAPSHOT_IMMUTABLE",
       `the snapshot of a claim in state '${current.state}' cannot be changed; only a draft, validating or ready claim's can`,
+      409,
+    );
+  }
+
+  /**
+   * Keep the claim's expected payment (`total_expected_payment_cents`: what Medicare is expected to pay — the per-diem lines
+   * plus the SIA add-on) in step with the newest `sia_calculation` revision, so a visit fact or CHC rate that changed after
+   * assembly does not leave a stale number on the claim. A derived projection like {@link refreshSnapshot}: no version bump
+   * (the write-audit trigger records the change), a no-op when nothing changed, and the same state guard — writable while the
+   * claim is DRAFT, VALIDATING or READY and frozen from SUBMITTED onward, guarded in the statement (`state IN (...)`). Returns
+   * whether the row changed (`false` also when the claim does not exist); a claim in a frozen state throws
+   * `CLAIM_EXPECTED_PAYMENT_IMMUTABLE` (409). `expectedCents` must be a non-negative whole number of cents.
+   */
+  async refreshExpectedPayment(id: string, expectedCents: number): Promise<boolean> {
+    if (!Number.isSafeInteger(expectedCents) || expectedCents < 0) {
+      throw new RangeError(
+        `refreshExpectedPayment: expectedCents must be a non-negative integer, got ${expectedCents}`,
+      );
+    }
+    const rows = await this.db
+      .update(C)
+      .set({ totalExpectedPaymentCents: expectedCents, updatedAt: new Date() })
+      .where(
+        and(
+          eq(C.id, id),
+          inArray(C.state, SNAPSHOT_MUTABLE_DB_STATES),
+          ne(C.totalExpectedPaymentCents, expectedCents),
+        ),
+      )
+      .returning({ id: C.id });
+    if (rows.length > 0) return true;
+    const current = await this.findById(id);
+    if (current === null) return false;
+    if (SNAPSHOT_MUTABLE_STATES.includes(current.state)) return false; // unchanged
+    throw new ChartWardenError(
+      "CLAIM_EXPECTED_PAYMENT_IMMUTABLE",
+      `the expected payment of a claim in state '${current.state}' cannot be changed; only a draft, validating or ready claim's can`,
       409,
     );
   }

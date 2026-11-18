@@ -65,6 +65,7 @@ export function visitLinesFor(facts: VisitFacts): VisitLinesResult {
               discipline: e.discipline,
               encounterType: e.encounterType ?? null,
               durationMinutes: e.durationMinutes ?? null,
+              modality: e.modality ?? null,
             },
           ],
     ),

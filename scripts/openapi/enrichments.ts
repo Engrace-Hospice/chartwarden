@@ -11,6 +11,7 @@ import {
   ClaimReplaceRequest,
   ClaimVoidRequest,
   ManualValidateRequest,
+  SiaView,
 } from "@chartwarden/billing";
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
@@ -13739,15 +13740,8 @@ const M23ClaimPricingView = Type.Object({
     }),
     Type.Null(),
   ]),
-  sia: Type.Union([
-    Type.Object({
-      windowStart: Type.String(),
-      totalQualifyingMinutes: Type.Integer(),
-      siaAddOnCents: Type.Integer(),
-      calculatedAt: Type.String(),
-    }),
-    Type.Null(),
-  ]),
+  // The newest SIA revision, published straight from the schema the read mapper (`siaViewOf`) is typed against.
+  sia: Type.Union([SiaView, Type.Null()]),
 });
 const M23ClaimDetailResponse = Type.Composite([
   M23ClaimSummaryView,

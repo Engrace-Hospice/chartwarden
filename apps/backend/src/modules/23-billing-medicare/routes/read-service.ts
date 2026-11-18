@@ -18,6 +18,7 @@ import type {
   LevelOfCare,
   MetricsBucket,
   NoticeState,
+  SiaView,
   TypeOfBill,
 } from "@chartwarden/billing";
 import { canonicalSegments } from "@chartwarden/billing";
@@ -126,12 +127,8 @@ export interface ClaimPricingView {
      *  before migration 0376. */
     readonly rhcCarryOver: RhcCarryOverView | null;
   } | null;
-  readonly sia: {
-    readonly windowStart: string;
-    readonly totalQualifyingMinutes: number;
-    readonly siaAddOnCents: number;
-    readonly calculatedAt: string;
-  } | null;
+  /** The claim's newest SIA revision: derived from the published `SiaView` so the wire shape and this type cannot drift. */
+  readonly sia: SiaView | null;
 }
 
 /**

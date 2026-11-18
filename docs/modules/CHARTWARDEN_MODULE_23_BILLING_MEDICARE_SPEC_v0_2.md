@@ -174,7 +174,7 @@ erDiagram
 
     claim ||--o{ claim_line : "1:N lines"
     claim ||--|| per_diem_rate_calculation : "1:1 snapshot"
-    claim ||--o| sia_calculation : "0..1 snapshot"
+    claim ||--o{ sia_calculation : "0..n revisions (newest is current)"
     claim ||--o{ claim_state_history : "append-only"
     claim ||--o{ claim_submission : "1:N submission attempts"
     claim ||--o{ claim_acknowledgment : "0..N acks per submission"
@@ -200,7 +200,7 @@ The entity inventory:
 - **`claim`** — the root billing entity. Carries TOB, from-through dates, `patient_payer_id` snapshot, election-period reference, total charge, total payment expected (pre-sequestration), sequestration percentage applied, the deterministic `claim_control_number`, the `replaces_claim_id` for replacement/void chains, and the lifecycle state. One claim per ProviderEntity per from-through range (no overlapping date ranges; enforced by partial unique index per §3).
 - **`claim_line`** — one row per billable visit OR per LOC-day-grouped per-diem segment within the claim's from-through range, plus (FY2027, CR 14495) one separately dated `G0679` / revenue `0657` line per telehealth recertification face-to-face dated in the range on/after 2027-01-01 (see §4.5 `f2f_telehealth_g0679`). For RHC days the typical pattern is one line per RHC-LOC-period segment per service-date range (per-diem rolled up); for CHC/IRC/GIP days one line per LOC-period segment. Lines carry `revenue_code`, `q_code`, `service_date` (or range), `unit_count` (days or visits), `unit_rate` (per-diem from wage-index-adjusted CMS rate), `line_charge`, the encounter ids backing the line (when applicable), and the ICD-10-CM sequencing position (lines may carry their own pointer to the claim-level ICD list per X12 837I semantics).
 - **`per_diem_rate_calculation`** — 1:1 with claim. Snapshots the HIPPS code derivation: the LOC-period segments within the claim range, the wage-index factor applied (FK to `wage_index_factor` row by CCN + effective fiscal year), the first-7-days-vs-days-8+ split per RHC pattern, the resulting HIPPS code string, the resulting per-diem rate, and the calculation timestamp. Reproducible at any later point — if a clinical correction changes the LOC periods, a replacement claim (TOB 817) produces a *new* `per_diem_rate_calculation` row; the original is preserved on the original claim.
-- **`sia_calculation`** — 0..1 with claim. Snapshots the SIA (Service Intensity Add-on) calculation: the patient's date of death (from M5 `patient.deceased_date`), the seven-day-pre-death window, the RN/MSW visits that landed in that window (from M8's `SignedEncountersReader`), the per-visit-minute aggregation, the SIA add-on dollars per CMS rule. Only present on claims spanning the last 7 days of life; absent when the claim is not a discharge-by-death claim or no qualifying visit landed in the window.
+- **`sia_calculation`** — an append-only series of revisions per claim (`UNIQUE (claim_id, revision)`, migration 1512; the newest revision is the claim's current SIA, a claim that never qualified has none). Snapshots the SIA (Service Intensity Add-on) calculation the way Medicare prices it (42 CFR 418.302; CPM ch. 11 §30.2.2): from the claim's visit lines, in 15-minute UNITS (per-visit rounding, min 1, combined cap 16/day) on routine-home-care days in `[death − 6, death]`, for in-person RN and social-work visits only, at the wage-adjusted CHC hourly rate / 4. Each revision records the date of death (from M5 `patient.deceased_date`), the window, the paid / eligible / truncated units, the rate and wage index it was priced with, the open-question policy it was computed under, and a per-visit verdict with its exclusion reason (from M8's billable-encounter reader, which carries the clinician-confirmed delivery mode and the EVV or clinician-entered start/stop). A revision is appended at assembly and again at re-validation only when the evaluation moved, or as an explicit zero revision when an add-on that was promised no longer applies; a claim that pays nothing but explains why still gets a zero-unit row with no rate. Only the claim that ENDS in the death (status 40/41/42) carries it; a death in the first 7 days of a month puts part of the window on the prior month's claim, which Medicare adjusts (shown as a `prior_claim_advisory`, never added to this claim). The `sia_calculation_correct` rule holds the counted units to the units the claim's G0299 / G0155 lines carry, in both directions.
 - **`claim_state_history`** — append-only state-transition log per claim. Every transition through the state machine writes a row with from-state, to-state, actor, reason, validation-run-id (when transitioning out of VALIDATING), submission-id (when transitioning to/from SUBMITTED), and the timestamp. The M4 audit trigger denies UPDATE/DELETE on this table per the §3.6 immutability pattern.
 - **`claim_submission`** — one row per dispatch attempt to the MAC. Carries the `claim_control_number`, the `claim_id` OR the `noe_id` OR the `notr_id` (polymorphic — discriminated by `submission_kind ∈ {claim_837i, noe, notr}`), the `x12_file_uri` (MinIO path to the generated 837I bytes), the `submitted_at`, the dispatch outcome (`success` / `portal_failure` / `worker_failure`), and the dispatch correlation ids. Subsequent acknowledgments link back via `acknowledgment.submission_id`. Retried submissions (after a portal failure) produce additional rows with `attempt_index` incremented; the control number is `${baseControlNumber}-${attemptIndex}` so the MAC sees distinct attempts.
 - **`claim_acknowledgment`** — one row per inbound 999 / 277CA / 835 acknowledgment file processed. `kind ∈ {ack_999, ack_277ca, ack_835}` (835 rows are M25-written but M23 owns the schema since the link is by `claim.id` / `claim_control_number`); the parsed status codes; the raw acknowledgment file uri (MinIO `claims/<org>/acks/`); the acknowledgment timestamp from the MAC; the M23-side processing timestamp. The claim's state machine transitions are driven from these rows.
@@ -334,7 +334,7 @@ Validation rules are described in §4.6 (rule catalog) and §7 (workflow). At th
 | `claim_line.unit_count > 0` AND `claim_line.unit_rate >= 0` | CHECK constraints |
 | `claim_line.revenue_code` ∈ `('0651','0652','0655','0656','0657','0659','0294','0942')` | CHECK constraint (codes from M38 platform value set duplicated for DB-level enforcement) |
 | `per_diem_rate_calculation` 1:1 with claim | UNIQUE constraint on `claim_id` |
-| `sia_calculation` 0..1 with claim | UNIQUE constraint on `claim_id` |
+| `sia_calculation` 0..n revisions per claim | UNIQUE constraint on `(claim_id, revision)` |
 | `claim_submission.claim_control_number` UNIQUE per (provider_entity_id, attempt_index) | UNIQUE INDEX |
 | `noe_record.admission_id` UNIQUE — one NOE per admission | UNIQUE constraint with WHERE state NOT IN ('CANCELLED','ACK_REJECTED') |
 | `notr_record` polymorphic event id — exactly one of (revocation_event_id, transfer_event_id, discharge_event_id) NOT NULL | CHECK constraint `notr_one_event_kind` |
@@ -1074,7 +1074,7 @@ export const perDiemRateCalculation = pgTable('per_diem_rate_calculation', {
 
 ```typescript
 // packages/db/src/schema/billing/sia-calculation.ts
-// Append-only; 0..1 with claim.
+// Append-only; one row per (claim, revision) since migration 1512 (the units_v2 columns added by 1511 are listed in the migration).
 import { pgTable, uuid, text, timestamp, date, integer, bigint, jsonb, uniqueIndex } from 'drizzle-orm/pg-core'
 import { organizations } from '../organizations'
 import { claim } from './claim'
@@ -1083,6 +1083,7 @@ export const siaCalculation = pgTable('sia_calculation', {
   id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
   claimId: uuid('claim_id').notNull().references(() => claim.id, { onDelete: 'restrict' }),
+  revision: integer('revision').notNull().default(1),  // 1512: newest revision = the claim's current SIA
 
   patientDeceasedDate: date('patient_deceased_date').notNull(),
   windowStart: date('window_start').notNull(),  // = deceasedDate - 6 days (inclusive 7-day window)
@@ -1094,7 +1095,7 @@ export const siaCalculation = pgTable('sia_calculation', {
 
   calculatedAt: timestamp('calculated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  oneToOne: uniqueIndex('sia_calculation_claim_uq').on(t.claimId),
+  claimRevision: uniqueIndex('sia_calculation_claim_revision_uq').on(t.claimId, t.revision),
 }))
 ```
 

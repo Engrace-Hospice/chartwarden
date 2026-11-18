@@ -9,6 +9,7 @@ import {
   noeMachine,
   notrMachine,
   repositories,
+  siaViewOf,
 } from "@chartwarden/billing";
 import * as schema from "@chartwarden/db/schema";
 // apps/backend/src/modules/23-billing-medicare/routes/write-service-drizzle.ts — the Drizzle-backed
@@ -606,7 +607,7 @@ export function buildDrizzleM23WriteService(
     const perDiemClass = await new repositories.PerDiemRateCalculationRepository(tx).findByClaim(
       claim.id,
     );
-    const sia = await new repositories.SiaCalculationRepository(tx).findByClaim(claim.id);
+    const sia = await new repositories.SiaCalculationRepository(tx).findLatestSiaByClaim(claim.id);
     return {
       ...mapClaimSummary(claim),
       electionPeriodIdFrom: claim.electionPeriodIdFrom,
@@ -642,14 +643,7 @@ export function buildDrizzleM23WriteService(
         perDiemClass: perDiemClass
           ? perDiemClassPricingView(perDiemClass, { admissionId: claim.admissionId })
           : null,
-        sia: sia
-          ? {
-              windowStart: sia.windowStart,
-              totalQualifyingMinutes: sia.totalQualifyingMinutes,
-              siaAddOnCents: sia.siaAddOnCents,
-              calculatedAt: isoReq(sia.calculatedAt),
-            }
-          : null,
+        sia: sia ? siaViewOf(sia) : null,
       },
       createdAt: isoReq(claim.createdAt),
       updatedAt: isoReq(claim.updatedAt),

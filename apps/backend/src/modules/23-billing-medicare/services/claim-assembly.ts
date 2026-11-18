@@ -35,7 +35,6 @@ import {
   G0679_REVENUE_CODE,
   G0679_UNITS_PER_ENCOUNTER,
   G0679_UNIT_CHARGE_CENTS,
-  type IsoDate,
   type LevelOfCare,
   type RuleResult,
   applySequestrationPolicy,
@@ -61,8 +60,10 @@ import {
   computeClaimSia,
   hospiceFiscalYearStarting,
   readAssemblyFacts,
+  siaSnapshotOf,
 } from "./claim-assembly-facts";
 import { perDiemLineAmounts, visitLineInputs, visitLinesFor } from "./claim-assembly-lines";
+import { siaSnapshotInputOf } from "./claim-sia-snapshot";
 import { persistedRemediation } from "./persisted-remediation";
 import { readClaimRhcCarryOver, rhcCarryOverSnapshot } from "./rhc-carry-over";
 import { assembleValidationContext } from "./validation-context";
@@ -75,7 +76,6 @@ type BillingDb = repositories.BillingDb;
 // Drizzle schema barrel) so this file carries no cross-module schema-path import literal — the table-ownership
 // scanner only flags a file that BOTH imports a `*schema*` path AND names another module's table const, and
 // this service legitimately names M6/M8 concepts (election/level-of-care/encounter) in its seam vocabulary.
-type NewSiaCalculationInput = Parameters<repositories.SiaCalculationRepository["append"]>[0];
 type NewValidationResultInput = Parameters<repositories.ValidationResultRepository["append"]>[0];
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -430,25 +430,14 @@ export function buildClaimAssemblyService(
         const allLineInputs = [...lineInputs, ...g0679Lines, ...visitLines];
 
         // ── 4. SIA add-on math (D6) — purely encounter-derived ───────────────────────────────────────
-        const siaResult = await computeClaimSia(seams, facts);
-        const siaCents: Cents = siaResult?.siaAddOnCents ?? 0;
-        const siaQualifyingVisitCount = siaResult?.qualifyingVisits.length ?? 0;
-        const siaRow: NewSiaCalculationInput | null = siaResult
-          ? {
-              organizationId: orgId,
-              claimId: "", // filled below
-              patientDeceasedDate: siaResult.patientDeceasedDate as IsoDate,
-              windowStart: siaResult.windowStart as IsoDate,
-              qualifyingVisits: siaResult.qualifyingVisits.map((v) => ({
-                encounterId: v.encounterId,
-                visitDate: v.visitDate,
-                discipline: v.discipline,
-                durationMinutes: v.durationMinutes,
-              })),
-              totalQualifyingMinutes: siaResult.totalQualifyingMinutes,
-              siaAddOnCents: siaResult.siaAddOnCents,
-            }
-          : null;
+        const sia = await computeClaimSia(seams, facts, {
+          orgId,
+          providerEntityId,
+          patientId,
+          serviceFrom,
+          serviceTo,
+        });
+        const siaCents: Cents = sia?.result.siaAddOnCents ?? 0;
 
         // ── 5. Sequestration (D11) over the gross per-diem + SIA payable ─────────────────────────────
         // EXPECTED PAYMENT keeps the exact per-diem math and the SIA add-on (which the MAC pays from the visit
@@ -542,8 +531,10 @@ export function buildClaimAssemblyService(
           rhcCarryOver,
         });
 
-        if (siaRow) {
-          await new repositories.SiaCalculationRepository(tx).append({ ...siaRow, claimId });
+        if (sia) {
+          await new repositories.SiaCalculationRepository(tx).appendSiaRevision(
+            siaSnapshotInputOf(sia, { orgId, claimId }),
+          );
         }
 
         // ── 7. Initial §11.A validation pass — recorded as a COMPLETE validation_run (trigger initial_assembly) ─
@@ -564,8 +555,7 @@ export function buildClaimAssemblyService(
           },
           lines: insertedLines,
           perDiemClass,
-          siaQualifyingVisitCount,
-          siaCents,
+          sia: siaSnapshotOf(sia),
           eligibility: null, // resolved by the HETS refresh worker, not at assembly — the rule skips
           noe: null,
           eligibilityBound: false,

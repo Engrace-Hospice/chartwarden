@@ -20,6 +20,7 @@ import { join } from "node:path";
 import {
   BillingRuleRegistry,
   type ClaimAssemblySeams,
+  calculateSia,
   claimTotalMatchesLines,
   levelOfCareCoherence,
   placeOfServiceConsistency,
@@ -35,7 +36,9 @@ import {
   type ClaimAssemblyActor,
   buildClaimAssemblyService,
 } from "../src/modules/23-billing-medicare/services/claim-assembly";
+import type { ClaimSia } from "../src/modules/23-billing-medicare/services/claim-assembly-facts";
 import { buildM23ReferenceDataAdapter } from "../src/modules/23-billing-medicare/services/claim-assembly-seam-adapters";
+import { refreshClaimSia } from "../src/modules/23-billing-medicare/services/claim-sia-refresh";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -350,35 +353,45 @@ describe.skipIf(!DB_URL)(
       expect(res.initialValidationOutcome).toBe("all_pass");
     });
 
-    it("keeps the SIA add-on out of the billed total but in the expected payment", async () => {
+    /**
+     * A claim that ends in a death at home on its last day (status 40 + the date of death, so it carries the add-on,
+     * CPM ch. 11 §30.2.2) with ONE in-person RN visit the clinician confirmed, 6 Nov, `durationMinutes` long. The SIA
+     * reads the billable feed (the same visits the claim lines come from), on an RHC day inside the last 7 days of life.
+     */
+    const deathClaimSeams = (encounterId: string, durationMinutes: number) =>
+      seams({
+        admission: {
+          resolveForRange: async () => ({
+            admissionId: randomUUID(),
+            hospiceAdmissionDate: "2025-11-01",
+            dischargeDate: "2025-11-07",
+            dischargeReason: "death",
+            deceasedDate: "2025-11-07",
+            placeOfDeath: "home",
+            transferOut: null,
+          }),
+        },
+        billableEncounters: {
+          forRange: async () => [
+            {
+              encounterId,
+              serviceDate: "2025-11-06",
+              billability: "billable",
+              discipline: "rn",
+              encounterType: "routine_visit",
+              durationMinutes,
+              modality: "in_person",
+              modalityConfirmed: true,
+            },
+          ],
+        },
+      });
+
+    it("keeps the SIA add-on out of the billed total but in the expected payment, and persists the units snapshot", async () => {
+      const encounterId = randomUUID();
       const svc = buildClaimAssemblyService(
         handle.db as never,
-        seams({
-          admission: {
-            resolveForRange: async () => ({
-              admissionId: randomUUID(),
-              hospiceAdmissionDate: "2025-11-01",
-              dischargeDate: null,
-              dischargeReason: null,
-              deceasedDate: "2025-11-07",
-              placeOfDeath: null,
-              transferOut: null,
-            }),
-          },
-          signedEncounters: {
-            inWindow: async () => [
-              {
-                encounterId: randomUUID(),
-                serviceDate: "2025-11-06",
-                discipline: "RN",
-                signed: true as const,
-                cosignRequired: false,
-                cosigned: false,
-                durationMinutes: 120,
-              },
-            ],
-          },
-        }),
+        deathClaimSeams(encounterId, 120), // 120 minutes = 8 units
       );
 
       const res = await svc.assemble(actor, request());
@@ -389,9 +402,147 @@ describe.skipIf(!DB_URL)(
           [res.claimId],
         )
       ).rows[0];
-      expect(claim.charge).toBe(140_000);
-      expect(claim.expected).toBe(148_960); // (1,400.00 + 120.00 SIA) less 2%
+      // Billed total = 7 per-diem days + the informational G0299 visit line (8 units x the tenant's $25.00 RN unit
+      // charge). The SIA itself is priced by Medicare from that line, so it is NOT in the billed total...
+      expect(claim.charge).toBe(7 * 20_000 + 8 * 2_500);
+      // ...but it is in the expected payment: 8 units x $60.00 CHC hourly / 4 = $120.00, on top of $1,400.00, less 2%.
+      expect(claim.expected).toBe(148_960);
       expect(res.initialValidationOutcome).toBe("all_pass");
+
+      const sia = (
+        await admin.query(
+          `SELECT paid_units, eligible_units, truncated_units, chc_hourly_rate_cents::int AS rate,
+                  sia_add_on_cents::int AS cents, basis, revision
+             FROM sia_calculation WHERE claim_id = $1`,
+          [res.claimId],
+        )
+      ).rows[0];
+      expect(sia).toMatchObject({
+        paid_units: 8,
+        eligible_units: 8,
+        truncated_units: 0,
+        rate: 6_000,
+        cents: 12_000,
+        basis: "units_v2",
+        revision: 1,
+      });
+    });
+
+    it("persists a fractional EVV bracket (seconds) without aborting: exact per-visit minutes, a whole-minute total, units from the exact span", async () => {
+      const encounterId = randomUUID();
+      const minutes = 37 + 1 / 60; // an EVV bracket of 10:00:00 -> 10:37:01
+      const res = await buildClaimAssemblyService(
+        handle.db as never,
+        deathClaimSeams(encounterId, minutes),
+      ).assemble(actor, request());
+
+      const row = (
+        await admin.query(
+          "SELECT total_qualifying_minutes, paid_units, visit_outcomes FROM sia_calculation WHERE claim_id = $1",
+          [res.claimId],
+        )
+      ).rows[0];
+      expect(row.total_qualifying_minutes).toBe(37); // the integer column takes a whole number...
+      expect(row.visit_outcomes[0].durationMinutes).toBeCloseTo(minutes, 6); // ...the exact span is kept per visit
+      expect(row.paid_units).toBe(2); // 37.02 / 15 = 2.47 -> 2 units
+      // The claim LINE carries the very units the forecast counted, so Medicare and our expected payment agree.
+      expect((await linesOf(res.claimId))[1]).toMatchObject({ hcpcs_code: "G0299", unit_count: 2 });
+    });
+
+    it("appends a SIA revision only when the evaluation moved, ends an add-on with one explicit zero revision, and never collides under overlapping validations", async () => {
+      const encounterId = randomUUID();
+      const res = await buildClaimAssemblyService(
+        handle.db as never,
+        deathClaimSeams(encounterId, 120),
+      ).assemble(actor, request());
+      const priced = (
+        await admin.query(
+          "SELECT wage_index_fiscal_year AS fy, wage_index_factor AS factor FROM sia_calculation WHERE claim_id = $1",
+          [res.claimId],
+        )
+      ).rows[0];
+
+      const visit = (id: string, serviceDate: string, durationMinutes: number) => ({
+        encounterId: id,
+        serviceDate,
+        discipline: "rn",
+        encounterType: "routine_visit",
+        billability: "billable" as const,
+        durationMinutes,
+        modality: "in_person" as const,
+        modalityConfirmed: true,
+      });
+      const siaFor = (visits: ReturnType<typeof visit>[]): ClaimSia => ({
+        result: calculateSia({
+          deceasedDate: "2025-11-07",
+          visits,
+          rhcPeriods: [{ from: "2025-11-01", to: "2025-11-07" }],
+          claimWindow: { from: "2025-11-01", to: "2025-11-07" },
+          chcHourlyRateCents: 6_000,
+        }),
+        pricing: {
+          chcHourlyRateCents: 6_000 as never,
+          fiscalYear: priced.fy,
+          wageIndexFactor: priced.factor,
+        },
+        priorClaimAdvisory: null,
+      });
+      const original = siaFor([visit(encounterId, "2025-11-06", 120)]); // what assembly wrote: 8 units
+      const grown = siaFor([
+        visit(encounterId, "2025-11-06", 120),
+        visit(randomUUID(), "2025-11-05", 60), // +4 units
+      ]);
+      const refresh = (sia: ClaimSia | null, expectedPaymentCents: number) =>
+        withOrgContext(handle.db, { organizationId: ORG, userId: USER }, async (tx) => {
+          const claim = await new repositories.ClaimRepository(tx as never).findById(res.claimId);
+          if (claim === null) throw new Error("the assembled claim is missing");
+          await refreshClaimSia(tx as never, claim, {
+            sia,
+            expectedPaymentCents: expectedPaymentCents as never,
+          });
+        });
+      const revisions = async () =>
+        (
+          await admin.query(
+            `SELECT revision, paid_units, sia_add_on_cents::int AS cents, chc_hourly_rate_cents::int AS rate,
+                    jsonb_array_length(visit_outcomes) AS outcomes
+               FROM sia_calculation WHERE claim_id = $1 ORDER BY revision`,
+            [res.claimId],
+          )
+        ).rows;
+
+      expect(await revisions()).toHaveLength(1);
+      await refresh(original, 148_960);
+      expect(await revisions()).toHaveLength(1); // nothing moved: no history churn
+
+      await refresh(grown, 160_000);
+      expect(await revisions()).toMatchObject([
+        { revision: 1, paid_units: 8 },
+        { revision: 2, paid_units: 12, cents: 18_000, rate: 6_000 },
+      ]);
+
+      // A visit is voided: the add-on no longer applies. Two overlapping validations (a double-click) must both succeed
+      // and record the end exactly once; without the claim-row lock the second would die on the revision unique.
+      await Promise.all([refresh(null, 140_000), refresh(null, 140_000)]);
+      const ended = await revisions();
+      expect(ended).toHaveLength(3);
+      expect(ended[2]).toMatchObject({
+        revision: 3,
+        paid_units: 0,
+        cents: 0,
+        rate: null,
+        outcomes: 0,
+      });
+
+      await refresh(null, 140_000);
+      expect(await revisions()).toHaveLength(3); // an ended add-on is recorded once, not on every validation
+      const claim = (
+        await admin.query(
+          "SELECT total_expected_payment_cents::int AS expected FROM claim WHERE id = $1",
+          [res.claimId],
+        )
+      ).rows[0];
+      expect(claim.expected).toBe(140_000);
     });
 
     it("persists the attending / certifying NPIs, refreshes them without a version bump, and refuses a malformed NPI", async () => {

@@ -8,6 +8,7 @@
 // same way and cannot drift apart. Behaviour of the assembly is unchanged: the block below is the former
 // "walk the reader seams" step, moved verbatim (only the typed result object is new).
 import {
+  type BillableEncounterSnapshot,
   type Cents,
   ChcHoursError,
   type ClaimAssemblySeams,
@@ -15,6 +16,9 @@ import {
   type FiscalYearPricing,
   type InpatientStay,
   type PerDiemRateTable,
+  type SiaCalculationResult,
+  type SiaSnapshot,
+  type SiaVisitInput,
   type SignedEncounterSnapshot,
   type ValueCodeAreas,
   WageIndexAreaError,
@@ -22,6 +26,9 @@ import {
   addDaysIso,
   calculatePerDiemClassByFiscalYear,
   calculateSia,
+  claimDischargeCodes,
+  qCodeForPlaceOfService,
+  siaAmountCents,
   splitAtFiscalYears,
   wageIndexFactorForLevelOfCare,
 } from "@chartwarden/billing";
@@ -191,15 +198,10 @@ export async function readAssemblyFacts(
       }
     : null;
 
-  // SIA only when deceased; gather the last-7-days-of-life signed visits.
-  let signedEncounters: readonly SignedEncounterSnapshot[] = [];
-  if (admission.deceasedDate !== null) {
-    const window: DateRange = {
-      from: addDaysIso(admission.deceasedDate, -6),
-      to: admission.deceasedDate,
-    };
-    signedEncounters = await seams.signedEncounters.inWindow(orgId, patientId, window);
-  }
+  // The SIA reads `billableEncounters` (which carry modality, billability and documented time), not the separate
+  // signed-encounter feed it used to; `signedEncounters` stays on the facts only because the validation context type
+  // still carries it. Deprecated: nothing reads it, so it is no longer queried.
+  const signedEncounters: readonly SignedEncounterSnapshot[] = [];
   return {
     admission,
     resolvedPeriods,
@@ -408,44 +410,204 @@ export function computeClaimPerDiemClass(
   }
 }
 
-/** D6 — the SIA add-on (only when the patient died inside the claim; `null` when none applies). */
+/** UB-04 patient status codes that mean the patient died (home, facility, unknown place). */
+const DEATH_STATUS_CODES: ReadonlySet<string> = new Set(["40", "41", "42"]);
+const ROUTINE_HOME_CARE = "routine_home_care";
+
+/** What `computeClaimSia` needs to know about the claim it prices the add-on for. */
+export interface ClaimSiaClaim {
+  readonly orgId: string;
+  readonly providerEntityId: string;
+  readonly patientId: string;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+}
+
+/**
+ * Medicare adjusts the PRIOR month's claim when the last 7 days of life straddle a month boundary (hospices bill
+ * calendar months; the add-on is priced from each visit line on the claim for its own date). Nothing special is
+ * submitted for it: this advisory tells billing the money moves on a claim that is not the one being assembled.
+ */
+export interface PriorClaimAdvisory {
+  readonly from: string;
+  readonly to: string;
+  readonly units: number;
+  /**
+   * What those units are worth at the death year's CHC rate. `null` = NOT PRICED (the rate or wage index for that
+   * year is unavailable): an advisory is informational and must never block the claim it rides on, and it is never
+   * shown as a fabricated `0`. Zero units price to an exact `0`.
+   */
+  readonly cents: Cents | null;
+}
+
+export interface ClaimSia {
+  readonly result: SiaCalculationResult;
+  /** The rate the add-on was priced with; `null` when nothing was payable so no rate was resolved. */
+  readonly pricing: {
+    readonly chcHourlyRateCents: Cents;
+    readonly fiscalYear: number;
+    readonly wageIndexFactor: string;
+  } | null;
+  readonly priorClaimAdvisory: PriorClaimAdvisory | null;
+}
+
+const siaVisitOf = (e: BillableEncounterSnapshot): SiaVisitInput => ({
+  encounterId: e.encounterId,
+  serviceDate: e.serviceDate,
+  discipline: e.discipline ?? "",
+  encounterType: e.encounterType ?? null,
+  billability: e.billability,
+  durationMinutes: e.durationMinutes ?? null,
+  modality: e.modality ?? null,
+  modalityConfirmed: e.modalityConfirmed ?? false,
+  timeSource: e.timeSource ?? null,
+});
+
+const rhcSpansOf = (periods: AssemblyFacts["resolvedLoc"]) =>
+  periods
+    .filter((p) => p.levelOfCare === ROUTINE_HOME_CARE)
+    .map((p) => ({ from: p.from, to: p.to }));
+
+/**
+ * The part of the SIA window that sits in the previous calendar month, evaluated the same way; `null` when the whole
+ * window is on this claim or no RN/MSW visit sat in the earlier part.
+ */
+async function priorClaimUnits(
+  seams: ClaimAssemblySeams,
+  claim: ClaimSiaClaim,
+  deathDate: string,
+): Promise<{ from: string; to: string; units: number } | null> {
+  const windowFrom = addDaysIso(deathDate, -6);
+  if (windowFrom >= claim.serviceFrom) return null;
+  const range: DateRange = { from: windowFrom, to: addDaysIso(claim.serviceFrom, -1) };
+  const [encounters, loc] = await Promise.all([
+    seams.billableEncounters.forRange(claim.orgId, claim.providerEntityId, claim.patientId, range),
+    seams.levelOfCare.periodsInRange(claim.orgId, claim.patientId, range),
+  ]);
+  const prior = calculateSia({
+    deceasedDate: deathDate,
+    visits: encounters.map(siaVisitOf),
+    rhcPeriods: rhcSpansOf(loc),
+    claimWindow: range,
+    chcHourlyRateCents: 0,
+  });
+  return prior.hasCandidateVisits ? { ...range, units: prior.paidUnits } : null;
+}
+
+/**
+ * D6 — the SIA add-on for the claim that ends in the patient's death (`null` when none applies: not a death claim, or
+ * no RN/MSW visit in the window to explain). Evaluated by the shared units engine over M8's billable encounters, on
+ * routine-home-care days only and clamped to THIS claim's service dates; a snapshot with zero payable units is still
+ * returned (with the per-visit reasons) so billing can see why an add-on is missing. The CHC rate and wage index are
+ * resolved only when something is payable, so a claim with nothing to pay can never fail on them.
+ */
 export async function computeClaimSia(
   seams: ClaimAssemblySeams,
   facts: AssemblyFacts,
-): Promise<ReturnType<typeof calculateSia> | null> {
-  const { admission, signedEncounters } = facts;
-  if (admission.deceasedDate === null) return null;
-  const encounters = signedEncounters.map((e) => ({
-    encounterId: e.encounterId,
-    serviceDate: e.serviceDate,
-    discipline: e.discipline,
-    durationMinutes: e.durationMinutes,
-    signed: e.signed,
-  }));
-  // Is an SIA payable at all? Presence depends only on the qualifying visits, not on any rate - so nothing about the
-  // CHC rate or the wage index is resolved (and none of their failures can surface) for a claim with no SIA.
-  const payable = calculateSia({
-    deceasedDate: admission.deceasedDate,
-    chcHourlyRateCents: 0,
-    signedEncounters: encounters,
-  });
-  if (!payable.present) return null;
+  claim: ClaimSiaClaim,
+): Promise<ClaimSia | null> {
+  const deathDate = facts.admission.deceasedDate;
+  if (deathDate === null || deathDate > claim.serviceTo) return null;
+  // The same derivation the validation context and the assembly use (claim-discharge): only the claim that ENDS the stay
+  // in a death carries status 40/41/42, so an interim claim (or one with an unresolved place of death) has no SIA.
+  const { codes } = claimDischargeCodes(facts.admission, facts.resolvedPeriods, claim.serviceTo);
+  if (!DEATH_STATUS_CODES.has(codes.patientStatus ?? "")) return null;
+  // A visit at a hospice's own inpatient facility (Q5006) is reported weekly, not as visit lines (visit-lines.ts), so the
+  // claim carries no line the MAC could price the add-on from: forecasting one would promise money nothing backs. The
+  // Q-code is derived from the M40 place of service exactly as assembly and the validation context derive it.
+  if (qCodeForPlaceOfService(facts.mdmResolution.placeOfService) === "Q5006") return null;
 
-  const { siaFiscalYear, siaWageIndex, siaScope } = await siaPricing(
-    seams,
-    facts,
-    admission.deceasedDate,
-  );
+  const input = {
+    deceasedDate: deathDate,
+    visits: facts.billableEncounters.map(siaVisitOf),
+    rhcPeriods: rhcSpansOf(facts.resolvedLoc),
+    claimWindow: { from: claim.serviceFrom, to: claim.serviceTo },
+  };
+  const unpriced = calculateSia({ ...input, chcHourlyRateCents: 0 });
+  const prior = await priorClaimUnits(seams, claim, deathDate);
+  if (!unpriced.hasCandidateVisits && prior === null) return null;
+
+  // THIS claim's payment depends on the rate, so a payable add-on fails closed (typed 422) when it cannot be priced.
+  if (unpriced.present) {
+    const pricing = await resolveSiaPricing(seams, facts, deathDate);
+    return {
+      result: calculateSia({ ...input, chcHourlyRateCents: pricing.chcHourlyRateCents }),
+      pricing,
+      priorClaimAdvisory: advisoryOf(prior, pricing),
+    };
+  }
+  // A claim that pays nothing itself (only the prior month's claim earns units) is never blocked by an advisory: it is
+  // priced best-effort and `cents` stays null when the death year's inputs are unavailable.
+  const advisoryPricing =
+    (prior?.units ?? 0) > 0 ? await resolveSiaPricingForAdvisory(seams, facts, deathDate) : null;
+  return {
+    result: unpriced,
+    pricing: null,
+    priorClaimAdvisory: advisoryOf(prior, advisoryPricing),
+  };
+}
+
+function advisoryOf(
+  prior: { from: string; to: string; units: number } | null,
+  pricing: { chcHourlyRateCents: Cents } | null,
+): PriorClaimAdvisory | null {
+  if (prior === null) return null;
+  const cents =
+    pricing !== null
+      ? siaAmountCents(prior.units, pricing.chcHourlyRateCents)
+      : prior.units === 0
+        ? 0 // zero units are worth exactly zero: not a guess
+        : null; // units without a rate: not priced
+  return { from: prior.from, to: prior.to, units: prior.units, cents };
+}
+
+/** The advisory's rate: any typed refusal (rate table / wage index missing for the death year) is "not priced". */
+async function resolveSiaPricingForAdvisory(
+  seams: ClaimAssemblySeams,
+  facts: AssemblyFacts,
+  deathDate: string,
+) {
+  try {
+    return await resolveSiaPricing(seams, facts, deathDate);
+  } catch (err) {
+    if (err instanceof ChartWardenError) return null;
+    throw err;
+  }
+}
+
+async function resolveSiaPricing(
+  seams: ClaimAssemblySeams,
+  facts: AssemblyFacts,
+  deathDate: string,
+) {
+  const { siaFiscalYear, siaWageIndex, siaScope } = await siaPricing(seams, facts, deathDate);
   const chcHourlyRateCents = await seams.referenceData.chcHourlyRateCents(
     siaFiscalYear,
     siaWageIndex,
     siaScope,
   );
-  return calculateSia({
-    deceasedDate: admission.deceasedDate,
-    chcHourlyRateCents,
-    signedEncounters: encounters,
-  });
+  return { chcHourlyRateCents, fiscalYear: siaFiscalYear, wageIndexFactor: siaWageIndex };
+}
+
+/**
+ * The SIA as the §11.A validation rules see it: `null` unless something is payable. `doubleCounted` is `false` by
+ * construction (one snapshot per claim, and the claim-duplicate rules own cross-claim duplication); a sibling-claim
+ * read would be the upgrade if a real double-count path ever appears.
+ */
+export function siaSnapshotOf(sia: ClaimSia | null): SiaSnapshot | null {
+  if (sia === null || !sia.result.present || sia.pricing === null) return null;
+  const { evaluation } = sia.result;
+  if (evaluation.window === null) return null; // unreachable when present (there is a date of death)
+  return {
+    present: true,
+    qualifyingVisitCount: sia.result.qualifyingVisits.length,
+    paidUnits: sia.result.paidUnits,
+    chcHourlyRateCents: sia.pricing.chcHourlyRateCents,
+    window: evaluation.window,
+    days: evaluation.days.map((d) => ({ date: d.date, paidUnits: d.paidUnits })),
+    amountCents: sia.result.siaAddOnCents,
+    doubleCounted: false,
+  };
 }
 
 /**

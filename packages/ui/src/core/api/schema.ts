@@ -50665,10 +50665,48 @@ export interface operations {
                                 } | null;
                             } | null;
                             sia: {
+                                basis: "minutes_v1" | "units_v2";
+                                revision: number;
+                                /** Format: date */
                                 windowStart: string;
+                                /** Format: date */
+                                windowEnd: string;
+                                paidUnits: number | null;
+                                eligibleUnits: number | null;
+                                truncatedUnits: number | null;
+                                chcHourlyRateCents: number | null;
+                                wageIndexFiscalYear: number | null;
+                                amountCents: number;
                                 totalQualifyingMinutes: number;
-                                siaAddOnCents: number;
+                                /** Format: date-time */
                                 calculatedAt: string;
+                                policy: {
+                                    unitTieBreak: string;
+                                    videoEligible: boolean;
+                                    visitDating: string;
+                                    wageBasis: string;
+                                } | null;
+                                visits: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    /** Format: date */
+                                    date: string;
+                                    discipline: string;
+                                    minutes: number | null;
+                                    timeSource: "evv" | "clinician" | null;
+                                    units: number | null;
+                                    paidUnits: number;
+                                    counted: boolean;
+                                    reason: string | null;
+                                }[];
+                                priorClaimAdvisory: {
+                                    /** Format: date */
+                                    from: string;
+                                    /** Format: date */
+                                    to: string;
+                                    units: number;
+                                    cents: number | null;
+                                } | null;
                             } | null;
                         };
                         createdAt: string;

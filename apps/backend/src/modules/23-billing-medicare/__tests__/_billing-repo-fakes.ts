@@ -145,6 +145,24 @@ export function buildFakeRepositories(): {
       store.claims.set(id, { ...c, ...npis, ...snapshot, updatedAt: new Date() });
       return true;
     }
+    /** Mirrors the real repo: refresh the expected payment (draft / validating / ready only) without bumping `version`. */
+    async refreshExpectedPayment(id: string, expectedCents: number): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c) return false;
+      if (!["draft", "validating", "ready"].includes(c.state)) {
+        throw Object.assign(new Error("CLAIM_EXPECTED_PAYMENT_IMMUTABLE"), {
+          code: "CLAIM_EXPECTED_PAYMENT_IMMUTABLE",
+          statusCode: 409,
+        });
+      }
+      if (c.totalExpectedPaymentCents === expectedCents) return false;
+      store.claims.set(id, {
+        ...c,
+        totalExpectedPaymentCents: expectedCents,
+        updatedAt: new Date(),
+      });
+      return true;
+    }
     /** Mirrors the real repo: refresh the wage-index value codes (migration 1059) without bumping `version`. */
     async refreshValueCodes(
       id: string,
@@ -199,13 +217,29 @@ export function buildFakeRepositories(): {
   }
 
   class SiaCalculationRepository {
-    async append(v: any): Promise<any> {
-      const row = { id: newId("sia"), ...v, calculatedAt: v.calculatedAt ?? new Date() };
+    /** Mirrors the real repo: the next `units_v2` revision of the claim (latest + 1, or 1). */
+    async appendSiaRevision(input: any): Promise<any> {
+      const latest = Math.max(
+        0,
+        ...store.sia.filter((r) => r.claimId === input.claimId).map((r) => r.revision),
+      );
+      const row = {
+        id: newId("sia"),
+        ...input,
+        basis: "units_v2",
+        revision: latest + 1,
+        calculatedAt: new Date(),
+      };
       store.sia.push(row);
       return row;
     }
-    async findByClaim(claimId: string): Promise<any> {
-      return [...store.sia].reverse().find((row) => row.claimId === claimId) ?? null;
+    /** Mirrors the real repo: the claim's highest revision, or null. */
+    async findLatestSiaByClaim(claimId: string): Promise<any> {
+      const rows = store.sia.filter((row) => row.claimId === claimId);
+      return rows.reduce(
+        (best, row) => (best === null || row.revision > best.revision ? row : best),
+        null,
+      );
     }
   }
 

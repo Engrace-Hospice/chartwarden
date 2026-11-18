@@ -40,6 +40,7 @@ import type * as schema from "@chartwarden/db/schema";
 import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
+import { type SiaRefreshInputs, refreshClaimSia } from "./claim-sia-refresh";
 import {
   type BillingDb,
   type BillingTx,
@@ -54,6 +55,11 @@ export interface MaterializedValidationInputs {
   readonly context: ValidationContext;
   /** Per-rule tenant parameter overlays (`validation_rule_config.parameters`); merged into each rule. */
   readonly overlays?: RuleParameterOverlays;
+  /**
+   * The SIA evaluation this context was built from plus the re-derived expected payment, so the run can keep the
+   * stored SIA snapshot and the claim's expected payment current. Absent on a port that does not materialise it.
+   */
+  readonly siaRefresh?: SiaRefreshInputs;
 }
 
 /**
@@ -246,6 +252,9 @@ export function buildClaimValidationService(
         serviceTo: context.claim.serviceTo,
       }),
     );
+    // …and the SIA add-on: a confirmed visit delivery mode, a documented start/stop or a re-keyed CHC rate since assembly
+    // appends a new snapshot revision and re-derives the expected payment (both were frozen at assembly before).
+    if (built.siaRefresh) await refreshClaimSia(tx, claim, built.siaRefresh);
     const overriddenKeys = await overriddenKeysForClaim(tx, claim.id);
 
     const startedAt = now();
