@@ -324,37 +324,37 @@ export function ActiveSosScreen(): JSX.Element {
             </div>
           ) : (
             <div style={tableWrapStyle}>
-              <table style={tableStyle}>
+              <table>
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "20%" }}>Clinician</th>
-                    <th style={{ ...thStyle, width: "18%" }}>Alert</th>
-                    <th style={{ ...thStyle, width: "18%" }}>State</th>
-                    <th style={{ ...thStyle, width: "16%" }}>Raised</th>
-                    <th style={{ ...thStyle, width: "12%" }}>Open for</th>
-                    <th style={{ ...thStyle, width: "10%" }}>Ack</th>
-                    <th style={{ ...thStyle, width: "6%", textAlign: "right" }}>Action</th>
+                  <tr>
+                    <th style={{ width: "20%" }}>Clinician</th>
+                    <th style={{ width: "18%" }}>Alert</th>
+                    <th style={{ width: "18%" }}>State</th>
+                    <th style={{ width: "16%" }}>Raised</th>
+                    <th style={{ width: "12%" }}>Open for</th>
+                    <th style={{ width: "10%" }}>Ack</th>
+                    <th style={{ width: "6%", textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pagedAlerts.map((alert) => (
-                    <tr key={alert.id} style={rowStyle}>
-                      <td style={tdStyle}>{alert.postedByFirstName}</td>
-                      <td style={tdStyle}>
+                    <tr key={alert.id}>
+                      <td>{alert.postedByFirstName}</td>
+                      <td>
                         <Link to={`/safety/sos/${alert.id}`} style={linkStyle}>
                           {shortId(alert.id)}
                         </Link>
                       </td>
-                      <td style={tdStyle}>
+                      <td>
                         <SosStatePill state={alert.lifecycleState} />
                       </td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>
                         {dateTime(alert.postedAt)}
                       </td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>
                         {durationLabel(alert.minutesOpen ?? minutesSince(alert.postedAt))}
                       </td>
-                      <td style={tdStyle}>
+                      <td>
                         {alert.acknowledgedAt ? (
                           <span style={secondaryTextStyle}>{dateTime(alert.acknowledgedAt)}</span>
                         ) : (
@@ -363,7 +363,7 @@ export function ActiveSosScreen(): JSX.Element {
                           </span>
                         )}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <td style={{ textAlign: "right" }}>
                         <Button
                           size="sm"
                           tone="secondary"
@@ -505,30 +505,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
 };
 const secondaryTextStyle = {
   color: "var(--color-on-surface-variant)",

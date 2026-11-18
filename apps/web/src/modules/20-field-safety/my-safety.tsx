@@ -6,6 +6,7 @@ import {
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  TableScroll,
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
@@ -332,58 +333,60 @@ export function MySafetyScreen(): JSX.Element {
                 Nothing outstanding{day ? ` as of ${dateTime(day.asOf)}` : ""}.
               </span>
             ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "21%" }}>Expected</th>
-                    <th style={{ ...thStyle, width: "17%" }}>Kind</th>
-                    <th style={{ ...thStyle, width: "18%" }}>Visit</th>
-                    <th style={{ ...thStyle, width: "16%" }}>State</th>
-                    <th style={{ ...thStyle, width: "28%", textAlign: "right" }}>Answer</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {obligations.map((obligation) => (
-                    <tr key={obligation.scheduleId} style={rowStyle}>
-                      <td style={tdStyle}>{dateTime(obligation.expectedAt)}</td>
-                      <td style={tdStyle}>{humanize(obligation.kind)}</td>
-                      <td style={tdMonoStyle}>
-                        {obligation.visitId ? shortId(obligation.visitId) : "-"}
-                      </td>
-                      <td style={tdStyle}>
-                        <StatusPill
-                          label={humanize(obligation.state)}
-                          tone={
-                            obligation.state === "escalated"
-                              ? "critical"
-                              : obligation.state === "overdue"
-                                ? "error"
-                                : "progress"
-                          }
-                        />
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
-                        <Button
-                          tone="primary"
-                          size="lg"
-                          type="button"
-                          onClick={() =>
-                            void postCheckIn({
-                              kind: obligation.kind,
-                              status: "ok",
-                              scheduleId: obligation.scheduleId,
-                              ...(obligation.visitId ? { visitId: obligation.visitId } : {}),
-                            })
-                          }
-                          disabled={posting}
-                        >
-                          I'm OK
-                        </Button>
-                      </td>
+              <TableScroll>
+                <table className="wx-list-table wx-list-table-static">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "21%" }}>Expected</th>
+                      <th style={{ width: "17%" }}>Kind</th>
+                      <th style={{ width: "18%" }}>Visit</th>
+                      <th style={{ width: "16%" }}>State</th>
+                      <th style={{ width: "28%", textAlign: "right" }}>Answer</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {obligations.map((obligation) => (
+                      <tr key={obligation.scheduleId}>
+                        <td>{dateTime(obligation.expectedAt)}</td>
+                        <td>{humanize(obligation.kind)}</td>
+                        <td className="wx-data-md">
+                          {obligation.visitId ? shortId(obligation.visitId) : "-"}
+                        </td>
+                        <td>
+                          <StatusPill
+                            label={humanize(obligation.state)}
+                            tone={
+                              obligation.state === "escalated"
+                                ? "critical"
+                                : obligation.state === "overdue"
+                                  ? "error"
+                                  : "progress"
+                            }
+                          />
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <Button
+                            tone="primary"
+                            size="lg"
+                            type="button"
+                            onClick={() =>
+                              void postCheckIn({
+                                kind: obligation.kind,
+                                status: "ok",
+                                scheduleId: obligation.scheduleId,
+                                ...(obligation.visitId ? { visitId: obligation.visitId } : {}),
+                              })
+                            }
+                            disabled={posting}
+                          >
+                            I'm OK
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
             )}
           </section>
 
@@ -569,34 +572,6 @@ const centerMutedStyle = {
   textAlign: "center" as const,
   color: "var(--color-on-surface-variant)",
   fontSize: "0.85rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
-};
-const tdMonoStyle = {
-  ...tdStyle,
-  fontFamily: "var(--font-mono)",
 };
 const formGridStyle = {
   display: "grid",

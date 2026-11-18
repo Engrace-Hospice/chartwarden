@@ -80,15 +80,7 @@ import {
   columnStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdMono,
-  tdNum,
-  th,
-  thNum,
 } from "./safety-ui";
 import { TerminusPanel } from "./terminus-panel";
 
@@ -333,11 +325,11 @@ export function SosDetailScreen(): JSX.Element {
 
       <Panel stack headingLevel={3} title="Lifecycle ledger">
         {ledger.length === 0 ? (
-          <span style={mutedStyle}>No transitions recorded yet.</span>
+          <span className="wx-text-muted">No transitions recorded yet.</span>
         ) : (
           <Timeline entries={ledger} />
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Every row is one <code>safety_sos_alert_state_history</code> entry, in order, with the
           membership that caused it or "system" for a worker. This is the ledger a deposition reads
           end to end; it is append-only in the database, so nothing here can be tidied up after the
@@ -354,22 +346,22 @@ export function SosDetailScreen(): JSX.Element {
               : "This alert reached a terminal state without an acknowledgment — that is worth a look."}
           </Notice>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Responder</th>
-                <th style={th}>At</th>
-                <th style={th}>Outcome</th>
-                <th style={th}>What was done</th>
+                <th>Responder</th>
+                <th>At</th>
+                <th>Outcome</th>
+                <th>What was done</th>
               </tr>
             </thead>
             <tbody>
               {alert.acknowledgments.map((a) => (
-                <tr key={a.id} style={rowLine}>
-                  <td style={tdMono}>{shortId(a.acknowledgedByMembershipId)}</td>
-                  <td style={td}>{dateTime(a.acknowledgedAt)}</td>
-                  <td style={td}>{a.outcome ? humanize(a.outcome) : "—"}</td>
-                  <td style={td}>{a.actionTaken}</td>
+                <tr key={a.id}>
+                  <td className="wx-data-md">{shortId(a.acknowledgedByMembershipId)}</td>
+                  <td>{dateTime(a.acknowledgedAt)}</td>
+                  <td>{a.outcome ? humanize(a.outcome) : "—"}</td>
+                  <td>{a.actionTaken}</td>
                 </tr>
               ))}
             </tbody>
@@ -389,7 +381,7 @@ export function SosDetailScreen(): JSX.Element {
           </Link>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <span style={mutedStyle}>No incident is linked to this alert.</span>
+            <span className="wx-text-muted">No incident is linked to this alert.</span>
             <Button
               tone="secondary"
               size="lg"
@@ -439,7 +431,7 @@ export function SosDetailScreen(): JSX.Element {
               </Notice>
             ) : null}
             {alert.coordinatesCaptured ? null : (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 This alert carries no press-time coordinate, so a stream read will most likely
                 return nothing even if you are entitled to it.
               </span>
@@ -452,41 +444,47 @@ export function SosDetailScreen(): JSX.Element {
               {stream.auditWarningBanner}
             </Notice>
             {stream.samples.length === 0 ? (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 No samples were recorded for this alert. Continuous streaming requires BOTH the
                 tenant's opt-in and this clinician's own consent (D6); absent either, the press-time
                 coordinate is all that exists and it is not part of this stream.
               </span>
             ) : (
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>Sampled</th>
-                    <th style={thNum}>Latitude</th>
-                    <th style={thNum}>Longitude</th>
-                    <th style={thNum}>Accuracy (m)</th>
+                    <th>Sampled</th>
+                    <th style={{ textAlign: "right" }}>Latitude</th>
+                    <th style={{ textAlign: "right" }}>Longitude</th>
+                    <th style={{ textAlign: "right" }}>Accuracy (m)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stream.samples.map((s) => (
-                    <tr key={s.id} style={rowLine}>
-                      <td style={td}>{dateTime(s.sampledAt)}</td>
-                      <td style={tdNum}>{s.latitude.toFixed(5)}</td>
-                      <td style={tdNum}>{s.longitude.toFixed(5)}</td>
-                      <td style={tdNum}>{s.accuracyM}</td>
+                    <tr key={s.id}>
+                      <td>{dateTime(s.sampledAt)}</td>
+                      <td className="tabular-nums" style={{ textAlign: "right" }}>
+                        {s.latitude.toFixed(5)}
+                      </td>
+                      <td className="tabular-nums" style={{ textAlign: "right" }}>
+                        {s.longitude.toFixed(5)}
+                      </td>
+                      <td className="tabular-nums" style={{ textAlign: "right" }}>
+                        {s.accuracyM}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
             {stream.has_more ? (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 More samples exist beyond this page. Paging fetches them through the same audited
                 route — each page is another disclosure, which is why this screen does not page
                 automatically.
               </span>
             ) : null}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Coordinates are rendered as numbers rather than plotted. A map tile request would send
               this clinician's position to a third-party tile server, which is a disclosure nobody
               consented to and one this module has no agreement covering.
@@ -572,7 +570,7 @@ export function SosDetailScreen(): JSX.Element {
             checked={openIncident}
             onChange={setOpenIncident}
           />
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             The checkbox chooses between two <em>different</em> terminal states, not between two
             ways of saying the same thing: unticked closes the alert as <strong>resolved</strong>
             {"; "}
@@ -624,7 +622,7 @@ export function SosDetailScreen(): JSX.Element {
               hint="Required by §6 once an alert is no longer active. The text is stored with the audit entry and is what she will read."
             />
           ) : (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               This alert is still active, so no written reason is required — you are responding to
               it right now, and the predicate that let you open this page is the gate. The audit
               entry is written either way.

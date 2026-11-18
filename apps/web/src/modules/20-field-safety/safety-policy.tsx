@@ -8,6 +8,7 @@ import {
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  TableScroll,
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
@@ -206,16 +207,14 @@ export function SafetyPolicyScreen(): JSX.Element {
     const band = BANDS[key];
     const value = policy[key as keyof SafetyPolicyView] as number;
     return (
-      <tr key={key} style={rowStyle}>
-        <td style={tdStyle}>{label}</td>
-        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-          {value}
-        </td>
-        <td style={tdStyle}>{unit}</td>
-        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+      <tr key={key}>
+        <td>{label}</td>
+        <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{value}</td>
+        <td>{unit}</td>
+        <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
           {band ? `${band[0]}-${band[1]}` : "-"}
         </td>
-        <td style={tdStyle}>
+        <td>
           {unit === "seconds"
             ? secondsLabel(value)
             : unit === "hours"
@@ -508,24 +507,23 @@ function PolicyTable({
           <strong>{title}</strong>
         </div>
       </div>
-      <table style={tableStyle}>
-        <thead>
-          <tr style={headerRowStyle}>
-            {columns.map((column, index) => (
-              <th
-                key={column}
-                style={{
-                  ...thStyle,
-                  textAlign: index === 1 || index === 3 ? "right" : "left",
-                }}
-              >
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
+      <TableScroll>
+        <table className="wx-list-table wx-list-table-static">
+          <thead>
+            <tr>
+              {columns.map((column, index) => (
+                <th
+                  key={column}
+                  style={{ textAlign: index === 1 || index === 3 ? "right" : "left" }}
+                >
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>{children}</tbody>
+        </table>
+      </TableScroll>
       {note ? <span style={secondaryTextStyle}>{note}</span> : null}
     </section>
   );
@@ -635,29 +633,6 @@ const detailLabelStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.7rem",
   fontWeight: 650,
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
 };
 const secondaryTextStyle = {
   color: "var(--color-on-surface-variant)",

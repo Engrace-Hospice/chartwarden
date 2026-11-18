@@ -196,16 +196,16 @@ export function MyCheckInsScreen(): JSX.Element {
             </div>
           ) : (
             <>
-              <table style={tableStyle}>
+              <table>
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "17%" }}>Posted</th>
-                    <th style={{ ...thStyle, width: "13%" }}>Kind</th>
-                    <th style={{ ...thStyle, width: "14%" }}>You said</th>
-                    <th style={{ ...thStyle, width: "22%" }}>Your note</th>
-                    <th style={{ ...thStyle, width: "12%" }}>Visit</th>
-                    <th style={{ ...thStyle, width: "14%" }}>Standing</th>
-                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Action</th>
+                  <tr>
+                    <th style={{ width: "17%" }}>Posted</th>
+                    <th style={{ width: "13%" }}>Kind</th>
+                    <th style={{ width: "14%" }}>You said</th>
+                    <th style={{ width: "22%" }}>Your note</th>
+                    <th style={{ width: "12%" }}>Visit</th>
+                    <th style={{ width: "14%" }}>Standing</th>
+                    <th style={{ width: "8%", textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -317,15 +317,15 @@ function CheckInRow({
   onAmend: (row: SafetyCheckInView) => Promise<void>;
 }): JSX.Element {
   return (
-    <tr style={rowStyle}>
-      <td style={tdStyle}>{dateTime(row.postedAt)}</td>
-      <td style={tdStyle}>{humanize(row.kind)}</td>
-      <td style={tdStyle}>
+    <tr>
+      <td>{dateTime(row.postedAt)}</td>
+      <td>{humanize(row.kind)}</td>
+      <td>
         <CheckInStatusPill status={row.status} />
       </td>
-      <td style={tdStyle}>{row.concernNote ?? <span style={secondaryTextStyle}>-</span>}</td>
-      <td style={tdMonoStyle}>{row.visitId ? shortId(row.visitId) : "-"}</td>
-      <td style={tdStyle}>
+      <td>{row.concernNote ?? <span style={secondaryTextStyle}>-</span>}</td>
+      <td className="wx-data-md">{row.visitId ? shortId(row.visitId) : "-"}</td>
+      <td>
         <div style={primaryCellStyle}>
           {row.supersededAt ? (
             <>
@@ -346,7 +346,7 @@ function CheckInRow({
           {row.isPartOfSosBracket ? <StatusPill label="Around SOS" tone="critical" /> : null}
         </div>
       </td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td style={{ textAlign: "right" }}>
         {row.supersededAt ? (
           <span style={secondaryTextStyle}>Superseded</span>
         ) : (
@@ -394,34 +394,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
-};
-const tdMonoStyle = {
-  ...tdStyle,
-  fontFamily: "var(--font-mono)",
 };
 const primaryCellStyle = {
   display: "flex",

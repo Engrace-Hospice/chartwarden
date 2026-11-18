@@ -81,7 +81,6 @@ import {
   columnStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
 } from "./safety-ui";
 
@@ -266,7 +265,7 @@ export function IncidentDetailScreen(): JSX.Element {
     label: `${h.fromState ? `${humanize(h.fromState)} → ` : ""}${humanize(h.toState)}`,
     at: dateTime(h.transitionedAt),
     by: h.transitionedByMembershipId ? shortId(h.transitionedByMembershipId) : "system",
-    detail: h.reason ? <span style={mutedStyle}>{h.reason}</span> : undefined,
+    detail: h.reason ? <span className="wx-text-muted">{h.reason}</span> : undefined,
   }));
 
   return (
@@ -453,7 +452,9 @@ export function IncidentDetailScreen(): JSX.Element {
 
       <Panel stack headingLevel={3} title="Lifecycle ledger">
         {ledger.length === 0 ? (
-          <span style={mutedStyle}>No transitions yet — this incident is still a draft.</span>
+          <span className="wx-text-muted">
+            No transitions yet — this incident is still a draft.
+          </span>
         ) : (
           <Timeline entries={ledger} />
         )}
@@ -552,7 +553,7 @@ export function IncidentDetailScreen(): JSX.Element {
             rows={5}
             hint="Optional. Appended to the record; it does not replace what you already wrote."
           />
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             This submission is filed as{" "}
             <strong>{incident.oshaReportable ? "OSHA-reportable" : "not OSHA-reportable"}</strong> —
             the flag this incident already carries. You cannot raise it here: D9 makes that a
@@ -593,7 +594,7 @@ export function IncidentDetailScreen(): JSX.Element {
             options={INCIDENT_TRANSITION_STATES.map((v) => ({ value: v, label: humanize(v) }))}
             onChange={setToState}
           />
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             <code>draft</code> and <code>submitted</code> are absent from this list on purpose: each
             is reached by its own route, and a picker that offered <code>submitted</code> would let
             you un-submit — which is exactly the immutability point §2.2.3 puts there.

@@ -75,7 +75,7 @@ export function TerminusPanel({ sosAlertId }: { sosAlertId: string }): JSX.Eleme
                 </a>
               </>
             ) : null}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               {" "}
               · last verified {dateTime(psap.psap.verifiedAt)}
               {psap.psap.stale ? " (OVERDUE for re-verification: confirm by voice)" : ""}

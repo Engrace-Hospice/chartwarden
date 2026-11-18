@@ -289,16 +289,16 @@ export function HighRiskAreasScreen(): JSX.Element {
             </div>
           ) : (
             <>
-              <table style={tableStyle}>
+              <table>
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "15%" }}>Category</th>
-                    <th style={{ ...thStyle, width: "28%" }}>Clinician advisory</th>
-                    <th style={{ ...thStyle, width: "17%" }}>Visit policy</th>
-                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Rings</th>
-                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Points</th>
-                    <th style={{ ...thStyle, width: "16%" }}>In force</th>
-                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Action</th>
+                  <tr>
+                    <th style={{ width: "15%" }}>Category</th>
+                    <th style={{ width: "28%" }}>Clinician advisory</th>
+                    <th style={{ width: "17%" }}>Visit policy</th>
+                    <th style={{ width: "8%", textAlign: "right" }}>Rings</th>
+                    <th style={{ width: "8%", textAlign: "right" }}>Points</th>
+                    <th style={{ width: "16%" }}>In force</th>
+                    <th style={{ width: "8%", textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -424,8 +424,8 @@ function HighRiskAreaRow({
 }): JSX.Element {
   const retired = row.effectiveTo !== null && Date.parse(row.effectiveTo) <= Date.now();
   return (
-    <tr style={rowStyle}>
-      <td style={tdStyle}>
+    <tr>
+      <td>
         <div style={primaryCellStyle}>
           <StatusPill
             label={humanize(row.riskCategory)}
@@ -436,11 +436,15 @@ function HighRiskAreaRow({
           </code>
         </div>
       </td>
-      <td style={tdStyle}>{row.advisoryMessage}</td>
-      <td style={tdStyle}>{humanize(row.policyForVisitsToArea)}</td>
-      <td style={tdNumStyle}>{row.polygon.length}</td>
-      <td style={tdNumStyle}>{row.polygon.reduce((total, ring) => total + ring.length, 0)}</td>
-      <td style={tdStyle}>
+      <td>{row.advisoryMessage}</td>
+      <td>{humanize(row.policyForVisitsToArea)}</td>
+      <td className="tabular-nums" style={{ textAlign: "right" }}>
+        {row.polygon.length}
+      </td>
+      <td className="tabular-nums" style={{ textAlign: "right" }}>
+        {row.polygon.reduce((total, ring) => total + ring.length, 0)}
+      </td>
+      <td>
         <div style={primaryCellStyle}>
           <span>{dateTime(row.effectiveFrom)}</span>
           <span style={secondaryTextStyle}>
@@ -449,7 +453,7 @@ function HighRiskAreaRow({
           {retired ? <StatusPill label="Retired" tone="neutral" /> : null}
         </div>
       </td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td style={{ textAlign: "right" }}>
         <div style={actionCellStyle}>
           <Button size="sm" tone="secondary" onClick={() => onEdit(row)}>
             Edit
@@ -525,35 +529,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
-};
-const tdNumStyle = {
-  ...tdStyle,
-  textAlign: "right" as const,
-  fontVariantNumeric: "tabular-nums",
 };
 const primaryCellStyle = {
   display: "flex",

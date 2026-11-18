@@ -186,16 +186,16 @@ export function MyConsentScreen(): JSX.Element {
       }
       table={
         <div style={contentStyle}>
-          <table style={tableStyle}>
+          <table>
             <thead>
-              <tr style={headerRowStyle}>
-                <th style={{ ...thStyle, width: "24%" }}>Purpose</th>
-                <th style={{ ...thStyle, width: "13%" }}>Status</th>
-                <th style={{ ...thStyle, width: "15%" }}>Given</th>
-                <th style={{ ...thStyle, width: "15%" }}>Withdrawn</th>
-                <th style={{ ...thStyle, width: "15%" }}>Expires</th>
-                <th style={{ ...thStyle, width: "10%" }}>Contact</th>
-                <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Action</th>
+              <tr>
+                <th style={{ width: "24%" }}>Purpose</th>
+                <th style={{ width: "13%" }}>Status</th>
+                <th style={{ width: "15%" }}>Given</th>
+                <th style={{ width: "15%" }}>Withdrawn</th>
+                <th style={{ width: "15%" }}>Expires</th>
+                <th style={{ width: "10%" }}>Contact</th>
+                <th style={{ width: "8%", textAlign: "right" }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -343,9 +343,9 @@ function ConsentRow({
 }): JSX.Element {
   const granted = consent?.status === "granted";
   return (
-    <tr style={rowStyle}>
-      <td style={tdStyle}>{consentPurposeLabel(purpose)}</td>
-      <td style={tdStyle}>
+    <tr>
+      <td>{consentPurposeLabel(purpose)}</td>
+      <td>
         {consent ? (
           <StatusPill
             label={humanize(consent.status)}
@@ -355,13 +355,13 @@ function ConsentRow({
           <StatusPill label="Not asked" tone="neutral" />
         )}
       </td>
-      <td style={tdStyle}>{consent ? dateTime(consent.grantedAt) : "-"}</td>
-      <td style={tdStyle}>{consent ? dateTime(consent.revokedAt) : "-"}</td>
-      <td style={tdStyle}>{consent?.expiresAt ? dateTime(consent.expiresAt) : "No expiry"}</td>
-      <td style={tdStyle}>
+      <td>{consent ? dateTime(consent.grantedAt) : "-"}</td>
+      <td>{consent ? dateTime(consent.revokedAt) : "-"}</td>
+      <td>{consent?.expiresAt ? dateTime(consent.expiresAt) : "No expiry"}</td>
+      <td>
         {purpose === "emergency_contact_call" ? (consent?.contactOnFile ? "On file" : "None") : "-"}
       </td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td style={{ textAlign: "right" }}>
         <Button
           size="sm"
           tone={granted ? "tertiary" : "primary"}
@@ -429,30 +429,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
 };
 const wordingGridStyle = {
   display: "grid",

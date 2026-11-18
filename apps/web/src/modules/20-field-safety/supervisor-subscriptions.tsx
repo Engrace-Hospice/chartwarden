@@ -282,16 +282,16 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
             </div>
           ) : (
             <>
-              <table style={tableStyle}>
+              <table>
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "15%" }}>Supervisor</th>
-                    <th style={{ ...thStyle, width: "13%" }}>Scope</th>
-                    <th style={{ ...thStyle, width: "18%" }}>Covers</th>
-                    <th style={{ ...thStyle, width: "22%" }}>Alert kinds</th>
-                    <th style={{ ...thStyle, width: "14%" }}>Forwarding</th>
-                    <th style={{ ...thStyle, width: "11%" }}>Added</th>
-                    <th style={{ ...thStyle, width: "7%", textAlign: "right" }}>Action</th>
+                  <tr>
+                    <th style={{ width: "15%" }}>Supervisor</th>
+                    <th style={{ width: "13%" }}>Scope</th>
+                    <th style={{ width: "18%" }}>Covers</th>
+                    <th style={{ width: "22%" }}>Alert kinds</th>
+                    <th style={{ width: "14%" }}>Forwarding</th>
+                    <th style={{ width: "11%" }}>Added</th>
+                    <th style={{ width: "7%", textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -481,11 +481,11 @@ function SubscriptionRow({
   onRemove: (id: string) => Promise<void>;
 }): JSX.Element {
   return (
-    <tr style={rowStyle}>
-      <td style={tdMonoStyle}>{shortId(row.supervisorMembershipId)}</td>
-      <td style={tdStyle}>{humanize(row.scopeKind)}</td>
-      <td style={tdMonoStyle}>{scopeTarget(row)}</td>
-      <td style={tdStyle}>
+    <tr>
+      <td className="wx-data-md">{shortId(row.supervisorMembershipId)}</td>
+      <td>{humanize(row.scopeKind)}</td>
+      <td className="wx-data-md">{scopeTarget(row)}</td>
+      <td>
         <div style={chipListStyle}>
           {row.alertKinds.map((kind) => (
             <StatusPill
@@ -496,7 +496,7 @@ function SubscriptionRow({
           ))}
         </div>
       </td>
-      <td style={tdStyle}>
+      <td>
         {row.isVacationForwarding ? (
           <div style={primaryCellStyle}>
             <StatusPill label="Forwarded" tone="warning" />
@@ -510,8 +510,8 @@ function SubscriptionRow({
           <span style={secondaryTextStyle}>-</span>
         )}
       </td>
-      <td style={tdStyle}>{dateTime(row.createdAt)}</td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td>{dateTime(row.createdAt)}</td>
+      <td style={{ textAlign: "right" }}>
         <Button size="sm" tone="tertiary" onClick={() => void onRemove(row.id)}>
           Deactivate
         </Button>
@@ -580,34 +580,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
-};
-const tdMonoStyle = {
-  ...tdStyle,
-  fontFamily: "var(--font-mono)",
 };
 const primaryCellStyle = {
   display: "flex",

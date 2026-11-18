@@ -9,6 +9,7 @@ import {
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  TableScroll,
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
@@ -158,47 +159,51 @@ export function SafetyMetricsScreen(): JSX.Element {
               {board ? <StatusPill label={dateTime(board.fetchedAt)} tone="neutral" /> : null}
             </div>
             {board ? (
-              <table style={tableStyle}>
-                <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={thStyle}>Signal</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>Value</th>
-                    <th style={thStyle}>Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <MetricRow
-                    label="Clinicians on board"
-                    value={board.clinicians.length}
-                    source="Dashboard snapshot"
-                  />
-                  <MetricRow
-                    label="Active SOS"
-                    value={board.activeSosCount}
-                    source="Server count"
-                  />
-                  <MetricRow
-                    label="Overdue check-ins"
-                    value={board.overdueCount}
-                    source="Server count"
-                  />
-                  <MetricRow
-                    label="In flagged area"
-                    value={board.clinicians.filter((row) => row.inHighRiskArea !== null).length}
-                    source="Snapshot rows"
-                  />
-                  <MetricRow
-                    label="GPS spoof suspected"
-                    value={board.clinicians.filter((row) => row.gpsSpoofSuspected).length}
-                    source="Snapshot rows"
-                  />
-                  <MetricRow
-                    label="No position on record"
-                    value={board.clinicians.filter((row) => row.lastKnownLocation === null).length}
-                    source="Snapshot rows"
-                  />
-                </tbody>
-              </table>
+              <TableScroll>
+                <table className="wx-list-table wx-list-table-static">
+                  <thead>
+                    <tr>
+                      <th>Signal</th>
+                      <th style={{ textAlign: "right" }}>Value</th>
+                      <th>Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <MetricRow
+                      label="Clinicians on board"
+                      value={board.clinicians.length}
+                      source="Dashboard snapshot"
+                    />
+                    <MetricRow
+                      label="Active SOS"
+                      value={board.activeSosCount}
+                      source="Server count"
+                    />
+                    <MetricRow
+                      label="Overdue check-ins"
+                      value={board.overdueCount}
+                      source="Server count"
+                    />
+                    <MetricRow
+                      label="In flagged area"
+                      value={board.clinicians.filter((row) => row.inHighRiskArea !== null).length}
+                      source="Snapshot rows"
+                    />
+                    <MetricRow
+                      label="GPS spoof suspected"
+                      value={board.clinicians.filter((row) => row.gpsSpoofSuspected).length}
+                      source="Snapshot rows"
+                    />
+                    <MetricRow
+                      label="No position on record"
+                      value={
+                        board.clinicians.filter((row) => row.lastKnownLocation === null).length
+                      }
+                      source="Snapshot rows"
+                    />
+                  </tbody>
+                </table>
+              </TableScroll>
             ) : (
               <Notice tone="error" assertive>
                 The board did not answer, so there is no current census.
@@ -222,59 +227,65 @@ export function SafetyMetricsScreen(): JSX.Element {
                 ? "These incident figures cover every row returned to this caller for this read, not every agency incident."
                 : "More incidents exist beyond this page. Treat every incident figure below as a floor, not a total."}
             </Notice>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={thStyle}>Signal</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Rows</th>
-                  <th style={thStyle}>Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                <MetricRow
-                  label="Incidents fetched"
-                  value={incidents.length}
-                  source="Incident list read"
-                />
-                <MetricRow
-                  label="Still open"
-                  value={
-                    incidents.filter(
-                      (incident) =>
-                        !["closed_with_action_plan", "closed_no_action"].includes(
-                          incident.lifecycleState,
-                        ),
-                    ).length
-                  }
-                  source="Fetched rows"
-                />
-                <MetricRow
-                  label="OSHA-reportable"
-                  value={incidents.filter((incident) => incident.oshaReportable).length}
-                  source="Fetched rows"
-                />
-                <MetricRow
-                  label="Reportable, unsigned"
-                  value={
-                    incidents.filter(
-                      (incident) =>
-                        incident.oshaReportable && incident.oshaReportableSignedOffAt === null,
-                    ).length
-                  }
-                  source="Fetched rows"
-                />
-                <MetricRow
-                  label="Opened from SOS"
-                  value={incidents.filter((incident) => incident.linkedSosAlertId !== null).length}
-                  source="Fetched rows"
-                />
-                <MetricRow
-                  label="Workers' comp initiated"
-                  value={incidents.filter((incident) => incident.workersCompClaimInitiated).length}
-                  source="Fetched rows"
-                />
-              </tbody>
-            </table>
+            <TableScroll>
+              <table className="wx-list-table wx-list-table-static">
+                <thead>
+                  <tr>
+                    <th>Signal</th>
+                    <th style={{ textAlign: "right" }}>Rows</th>
+                    <th>Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <MetricRow
+                    label="Incidents fetched"
+                    value={incidents.length}
+                    source="Incident list read"
+                  />
+                  <MetricRow
+                    label="Still open"
+                    value={
+                      incidents.filter(
+                        (incident) =>
+                          !["closed_with_action_plan", "closed_no_action"].includes(
+                            incident.lifecycleState,
+                          ),
+                      ).length
+                    }
+                    source="Fetched rows"
+                  />
+                  <MetricRow
+                    label="OSHA-reportable"
+                    value={incidents.filter((incident) => incident.oshaReportable).length}
+                    source="Fetched rows"
+                  />
+                  <MetricRow
+                    label="Reportable, unsigned"
+                    value={
+                      incidents.filter(
+                        (incident) =>
+                          incident.oshaReportable && incident.oshaReportableSignedOffAt === null,
+                      ).length
+                    }
+                    source="Fetched rows"
+                  />
+                  <MetricRow
+                    label="Opened from SOS"
+                    value={
+                      incidents.filter((incident) => incident.linkedSosAlertId !== null).length
+                    }
+                    source="Fetched rows"
+                  />
+                  <MetricRow
+                    label="Workers' comp initiated"
+                    value={
+                      incidents.filter((incident) => incident.workersCompClaimInitiated).length
+                    }
+                    source="Fetched rows"
+                  />
+                </tbody>
+              </table>
+            </TableScroll>
           </section>
 
           <DistributionTable
@@ -312,10 +323,12 @@ function MetricRow({
   source: string;
 }): JSX.Element {
   return (
-    <tr style={rowStyle}>
-      <td style={tdStyle}>{label}</td>
-      <td style={tdNumStyle}>{value}</td>
-      <td style={tdStyle}>{source}</td>
+    <tr>
+      <td>{label}</td>
+      <td className="tabular-nums" style={{ textAlign: "right" }}>
+        {value}
+      </td>
+      <td>{source}</td>
     </tr>
   );
 }
@@ -338,22 +351,26 @@ function DistributionTable({
       {rows.length === 0 ? (
         <span style={secondaryTextStyle}>{empty}</span>
       ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr style={headerRowStyle}>
-              <th style={thStyle}>Name</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Rows</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.key} style={rowStyle}>
-                <td style={tdStyle}>{row.label}</td>
-                <td style={tdNumStyle}>{row.value}</td>
+        <TableScroll>
+          <table className="wx-list-table wx-list-table-static">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th style={{ textAlign: "right" }}>Rows</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.key}>
+                  <td>{row.label}</td>
+                  <td className="tabular-nums" style={{ textAlign: "right" }}>
+                    {row.value}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
     </section>
   );
@@ -410,35 +427,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
-};
-const tdNumStyle = {
-  ...tdStyle,
-  textAlign: "right" as const,
-  fontVariantNumeric: "tabular-nums",
 };
 const secondaryTextStyle = {
   color: "var(--color-on-surface-variant)",

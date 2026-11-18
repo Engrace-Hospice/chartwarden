@@ -30,32 +30,6 @@ import {
 } from "./safety-status";
 
 // ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
-export const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.85rem",
-};
-export const th: CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  textAlign: "left",
-  fontSize: "0.7rem",
-  fontWeight: 600,
-  color: t.onSurfaceVariant,
-};
-export const thNum: CSSProperties = { ...th, textAlign: "right" };
-export const td: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  color: t.onSurface,
-  verticalAlign: "top",
-};
-export const tdMono: CSSProperties = { ...td, fontFamily: t.fontMono };
-export const tdNum: CSSProperties = {
-  ...td,
-  textAlign: "right",
-  fontVariantNumeric: "tabular-nums",
-};
-export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
-
 /** Screen-reader-only text — keeps a control labelled without occupying visual space (§5.4). */
 export const visuallyHidden: CSSProperties = {
   position: "absolute",
@@ -453,7 +427,7 @@ export function Timeline({
           />
           <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem", minWidth: 0 }}>
             <span style={{ fontSize: "0.85rem", color: t.onSurface }}>{e.label}</span>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               {e.at}
               {e.by ? ` · ${e.by}` : ""}
             </span>
@@ -492,7 +466,7 @@ export function CipherText({
         this as "nothing was written".
       </Notice>
     );
-  return <span style={mutedStyle}>{emptyLabel}</span>;
+  return <span className="wx-text-muted">{emptyLabel}</span>;
 }
 
 /**
@@ -588,7 +562,7 @@ export function CancelCountdown({
           <Button tone="secondary" size="lg" type="button" onClick={onCancel} disabled={busy}>
             Cancel this SOS
           </Button>
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             {biometricRequired
               ? "Your agency requires a biometric check to cancel. A cancel that fails it is RECORDED and the alert keeps going — that is deliberate, so a phone taken from you cannot silence it."
               : "Your agency does not require a biometric check to cancel. The attempt is recorded either way."}
