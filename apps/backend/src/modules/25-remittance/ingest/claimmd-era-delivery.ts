@@ -337,7 +337,7 @@ export function createClaimMdEraDeliveryService(input: {
         (sawPossible
           ? "POSSIBLE_CROSS_SOURCE_DUPLICATE"
           : sawExact
-            ? "EXACT_DUPLICATE_FROM_M25"
+            ? "EXACT_CROSS_SOURCE_DUPLICATE"
             : null),
     });
     const finalState = receipt.outcome as

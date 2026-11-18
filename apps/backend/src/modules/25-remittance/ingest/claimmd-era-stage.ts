@@ -235,7 +235,7 @@ export async function stageVerifiedClaimMdEra(input: {
             stageId: existingStage[0].id,
             existingAdviceId: existingStage[0].possibleDuplicateAdviceId,
           } as const;
-        if (existingStage[0].safeReasonCode === "EXACT_DUPLICATE_FROM_M25")
+        if (existingStage[0].safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE")
           return {
             outcome: "exact_duplicate",
             stageId: existingStage[0].id,
@@ -342,7 +342,7 @@ export async function stageVerifiedClaimMdEra(input: {
           state: "held",
           safeReasonCode:
             outcome === "exact_duplicate"
-              ? "EXACT_DUPLICATE_FROM_M25"
+              ? "EXACT_CROSS_SOURCE_DUPLICATE"
               : outcome === "possible_duplicate"
                 ? "POSSIBLE_CROSS_SOURCE_DUPLICATE"
                 : "DELIVERY_PREPARED",
@@ -407,7 +407,7 @@ export async function finalizeClaimMdEraStage(input: {
         (input.disposition === "possible_duplicate"
           ? "POSSIBLE_CROSS_SOURCE_DUPLICATE"
           : input.disposition === "exact_duplicate"
-            ? "EXACT_DUPLICATE_FROM_M25"
+            ? "EXACT_CROSS_SOURCE_DUPLICATE"
             : "DELIVERY_HELD"));
   await withOrgContext(
     input.tenantDb,

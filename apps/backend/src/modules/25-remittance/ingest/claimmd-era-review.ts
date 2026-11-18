@@ -494,7 +494,7 @@ export function projectClaimMdEraReviewItem(
       ? row.createdAt.toISOString()
       : new Date(row.createdAt).toISOString();
   const duplicateClassification =
-    row.safeReasonCode === "EXACT_DUPLICATE_FROM_M25"
+    row.safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE"
       ? "exact"
       : row.state === "possible_duplicate" ||
           row.safeReasonCode === "POSSIBLE_CROSS_SOURCE_DUPLICATE"
@@ -1621,7 +1621,7 @@ export function buildDrizzleClaimMdEraReviewService(
         if (
           stage.state !== "staged" ||
           stage.possibleDuplicateAdviceId ||
-          stage.safeReasonCode === "EXACT_DUPLICATE_FROM_M25"
+          stage.safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE"
         )
           return { candidates: [], complete: true };
         const detail = projectClaimMdEraReviewItem(stage, cipher);
@@ -1668,7 +1668,7 @@ export function buildDrizzleClaimMdEraReviewService(
         if (
           stage.state !== "staged" ||
           stage.possibleDuplicateAdviceId ||
-          stage.safeReasonCode === "EXACT_DUPLICATE_FROM_M25"
+          stage.safeReasonCode === "EXACT_CROSS_SOURCE_DUPLICATE"
         )
           throw new ChartWardenError(
             "INVALID_STATE",

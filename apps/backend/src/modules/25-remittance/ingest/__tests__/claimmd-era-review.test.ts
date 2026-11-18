@@ -257,7 +257,7 @@ describe("M25 Claim.MD ERA review projection", () => {
   });
 
   it("distinguishes an exact duplicate from a possible duplicate without making it eligible", () => {
-    const item = projectClaimMdEraReviewItem(stage("held", "EXACT_DUPLICATE_FROM_M25"), cipher);
+    const item = projectClaimMdEraReviewItem(stage("held", "EXACT_CROSS_SOURCE_DUPLICATE"), cipher);
     expect(item.duplicateClassification).toBe("exact");
     expect(item.possibleDuplicate).toBe(false);
     expect(item.reconciliationEligible).toBe(false);

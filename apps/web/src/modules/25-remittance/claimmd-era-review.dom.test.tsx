@@ -302,7 +302,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     state: "held",
     possibleDuplicate: false,
     duplicateClassification: "exact" as const,
-    holdReason: "EXACT_DUPLICATE_FROM_M25",
+    holdReason: "EXACT_CROSS_SOURCE_DUPLICATE",
     reconciliationEligible: false,
   };
   const isDuplicate = url.searchParams.get("state") === "possible_duplicate";
@@ -322,7 +322,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       ? {
           ...summary,
           state: "held",
-          holdReason: "EXACT_DUPLICATE_FROM_M25",
+          holdReason: "EXACT_CROSS_SOURCE_DUPLICATE",
           duplicateClassification: "exact",
           reconciliationEligible: false,
         }
