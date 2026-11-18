@@ -12,6 +12,17 @@
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
 import type { StatusTone } from "@chartwarden/ui";
+import {
+  dateTime,
+  daysUntil,
+  dueLabel,
+  humanize,
+  shortDate,
+  shortId,
+  toneOf,
+} from "../../shell/wire-format";
+
+export { toneOf, humanize, shortDate, dateTime, shortId, daysUntil, dueLabel };
 
 /** `m21_supply_request_status` (§2.2 / D2) — the fulfillment machine. `cancellation_pending` is `progress`,
  *  not `neutral`: the vendor has been ASKED and has not answered, so the row is still in flight — reading it
@@ -258,62 +269,11 @@ export function parSeverityLabel(severity: string | null | undefined): string {
   }
 }
 
-/** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
-export function toneOf(
-  map: Record<string, StatusTone>,
-  key: string | null | undefined,
-): StatusTone {
-  return key ? (map[key] ?? "neutral") : "neutral";
-}
-
-/** Title-case a snake/upper wire enum for display (`vendor_assigned` → "Vendor assigned"). */
-export function humanize(value: string | null | undefined): string {
-  if (!value) return "—";
-  const s = value.replace(/_/g, " ").toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/** A short ISO-date label (YYYY-MM-DD) from an instant or date string. */
-export function shortDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 10);
-}
-
-/** A date + HH:MM label for an instant. */
-export function dateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  return `${value.slice(0, 10)} ${value.slice(11, 16)}`;
-}
-
-/** A short opaque id label for an identifier surfaced in a queue column. */
-export function shortId(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 8);
-}
-
-/** Whole days between now and an instant — negative when the instant has passed. */
-export function daysUntil(value: string | null | undefined, now = Date.now()): number | null {
-  if (!value) return null;
-  const ms = Date.parse(value);
-  if (Number.isNaN(ms)) return null;
-  return Math.floor((ms - now) / 86_400_000);
-}
-
 /** Whole days SINCE an instant — the age-in-status column (0 when the instant is in the future). */
 export function ageInDays(value: string | null | undefined, now = Date.now()): number {
   const days = daysUntil(value, now);
   if (days === null) return 0;
   return days >= 0 ? 0 : -days;
-}
-
-/** A relative-due label for the return worklist and the delivery window. */
-export function dueLabel(value: string | null | undefined, now = Date.now()): string {
-  const days = daysUntil(value, now);
-  if (days === null) return "—";
-  if (days === 0) return "due today";
-  if (days > 0) return `in ${days} day${days === 1 ? "" : "s"}`;
-  const overdue = -days;
-  return `${overdue} day${overdue === 1 ? "" : "s"} overdue`;
 }
 
 /**

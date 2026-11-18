@@ -13,6 +13,7 @@
 // error≈breached/failed · critical(gold)≈reserved irreversible/safety · neutral≈inert/terminal.
 import type { StatusTone } from "@chartwarden/ui";
 import { toLocalInput } from "@chartwarden/ui";
+import { dateTime, humanize, shortDate, shortId, toneOf } from "../../shell/wire-format";
 import type {
   EscalationTier,
   MinimizationProfile,
@@ -25,6 +26,8 @@ import type {
   TriageDispositionValue,
   TriageInboundChannel,
 } from "./oncall-api";
+
+export { toneOf, humanize, shortDate, dateTime, shortId };
 
 /**
  * `triage_call_state` (§2.2.1 / D6).
@@ -248,21 +251,6 @@ export const DEFAULT_MINIMIZATION_PROFILE = "hybrid_phi_min";
  *  `minLength: 10`); the form mirrors it so the clinician learns before the round trip, never instead. */
 export const AI_OVERRIDE_REASON_MIN_CHARS = 10;
 
-/** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
-export function toneOf(
-  map: Record<string, StatusTone>,
-  key: string | null | undefined,
-): StatusTone {
-  return key ? (map[key] ?? "neutral") : "neutral";
-}
-
-/** Title-case a snake/upper wire enum for display (`disposition_pending` → "Disposition pending"). */
-export function humanize(value: string | null | undefined): string {
-  if (!value) return "—";
-  const s = value.replace(/_/g, " ").toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 /** A tier → the ladder label a supervisor reads ("Tier 3 · Medical director"). */
 export function tierLabel(tier: string | null | undefined): string {
   if (!tier) return "—";
@@ -348,29 +336,10 @@ export function redFlagMatchLabel(match: unknown): string {
   }
 }
 
-/** A short ISO-date label (YYYY-MM-DD) from an instant or date string. */
-export function shortDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 10);
-}
-
-/** A date + HH:MM label for an instant — the grain a triage timeline is read at. */
-export function dateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  return `${value.slice(0, 10)} ${value.slice(11, 16)}`;
-}
-
 /** HH:MM alone — the roster's shift-window columns, where the date is the row's own context. */
 export function clockTime(value: string | null | undefined): string {
   if (!value) return "—";
   return value.slice(11, 16);
-}
-
-/** A short opaque id label for an identifier surfaced in a queue column. The full id is never truncated in
- *  a link target — only in what a human reads. */
-export function shortId(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 8);
 }
 
 /** Whole minutes SINCE an instant (0 when the instant is in the future). The escalation inbox and the
