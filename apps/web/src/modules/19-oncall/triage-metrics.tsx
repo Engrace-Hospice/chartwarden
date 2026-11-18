@@ -32,6 +32,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
@@ -47,7 +48,6 @@ import {
 } from "./oncall-api";
 import { dateTime, dispositionLabel, durationLabel, humanize, shortId } from "./oncall-status";
 import {
-  Card,
   FilterRow,
   Notice,
   SelectField,
@@ -191,7 +191,7 @@ export function TriageMetricsScreen(): JSX.Element {
       }
       table={
         <div style={contentShellStyle}>
-          <Card title="Volume">
+          <Panel stack headingLevel={3} title="Volume">
             <div style={metricGridStyle}>
               <MetricTile label="Abandoned" value={abandoned} danger={abandoned > 0} />
               <MetricTile label="Machine-triggered" value={fromMachine} />
@@ -211,9 +211,9 @@ export function TriageMetricsScreen(): JSX.Element {
               Machine-triggered calls are proactive contact the agency made because a system noticed
               something, not because a family rang.
             </span>
-          </Card>
+          </Panel>
 
-          <Card title="Disposition mix">
+          <Panel stack headingLevel={3} title="Disposition mix">
             {mix.length === 0 ? (
               <span style={mutedStyle}>No call in this window carries a disposition yet.</span>
             ) : (
@@ -246,9 +246,9 @@ export function TriageMetricsScreen(): JSX.Element {
             <span style={mutedStyle}>
               The share is of calls in this page that have a disposition, not of all calls.
             </span>
-          </Card>
+          </Panel>
 
-          <Card title="Coverage right now">
+          <Panel stack headingLevel={3} title="Coverage right now">
             {!current ? (
               <span style={mutedStyle}>
                 The live coverage verdict could not be read. That is an outage, not a finding of "no
@@ -277,9 +277,9 @@ export function TriageMetricsScreen(): JSX.Element {
               </div>
             )}
             <span style={mutedStyle}>Read at {dateTime(current?.asOf)}.</span>
-          </Card>
+          </Panel>
 
-          <Card title="What is deliberately not on this page">
+          <Panel stack headingLevel={3} title="What is deliberately not on this page">
             <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.82rem", color: "inherit" }}>
               <li style={mutedStyle}>
                 <strong>Hospitalization-avoidance rate.</strong> The outcome lives in admission data
@@ -306,7 +306,7 @@ export function TriageMetricsScreen(): JSX.Element {
                 policy JSON to a per-row target.
               </li>
             </ul>
-          </Card>
+          </Panel>
         </div>
       }
       fullPageScroll

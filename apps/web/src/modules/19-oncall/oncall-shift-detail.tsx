@@ -22,6 +22,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -49,7 +50,6 @@ import {
   toneOf,
 } from "./oncall-status";
 import {
-  Card,
   Field,
   Modal,
   Notice,
@@ -166,7 +166,7 @@ export function OnCallShiftDetailScreen(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card title="Shift">
+      <Panel stack headingLevel={3} title="Shift">
         <SummaryGrid>
           <Field label="Provider entity" value={shortId(shift.providerEntityId)} mono />
           <Field label="Discipline" value={disciplineLabel(shift.discipline)} />
@@ -206,13 +206,13 @@ export function OnCallShiftDetailScreen(): JSX.Element {
           />
           <Field label="Version (If-Match)" value={String(shift.version)} mono />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
-      <Card title="Window">
+      <Panel stack headingLevel={3} title="Window">
         <Timeline entries={timeline} />
-      </Card>
+      </Panel>
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           <Button
             tone="primary"
@@ -260,7 +260,7 @@ export function OnCallShiftDetailScreen(): JSX.Element {
           recipient the after-hours safety path resolves. Coming off removes them — messages sent
           during their tenure stay attributed to them.
         </span>
-      </Card>
+      </Panel>
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
 

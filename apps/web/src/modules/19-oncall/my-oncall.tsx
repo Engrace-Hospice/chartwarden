@@ -24,6 +24,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   WorkQueueLayout,
   t,
@@ -52,7 +53,6 @@ import {
 } from "./oncall-status";
 import {
   CallStatePill,
-  Card,
   CountGrid,
   Field,
   Notice,
@@ -176,7 +176,11 @@ export function MyOnCallScreen(): JSX.Element {
       }
       table={
         <div style={contentShellStyle}>
-          <Card title={activeShift ? "Active shift" : nextShift ? "Next shift" : "Shift"}>
+          <Panel
+            stack
+            headingLevel={3}
+            title={activeShift ? "Active shift" : nextShift ? "Next shift" : "Shift"}
+          >
             {activeShift ? (
               <SummaryGrid>
                 <Field
@@ -229,9 +233,9 @@ export function MyOnCallScreen(): JSX.Element {
               publishes no per-membership roster filter, and a triage call has no assignee at all:
               the covering shift is the assignment.
             </span>
-          </Card>
+          </Panel>
 
-          <Card title="Open now">
+          <Panel stack headingLevel={3} title="Open now">
             {board.length === 0 ? (
               <span style={mutedStyle}>Nothing is open. A quiet night.</span>
             ) : (
@@ -266,9 +270,9 @@ export function MyOnCallScreen(): JSX.Element {
                 </table>
               </div>
             )}
-          </Card>
+          </Panel>
 
-          <Card title="Working a call away from a desk">
+          <Panel stack headingLevel={3} title="Working a call away from a desk">
             <span style={mutedStyle}>
               The triage panel is <strong>online-only</strong>. If connectivity drops mid-call,
               finish on paper and re-enter it when service is restored — no partial triage state is
@@ -278,7 +282,7 @@ export function MyOnCallScreen(): JSX.Element {
               notification, Do-Not-Disturb bypass and one-tap dialling belong to the native shell
               rather than to this web view.
             </span>
-          </Card>
+          </Panel>
         </div>
       }
       fullPageScroll

@@ -21,6 +21,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -51,7 +52,6 @@ import {
   tierLabel,
 } from "./oncall-status";
 import {
-  Card,
   CheckboxField,
   Field,
   Modal,
@@ -247,7 +247,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card title="Protocol">
+      <Panel stack headingLevel={3} title="Protocol">
         <SummaryGrid>
           <Field label="Key" value={protocol.key} mono />
           <Field label="SNOMED" value={protocol.snomedCode} mono />
@@ -261,9 +261,9 @@ export function TriageProtocolDetailScreen(): JSX.Element {
           />
           <Field label="Sort order" value={String(protocol.sortOrder)} />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
-      <Card title="Questions">
+      <Panel stack headingLevel={3} title="Questions">
         {questions.length === 0 ? (
           <span style={mutedStyle}>
             This protocol has no questions. A protocol with no questions can be pinned to a call but
@@ -330,7 +330,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
           change what a red-flag predicate is evaluated against — changing the answer type of an
           answered question would leave existing answers in a column the new predicate never reads.
         </span>
-      </Card>
+      </Panel>
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
 

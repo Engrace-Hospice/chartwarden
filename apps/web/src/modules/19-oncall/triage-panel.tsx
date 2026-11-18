@@ -36,6 +36,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -88,7 +89,6 @@ import {
 } from "./oncall-status";
 import {
   CallStatePill,
-  Card,
   Field,
   Modal,
   Notice,
@@ -438,7 +438,7 @@ export function TriageCallPanel(): JSX.Element {
       ) : null}
 
       {/* ── the call header ─────────────────────────────────────────────────────────────────────────── */}
-      <Card title="Call">
+      <Panel stack headingLevel={3} title="Call">
         <SummaryGrid>
           <Field label="State" value={<CallStatePill state={call.state} />} />
           <Field label="Opened" value={dateTime(call.openedAt)} />
@@ -521,11 +521,11 @@ export function TriageCallPanel(): JSX.Element {
             Caller disconnected
           </Button>
         </div>
-      </Card>
+      </Panel>
 
       {/* ── D11 / D12 advisory block (§8.6) ─────────────────────────────────────────────────────────── */}
       {staff ? (
-        <Card title="Advisory (AI)">
+        <Panel stack headingLevel={3} title="Advisory (AI)">
           {staff.suggestedProtocolId || staff.hospitalizationRiskBand ? (
             <AiSuggestionCard
               model="M32 clinical copilot"
@@ -561,13 +561,15 @@ export function TriageCallPanel(): JSX.Element {
               fully functional without it; an absent advisory is not a missing answer.
             </span>
           )}
-        </Card>
+        </Panel>
       ) : null}
 
       {/* ── the protocol walk (D4 / D5) ─────────────────────────────────────────────────────────────── */}
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Protocol"
-        actions={
+        action={
           protocol ? (
             <Link to={`/triage/protocols/${protocol.id}`} style={linkStyle}>
               Open the catalog entry
@@ -753,11 +755,11 @@ export function TriageCallPanel(): JSX.Element {
             )}
           </>
         )}
-      </Card>
+      </Panel>
 
       {/* ── D15 medication context ──────────────────────────────────────────────────────────────────── */}
       {staff ? (
-        <Card title="Medications & refills (read-only)">
+        <Panel stack headingLevel={3} title="Medications & refills (read-only)">
           {!activeMedications || !pendingRefills ? (
             <span style={mutedStyle}>
               No medication context was loaded for this call — it is fetched once the caller is
@@ -824,13 +826,15 @@ export function TriageCallPanel(): JSX.Element {
               )}
             </>
           )}
-        </Card>
+        </Panel>
       ) : null}
 
       {/* ── escalations (D7) ────────────────────────────────────────────────────────────────────────── */}
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Escalations"
-        actions={
+        action={
           <Link to="/triage/escalations" style={linkStyle}>
             Escalation inbox
           </Link>
@@ -880,10 +884,10 @@ export function TriageCallPanel(): JSX.Element {
             that the agency can prove a named human answered.
           </span>
         ) : null}
-      </Card>
+      </Panel>
 
       {/* ── disposition + documentation (D6 / D8) ───────────────────────────────────────────────────── */}
-      <Card title="Disposition">
+      <Panel stack headingLevel={3} title="Disposition">
         {staff?.disposition ? (
           <SummaryGrid>
             <Field label="Selected" value={dispositionLabel(staff.disposition)} />
@@ -944,11 +948,11 @@ export function TriageCallPanel(): JSX.Element {
           one. Record the order in M11, then select the verbal-order disposition here with the id
           M11 returned.
         </span>
-      </Card>
+      </Panel>
 
       {/* ── state narrative ─────────────────────────────────────────────────────────────────────────── */}
       {staff ? (
-        <Card title="State history">
+        <Panel stack headingLevel={3} title="State history">
           {staff.stateHistory.length === 0 ? (
             <span style={mutedStyle}>No transition has been recorded yet.</span>
           ) : (
@@ -964,7 +968,7 @@ export function TriageCallPanel(): JSX.Element {
               }))}
             />
           )}
-        </Card>
+        </Panel>
       ) : null}
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}

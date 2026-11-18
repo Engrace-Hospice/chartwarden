@@ -23,6 +23,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   WorkQueueLayout,
   useApiClient,
@@ -40,7 +41,6 @@ import {
 } from "./oncall-api";
 import { ONCALL_MODELS, humanize } from "./oncall-status";
 import {
-  Card,
   CheckboxField,
   Field,
   Notice,
@@ -195,14 +195,14 @@ export function OnCallPolicyScreen(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
-          <Card title="Provider entity">
+          <Panel stack headingLevel={3} title="Provider entity">
             <ProviderEntityLookupField
               label="Provider entity"
               value={providerEntityId}
               onChange={setProviderEntityId}
               hint="The policy row is per (organization, provider entity). Coverage obligations are per CCN, so the ladder is too."
             />
-          </Card>
+          </Panel>
           {policy ? (
             <Notice tone="warning">
               Saving this policy needs a recent step-up. The platform-floor mandatory escalations
@@ -239,7 +239,7 @@ export function OnCallPolicyScreen(): JSX.Element {
 
           {policy ? (
             <>
-              <Card title="Current policy">
+              <Panel stack headingLevel={3} title="Current policy">
                 <SummaryGrid>
                   <Field label="Provider entity" value={policy.providerEntityId} mono />
                   <Field
@@ -258,9 +258,9 @@ export function OnCallPolicyScreen(): JSX.Element {
                   />
                   <Field label="Version (If-Match)" value={String(policy.version)} mono />
                 </SummaryGrid>
-              </Card>
+              </Panel>
 
-              <Card title="Deployment model">
+              <Panel stack headingLevel={3} title="Deployment model">
                 <SelectField
                   label="Model"
                   value={model}
@@ -271,9 +271,9 @@ export function OnCallPolicyScreen(): JSX.Element {
                   Only the direct model ships live. Selecting hybrid or centralized on a deployment
                   where the feature flag is off is refused rather than accepted-and-ignored.
                 </span>
-              </Card>
+              </Panel>
 
-              <Card title="Escalation ladder">
+              <Panel stack headingLevel={3} title="Escalation ladder">
                 <TextAreaField
                   label="Escalation tiers (JSON object)"
                   value={tiersText}
@@ -305,9 +305,9 @@ export function OnCallPolicyScreen(): JSX.Element {
                 {overrides === undefined ? (
                   <p style={alertStyle}>That is not a JSON object.</p>
                 ) : null}
-              </Card>
+              </Panel>
 
-              <Card title="Degraded-mode contact">
+              <Panel stack headingLevel={3} title="Degraded-mode contact">
                 <TextField
                   label="Agency after-hours number (E.164)"
                   value={emergencyContact}
@@ -322,9 +322,9 @@ export function OnCallPolicyScreen(): JSX.Element {
                     A contact number must be E.164 (a leading + and 2–15 digits).
                   </p>
                 ) : null}
-              </Card>
+              </Panel>
 
-              <Card title="AI capabilities (advisory only)">
+              <Panel stack headingLevel={3} title="AI capabilities (advisory only)">
                 <CheckboxField
                   label="Show the AI protocol suggestion on intake"
                   checked={aiSuggestion}
@@ -339,7 +339,7 @@ export function OnCallPolicyScreen(): JSX.Element {
                   Both are advisory: the clinician always selects the protocol, and the risk band
                   alters no disposition option.
                 </span>
-              </Card>
+              </Panel>
 
               <div>
                 <button

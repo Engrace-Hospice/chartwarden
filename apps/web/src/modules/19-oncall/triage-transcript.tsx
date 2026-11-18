@@ -15,14 +15,13 @@
 // THE READ IS DELIBERATE, NOT AUTOMATIC. Loading the screen does not decrypt: the button below does. A
 // screen that decrypted on mount would write an access row every time somebody mis-clicked a link, and an
 // audit trail of accidents is one nobody can read for intent.
-import { Button, EmptyState, PageHeader, useApiClient } from "@chartwarden/ui";
+import { Button, EmptyState, PageHeader, Panel, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { type TriageTranscriptView, errorMessage, getTranscript } from "./oncall-api";
 import { dateTime, shortId } from "./oncall-status";
 import {
-  Card,
   Field,
   Notice,
   SummaryGrid,
@@ -87,7 +86,7 @@ export function TriageTranscriptScreen(): JSX.Element {
       </Notice>
 
       {!transcript ? (
-        <Card title="Decrypt">
+        <Panel stack headingLevel={3} title="Decrypt">
           <span style={mutedStyle}>
             The caller's own words and the call transcript are stored encrypted under the per-tenant
             key envelope. Nothing is decrypted until you ask.
@@ -104,17 +103,17 @@ export function TriageTranscriptScreen(): JSX.Element {
             </Button>
           </div>
           {error ? <p style={alertStyle}>{error}</p> : null}
-        </Card>
+        </Panel>
       ) : (
         <>
-          <Card title="Decrypted">
+          <Panel stack headingLevel={3} title="Decrypted">
             <SummaryGrid>
               <Field label="Call" value={shortId(transcript.triageCallId)} mono />
               <Field label="Decrypted at" value={dateTime(transcript.decryptedAt)} />
             </SummaryGrid>
-          </Card>
+          </Panel>
 
-          <Card title="Caller's own words">
+          <Panel stack headingLevel={3} title="Caller's own words">
             {transcript.callerQuote ? (
               <p style={verbatimStyle}>{transcript.callerQuote}</p>
             ) : (
@@ -123,9 +122,9 @@ export function TriageTranscriptScreen(): JSX.Element {
                 redaction — this route returns the plaintext or nothing.
               </span>
             )}
-          </Card>
+          </Panel>
 
-          <Card title="Transcript">
+          <Panel stack headingLevel={3} title="Transcript">
             {transcript.transcript ? (
               <p style={verbatimStyle}>{transcript.transcript}</p>
             ) : (
@@ -135,7 +134,7 @@ export function TriageTranscriptScreen(): JSX.Element {
                 only where one was typed.
               </span>
             )}
-          </Card>
+          </Panel>
         </>
       )}
     </div>
