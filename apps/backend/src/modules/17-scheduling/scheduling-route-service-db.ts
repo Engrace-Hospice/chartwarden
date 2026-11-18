@@ -1001,9 +1001,10 @@ export function createDbSchedulingBackend(
     return discipline;
   }
 
-  // `md_np` is deliberately absent: the only physician/NP purpose is `f2f`, a regulatory encounter that
-  // dual-writes an F2F record to M6, so it must never stand in for an arbitrary physician intervention. (It used
-  // to map to `recert`, which no md/np clinician could be stamped for, and which is now an RN kickoff visit.)
+  // `md_np` is deliberately absent: the only purpose a physician or NP can be scheduled for is `f2f`, a
+  // regulatory encounter that dual-writes an F2F record to M6, so it must never stand in for an arbitrary
+  // physician intervention. (It used to map to `recert`, which no md/np clinician could be stamped for, and
+  // which is now an RN kickoff visit.)
   const proposalDisciplines: readonly InterventionDiscipline[] = [
     "rn",
     "lpn",
