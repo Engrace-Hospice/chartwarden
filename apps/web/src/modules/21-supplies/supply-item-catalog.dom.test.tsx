@@ -6,11 +6,12 @@
 // dismissible, and a reload (a search keystroke) leaves an open drawer and its typed text alone.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupplyItemView } from "./supplies-api";
 import { SupplyItemCatalog } from "./supply-item-catalog";
+import { NO_ANSWER_MESSAGE } from "./use-write";
 
 afterEach(cleanup);
 
@@ -41,14 +42,39 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(onWrite: () => Promise<unknown> = async () => ok({})): {
+const pageOf = (rows: SupplyItemView[]) => ({ data: rows, next_cursor: null, has_more: false });
+
+/** A GET whose first call answers at once and whose later calls wait for the test to answer them, in any order. */
+function slowReloads(first: unknown): {
+  reply: () => Promise<unknown>;
+  answers: Array<(page: unknown) => void>;
+} {
+  const answers: Array<(page: unknown) => void> = [];
+  let calls = 0;
+  const reply = () =>
+    ++calls === 1
+      ? Promise.resolve(ok(first))
+      : new Promise((resolve) => {
+          answers.push((page) => resolve(ok(page)));
+        });
+  return { reply, answers };
+}
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+function mount(
+  onWrite: () => Promise<unknown> = async () => ok({}),
+  onGet: () => Promise<unknown> = async () => ok(pageOf([overlayItem])),
+): {
   post: ReturnType<typeof vi.fn>;
   put: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
 } {
   const post = vi.fn(onWrite);
   const put = vi.fn(onWrite);
-  const get = vi.fn(async () => ok({ data: [overlayItem], next_cursor: null, has_more: false }));
+  const get = vi.fn(onGet);
   const client = { GET: get, POST: post, PUT: put } as unknown as ApiClient;
   render(
     <MemoryRouter>
@@ -163,7 +189,7 @@ describe("supply catalog — tenant items", () => {
     const drawer = await fillNewItem();
     fireEvent.click(within(drawer).getByRole("button", { name: "Save item" }));
     const alert = await within(drawer).findByRole("alert");
-    expect(alert.textContent).toBe("The tenant item could not be saved.");
+    expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
     const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
     expect(cancel.disabled).toBe(false);
     expect(
@@ -191,5 +217,58 @@ describe("supply catalog — tenant items", () => {
     expect(name.value).toBe("Bed pads");
     expect(search.isConnected).toBe(true);
     expect(search.value).toBe("pad");
+  });
+
+  it("keeps the newest search's rows when an older response lands last", async () => {
+    const { reply, answers } = slowReloads(pageOf([overlayItem]));
+    const { get } = mount(undefined, reply);
+    await screen.findByText("Comfort cart linens set");
+    const search = screen.getByLabelText("Search name or HCPCS");
+    fireEvent.change(search, { target: { value: "b" } });
+    fireEvent.change(search, { target: { value: "bed" } });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
+    answers[1]?.(pageOf([{ ...overlayItem, name: "Bed pads" }]));
+    await settle();
+    expect(screen.getByText("Bed pads")).toBeTruthy();
+    answers[0]?.(pageOf([{ ...overlayItem, name: "Bath towels" }]));
+    await settle();
+    expect(screen.queryByText("Bath towels")).toBeNull();
+    expect(screen.getByText("Bed pads")).toBeTruthy();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("stays busy, with the old rows, when an older response lands before the newest", async () => {
+    const { reply, answers } = slowReloads(pageOf([overlayItem]));
+    const { get } = mount(undefined, reply);
+    await screen.findByText("Comfort cart linens set");
+    const search = screen.getByLabelText("Search name or HCPCS");
+    fireEvent.change(search, { target: { value: "b" } });
+    fireEvent.change(search, { target: { value: "bed" } });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
+    answers[0]?.(pageOf([{ ...overlayItem, name: "Bath towels" }]));
+    await settle();
+    // The older reply neither shows its rows nor ends the loading state of the newer read.
+    expect(screen.queryByText("Bath towels")).toBeNull();
+    expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
+    answers[1]?.(pageOf([{ ...overlayItem, name: "Bed pads" }]));
+    await settle();
+    expect(screen.getByText("Bed pads")).toBeTruthy();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("says so inline when a reload is rejected, keeping the open drawer", async () => {
+    let calls = 0;
+    mount(undefined, () =>
+      ++calls === 1
+        ? Promise.resolve(ok(pageOf([overlayItem])))
+        : Promise.reject(new TypeError("Failed to fetch")),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "New tenant item" }));
+    const drawer = await drawerNamed("New tenant item");
+    fireEvent.change(screen.getByLabelText("Search name or HCPCS"), { target: { value: "pad" } });
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("The supply catalog could not be loaded.");
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+    expect(screen.getByRole("complementary", { name: "New tenant item" })).toBe(drawer);
   });
 });

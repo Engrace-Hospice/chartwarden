@@ -52,9 +52,11 @@ import {
   ghostButtonStyle,
   pageTitleStyle,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
 import { useWrite } from "./use-write";
 
 const PAGE = 200;
+const LOAD_FAILURE = "The supply catalog could not be loaded.";
 
 /** A tri-state clinical flag: `true` / `false` / not yet classified. The third is not the second. */
 function triState(value: boolean | null): JSX.Element {
@@ -90,30 +92,37 @@ export function SupplyItemCatalog(): JSX.Element {
   // Every write on this screen is the drawer's, so its refusal shows in the drawer.
   const [actionError, setActionError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
+  const startRead = useLatestRead();
   const [editing, setEditing] = useState<SupplyItemView | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<TenantItemDraft>(EMPTY_TENANT_ITEM);
 
   const load = useCallback(async () => {
+    const isLatest = startRead();
     setLoading(true);
     setError(null);
-    const { page, error: err } = await listSupplyItems(client, {
-      limit: PAGE,
-      ...(query.trim() ? { q: query.trim() } : {}),
-      // `skuClass` is always "" or one of the catalog's SKU classes — the SelectField below offers no
-      // other value.
-      ...(skuClass ? { skuClass: skuClass as SupplyItemSkuClass } : {}),
-      ...(includeRetired ? { includeRetired: true } : {}),
-    });
-    if (err) {
-      setError(errorMessage(err, "The supply catalog could not be loaded."));
-      setLoading(false);
-      return;
+    try {
+      const { page, error: err } = await listSupplyItems(client, {
+        limit: PAGE,
+        ...(query.trim() ? { q: query.trim() } : {}),
+        // `skuClass` is always "" or one of the catalog's SKU classes — the SelectField below offers no
+        // other value.
+        ...(skuClass ? { skuClass: skuClass as SupplyItemSkuClass } : {}),
+        ...(includeRetired ? { includeRetired: true } : {}),
+      });
+      if (!isLatest()) return;
+      if (err) {
+        setError(errorMessage(err, LOAD_FAILURE));
+        return;
+      }
+      setItems(page?.data ?? []);
+      setLoadedOnce(true);
+    } catch {
+      if (isLatest()) setError(LOAD_FAILURE);
+    } finally {
+      if (isLatest()) setLoading(false);
     }
-    setItems(page?.data ?? []);
-    setLoadedOnce(true);
-    setLoading(false);
-  }, [client, query, skuClass, includeRetired]);
+  }, [client, query, skuClass, includeRetired, startRead]);
 
   useEffect(() => {
     void load();
@@ -122,7 +131,8 @@ export function SupplyItemCatalog(): JSX.Element {
   // The spinner is for the first load only. A reload (a search keystroke, a save) keeps the page and any open drawer
   // mounted, with the previous rows showing, so the drawer's typed text, focus and opener survive it.
   if (loading && !loadedOnce) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  // A failed FIRST load has nothing to show. A failed reload keeps the page (and any open drawer) and says so inline.
+  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error} />;
 
   const closeDrawer = () => {
     setCreating(false);
@@ -184,6 +194,12 @@ export function SupplyItemCatalog(): JSX.Element {
             </div>
           }
         />
+
+        {error ? (
+          <p className="wx-text-error" role="alert">
+            {error}
+          </p>
+        ) : null}
 
         <Notice tone="info">
           The platform catalog is rewritten wholesale by the annual HCPCS loader and cannot be

@@ -52,9 +52,11 @@ import {
   tdQty,
   thNum,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
 import { useWrite } from "./use-write";
 
 const PAGE = 200;
+const LOAD_FAILURE = "The par shelf could not be loaded.";
 
 const SEVERITY_FILTERS = [
   { value: "", label: "all bands" },
@@ -81,10 +83,13 @@ export function ParStockAdmin(): JSX.Element {
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A refusal of the count drawer shows in the drawer; an inline threshold edit has no drawer, so its own refusal
-  // shows on the page.
+  // shows on the page. The two writes keep separate busy flags: an inline save must not mark the open drawer busy
+  // (inert page, no Cancel), though the drawer's own Save waits for it.
   const [actionError, setActionError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
+  const { busy: inlineBusy, run: runInline } = useWrite();
+  const startRead = useLatestRead();
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<ThresholdDraft>({
     reorderPoint: "",
@@ -96,22 +101,28 @@ export function ParStockAdmin(): JSX.Element {
   const [observationNote, setObservationNote] = useState("");
 
   const load = useCallback(async () => {
+    const isLatest = startRead();
     setLoading(true);
     setError(null);
-    const { page, error: err } = await listParStock(client, {
-      limit: PAGE,
-      ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
-      ...(belowOnly ? { belowThresholdOnly: true } : {}),
-    });
-    if (err) {
-      setError(errorMessage(err, "The par shelf could not be loaded."));
-      setLoading(false);
-      return;
+    try {
+      const { page, error: err } = await listParStock(client, {
+        limit: PAGE,
+        ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
+        ...(belowOnly ? { belowThresholdOnly: true } : {}),
+      });
+      if (!isLatest()) return;
+      if (err) {
+        setError(errorMessage(err, LOAD_FAILURE));
+        return;
+      }
+      setRows(page?.data ?? []);
+      setLoadedOnce(true);
+    } catch {
+      if (isLatest()) setError(LOAD_FAILURE);
+    } finally {
+      if (isLatest()) setLoading(false);
     }
-    setRows(page?.data ?? []);
-    setLoadedOnce(true);
-    setLoading(false);
-  }, [client, locationId, belowOnly]);
+  }, [client, locationId, belowOnly, startRead]);
 
   useEffect(() => {
     void load();
@@ -120,7 +131,8 @@ export function ParStockAdmin(): JSX.Element {
   // The spinner is for the first load only. A reload (a filter keystroke, a save) keeps the page and any open drawer
   // mounted, with the previous rows showing, so the drawer's typed text, focus and opener survive it.
   if (loading && !loadedOnce) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  // A failed FIRST load has nothing to show. A failed reload keeps the page (and any open drawer) and says so inline.
+  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error} />;
 
   // The band filter is applied CLIENT-side because §4.1 publishes no `severity` query param — only the
   // coarser `belowThresholdOnly`. Narrowing a fetched page is honest; inventing a server filter is not.
@@ -144,7 +156,7 @@ export function ParStockAdmin(): JSX.Element {
 
   const saveEdit = async (row: ParStockView) => {
     setEditError(null);
-    const failed = await runWrite(
+    const failed = await runInline(
       () =>
         updateParStock(client, row.parStockId, row.updatedAt, {
           reorderPoint: draft.reorderPoint.trim(),
@@ -164,6 +176,7 @@ export function ParStockAdmin(): JSX.Element {
   const closeObserving = () => {
     setObserving(null);
     setActionError(null);
+    setEditError(null);
   };
 
   const saveObservation = async (row: ParStockView) => {
@@ -203,6 +216,11 @@ export function ParStockAdmin(): JSX.Element {
           and the screen reading it would show a green shelf that is actually empty.
         </Notice>
 
+        {error ? (
+          <p className="wx-text-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         {editError ? (
           <p className="wx-text-error" role="alert">
             {editError}
@@ -308,7 +326,7 @@ export function ParStockAdmin(): JSX.Element {
                               <Button
                                 tone="primary"
                                 type="button"
-                                disabled={busy || loading}
+                                disabled={inlineBusy || loading}
                                 onClick={() => void saveEdit(row)}
                               >
                                 Save
@@ -316,7 +334,10 @@ export function ParStockAdmin(): JSX.Element {
                               <Button
                                 tone="secondary"
                                 type="button"
-                                onClick={() => setEditing(null)}
+                                onClick={() => {
+                                  setEditing(null);
+                                  setEditError(null);
+                                }}
                               >
                                 Cancel
                               </Button>
@@ -334,6 +355,7 @@ export function ParStockAdmin(): JSX.Element {
                                   setObservedQuantity(row.currentQuantity);
                                   setObservationNote("");
                                   setActionError(null);
+                                  setEditError(null);
                                 }}
                               >
                                 {/* The ellipsis marks the opener: the open drawer's save button carries the plain name. */}
@@ -367,7 +389,7 @@ export function ParStockAdmin(): JSX.Element {
             <Button
               tone="primary"
               type="button"
-              disabled={busy || observedQuantity.trim() === ""}
+              disabled={busy || inlineBusy || observedQuantity.trim() === ""}
               onClick={() => void saveObservation(observing)}
             >
               Record count

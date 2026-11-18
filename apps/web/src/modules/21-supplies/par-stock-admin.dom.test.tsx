@@ -6,11 +6,12 @@
 // stays dismissible, and a reload (a filter keystroke) leaves an open drawer and its typed text alone.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParStockAdmin } from "./par-stock-admin";
 import type { ParStockView } from "./supplies-api";
+import { NO_ANSWER_MESSAGE } from "./use-write";
 
 afterEach(cleanup);
 
@@ -39,12 +40,37 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(onWrite: () => Promise<unknown> = async () => ok({})): {
+const pageOf = (rows: ParStockView[]) => ({ data: rows, next_cursor: null, has_more: false });
+
+/** A GET whose first call answers at once and whose later calls wait for the test to answer them, in any order. */
+function slowReloads(first: unknown): {
+  reply: () => Promise<unknown>;
+  answers: Array<(page: unknown) => void>;
+} {
+  const answers: Array<(page: unknown) => void> = [];
+  let calls = 0;
+  const reply = () =>
+    ++calls === 1
+      ? Promise.resolve(ok(first))
+      : new Promise((resolve) => {
+          answers.push((page) => resolve(ok(page)));
+        });
+  return { reply, answers };
+}
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+function mount(
+  onWrite: () => Promise<unknown> = async () => ok({}),
+  onGet: () => Promise<unknown> = async () => ok(pageOf([shelf])),
+): {
   post: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
 } {
   const post = vi.fn(onWrite);
-  const get = vi.fn(async () => ok({ data: [shelf], next_cursor: null, has_more: false }));
+  const get = vi.fn(onGet);
   const client = {
     GET: get,
     POST: post,
@@ -155,7 +181,7 @@ describe("par stock — record a count", () => {
     const drawer = await open();
     fireEvent.click(within(drawer).getByRole("button", { name: "Record count" }));
     const alert = await within(drawer).findByRole("alert");
-    expect(alert.textContent).toBe("The count could not be recorded.");
+    expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
     const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
     expect(cancel.disabled).toBe(false);
     expect(
@@ -174,7 +200,7 @@ describe("par stock — record a count", () => {
     const save = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
     fireEvent.click(save);
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("The thresholds could not be saved.");
+    expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
     expect(save.disabled).toBe(false);
   });
 
@@ -194,5 +220,120 @@ describe("par stock — record a count", () => {
     expect(count.value).toBe("7");
     expect(location.isConnected).toBe(true);
     expect(location.value).toBe("loc-2");
+  });
+
+  it("keeps the newest filter's rows when an older response lands last", async () => {
+    const { reply, answers } = slowReloads(pageOf([shelf]));
+    const { get } = mount(undefined, reply);
+    await screen.findByText("Mouth care swabs");
+    const location = screen.getByLabelText("Location id");
+    fireEvent.change(location, { target: { value: "loc-" } });
+    fireEvent.change(location, { target: { value: "loc-2" } });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
+    answers[1]?.(pageOf([{ ...shelf, skuName: "Gauze pads" }]));
+    await settle();
+    expect(screen.getByText("Gauze pads")).toBeTruthy();
+    answers[0]?.(pageOf([{ ...shelf, skuName: "Lip balm" }]));
+    await settle();
+    expect(screen.queryByText("Lip balm")).toBeNull();
+    expect(screen.getByText("Gauze pads")).toBeTruthy();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("says so inline when a reload is rejected, keeps the page and frees the row", async () => {
+    let calls = 0;
+    mount(undefined, () =>
+      ++calls === 1
+        ? Promise.resolve(ok(pageOf([shelf])))
+        : Promise.reject(new TypeError("Failed to fetch")),
+    );
+    await screen.findByText("Mouth care swabs");
+    fireEvent.change(screen.getByLabelText("Location id"), { target: { value: "loc-2" } });
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("The par shelf could not be loaded.");
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+    // The previous rows stay, and an inline save is not left disabled by a load that never ended.
+    fireEvent.click(screen.getByRole("button", { name: "Edit thresholds" }));
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+
+  it("shows Unavailable when the first load is rejected", async () => {
+    mount(undefined, () => Promise.reject(new TypeError("Failed to fetch")));
+    expect(await screen.findByText("Unavailable")).toBeTruthy();
+    expect(screen.getByText("The par shelf could not be loaded.")).toBeTruthy();
+  });
+
+  it("does not mark the open drawer busy while an inline save is in flight", async () => {
+    let release: () => void = () => {};
+    const { get } = mount(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(ok({}));
+        }),
+    );
+    const drawer = await open();
+    fireEvent.click(screen.getByRole("button", { name: "Edit thresholds" }));
+    const save = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    fireEvent.click(save);
+    await waitFor(() => expect(save.disabled).toBe(true));
+    // The drawer can still be dismissed and the page (the focused Save included) is not inert; only the drawer's own
+    // Save waits for the inline write.
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(drawer.closest("[inert]")).toBeNull();
+    expect(save.closest("[inert]")).toBeNull();
+    expect(
+      (within(drawer).getByRole("button", { name: "Record count" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    release();
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        (within(drawer).getByRole("button", { name: "Record count" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+  });
+
+  it("clears a rejected inline save when a drawer opens and when it closes", async () => {
+    const second = {
+      ...shelf,
+      parStockId: "22222222-2222-4222-8222-222222222222",
+      skuName: "Zinc",
+    };
+    mount(
+      async () => {
+        throw new TypeError("Failed to fetch");
+      },
+      async () => ok(pageOf([shelf, second])),
+    );
+    // The row being edited offers Save / Cancel, so the drawer is opened from the other row.
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Edit thresholds" }))[0] as HTMLElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(NO_ANSWER_MESSAGE);
+    // Opening a drawer starts clean.
+    fireEvent.click(screen.getByRole("button", { name: "Record count…" }));
+    const drawer = await screen.findByRole("complementary", {
+      name: "Record an on-hand count — Zinc",
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    // A fresh refusal of the inline edit shows on the page, and closing the drawer clears it too.
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(NO_ANSWER_MESSAGE);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "Record an on-hand count — Zinc" }),
+      ).toBeNull(),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

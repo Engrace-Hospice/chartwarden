@@ -6,10 +6,11 @@
 // which has no drawer, on the page), and a reload (a filter change) leaves an open drawer and its typed text alone.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VendorRoutingRuleView } from "./supplies-api";
+import { NO_ANSWER_MESSAGE } from "./use-write";
 import { VendorRoutingAdmin } from "./vendor-routing-admin";
 
 afterEach(cleanup);
@@ -36,14 +37,43 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function mount(onWrite: () => Promise<unknown> = async () => ok({})): {
+const pageOf = (rows: VendorRoutingRuleView[]) => ({
+  data: rows,
+  next_cursor: null,
+  has_more: false,
+});
+
+/** A GET whose first call answers at once and whose later calls wait for the test to answer them, in any order. */
+function slowReloads(first: unknown): {
+  reply: () => Promise<unknown>;
+  answers: Array<(page: unknown) => void>;
+} {
+  const answers: Array<(page: unknown) => void> = [];
+  let calls = 0;
+  const reply = () =>
+    ++calls === 1
+      ? Promise.resolve(ok(first))
+      : new Promise((resolve) => {
+          answers.push((page) => resolve(ok(page)));
+        });
+  return { reply, answers };
+}
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+function mount(
+  onWrite: () => Promise<unknown> = async () => ok({}),
+  onGet: () => Promise<unknown> = async () => ok(pageOf([rule])),
+): {
   post: ReturnType<typeof vi.fn>;
   del: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
 } {
   const post = vi.fn(onWrite);
   const del = vi.fn(onWrite);
-  const get = vi.fn(async () => ok({ data: [rule], next_cursor: null, has_more: false }));
+  const get = vi.fn(onGet);
   const client = { GET: get, POST: post, PUT: vi.fn(onWrite), DELETE: del } as unknown as ApiClient;
   render(
     <MemoryRouter>
@@ -154,7 +184,7 @@ describe("vendor routing — rules", () => {
     const drawer = await drawerNamed("New routing rule");
     fireEvent.click(within(drawer).getByRole("button", { name: "Save rule" }));
     const alert = await within(drawer).findByRole("alert");
-    expect(alert.textContent).toBe("The routing rule could not be saved.");
+    expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
     const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
     expect(cancel.disabled).toBe(false);
     expect(
@@ -174,7 +204,7 @@ describe("vendor routing — rules", () => {
     const retire = (await screen.findByRole("button", { name: "Retire" })) as HTMLButtonElement;
     fireEvent.click(retire);
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("The rule could not be retired.");
+    expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
     expect(del).toHaveBeenCalledTimes(1);
     expect(retire.disabled).toBe(false);
   });
@@ -196,5 +226,98 @@ describe("vendor routing — rules", () => {
     expect(vendor.value).toBe("vendor-9");
     expect(retired.isConnected).toBe(true);
     expect(retired.checked).toBe(true);
+  });
+
+  it("keeps the newest filter's rules when an older response lands last", async () => {
+    const { reply, answers } = slowReloads(pageOf([rule]));
+    const { get } = mount(undefined, reply);
+    const retired = await screen.findByLabelText("Include retired rules");
+    fireEvent.click(retired);
+    fireEvent.click(retired);
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
+    answers[1]?.(pageOf([{ ...rule, precedencePriority: 222 }]));
+    await settle();
+    expect(screen.getByText("222")).toBeTruthy();
+    answers[0]?.(pageOf([{ ...rule, precedencePriority: 111 }]));
+    await settle();
+    expect(screen.queryByText("111")).toBeNull();
+    expect(screen.getByText("222")).toBeTruthy();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("says so inline when a reload is rejected, keeping the open drawer", async () => {
+    let calls = 0;
+    mount(undefined, () =>
+      ++calls === 1
+        ? Promise.resolve(ok(pageOf([rule])))
+        : Promise.reject(new TypeError("Failed to fetch")),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
+    const drawer = await drawerNamed("New routing rule");
+    fireEvent.click(screen.getByLabelText("Include retired rules"));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("The vendor routing rules could not be loaded.");
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+    expect(screen.getByRole("complementary", { name: "New routing rule" })).toBe(drawer);
+  });
+
+  it("does not mark the open drawer busy while a Retire is in flight", async () => {
+    let release: () => void = () => {};
+    const { del } = mount(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(ok({}));
+        }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
+    const drawer = await drawerNamed("New routing rule");
+    const retire = screen.getByRole("button", { name: "Retire" }) as HTMLButtonElement;
+    fireEvent.click(retire);
+    await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
+    // The drawer can still be dismissed and the page (the focused Retire included) is not inert; only the drawer's own
+    // Save waits for the Retire.
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(drawer.closest("[inert]")).toBeNull();
+    expect(retire.closest("[inert]")).toBeNull();
+    expect(retire.disabled).toBe(true);
+    expect(
+      (within(drawer).getByRole("button", { name: "Save rule" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    release();
+    await waitFor(() =>
+      expect(
+        (within(drawer).getByRole("button", { name: "Save rule" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+  });
+
+  it("clears a rejected Retire when a drawer opens and when it closes", async () => {
+    mount(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const retire = async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Retire" }));
+      expect((await screen.findByRole("alert")).textContent).toBe(NO_ANSWER_MESSAGE);
+    };
+    // New rule, Edit and closing the drawer each start clean.
+    await retire();
+    fireEvent.click(screen.getByRole("button", { name: "New rule" }));
+    const drawer = await drawerNamed("New routing rule");
+    expect(screen.queryByRole("alert")).toBeNull();
+    await retire();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New routing rule" })).toBeNull(),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    await retire();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await drawerNamed("Edit routing rule");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

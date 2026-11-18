@@ -57,9 +57,12 @@ import {
   tdQty,
   thNum,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
 import { useWrite } from "./use-write";
 
 type Ceremony = "deploy" | "return" | null;
+
+const LOAD_FAILURE = "This comfort-kit dispatch could not be loaded.";
 
 function toInstant(local: string): string {
   const ms = Date.parse(local);
@@ -75,22 +78,33 @@ export function ComfortKitDispatchDetail(): JSX.Element {
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
+  const startRead = useLatestRead();
   const [when, setWhen] = useState(nowLocalInput);
   const [returnReason, setReturnReason] = useState("");
 
   const load = useCallback(async () => {
-    if (!dispatchId) return;
-    setLoading(true);
-    setError(null);
-    const { dispatch: d, error: err } = await getDispatch(client, dispatchId);
-    if (err) {
-      setError(errorMessage(err, "This comfort-kit dispatch could not be loaded."));
+    const isLatest = startRead();
+    if (!dispatchId) {
       setLoading(false);
       return;
     }
-    setDispatch(d);
-    setLoading(false);
-  }, [client, dispatchId]);
+    setLoading(true);
+    setError(null);
+    try {
+      const { dispatch: d, error: err } = await getDispatch(client, dispatchId);
+      if (!isLatest()) return;
+      if (err) {
+        setError(errorMessage(err, LOAD_FAILURE));
+        return;
+      }
+      setDispatch(d);
+    } catch {
+      // A rejected read (no reply) must not leave the page on its spinner for good.
+      if (isLatest()) setError(LOAD_FAILURE);
+    } finally {
+      if (isLatest()) setLoading(false);
+    }
+  }, [client, dispatchId, startRead]);
 
   useEffect(() => {
     void load();

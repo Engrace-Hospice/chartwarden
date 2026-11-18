@@ -7,11 +7,12 @@
 // a refused or rejected write is announced in the drawer, which stays dismissible.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupplyRequestDetail } from "./supplies-api";
 import { SupplyRequestDetailScreen } from "./supply-request-detail";
+import { NO_ANSWER_MESSAGE } from "./use-write";
 
 afterEach(cleanup);
 
@@ -78,14 +79,19 @@ function mount(
   status: SupplyRequestDetail["status"],
   kind: SupplyRequestDetail["kind"] = "supply",
   onPost: () => Promise<unknown> = async () => ok({}),
+  onGet: (requestId: string | undefined) => Promise<unknown> = async () =>
+    ok(requestIn(status, kind)),
 ): { post: ReturnType<typeof vi.fn> } {
   const post = vi.fn(onPost);
   const client = {
-    GET: vi.fn(async () => ok(requestIn(status, kind))),
+    GET: vi.fn(async (_path: string, init?: { params?: { path?: { supplyRequestId?: string } } }) =>
+      onGet(init?.params?.path?.supplyRequestId),
+    ),
     POST: post,
   } as unknown as ApiClient;
   render(
     <MemoryRouter initialEntries={["/supplies/requests/r-1"]}>
+      <Link to="/supplies/requests/r-2">Next request</Link>
       <ApiClientProvider client={client}>
         <Routes>
           <Route
@@ -345,7 +351,7 @@ describe("supply request — lifecycle steps", () => {
     const drawer = await open("Assign / override vendor", "Assign or override the vendor");
     fireEvent.click(within(drawer).getByRole("button", { name: "Assign vendor" }));
     const alert = await within(drawer).findByRole("alert");
-    expect(alert.textContent).toBe("The vendor could not be assigned.");
+    expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
     expect(post).toHaveBeenCalledTimes(1);
     expect(
       (within(drawer).getByRole("button", { name: "Assign vendor" }) as HTMLButtonElement).disabled,
@@ -373,5 +379,42 @@ describe("supply request — lifecycle steps", () => {
     fireEvent.click(within(drawer).getByRole("button", { name: "Assign vendor" }));
     const alert = await within(drawer).findByRole("alert");
     expect(alert.textContent).toBe("The vendor is not active.");
+  });
+
+  it("shows an error, not a page stuck loading, when the reload after a write is rejected", async () => {
+    let reads = 0;
+    mount(
+      "requested",
+      "supply",
+      async () => ok({}),
+      () =>
+        ++reads === 1
+          ? Promise.resolve(ok(requestIn("requested")))
+          : Promise.reject(new TypeError("offline")),
+    );
+    const drawer = await open("Assign / override vendor", "Assign or override the vendor");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign vendor" }));
+    expect(await screen.findByText("Unavailable")).toBeTruthy();
+    expect(screen.getByText("This supply request could not be loaded.")).toBeTruthy();
+  });
+
+  it("shows the newest request when the first one's reply lands last", async () => {
+    let answerFirst: (reply: unknown) => void = () => {};
+    const row = (id: string) => ok({ ...requestIn("requested"), supplyRequestId: id });
+    mount("requested", "supply", undefined, (requestId) =>
+      requestId === "r-1"
+        ? new Promise((resolve) => {
+            answerFirst = resolve;
+          })
+        : Promise.resolve(row("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")),
+    );
+    fireEvent.click(await screen.findByRole("link", { name: "Next request" }));
+    expect(await screen.findByText(/Supply request bbbbbbbb/)).toBeTruthy();
+    await act(async () => {
+      answerFirst(row("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.queryByText(/Supply request aaaaaaaa/)).toBeNull();
+    expect(screen.getByText(/Supply request bbbbbbbb/)).toBeTruthy();
   });
 });

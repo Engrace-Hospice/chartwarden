@@ -82,6 +82,7 @@ import {
   ghostButtonStyle,
   pageTitleStyle,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
 import { useWrite } from "./use-write";
 
 type Ceremony =
@@ -93,6 +94,8 @@ type Ceremony =
   | "cancel"
   | "return"
   | null;
+
+const LOAD_FAILURE = "This supply request could not be loaded.";
 
 /** A `datetime-local` value → the ISO instant the §4.2 `date-time` format expects. */
 function toInstant(local: string): string {
@@ -109,6 +112,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
+  const startRead = useLatestRead();
 
   // ceremony fields
   const [vendorId, setVendorId] = useState("");
@@ -124,18 +128,28 @@ export function SupplyRequestDetailScreen(): JSX.Element {
   const [receiptActor, setReceiptActor] = useState(DEFAULT_RECEIPT_ACTOR);
 
   const load = useCallback(async () => {
-    if (!supplyRequestId) return;
-    setLoading(true);
-    setError(null);
-    const { request: r, error: err } = await getSupplyRequest(client, supplyRequestId);
-    if (err) {
-      setError(errorMessage(err, "This supply request could not be loaded."));
+    const isLatest = startRead();
+    if (!supplyRequestId) {
       setLoading(false);
       return;
     }
-    setRequest(r);
-    setLoading(false);
-  }, [client, supplyRequestId]);
+    setLoading(true);
+    setError(null);
+    try {
+      const { request: r, error: err } = await getSupplyRequest(client, supplyRequestId);
+      if (!isLatest()) return;
+      if (err) {
+        setError(errorMessage(err, LOAD_FAILURE));
+        return;
+      }
+      setRequest(r);
+    } catch {
+      // A rejected read (no reply) must not leave the page on its spinner for good.
+      if (isLatest()) setError(LOAD_FAILURE);
+    } finally {
+      if (isLatest()) setLoading(false);
+    }
+  }, [client, supplyRequestId, startRead]);
 
   useEffect(() => {
     void load();

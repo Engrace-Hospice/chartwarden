@@ -6,11 +6,12 @@
 // drawer, which stays dismissible.
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComfortKitDispatchDetail } from "./dispatch-detail";
 import type { DispatchDetail } from "./supplies-api";
+import { NO_ANSWER_MESSAGE } from "./use-write";
 
 afterEach(cleanup);
 
@@ -52,14 +53,18 @@ const ok = (data: unknown) => ({
 function mount(
   status: DispatchDetail["dispatchStatus"],
   onPost: () => Promise<unknown> = async () => ok({}),
+  onGet: (dispatchId: string | undefined) => Promise<unknown> = async () => ok(dispatchIn(status)),
 ): { post: ReturnType<typeof vi.fn> } {
   const post = vi.fn(onPost);
   const client = {
-    GET: vi.fn(async () => ok(dispatchIn(status))),
+    GET: vi.fn(async (_path: string, init?: { params?: { path?: { dispatchId?: string } } }) =>
+      onGet(init?.params?.path?.dispatchId),
+    ),
     POST: post,
   } as unknown as ApiClient;
   render(
     <MemoryRouter initialEntries={["/supplies/dispatches/d-1"]}>
+      <Link to="/supplies/dispatches/d-2">Next dispatch</Link>
       <ApiClientProvider client={client}>
         <Routes>
           <Route path="/supplies/dispatches/:dispatchId" element={<ComfortKitDispatchDetail />} />
@@ -204,7 +209,7 @@ describe("comfort-kit dispatch — deploy and return", () => {
       }
       fireEvent.click(within(drawer).getByRole("button", { name: save }));
       const alert = await within(drawer).findByRole("alert");
-      expect(alert.textContent).toMatch(/could not be/);
+      expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
       const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
       expect(cancel.disabled).toBe(false);
       fireEvent.click(cancel);
@@ -214,4 +219,40 @@ describe("comfort-kit dispatch — deploy and return", () => {
       expect(screen.queryByRole("alert")).toBeNull();
     },
   );
+
+  it("shows an error, not a page stuck loading, when the reload after a write is rejected", async () => {
+    let reads = 0;
+    mount(
+      "dispatched",
+      async () => ok({}),
+      () =>
+        ++reads === 1
+          ? Promise.resolve(ok(dispatchIn("dispatched")))
+          : Promise.reject(new TypeError("offline")),
+    );
+    const drawer = await open("Mark deployed at patient", "Mark deployed at patient");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Mark deployed" }));
+    expect(await screen.findByText("Unavailable")).toBeTruthy();
+    expect(screen.getByText("This comfort-kit dispatch could not be loaded.")).toBeTruthy();
+  });
+
+  it("shows the newest dispatch when the first one's reply lands last", async () => {
+    let answerFirst: (reply: unknown) => void = () => {};
+    const row = (serial: string) => ok({ ...dispatchIn("dispatched"), kitSerialNumber: serial });
+    mount("dispatched", undefined, (dispatchId) =>
+      dispatchId === "d-1"
+        ? new Promise((resolve) => {
+            answerFirst = resolve;
+          })
+        : Promise.resolve(row("KIT-0002")),
+    );
+    fireEvent.click(await screen.findByRole("link", { name: "Next dispatch" }));
+    expect(await screen.findByText("Comfort kit KIT-0002")).toBeTruthy();
+    await act(async () => {
+      answerFirst(row("KIT-0001"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.queryByText("Comfort kit KIT-0001")).toBeNull();
+    expect(screen.getByText("Comfort kit KIT-0002")).toBeTruthy();
+  });
 });

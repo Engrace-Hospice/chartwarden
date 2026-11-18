@@ -62,9 +62,11 @@ import {
   pageTitleStyle,
   thNum,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
 import { useWrite } from "./use-write";
 
 const PAGE = 200;
+const LOAD_FAILURE = "The vendor routing rules could not be loaded.";
 
 /** The rule editor's fields. `assignedVendorId` is nullable, not absent-or-uuid: on the three non-vendor
  *  modes a null vendor is CORRECT, not an unresolved routing failure (§3.1.5's CHECK). */
@@ -97,32 +99,41 @@ export function VendorRoutingAdmin(): JSX.Element {
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A refusal of the rule drawer shows in the drawer; retiring a rule from its row has no drawer, so its own refusal
-  // shows on the page.
+  // shows on the page. The two writes keep separate busy flags: a Retire must not mark the open drawer busy (inert
+  // page, no Cancel), though the drawer's own Save waits for it.
   const [actionError, setActionError] = useState<string | null>(null);
   const [retireError, setRetireError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
+  const { busy: inlineBusy, run: runInline } = useWrite();
+  const startRead = useLatestRead();
   const [editing, setEditing] = useState<VendorRoutingRuleView | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<RuleDraft>(EMPTY_DRAFT);
 
   const load = useCallback(async () => {
+    const isLatest = startRead();
     setLoading(true);
     setError(null);
-    const { page, error: err } = await listVendorRoutingRules(client, {
-      limit: PAGE,
-      // `scopeFilter` is always "" or one of the closed scope-kind vocabulary the SelectField below offers.
-      ...(scopeFilter ? { scopeKind: scopeFilter as VendorRoutingScopeKind } : {}),
-      ...(includeRetired ? { includeRetired: true } : {}),
-    });
-    if (err) {
-      setError(errorMessage(err, "The vendor routing rules could not be loaded."));
-      setLoading(false);
-      return;
+    try {
+      const { page, error: err } = await listVendorRoutingRules(client, {
+        limit: PAGE,
+        // `scopeFilter` is always "" or one of the closed scope-kind vocabulary the SelectField below offers.
+        ...(scopeFilter ? { scopeKind: scopeFilter as VendorRoutingScopeKind } : {}),
+        ...(includeRetired ? { includeRetired: true } : {}),
+      });
+      if (!isLatest()) return;
+      if (err) {
+        setError(errorMessage(err, LOAD_FAILURE));
+        return;
+      }
+      setRules(page?.data ?? []);
+      setLoadedOnce(true);
+    } catch {
+      if (isLatest()) setError(LOAD_FAILURE);
+    } finally {
+      if (isLatest()) setLoading(false);
     }
-    setRules(page?.data ?? []);
-    setLoadedOnce(true);
-    setLoading(false);
-  }, [client, scopeFilter, includeRetired]);
+  }, [client, scopeFilter, includeRetired, startRead]);
 
   useEffect(() => {
     void load();
@@ -131,7 +142,8 @@ export function VendorRoutingAdmin(): JSX.Element {
   // The spinner is for the first load only. A reload (a filter change, a save) keeps the page and any open drawer
   // mounted, with the previous rules showing, so the drawer's typed text, focus and opener survive it.
   if (loading && !loadedOnce) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  // A failed FIRST load has nothing to show. A failed reload keeps the page (and any open drawer) and says so inline.
+  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error} />;
 
   // `draft.scopeKind`/`assignedFulfillmentMode`/`defaultPharmacyDispatchMode` are always one of the
   // closed vocabularies the SelectFields below offer.
@@ -156,6 +168,7 @@ export function VendorRoutingAdmin(): JSX.Element {
     setCreating(false);
     setEditing(null);
     setActionError(null);
+    setRetireError(null);
   };
 
   const save = async () => {
@@ -177,7 +190,7 @@ export function VendorRoutingAdmin(): JSX.Element {
 
   const retire = async (rule: VendorRoutingRuleView) => {
     setRetireError(null);
-    const failed = await runWrite(
+    const failed = await runInline(
       () => retireVendorRoutingRule(client, rule.ruleId),
       "The rule could not be retired.",
     );
@@ -212,6 +225,7 @@ export function VendorRoutingAdmin(): JSX.Element {
                   setEditing(null);
                   setCreating(true);
                   setActionError(null);
+                  setRetireError(null);
                 }}
               >
                 New rule
@@ -230,6 +244,11 @@ export function VendorRoutingAdmin(): JSX.Element {
           exactly one answer.
         </Notice>
 
+        {error ? (
+          <p className="wx-text-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         {retireError ? (
           <p className="wx-text-error" role="alert">
             {retireError}
@@ -330,6 +349,7 @@ export function VendorRoutingAdmin(): JSX.Element {
                                 setEditing(r);
                                 setCreating(false);
                                 setActionError(null);
+                                setRetireError(null);
                                 setDraft({
                                   scopeKind: r.scopeKind,
                                   scopeId: r.scopeId ?? "",
@@ -347,7 +367,7 @@ export function VendorRoutingAdmin(): JSX.Element {
                               <Button
                                 tone="secondary"
                                 type="button"
-                                disabled={busy}
+                                disabled={inlineBusy}
                                 onClick={() => void retire(r)}
                               >
                                 Retire
@@ -373,7 +393,12 @@ export function VendorRoutingAdmin(): JSX.Element {
           error={actionError}
           onClose={closeDrawer}
           save={
-            <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
+            <Button
+              tone="primary"
+              type="button"
+              disabled={busy || inlineBusy}
+              onClick={() => void save()}
+            >
               Save rule
             </Button>
           }

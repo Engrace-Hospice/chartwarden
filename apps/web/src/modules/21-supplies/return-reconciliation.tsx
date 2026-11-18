@@ -82,6 +82,7 @@ import {
   tdQty,
   thNum,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
 import { useWrite } from "./use-write";
 
 type Ceremony = "assign-retriever" | "unreturnable" | null;
@@ -118,19 +119,31 @@ function seedCount(c: DispatchedContentView): CountDraft {
   };
 }
 
+const LOAD_FAILURE = "This comfort-kit return could not be loaded.";
+
+/** The route's screen. Keyed by the return, so moving to another return starts a fresh worksheet: return A (its
+ *  record, drafts and open drawer) never shows under B's URL. */
 export function ComfortKitReturnReconciliation(): JSX.Element {
-  const client = useApiClient();
   const { returnId } = useParams<{ returnId: string }>();
+  return <ReturnReconciliation key={returnId} returnId={returnId} />;
+}
+
+function ReturnReconciliation({ returnId }: { returnId: string | undefined }): JSX.Element {
+  const client = useApiClient();
   const [ret, setRet] = useState<ReturnDetail | null>(null);
   const [contents, setContents] = useState<DispatchedContentView[]>([]);
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [counts, setCounts] = useState<CountDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // A refusal of the retriever / write-off drawer shows in that drawer; the worksheet's own refusal has no drawer.
+  // A refusal of the retriever / write-off drawer shows in that drawer; the worksheet's own refusal has no drawer. The
+  // two writes keep separate busy flags: Reconcile must not mark an open drawer busy (inert page, no Cancel), though
+  // the drawer's own Save waits for it.
   const [actionError, setActionError] = useState<string | null>(null);
   const [reconcileError, setReconcileError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
+  const { busy: inlineBusy, run: runInline } = useWrite();
+  const startRead = useLatestRead();
   const [ceremony, setCeremony] = useState<Ceremony>(null);
 
   const [disposalMethod, setDisposalMethod] = useState(DEFAULT_DISPOSAL_METHOD);
@@ -141,49 +154,59 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
   const [unreturnableReason, setUnreturnableReason] = useState("");
 
   const load = useCallback(async () => {
-    if (!returnId) return;
+    const isLatest = startRead();
+    if (!returnId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     setManifestError(null);
-    const { ret: r, error: err } = await getReturn(client, returnId);
-    if (err || !r) {
-      setError(errorMessage(err, "This comfort-kit return could not be loaded."));
-      setLoading(false);
-      return;
-    }
-    setRet(r);
-    // Seed the worksheet from the dispatch manifest — the only place the dispatched quantities live before
-    // reconciliation writes the returned-content rows.
-    const { dispatch, error: dErr } = await getDispatch(client, r.dispatchId);
-    if (dErr || !dispatch) {
-      setManifestError(
-        errorMessage(
-          dErr,
-          "The dispatch manifest could not be read, so no count can be entered here.",
-        ),
+    try {
+      const { ret: r, error: err } = await getReturn(client, returnId);
+      if (!isLatest()) return;
+      if (err || !r) {
+        setError(errorMessage(err, LOAD_FAILURE));
+        return;
+      }
+      setRet(r);
+      // Seed the worksheet from the dispatch manifest — the only place the dispatched quantities live before
+      // reconciliation writes the returned-content rows.
+      const { dispatch, error: dErr } = await getDispatch(client, r.dispatchId);
+      if (!isLatest()) return;
+      if (dErr || !dispatch) {
+        setManifestError(
+          errorMessage(
+            dErr,
+            "The dispatch manifest could not be read, so no count can be entered here.",
+          ),
+        );
+        setContents([]);
+        setCounts([]);
+        return;
+      }
+      setContents(dispatch.contents);
+      // Merge, never re-seed: a reload after a step (assigning a retriever leaves the return open) must not wipe the
+      // quantities and explanations already typed in the worksheet.
+      setCounts((prev) =>
+        dispatch.contents.map((c) => {
+          const typed = prev.find((p) => p.dispatchedContentId === c.dispatchedContentId);
+          if (!typed) return seedCount(c);
+          return {
+            ...seedCount(c),
+            quantityReturned: typed.quantityReturned,
+            quantityDisposedAtHome: typed.quantityDisposedAtHome,
+            discrepancyExplanation: typed.discrepancyExplanation,
+          };
+        }),
       );
-      setContents([]);
-      setCounts([]);
-      setLoading(false);
-      return;
+    } catch {
+      // A rejected read (no reply) must not leave `loading` set: that disables every stamped write for good.
+      if (isLatest()) setError(LOAD_FAILURE);
+    } finally {
+      if (isLatest()) setLoading(false);
     }
-    setContents(dispatch.contents);
-    // Merge, never re-seed: a reload after a step (assigning a retriever leaves the return open) must not wipe the
-    // quantities and explanations already typed in the worksheet.
-    setCounts((prev) =>
-      dispatch.contents.map((c) => {
-        const typed = prev.find((p) => p.dispatchedContentId === c.dispatchedContentId);
-        if (!typed) return seedCount(c);
-        return {
-          ...seedCount(c),
-          quantityReturned: typed.quantityReturned,
-          quantityDisposedAtHome: typed.quantityDisposedAtHome,
-          discrepancyExplanation: typed.discrepancyExplanation,
-        };
-      }),
-    );
-    setLoading(false);
-  }, [client, returnId]);
+  }, [client, returnId, startRead]);
 
   useEffect(() => {
     void load();
@@ -271,7 +294,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
 
   const submitReconcile = async () => {
     setReconcileError(null);
-    const failed = await runWrite(
+    const failed = await runInline(
       () =>
         reconcileReturn(client, returnId, ret.updatedAt, {
           // `disposalMethod` is always one of DISPOSAL_METHODS — the SelectField below offers no other value.
@@ -607,7 +630,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
               <Button
                 tone="primary"
                 type="button"
-                disabled={!canReconcile || busy}
+                disabled={!canReconcile || inlineBusy || busy}
                 title={
                   canReconcile
                     ? undefined
@@ -663,7 +686,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
             <Button
               tone="primary"
               type="button"
-              disabled={busy || loading || retrieverMembershipId.trim() === ""}
+              disabled={busy || inlineBusy || loading || retrieverMembershipId.trim() === ""}
               onClick={() =>
                 void run(
                   () =>
@@ -700,7 +723,7 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
             <Button
               tone="primary"
               type="button"
-              disabled={busy || loading || unreturnableReason.trim() === ""}
+              disabled={busy || inlineBusy || loading || unreturnableReason.trim() === ""}
               onClick={() =>
                 void run(
                   () =>

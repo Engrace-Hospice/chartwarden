@@ -7,10 +7,11 @@
 import type { ApiClient } from "@chartwarden/ui";
 import { ApiClientProvider } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComfortKitReturnReconciliation } from "./return-reconciliation";
 import type { DispatchedContentView, ReturnDetail } from "./supplies-api";
+import { NO_ANSWER_MESSAGE } from "./use-write";
 
 afterEach(cleanup);
 
@@ -72,18 +73,28 @@ const line: DispatchedContentView = {
   replenishmentThresholdPct: 20,
 };
 
+type Respond = (path: string) => unknown;
+
 function mount(
-  options: { onPost?: () => Promise<unknown>; contents?: DispatchedContentView[] } = {},
+  options: {
+    onPost?: () => Promise<unknown>;
+    contents?: DispatchedContentView[];
+    /** Answers a read itself (with the default answer to hand), e.g. to reject or hold it. */
+    onGet?: (path: string, returnId: string | undefined, respond: Respond) => Promise<unknown>;
+  } = {},
 ): { post: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> } {
   const post = vi.fn(options.onPost ?? (async () => ok({})));
-  const get = vi.fn(async (path: string) =>
+  const respond: Respond = (path) =>
     path === "/api/v1/supplies/comfort-kit-returns/{returnId}"
       ? ok(returnRow)
-      : ok({ contents: options.contents ?? [] }),
+      : ok({ contents: options.contents ?? [] });
+  const get = vi.fn(async (path: string, init?: { params?: { path?: { returnId?: string } } }) =>
+    options.onGet ? options.onGet(path, init?.params?.path?.returnId, respond) : respond(path),
   );
   const client = { GET: get, POST: post } as unknown as ApiClient;
   render(
     <MemoryRouter initialEntries={["/supplies/returns/r-1"]}>
+      <Link to="/supplies/returns/r-2">Next return</Link>
       <ApiClientProvider client={client}>
         <Routes>
           <Route path="/supplies/returns/:returnId" element={<ComfortKitReturnReconciliation />} />
@@ -244,7 +255,7 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
       fireEvent.change(within(drawer).getByLabelText(field), { target: { value: "text" } });
       fireEvent.click(within(drawer).getByRole("button", { name: save }));
       const alert = await within(drawer).findByRole("alert");
-      expect(alert.textContent).toMatch(/could not be/);
+      expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
       const cancel = within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
       expect(cancel.disabled).toBe(false);
       fireEvent.click(cancel);
@@ -329,7 +340,75 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
     const reconcile = screen.getByRole("button", { name: "Reconcile" }) as HTMLButtonElement;
     fireEvent.click(reconcile);
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("The reconciliation could not be recorded.");
+    expect(alert.textContent).toBe(NO_ANSWER_MESSAGE);
     expect(reconcile.disabled).toBe(false);
+  });
+
+  it("shows an error, not a page stuck loading, when the reload after a write is rejected", async () => {
+    let reads = 0;
+    mount({
+      onGet: (path, _id, respond) =>
+        ++reads <= 2 ? Promise.resolve(respond(path)) : Promise.reject(new TypeError("offline")),
+    });
+    const drawer = await open("Assign retriever", "Assign the retrieving staff member");
+    fireEvent.change(within(drawer).getByLabelText("Retrieving membership id"), {
+      target: { value: "m-okafor" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign" }));
+    expect(await screen.findByText("Unavailable")).toBeTruthy();
+    expect(screen.getByText("This comfort-kit return could not be loaded.")).toBeTruthy();
+  });
+
+  it("starts a fresh worksheet for another return, never showing the first under its URL", async () => {
+    mount({
+      onGet: (path, returnId, respond) =>
+        returnId === "r-2" ? new Promise(() => {}) : Promise.resolve(respond(path)),
+    });
+    await screen.findByText(/Comfort-kit return/);
+    await open("Assign retriever", "Assign the retrieving staff member");
+    fireEvent.click(screen.getByRole("link", { name: "Next return" }));
+    await waitFor(() => expect(screen.queryByText(/Comfort-kit return/)).toBeNull());
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("does not mark the open drawer busy while a reconcile is in flight", async () => {
+    let release: () => void = () => {};
+    const { post } = mount({
+      contents: [line],
+      onPost: () =>
+        new Promise((resolve) => {
+          release = () => resolve(ok({}));
+        }),
+    });
+    fireEvent.change(await screen.findByLabelText("Quantity returned for Morphine oral solution"), {
+      target: { value: "30" },
+    });
+    const drawer = await open("Assign retriever", "Assign the retrieving staff member");
+    fireEvent.change(within(drawer).getByLabelText("Retrieving membership id"), {
+      target: { value: "m-okafor" },
+    });
+    const reconcile = screen.getByRole("button", { name: "Reconcile" }) as HTMLButtonElement;
+    fireEvent.click(reconcile);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    // The drawer can still be dismissed and the page (the focused Reconcile included) is not inert; only the drawer's own
+    // Assign waits for the reconcile.
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(drawer.closest("[inert]")).toBeNull();
+    expect(reconcile.closest("[inert]")).toBeNull();
+    expect(reconcile.disabled).toBe(true);
+    expect(
+      (within(drawer).getByRole("button", { name: "Assign" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    release();
+    await waitFor(() =>
+      expect(
+        (within(drawer).getByRole("button", { name: "Assign" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
   });
 });
