@@ -263,7 +263,9 @@ async function seedEncounter(
       `${label} sign`,
       who.client.POST("/api/v1/encounters/{encounterId}/sign", {
         params: { path: { encounterId: enc.id } },
-        body: { attestationConfirmed: true } as never,
+        // The demo clinicians confirm an in-person visit (required for the Medicare-countable disciplines);
+        // no visit times are typed: the seeded notes carry none, and none are invented.
+        body: { attestationConfirmed: true, visitModality: "in_person" } as never,
       }),
     );
     let status = signed.status;

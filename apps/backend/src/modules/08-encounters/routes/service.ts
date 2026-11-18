@@ -27,7 +27,9 @@ import {
 import type {
   EncounterDiscipline,
   EncounterStatus,
+  EncounterTimeSource,
   EncounterType,
+  EncounterVisitModality,
   LocalDate,
 } from "@chartwarden/types";
 import {
@@ -75,6 +77,7 @@ import {
   checkVersion,
   checkVocabVersion,
 } from "../lifecycle/validation";
+import { assertModalityFitsVisitType } from "../visit-delivery";
 
 /**
  * GAP-029 / §4.6 — the service-level no-self-cosign guard, shared by the in-memory and Drizzle services so
@@ -287,6 +290,14 @@ export interface EncounterView {
   readonly isF2f: boolean;
   readonly signedAt: string | null;
   readonly cosignedAt: string | null;
+  /** How the visit was delivered; null = unknown, never read as in person (migration 1510). */
+  readonly visitModality?: EncounterVisitModality | null;
+  /** True only once the clinician explicitly confirmed `visitModality` (a seeded value alone is false). */
+  readonly visitModalityConfirmed?: boolean;
+  /** Who supplied the documented start/end (EVV bracket or the signing clinician); null = none. */
+  readonly timeSource?: EncounterTimeSource | null;
+  /** Single-read only: an M18 EVV bracket is on file, so the sign ceremony takes no typed times. */
+  readonly evvBracketPresent?: boolean;
   readonly selections?: Record<string, unknown> | null;
   readonly finalDocumentation?: string | null;
   readonly vitals?: Record<string, unknown> | null;
@@ -645,12 +656,34 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     actor: SigningActor,
-    args: { at: LocalDate; lateEntryReason?: string },
+    args: {
+      at: LocalDate;
+      lateEntryReason?: string;
+      /** How the visit was delivered (422 MODALITY_CONFIRMATION_REQUIRED when a countable discipline omits it). */
+      visitModality?: EncounterVisitModality;
+      /** The clinician's documented bracket (ISO instants, both or neither); ignored when EVV exists. */
+      startedAt?: string;
+      endedAt?: string;
+    },
   ): Promise<{
     status: "signed" | "cosign_pending";
     signedAt: string;
     cosignatureRequestId: string | null;
   }>;
+  /**
+   * Confirm how an ALREADY-SIGNED visit was delivered (rows signed before the modality column). Author only.
+   * A ONE-TIME confirmation of an UNCONFIRMED visit: 409 `MODALITY_ALREADY_CONFIRMED` once
+   * `visit_modality_confirmed_at` is set (a confirmed mode is not correctable through this route), and
+   * 422 `MODALITY_CONFLICTS_WITH_VISIT_TYPE` for in person / video on a telephonic encounter type.
+   * Writes ONLY the three modality columns: a deliberate carve-out of the post-sign immutability rule, since
+   * the clinical note itself is untouched; the encounter audit trigger records the change.
+   */
+  confirmVisitModality(
+    organizationId: string,
+    encounterId: string,
+    actor: SigningActor,
+    args: { visitModality: EncounterVisitModality },
+  ): Promise<{ visitModality: EncounterVisitModality; visitModalityConfirmedAt: string }>;
   lateEntryOverride(
     organizationId: string,
     encounterId: string,
@@ -783,6 +816,8 @@ interface EncounterRecord {
   faceToFaceEncounterId: string | null;
   signedAt: string | null;
   cosignedAt: string | null;
+  visitModality?: EncounterVisitModality | null;
+  visitModalityConfirmedAt?: string | null;
   cosignature: CosignatureState | null;
   addenda: Map<
     string,
@@ -906,6 +941,9 @@ const toView = (r: EncounterRecord): EncounterView => ({
   isF2f: r.isF2f,
   signedAt: r.signedAt,
   cosignedAt: r.cosignedAt,
+  visitModality: r.visitModality ?? null,
+  visitModalityConfirmed: (r.visitModalityConfirmedAt ?? null) !== null,
+  timeSource: null,
   // Mirrors the Drizzle projection: the stored tree's codes only — prose is read via GET .../selections.
   selections:
     r.selections.length > 0
@@ -1339,6 +1377,13 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       // module header), so step-up is always treated as fresh here. The production Drizzle backend
       // resolves this for real via M2's SessionContextResolver seam.
       const stepUpFresh = true;
+      // The slice stores a supplied modality as confirmed; the 422 / documented-time rules live in the
+      // Drizzle service (`visit-delivery.ts`), where the real clock, org timezone and EVV bracket exist.
+      if (args.visitModality !== undefined) {
+        assertModalityFitsVisitType(r.encounterType, args.visitModality);
+        r.visitModality = args.visitModality;
+        r.visitModalityConfirmedAt = now();
+      }
       // §7.4 D1 — an F2F encounter signs as one atomic dual-write: the M8 clinical note + the M6
       // `face_to_face_encounter` attestation row. The plan produces the M6 write descriptor; the slice
       // records it here (the composition root hands it to M6's writer in prod). A failed gate / stale
@@ -1384,6 +1429,31 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         return { status: "cosign_pending", signedAt: r.signedAt, cosignatureRequestId: subId() };
       }
       return { status: "signed", signedAt: r.signedAt, cosignatureRequestId: null };
+    },
+
+    async confirmVisitModality(organizationId, encounterId, actor, args) {
+      const r = load(organizationId, encounterId);
+      if (r.authoredByUserId !== actor.membershipId) {
+        throw new ForbiddenError("only the author of an encounter may confirm its visit modality");
+      }
+      if (r.status !== "signed" && r.status !== "cosign_pending" && r.status !== "cosigned") {
+        throw new EncounterStateError(
+          "ILLEGAL_TRANSITION",
+          "visit modality is confirmed at signing; this encounter is not signed",
+        );
+      }
+      // A ONE-TIME confirmation of an unconfirmed (legacy) visit: a confirmed mode is final on this route.
+      if ((r.visitModalityConfirmedAt ?? null) !== null) {
+        throw new EncounterStateError(
+          "MODALITY_ALREADY_CONFIRMED",
+          "the delivery mode of this visit is already confirmed and cannot be changed here",
+        );
+      }
+      assertModalityFitsVisitType(r.encounterType, args.visitModality);
+      const confirmedAt = now();
+      r.visitModality = args.visitModality;
+      r.visitModalityConfirmedAt = confirmedAt;
+      return { visitModality: args.visitModality, visitModalityConfirmedAt: confirmedAt };
     },
 
     async lateEntryOverride(organizationId, encounterId, _args) {

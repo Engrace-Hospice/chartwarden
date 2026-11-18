@@ -61,6 +61,21 @@ export const M8_ERROR_STATUS = {
    *  can fix it, 503 means the gate did not run. Refusing is the only safe direction — a signing-blocking
    *  control that passes when it cannot evaluate is the defect this gate was fixed from (#121). */
   COMPLIANCE_GATE_UNAVAILABLE: 503,
+  // Visit delivery at sign (migration 1510): the clinician must say how the visit was delivered (Medicare
+  // hospice SIA / visit lines count in-person visits only), and any documented start/end must be a real,
+  // ordered, past bracket on the service date. Both are fixable by the clinician, hence 422.
+  MODALITY_CONFIRMATION_REQUIRED: 422,
+  VISIT_TIME_INVALID: 422,
+  /** Typed times overlap another in-person / video bracket the same author documented (one person, one place). */
+  VISIT_TIME_OVERLAP: 422,
+  /** A `telephonic` encounter type cannot be recorded as delivered in person or by video. */
+  MODALITY_CONFLICTS_WITH_VISIT_TYPE: 422,
+  /** Typed visit times were supplied while the M18 check-in/out lookup was down. EVV always wins over typed times, so
+   *  accepting them unverified could stand in for a bracket that exists; 503 = retry, not a documentation error. */
+  EVV_BRACKET_UNAVAILABLE: 503,
+  /** The legacy-confirm route is a ONE-TIME confirmation of an unconfirmed visit; a confirmed mode is final
+   *  there (a corrective path with a reason is future work). */
+  MODALITY_ALREADY_CONFIRMED: 409,
   // §2.3 void (admin-only; reason ≥ 40 chars)
   VOID_NOT_PERMITTED: 403,
   VOID_REASON_TOO_SHORT: 422,
@@ -80,9 +95,17 @@ export class EncounterStateError extends ChartWardenError {
   /** `details` carries the §2.6 Layer-3 remediation list on a gate failure (the only code that uses it
    *  today): `{ field?, code, message }` per failed check, rendered by the M1 error handler into the
    *  §4.3 envelope the UI already reads. Every other code raises without one. */
-  constructor(code: M8ErrorCode, message: string, details?: ErrorDetailType[]) {
+  constructor(
+    code: M8ErrorCode,
+    message: string,
+    details?: ErrorDetailType[],
+    options?: { readonly cause?: unknown },
+  ) {
     super(code, message, M8_ERROR_STATUS[code], details);
     this.name = "EncounterStateError";
+    // The underlying failure stays on the error for the server log (the M1 handler logs a 5xx at `warn` with its cause chain);
+    // the response carries only `message`, so it never reaches the caller.
+    if (options?.cause !== undefined) this.cause = options.cause;
   }
 }
 

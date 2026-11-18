@@ -2152,6 +2152,7 @@ import {
   AddendumSelectionsResponseSchema as M8AddendumSelectionsResponseSchema,
   AddendumSignResponseSchema as M8AddendumSignResponseSchema,
   AdministrativeOverrideSchema as M8AdministrativeOverrideSchema,
+  AttestationSchema as M8AttestationSchema,
   BillableQuerySchema as M8BillableQuerySchema,
   BillableResponseSchema as M8BillableResponseSchema,
   CaptureMileageSchema as M8CaptureMileageSchema,
@@ -2159,6 +2160,8 @@ import {
   CarePlanLinkListResponseSchema as M8CarePlanLinkListResponseSchema,
   CarePlanLinkResponseSchema as M8CarePlanLinkResponseSchema,
   CarePlanLinkSchema as M8CarePlanLinkSchema,
+  ConfirmVisitModalityResponseSchema as M8ConfirmVisitModalityResponseSchema,
+  ConfirmVisitModalitySchema as M8ConfirmVisitModalitySchema,
   CosignSignResponseSchema as M8CosignSignResponseSchema,
   CosignatureReadResponseSchema as M8CosignatureReadResponseSchema,
   CosignatureStatusResponseSchema as M8CosignatureStatusResponseSchema,
@@ -5669,9 +5672,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8ModificationResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/sign": {
-    summary: "Sign the encounter (Layer-3 gate; D13 step-up)",
+    summary:
+      "Sign the encounter (Layer-3 gate; D13 step-up); `visitModality` is required (422 MODALITY_CONFIRMATION_REQUIRED) for a Medicare-countable discipline that has no confirmed modality, and in person / video is refused on a telephonic encounter type (422 MODALITY_CONFLICTS_WITH_VISIT_TYPE; telephonic is always allowed); optional `startedAt`/`endedAt` are the clinician's documented visit times, both or neither, each an ISO-8601 date-time with an explicit UTC offset (`Z` or +hh:mm / -hh:mm), ordered, not in the future, starting on the encounter's org-local service date and ending on that date or the next, and at most 8 hours apart (422 VISIT_TIME_INVALID otherwise); they are ignored when an M18 EVV bracket exists (EVV always wins) and never defaulted or padded; typed times are refused with 503 EVV_BRACKET_UNAVAILABLE while the M18 EVV lookup cannot be reached (retry, or sign without times) and with 422 VISIT_TIME_OVERLAP when an in-person / video bracket overlaps another the same author documented",
     body: M8SignEncounterSchema,
     response: M8SignResponseSchema,
+  },
+  "POST /api/v1/encounters/:encounterId/visit-modality": {
+    summary:
+      "One-time confirmation of how an already-signed visit was delivered, for a legacy visit whose delivery mode is still unconfirmed (author only; writes only the modality columns); a visit whose delivery mode is already confirmed answers 409 MODALITY_ALREADY_CONFIRMED and is left unchanged (a confirmed mode is not correctable through this route), the guard being part of the same UPDATE so two concurrent calls cannot both win; in person / video is refused on a telephonic encounter type (422 MODALITY_CONFLICTS_WITH_VISIT_TYPE; telephonic is always allowed); an encounter that is not signed answers 409 ILLEGAL_TRANSITION",
+    body: M8ConfirmVisitModalitySchema,
+    response: M8ConfirmVisitModalityResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/late-entry-override": {
     summary: "Significant late-entry tier override (supervisor)",
@@ -5698,7 +5708,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/encounters/:encounterId/cosignature/sign": {
     summary: "Cosigner signs (§4.6 cosigner_role_match; D13 step-up)",
-    body: M8SignEncounterSchema,
+    body: M8AttestationSchema,
     response: M8CosignSignResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/cosignature/supervisor-release": {
@@ -5728,7 +5738,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/sign": {
     summary: "Sign an addendum (D13 step-up)",
-    body: M8SignEncounterSchema,
+    body: M8AttestationSchema,
     response: M8AddendumSignResponseSchema,
   },
   "GET /api/v1/internal/encounters/billable": {

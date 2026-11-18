@@ -83,6 +83,27 @@ export type LateEntryTier =
   | "significant_late_entry"
   | "administrative_override";
 
+/** How a visit was delivered (mirrors `encounter_visit_modality`, migration 1510). A NULL on the row means
+ *  "not yet confirmed", never `in_person`. */
+export const ENCOUNTER_VISIT_MODALITIES = ["in_person", "telephonic", "video"] as const;
+export type EncounterVisitModality = (typeof ENCOUNTER_VISIT_MODALITIES)[number];
+
+/** The disciplines whose visits Medicare hospice SIA / visit lines can count, so the signing clinician must
+ *  explicitly confirm the modality (the seeded value is only a pre-selection). */
+export const MODALITY_CONFIRMATION_DISCIPLINES: readonly EncounterDiscipline[] = [
+  "rn",
+  "lpn",
+  "chha",
+  "msw",
+  "pt",
+  "ot",
+  "slp",
+] as const;
+
+/** Who supplied an encounter's documented start/end (`encounter.time_source`): the M18 EVV bracket always
+ *  wins, otherwise the signing clinician's own entries. NULL = no documented time. */
+export type EncounterTimeSource = "evv" | "clinician";
+
 /** Which signature slot an `encounter_signature` row fills (mirrors `signature_kind`). */
 export type SignatureKind = "primary" | "cosignature" | "addendum";
 

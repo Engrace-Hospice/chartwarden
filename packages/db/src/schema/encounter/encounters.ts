@@ -22,6 +22,7 @@ import {
   encounterDiscipline,
   encounterStatus,
   encounterType,
+  encounterVisitModality,
   evvBracketState,
   lateEntryTier,
 } from "../../enums";
@@ -58,6 +59,18 @@ export const encounters = pgTable(
     serviceDate: date("service_date").notNull(), // org-timezone date when the encounter actually occurred
     startedAt: timestamp("started_at", { withTimezone: true }), // EVV check-in OR clinician-entered
     endedAt: timestamp("ended_at", { withTimezone: true }), // EVV check-out OR clinician-entered
+    // Who supplied started_at/ended_at (migration 1510): the M18 EVV bracket always wins, else the signing
+    // clinician. NULL = no documented time; a time is never defaulted or padded.
+    timeSource: text("time_source"), // 'evv' | 'clinician' (CHECK in the migration)
+
+    // How the visit was delivered (migration 1510). Seeded unconfirmed from the M17 visit setting, confirmed
+    // by the signing clinician. NULL = unknown; never backfilled to in_person.
+    visitModality: encounterVisitModality("visit_modality"),
+    visitModalityConfirmedAt: timestamp("visit_modality_confirmed_at", { withTimezone: true }),
+    // RESTRICT like authored_by_membership_id: SET NULL would silently erase who confirmed.
+    visitModalityConfirmedBy: uuid("visit_modality_confirmed_by").references(() => memberships.id, {
+      onDelete: "restrict",
+    }),
 
     evvBracketState: evvBracketState("evv_bracket_state"), // populated at finalize
     evvCheckInEventId: uuid("evv_check_in_event_id"), // M18 evv_event (logical)
@@ -106,6 +119,10 @@ export const encounters = pgTable(
     authorOpenDraftIdx: index("encounter_author_open_draft_idx")
       .on(t.organizationId, t.authoredByMembershipId, t.status)
       .where(sql`status = 'draft'`),
+    // Migration 1510: serves the sign-time check that one author's documented visit brackets do not overlap.
+    authorDeliveredIdx: index("encounter_author_delivered_idx")
+      .on(t.organizationId, t.authoredByMembershipId, t.serviceDate)
+      .where(sql`started_at IS NOT NULL AND status IN ('signed', 'cosign_pending', 'cosigned')`),
     signedRecentIdx: index("encounter_signed_recent_idx")
       .on(t.organizationId, t.signedAt)
       .where(sql`status IN ('signed','cosign_pending','cosigned')`),
@@ -146,6 +163,7 @@ export const encounters = pgTable(
       "encounter_signed_has_time",
       sql`(status NOT IN ('signed','cosign_pending','cosigned')) OR (signed_at IS NOT NULL)`,
     ),
+    timeSourceKnown: check("encounter_time_source_check", sql`time_source IN ('evv', 'clinician')`),
     vocabPinnedWhenFinalized: check(
       "encounter_vocab_pinned_when_finalized",
       sql`(status = 'draft') OR (vocab_version_id IS NOT NULL)`,
