@@ -29,6 +29,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { AdmissionLookupField, PatientLookupField } from "../../shell/entity-lookups";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type PaperReentryWorklistView,
   type TriageCallerKind,
@@ -48,7 +49,6 @@ import {
   toInstant,
 } from "./oncall-status";
 import {
-  Modal,
   Notice,
   SelectField,
   TextAreaField,
@@ -148,202 +148,203 @@ export function PaperReentryWorklistScreen(): JSX.Element {
   }
 
   return (
-    <>
-      <WorkQueueLayout
-        header={
-          <PageHeader
-            title="Paper re-entry"
-            actions={
-              <Link to="/triage" style={linkButtonStyle}>
-                Triage queue
-              </Link>
-            }
-          >
-            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-              Re-enter calls taken on paper during outage windows, bounded by documented continuity
-              evidence.
-            </div>
-          </PageHeader>
-        }
-        filters={
-          <div style={filterShellStyle}>
-            <Notice tone="warning">
-              <strong>This is the one write that back-dates a call.</strong> It exists so that calls
-              taken on paper during an outage enter the record with the time they actually happened.
-              Each entry is bounded by the outage window it is filed against.
-            </Notice>
-            {lapsed > 0 ? (
-              <Notice tone="error" live>
-                {lapsed} window{lapsed === 1 ? " has" : "s have"} lapsed. The re-entry path is
-                closed for those; the outage is now a documented gap.
-              </Notice>
-            ) : null}
-            {actionError ? (
-              <div role="alert" style={errorBannerStyle}>
-                {actionError}
-              </div>
-            ) : null}
-          </div>
-        }
-        table={
-          <div style={tableShellStyle}>
-            {sorted.length === 0 ? (
-              <div style={emptyShellStyle}>
-                <EmptyState
-                  title="No paper re-entry rows"
-                  description="No outage window has left calls on paper."
-                />
-              </div>
-            ) : (
-              <table>
-                <thead>
-                  <tr style={tableHeadRowStyle}>
-                    <th>Window</th>
-                    <th>Provider entity</th>
-                    <th>Shift</th>
-                    <th>Assigned to</th>
-                    <th style={thNum}>Expires in</th>
-                    <th>Re-entered</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((r) => {
-                    const remaining = minutesUntil(r.expiresAt);
-                    const done = r.reenteredAt !== null;
-                    return (
-                      <tr key={r.id}>
-                        <td>
-                          {dateTime(r.shiftStartsAt)} → {dateTime(r.shiftEndsAt)}
-                        </td>
-                        <td className="wx-data-md">{shortId(r.providerEntityId)}</td>
-                        <td className="wx-data-md">{shortId(r.shiftId)}</td>
-                        <td className="wx-data-md">{shortId(r.assignedToMembershipId)}</td>
-                        <td style={tdNum}>
-                          {remaining > 0 ? (
-                            durationLabel(remaining)
-                          ) : (
-                            <StatusPill label="Lapsed" tone="error" />
-                          )}
-                        </td>
-                        <td>
-                          {done ? (
-                            r.linkedTriageCallId ? (
-                              <Link to={`/triage/calls/${r.linkedTriageCallId}`} style={linkStyle}>
-                                {dateTime(r.reenteredAt)}
-                              </Link>
-                            ) : (
-                              dateTime(r.reenteredAt)
-                            )
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td>
-                          {done ? (
-                            <span className="wx-text-muted">filed</span>
-                          ) : remaining <= 0 ? (
-                            <span className="wx-text-muted">window closed</span>
-                          ) : (
-                            <button
-                              type="button"
-                              style={busy ? disabledButtonCompactStyle : primaryButtonCompactStyle}
-                              disabled={busy}
-                              onClick={() => {
-                                setEntering(r);
-                                setOpenedAt(isoToLocalInput(r.shiftStartsAt));
-                              }}
-                            >
-                              Re-enter a call
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        }
-        fullPageScroll
-      />
-
-      {entering ? (
-        <Modal
-          title="Re-enter a call taken on paper"
-          onClose={() => setEntering(null)}
-          footer={
-            <Button
-              tone="primary"
-              size="lg"
-              type="button"
-              disabled={!canEnter}
-              onClick={() => void commit()}
-            >
-              File the call
-            </Button>
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="Paper re-entry"
+          actions={
+            <Link to="/triage" style={linkButtonStyle}>
+              Triage queue
+            </Link>
           }
         >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Re-enter calls taken on paper during outage windows, bounded by documented continuity
+            evidence.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
           <Notice tone="warning">
-            The original time must fall inside {dateTime(entering.shiftStartsAt)} →{" "}
-            {dateTime(entering.shiftEndsAt)}. The server enforces that bound; the field below is
-            pre-filled with the window's start so nothing is guessed.
+            <strong>This is the one write that back-dates a call.</strong> It exists so that calls
+            taken on paper during an outage enter the record with the time they actually happened.
+            Each entry is bounded by the outage window it is filed against.
           </Notice>
-          <TextField
-            label="When the call actually came in"
-            value={openedAt}
-            onChange={setOpenedAt}
-            type="datetime-local"
-          />
-          <SelectField
-            label="Inbound channel"
-            value={inboundChannel}
-            options={enumOptions(HUMAN_INBOUND_CHANNELS)}
-            onChange={setInboundChannel}
-          />
-          <SelectField
-            label="Caller kind"
-            value={callerKind}
-            options={enumOptions(HUMAN_CALLER_KINDS)}
-            onChange={setCallerKind}
-          />
-          <TextField
-            label="Caller name"
-            value={callerDisplayName}
-            onChange={setCallerDisplayName}
-          />
-          <PatientLookupField
-            label="Patient (optional)"
-            value={patientId}
-            onChange={(id) => {
-              setPatientId(id);
-              setAdmissionId("");
-            }}
-          />
-          <AdmissionLookupField
-            label="Admission (optional)"
-            value={admissionId}
-            patientId={patientId}
-            onChange={(id) => setAdmissionId(id)}
-          />
-          {!anchorValid ? (
-            <p className="wx-text-error">Patient and admission travel together or not at all.</p>
+          {lapsed > 0 ? (
+            <Notice tone="error" live>
+              {lapsed} window{lapsed === 1 ? " has" : "s have"} lapsed. The re-entry path is closed
+              for those; the outage is now a documented gap.
+            </Notice>
           ) : null}
-          <TextAreaField
-            label="Chief complaint as recorded on paper"
-            value={chiefComplaint}
-            onChange={setChiefComplaint}
-            rows={3}
-          />
-          <span className="wx-text-muted">
-            The call is filed with a paper origin flag and both times: the original instant and the
-            moment it was typed in. A reviewer sees both, which is the point — the record does not
-            pretend the call was entered live.
-          </span>
-        </Modal>
-      ) : null}
-    </>
+          {actionError ? (
+            <div role="alert" style={errorBannerStyle}>
+              {actionError}
+            </div>
+          ) : null}
+        </div>
+      }
+      table={
+        <div style={tableShellStyle}>
+          {sorted.length === 0 ? (
+            <div style={emptyShellStyle}>
+              <EmptyState
+                title="No paper re-entry rows"
+                description="No outage window has left calls on paper."
+              />
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr style={tableHeadRowStyle}>
+                  <th>Window</th>
+                  <th>Provider entity</th>
+                  <th>Shift</th>
+                  <th>Assigned to</th>
+                  <th style={thNum}>Expires in</th>
+                  <th>Re-entered</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((r) => {
+                  const remaining = minutesUntil(r.expiresAt);
+                  const done = r.reenteredAt !== null;
+                  return (
+                    <tr key={r.id}>
+                      <td>
+                        {dateTime(r.shiftStartsAt)} → {dateTime(r.shiftEndsAt)}
+                      </td>
+                      <td className="wx-data-md">{shortId(r.providerEntityId)}</td>
+                      <td className="wx-data-md">{shortId(r.shiftId)}</td>
+                      <td className="wx-data-md">{shortId(r.assignedToMembershipId)}</td>
+                      <td style={tdNum}>
+                        {remaining > 0 ? (
+                          durationLabel(remaining)
+                        ) : (
+                          <StatusPill label="Lapsed" tone="error" />
+                        )}
+                      </td>
+                      <td>
+                        {done ? (
+                          r.linkedTriageCallId ? (
+                            <Link to={`/triage/calls/${r.linkedTriageCallId}`} style={linkStyle}>
+                              {dateTime(r.reenteredAt)}
+                            </Link>
+                          ) : (
+                            dateTime(r.reenteredAt)
+                          )
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>
+                        {done ? (
+                          <span className="wx-text-muted">filed</span>
+                        ) : remaining <= 0 ? (
+                          <span className="wx-text-muted">window closed</span>
+                        ) : (
+                          <button
+                            type="button"
+                            style={busy ? disabledButtonCompactStyle : primaryButtonCompactStyle}
+                            disabled={busy}
+                            onClick={() => {
+                              setEntering(r);
+                              setOpenedAt(isoToLocalInput(r.shiftStartsAt));
+                            }}
+                          >
+                            Re-enter a call
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      }
+      fullPageScroll
+      detail={
+        entering ? (
+          <FormDrawer
+            key={entering.id}
+            title="Re-enter a call taken on paper"
+            busy={busy}
+            onClose={() => setEntering(null)}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                disabled={!canEnter}
+                onClick={() => void commit()}
+              >
+                File the call
+              </Button>
+            }
+          >
+            <Notice tone="warning">
+              The original time must fall inside {dateTime(entering.shiftStartsAt)} →{" "}
+              {dateTime(entering.shiftEndsAt)}. The server enforces that bound; the field below is
+              pre-filled with the window's start so nothing is guessed.
+            </Notice>
+            <TextField
+              label="When the call actually came in"
+              value={openedAt}
+              onChange={setOpenedAt}
+              type="datetime-local"
+            />
+            <SelectField
+              label="Inbound channel"
+              value={inboundChannel}
+              options={enumOptions(HUMAN_INBOUND_CHANNELS)}
+              onChange={setInboundChannel}
+            />
+            <SelectField
+              label="Caller kind"
+              value={callerKind}
+              options={enumOptions(HUMAN_CALLER_KINDS)}
+              onChange={setCallerKind}
+            />
+            <TextField
+              label="Caller name"
+              value={callerDisplayName}
+              onChange={setCallerDisplayName}
+            />
+            <PatientLookupField
+              label="Patient (optional)"
+              value={patientId}
+              onChange={(id) => {
+                setPatientId(id);
+                setAdmissionId("");
+              }}
+            />
+            <AdmissionLookupField
+              label="Admission (optional)"
+              value={admissionId}
+              patientId={patientId}
+              onChange={(id) => setAdmissionId(id)}
+            />
+            {!anchorValid ? (
+              <p className="wx-text-error">Patient and admission travel together or not at all.</p>
+            ) : null}
+            <TextAreaField
+              label="Chief complaint as recorded on paper"
+              value={chiefComplaint}
+              onChange={setChiefComplaint}
+              rows={3}
+            />
+            <span className="wx-text-muted">
+              The call is filed with a paper origin flag and both times: the original instant and
+              the moment it was typed in. A reviewer sees both, which is the point — the record does
+              not pretend the call was entered live.
+            </span>
+          </FormDrawer>
+        ) : undefined
+      }
+    />
   );
 }
 
