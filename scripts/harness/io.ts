@@ -28,8 +28,9 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, relative } from "node:path";
-import { EMPTY_REGISTRY, type SyntheticRegistry, registryFrom } from "./patterns";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { EMPTY_REGISTRY, type SyntheticRegistry, registryFrom } from "./synthetic-registry";
 
 export interface HookInput {
   readonly session_id?: string;
@@ -42,10 +43,9 @@ export interface HookInput {
   readonly invalid?: boolean;
 }
 
-export async function readHookInput(): Promise<HookInput> {
-  const chunks: Buffer[] = [];
-  for await (const c of process.stdin) chunks.push(c as Buffer);
-  const raw = Buffer.concat(chunks).toString("utf8").trim();
+/** What a hook's stdin text means: the JSON object, or `{ invalid: true }` for empty, unparseable or non-object input. */
+export function parseHookInput(text: string): HookInput {
+  const raw = text.trim();
   if (!raw) return { invalid: true };
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -58,9 +58,30 @@ export async function readHookInput(): Promise<HookInput> {
   }
 }
 
+export async function readHookInput(): Promise<HookInput> {
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(c as Buffer);
+  return parseHookInput(Buffer.concat(chunks).toString("utf8"));
+}
+
 export function projectDir(input?: HookInput): string {
   return process.env.CLAUDE_PROJECT_DIR || input?.cwd || process.cwd();
 }
+
+/**
+ * `--codex`: the repo root is where THIS script lives. The pinned hook command walks up from the session directory to
+ * the nearest directory that holds `.git`, `.codex/hooks.json` and `scripts/harness/pre-tool-guard.ts` and runs that
+ * script (it used to run `$(git rev-parse --show-toplevel)/…`, which `git config core.worktree` re-pointed), so the
+ * script's grandparent is the checkout of the Codex session, with no `git` call and no environment variable to move
+ * it: `CLAUDE_PROJECT_DIR`
+ * (a developer may export it from a Claude shell, pointing at another tree) used to override the root here, and
+ * protected-path matching then ran against the wrong tree without a word. `CW_HARNESS_ROOT_FOR_TESTS` is the
+ * test seam; production never sets it. (Moved here from `guard-judge.ts` in wave 12 so the emergency ledger line of
+ * `emergency-ledger.ts` is written to the same root as every other line.)
+ */
+export const codexRoot = (): string =>
+  process.env.CW_HARNESS_ROOT_FOR_TESTS ||
+  resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export function loadRegistry(root: string): SyntheticRegistry {
   const p = join(root, "compliance", "synthetic-identifiers.json");
@@ -151,7 +172,17 @@ const MAX_LEDGER_FIELD_CHARS = 1000;
 const capLedgerField = (s: string): string =>
   s.length > MAX_LEDGER_FIELD_CHARS ? `${s.slice(0, MAX_LEDGER_FIELD_CHARS)}…` : s;
 
-export function appendLedger(root: string, sessionId: string | undefined, e: LedgerEvent): void {
+/** How long a ledger write waits for another writer's lock: 50 tries 10 ms apart. */
+export const LOCK_ATTEMPTS = 50;
+const LOCK_RETRY_MS = 10;
+
+/** Waits at most `lockAttempts` tries for the lock (the emergency path passes fewer); gives up at once on a lock it cannot create. */
+export function appendLedger(
+  root: string,
+  sessionId: string | undefined,
+  e: LedgerEvent,
+  lockAttempts = LOCK_ATTEMPTS,
+): void {
   if (process.env.CW_AGENT_LEDGER === "off") return;
   try {
     const now = new Date();
@@ -159,15 +190,17 @@ export function appendLedger(root: string, sessionId: string | undefined, e: Led
     mkdirSync(join(root, ".claude", "audit"), { recursive: true });
     const lock = `${file}.lock`;
     let fd = -1;
-    for (let i = 0; i < 50 && fd < 0; i++) {
+    for (let i = 0; i < lockAttempts && fd < 0; i++) {
       try {
         fd = openSync(lock, "wx");
-      } catch {
+      } catch (error) {
+        // Only another writer's lock is worth waiting for: a read-only or unwritable directory never gets better.
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") break;
         // A lock older than 5 s was left by a killed hook: clear it rather than wait on it forever.
         try {
           if (Date.now() - statSync(lock).mtimeMs > 5000) unlinkSync(lock);
         } catch {}
-        Bun.sleepSync(10);
+        Bun.sleepSync(LOCK_RETRY_MS);
       }
     }
     // Never write unlocked: a lost line is visible as a gap in time, a raced line breaks the chain.

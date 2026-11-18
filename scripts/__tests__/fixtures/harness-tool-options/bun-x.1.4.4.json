@@ -1,0 +1,75 @@
+{
+  "tool": "bun",
+  "version": "1.4.4",
+  "command": "bun x",
+  "method": "help",
+  "options": [
+    {
+      "name": "--bun",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--ca",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--cafile",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--cwd",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--env-file",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--ignore-scripts",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--minimum-release-age",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--no-install",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--package",
+      "short": "-p",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--registry",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--silent",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--trust",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--verbose",
+      "takesValue": false,
+      "evidence": "help"
+    }
+  ],
+  "rejected": []
+}

@@ -1,0 +1,715 @@
+{
+  "tool": "pnpm",
+  "version": "10.30.3",
+  "command": "pnpm",
+  "method": "echo-hit",
+  "options": [
+    {
+      "name": "--aggregate-output",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--all",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--allow-build",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--ca",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--cache",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--cache-dir",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--changed-files-ignore-pattern",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--child-concurrency",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--color",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpu",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--dir",
+      "short": "-C",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--fail-if-no-match",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--fetch-retries",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--fetch-retry-factor",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--fetch-retry-maxtimeout",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--fetch-retry-mintimeout",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--fetch-timeout",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--filter",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--filter-prod",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--global-bin-dir",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--global-dir",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--global-pnpmfile",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--help",
+      "short": "-h",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--hoist-pattern",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--https-proxy",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--ignore-workspace",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--include",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--include-workspace-root",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--libc",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--lockfile-dir",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--loglevel",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--merge-git-branch-lockfiles-branch-pattern",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--modules-dir",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--network-concurrency",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--no-bail",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-color",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-reporter-hide-prefix",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--node-linker",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--noproxy",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--npm-path",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--only",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--os",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--package",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--package-import-method",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--parallel",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--parseable",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--pnpmfile",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--prefix",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--proxy",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--public-hoist-pattern",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--recursive",
+      "short": "-r",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--registry",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--report-summary",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--reporter",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--reporter-hide-prefix",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--resume-from",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--reverse",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--save-catalog",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--save-catalog-name",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--save-prefix",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--shell",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--shell-mode",
+      "short": "-c",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--silent",
+      "short": "-s",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sort",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--store-dir",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--stream",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--test-pattern",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--trust-policy",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--trust-policy-exclude",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--trust-policy-ignore-after",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--unsafe-perm",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--usage",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--use-node-version",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--use-stderr",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--version",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--virtual-store-dir",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--which",
+      "takesValue": "unverified",
+      "evidence": "unverified"
+    },
+    {
+      "name": "--workspace-concurrency",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--workspace-packages",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--workspace-root",
+      "short": "-w",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "-d",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-F",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "-p",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-q",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-v",
+      "takesValue": false,
+      "evidence": "probe"
+    }
+  ],
+  "rejected": [
+    "--access",
+    "--allow-git",
+    "--allow-same-version",
+    "--also",
+    "--audit",
+    "--audit-level",
+    "--auth-type",
+    "--auto-install-peers",
+    "--before",
+    "--bin-links",
+    "--browser",
+    "--bypass-2fa",
+    "--cache-max",
+    "--cache-min",
+    "--cafile",
+    "--call",
+    "--catalog-mode",
+    "--cert",
+    "--cidr",
+    "--cleanup-unused-catalogs",
+    "--commit-hooks",
+    "--config",
+    "--config-dir",
+    "--dedupe-direct-deps",
+    "--dedupe-injected-deps",
+    "--dedupe-peer-dependents",
+    "--depth",
+    "--description",
+    "--dev",
+    "--diff",
+    "--diff-dst-prefix",
+    "--diff-ignore-all-space",
+    "--diff-name-only",
+    "--diff-no-prefix",
+    "--diff-src-prefix",
+    "--diff-text",
+    "--diff-unified",
+    "--disallow-workspace-cycles",
+    "--dlx-cache-max-age",
+    "--dry-run",
+    "--editor",
+    "--enable-modules-dir",
+    "--engine-strict",
+    "--exclude-peers",
+    "--expect-result-count",
+    "--expect-results",
+    "--expires",
+    "--extend-node-path",
+    "--fetching-concurrency",
+    "--fix-lockfile",
+    "--force",
+    "--foreground-scripts",
+    "--format-package-lock",
+    "--frozen-lockfile",
+    "--fund",
+    "--git",
+    "--git-branch-lockfile",
+    "--git-checks",
+    "--git-tag-version",
+    "--global",
+    "--global-style",
+    "--globalconfig",
+    "--heading",
+    "--hoist",
+    "--hoist-workspace-packages",
+    "--if-present",
+    "--ignore-compatibility-db",
+    "--ignore-dep-scripts",
+    "--ignore-pnpmfile",
+    "--ignore-scripts",
+    "--ignore-workspace-cycles",
+    "--ignored-built-dependencies",
+    "--include-staged",
+    "--init-author-email",
+    "--init-author-name",
+    "--init-author-url",
+    "--init-license",
+    "--init-module",
+    "--init-private",
+    "--init-type",
+    "--init-version",
+    "--install-links",
+    "--install-strategy",
+    "--interactive",
+    "--json",
+    "--key",
+    "--latest",
+    "--legacy-bundling",
+    "--legacy-peer-deps",
+    "--link",
+    "--link-workspace-packages",
+    "--link-workspace-packages-dir",
+    "--local-address",
+    "--location",
+    "--lockfile",
+    "--lockfile-include-tarball-url",
+    "--lockfile-only",
+    "--lockfile-version",
+    "--logs-dir",
+    "--logs-max",
+    "--long",
+    "--manage-package-manager-versions",
+    "--maxsockets",
+    "--merge-git-branch-lockfiles",
+    "--message",
+    "--min-release-age",
+    "--minimum-release-age",
+    "--minimum-release-age-exclude",
+    "--modules-cache-max-age",
+    "--name",
+    "--never-built-dependencies",
+    "--no-frozen-lockfile",
+    "--no-git-checks",
+    "--no-hoist",
+    "--no-lockfile",
+    "--no-optional",
+    "--no-save-exact",
+    "--no-save-workspace-protocol",
+    "--no-verify-store-integrity",
+    "--node-gyp",
+    "--node-mirror",
+    "--node-options",
+    "--node-version",
+    "--npm-version",
+    "--offline",
+    "--omit",
+    "--omit-lockfile-registry-resolved",
+    "--only-built-dependencies",
+    "--only-built-dependencies-file",
+    "--only-projects",
+    "--optimistic-repeat-install",
+    "--optional",
+    "--orgs",
+    "--orgs-permission",
+    "--otp",
+    "--pack-destination",
+    "--package-lock",
+    "--package-lock-only",
+    "--package-manager-strict",
+    "--packages",
+    "--packages-all",
+    "--packages-and-scopes-permission",
+    "--password",
+    "--peers-suffix-max-length",
+    "--prefer-dedupe",
+    "--prefer-frozen-lockfile",
+    "--prefer-offline",
+    "--prefer-online",
+    "--prefer-workspace-packages",
+    "--preid",
+    "--prod",
+    "--production",
+    "--progress",
+    "--provenance",
+    "--provenance-file",
+    "--publish-branch",
+    "--read-only",
+    "--rebuild-bundle",
+    "--recursive-install",
+    "--registry-supports-time-field",
+    "--replace-registry-host",
+    "--resolution-mode",
+    "--resolution-only",
+    "--resolve-peers-from-workspace-root",
+    "--save",
+    "--save-bundle",
+    "--save-dev",
+    "--save-exact",
+    "--save-optional",
+    "--save-peer",
+    "--save-prod",
+    "--save-workspace-protocol",
+    "--sbom-format",
+    "--sbom-type",
+    "--scope",
+    "--scopes",
+    "--script-shell",
+    "--searchexclude",
+    "--searchlimit",
+    "--searchopts",
+    "--searchstaleness",
+    "--sequential",
+    "--shamefully-hoist",
+    "--shared-workspace-lockfile",
+    "--shrinkwrap",
+    "--side-effects-cache",
+    "--side-effects-cache-readonly",
+    "--sign-git-commit",
+    "--sign-git-tag",
+    "--sort-keys",
+    "--state-dir",
+    "--strict-peer-dependencies",
+    "--strict-peer-deps",
+    "--strict-ssl",
+    "--strict-store-pkg-content-check",
+    "--symlink",
+    "--tag",
+    "--tag-version-prefix",
+    "--timing",
+    "--token-description",
+    "--umask",
+    "--unicode",
+    "--update-notifier",
+    "--use-running-store-server",
+    "--use-store-server",
+    "--user-agent",
+    "--userconfig",
+    "--verify-store-integrity",
+    "--versions",
+    "--viewer",
+    "--virtual-store-dir-max-length",
+    "--workspace",
+    "--workspace-dir",
+    "--workspaces",
+    "--workspaces-update",
+    "--yes",
+    "-T",
+    "-l",
+    "-m",
+    "-n"
+  ],
+  "commands": [
+    "add",
+    "approve-builds",
+    "audit",
+    "bin",
+    "c",
+    "cache",
+    "cat-file",
+    "cat-index",
+    "config",
+    "create",
+    "dedupe",
+    "deploy",
+    "dlx",
+    "doctor",
+    "env",
+    "exec",
+    "fetch",
+    "find-hash",
+    "i",
+    "ignored-builds",
+    "import",
+    "init",
+    "install",
+    "install-test",
+    "it",
+    "licenses",
+    "link",
+    "list",
+    "ln",
+    "ls",
+    "outdated",
+    "pack",
+    "patch",
+    "patch-commit",
+    "patch-remove",
+    "prune",
+    "publish",
+    "rb",
+    "rebuild",
+    "remove",
+    "rm",
+    "root",
+    "run",
+    "self-update",
+    "start",
+    "store",
+    "t",
+    "test",
+    "unlink",
+    "up",
+    "update",
+    "why"
+  ]
+}

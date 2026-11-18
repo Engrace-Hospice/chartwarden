@@ -1,0 +1,468 @@
+{
+  "tool": "createuser",
+  "version": "16.13",
+  "command": "createuser --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "with-admin",
+      "short": "a",
+      "takesValue": true
+    },
+    {
+      "name": "connection-limit",
+      "short": "c",
+      "takesValue": true
+    },
+    {
+      "name": "createdb",
+      "short": "d",
+      "takesValue": false
+    },
+    {
+      "name": "no-createdb",
+      "short": "D",
+      "takesValue": false
+    },
+    {
+      "name": "echo",
+      "short": "e",
+      "takesValue": false
+    },
+    {
+      "name": "member-of",
+      "short": "g",
+      "takesValue": true
+    },
+    {
+      "name": "role",
+      "takesValue": true
+    },
+    {
+      "name": "inherit",
+      "short": "i",
+      "takesValue": false
+    },
+    {
+      "name": "no-inherit",
+      "short": "I",
+      "takesValue": false
+    },
+    {
+      "name": "login",
+      "short": "l",
+      "takesValue": false
+    },
+    {
+      "name": "no-login",
+      "short": "L",
+      "takesValue": false
+    },
+    {
+      "name": "with-member",
+      "short": "m",
+      "takesValue": true
+    },
+    {
+      "name": "pwprompt",
+      "short": "P",
+      "takesValue": false
+    },
+    {
+      "name": "createrole",
+      "short": "r",
+      "takesValue": false
+    },
+    {
+      "name": "no-createrole",
+      "short": "R",
+      "takesValue": false
+    },
+    {
+      "name": "superuser",
+      "short": "s",
+      "takesValue": false
+    },
+    {
+      "name": "no-superuser",
+      "short": "S",
+      "takesValue": false
+    },
+    {
+      "name": "valid-until",
+      "short": "v",
+      "takesValue": true
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "interactive",
+      "takesValue": false
+    },
+    {
+      "name": "bypassrls",
+      "takesValue": false
+    },
+    {
+      "name": "no-bypassrls",
+      "takesValue": false
+    },
+    {
+      "name": "replication",
+      "takesValue": false
+    },
+    {
+      "name": "no-replication",
+      "takesValue": false
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "no-password",
+      "short": "w",
+      "takesValue": false
+    },
+    {
+      "name": "password",
+      "short": "W",
+      "takesValue": false
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "b",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "by",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "c",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "co",
+      "outcome": "value"
+    },
+    {
+      "prefix": "con",
+      "outcome": "value"
+    },
+    {
+      "prefix": "cr",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "cre",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "crea",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "creat",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "create",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "created",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "creater",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "createro",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "e",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ec",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "h",
+      "outcome": "host"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "i",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "in",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "inh",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "inhe",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "int",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "inte",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "l",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "lo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "m",
+      "outcome": "value"
+    },
+    {
+      "prefix": "me",
+      "outcome": "value"
+    },
+    {
+      "prefix": "n",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-b",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-by",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-c",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-cr",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-cre",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-crea",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-creat",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-create",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-created",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-creater",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-createro",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-i",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-in",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-l",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-lo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-p",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-r",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-re",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-s",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-su",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "pw",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pwp",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "r",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "re",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "rep",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ro",
+      "outcome": "value"
+    },
+    {
+      "prefix": "rol",
+      "outcome": "value"
+    },
+    {
+      "prefix": "s",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "su",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    },
+    {
+      "prefix": "v",
+      "outcome": "value"
+    },
+    {
+      "prefix": "va",
+      "outcome": "value"
+    },
+    {
+      "prefix": "w",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "wi",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "wit",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "with",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "with-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "with-a",
+      "outcome": "value"
+    },
+    {
+      "prefix": "with-ad",
+      "outcome": "value"
+    },
+    {
+      "prefix": "with-m",
+      "outcome": "value"
+    },
+    {
+      "prefix": "with-me",
+      "outcome": "value"
+    }
+  ]
+}

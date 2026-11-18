@@ -1,0 +1,159 @@
+{
+  "tool": "dropdb",
+  "version": "18.4",
+  "command": "dropdb --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "echo",
+      "short": "e",
+      "takesValue": false
+    },
+    {
+      "name": "force",
+      "short": "f",
+      "takesValue": false
+    },
+    {
+      "name": "interactive",
+      "short": "i",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "if-exists",
+      "takesValue": false
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "no-password",
+      "short": "w",
+      "takesValue": false
+    },
+    {
+      "name": "password",
+      "short": "W",
+      "takesValue": false
+    },
+    {
+      "name": "maintenance-db",
+      "takesValue": true,
+      "role": "string"
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "e",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ec",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "f",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "fo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "h",
+      "outcome": "host"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "i",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "if",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "if-",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "in",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "int",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "m",
+      "outcome": "string"
+    },
+    {
+      "prefix": "ma",
+      "outcome": "string"
+    },
+    {
+      "prefix": "n",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    }
+  ]
+}

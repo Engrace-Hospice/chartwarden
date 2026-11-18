@@ -1,0 +1,26 @@
+{
+  "tool": "aws",
+  "version": "documentation",
+  "source": "documentation",
+  "unverified": true,
+  "lines": [
+    "--debug",
+    "--endpoint-url=URL",
+    "--no-verify-ssl",
+    "--no-paginate",
+    "--output=FORMAT",
+    "--query=QUERY",
+    "--profile=PROFILE",
+    "--region=REGION",
+    "--version",
+    "--color=on|off|auto",
+    "--no-sign-request",
+    "--ca-bundle=PATH",
+    "--cli-read-timeout=SECONDS",
+    "--cli-connect-timeout=SECONDS",
+    "--cli-binary-format=FORMAT",
+    "--no-cli-pager",
+    "--cli-auto-prompt",
+    "--no-cli-auto-prompt"
+  ]
+}

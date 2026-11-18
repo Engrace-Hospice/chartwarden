@@ -36,8 +36,8 @@ against Codex 0.162.1: its own config is `.codex/config.toml` and `.codex/hooks.
 ### The Codex guard (`.codex/hooks.json`)
 
 `.codex/hooks.json` runs the same `scripts/harness/pre-tool-guard.ts` for Codex, with `--codex`. It matches
-`Bash`, `write_stdin`, `apply_patch` and MCP tools (`Bash|write_stdin|apply_patch|mcp__.*`). Four things differ from Claude Code, all
-from Codex's hook protocol:
+`Bash`, `write_stdin`, `apply_patch` and MCP tools (`Bash|write_stdin|apply_patch|mcp__.*`). Several things differ from Claude Code, all
+from Codex's hook protocol (the bullets below):
 
 - **Codex cannot ask.** `permissionDecision: "ask"` is "parsed but not supported yet": the hook run is
   marked failed and the tool call proceeds. So under `--codex` every `ask` is answered `deny`, including a
@@ -52,7 +52,10 @@ from Codex's hook protocol:
 through the shell is also bound by the 64 KB command cap below, so a larger one must use the `apply_patch` tool). Through
   the shell only exactly one `apply_patch <<'EOF' … EOF` is accepted, run in the session directory or the
   call's `workdir`; `cd`, a pipe, a redirect or a second command is refused, because `apply_patch` is on
-  PATH and each of those applies a patch the guard cannot place. Codex has no Read/Grep/Glob tools; its reads
+  PATH and each of those applies a patch the guard cannot place. A command that could run `apply_patch` in any
+  case, through quotes, backslashes or empty expansions (`'apply'_patch`, `apply\_patch`, `APPLY_PATCH`), or
+  behind `${a}_patch` or `$(echo apply)_patch`, is held to the same rule; a name assembled at run time from pieces
+  the text never joins stays with the sandbox (ADV-L5). Codex has no Read/Grep/Glob tools; its reads
   are shell commands. An interactive shell, language REPL or database client is refused even when it has
   login, quiet or connection flags. The hook also matches `write_stdin` and permits empty polling only;
   refusing the interactive process at creation remains defence in depth. A reviewed script, finite input
@@ -70,13 +73,33 @@ through the shell is also bound by the 64 KB command cap below, so a larger one 
   it never echoes prose. A line that becomes a secret or protected path once its control, format and
   non-ASCII-space characters are removed (`hooks.json<U+0085>`: a Rust trim strips U+0085, a JS one keeps
   it) is refused, as an `apply_patch` path with such a character is. Ordinary text with unicode or odd
-  spaces in it is not: only a line that turns into such a path is.
-- **The root is where the guard script lives**, not `CLAUDE_PROJECT_DIR`. The pinned command runs
-  `$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts`, so the script's grandparent is the
-  session's repo. An exported `CLAUDE_PROJECT_DIR` (from a Claude shell, pointing at another tree) used to
-  override that and silently moved every protected-path match onto the wrong root. `CW_HARNESS_ROOT_FOR_TESTS`
-  is the test-only seam; production never sets it, and a developer must not export it. Claude Code still
-  takes its root from `CLAUDE_PROJECT_DIR`, which Claude Code itself sets.
+  spaces in it is not: only a line that turns into such a path is. A string is split into lines on every
+  Unicode line break (CR, LF, NUL, VT, FF, FS, GS, RS, NEL, U+2028, U+2029) and each line into the words a
+  tool could open as a path (split on whitespace and `, ; | :`, `file://` removed, quotes and brackets trimmed,
+  percent-decoded, also after decoding the whole line), and each word is judged as a whole line is
+  (`scripts/harness/mcp-tokens.ts`; ADV-L2). A string that only MENTIONS a protected or secret path in prose
+  (`see compliance/controls.yaml`) is therefore refused too: the guard cannot tell prose from a path the tool will
+  open, and a refusal there costs a rephrase. None of the MCP calls recorded in this repo's Claude sessions (nearly all of
+  them the Chrome extension, the rest Chrome DevTools, Pencil and REA) is refused by it; the count is in the MCP section below.
+- **The root is where the guard script lives**, not `CLAUDE_PROJECT_DIR`. The pinned command walks up from the
+  session directory (its real path, `Cwd::getcwd`) to the nearest directory that holds `.git`,
+  `.codex/hooks.json` AND `scripts/harness/pre-tool-guard.ts`, and runs that script, so the script's
+  grandparent is the session's checkout. It reads no git configuration. It used to run
+  `$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts`, and `git config core.worktree /tmp/x` (or a
+  `[core] worktree` line appended to `.git/config`) re-pointed that at an attacker's script, so two allowed
+  commands switched the Codex guard off (2026-11-10 review, ADV-C3). Linked worktrees (`git worktree add`,
+  including the ones under `.claude/worktrees/`), a symlinked checkout and a session directory below the root
+  each find their own checkout (tested in `harness-codex-anchor.test.ts`); a nested `git init` below the session
+  directory is skipped unless it also holds the hook config and the script (planting those is a write to a
+  protected path, denied in Codex); nothing found exits 127 and the wrapper refuses the call. **Residual:** a
+  nested repo that plants all three files by a means the shell classifier cannot see (a script file, an
+  interpreter's own `open()`) still wins, and `.git/config`, `.git/hooks/` and the hook config are protected
+  paths for that reason; the sandbox is the boundary. (A managed-rollout dispatcher that resolves the root with `git rev-parse`
+  would need the same change; there is none in this repository.) An exported
+  `CLAUDE_PROJECT_DIR` (from a Claude shell, pointing at another tree) used to override that and silently moved
+  every protected-path match onto the wrong root. `CW_HARNESS_ROOT_FOR_TESTS` is the test-only seam; production
+  never sets it, and a developer must not export it. Claude Code still takes its root from
+  `CLAUDE_PROJECT_DIR`, which Claude Code itself sets.
 - **The hook command is pinned byte for byte** (`CODEX_GUARD_COMMAND` in
   `scripts/check-compliance-controls.ts`), and each part matters. `bun --config=/dev/null --no-env-file
   --tsconfig-override=/dev/null`: a `bunfig.toml` `preload` in the session directory would otherwise run
@@ -84,20 +107,50 @@ through the shell is also bound by the 64 KB command cap below, so a larger one 
   `compilerOptions.paths` of the `tsconfig.json` (or `jsconfig.json`) in the session directory, or of the
   file it extends, to the guard script's OWN imports: `"paths": {"*": ["./evil.ts"]}` beside an `evil.ts`
   that calls `process.exit(0)` made the guard exit 0 without reading its input, so every secret read was
-  allowed. An empty override leaves no `paths` to apply, wherever the session directory is (checked against
-  a root, a nested and an extended config); the hostile-fixture test in
-  `scripts/__tests__/harness-guard-review3.test.ts` runs the real pinned commands against such a config.
-  The flag changes the pinned Codex command, so each developer re-trusts it with `/hooks`. `--no-env-file` is
+  allowed. An empty override leaves no `paths` to apply, wherever the session directory is: the hostile-fixture
+  tests in `scripts/__tests__/harness-guard-review3.test.ts` run both real pinned commands against a root, a nested
+  (`scripts/`, `scripts/harness/`) and an extended (`"extends": "./base.json"`) `tsconfig.json` and `jsconfig.json`,
+  and show that without the flag each of them really silences the guard.
+  Each change to the pinned Codex command (the flag, then the walk-up root lookup, then the perl environment strip) needs each developer to re-trust it with `/hooks`. `--no-env-file` is
   a silent no-op on bun 1.3.0 to 1.3.2 (verified against each release; 1.3.3 and later honour it), so
-  `engines.bun` in `package.json` is `>=1.3.3` (CI and the images pin 1.3.5).
-  `perl -e 'alarm 8; exec @ARGV or exit 127'`: Codex runs
-  the call when a hook times out (10 s here) and when `exec` fails perl would exit 0, an allow. `|| exit 2`:
+  `engines.bun` in `package.json` is `>=1.3.3` (CI and the images pin 1.3.5); `arch:compliance` fails when it names
+  an earlier floor, no range, or a version it cannot read.
+  `perl -e 'alarm 8; …; exec @ARGV, "$root/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127'`: Codex runs
+  the call when a hook times out (10 s here) and when `exec` fails perl would exit 0, an allow; the same perl
+  finds the checkout (above), under the same alarm. `env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB` in front of
+  it: perl is the first process and reads those variables BEFORE the `-e` body, so `PERL5OPT=-Mstrict;BEGIN{exit(0)}`, or
+  a `Cwd.pm` that exits in BEGIN found through `PERL5LIB` or `PERLLIB`, ended the wrapper with exit 0 before bun ran
+  (Codex: allow; `harness-codex-perl-env.test.ts` runs the real command with each poison, and the previous command
+  as the control that really allows). Tested on macOS's perl 5.34; `env -u` is the same on GNU and busybox
+  coreutils, and Linux perl reads the same variables, but this was not run on Linux. `perl -T` ignores the
+  variables too and was rejected: it then refuses the `exec` of bun ("Insecure $ENV{PATH}"). An `env` that cannot start
+  still ends in `|| exit 2`. `|| exit 2`:
   exit 2 with a message blocks in Codex, so a guard that cannot start, crashes or times out blocks the call.
   `perl` and `bun` must be on the hook's PATH; without them every shell call and patch is refused, loudly.
   Claude's own three hooks (guard, ledger, Stop gate) are pinned the same way (`CLAUDE_GUARD_COMMAND`,
   `CLAUDE_LEDGER_COMMAND`, `CLAUDE_STOP_COMMAND`) and run with the same
-  `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`, for the same reason. They deliberately have no perl alarm and no `|| exit 2`: Claude Code has its own
-  timeout, and a missing `perl` would otherwise lock out every Claude tool call.
+  `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`, for the same reason. None has a perl alarm: Claude
+  Code has its own timeout, the guard enforces its own deadline (see "A hard deadline" below), and a missing `perl`
+  would otherwise lock out every Claude tool call.
+- **Claude's guard command fails closed (wave 7, T0, owner-approved).** It used to be the bare `bun … pre-tool-guard.ts`.
+  Claude Code reads any exit code other than 2 as ALLOW, so a guard that could not run let the call through: a corrupted
+  entry module (`pre-tool-guard.ts` or `hard-deadline.ts`: exit 1, which `GIT_TRACE=<file>` could cause by appending a
+  line, `harness-trace-corrupts-guard.test.ts`), a missing `bun` (127), an OOM kill (137). The guard command, in BOTH
+  PreToolUse groups (the core group and the MCP group), now ends in `|| { echo '[chartwarden-harness] the guard failed to
+  run, so the call is refused' >&2; exit 2; }`, a plain-shell tail like Codex's: no perl, no alarm, no program that could
+  be missing (`echo` and `exit` are shell builtins). `CLAUDE_GUARD_COMMAND` pins it byte for byte; dropping or altering
+  the tail fails `arch:compliance`. The guard's own answers are untouched: a deny or an ask is JSON on exit 0, the
+  emergency deny of `hard-deadline.ts` is exit 2 (the tail then prints its line as well, harmlessly), an allow is exit 0,
+  and `||` never fires on exit 0, so `CW_HARNESS_FAIL_OPEN=1` (which makes the guard itself answer allow on exit 0) still
+  lets a call through; it cannot rescue a guard that cannot start. The ledger and Stop-gate commands keep the bare form.
+  **The price is a lockout:** a broken guard now refuses EVERY Claude tool call, the editing tools and the shell the
+  repair would need included. The human repairs it outside Claude Code, in a terminal: `git restore scripts/harness`
+  (or `git checkout -- scripts/harness`) and a `bun --version` check that `bun` is on the PATH Claude Code runs hooks
+  with. **Residual:** a SILENT exit 0 (an empty or no-op guard module, a `bun` that exits 0 earlier on PATH) is not a non-zero exit and reads as allow: wave 8 considered
+  a positive acknowledgement and DECLINED it (see Wave 8, T0b). A corrupted or edited `.claude/settings.json` itself is a different failure that the tail cannot
+  close (the tail lives in that file; what Claude Code does with a settings file it cannot parse was not verified
+  here); `arch:compliance`, the Stop gate, the pre-commit scan, CI and CODEOWNERS are the lines behind it, and the file
+  is a protected path (an Edit of it asks).
 - **The hook layer is a guardrail, not a boundary.** Each developer must trust the hook once (`/hooks`, tied
   to its hash, so a changed hook is skipped until re-trusted) and the project `.codex/` layer must be
   trusted. It can be switched off (`[features] hooks = false`, or a fresh `CODEX_HOME`) or bypassed
@@ -119,28 +172,100 @@ stricter answer wins (real paths alone would lose the match for an absolute path
 own symlinked text). Read/Write/Edit paths are checked as written and as the real file they name, so a
 symlink to a secret file is refused under an innocent name.
 
-`.codex/config.toml`, `bunfig.toml`, `AGENTS.override.md` and `.codex/{hooks,rules}/` are on the guard's
-protected list at any depth (they are loaded from any directory, and `~/.codex/config.toml` can disable the
-hook for a user); `.codex/config.toml` itself stays local and git-ignored, at any depth: `.gitignore` ignores
+`.codex/` (except its `sessions/`), `bunfig.toml` and `.bunfig.toml`, `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`,
+`AGENTS.override.md`, `.claude/settings.json` and `settings.local.json`, `.git/config` and `.git/config.worktree`, `.git/hooks/`,
+`.git/modules/`, `.git/worktrees/` and the `.git` gitfile itself are on the guard's protected list at any depth (they are
+loaded or run from any directory, and `~/.codex/config.toml` can disable the hook for a user); at the repo root
+so are `.claude/{audit,.cache,rules,agents,skills,commands,hooks,plugins,launch.json}`, `.agents/` (except its
+local `plans/` and `prds/`), `scripts/harness/`, `compliance/`, `.githooks/`, `.github/workflows/`,
+`deploy/production/` and CODEOWNERS at its three homes. One definition of "protected" (`scripts/harness/protected-paths.ts`: one
+pattern, one fragment pattern derived from it for text, and a list of sample names; the three agree on every tracked protected
+file, `harness-protected-definition.test.ts`; the names the find rule and the wildcard pathspec rules try are read from the tree by
+`protected-names.ts`, each listing root with a budget of its own, and a listing that is incomplete (a root over its budget, an
+unreadable directory, a file deeper than the walk) makes every name test and every wildcard "may match": it fails closed, wave 7,
+CR5-5; and the Stop gate's `arch:compliance` map asks the same `isProtectedPath`)
+judges a shell write, a Codex patch, an MCP string and Claude's own Write/Edit/MultiEdit/NotebookEdit, which ASK
+for every one of them: the `permissions.ask` rules in `settings.json` name fewer paths, and an Edit tool call
+the rules did not name used to pass without a word (2026-11-10 review, ADV-H2); `.codex/config.toml` itself stays local and git-ignored, at any depth: `.gitignore` ignores
 `**/.codex/*` and `**/.agents/*` (a nested `apps/x/.codex/` is local state too) and re-includes only the
 root's shared pieces, each AFTER the ignore line (git's last match wins). `arch:compliance` fails if
 `.codex/hooks.json` is missing or differs from the pinned command, matcher (`Bash|write_stdin|apply_patch|mcp__.*`), type
 or timeout (an integer of 9 to 30 s: strictly above the 8 s perl alarm it is pinned with, derived from the
-same constant, because a timeout at or under the alarm fires inside Codex first and the call runs), if one of
-the three Claude hook commands differs from its pinned form or the Claude guard's timeout is not an integer of
-5 to 30 s (the Stop gate's 300 is untouched), if `.claude/settings.json` sets `disableAllHooks`, a
-`bypassPermissions` default mode, or an `env` entry for `CW_HARNESS_FAIL_OPEN`, `CW_AGENT_LEDGER`,
-`CW_STOP_GATE`, `CLAUDE_PROJECT_DIR`, `CW_HARNESS_ROOT_FOR_TESTS` or `BUN_OPTIONS` (a `--preload` there runs
-before the guard), if the `.claude/` and `.agents/` mirror reads as empty on either side or differs by a
+same constant, because a timeout at or under the alarm fires inside Codex first and the call runs), if
+`.claude/settings.json` has no PreToolUse group with the pinned MCP matcher (`CLAUDE_MCP_GUARD_MATCHER`, see
+"MCP tools in Claude Code" below) or any guard group's matcher also matches a tool with no path in its input
+(`mcp__.*`, `*`, an empty matcher), if one of the three Claude hook commands differs from its pinned form or the Claude guard's timeout is not an integer of
+7 to 30 s (above the guard's own 6.5 s deadline, derived from `DEADLINE_MS`: a hook that Claude Code kills first is an allow), if the ledger's or the Stop gate's timeout (when one is set) is not an integer of 5 to 600 s or the
+Stop gate is `async` (it would no longer hold the turn), if `.claude/settings.json` sets `disableAllHooks`, a
+`bypassPermissions` default mode, or an `env` entry that is not an `ECC_*` variable or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` (the block
+is an ALLOW-list: `PATH`, `BASH_ENV`, `ZDOTDIR`, `NODE_OPTIONS`, `HOME`, `SHELL`, `LD_PRELOAD`,
+`DYLD_INSERT_LIBRARIES`, `CODEX_HOME`, `CLAUDE_CONFIG_DIR` and `BUN_OPTIONS` (a `--preload` there runs before the
+guard) all fail, naming the key), or one of the named switches `CW_HARNESS_FAIL_OPEN`, `CW_AGENT_LEDGER`,
+`CW_STOP_GATE`, `CLAUDE_PROJECT_DIR`, `CW_HARNESS_ROOT_FOR_TESTS`, the deadline's test seams `CW_HARNESS_TEST_FAULT` and
+`CW_HARNESS_DEADLINE_MS_FOR_TESTS` (and the ledger seam `CW_HARNESS_TEST_LEDGER_FAULT`, which the allow-list refuses as not allow-listed rather than by name), `ECC_GATEGUARD` or `ECC_GOVERNANCE_CAPTURE` (which the `ECC_` prefix would let
+through), if the `.claude/` and `.agents/` mirror reads as empty on either side or differs by a
 single byte (files are compared by SHA-256 of their bytes, not decoded text), or if `.gitignore` or
 CODEOWNERS stop covering any of this or `bunfig.toml`. `.gitignore` is judged by git, not by its text: the
 gate writes it into a throwaway repository and runs `git check-ignore --no-index -v` over the shared pieces
 (`.agents/{rules,agents,skills}`, `.codex/hooks.json`, `.claude/{settings.json,rules,agents,skills}`, the env
-template: none may be ignored) and the local state (`.agents/{plans,prds}`, `.codex/config.toml` at any depth,
-`.claude/{audit,.cache,plans,settings.local.json}`, live env files: all must be), so a later
+template, `scripts/harness/pre-tool-guard.ts`, `compliance/controls.yaml`, `.githooks/pre-commit`,
+`.github/CODEOWNERS`, `CLAUDE.md`, `AGENTS.md`: none may be ignored) and the local state (`.agents/{plans,prds}`,
+`.codex/config.toml` at any depth, `.claude/{audit,.cache,plans,settings.local.json}`, live env files including
+`.env.local` and `apps/backend/.env.local`: all must be), so a later
 `!**/.codex/config.toml`, `.agents/rules/*` or `.claude/*` line fails even though every line the text checks
-look for is still there. A CRLF `.gitignore` fails, and so does a git that cannot be run (the probe never
-passes by default).
+look for is still there. A CRLF `.gitignore` fails, and so does a git that cannot be run, hangs past 10 s or
+cannot get a temp directory (the probe reports an error and never passes by default).
+
+## MCP tools in Claude Code (a targeted matcher, path words only, ask-only)
+
+Claude Code's PreToolUse guard used to run for `Bash|Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit` only, so
+no MCP tool input was judged in a Claude session (Codex's matcher has always included `mcp__.*`). A second
+PreToolUse group in `.claude/settings.json` now runs the same pinned guard command for the MCP tools whose
+input can name a path, open a local file in a page, run page JavaScript or write a file the agent names:
+
+- Chrome extension: `file_upload`, `upload_image`, `javascript_tool`, `navigate` and `browser_batch` (its items
+  are `{name, input}` and can carry `navigate`, `javascript_tool` and `file_upload`);
+- Chrome DevTools: `upload_file`, `evaluate_script` (code, and a `filePath` its output is saved to),
+  `navigate_page`, `new_page`, and the tools that save to a path the agent names: `take_screenshot`,
+  `take_snapshot`, `take_heapsnapshot`, `performance_start_trace`, `performance_stop_trace`,
+  `get_network_request`, `lighthouse_audit`.
+
+The matcher is an anchored regular expression listing those names (`CLAUDE_MCP_GUARD_MATCHER` in
+`scripts/harness/hook-matcher.ts`), **not** `mcp__.*`: free-text connectors would be stopped for prose that merely
+names `.env`. Claude Code reads a matcher as an exact list of names when it holds only letters, digits, `_` and
+`|`, and as a regular expression otherwise (checked against the 2.1.317 binary); the server names hold `-`, so
+this one is a regular expression and is anchored on both sides.
+
+For one of these tools the guard (`scripts/harness/mcp-claude.ts`) splits every string value AND key of the
+input on every Unicode line break and into words (the Codex split, plus a finer one at quotes, brackets, `=`,
+`+`, `!`, `&` and `?` so a path inside `fetch("file:///x/y")` is a word of its own), judges each word as a
+secret path and as a protected path (as written, and resolved from the session directory with symlinks followed,
+as in Codex), and **asks**, naming the tool and the category (`secret path`, `harness path`, a path hidden behind
+control characters, or an input too big, too deep or not an object to judge), never the value. Only path words
+are judged: there is **no PHI/credential text scan** in Claude mode (Codex still scans text and still turns every
+ask into a deny; `harness-mcp-claude.test.ts` pins both). Two narrowings keep prose and code quiet: a line of
+several words and no slash is judged by its words, not whole, and a dotted identifier with no slash (`e.key`,
+`process.env`) is not a file among them; a line that is one path (a single word, or one with a slash) is judged
+whole. Measured once on the sessions recorded when this stack was built (the one MCP count in this document; it grows with
+every session): 1,268 of the 3,359 recorded MCP calls are of a guarded tool, and the rule asks for none of them (the one
+false positive before the narrowing was `e.key`); a call takes about 20 ms.
+
+**Not covered, and why.** `computer`, `find`, `read_page`, `get_page_text`, `form_input`, `read_network_requests`,
+and the other tools that carry coordinates, element references or no path are not judged (the hook
+is not run for them: the matcher is tested against the real tool names, `harness-mcp-claude-hook.test.ts`).
+Free-text connectors (Gmail send, reply and forward, Drive create and download, Calendar, and any other
+claude.ai connector) carry prose and can send it off the machine; whether to guard them is an owner decision, since
+a path-word judge would stop a message that names `.env`. Pencil's `execute` (a `filePath` of a design file and a
+script), REA's tools (`mcp__rea__open_binary` and `mcp__rea__export_evidence_bundle` take absolute local paths, and the
+matcher names the Chrome tools only, so `mcp__rea__*` is not matched) and the Chrome extension's `gif_creator` (its `filename`;
+what Chrome's download sandbox does with a `../` there was not verified) are **ungated by owner decision: these tools can name an
+arbitrary local path.** The words are text, so a path the
+page code computes (`'.' + 'env'`), reads from a string table or builds from `atob` is not seen. The names are
+the ones this repo's sessions show (`claude-in-chrome`, `plugin_ecc_chrome-devtools`): the same server installed
+under another name (`mcp__chrome-devtools__…`) is not matched until it is added to the list and to the pin. The tools' own
+permission prompts and Claude Code's permission rules are the other layer. `arch:compliance` pins the matcher
+like Codex's: a dropped or edited MCP group, and any guard group that also matches a tool with no path in its input
+(`mcp__.*`, `*`, an empty matcher), fails it.
 
 ## ECC settings applied by the project (`.claude/settings.json` → `env`)
 
@@ -188,7 +313,7 @@ It answers **deny** for these:
 - the git hook-skip flag and its abbreviations, `SKIP_FITNESS=1`, re-pointing `core.hooksPath`, and
   `git -c` with hook-disabling keys;
 - force-pushing main;
-- `psql`/`pg_dump` to a non-local host;
+- a database client (`psql`, `pg_dump`, `mysql`, `redis-cli`, `mongosh`, and 41 more programs; wave 9) connecting to a non-local host, in any spelling of the target;
 - writing an SSN/MBI-shaped value not in `compliance/synthetic-identifiers.json`, or a credential.
 
 These are guard rails for a cooperative agent, not a sandbox. The authoritative controls remain RLS,
@@ -202,46 +327,652 @@ Covered (each has a regression test in `scripts/__tests__/harness-bypasses.test.
   wildcards that expand onto secret files (`cat .e*`, `cat *.env`);
 - inline interpreter code that names a secret file (`python -c`, `node -e`, `bun -e`, `perl -e`, `awk`);
 - shell writes to the harness itself (`.claude/settings.json`, `.claude/audit/`, `scripts/harness/`,
-  `compliance/`, `.githooks/`, `.gitleaks.toml`, `CODEOWNERS`), which **ask** because the Edit-tool
-  prompt does not see them;
+  `compliance/`, `.githooks/`, `.gitleaks.toml`, `CODEOWNERS`, `.git/config`, `.git/hooks/`; the whole list is
+  in the protected-path paragraph above), which **ask** because the Edit-tool prompt does not see them;
+- `git config` (and `git -c`) of a key that makes git run a program or skip the hooks, in any spelling:
+  `core.worktree`, `core.fsmonitor`, `core.hooksPath` (any case; only `.githooks` is the repo's own value),
+  `core.sshCommand`, `core.pager`, `core.editor`, `alias.*`, `include.*`/`includeIf.*`, `credential.helper`,
+  `diff.external`, `filter.*.smudge|clean|process`, `gpg.program`, `init.templateDir` and the rest of
+  `scripts/harness/git-config-rules.ts` are **denied**; reading a key is not (`harness-git-config-rules.test.ts`);
+- git writers that rewrite the whole working tree and can put an older, weaker guard back **ask** when any
+  directory the command may run in holds the repo: `reset --hard`, `checkout|switch` with a force or detach option
+  or to a lone commit (`abc1234`, `HEAD~3`), `read-tree -u`, `checkout-index -a|-f`, `cherry-pick`, `revert`,
+  `stash pop|apply|branch` of a named older stash, a forced `-X ours|theirs`, magic pathspecs (`:/`, `:(top)`)
+  and a wildcard pathspec of `git rm|mv|restore|checkout` that keeps a protected directory as its literal prefix
+  (`scripts/harness/hard-dead*`, `compliance/zzz-*`: a file the directory may gain) or can match a protected name the tree holds
+  (`scripts/h*/hard-deadline.ts`); wave 7, CR5-4: the literal prefix used to be dropped for any wildcard, a regression of wave 3. A
+  lone word after `git checkout` is looked up where the
+  command RUNS (`cd scripts/harness && git checkout pre-tool-guard.ts` asks). **Not asked, by design:** a plain
+  `git merge`, `rebase`, `pull`, `switch <branch>` or `checkout <branch>` (about 2% of the Bash commands in this
+  repo's sessions, and git's three-way rules never put an older file over a newer one; CODEOWNERS and PR review
+  are the control for what a merged commit holds), `rebase --onto`, and the plain `stash pop` of the top stash
+  (the agent restoring what it just stashed; measured at 0.14% of commands). (`harness-git-tree-rules.test.ts`);
+- a NUL byte in a Bash command (the shell would cut the command there), refused;
 - raw sockets and plain GETs that carry expanded values to a non-local host. "Local" means loopback,
   `host.docker.internal`, or a service named in `docker-compose.yml`; `*.internal` and bare host names
   are **not** local.
 
 **Shell classifier limits and coverage.** `classifyBash` is a text heuristic for a cooperative agent, not a
-sandbox. It tracks `cd`, `pushd` and `..` through a command, and expands `~`, `$HOME`, `$CODEX_HOME` and
-`$PWD`. A `cd` is trusted only along an `&&` chain; after `;`, `||`, a newline, a pipe, `&` or a group
-(`( … )`) the command may still run where it started, so a relative write is judged against EVERY directory
-it could be in (at most 16, then unknown, which asks). It resolves every write target before comparing it
+sandbox. It tracks `cd`, `pushd DIR` and `..` through a command, and expands `~`, `~/…`, `$HOME`, `$CODEX_HOME`
+and `$PWD` (any other tilde prefix, `~user`, `~+`, `~-`, is an unknown directory, and so is `~` once a command
+sets `HOME`; with `HOME` unset `~` is the account's home). A `cd` is trusted only along an `&&` chain; after `;`,
+a newline, a pipe, `&` or a group (`( … )`) the command may still run where it started, and a `cd` after `||`
+may not have run at all, so a relative write is judged against EVERY directory it could be in (at most 16, then
+unknown, which asks). Anything that can move the shell and is not modelled makes the directory unknown, and a
+relative write from an unknown directory asks: `source`/`.`, an `eval` that names a `cd` or is built at run
+time, a function or `case` whose body holds a `cd`, a `pushd` that rotates or keeps the stack (`pushd`,
+`pushd +1`, `pushd -n DIR`), `popd`, any `cd` once `CDPATH` is named, and `cd -`. `env -C DIR`, `env --chdir`
+and `sudo -D` run their command in DIR, and the command lines of `find -exec`/`-ok` are judged as commands of
+their own (`-execdir` runs in a directory the guard does not know). A program name the shell would unquote
+(`\cd`, `\rm`) is the program it names. A bare file name is a secret when a file of that name exists in ANY
+directory the command may be in (and, for a program that reads files, in an unknown one). It resolves every write target before comparing it
 with the protected paths, and it treats a directory that contains a protected path as protected when the
 command is a delete, move, or tree-merge (`rm -r`, `mv`, `cp -R`, `rsync`, `tar x`, `unzip`); a recursive
 `chmod`/`chown`/`rm`, or a `find … -delete` or `-exec` that is not narrowed by `-name`/`-path`/`-regex`,
 over the whole repo root asks as well. The writers it understands are redirections, `tee`, `dd of=`,
 `sed -i` (including the GNU long-option abbreviations), `perl -i`, `find -delete/-exec`, `cp/mv/ln/install`,
-`chmod/chown -R`, `patch`, `curl -o`, `wget -O`, `sort -o`, `openssl -out`, `base64 -o` (a long output option is
-matched by any prefix its tool accepts: `sort --out`, `wget --output-d`; a prefix two options share is ambiguous and
-writes nothing), in-place
-compressors, and `git apply/am/checkout/restore/rm/mv/clean`. It judges the commands inside `$( )`,
+`chmod/chown -R`, `patch`, `curl -o` (and `--output-dir`, with `-o` or `-O`), `wget -O`/`-o`/`-a`/`-P`, `sort -o`,
+`openssl -out`, `base64 -o` (a long output option is matched by any prefix its tool accepts: `sort --out`,
+`wget --output-d`; a prefix two options share is ambiguous and writes nothing), `find -fprint/-fprint0/-fprintf/
+-fls`, the sed `w` command and `s///w` flag, in-place compressors, and
+`git apply/am/checkout/restore/rm/mv/clean/format-patch -o/config --file/archive -o/bundle create`. It judges the commands inside `$( )`,
 backticks and `<( )`/`>( )` as command lines, and sees through `sudo`, `env`, `builtin` and `--`. It reads
 inline interpreter code and heredoc or stdin script bodies as text, with quotes and `+` removed. It cannot
-read a script file (`python3 /tmp/w.py`), computed or encoded names, glob targets, symlinked shell targets inside command text (a path it reads in the text is not followed), a `$VAR` path
+read a script file written by an earlier tool call (`python3 /tmp/w.py`; one written and run by the same command line is read, see Wave 4 below), computed or encoded names, glob targets, symlinked shell targets inside command text (a path it reads in the text is not followed), a `$VAR` path
 prefix, a path piped into `xargs`, `curl -O` or a bare `wget URL` (they write the URL's file name into the
-current directory), or a recursive delete of an ANCESTOR of the repo root. Whole-tree reads that bypass
+current directory; they are judged only when that directory is itself protected), a `$VAR` or computed program
+name (`${X:-git} push`, an array run as a command), or a program that writes where its own configuration says (wave 7
+models `split`, `cpio -p`, `cc -o`, `tsc --outFile` and a few dozen more, and a generic backstop asks about a program it has
+no model for that is handed a protected path: see Wave 7). Wave 3 added, each with a test file under `scripts/__tests__/harness-*.test.ts`:
+the `&&` trust of a `cd` is per command (only a group, a pipe or a `&` at or before a command cancels it, and the
+lines of a script a shell reads do; a later pipe does not); another spelling of the root or home (upper case,
+the `/System/Volumes/Data` firmlink, `/tmp` for `/private/tmp`) names the same protected file; a write to the bun
+binary or a shell startup file (`~/.bun/**`, `~/.zshenv`, `~/.zshrc`, `~/.profile`, `~/.bash*`) asks;
+inline code (`python -c/-Bc`, `perl -e/-ne`, `node -pe`, `php -r`, `deno eval`, `osascript -e`, `awk`) and a script a shell is
+handed (`echo '…' | sh`, `bash <<< '…'`, `source <(echo '…')`, `bash /dev/stdin <<< '…'`, `bash <(echo '…')`, `cat <<< '…' | sh`, a known variable) are judged, as typed and as the shell hands them
+(wave 12 part E2), and a pipeline into a shell from anything but a print, a here-string or a heredoc, a process substitution that is no plain print, a text that is one unknown expansion, or a pipeline longer
+than 8 stages asks; a command word built around a substitution (`$(true)git push …`), an `ssh` host a
+substitution or variable builds, and `function f { cmd; }` bodies are judged; more output writers (`gpg -o`, `zip F`,
+`tar cf F`, `pg_dump -f`, `psql -o`, `sqlite3 F`, `script F`, `ditto`, `plutil -o`, `yq -i`, `sponge`, `curl -D/-c/--trace/--stderr`,
+`openssl -writerand/-keylogfile/-sess_out`, rsync's `--log-file/--backup-dir/--write-batch/--temp-dir`, `cp -tDIR`/`--target=DIR`,
+`host:path` naming this machine) and the read-write redirect `<>` are judged like a redirect target; `rm -r`, `chmod/chown/chgrp/setfacl/
+chflags/xattr -R`, `mv`, `find -delete` and an unpacked archive (`tar`/`bsdtar`/`gtar`, `7z x`, `cpio -i`, `ditto -x`) over an
+ancestor of the repo root ask, as do GNU abbreviations (`rm --rec`); a `find` action is narrowed only by a name or path
+test that matches no protected file (`-name '*.tmp'` narrows, `-name '*'`, `'*.ts'`, `-o -true`, `! -name` do not), and
+`-exec sh -c 'rm {}'`, `env rm`, `sudo rm`, `perl -pi` count as writers; wrappers (`caffeinate`, `arch`, `flock`, `parallel`,
+`strace`, `doas`, `pkexec`, `taskset`, `chrt`, `busybox`, `gtimeout`, `xcrun`, `lima`, `runuser`, `sudo --user`, `exec -a`,
+`stdbuf -o`, `env -P`) are seen through, and a command string handed to a shell (`watch`, `su -c`, `flock -c`, `ssh localhost 'cmd'`,
+`ssh -o ProxyCommand=`, `rsync -e`, `tar --checkpoint-action=exec=`) is judged as a command line; `docker|podman run` with a
+writable bind mount of the repo is judged with the container's paths mapped back (`-v "$PWD":/w img rm /w/x`); a nested
+`claude --bare`, `codex --disable … hooks`, `-C`/`--cd`, or an agent started outside the repo asks. Recursive reads, copies
+and archives (`grep -r`, `--rec`, `-d recurse`, `rg -u`, `find … -exec cat|grep`, `cp -r`, `rsync -a`, `ditto`, `tar c`, `zip -r`)
+of a directory that holds a live env file that EXISTS (`deploy/production`, `apps`, `apps/backend`) ask; `printenv SECRET`,
+a script that prints the whole environment or a secret variable (`print(os.environ)`, `console.log(process.env.X_TOKEN)`),
+`security find-*-password`/`dump-keychain`, `gh auth token`, `docker exec … env|printenv`, and `~/.gnupg` are refused, and
+`docker inspect` without a narrow `--format` asks. Limits that remain: a program the wrapper and writer tables do not name; a
+pipe or `source <( )` whose text no plain print or here-string makes (`curl … | sh` asks; `source <(kubectl completion bash)` passes; a here-string, heredoc or print carried by `cat`, `tee`, `sed`,
+`tr`, `head`, `tail` or any earlier stage IS read since wave 12); a bind mount reached through a compose file; a
+`cat deploy/production/*` (a bare `*` never matches a dotfile, so it reads no live env file, but it can read one named
+`*.env`); a name pattern or regex the narrowing check cannot compile (it never compiles an agent's regex, so it counts as
+broad). Whole-tree reads that bypass
 `.gitignore` (`grep -r`, `rg -u/--hidden`, `tar c .`, `docker compose config`) ask, as do file names built
 by command substitution and agents started with approval prompts, the sandbox or hooks off. A harness
-switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, …) asks only when it is
-ASSIGNED (`VAR=… cmd`, `export`, `env`, `declare`), not when its name appears in a search pattern. Reasons
-never echo URL userinfo and cap any token they quote. Work is bounded because a guard that times out lets the
-call through in Claude Code: a command over 64 KB is REFUSED before it is parsed (an ask would let padding
+switch variable (`CLAUDE_PROJECT_DIR`, `CODEX_HOME`, `CW_HARNESS_FAIL_OPEN`, `HOME`, …) followed by `=`, `+=` or `:=` asks
+ANYWHERE in a command, however it is spelled (`export $(echo X=…)`, `ssh h 'X=… cmd'`, `watch 'X=… cmd'`, a value an
+assignment builds, `export CODEX_HO\ME=…`, `export CODEX_HOME{,}=…`), and so does a command that names one for the shell or
+the session to set with no `=` (`printf -v X`, `read X`, `for X in …`, `launchctl setenv X v`, `tmux set-environment X v`,
+`systemctl set-environment`, `defaults write d X v`). The exception is a command that only prints or searches (`rg`, `grep`,
+`ag`, `ack`, `echo`, `printf`, `cat`, `head`, `tail`, `wc`, `sed -n`, `git log/grep/show/diff/commit`) with nothing
+assigned before it, no redirect except `/dev/null` and its output going only to another such command or a filter
+(`sort`, `uniq`, `cut`, `tr`, `nl`, `column`): `rg CODEX_HOME= docs` and `echo CODEX_HOME=x` set nothing. "Only prints" is
+judged by what the command can DO: `sort -o`/`--output`/`--compress-program`, `uniq IN OUT`, a `sed` script with a `w`, `W` or `e`
+command or flag (or `sed -f`), `git grep -O`/`--open-files-in-pager`, `git commit -t`/`--template`, `rg --pre`/`--hostname-bin`
+and `ag`/`ack --pager` write a file or run a command, so none of them is a print. A switch name with no `=`
+(`export CODEX_HOME`) sets nothing and is allowed. Reasons
+never echo URL userinfo and cap any token they quote. Work is bounded because a guard that runs out of time
+refuses the call (the 6.5 s deadline below) and a refusal costs a rephrase: a command over 64 KB (64 x 1,024 UTF-16 code units, the JavaScript string length, not bytes) is REFUSED before it is parsed (an ask would let padding
 turn a denied command into a prompt; put large file content in a file with the Write tool, and a heredoc patch
-that size through the `apply_patch` tool), glob matching is a two-pointer matcher with star backtracking, O(name length x wildcard tokens) over the short
+that size through the `apply_patch` tool), the text judged across a command and everything nested in it is
+budgeted (256 KB: a text nested N deep in `$( )` is judged once per level, each nearly the whole command), a
+wall-clock limit of 1 s per judging backs them (the guard judges twice from a symlinked root), glob matching is a two-pointer matcher with star backtracking, O(name length x wildcard tokens) over the short
 sample names and with no regular expression (so no exponential backtracking), brace alternatives
-(4,096) and path resolutions (16,384) are budgeted per command, and substitutions (32 per level) and judged
-command lines (300 per call) are capped; over any of those caps the answer is ask, and a deny found before
-the cap was hit still stands. Reading a protected file does not ask; only a command that writes one does.
+(4,096) and path resolutions (16,384) are budgeted per command in items AND in characters (8 MB of expanded
+brace text, 8 MB of resolved path text, so one 4,000-character word expanded 4,096 ways spends what 4,096 short
+words would not, so the per-word cap is the command's 4,096 alternatives, scaled down for a long word to about a million characters; a
+word over 4,096 characters is not expanded, but when the command holds an UNQUOTED brace group (the lexer's reading, `bare-braces.ts`,
+never whitespace in the word) it spends the budget and is read one group at a time, all-first and all-last; a command whose braces are
+all quoted or escaped expands none and spends nothing; a `cd` is charged for characters only), a
+`git -C` chain of more than 8 operands asks and a followed directory is capped at 1,024 characters, and
+substitutions (32 per level) and judged command lines (300 per call) are capped; over any of those caps the
+answer is ask (a word that holds more brace alternatives than its cap is cut and spends the budget when the command holds an unquoted
+group; a long inline script or JSON body with object literals, every brace quoted, is not a finding), and a deny found before
+the cap was hit still stands. Inside the cap every alternative is read, so a name that needs a MIX of first and last alternatives
+(`{c,'x y'}{'x y',r}…` spelling `credentials` with a quoted or escaped space as the junk) is found and denied; past the cap the cut
+keeps what a cheap reading can reach (each group alone, and every group taking its first and its last alternative, so `~/.aws/{x,}`
+repeated nine times and then `credentials` is a deny, not a silent allow) and the command ASKS: a name that needs a mix past the cap
+is an ask, never an allow (CR5-1). A brace-expanded destination of `cp`, `mv`, `ln` and `install` is every alternative of the last
+argument, not the last alternative (`cp x .claude/{settings.json,y}` asks). A spent brace or resolution budget does not
+stop the rest of the command from being judged: a secret file name is still found, even one that a single brace
+group builds from a stem and an optional suffix, because each word is also read one group at a time, linearly;
+only the clock and the judged-text budget stop judging. The per-command budget (`work`), the judged-lines counter and the Codex flag are module state, refilled by `classifyBash`
+at depth 0: correct because the worker judges one hook per process (a long-lived embedding must not share them; passing a
+`Work` object through is a mechanical refactor left for later, CR-L1). `baseName` and `trimSlashes` are linear (a regular
+expression for them was quadratic on a run of `/`). Reading a protected file does not ask; only a command that writes one does.
+A budget spent while paths are resolved no longer answers for the whole command: the command asks (as above) unless a
+later check in the same command line denies it, so a `psql` to a production host with thousands of redirect targets is
+still denied (`harness-hidden-path-budget.test.ts`).
+
+**Wave 4.** Each item has a test file under `scripts/__tests__/harness-*.test.ts`.
+- *Command lines git hands to a shell* (`git-exec-strings.ts`, `harness-git-exec-strings.test.ts`) are judged as
+  command lines: `git rebase -x|--exec`, `submodule foreach`, `bisect run`, `difftool -x|--extcmd`, `filter-branch
+  --*-filter`, `grep -O|--open-files-in-pager`, `instaweb --httpd|-b`, and `--upload-pack|--receive-pack|--exec` (and
+  `clone -u`) of fetch, pull, push, clone, ls-remote and archive, run where `git -C` puts them; so are the values of
+  `EDITOR`, `VISUAL`, `PAGER`, `GIT_EDITOR`, `GIT_PAGER`, `GIT_SEQUENCE_EDITOR`, `GIT_ASKPASS`, `SSH_ASKPASS`,
+  `GIT_SSH_COMMAND`, `GIT_PROXY_COMMAND` and `GIT_EXTERNAL_DIFF` (as a prefix, after `env`, or in `export`). A harmless string
+  (`git rebase -x 'bun run test'`) still allows. An exec-capable config key injected through `GIT_CONFIG_KEY_n` or
+  `GIT_CONFIG_PARAMETERS` is **denied** exactly as `git -c` is (one table, `git-config-rules.ts`); `GIT_DIR`,
+  `GIT_WORK_TREE`, `GIT_EXEC_PATH`, `GIT_TEMPLATE_DIR`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_ALLOW_PROTOCOL`, the global
+  options `--git-dir` and `--exec-path=`, an `ext::` remote URL, and `--template` of `git clone`/`git init` **ask**; `git clone -c|--config` of an
+  exec-capable key is **denied**; `protocol.allow` (the default policy that lets `ext::`
+  run) joins `protocol.ext.*` among the config keys that are denied. **Not decided by text:** a program named instead of a command line
+  (`GIT_ASKPASS=/tmp/x`, `git rebase -x ./run.sh`: the path is judged, the script behind it is not read), and `git -C <another
+  repository>`, whose own `.git/config` can name a `core.fsmonitor`.
+- *`git grep --no-index` and `--untracked --no-exclude-standard`* apply no .gitignore, so they ask over a directory that holds
+  a live env file that exists, as `grep -r` does (`git-grep-sweep.ts`, `harness-git-grep-sweep.test.ts`); `--exclude-standard`
+  (the last of the two wins), a plain `git grep`, and a directory without one stay allowed.
+- *A script written and run by one command line* (`written-scripts.ts`, `harness-written-scripts.test.ts`). A heredoc body is
+  data, so `cat > /tmp/x.sh <<'EOF' … EOF` and `bash /tmp/x.sh` hid the script. The text a command writes with a heredoc, a
+  here-string, a printed literal (`echo`/`printf`) or an `echo`/`printf` piped into `tee` is now matched, by the same path
+  normalisation as every other path (each directory a `cd` may have left it in, and with `/tmp`, `/private/tmp`, `/TMP` and the
+  `/System/Volumes/Data` firmlink folded to one file: `harness-written-script-aliases.test.ts`), with a later command that runs the file: a shell
+  (`bash|sh|zsh|dash|ksh F`, `source F`, `. F`, `bash < F`), an interpreter (`python3|node|bun [run]|deno run|perl|ruby|php F`) or the
+  file itself (`./F`, `/tmp/F`), and judged as the script it is (shell text as a command line, other languages as inline code). **A
+  file written by an earlier tool call, built from a variable or a command's output (`cat a b > F`, `sed -i`), or edited in place stays
+  unread**: the guard sees one command line at a time. Heredoc data that nothing runs stays allowed.
+- *The live-suite ask* is for a command that RUNS a live suite (`bun run test:*:live`, `vitest` directly or through `bunx`, `npx`
+  or `bun x`, over a `.live.test` file); `bunx biome check x.live.test.ts` and the text of a script that only names a suite are not
+  one (`live-suite.ts`, `harness-live-suite.test.ts`). No rule that judges a command line (a push to main, a production
+  database host, `docker compose config`, an upload) is applied to the text of an inline script that only names it.
+- *A backup copy of a file* (`.bak`, `~`, `.orig`, `.old`, `.save`, `.swp`) is judged by the file it copies (`backup-names.ts`,
+  `harness-backup-names.test.ts`): `.env.bak`, `tls.key.orig`, `server.pem.save` and `.env~` are refused, `src/x.ts.bak` and
+  `.gitleaks.toml.bak` are not, and a `.bak` of an original with no source extension (`prod.sql.bak`, `prod.bak`) is still a database
+  backup. A file named `*backup*` with an archive extension (`backup.tar.gz`) is refused.
+
+**Wave 6.** Each item has a test file under `scripts/__tests__/harness-*.test.ts`.
+- *Git and command-line variables are judged wherever a command line sets them* (`shell-assignments.ts`,
+  `git-exec-strings.ts`, `harness-env-assignments.test.ts`). One reading of an assignment (`assignments()`: `NAME=v`, `NAME+=v`,
+  `${NAME:=v}` wherever it stands in a word, a name spelled with quotes, backslashes, a brace group or a sequence: `GIT_TR\ACE=x`,
+  `GIT_TRACE{,}=x`, `GIT_TRACE{2..2}=x`) is shared by the harness-switch rule, the git rules and the loader rules (wave 7, CR5-3: the
+  harness-switch rule used regular expressions of its own, `braceVariants` was a second brace expander, and `${NAME:=v}` was read only
+  there). A name that is still not a name after expansion (`${X}=v` given to an assigning builtin) asks, and so does a brace group in a
+  program word (`env GIT_TRACE{2..2}=x git status`). A prefix assignment, `export`/`declare`/`typeset`/`readonly`/`local`, `env`, a subshell, a brace group, a later statement and
+  a nested `bash -c` or `ssh h '…'` all count: `export GIT_TRACE=<guard file>; git status` no longer slips past a rule that only read
+  the git segment's own prefix. The git variables that name a FILE git writes (`GIT_TRACE`, `GIT_TRACE2`, `GIT_TRACE2_EVENT`,
+  `GIT_TRACE2_PERF`, `GIT_TRACE_PACKET`, `GIT_TRACE_PACKFILE`, `GIT_TRACE_CURL`, `GIT_TRACE_SETUP`, `GIT_TRACE_PERFORMANCE`,
+  `GIT_TRACE_REFS`, `GIT_TRACE_SHALLOW`, `GIT_TRACE_FSMONITOR`, `GIT_TRACE_PACK_ACCESS`, `GIT_REDIRECT_STDOUT`, `GIT_REDIRECT_STDERR`,
+  and `GIT_INDEX_FILE`) are judged as write targets, like a redirect: a path onto the guard, the ledger, the hook configuration or a
+  startup file **asks** (Codex: denies); `/dev/null`, `/dev/stderr`, `/tmp/x.log`, and the values `1`, `2`, `true`, `false`, `0`, `off`,
+  a file descriptor, `2>&1` and an `af_unix:` socket stay allowed as a trace TARGET (the `GIT_TRACE=<file> git status` PREFIX form still
+  asks, whatever the value, through the generic `GIT_*` override rule: only `export` and kin reach the value check). Why it matters: git appends one trace line to the file, and a line
+  appended to `pre-tool-guard.ts` or `hard-deadline.ts` (the two modules the entry thread imports before the worker exists) makes bun
+  fail to start, so the pinned Claude command exits 1, which Claude Code reads as allow for every later call
+  (`harness-trace-corrupts-guard.test.ts` proves it on a copy of the guard tree through the real pinned commands, and that the
+  write is refused first; the pinned Codex command still fails closed). The variables whose value is a command line are judged as one
+  (`MANPAGER`, `BROWSER`, `LESSOPEN`, `LESSCLOSE`, `PROMPT_COMMAND`, `PYTHONSTARTUP`, `RUBYOPT`, `SUDO_EDITOR`, `KUBE_EDITOR`,
+  `GH_EDITOR`, `GH_PAGER`, `GH_BROWSER`, `SVN_EDITOR`, `FCEDIT`, `PSQL_EDITOR`, `PSQL_PAGER`, `RSYNC_RSH`, `GIT_SSH` and the older
+  list), and `EDITOR+=…` reaches them as `EDITOR=…` does; `GIT_COMMON_DIR` joins the re-pointing variables that ask. **Not decided by
+  text:** a name set by `read`, `printf -v`, `launchctl setenv`, `tmux set-environment` or a sourced file, a value built at run
+  time (`GIT_TRACE=$LOG`, `GIT_TRACE=$(mktemp)`), and a program path named in one of the command variables (`PAGER=/tmp/x`: the path is
+  judged, the program behind it is not read).
+- *Variables bun and perl read at start* (`env-hazards.ts`, `harness-env-hazards.test.ts`). `BUN_OPTIONS=--preload=x.js` or
+  `NODE_OPTIONS=--require=x.js` on a nested `claude`/`codex`, `PERL5OPT=-Mstrict` on the Codex wrapper, `LD_PRELOAD` and `PATH`
+  decide what loads before a hook judges anything; `arch:compliance` already refused them in the shared settings `env`
+  block, and nothing refused them on a command line. Now a command line **asks** when it assigns, anywhere (prefix, `export`,
+  `env`, `+=`, a subshell, a later statement, a nested `bash -c`), `PERL5LIB`, `PERLLIB`, `PERL5DB`, `LD_PRELOAD`,
+  `DYLD_INSERT_LIBRARIES` or any `BUN_CONFIG_*` (a non-empty value), or `BUN_OPTIONS`/`NODE_OPTIONS` with a value that names an
+  option that loads or runs code (`-r`, `--require`, `--import`, `--loader`, `--experimental-loader`, `--preload`, `-e`,
+  `--eval`, `-p`, `--print`), or `PERL5OPT` with a switch that loads a module or a path (`-M`, `-m`, `-I`, `-d`, also bundled:
+  `-wMstrict`). `NODE_OPTIONS=--max-old-space-size=8192 bunx tsc` (the repo's typecheck script) and `PERL5OPT=-w` stay
+  allowed. When the same command line also starts a coding agent (`claude`, `codex`, `bunx claude`, `npx
+  @anthropic-ai/claude-code`), `PATH`, `SHELL`, `BASH_ENV`, `ENV`, `ZDOTDIR`, `LD_LIBRARY_PATH` and every `DYLD_*` ask too, in
+  either order and at every nesting level (wave 7, CR5-2: the variable is looked for in the WHOLE command text, so `PATH=… bash -c
+  'claude -p x'`, `env PATH=… sh -c '…'`, `eval '…'` and `echo '…' | sh` ask; before, the variable and the agent had to sit in the same
+  nested command line): they are too common to refuse everywhere. Reading is not setting: `echo $NODE_OPTIONS`, `printenv NODE_OPTIONS`
+  and `rg BUN_OPTIONS= docs` assign nothing, and an empty value clears the variable. Codex denies every ask. **Not decided by
+  text:** a variable set by an earlier tool call, a startup file or the human's own shell; `bun`/`node`/`perl` running a harness
+  script directly is not modelled.
+- *Commands that print every file under a directory* (`tree-sweep.ts`, `secret-reads.ts`, `harness-tree-sweeps.test.ts`).
+  `git diff --no-index DIR DIR`, `diff -r`/`-R`/`--recursive` (any cluster, `-ru`, `-rq`, `-Nr`), `colordiff -r`, and
+  `git diff A B` when one operand is outside the working tree (git implies `--no-index`; `git diff HEAD -- A` is not it)
+  **ask**, as `grep -r` does, when an operand is the repo root, a directory above it (`..`, `~`), a directory that holds a live
+  env file that exists, a glob that can match such a directory (`apps/*`, `apps/b*`), a brace operand (`{apps,docs}`), or cannot be
+  placed (a `cd` the guard cannot follow, a variable it cannot place: wave 7, CR5-6 puts the same reading under `cp -r`, `rsync -a`,
+  `tar c` and `find -exec cat`; a variable the SAME command line sets to a literal is placed there, `D=.; grep -r x $D` asks and
+  `S=/tmp/x; diff -r $S/a $S/b` does not, and any other variable operand asks). A plain `diff DIR DIR` compares the same-named files directly under both (`-N`: any file), so it asks when
+  an operand directly holds one. `git grep --no-index` and `grep -r`/`rg -u` now read their operands the same way: pathspec magic
+  (`:/apps`, `:(glob)…`, `:!x`; for git grep only) cannot be placed and asks, and so do `..`, `~` and a glob. `cmp` is not
+  judged (on a directory it only says "Is a directory"); words inside `<( )` are not operands. `diff -r a.txt b.txt`, `git diff
+  --no-index a.txt b.txt`, `git diff HEAD~1`, `diff -r dir1 dir2` over directories with no live env file, and `git grep --no-index foo
+  -- 'scripts/*.ts'` stay allowed. **Not decided by text:** a symlink to a directory inside an operand, and a glob whose literal part
+  is built at run time. The corpus cost: grep -r over `..` and a recursive diff after an unresolvable `cd $VAR`.
+- *Files a git option makes git write* (`git-config-rules.ts`, `harness-git-output-writes.test.ts`). `--output=FILE` (or `--output
+  FILE`) was judged for `diff`, `log` and `show` only (a deny); `format-patch`, `blame`, `shortlog`, `range-diff`, `diff-tree`,
+  `diff-index`, `diff-files`, `whatchanged`, `reflog`, `difftool`, `rev-list` and `stash show` now ask when FILE is a protected path (every
+  one was run in a scratch repository on git 2.53 and wrote the file, except `stash show`, which needs a stash and rests on
+  the documentation), `git credential-store --file=PATH` and `git credential-cache --socket=PATH` are write targets too, and a
+  relative FILE is read from where `git -C DIR` runs. The harmless `--output-indicator-new=+` of `git log` is no longer denied.
+  The other round-4 ADV-6 forms were re-run on git 2.53 and run nothing, so they are not findings: `git pull --rebase --exec`
+  ("unknown option `exec'"), `git fetch -u CMD` (`-u` is `--update-head-ok`), `git rebase -xi CMD` (`-x` takes `i`), `git
+  rebase --e=CMD` ("ambiguous option"), `git bisect --no-checkout run` and `git submodule foreach -- CMD` (usage errors) and
+  `git grep -O CMD` (the pager's value is attached only). The git config keys that name a program joined the exec-key table
+  (denied, as `git config core.pager` is): `core.alternateRefsCommand`, `browser.*.cmd|path`, `web.browser`, `help.browser`,
+  `man.*.cmd|path`, `guitool.*.cmd`, `sendemail.smtpServer|toCmd|ccCmd`, `instaweb.httpd|browser`, `imap.tunnel`,
+  `gpg.ssh.defaultKeyCommand`, `tar.*.command` and `trailer.*.command`; each is in the git 2.53 documentation, and none was
+  run (the chain from the key to a command is the documentation's).
+- *The live-suite ask reaches a runner through indirection* (`live-suite.ts`, `harness-live-suite-indirection.test.ts`): `node
+  node_modules/.bin/vitest run x.live.test.ts`, `node`/`bun node_modules/vitest/vitest.mjs …`, the package's own `test` script
+  (`bun run test -- x.live.test.ts`, `npm test`, `npm run test`, `pnpm test`, `yarn test`) and a quoted glob
+  (`"apps/backend/__tests__/*.live.*"`) ask like `vitest run x.live.test.ts`; `bunx biome|tsc|prettier|eslint …
+  x.live.test.ts` and `rg`/`grep`/`cat`/`sed`/`git`/`wc` over it still allow (the corpus shows no live-suite transition against
+  the wave-5 stack). There is no Makefile, so `make live` names nothing. **Not decided by text:** `xargs bunx vitest run < list`
+  (the files come from standard input), and a runner started by a script file the agent wrote.
+- *One file, however APFS spells it* (`path-alias.ts` `aliasNormalise`, `harness-path-spellings.test.ts`). On macOS's case- and
+  normalization-insensitive APFS (checked in a scratch directory on the machine the stack was built on) upper and mixed case, an
+  NFD or NFC spelling, `./`, `//`, `/./` and `/../` all name one file, and so do the names that differ by Unicode case folding:
+  U+212A KELVIN SIGN is `k`, U+017F LONG S is `s`, U+00DF SHARP S is `ss`, the U+FB01 and U+FB02 ligatures are `fi` and `fl`. The
+  guard's `/i` patterns knew ASCII case only, so `.claude/hoo<KELVIN SIGN>s/x`, `scripts/harne<SHARP S>/pre-tool-guard.ts` and
+  `~/.pgpa<LONG S><LONG S>` reached a protected or secret file unasked. `aliasNormalise` (NFKC, plus sharp s) now runs where a
+  shell word becomes a path (`resolvePath`), inside `isProtectedPath` and inside `secretPathReason`, so Bash, Write, Edit,
+  MultiEdit, NotebookEdit, Read, `apply_patch` and the MCP path words judge the ASCII name; it is wider than APFS (a fullwidth
+  letter folds too), the direction that fails safe, and a path with no non-ASCII character is returned untouched after one linear
+  scan. A real path through a symlink (`src/link -> scripts/harness`) is judged by its real path for the editing tools and
+  `apply_patch`. **Not decided by text:** a symlink inside a shell command's text (the guard reads no file system for it), and
+  Windows' trailing dot and space (`pre-tool-guard.ts.` is a different file on APFS and Linux, and is protected anyway by the
+  directory it sits in).
+- *The pinned Codex command ignores perl's own variables* (`PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`): see "The hook command is
+  pinned byte for byte" above and `harness-codex-perl-env.test.ts`.
+
+**Wave 7.** Each item has a test file under `scripts/__tests__/harness-*.test.ts`. The finding IDs are mapped in "Finding IDs cited in this
+document" at the end.
+- *Claude's guard command fails closed* (T0): see "Claude's guard command fails closed" above and `harness-claude-fail-closed.test.ts`.
+- *A SQL client's own command language* (`db-client-escapes.ts`, `harness-db-client-escapes.test.ts`, ADV5-1). `sqlite3 :memory: '.shell
+  echo x > <guard file>'`, `psql -c '\! …'`, `mysql -e 'system …'` and `pgcli -c '\! …'` run an operating-system command from inside an
+  ordinary database client; Claude's classifier allowed all of them, because the escape was recognised only by Codex's interactive-shell
+  check. The text a client is handed (an argument and the value attached to it, a here-string, a heredoc body, what an `echo`/`printf`
+  earlier in the pipeline prints; since wave 12 also the output of a process substitution (`psql < <(echo …)`, `-f <(…)`), the here-string or heredoc of any earlier pipeline stage, the redirect of a
+  compound command or function around the client, a statement-known variable and a plain `$(echo …)`) is now read: a shell escape **asks** whatever it names (sqlite3 `.shell`, `.system`, `.load`, `.excel`,
+  `.www`, `.once -e`, a `|cmd` target of `.output`/`.once`/`.import`/`.read`, with the abbreviations the shell accepts (wave 7 pinned only `.sys`; wave 8 read every prefix on sqlite 3.51.0: `.sh` and `.sy` ARE `.system`, `.cl` is `.clone`, see Wave 8); psql and
+  pgcli `\!`, `\setenv`, `\pager`, a `|cmd` target of `\o`/`\g`/`\gx`/`\w`, `\copy … program`; mysql, mariadb and mycli `system`, `\!`,
+  `pager`, `\P`, `--pager=`), also in a container (`docker compose exec db psql …`). A file the client writes (`.output`, `.once`,
+  `.backup`, `.save`, `.clone`, `.log`, `.trace`, `.open`, `writefile()`, `VACUUM INTO`, `ATTACH`; `\o`, `\g`, `\gx`, `\w`, `\copy … to`,
+  `\lo_export`; `tee`, `--tee=`) is judged like a redirect target, so a protected path asks and `/tmp/out.csv` does not; a file it reads
+  and runs or prints (`.read`, `.import`, `\i`, `\ir`, `\copy … from`, `source`) is judged like a read, so a secret file is **denied**.
+  Everyday use stays allowed: `sqlite3 db 'select 1'`, `.tables`, `psql -c 'select 1'`, `\dt`, `mysql -e 'select 1'`, a regular expression
+  `'\w+'` inside SQL. The shared reader is a superset of what Codex's `isInteractiveShell` caught, and Codex turns every ask into a deny, so
+  its answers for these stay deny. **Not decided by text:** a script file (`psql -f F`, `sqlite3 db < F`, `mysql < F`: the file is not read),
+  a command built at run time (`psql -c "$CMD"`), SQL that makes the SERVER write or run something (`COPY … TO PROGRAM`, `INTO OUTFILE`),
+  and a client the table does not name (wave 8 added `litecli`, `usql`, `duckdb`, `cockroach sql`, `sqlcmd`, `sqlplus`, `mongosh`,
+  `clickhouse-client` and `trino`; `iredis`, `mssql-cli`, `harlequin` and a client through an alias remain). Corpus cost: see the wave-8 corpus paragraph.
+- *Siblings of the tree sweeps* (`sibling-sweeps.ts`, `harness-sibling-sweeps.test.ts`, ADV5-3). Each is rewritten into the
+  command line it is the sibling of, and that line is judged by the machinery the original already has (operand placement,
+  narrowing by a source-file name test, a write onto a protected path): `ack` (recursive, reads no .gitignore) as `grep -r`, `ag`
+  with `-u`, `-U`, `--unrestricted`, `--skip-vcs-ignores` or `--hidden` as `rg -u`, `fd -x`/`--exec` and `-X`/`--exec-batch` (wave 8: also the short clusters `-Hx`, `-HIx`, `-Ix`, `-HX`, `-xcat` and `--exec=cat`) as `find
+  … -exec` (`-e ts` narrows it, as `-name '*.ts'` does for find; one non-source extension such as `env` does not), `find … | cpio -p
+  DEST` and `pax -rw SRC DEST` as `cp -r`, `pax -w` and `find … | cpio -o` as `tar c`. A reason says which sibling it judged and as
+  what. **What reproduced and what did not** (checked on this machine, fd 10.4.2 and macOS's cpio and pax): `find . -depth -print |
+  cpio -pdm DEST` and `pax -rw . DEST` copy a hidden gitignored file, so they ask like `cp -r`. `fd` and `ag` skip gitignored files by
+  default (the repo's ignore list names `.env`), so a plain `fd -H … -x cat` or `ag -l X .` does not reach a live env file there, while
+  `fd -u`/`-I` and `ag -u` do; `fd -x` asks over the root like `find -exec` anyway (the guard does not read a repo's ignore rules),
+  and a plain `ag` stays allowed as a plain `rg` is (`ag` is not installed here: its default is from its documentation). `ag
+  --version`, `ack --version`, `fd -e ts`, `fd pattern src`, `cpio -t < archive`, `pax -r < archive` and a sweep of a directory
+  that holds no live env file are not asked. **Not decided by text:** the names a `cpio` or `pax` reads from standard input when
+  no `find` feeds it in the same pipeline (`cat list | cpio -o`, `git ls-files | cpio -p`), and an `fd` run from `--base-directory`.
+- *More writers, and a backstop for the rest* (`writers-more.ts`, `protected-operands.ts`, `harness-writers-more.test.ts`,
+  `harness-protected-operands.test.ts`, ADV5-2). About twenty ordinary commands wrote to a path the agent names and had no
+  rule: a file written onto `pre-tool-guard.ts` or `hard-deadline.ts` makes the hook's entry thread unable to start. **Modelled
+  now** (each judged like a redirect target; options read from the tool's own `--help` or manual): `bun build --outfile|--outdir|
+  --metafile`, `tsc --outFile|--outDir|--declarationDir|--tsBuildInfoFile|--generateTrace|--generateCpuProfile` (any case,
+  through `bunx`, `npx`, `bun x|run`, `pnpm|yarn|npm exec|dlx`), `vitest --outputFile[.reporter]|--coverage.reportsDirectory`,
+  `eslint -o|--output-file|--cache-location`, `biome --log-path`, `uniq IN OUT`, `split`/`csplit` prefixes, `shuf -o`, `pandoc -o`,
+  `cc|gcc|g++|clang|rustc|swiftc|ld|strip|objcopy -o`, `go build|test|install -o`, `curl --etag-save|--hsts|--alt-svc|--ssl-sessions`,
+  `wget --save-cookies|--hsts-file|--rejected-log|--warc-file|-e output_document=`, `ssh -E|-S|-o UserKnownHostsFile=|ControlPath=`,
+  `gh release download -D|-O`, `gh run download -D`, `gh repo|gist clone DIR`, `docker|podman cp CONTAINER:… DEST|save|export -o`, the
+  `git` subcommands that write outside `.git` (`fast-export|fast-import --export-marks`, `worktree add|move`, `init [DIR]`, `clone SRC
+  [DIR]`, `pack-objects BASE`, `index-pack -o`, `merge-file`, `interpret-trailers --in-place`, `checkout-index --prefix`, `read-tree
+  --index-output`, `mailsplit -o`, `mailinfo`, `bugreport|diagnose -o`, `submodule add`), and `git sparse-checkout set|add|reapply|init`
+  joins the whole-working-tree writers (it removes the tracked files outside its patterns, the guard included). **Did not reproduce:**
+  `gh api --output` is not a gh option (gh 2.87.3 refuses it), so it writes nothing; `git hash-object -w --path=` only names a path
+  for filters and writes under `.git`; `git cat-file --filters`, `git var` and `git commit -F|--template` read; `git update-ref`,
+  `symbolic-ref`, `notes` and `update-index` write under `.git`, which is not on the protected list except `config`, `hooks`, `modules`
+  and `worktrees`. **The backstop:** the class is unbounded (five rounds, each found more), so a command whose text names a protected
+  path (a literal operand, an option value, `key=value`, in any alias spelling and from every directory the command may run in) as
+  an argument of a program that is not known to only read, **asks** (wave 8 rewrote this: a READER is exempt only until one of its write
+  flags appears, and a modelled program's positional operands are exempt, its attached option values are not; see Wave 8)
+  (Codex: denies), naming the program (`sd 's/a/b/' scripts/harness/x.ts`, `prettier --write`, `shfmt -w`, `bunx biome check
+  --write scripts/harness/x.ts`, a tool invented next year). The read/check list was chosen from this repo's real Bash commands:
+  of 124,735 distinct commands, 5,201 name a protected path and were allowed before, led by `grep`, `git`, `sed`, `ls`, `cat`, `bunx`,
+  `wc`, `cmp`, `diff`, `bun`, `awk`, `head`, `rg`; all of those that only read, and the shell keywords (`for`, `do`), are listed. It never
+  turns a deny into an ask (a deny is found first), reads a word with whitespace as prose (a commit message), skips a directory it
+  cannot resolve (no unknown program asks after `cd $VAR`), and does not read a computed name, a variable path or an encoded name:
+  **the sandbox is the real boundary.** (The wave-7 corpus figures that stood here, 87 allow to ask of 124,738, were measured on the
+  wave-7 tree and went stale; the figures are re-measured on the final wave-8 tree below.)
+- *The round-5 code review* (CR5-1 to CR5-11; each item has its own test file `harness-*.test.ts`, named below).
+  **CR5-1** (`bare-braces.ts`, `harness-cr5-braces-env.test.ts`): described in the budget paragraph above; `{c,'x y'}` and `x\ y`
+  alternatives are read in full inside the cap. **CR5-2** (`env-hazards.ts`): an agent-hook variable assigned anywhere asks when an
+  agent starts at any nesting level. **CR5-3** (`shell-assignments.ts`): one assignment grammar, sequences, `${NAME:=v}`, an
+  unplaceable name asks. **CR5-4, CR5-5** (`protected-names.ts`, `harness-protected-wildcards.test.ts`): described under the
+  protected-path paragraph and the git writers above. **CR5-6** (`harness-sweep-unified.test.ts`): copy-out, archive and
+  `find -exec cat` ask through the reading `grep -r` uses, `find` is read as a boolean expression (`-o` narrows nothing), a brace
+  operand is its alternatives, and a variable operand is placed from the command's own literal assignments or asks. **CR5-7**
+  (`live-env-files.ts`, `harness-live-env-files.test.ts`): "a live env file" is read from the tree (every env file that is not a
+  tracked template, in the root, `deploy/production` and the children of `apps`, `services`, `packages` and `deploy`); the seven-path
+  list is only the fallback for a caller that cannot list; on this machine the main checkout holds one, so the corpus cost is 0.
+  **CR5-8** (`harness-script-text-aliases.test.ts` and additions to `harness-mcp-claude.test.ts`, `harness-hook-matcher.test.ts`): the
+  five surviving hand mutants are pinned (the five `CODE_DELIMITERS` characters, the Gmail send entry of the not-guarded list,
+  `aliasNormalise` in `scriptTextVerdict`) or gone with their code (`MAX_VARIANTS`, the dead `env` entry); wall-clock bounds near
+  their typical time were raised to 3 to 5 s (wave 12, part G, replaced them in `harness-shell-review3`, `harness-shell-review4`, `harness-shell-gaps` and `harness-bypasses` by work counts,
+  `helpers/work-counters.ts`, with a safety net at twice the worst loaded run; seven other files still hold 3 to 5 s bounds: "Wave 12 follow-up"). **CR5-9**: this document's eight claims the review found false are corrected in the
+  paragraphs they sat in. **CR5-10**: `braceVariants` is gone, and `tree-sweep.ts` `spells` now delegates to `isLongOption` (it was the fifth
+  reader); three inline long-option abbreviation readers REMAINED (`git-grep-sweep.ts`, `git-exec-strings.ts`, `harness-switch.ts`; wave 8 did
+  not unify them; wave 9, W9-4, did: `longName` and `spellsLong` in `option-values.ts`); follow-ups left: the two `VARIABLE_SETTER` regular expressions
+  (`git-exec-strings.ts`, `harness-switch.ts`), `patterns.ts` at about 3,000 lines against the 800-line ceiling, module-level state
+  (`work`, `judgeBudget`, the one-shot caches), and `readStdin` duplicating `io.ts`. **CR5-11** (`live-suite-files.ts`,
+  `harness-live-suite-substring.test.ts`): `bunx vitest run care-plan-conformance` runs the live suite beside the unit tests, because
+  vitest filters by substring of the path; a filter that reaches into the file name of a live suite the tree holds **asks**. A
+  directory filter (`scripts/__tests__`, `apps/backend/__tests__`, `packages/db`) runs every test under it, live suites among
+  them, and is not asked (asking was 0.34% of this repo's real commands); the remaining ask costs 0.17% (unit-test stems that also
+  name a live twin). A bare `vitest run` with no filter runs everything the config includes, live suites too, and is not asked.
+
+**Wave 8.** Each item has a test file `scripts/__tests__/harness-*.test.ts` (named below; the round-6 reviewers' payloads are in them, and
+the data-driven tests walk every entry of the tables). The finding IDs (ADV6-n from the adversarial review, CR6-n from the code review) are
+mapped in "Finding IDs cited in this document".
+- *Package runners are peeled once* (`runners.ts`, `package-scripts.ts`, `harness-runners.test.ts`, `harness-package-scripts.test.ts`; T1,
+  ADV6-1, CR6-2, CR6-8). `bunx`, `npx`, `pnpx`, `bun x`, `pnpm|yarn|npm exec|dlx`, `npm x` and `bun|yarn run X` start a program, so where the
+  classifier finds a command's program (under `env`, `nice`, `timeout`, `time`, `sudo` or another runner too) the runner is replaced by what it
+  starts, and EVERY rule judges that command: `bunx git push origin main` asks, `bunx git commit --no-verify` is denied, `bunx rm -rf
+  scripts/harness`, `npx rm .claude/settings.json`, `pnpm exec cp x CLAUDE.md` and `bun run cp x CLAUDE.md` ask, as typed. (That held only for the spellings the one regex of wave 8 read: `pnpm -r exec`, `pnpm -w exec`, `pnpm -c exec`, `yarn workspace X exec`, `yarn workspaces foreach exec` and `bun exec STR` hid their command until wave 10, part A8: each manager now has the option grammar of its own CLI, see "Wave 10 part A" below.) `-c STR`, `--call
+  STR`, `--call=STR` and pnpm's `--shell-mode` hand a string to a shell (`sh -c STR`, judged as a command line; **wave 12, part E1:** `bun run --parallel|--sequential 'CMD' …`, `bun --parallel run …` and `bun --parallel 'CMD'` run EVERY operand as a
+  shell line (bun 1.4.4: each word is its own line), npm 11.11.0 runs the LAST `-c`/`--call` so every value is judged, and `concurrently 'A' 'B'`, `nodemon --exec 'CMD'` and `watchexec … -- CMD` are
+  command-string runners, unverified because they are not installed). `bun run X`, `yarn run X`,
+  `bun X` and `yarn X` run a package SCRIPT when X is a key of the nearest `package.json` (read once per command, only when a name needs
+  it; a name with a colon such as `arch:fitness` always is one), a file when X looks like one, a builtin subcommand (`bun test`, `yarn install`),
+  and otherwise the PATH program X (`bun run echo hello` ran `echo`: the reviewer checked); `npm run X` and `pnpm run X` only run scripts. The
+  two readers that disagreed (`executed()` and `underRunner()`) are deleted. Wave 9 added `corepack`, `volta run`, `mise
+  exec`, `asdf exec`, `direnv exec`, `cross-env`, `dotenv`, `dotenvx run`, `env-cmd`, `doppler run`, `op run`, `lerna exec` and `nx exec` (see Wave 9); a runner no table names still
+  hides its command from the rules by name, and the backstop below asks when such a program is handed a protected path. Everyday `bunx biome check x.ts`, `bunx tsc --noEmit`, `bunx vitest run <unit test>`, `bun run test`, `bun run
+  arch:fitness`, `npx --version` and `bunx playwright test <spec>` stay allowed.
+- *The backstop, rewritten* (`protected-operands.ts`, `harness-backstop-wave8.test.ts`, `harness-protected-operands.test.ts`; T2, CR6-1, ADV6-2,
+  CR6-4, ADV6-5). Three kinds of program. A READER (`cat`, `grep`, `ls`, `cloc`, `shfmt -d`, `docker`, `bun`, `node`, `python`, `sed`, `awk`, …) is
+  exempt until the command line carries one of its WRITE FLAGS, which are data next to its name, with an example each (`tree -o`, `awk '… >
+  ARGV[1]'` or `-i inplace`/`--include`/`-f`, `plutil -replace|-remove|-insert|-extract|-convert|-create` or `-o`, `python -m json.tool IN OUT` and
+  `-m venv|zipfile|…`, `docker cp|save|export|buildx` or `-o|--output|--iidfile`, `jest --outputFile`, `playwright screenshot|pdf|codegen|--output`,
+  `markdownlint --fix|-o`, `gitleaks -r|--report-path`, `node --redirect-warnings|--cpu-prof-dir|--heap-prof-dir|--report-dir|--trace-event-file-pattern`,
+  `bun --cwd|--reporter-outfile|--coverage-dir`, `deno compile -o|bundle`, `npm|pnpm|yarn --prefix|--cwd|-C`, `cpio -o|-O|-p`, `pax -w`, GNU `sed`
+  `e` and `s///e`, `less -o`, `file -C`, `cloc --out`, `scc -o`, `ruff format|--fix|--output-file`, `semgrep --autofix|-o|--*-output`, `trivy -o`,
+  `redis-cli --rdb`, `code --user-data-dir`, …); a flagged reader is then treated like an unknown program. A MODELLED program (`cp`, `mv`, `rm`,
+  `tee`, `git`, `curl`, `tar`, `zip`, `psql`, … the table lists them) has its own write model, so its POSITIONAL operands are the model's (`cp
+  scripts/harness/x.ts /tmp/y` reads), and a protected path attached to an option (`--out=P`, `-o=P`, `key=P`) is not exempt. Every other
+  program asks for any word that names a protected path, positional or not. `plutil`, `7z`, `strip`, `objcopy`, `go`, `cc`/`gcc`/`rustc`, `cpio`,
+  `pax`, `sftp`, `env` and `sudo` left the modelled list (their models were partial). Words are placed like every other operand: brace
+  alternatives, the variables the command line sets to a literal (`D=scripts; sd a b $D/harness/x.ts`), then the predicate the write rules use
+  (the path, a directory above one such as `scripts` or `.claude`, a wildcard that can match a protected file, or whose directory part can match
+  a directory in which every file is protected: `scripts/h?rness/new.ts`); the REPO ROOT (`.`, `..`, `$PWD`) and a wildcard with no `/` (`*`,
+  `*.ts`) count only when the command line carries a write flag (`bunx biome check --write .`, `prettier --write *.md`, `shfmt -w .`, `gofmt -w .`
+  ask; `ecc-agentshield scan --path .` and a helper script given `"$PWD"` do not). For a program that is neither a reader nor modelled, the names
+  inside a word that holds whitespace or code punctuation (an inline program, an SQL string, a here-string) are read too: a name that looks
+  like a path and is a secret file is **denied** (`duckdb -c "select * from read_csv('<env file>')"`, `Rscript -e`, `julia -e`, `emacs --eval`,
+  `expect -c`, `tclsh <<<`, `mongosh --eval`), a protected one asks; a SQL column (`r.key`), a property chain or a variable-prefixed path is not a
+  file here, and a function the command line defines is called with prose as often as with code, so its arguments are read as words only. An
+  editor's (`ed`, `ex`, `vi`, `vim`, `nvim`) command text (an argument, a here-string, a here-document, what a `printf` pipes in) is read
+  through the client reader: every name in it is a file it may write. `time -o FILE` and `strace -o FILE` are wrapper options: the file is judged
+  like a redirect target. `-o=FILE` (Go, clap) and `-coverprofile=FILE` are read as the file. The data-driven consistency test asks, for every
+  MODELLED name, a write shape that must ask, and for every READER name a read shape that must allow and, where it has write flags, one that
+  must ask. `cloc`, `tokei`, `scc`, `cspell`, `depcruise`, `shfmt -d`, `ruff check`, `eza`, `lsof`, `open`, `make`, `semgrep`, `trivy`, `code` and
+  `redis-cli` joined the readers (they asked before). Most of those tools are NOT installed on the machine the stack was built on: their
+  write flags were read from their documentation, not run. `make` runs recipes the guard cannot read, as `bun run NAME` runs a script.
+- *Database clients under real shell quoting* (`db-client-escapes.ts`, `client-reading.ts`, `sqlite-commands.ts`, `postgres-commands.ts`,
+  `sql-file-functions.ts`, `harness-db-clients-wave8.test.ts`; T3, ADV6-6, CR6-3, ADV6-5). Bash collapses `"\\o X"` to `\o X`, but the lexer kept both
+  backslashes, so `psql -c "\\o CODEOWNERS"`, `psql <<< "\\o |sh"`, `mysql -e "\\! id"` and `sqlite3 :memory: "select writefile(\"X\",'x')"` were
+  never read as the escapes they are: both the lexed text and the text the client receives are read. psql starts a meta-command at ANY
+  unquoted backslash (`select 1 \o X`, `\g`, `\s FILE`, `\cd`), with single and double quotes, dollar quotes and comments skipped, and the
+  arguments of a command ending at `\\`. sqlite3 command abbreviations come from a table of probed minimums (every prefix of every
+  name was run with NO argument on sqlite 3.51.0: `.sh`, `.sy` are `.system`, `.c`, `.cl` are `.clone`, `.o` is output or once or open, `.sa` and
+  `.ba` are unknown commands, `.load` is disabled in this build, `.www` and `.excel` were not run and carry conservative minimums);
+  `harness-db-clients-wave8.test.ts` walks every prefix of every entry. `.cd DIR` moves a later relative `.output`/`.once`/`.backup` file, and
+  `.parameter set @f X` binds the file a later `writefile(@f, …)` or `readfile(@f)` names. `.testcase`, `.restore`, `.ar -c -f`, `\s FILE` and the
+  SQL that names a file in ANY client are read: `readfile`, `writefile`, `read_csv|json|text|parquet`, `pg_read_file`, `lo_import`, `lo_export`,
+  `COPY … TO|FROM 'file'` (server-side), `COPY … PROGRAM`, `INTO OUTFILE|DUMPFILE`, `EXPORT DATABASE`, `LOAD_FILE`, `file()`, `load_extension()`,
+  `xp_cmdshell`. The files a client's own options name (`psql -f`, `mysql --defaults-file`, `sqlite3 -init`, `sqlcmd -i|-o`, `--queries-file`,
+  `trino --file`) are reads or writes of that path. Still not read: a script file's CONTENTS, a command built at run time, a client the table
+  does not name, and a variable (`\set X …` then `\o :X`).
+- *Options that run a command line* (`option-commands.ts`, `harness-option-commands-wave8.test.ts`; T4, ADV6-7). `ssh -o 'ProxyCommand cmd'`
+  (the space form), `-o ProxyCommand=cmd`, `-oProxyCommand=cmd`, `-o 'ProxyCommand = cmd'`, `LocalCommand` and `KnownHostsCommand` (any case
+  of the option name), for `ssh`, `scp` and `sftp`; scp's and sftp's `-S program` and sftp's `-D server` (any program but `ssh` asks: the guard has
+  no command line to judge); `zip -T -TT cmd`; `rg --pre cmd` and `--hostname-bin cmd`; `man -P cmd` and `--pager=cmd`; `less '+!cmd'`. Each value is
+  judged as a command line, so a harmless one answers as typed. `-F config` reads a config file that may hold any of these: judged only as a read
+  of that path. Not covered: a config file's contents.
+- *More shapes of printing the environment* (`env-dump.ts`, `env-shapes.ts`, `harness-env-dump-wave8.test.ts`; T5, ADV6-8, CR6-12). `bun -e
+  'console.log(Bun.env)'`, `typeset -x|-p`, `declare -px`, `export -px`, `jq -n 'env'`/`'$ENV'`/`'env.X_SECRET'`, perl `$ENV{X_SECRET}` and `say for %ENV`,
+  awk `ENVIRON`, `ps eww`, `ps aux -E`, `ps auxe`, `launchctl export|getenv SECRET`, deno `Deno.env.toObject()`, python `os.environ` in any printed shape
+  (`print(*os.environ.items())`, `dict()`, `json.dumps`, a loop), node `JSON.stringify({...process.env})` and `Object.entries`, ruby `ENV.to_h` are
+  **denied**: a sink (a print, a log, a serializer) has to take the whole environment, directly or through up to three wrapping calls, a spread
+  or a splat, and the sink must be a WHOLE word (three TypeScript snippets in a python heredoc were once read as a dump because
+  `partnerAccessAvailability(process.env)` starts with the letter `p`). `connect(process.env)` and `spawn(cmd, {env: process.env})` pass the
+  environment on and are not dumps. `declare -x NAME=value`, `typeset -x NAME=value`, `export NAME=value` and `set -x` ASSIGN or switch an option and
+  are no longer denied (v6 and v7 denied them). **Correction (wave 10, B10):** `printenv` with no variable name is a dump, and so is `printenv` with only
+  options (`printenv -0`, `printenv --null`): the rule tested "no arguments" and let them through; only `--help` and `--version` (and their prefixes) print text.
+- *Sweeps* (`sibling-sweeps.ts`, `tar-grammar.ts`, `listing.ts`, `live-env-files.ts`, `live-suite-files.ts`, `harness-sweeps-wave8.test.ts`; T6,
+  CR6-5, ADV6-9, ADV6-10, CR6-6). `fd -Hx`, `-HIx`, `-Ix`, `-HX`, `-xcat`, `--exec=cat` are `find -exec`. `ugrep -r`, `rga`, `pt`, `sift`, `ucg`, `zgrep -r`,
+  `gitleaks detect --no-git|dir`, `trufflehog filesystem`, `semgrep --no-git-ignore`, `scp -r` and `ag -a|--all-types` are siblings of `grep -r`/`cp -r`/`rg
+  -u`; `gitleaks … --redact` (the repo's own pre-commit hook) stays allowed. rga, pt, sift and ucg were treated as recursive by default from their
+  documentation (none is installed here). An unknown program asked to read recursively (`-r`, `-R`, `-a`, `--hidden`, `--recursive`, `--no-ignore`) a PLACED
+  directory (not the root, not a wildcard) that holds a live env file asks. tar is read with its own grammar: clusters whose values come in order
+  (`-cCf apps /tmp/o.tar portal` takes DIR then FILE; `-Capps` attaches), `--directory=`, `--dir=` and any unambiguous abbreviation, `-T` and
+  `--files-from` (an unreadable list: asks when creating), and each `-C` applies to the operands after it; `tar x` unpacks into the last `-C` in any
+  spelling. The tree-sweep operand is matched as the file system folds names (case, NFKC): `grep -r X APPS/PORTAL` asks. The listings of the live env
+  files and the live suites return `{files, complete}`: more directories than the cap, a depth past 16 (it was a silent 8), a symlinked directory and
+  an unreadable one make the listing incomplete, and every rule that asks "could this reach one?" then answers yes (ask), as the protected-names listing
+  does; `.envrc` is a live env file. A symlinked directory under a listed root is a gap, not followed, unless it points inside a walked root by a path with no skipped directory in it (wave 10, B11); a symlink to a FILE is a file (wave 9, W9-0: wave 8 treated every symlink as a gap, which made every vitest filter ask on a checkout that holds a Python virtualenv). The three inline long-option abbreviation readers named under CR5-10 were
+  unified in wave 9 (W9-4); the `isOption` definitions (four: `client-reading.ts`, `protected-operands.ts`, `sibling-sweeps.ts`, `writers-more.ts`) and the
+  operand readers (`operands` in `writers.ts` and `writers-more.ts`, `operandsOf` in `sibling-sweeps.ts`) are not unified: they differ on a lone `-` and on an
+  empty argument, so one function would change an answer (wave 10 list: not done).
+- *PATH shadows, persistence, secret names* (`toolchain-paths.ts`, `launchctl-rules.ts`, `secret-names.ts`, `harness-persistence-wave8.test.ts`; T7,
+  ADV6-3, ADV6-12, ADV6-14). A program the pinned commands and the guard call (`bun`, `bunx`, `perl`, `env`, `sh`, `node`, `git`, `python3`) is protected BY
+  NAME in any directory (`cp /usr/bin/true ~/.kimi-code/bin/bun` asks; Codex denies): the fixed list could never name every user-writable PATH directory
+  that comes before `~/.bun/bin`. The cost is an ask for an ordinary write to a file or directory of that name (`echo x >> env`, `rm -rf
+  ~/Library/Caches/bun`, `mkdir sim/bin/bun`): 9 of the 129,020 real commands. **Residual:** the guard runs under whatever `bun` the PATH of the hook
+  resolves; pinning an absolute path in a shared settings file is machine-specific and is not proposed. `~/.gitconfig`, `~/.config/git/*`, `~/.claude.json`,
+  `~/Library/LaunchAgents/**`, `~/.claude/{rules,plugins,hooks,commands,agents,skills}/**` and `~/.codex/{config.toml,hooks.json,AGENTS.md}` are protected
+  (the settings files, every `CLAUDE.md` and the whole `.codex/` already were); `~/.claude/projects/**` (the memory files the Write tool writes every
+  session), caches and history are NOT. `launchctl setenv|unsetenv|load|unload|bootstrap|bootout|enable|disable|kickstart|submit|bsexec|asuser` asks. Corpus
+  cost of these paths: 0 commands wrote any of them. Secret names added: `.envrc`, `secrets.json|yaml|yml`, `application_default_credentials.json`,
+  `.my.cnf`, `.mylogin.cnf`, and a RELATIVE `env.sh` (an absolute path or one behind a variable, `source $S/env.sh`, is the agent's own scratch script: 16
+  such commands in the corpus, so it stays readable); `.env~`, `.env.swp` and `.env.bak` were already read through their original. `git ls-files` shows
+  no tracked file with any of these names.
+- *Assignments* (`variable-rebinding.ts`, `harness-variable-rebinding-wave8.test.ts`; T8, ADV6-13). A variable the command line binds more than once, or by
+  `read`, `printf -v`, `for`, `select`, `while read`, `eval`, `let`, `(( ))`, `+=`, `mapfile`, `readarray`, `getopts` or `${S:=…}`, is dropped from the literal map: an
+  operand that uses it cannot be placed, and a sweep over it asks. `S=apps/portal; cp -r $S /tmp/o` still asks; `D=src; ls $D` still allows. Read as text over the
+  whole command, so a variable rebound to something harmless also asks (an over-reading, never a miss).
+- *The gate, the tests and the structure* (`hook-pin.ts`, `harness-hook-pin.test.ts`, `content-scan.ts`; T9). `arch:compliance` pins the WHOLE hook object of
+  Claude's three pinned hooks: a group holds `matcher` and `hooks`, exactly one hook, and that hook exactly `type` (`"command"`), `command` and `timeout`
+  (the ledger also `async`); `if`, `shell`, `once`, `asyncRewake`, another `type` and a stray hook all fail it (whether this Claude Code honours `if`, `shell` or
+  `once` was not verified; the gate refuses them either way). The surviving hand mutants are pinned (the `.dist` template exclusion, `.live.test.tsx`
+  suites, gawk `--include`/`-iinplace`, `dlx`, the `-c` value), and a corrupted `guard-worker.ts`, `guard-judge.ts` or `patterns.ts` is shown to be the
+  guard's own JSON deny with exit 2 through the real pinned command. The wall-clock bounds of 100 to 1,500 ms became 3 to 5 s with a comment that they guard
+  a super-linear blow-up (wave 12, part G: replaced by work counts in four files, seven others unchanged: "Wave 12 follow-up"). `judge` (150 lines) and `mainWrites` (59) are under 50 lines by extraction; the pure secret-path and content rules (about 300
+  lines) moved to `content-scan.ts` and `patterns.ts` re-exports every name, so it is 2,963 lines (3,043 at the wave-7 tip; the ceiling is still 800).
+  `spendIfShellWouldExpand` (always true, with an unused parameter) is gone. **CR6-11:** `ISSUED_SSN` in `scripts/__tests__/_fixtures.ts` is deliberately
+  an issued-looking value (area 524) built from parts; `.claude/rules/phi-and-secrets.md` says every SSN is synthetic or has area 000, 666 or 9xx. The exception
+  is stated in the fixture's comment and in this paragraph; the rule file (and its `.agents` twin, mirrored by `arch:compliance`) should name it too, which needs the
+  owner.
+- **Claude's positive acknowledgement was NOT adopted (T0b declined, ADV6-4).** The wave-7 tail refuses a NON-ZERO exit; an entry module that is empty, only a
+  comment, or `export {};`, a no-op `runGuard` and a `bun` script doing `exit 0` earlier on PATH make the pinned Claude command exit 0 with nothing on stdout,
+  which Claude Code reads as allow (shown on a copy, `harness-claude-fail-closed.test.ts`, "KNOWN RESIDUAL"; Codex is the same). The proposed fix (the guard
+  prints `{}` for an allow and the command refuses an empty stdout) was declined because whether Claude Code accepts `{}` as "no decision" on EVERY tool call
+  could not be verified here, a wrong guess is a lockout of every developer's every Claude tool call, the file that would carry the fix is the file whose
+  editing is gated, and it reaches 85 allow assertions and the real-hook helper of the suite. The lines behind the residual: every write that could empty
+  or replace a guard module is a protected path (an ask; Codex denies), `bun` shadows are now protected by name, CODEOWNERS and `arch:compliance` review the
+  harness, and the Stop gate runs. It needs the owner's decision and a check of Claude Code's behaviour with a real session.
+- **Corpus cost, measured on the final tree.** 129,020 distinct Bash commands recorded in this machine's Claude sessions, classified in process by the
+  wave-7 tip and by this tree (nothing executed; the tool is a scratch script, not committed): 60 allow to ask (0.047%), 1 ask to deny, no
+  throws; the slowest single classification was 248 ms (227 ms for the wave-7 tip in the same run; a real hook call is 40 to 90 ms). The 60: 38
+  `bunx biome check --write .` at the repo root (an in-place write the guard cannot see into: `lint:fix` is `bun run lint:fix`, a package script, and is
+  not asked), 4 `tar cf X -T list`, 4 `$B check --write .` (a variable used as the program name), 3 `echo … >> env` and 2 `rm -rf ~/Library/Caches/bun` and 2
+  `perl -e 'alarm; exec @ARGV' bunx …` and 2 `mkdir sim/bin/bun` (a PATH-shadow name), 2 `bun --bun run vitest run <live suite>` (the live-suite ask
+  now reaches a runner behind `bun --bun run`), 1 `$G` (a variable program handed `scripts`); the 1 ask to deny is an agent's own scratch `env.sh` written
+  by a heredoc beside a `cd $SP`. Removed asks: the real corpus holds no `cloc`, `tokei`, `scc`, `cspell`, `shfmt -d`, `ruff check`, `eza`, `lsof`, `open`,
+  `make -C`, `semgrep` or `trivy` over a harness path (v7 asked about each when the stack was probed; the tip allows all 14, `harness-backstop-wave8.test.ts`),
+  and `declare -x FOO=bar` and `set -x`, denied in v6 and v7, allow.
+- **Residuals, stated plainly.** Computed names (`$VAR/x`, `$(printf …)`, an encoded name) stay unseen. An alias or a function wrapper (`alias c='cp -r'` then
+  `c apps/portal /tmp/o`; `g() { git "$@"; }`) hides its command by name; a function body is judged, its call is not tied to it. A glob target is
+  read only when it has a slash (or a write flag). A symlinked directory is a gap in the listings and a symlink in a sweep operand is not followed.
+  `xargs`-fed names (a pipe) and `-T`-listed names are unreadable (`xargs -a FILE` is read: wave 9). A heredoc handed to an unknown program is not read (a here-string is). A package-runner or wrapper this
+  table does not name (wave 9 added the version managers and loaders; wave 10 added `uv`, `uvx`, `pipx`, `poetry`, `pdm`, `rye`, `hatch`, `pipenv`, `conda`, `micromamba`, `devbox`, `flox`, `nix`, `nix-shell` and the wrappers `nsenter`, `sshpass`, `firejail`, `systemd-run`, `fakeroot`, `valgrind`, `gdb --args`, `ltrace`, `dtruss`, `perf`, `numactl`, `cpulimit`, `torify`, `tsocks`, `toybox`, `setpriv`; `bwrap`, `rlwrap`, `hyperfine` and the recipes of `make`, `just` and `task` remain) hides its command by name. The guard runs under whatever `bun` the PATH
+  resolves (the PATH-shadow residual above). The positive-acknowledgement residual above (Codex too: it has no acknowledgement at all). The write flags and
+  abbreviations of tools not installed here (`cloc`, `tokei`, `scc`, `cspell`, `depcruise`, `shfmt`, `ruff`, `semgrep`, `trivy`, `code`, `markdownlint`,
+  `jest`, `mocha`, `deno`, `tree`, `7z`, `objcopy`, `ugrep`, `rga`, `pt`, `sift`, `ucg`, `trufflehog`, GNU `sed`, `litecli`, `usql`, `duckdb`, `sqlcmd`,
+  `sqlplus`, `mongosh`, `clickhouse-client`, `trino`) were read from documentation; nothing was run on Linux or with bun 1.3.5.
+
+**Wave 9.** Residuals the orchestrator found while verifying wave 8, in priority order. Each item has a test file
+`scripts/__tests__/harness-*-wave9.test.ts` and its own commit; the data-driven tests walk every entry of the new tables.
+- *A regression of wave 8, fixed first: a symlink is decided by its target* (`symlink-target.ts`, `live-suite-files.ts`, `live-env-files.ts`,
+  `harness-listing-symlinks-wave9.test.ts`; W9-0, CR6-6). Wave 8 treated every symlink in the live-suite and live-env listings as "listing
+  incomplete", and the real checkout holds `services/docling-worker/.venv/bin/python`, `python3` and `python3.12` (links to FILES in a Python virtualenv),
+  so on the real checkout every `bunx vitest run <any filter>`, `bunx vitest run scripts/__tests__/harness-hooks.test.ts` included, asked "Live suites DROP ROLE
+  chartwarden_app": 9,241 of 140,767 real commands (6.56%) against the 60 (0.047%) that wave 8's own figure reported, because that figure was measured on a
+  worktree that has no virtualenv. **Measure false positives against the real checkout's listing, not only a worktree's.** Now `statSync` (it follows the link)
+  says what a link points at: a link to a FILE is judged by its name like a file (a `.live.test.ts` link is a suite), a dangling link holds nothing, a link to a
+  directory that is inside a walked root (`.venv/lib64 -> lib` on Linux) holds nothing new (it is walked on its own) **unless its target lies under a skipped directory**
+  (`apps/web/src/viadist -> ../dist` hid `dist/hidden.live.test.ts` with `complete: true`: corrected in wave 10, B11, which also judges a link to a file by the name of
+  what it points at, and no longer takes a sibling of a walked root, `apps-extra` beside `apps`, for something inside it), and only a link to a directory elsewhere, or
+  one that cannot be resolved (a link to itself: ELOOP), is a gap. The env listing reads the direct children of `apps`, `services`, `packages` and `deploy` the
+  same way (a file link is a file, a dangling link is gone, a directory link is a gap). On the real checkout the suite listing is now complete (530 suites, 3
+  symlinks, 1,366 directories) where wave 8's was not. **Residual:** a filter that matches only the NAME of a symlinked directory is not seen.
+- *One reader of the database target for every client* (`db-target.ts`, `db-target-clients.ts`, `harness-db-targets-wave9.test.ts`; W9-1; the rule of
+  `.claude/rules/phi-and-secrets.md`: no production access from a session). The rule behind "Connecting to database host … is access to PHI" read `-h`,
+  `--host=`, a postgres URL WITH userinfo and `PGHOST=` for four programs. A URL without userinfo (`psql postgres://HOST/db`), a libpq connection string
+  (`psql "host=HOST dbname=db"`, `hostaddr=`), `-d` and `--dbname` URIs, `pg_dump postgres://HOST/db` and every other client were allowed. One reader now serves
+  `psql`, `pg_dump`, `pg_dumpall`, `pg_restore`, `pg_basebackup`, `pg_receivewal`, `pg_recvlogical`, `createdb`, `dropdb`, `pg_isready`, `vacuumdb`,
+  `reindexdb`, `pgbench`, `pgcli`, `mysql`, `mariadb` and the `mysqldump`/`mysqladmin`/`mysqlshow`/`mysqlcheck`/`mysqlimport` family (and their `mariadb-*` names),
+  `mycli`, `mysqlsh`, `redis-cli`, `valkey-cli`, `mongosh`, `mongo`, `mongodump`, `mongorestore`, `mongoexport`, `mongoimport`, `mongostat`, `mongotop`,
+  `clickhouse-client`, `clickhouse`, `cockroach`, `usql`, `sqlcmd`, `trino` and `cqlsh`: an option table per client (which option letters take a value, which
+  name the host, which carry a connection string, which name an alias or a file), a URI reader (no userinfo needed, a port, IPv6 literals, percent-encoding,
+  `a,b` host lists, `?host=` and `?hostaddr=` parameters, `mongodb+srv://`), a libpq connection-string reader (rebuilt in wave 10 from libpq's own `conninfo_parse`: a backslash escapes the next character inside and outside quotes, spaces
+  around `=`, an open quote or a word with no `=` after a first `key=` is refused) and a `dbname=` that is itself a URI, and the EXISTING local-host predicate of `content-scan.ts`, unchanged (loopback, `host.docker.internal`, a compose service, a socket directory;
+  `prod`, `db.internal` and `10.0.0.5` are not local). A host that is not local is **denied**, in the option spellings the client's table lists and the abbreviations its option parser accepts (`-h H`, `-hH`, `--host=H`, `--host H`, `--ho=H`,
+  `-AtXqh H`; wave 10 added that a host option is also looked for in EVERY word, whatever option before it was taken to consume a value; a client that reads no abbreviation, such as
+  redis-cli, mongosh and trino, is read by exact names only, and an exact flag name wins over a prefix of a value option), inline (`PGHOST=H psql`, `env PGHOST=H psql`, `MYSQL_HOST`, `COCKROACH_URL`, `COCKROACH_HOST`, `CLICKHOUSE_HOST`) and set
+  by a variable statement of the same command line (`export PGHOST=H; psql`, `PGHOST=H; psql`: allowed before wave 9; after wave 10 EVERY value a statement assigns is read, a rebound name included,
+  and so are the statements inside `bash -c`, `sh -c`, `eval` and the variables an inline `PGHOST=H bash -c '…'` hands down), under a runner or a wrapper (`bunx psql …`, `sudo -u postgres pg_dump …`).
+  **Correction (wave 10):** the wave-9 URI reader ended the authority at the first `/?#` and then took the userinfo to the last `@`, so `psql "postgres://localhost?@H/db"`
+  and `…localhost#@H/db` (v8 denied them) were allowed, and `…/db#?host=H` dropped its query at the `#`; libpq's own parser takes the userinfo up to the first `@` before the first
+  `/` and does not treat `#` as special, other URL parsers end the authority at `?` or `#` and take the userinfo to the last `@`, so every reading is made and the hosts of all of them are judged.
+  A target the reader cannot read (an open quote, an open bracket) is **denied**, not allowed. A service, a password file, a login path or a DSN alias (`psql
+  service=NAME`, `PGSERVICE=`, `PGSERVICEFILE=`, `PGPASSFILE=`, `mysql --login-path=`, `--defaults-file=`, `pgcli -D NAME`, `mycli --dsn NAME`) names the host
+  in a file the guard cannot read: **asks**. `$DATABASE_URL` asks for every client in the table (it was four; wave 10: so does a variable or a substitution in the place of a target,
+  `psql "$URL"`, `psql -d "$DB"`, `redis-cli -u "$URL"`, `mongosh "$URI"`, unless the command line sets the variable to a literal first). A SQL string, a file name and a `-v NAME=value`
+  are values of options the table names, never read as a host: `psql -c "select … host = 'x.example.org'"` allows. Everyday `psql -h localhost`, `psql
+  postgres://u@127.0.0.1:5433/db`, `psql -p 5433 -U u db`, `redis-cli get key:123`, `docker exec … psql` and `docker compose exec postgres psql` allow.
+  **Residuals:** an option the table does not list is read as a flag (wave 11: it ASKS when a bare word follows it, and always for a client whose table is proven against the real program), but a host option (`-h`, `--host`, `--uri`, …) is found in every word since wave 10; a bare single-label `mongosh NAME` is read as a
+  database name, not a host; `clickhouse`, `usql` and `sqlcmd` take their DSN forms as the table lists them; a client behind an alias is not read. **Correction:** `docker exec c psql -h H` IS
+  read (the code denies it; the wave-9 text said it was not), and wave 10 part A reads a client run in a fresh container (`docker run`, `compose run`); a variable that holds the host
+  (`-h $HOST`) is refused as an unplaceable host unless the command line sets it to a literal first, in which case the literal is read.
+- *The files a wrapper's own options name, and every long option's value* (`wrapper-options.ts`, `wrappers.ts`, `harness-wrapper-options-wave9.test.ts`; W9-2).
+  A wrapper is stripped before its command is judged, so two things in its options were never looked at. First, the FILE an option names: `xargs -a FILE`
+  (also `-aFILE`, `--arg-file`, `--arg-file=FILE`, `--arg`) and `parallel -a`, `--arg-file`, `--argfile`, `--sshloginfile`, `--slf`, `proxychains4 -f`, `doas -C` READ
+  it and are judged like an input redirect (a live env file is **denied**, as for `cat`; a file named by a command substitution asks when the inner program prints
+  files); `flock FILE cmd`, `parallel --joblog|--results|--tmpdir`, `strace -o|--output` and `time -o|--output` WRITE or create one and are judged like a redirect target
+  (a protected path **asks**); `sudo -e FILE` (`--edit`) edits the files that follow, so sudo stays the program and they are judged as operands. Second, a long
+  option with a SEPARATE value made its value the program: `nice --adjustment 5 git commit …` ran `5` as far as the rules knew. The long value options of `sudo`,
+  `env`, `time`, `nice`, `ionice`, `xargs`, `stdbuf`, `strace`, `taskset`, `flock`, `parallel`, `chroot` and `unshare` are listed (wave 9 said "a prefix of two characters or more"; GNU getopt takes ANY unambiguous prefix, one character included, and since wave 10 every wrapper is read that way), and the short ones were audited (`xargs -J -R -S`, `env -a`, `ionice -P -u` added; `parallel -X`, `strace -T -D -k` were flags read as values and
+  are fixed). New wrappers: `chroot`, `unshare`, `chronic`, `proxychains`, `proxychains4`, `ssh-agent`; `entr` and `watch` hand a command line to the judge; the
+  Homebrew `g`-prefixed GNU tools (`gxargs`, `gnice`, `gstdbuf`, `genv`, `gnohup`, `gtime`) are the wrapper they prefix. A data-driven test walks every entry of the
+  tables in every spelling. **Residuals:** a file named by `$(…)` is asked only when the inner program prints files (`xargs -a "$(ls)" echo` is not); a wrapper this
+  table does not name (after wave 10: `bwrap`, `rlwrap`, `hyperfine`) still hides its command by name; the
+  `sudo -R` (chroot) and `env -P` (alternative PATH) values are not followed.
+- *Runners and environment loaders* (`runners.ts`, `harness-runners-wave9.test.ts`; W9-3). `corepack`, `volta run`, `mise exec|x` (tool specs and the `--`
+  separator, `-c STR`), `asdf exec`, `direnv exec DIR`, `cross-env VAR=x cmd` (and `cross-env-shell "string"`), `dotenv`, `dotenvx run`, `env-cmd`, `doppler run`
+  (`--command STR`), `op run`, `lerna exec` and `nx exec` start a command by name; they are peeled by the same code as `bunx` and every rule judges the inner
+  command (`dotenv -- git commit` with the skip-hooks flag is denied, `volta run vitest run <live suite>` asks). `npm run-script` is a package script like `npm run` (no
+  program); `turbo` has no `exec`; `tsx`/`ts-node`/`bun`/`deno run FILE` run a file, which is judged by name like any operand. **A runner's own option that names a file is no longer
+  lost when the runner is peeled** (`peelRunnerWithFiles`): wave 8's peel dropped it, so `bun --env-file <live env file> run echo hi`, `bunx --package F echo` and `npx
+  --userconfig F echo` were ALLOWED by wave 8 (wave 7 denied them); each is a deny again. **The env-file loaders already deny a live env file named in their flags**
+  (`node --env-file=F`, `bun --env-file F`, `deno run --env-file=F`, `docker run --env-file F`, `uv run --env-file F`, `dotenv -e F`, `dotenvx run -f F`, `env-cmd -f
+  F`, `op run --env-file F`, `direnv exec F`: the secret-name rule reads any word of the command line); the wave-9 brief assumed they were allowed and proposed an ask,
+  which would have loosened them, so they stay denied. A template (`.env.example`, `.sample`, `.template`, `.dist`) and `docker compose --env-file F up` (the
+  documented lifecycle exemption) stay allowed. A valued option's value never starts with a dash (`dotenv -c -e F -- cmd` keeps `-e F`). **Residuals:** `direnv exec .`
+  loads the `.envrc` of the directory it names and is not asked; an alias or a function hides its command (as before); `op --account X run` was not peeled in wave 9; since wave 10 every manager reads the options before its subcommand with its own grammar, and an unknown one is a flag (lax grammars) or asks (bun, uv).
+- *One reader of a long option's name* (`option-values.ts`, `harness-option-values-wave9.test.ts`; W9-4, CR6-8 follow-up). `git-grep-sweep.ts`, `git-exec-strings.ts`
+  and `harness-switch.ts` read the text of a long option and its abbreviation through `longName` and `spellsLong`, which `optionValues` uses too. No answer changed
+  (every harness test passes unchanged; no transition on 35,932 git-related real commands). **Not done, and miscounted in wave 9 (R7-CR-16):** the `isOption` definitions are FOUR after wave 10 (`client-reading.ts`, `protected-operands.ts`, `sibling-sweeps.ts`, `writers-more.ts`; `runners.ts` had a fifth, gone with its rewrite) plus the `operands`/`operandsOf` readers of `writers.ts`, `writers-more.ts` and `sibling-sweeps.ts`; they differ on a lone `-` and on an empty argument and one function would change an answer. The other prefix readers (`tar-grammar.ts`, `tree-sweep.ts`, `db-target.ts`, `option-commands.ts`) are not shared with `option-values.ts`; the wrapper and runner tables use `option-grammar.ts` since wave 10. `patterns.ts` got wiring only: 2,960 lines (wave 8: 2,963); the new logic is in `symlink-target.ts`, `db-target.ts` (and its client table `db-target-clients.ts`, 597 lines of data), `wrapper-options.ts` and `runners.ts`.
+- **Corpus cost, measured on the final tree against the REAL checkout.** 140,767 distinct Bash commands recorded in this machine's Claude sessions (the transcript
+  cache was rebuilt recursively, subagent sessions included), classified in process
+  with `/tmp/cw-v8` (the wave-8 tip) and with this tree, the live listings read from the real checkout (read only; nothing executed; the differ is a scratch script,
+  not committed). Wave 9 against wave 8: 9,239 ask to allow (6.563%), every one in the
+  "Live suites DROP ROLE chartwarden_app" bucket (the first word of those compound commands: `cd` 6,761, `bunx` 819, `python3` 518, `sed` 158): the regression, undone, and
+  2 commands of that bucket remain, the two where a substring filter really names a live suite; 0 allow to ask, 0 allow to deny, 0 ask to deny; no throws; the slowest single
+  classification 107 ms (126 ms for the wave-8 tip). So wave 9 adds no classifier-level ask or deny on any real command (its budget was 0.02%, about 25 commands). Each
+  task was also measured on the commands it touches before the final run: 5,088 database-client commands (W9-1), 6,614 wrapper commands (W9-2), 36,857 runner and
+  environment-loader commands, `--env-file` ones included (W9-3: 0 transitions per loader), 35,932 git-related commands (W9-4, against the previous commit): no transition
+  other than the regression's. Wave 8's own cost is unchanged (the orchestrator's real-checkout figures for wave 7 to wave 8: 9,241 asks in the live-suite bucket, now gone;
+  44 "not a program the guard knows to be read-only, and its command line names a protected path", 13 "is the bun the agent hooks run on", 4 tar archives of the repo root or an
+  env directory, 1 ask to deny: about 0.043%, accepted in wave 8). Against wave 7 the live-suite substring rule adds 2 asks on the vitest-related commands (24,368 of them). The pinned
+  hook commands, replayed on this tree (Claude and Codex; the corrupted-copy fail-closed checks), answer as on the wave-8 tip, 44 to 98 ms per call.
+
+**Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
+runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
+escape, a comment or a heredoc body cannot hide a later command. It models single quotes (no escapes); double
+quotes (a backslash escapes the next character, and `$( )`, backticks and `${ }` inside still run); `$'…'` (a
+backslash escapes, `\'` included); backslash escapes and backslash-newline continuations (dropped, as the shell
+does); `#` comments, only where a `#` starts a word (`a#b`, `$#` and `${#x}` are not comments, and a comment is
+never judged); `$( )`, `<( )`, `>( )`, `$(( ))`, `${ }` and backticks nested with their own quoting; and
+heredocs (`<<W`, `<<-W`, a quoted or escaped `W`; `<<<` is a here-string, not a heredoc). A heredoc body is
+data, so a commit message that mentions `rm scripts/harness/x` is text. The exceptions are a body fed to a
+shell, `eval`, `source`/`.`, `at` or `batch`, to a command that names one of them as an argument or whose name
+is a `$VAR` or a substitution, or through a pipe into one of those: its lines are judged as commands; and an
+unquoted body, whose `$( )` and backticks run and are judged. An interpreter's body (`python3 -`, `node -`) is
+read as text, as before. A `)` that opens no group ends the command before it (`case x) cmd`, `(x) cmd`,
+`f() { cmd; }`). A text that ends inside a quote, `$( )`, `${ }`, backtick or heredoc (no delimiter line), or
+after a trailing backslash, ASKS, and the unfinished tail is dropped from the commands, so a garbage tail is
+not judged over and over; a deny found in the part before it still stands. It does not model: aliases and
+functions defined earlier in the session, or `function f { … }` bodies; a `case` pattern inside `$( )`; `[[ ]]`
+and `(( ))` operators that read as a heredoc (`(( x << 2 ))` asks); zsh-only syntax (`=( )`, glob qualifiers, a
+`setopt` that changes quoting or comments); the quote rules of a `${ }` beyond "a single quote is ordinary
+inside double quotes"; a heredoc whose body starts inside a `$( )` that opens after its operator on the same
+line; what a `$'…'` expands to (it only finds the closing quote; the word reader decodes the escapes); or a
+command word built around a substitution (`$(true)git …`). Heredoc scripts nested more than 16 deep answer ask
+(substitutions stay capped at 32 per level, as above).
+
+**A hard deadline, in both agents.** A guard that crashes, is killed at the hook's own 10 s timeout, or exits with
+anything but 2 lets the tool call run in Claude Code; Codex's pinned command wraps the guard in `perl alarm 8
+… || exit 2`, and Claude's has no perl wrapper (a missing `perl` would lock out every Claude call; its plain-shell
+`|| exit 2` tail, above, covers a guard that cannot start or crashes, but not a hang the tail never sees). So the
+guard enforces its own deadline. `pre-tool-guard.ts` is a small entry thread
+(`hard-deadline.ts`): it arms a 6.5 s timer before it reads stdin, runs the judgement (`guard-judge.ts`) in a Bun
+worker (`guard-worker.ts`), and when the timer fires, the worker dies or errors without answering, or stdin never
+ends, it prints the standard deny JSON, a stderr line and EXITS 2 (a block in both agents), whatever the worker is
+stuck in. After the deny is out it runs `emergency-ledger.ts` as a child process (the three bun flags, output thrown away, SIGKILL after 0.5 s since wave 13 part B2) that writes ONE ledger line for it (the cause, the tool name, the
+SHA-256 of a Bash command and never its text); a locked, unwritable or hung ledger loses the line and never changes the deny or its exit code, and the two denies the worker makes about its own state (an
+input it cannot parse, an internal error) are logged by the worker (wave 12 part G). The worker makes `process.exit` a throw: on bun 1.3.5 (what CI pins) a `process.exit(0)` called in a
+worker ended the WHOLE process silently with status 0, which both agents read as an allow. Normal answers are unchanged (JSON for a deny or an ask, nothing for an allow, exit 0); the extra
+latency was about 5 ms per call when the deadline was added (median 21 to 26 ms over 35 runs on macOS, bun 1.3.5; measured once, not
+re-measured since, and machine-dependent). A worker needs neither `--config` nor `--tsconfig-override` of its own: it is
+started by the already-hardened entry, and the hostile-config tests run through it. Test seams, never set in
+production and forbidden in the shared `env`: `CW_HARNESS_TEST_FAULT` (`hang`, `exit`, `process-exit`, `throw`, `malformed`), `CW_HARNESS_TEST_LEDGER_FAULT` (`hang`: the ledger child hangs, to prove its 0.5 s
+bound; refused by the allow-list of `env`, not by name: `FORBIDDEN_ENV` in `scripts/check-compliance-controls.ts` does not list it) and
+`CW_HARNESS_DEADLINE_MS_FOR_TESTS` (it can only shorten the deadline); `harness-hard-deadline.test.ts` forces each
+through the entry point and through both real pinned commands. A `bun` that is missing, a module that cannot be
+parsed, and a process killed for memory before it can answer exit non-zero, and both pinned commands now turn that
+into exit 2 (Claude's through its tail, above); a `bun` so slow to start that the hook's own 10 s timeout kills the
+whole `sh` first is not covered (the deadline starts only once the entry thread runs): the Stop gate, the pre-commit
+scan and CI are the lines behind that. A `Read`/`Write`/`Edit` path of 500 KB made of `a/../` used to go quadratic in the real-path
+walk (4 to 9 s); the written path is judged first, the walk is iterative, and a path longer than PATH_MAX is
+collapsed textually and never resolved link by link.
 
 **Fails closed.** Empty or unparseable hook input, an internal error, and a write too large to scan
-(over 8 MB) all answer `deny`. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for it.
+(over 8 MB) all answer `deny`. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for it (that makes
+the guard answer allow on exit 0, which the fail-closed tail never touches; it does not help when the guard cannot
+start at all: repair it outside Claude Code).
 Codex PTY requests (`tty`, `pty`, or `use_pty`) also fail closed: later `write_stdin` input does not fire
 the original command's PreToolUse check. The Codex hook therefore matches `write_stdin` itself and allows
 only empty polling; every non-empty or malformed `chars` value is denied before reaching the process.
@@ -249,6 +980,10 @@ Agents use finite non-PTY commands instead; the interactive-process classifier r
 control for commands that can attach stdin without requesting a PTY.
 
 Cannot cover:
+- A nested repo (below the Codex session directory) that plants the hook config, a guard script and `.git` by a
+  means the shell text does not show (see "The root is where the guard script lives"), plain `merge`/`rebase`/
+  `pull`/branch switching (above), the same writers through an interpreter script file or a `$VAR` path, and
+  a template directory handed to `git init`/`git clone` by a means other than `--template` (it carries hooks).
 - A program that reads a file through a construct the rules do not anticipate (a script it just wrote,
   a path piped into `xargs`, a compiled binary). Shell text is not a security boundary. The real fixes are a
   filesystem sandbox (Claude Code's sandbox read-deny for `.env*`, keys and dumps) or keeping live secret
@@ -256,8 +991,11 @@ Cannot cover:
 - `Grep` with no `glob` over a directory: it relies on ripgrep honouring `.gitignore`, which lists `.env`
   (`arch:compliance` checks that line stays).
 - Files the scanners skip as binary: `.pdf`, images, archives and `.pen` design files.
-- A guard process that never starts (for example `bun` missing): Claude Code treats that as
-  non-blocking. The Stop gate, the pre-commit scan and CI are the lines behind it.
+- A guard process that never starts (for example `bun` missing) used to be non-blocking in Claude Code; the
+  command's `|| exit 2` tail now refuses the call instead (wave 7, T0), at the price of a lockout until a human
+  repairs the guard outside Claude Code (see "Claude's guard command fails closed"). Not covered: a hook killed by
+  Claude Code's own 10 s timeout before it can exit (the whole `sh` dies with it), and a corrupted
+  `.claude/settings.json`. The Stop gate, the pre-commit scan and CI are the lines behind those.
 - The Stop gate is advisory after two identical failures (it releases with a notice instead of looping).
 
 ## The ledger
@@ -268,6 +1006,9 @@ or reordered line breaks it, each month starts from the previous month's last ha
 Anyone who can write the directory can rewrite the chain and `HEAD` together, so it is **not**
 tamper-proof evidence. If you need that, run `bun run harness:ledger:verify --print-head` and publish the
 line somewhere the agent cannot write (a PR comment, a CI artifact).
+
+Every emergency deny is ledgered too (wave 12 part G): the deadline, a worker that died or errored (`worker error`, `worker closed`, `worker could not start`), a worker answer that is not a decision, an
+input the guard cannot parse and an internal error. The line is best effort and written after the deny is out: one that cannot be written is lost, never the deny (see "Wave 12 part G").
 
 ## Who must review changes to the harness
 
@@ -306,4 +1047,999 @@ bun run harness:ledger:verify       # after a session, the chain is intact
 
 - `CW_STOP_GATE=off claude`: skip the Stop gate for one session (e.g. a docs-only marathon).
 - `CW_AGENT_LEDGER=off`: no ledger lines.
+- Every Claude tool call is refused with "the guard failed to run, so the call is refused": the guard cannot start
+  (a corrupted `scripts/harness/pre-tool-guard.ts` or `hard-deadline.ts`, no `bun` on the hook's PATH). Claude Code can no longer
+  repair it; in a terminal outside Claude Code run `git restore scripts/harness`, check `bun --version` and
+  `bun --config=/dev/null scripts/harness/pre-tool-guard.ts < /dev/null` (a deny JSON is a healthy guard), and start
+  Claude Code again.
 - A new synthetic identifier: edit `compliance/synthetic-identifiers.json` and approve the prompt.
+
+## Finding IDs cited in this document
+
+The review records themselves are not committed to this repository; most of these IDs also appear in the message of the commit that
+fixed them (`git log --grep '<ID>'`), and in the tests named in the paragraph that cites them. One line each.
+
+| ID | What it was |
+|---|---|
+| ADV-C3 | The Codex hook command found the checkout with `git rev-parse --show-toplevel`; `git config core.worktree` re-pointed it at another script. Now a walk-up that reads no git configuration. |
+| ADV-H2 | Claude's Edit/Write/MultiEdit/NotebookEdit of a protected path the `permissions.ask` rules did not name passed without a word. Now one protected-path definition asks. |
+| ADV-L2 | MCP tool input was judged by whole strings; now by the words a tool could open as a path (`mcp-tokens.ts`). |
+| ADV-L5 | `apply_patch` name obfuscation (`'apply'_patch`, `$(echo apply)_patch`) is held to the heredoc rule; a name assembled at run time stays with the sandbox. |
+| ADV-1, ADV-7 | `GIT_TRACE=<guard file>` (and its kin, set by prefix, `export`, `env`, `+=`) made git append a line to the guard and corrupt it (exit 1 reads as allow). Now a write target. |
+| ADV-2 | Variables that load code into bun or perl, or pick a nested agent's hook binary, ask. |
+| ADV-3 | `PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB` silenced the Codex wrapper before its `-e` body ran. Now `env -u` for each. |
+| ADV-4, ADV-5 | `diff -r`, `git diff --no-index`, `git grep --no-index` printed live env files; now ask like `grep -r`. |
+| ADV-6 | `--output=FILE` and `credential-store --file` of every git command that takes them are write targets. |
+| ADV-8 | The live-suite ask reaches a runner through `node`, `bun`, `npm test` and a glob. |
+| CR-C1, CR-C2 | A brace word over a path's length, or past the alternative cap, was not read; it spends the budget and is still read. |
+| CR-C3 | `find`'s name narrowing used a hand-kept list of protected names; now read from the tree (`protected-names.ts`). |
+| CR-L1 | The classifier's module-level budget state is correct only because the worker judges one hook per process. |
+| CR-M5 | The Stop gate's compliance map, `PROTECTED_SAMPLES` and `PROTECTED_FRAGMENT` agree with the one protected definition. |
+| CR-L3, CR-L4, CR-L5, CR-L6 | Round-4 low findings: the one Claude Code env variable on the allow-list, backup-name suffixes, doc corrections, exports nothing used. |
+| ADV-C1, ADV-C2, ADV-M1, CR-H2, CR-M1 | 2026-11-10 findings on the per-command budget (in characters, not only items), `git -C` chains, and scripts matched under every spelling. |
+| T6 | Protected and secret paths are matched under every spelling the file system folds into one name (NFKC, case, sharp s). |
+| T0 | Wave 7: Claude's guard command ends in an exit-2 tail (this document, "Claude's guard command fails closed"). |
+| ADV5-1 | `sqlite3 .shell`, `psql \!`, `mysql system`, `pgcli \!` ran an operating-system command under Claude; now ask. |
+| ADV5-2 | About twenty ordinary commands wrote to a path the agent names with no rule (`bun build --outfile`, `uniq IN OUT`, …); modelled, plus a generic backstop. |
+| ADV5-3 | Siblings of the tree sweeps (`ack`, `ag -u`, `fd -x`, `cpio -p`, `pax -rw`); judged as the sweeps they are siblings of. |
+| ADV6-1, CR6-2, CR6-8 | Package runners (`bunx`, `npx`, `pnpx`, `bun x`, `pnpm|yarn|npm exec|dlx`, `bun|yarn run X`) hid the program they start from every rule; two runner readers disagreed. Now one reader, applied where the program is found (`runners.ts`). |
+| ADV6-2, CR6-1 | The backstop's hand lists exempted programs that write (`plutil -replace`, `awk '… > ARGV[1]'`, `python -m json.tool IN OUT`, `7z a`, `tree -o`, vim/ed commands, `docker build -o`, `go -coverprofile`, `time -o`, …). A reader has write flags; a modelled program's positional operands are its model's. |
+| ADV6-3 | A copy of `true` named `bun` in a user-writable PATH directory made both hooks silent no-ops. A program the hooks call is protected by name in any directory (residual: the guard runs under whatever `bun` PATH resolves). |
+| ADV6-4 | An empty, comment-only or `export {};` guard module, a no-op `runGuard` or a `bun` doing `exit 0` makes the pinned command exit 0 with nothing (allow). **T0b declined, not fixed**: the residual is pinned by tests and stated above. |
+| ADV6-5 | A secret read through `sqlite3 … readfile()`, `duckdb read_csv`, an unlisted interpreter's inline code. SQL file functions are read in every client; names inside code-like words are read for unknown programs. |
+| ADV6-6, CR6-3 | DB-client escapes under real shell quoting (`"\\o X"`), the abbreviations `.sh`, `.sy`, `.cl`, `.cd` then `.output`, `.parameter` then `writefile(@f)`, and the clients the table did not name. |
+| ADV6-7 | `ssh -o 'ProxyCommand cmd'`, `scp|sftp -o ProxyCommand`, `-S`, `zip -TT`, `rg --pre`, `man -P` ran a local command. |
+| ADV6-8, CR6-12 | New shapes of printing the environment (`Bun.env`, `typeset`, `jq env`, perl, awk, `ps eww`, `launchctl`); and `declare -x NAME=value`, an assignment, was denied as a dump. |
+| ADV6-9 | Secret scanners and unlisted recursive readers (`ugrep -r`, `gitleaks --no-git`, `trufflehog`, `rga`, `scp -r`, `ag -a`) read env-holding directories. |
+| ADV6-10 | tar's directory-option grammar (`-cCf`, `-Capps`, `--directory=`, `--dir=`) and case spellings (`APPS/PORTAL`) slipped past the tree-sweep rule. |
+| ADV6-11 | The compliance gate stayed green after a hook key other than command, timeout or async changed (`if`, `shell`, `once`, `type`, a stray hook). The whole hook object is pinned. |
+| ADV6-12 | Persistence outside the protected set (global git config, `launchctl setenv|load`, launch agents, `~/.claude/{rules,plugins,hooks,…}`). |
+| ADV6-13 | A variable rebound by `read`, `printf -v`, `for`, `eval`, `+=`, `source` stayed its first literal in a sweep operand. |
+| ADV6-14 | Secret-name gaps: `.envrc`, `env.sh`, `secrets.json`, gcloud's ADC, `.my.cnf`. |
+| CR6-4 | The backstop did not place its operands as every other rule does (braces, variables, ancestors, wildcards). |
+| CR6-5 | `fd -Hx`, `-HIx`, `-xcat`, `--exec=cat` were not judged as `find -exec`. |
+| CR6-6 | The live-suite and live-env listings truncated silently instead of answering "may match". Wave 8's fix was itself a regression (every symlink, a virtualenv's file links included, made every vitest filter ask on the real checkout): see W9-0. |
+| CR6-7 | Five surviving hand mutants and no test that every exempted program is really modelled. |
+| CR6-9 | `spendIfShellWouldExpand` could never be false. |
+| CR6-10 | `judge` (150 lines) and `mainWrites` (58) over 50 lines. |
+| CR6-11 | The `ISSUED_SSN` exception was recorded only in a code comment: now also in the fixture comment and Wave 8 above; the rule file `.claude/rules/phi-and-secrets.md` (and its `.agents` twin) should name it, which needs the owner. |
+| W9-0 | Wave 8's listings called every symlink a gap; the real checkout's `.venv/bin/python*` file links made 9,241 real commands (6.6%) ask. A symlink is decided by its target. |
+| W9-1 | A non-local database host was allowed in a URL without userinfo, a libpq connection string, `-d`/`--dbname` URIs, `pg_dump` URIs, `export PGHOST=H; psql` and every client but four. One target reader for 46 programs (71 after wave 10). |
+| W9-2 | `xargs -a <live env file> echo` was allowed; a wrapper's file options and long options with a separate value were dropped unjudged (`nice --adjustment 5 cmd` hid `cmd`). Tables per wrapper. |
+| W9-3 | `corepack`, `volta run`, `mise exec`, `asdf exec`, `direnv exec`, `cross-env`, `dotenv`, `dotenvx`, `env-cmd`, `doppler`, `op run`, `lerna exec`, `nx exec` hid their command; and wave 8's runner peel dropped the runner's own file options (`bun --env-file F run echo` was allowed). |
+| W9-4 | One long-option abbreviation reader instead of three inline copies; four `isOption` definitions and three operand readers stay separate (they differ on a lone `-` and an empty argument; wave 10 corrected the count). |
+| CR5-1 to CR5-11 | The round-5 code review: brace budget and whitespace (1), nested agent variables (2), one assignment grammar (3), wildcard pathspecs (4), per-root names (5), five sweep readings (6), the live env list (7), surviving mutants (8), doc claims (9), structure (10), vitest substring filters (11). |
+
+## Wave 10 part A
+
+Round 7 (two cold reviews of waves 8 and 9) found, and the orchestrator re-ran, the shell-structure, wrapper and runner findings below; part B of the same wave
+holds the database, secret and sweep findings. Each item has a test file under `scripts/__tests__/harness-*-wave10.test.ts`. The orchestrator's spot-check
+script (`verify-r7.ts`) went from 64 of 77 rows not as expected on the wave-9 tip to 28 on this part's tip (27 belong to part B: database targets, secrets, variables; one is the documented residual `make -C /tmp psql`), and to 2 on the merged tip of both parts: that residual, and `tar --creat -f x apps`, which asks only where a live env file exists (the spot-check tree holds none; `harness-env-tar-wave10.test.ts` proves it with one). The design rule of
+this part, from the brief: **wrapping a command must never make the answer weaker** (the wave-9 regressions were exactly that), and **unknown is not allow**.
+
+- *A nested command string is read once, by the rules of the quote it came from* (`patterns.ts` `words(seg, values)` and `Parsed.handed`,
+  `harness-nested-strings-wave10.test.ts`; R7-CR-1, pre-existing since wave 3). `bash -c "cat \".env\""` handed the inner shell `cat \".env\"`, a path with
+  quote characters that matches no secret name, so an escaped quote hid the inner command from every rule (a secret read, a protected write, a force
+  push, a database host). `words()` has a `values` mode that reads a word the way the shell hands it to the program (outside quotes `\x` is `x`; inside
+  double quotes `\"`, `\\`, `\$` and a backtick lose their backslash and a backslash-newline is gone; single quotes keep every backslash), `parseSegment`
+  keeps the program and arguments read that way (`Parsed.handed`, computed only for a segment that holds a backslash), and `nestedCommandVerdicts`
+  judges every nested string from them: `bash|sh|zsh|dash -c` (**wave 11 corrected the reading of `-c`**: wave 10 took the word after a flag cluster that ENDED in `c`, so
+  `bash -c -- 'CMD'`, `bash -c -x 'CMD'` and `bash -cx 'CMD'` hid CMD; see "Wave 11 part C", the command string is the first operand after every option), `eval`, `find -exec|-ok`, `watch`, `entr`, `su -c`,
+  `runuser -c`, `flock -c`, `script -c`, an `ssh` remote command, `rsync -e`, `tar --to-command|-I`, a runner's `-c` (`npx`, `npm exec`), `docker exec` and `docker
+  run … sh -c`, and a wrapper in front of any of them. One test per producer (31) against the four guarded commands, and 1 to 14 levels of `bash -c "…"` and of
+  `bash -c '…'` with `'\''` quoting: every level is decoded (the wave-9 tip allowed 2 to 14 double-quote levels and 2 to 8 single-quote levels), and a
+  nesting past the cap of 8, or past the 64 KB size cap, ASKS or is refused, never allowed. Mutation: using `parsed` instead of `parsed.handed` fails 109 of
+  143 tests; keeping every backslash fails 109; dropping `\$` from the double-quote set fails 1. One mutant survives by design: the backslash-newline
+  branch (the inner `judge` reads a continuation itself, so the branch is equivalent).
+- *One option reader for every wrapper* (`option-grammar.ts`, `wrapper-specs.ts`, `wrapper-peel.ts`, `program-name.ts`, `harness-wrapper-grammar-wave10.test.ts`;
+  R7-ADV-4, R7-CR-2, R7-ADV-5, R7-ADV-6, R7-CR-12, R7-CR-15). Wave 9 read a short cluster as one word (`sudo -upostgres pg_dump -h <host>` read the `e` of the
+  value as `sudo -e`; `sudo -nu postgres CMD` ate the user's name as the command), read a long FLAG that prefixes a long VALUE option as that option (`sudo --login
+  CMD`, a prefix of `--login-class`, ate `CMD`), had `timeout` and `taskset` readers of their own that took no abbreviation (`timeout --sig KILL 5 CMD`,
+  `taskset --cpu 0 CMD`), and looked a wrapper up by its whole word (`/usr/bin/nice psql -h <host>`, `/usr/bin/env git push origin main`, `./nohup`,
+  `~/bin/nice` were never peeled: 4 real commands use this shape, 2 were allowed). Now each wrapper has the grammar of its own CLI (short flags, short value
+  options, long flags, long value options, optional values, operands before the command, the option that stands for a directory or a command string) and ONE
+  reader takes it the way GNU getopt does: a cluster is read letter by letter and ends at the first value letter; a long option is an exact flag or value
+  name FIRST, then any unambiguous prefix over flags and values together, one character down (the wave-9 doc said "two characters or more"); `--name=value`
+  is one word whatever the name; `--` ends the options. The lookup uses `programName` (backslashes removed, directory dropped), the one helper for the wrapper
+  and runner tables (shells and the rest of the classifier already took the last path component). `timeout` is a table entry like the others (and `gtimeout`,
+  `gchroot`). A word the table cannot place (an unknown letter or long option, an ambiguous prefix) is **asked about** (`Parsed.unplaced`): rule 3 of the
+  brief offered "judge every plausible start" or "ask", and ask was chosen because the corpus cost of it is 0 real commands (the corpus diff shows no unplaced-option bucket). A grammar that cannot be complete is
+  `lax` (an unknown option is a flag, the older behaviour): `strace`, `unbuffer`, `xcrun`, `lima`, `chronic`, `proxychains`, `ssh-agent`, the residual wrappers
+  below. `flock` and `runuser` stay the program only for a `-c` among their leading options or directly after the file or user operand (`flock /tmp/l psql
+  -h <host> -c 'select 1'` is now peeled); `taskset -c LIST` supplies the mask operand. The MONOTONICITY property test iterates the real tables:
+  for every wrapper it generates every declared flag, every value option with a value (joined `-xV`, `--opt=V`, separate), every unambiguous
+  abbreviation of every long option, clusters and `--`, puts each of five guarded commands behind them (a push, the hook-bypass flag, a non-local
+  database host, a write to a protected file, a live env file name) and asserts the wrapped answer is never weaker than the command alone; a second test
+  asserts that no declared flag that prefixes a value option is read as it. Mutation: resolving a prefix before the exact name fails 9; dropping the
+  value-letter rule fails 37; accepting an ambiguous prefix fails 2; matching the wrapper by its whole word fails 63; `taskset` without its
+  `cpu-list` supplier fails 3.
+- *A command run in a fresh container* (`container-run.ts`, `harness-container-run-wave10.test.ts`; R7-ADV-7, R7-CR-15). `containerRun` judged the command
+  only when a writable bind mount let it map paths back, so `docker run --rm postgres:16 psql -h <host>`, `docker compose run --rm migrate psql -h <host>`,
+  `podman|nerdctl run …`, `docker run --entrypoint psql IMG -h <host>` and `docker run -e PGHOST=<host> IMG psql` passed every rule while `docker exec db psql -h <host>`
+  was denied (the wave-9 residual said "docker exec … is not read": the code denies it, both are stated here). Now the command behind the image or the compose
+  service is judged with every rule for `docker|podman|nerdctl [container] run|create`, `docker|podman compose run` and `docker-compose|podman-compose run`: the
+  options are read from each tool's own `--help` (docker, compose and podman are installed here; exact names, nerdctl takes the union), the image is the first
+  word that is no option or value, `--entrypoint X` makes X the program, `-e NAME=VALUE` is an assignment in front of the command (so a database variable set
+  for the container is read like one set for the shell; **wave 10 read it for `run` only: `docker exec -e PGHOST=<host> db psql` passed until wave 11**, which reads
+  `exec` and `compose exec` with the same function), and an unknown option asks. The mount-mapping reader stays as it was; both run. The command is judged
+  in the host's working directory. Corpus: 199 of the 518 real commands that run a client behind `docker run` or `compose run` were allowed on the wave-9 tip; on this tree none of them changes (their hosts are local). The whole corpus has 3 transitions, all of them here: 2 "Opening a raw connection to `X`" (a `docker run` whose inner command opens one: first words `docker` and `cd`) and 1 "built by command substitution … could name a live env file" (a `docker run` of an image name that holds a substitution).
+- *`parallel`, `coproc`, `ssh`* (`parallel-command.ts`, `harness-parallel-ssh-wave10.test.ts`; R7-ADV-10, R7-ADV-11, R7-CR-12, R7-ADV-12). The words after `:::`
+  are DATA: the `cp` model saw `/tmp/x` as the destination of `parallel cp {} .claude/settings.json ::: /tmp/x`. The command is cut off before the first
+  separator; the lines judged in addition are the command once per datum with the datum where `{}` (or the replacement string `-I`, `--replace`, `--rpl`
+  declares) is, or appended when nothing says where; a first word that holds whitespace is a command line (`parallel 'cp {} CLAUDE.md' ::: x`); with no command the
+  data are the commands (`parallel ::: 'rm x'`); `::::` words are files read like an input redirect (a live env file is denied); data past 64 words are judged together once.
+  The table has the 82 long value options of the manual (`--nice`, `--trim`, `--tagstring`, `--rpl`, `--id`, `--jl`, `--sshdelay`, `--memsuspend`, `--sql`, …,
+  from memory of the manual: GNU parallel is not installed) and `-j2` reads its value attached. `coproc CMD` is a wrapper. `ssh` reads options up to the first word after
+  the host, as OpenSSH does; from there on every word, dash words included, is the remote command (`ssh localhost sed -i s/a/b/ CLAUDE.md`); the quoted form keeps its answer. **Wave 12 (part E2) corrected
+  this against OpenSSH_10.6p1 with `ssh -G`:** options are read up to the first word after the host AND the options directly after the host (`ssh localhost -L … -N`), a cluster ending at its first valued
+  letter (`-NL spec`, `-qi KEY`, `-vo Option=x`); until wave 12 a clustered valued option was read as a flag and its value stood for the host (`ssh -qi /tmp/k <remote host> ls` allowed).
+- *Each package manager reads the grammar of its own CLI* (`runners.ts`, `runner-grammars.ts`, `harness-runner-grammars-wave10.test.ts`; R7-ADV-13, R7-CR-8,
+  R7-ADV-15, R7-CR-13, R7-ADV-18). Wave 8 read every manager's options with ONE regex that listed `-r -c -w -F -C` as value options; they are flags in pnpm and yarn,
+  so `pnpm -r exec CMD`, `pnpm -w exec CMD`, `pnpm -c exec CMD`, `pnpm exec --workspace-root CMD`, `pnpm --reporter silent exec CMD` hid the command. Now (**the bun, pnpm and npm
+  tables of this wave-10 text were wrong about the real tools and are replaced in wave 11**: "every long option is a flag whose value rides after `=`" is true only for
+  the options of `bun` BEFORE the subcommand and for `--config`, `-c` and `--inspect*`; after `run` bun reads `--cwd`, `--env-file`, `--elide-lines`, `--shell`, `--install`,
+  `--preload`, `--tsconfig-override`, `--port`, `--define`, `--loader`, `-r`, `-d`, `-l`, `-F`, `-e`, `-p` and 20 more with a SEPARATE value, and pnpm reads `--prefix` and
+  `--workspace-packages` the same way; see "Wave 11 part C" for the recordings that now hold the tables; and **wave 12 (part E1):** bun's table BEFORE the subcommand is `lax` and `exact`, not strict:
+  probed on bun 1.4.4 an unknown option before the subcommand is accepted as a flag (`bun --zz-unknown run x` runs `run`), so an unlisted one is a flag before a subcommand of bun (`BUN_COMMANDS`) and asks
+  before any other bare word, while `bun run`'s own table stays strict): bun's grammar is
+  read from `bun --help`, pnpm's from `pnpm help exec|dlx`, uv's from `uv run|uvx|uv tool run --help`; npm's, yarn's and the environment loaders' are `lax` and from documentation (npm's own parser reads an unknown option
+  as a boolean; wave 11 replaced the npm list by the 99 value options of `npm config ls -l` that the installed npm reads, and an unlisted `--name` followed by a bare word asks). `yarn workspace NAME CMD` and `yarn workspaces foreach [options] CMD` pass through to the yarn command behind them; `bun exec STR` runs STR as a shell line; `corepack
+  pnpm@9 dlx …` names pnpm. Booleans wrongly listed as valued are flags (`env-cmd --fallback`, `lerna exec --include-dependencies`, `nx exec --parallel`, `op run --cache`) and
+  `dotenvx run --ignore X` takes a value. New runners: `uv run|tool run`, `uvx`, `pipx run`, `poetry|pdm|rye|hatch|pipenv|devbox run`, `conda|micromamba run`,
+  `nix shell|develop -c|--command CMD`, `nix-shell --run STR`, `flox activate -- CMD|-c STR`, `perf stat|record|trace`. **The word a runner starts is also read as an operand**
+  (`bun <live env file>` and `bun run <live env file>` were allowed since wave 8, denied in wave 7: the runner peel made the name the program, which the secret-name rule
+  does not scan). Two of the round-7 payloads are **not bypasses on bun 1.4.4** (probed in a scratch directory, with `echo`): `bun --bun cp …` and `bun --silent echo hi` print "Script not found" (a bare
+  `bun NAME` runs no PATH program there, and an option before the name made the name no program in the wave-8 tests), and `bun --port 3000 run cp …` prints bun's usage and runs nothing (wave 11 reads the separate value there
+  and judges what follows, the stricter reading; the old test that pinned "not peeled" changed its payload for it).
+- *Remote sessions ask, and the wave-9 residual wrappers are peeled* (`remote-access.ts`, `wrapper-specs.ts`, `harness-remote-access-wave10.test.ts`; R7-ADV-15). `kubectl
+  exec|port-forward|cp|debug|attach`, `docker -H|--host`, `DOCKER_HOST=ssh|tcp://`, `docker context use`, `gcloud sql connect`, `gcloud compute ssh|scp`, `aws rds …`, `aws ssm
+  start-session`, `aws ecs execute-command`, `fly postgres|pg connect|proxy`, `fly ssh|proxy`, `heroku pg:psql|pull|push`, `supabase db … --db-url|--linked`, `autossh` and
+  `cloudflared access` ASK whatever runs behind them (the access a non-local ssh is; Codex denies). **These are NAMED SUBCOMMANDS of each tool, not the tools (other spellings pass):** "Wave 12 part E2" and `cloud-cli-sessions.ts` hold the full lists
+  (heroku, railway, render, az, doctl, aws, supabase, gcloud also after `alpha|beta`, kubectl `proxy` and `create token`, fly). Corpus: 0 real commands (no bucket in the corpus diff). Peeled by the wrapper table: `torify`, `tsocks`, `toybox`, `firejail`, `valgrind`, `fakeroot`,
+  `setpriv`, `nsenter`, `sshpass` (`-f FILE` is read), `systemd-run`, `ltrace`, `dtruss`, `numactl`, `cpulimit`, `gdb --args`; `make`, `just` and `task` run recipes of the repo,
+  not an arbitrary command, and are **not** peeled (a documented residual). Still residual: `bwrap` (options with two values), `rlwrap`, `hyperfine` (every argument is a command line),
+  and the stdin filters `ts` and `pv`.
+- **Two existing tests changed their payload, and why.** `harness-hooks.test.ts` listed `kubectl exec|debug` (non-interactive) as commands the Codex guard allows outright;
+  they ask now (Codex: deny) under the remote-session rule, so the rows assert only that the INTERACTIVE-shell rule does not fire. The derived long-option rows of
+  `harness-wrapper-options-wave9.test.ts` got operand dummies for the wrappers that need one (`timeout`, `chrt`, `runuser`) and skipped `env --split-string` ("its words are
+  the command") and `gdb` (it runs a command only behind `--args`). **The `env --split-string` skip is why no test saw the wave-10 regression of `env -S` (R8-ADV-1, R8-ADV-13): it is
+  gone in wave 11, the row hands env the guarded command as its string, and `env-split.ts` reads that string by env's own grammar, not by the shell's** ("wave 10 reads `env -S` words as `env -S` runs them" was false for `\_`, `\c`, quotes inside the string and `${NAME}`).
+- **Residuals.** A computed program name or a quoted wrapper option value is not read. (Wave 10 said: a wrapper or runner option the lax tables do not list and that takes a separate value
+  hides its command, `strace --foo bar cmd`, `pnpm --some-new-option v exec cmd`, npm "not a complete list". Wave 11: the npm, pnpm, bun and docker tables are recordings of the installed tools, and in every lax table an unlisted `--name VALUE`
+  followed by a bare word asks; a lax table still lets an unlisted FLAG with nothing bare after it pass, and `strace`, `unbuffer`, `xcrun`, `lima`, `chronic`, `proxychains`, `ssh-agent` and the residual wrappers stay lax.) GNU `parallel`, `timeout`, `flock`,
+  `taskset`, `ionice`, `chrt`, `runuser`, `unshare`, `strace`, `doas`, `nix`, `yarn`, `poetry`, `pdm`, `rye`, `hatch`, `pipenv`, `conda`, `micromamba`, `devbox`, `flox`, `perf`, `ltrace`, `numactl`,
+  `cpulimit`, `setpriv`, `nsenter`, `sshpass`, `systemd-run`, `fakeroot` and `valgrind` are not installed here: their rows are from the manuals (`unverified` in the table comments), nothing was run on Linux.
+  `docker run` is judged in the host's working directory (the container's own paths are not mapped unless a mount says so). Data of `parallel` past 64 words are judged together, once.
+  `make`, `just`, `task` recipes, `bwrap`, `rlwrap`, `hyperfine`, `ts`, `pv` (above). **Wave 12 part E1** reads `lockf`, `taskpolicy`, `sandbox-exec`, `leaks … --atExit --`, `lldb … --` and `dtrace -c` (installed
+  here, from their manual pages and `--help`), and `concurrently`, `nodemon --exec|-x`, `watchexec` and `zx` (not installed: unverified, listed in `unverified-tools.json`); `expect -c`, `lldb -o|-s|--source|--one-line`
+  and `zx -e|--eval` are scripts of the tool's own and ask. Not read: `npm-run-all`, `run-p` and `run-s` (they run package scripts by name; a word with a space is no script), `mksh`, `rbash`, `ksh93`, `rzsh`,
+  `yash` and `nu` as shell names (`COMMAND_SHELLS` lists bash, sh, zsh, dash, ksh, fish, csh, tcsh, ash, pwsh and powershell), and fish, pwsh, powershell and ash by a recorded table (not installed: read by their
+  documentation, with bash's reading for fish and ash; their `-c` asks and the string is judged).
+- **Corpus cost, measured on the final tree against the REAL checkout.** 140,767 distinct Bash commands recorded in this machine's Claude sessions, classified in process with the wave-9 tip (`f3a0e5f47`) and with this tree, the live listings read from the real checkout (read only; nothing executed; the differ is a scratch script, not committed). **3 transitions, 0.002%: 3 allow to ask** (the container-run bucket above), 0 allow to deny, 0 ask to deny, 0 deny to allow, 0 ask to allow; no throws; the slowest single classification 266 ms (322 ms on the wave-9 tip, same load). The budget for this part was 0.03% (about 42 commands). The wrapper-option asks (`unplaced`) and the remote-session asks cost 0 real commands; the by-path wrappers, `parallel` and the nested-string decode change no real command. The pinned hook commands, replayed on this tree (Claude and Codex; the corrupted-copy fail-closed checks), answer as on the wave-9 tip, 43 to 90 ms per call. The round-5, round-6 and everyday spot-check scripts answer identically (33, 42, 6, 35 and 228 rows: same or stronger, none weaker; `verify-r6.ts` fails only on its seven documented rows).
+
+| ID | What it was |
+|---|---|
+| R7-CR-1 | Escaped quotes inside a double-quoted nested string hid the inner command in every nested-string producer, at every nesting depth. |
+| R7-ADV-4, R7-CR-2 | Wave-9 regression: `sudo -upostgres …`, `sudo -nu x …`, `sudo --login …`, `taskset --cpu 0 …` hid the command (deny to allow). |
+| R7-ADV-5 | A wrapper called by path (`/usr/bin/nice`, `./nohup`) was not peeled. |
+| R7-ADV-6, R7-CR-12 | `timeout --sig KILL 5 …`, `nice --a 5 …`, `xargs --a FILE`: one-character and abbreviated long options; `coproc`. |
+| R7-ADV-7 | A client run in a fresh container (`docker run IMG psql -h <host>`, `compose run`, `podman`, `nerdctl`, `--entrypoint`, `-e PGHOST=`) was never read. |
+| R7-ADV-10, R7-ADV-11 | `parallel` data read as arguments, quoted commands and `::::` files unread, 11 value options missing. |
+| R7-ADV-12 | `ssh localhost sed -i … CLAUDE.md`: the remote command's dash words were read as ssh options. |
+| R7-ADV-13, R7-CR-8 | `pnpm -r|-w|-c exec`, `yarn workspace(s)`, `bun exec`: one manager regex with flags listed as values. |
+| R7-ADV-15, R7-CR-13 | `uv`, `uvx`, `pipx`, `poetry`, `nix`, `flox`, `devbox`, `kubectl exec`, `autossh`, … hid their command; booleans listed as valued (`env-cmd --fallback`). |
+| R7-CR-15 | `flock`/`runuser` stayed the program when the inner command had a `-c` of its own. |
+| R7-ADV-18 | `bun <live env file>` and `bun run <live env file>`: the runner peel made the secret name the program (wave-8 regression). |
+| R7-CR-16, R7-CR-17 | Wave-9 miscounted the duplicated `isOption` readers (four, five before this wave); dead `isEditor` removed. |
+
+## Wave 11 part C
+
+Round 8 (two cold reviews of the merged wave-10 tip) found three CRITICAL deny-to-allow regressions that wave 10 itself introduced in the wrapper and runner area
+(`env -S`, `bun run <valued option>`, `pnpm --prefix`) although 11,395 tests were green and the corpus diff showed nothing, and a list of gaps older than wave 10 in
+the same area (the `bash -c -- 'CMD'` family, `docker exec -e`, re-quoting, stdin behind wrappers, zsh precommands, remote-session tools, `pnpm WORD`). Part D of the
+same wave holds the database, secret, variable and git findings. The cause of the regressions was one mistake made three times: **an option table written from memory
+that was wrong about the real tool** (a valued option declared as a flag; a hand-written splitter for `env -S`), held by a monotonicity test that iterated the same table
+it tested, so it could not see a table that was wrong. This part therefore proves every table it touches against the installed tool (rule 12 of the brief).
+
+- *Option tables are recordings of the installed tools* (`scripts/__tests__/helpers/record-tool-options.ts`, `scripts/__tests__/fixtures/harness-tool-options/*.json`,
+  `harness-tool-options-wave11.test.ts`, `harness-tool-options-live-wave11.test.ts`; R8-ADV-2, R8-ADV-3, R8-ADV-11, R8-CR-10, R8-CR-12). The recorder asks the tool, in a
+  scratch directory with a scrubbed environment and every registry and proxy pointed at `127.0.0.1:1` (a closed local port): for bun, pnpm, npm and npx it runs
+  `TOOL OPT VALUE echo HIT` and `TOOL OPT echo HIT` (a valued option consumes the word and `echo` runs; a flag leaves the word as the command), for docker, podman and
+  compose `run`/`exec` it runs `TOOL run --OPT` with nothing after it (pflag answers `flag needs an argument` before any daemon is contacted), and for `bun x` and `pnpm dlx` it
+  reads the help text only (a flag would make the next word a package to install). The result is committed per tool and version: bun 1.4.4 (`bun` 102 options, `bun run`
+  100 of which 42 take a value, `bun x` 13), pnpm 10.30.3 (85 options: 27 valued, 30 flags, 28 `unverified` since wave 12, which documented five `fetch-*` settings as numbers: 22 and 33 before; the 52 command
+  names of `pnpm help -a`; `pnpm dlx` 5), npm 11.11.0
+  (`npm exec` 193 options: 99 valued and 94 flags, from `npm config ls -l`, and 33 letters npm warns about (`Unknown cli config`) kept as `rejected`: 225 options at the wave-11 tip, before the recording of those
+  letters and the flag `--no`; `npx` 13 options, 6 valued and 7 flags: the wave-11 text said 11 and the fixture then held 12; `npm` itself 68 command names), docker 29.9 (`run` 99, `exec` 9, `compose run` 26, `compose exec` 8) and podman 6.0 (`run` 144, `exec` 11).
+  What the real tools turned out to do, none of it in the wave-10 tables: after `run` bun reads `--cwd`, `--env-file`, `--elide-lines`, `--shell`, `--install`, `--preload`,
+  `--tsconfig-override`, `--port`, `--define`, `--loader`, `--main-fields`, `--jsx-*`, `--conditions`, `--user-agent`, `--title`, `--console-depth`, `-r`, `-d`, `-l`, `-F`, `-e`, `-p` and
+  about twenty more with a SEPARATE value, but `--config`, `-c` and `--inspect*` only after `=` (the word after them is the script); before the subcommand bun reads the separate value
+  too and then prints its usage and runs nothing; pnpm reads its options only BEFORE `exec` (`pnpm exec -r echo HIT` runs a program named `-r`), takes `--prefix` and `--workspace-packages`
+  as valued, and runs an unknown word as a program (`pnpm echo HIT` prints HIT; so does `pnpm --unknown-option echo HIT`: the unknown-option error is raised only when a command resolves);
+  `-p` is `--parseable` (a flag) under `npm exec` and `--package` (valued) under `npx`; docker 29 no longer has `--kernel-memory` and compose `exec` has `-T` but no `-i`/`-t`. The tables
+  of `runner-grammars.ts` (BUN_GLOBAL, BUN_RUN, BUNX, PNPM, PNPM_DLX, NPM, NPX) and `container-run.ts` (RUN, COMPOSE_RUN, EXEC, COMPOSE_EXEC) are those names. The fixture test (no tool needed, so it
+  runs on CI) fails when a recorded valued option is read as a flag, a recorded flag as a valued option, a strict table misses a recorded option, a lax table places an `unverified` option
+  or does not ask on an unlisted one, or a table lists a name the tool does not know without a stated reason (older docker's `--kernel-memory`, bunx's `-b`, pnpm 9's `dlx -p`); its monotonicity
+  walk iterates the FIXTURE options (not the table) in every spelling (separate value, `=value`, joined short value, flag alone) behind four guarded commands (thousands of invocations);
+  a checker test proves the checker fails on a wrong table. The live test looks the tool up on PATH and in the usual package-manager directories (no hard-coded path), re-records a deterministic
+  sample (every nth valued option and flag, 30 and 14 at most) and fails when a production table disagrees with the tool as it is now or the recording no longer matches the same version; it is
+  skipped only when the tool is not installed (about 30 s with all of them; wave 12 part E1: a probe the tool never answers, killed by the timeout after two retries, is `unverified`, never a flag, and an exec
+  failure is an error; the recorder also probes which options RUN their operand as a command line, `runsOperandAsCommand` (`bun run --parallel`, `npm exec --call`, `npx --call`, `env -S`), and fails the
+  recording when the probe does not show it; `installedVersion` runs in the sandbox; the live test fails on a name the installed `--help` lists that the recording does not hold and names a version mismatch
+  as a skip with the reason, after the table check). An option no probe could settle (it needs a workspace, a package to install or a value of a certain shape) is
+  `unverified` and is **not listed** in a lax table: `OptionGrammar.unverified` names it so that a prefix cannot take it for a longer option, and it asks. **Rule 2: in every `lax` grammar an
+  unlisted `--name VALUE` followed by a bare word asks** (`option-grammar.ts`; wave 12 limits it to where a program could follow: not when the bare word is one of the manager's own subcommands before which
+  the option stands, as in `npm --no-fund install`, `pnpm --frozen-lockfile install` and `bun --frozen-lockfile install`, the lists being recorded from `bun --help`, `npm help` and `pnpm help -a` and yarn's
+  unverified; an unlisted SHORT letter of a package manager or runner followed by such a word asks too, as in `pnpm -Z x exec CMD`, a letter npm itself warns about as `Unknown cli config` and the recording
+  keeps as `rejected`; wrappers that take no option, `command`, `nohup` and the zsh precommands, read any dash word as a flag, as before), because the lax reading ("an unknown option is a flag") is what hid `bun run --cwd x CMD` and `pnpm --prefix x
+  exec CMD`; a runner whose only finding is such a question now says so (`peelRunnerWithFiles` returns `inner: null` with the question, which the classifier asks). Tools that are not
+  installed here (GNU `parallel`, `yarn`, `timeout`, `flock`, `taskset`, `nerdctl`, …) or that cannot be probed safely (`sudo`, `strace`, …) are listed with their evidence in
+  `unverified-tools.json` (the wrappers and runners whose tables no recording holds, each with its kind of evidence; 91 tools at wave 12 part E1: 81 at the wave-11 tip, so the figure 82 written here was one
+  too many, and the file now holds 65 `manual`, 14 `manpage`, 8 `builtin` and 4 `help-text`), and a test fails when a wrapper or runner is in neither a recording nor that list. Mutation: moving `--cwd` out of the valued options fails 2
+  tests (the table and the monotonicity walk), dropping `--prefix` from pnpm fails 2, the lax rule of `readLong` fails 18, and the same two mutants fail the live test.
+- *`env -S` is read by env's own split grammar* (`env-split.ts`, `wrapper-peel.ts`, `command-words.ts`, `harness-env-split-wave11.test.ts`; R8-ADV-1, R8-ADV-13). Wave 10 split the `-S` string
+  with the shell's word reader, so `env -S 'cat\_FILE'` (a `\_` is a separator), `env -S 'cat FILE\c'` (`\c` ends the string), quotes inside the string, `${NAME}` and a nested `env -S`
+  hid the command from every rule. Now: blanks separate; `#` at the start of a word is a comment; `\_` separates (a space inside double quotes); `\c` ends the string (an error inside quotes);
+  `\t \n \r \f \v \\ \" \' \$ \#` are the character; `'…'` takes only `\\` and `\'`; `"…"` expands; `${NAME}` expands from the assignments in front of env (`F=x env -S 'cat ${F}'`) and
+  asks when the guard cannot place the name; a bare `$NAME`, an unknown escape, an unterminated quote or `${` is an error to env (it exits 1) and asks. The grammar is held against the
+  real env by an echo-only test over 28 strings (macOS env; GNU env's grammar is from its documentation and was not run, nothing GNU is installed here), the string is read from the words as the program is HANDED them (`env -S "cat \".env\""`,
+  `env -S "cat\\_FILE"`), and `--split-string`, `-S` joined, `-iS`, a nested `env -S`, `sudo env -S`, `bunx env -S` are producer paths with a row each; every spelling (spaces, `\_`, quoted words,
+  a `\c` suffix, a comment suffix, a `${V}` expansion) of five guarded commands behind `env -S` under three outer quotings is never weaker than the command alone. **Wave 12 (part E1) corrected what env does with the words:** they take the place of the `-S` option and
+  env reads its OPTIONS over them (`env -S '-i CMD'`, `-u X`, `-C dir`, `-P dir`, `--`, `-S`, `env -S '-i' CMD`, `env -i -S '-u X CMD'`: wave 11 judged `-i` as the program); up to eight rounds of nested
+  `-S` are read and a deeper one asks (`split-string-expand.ts`). After `env` or `sudo` every word holding a `=` after its first character is an assignment (`env A.B=x CMD`, `A-B=1`, `1A=x`, `a/b=1`,
+  `P\GHOST=H` once the shell has removed the backslash; probed on BSD env, GNU env and sudo not run), not only a word `NAME=value` with an identifier name; a NAME holding an expansion the guard cannot
+  place asks (`command-words.ts`). `harness-wrapper-options-wave9.test.ts`
+  no longer skips `env --split-string`: the skip is why no test saw the regression. Mutation: `\_` read as a plain character fails 10, `\c` not ending the string fails 4, `#` not a comment fails 5,
+  the handed text not used fails 8, an unknown escape accepted fails 4.
+- *A shell takes its command string from the first operand after ALL its options* (`shell-command-string.ts`, `nested-texts.ts`, `harness-shell-command-wave11.test.ts`; R8-CR-2, R8-CR-6). The
+  wave-3 reader of `bash -c` looked for a word that was `-` plus letters ending in `c` and judged the word after it, so `bash -c -- 'CMD'`, `bash -c -x 'CMD'`, `bash -c +x 'CMD'`, `bash -c -o pipefail
+  'CMD'`, `bash -cx 'CMD'`, `-ce`, `-cl`, `sh -c --` hid CMD from every rule (pre-existing since wave 3; the wave-10 doc called "any flag cluster ending in `c`" complete). One helper now: a short cluster is read
+  getopt-style, `c` before a letter that takes a value means `-c`, long options are flags except `--rcfile`
+  and `--init-file`, `--` and a lone `-` end the options. **Wave 12 (part E1) replaced this one rule by a table per shell** (`shell-grammars.ts`, recorded from the installed shells: see "Wave 12 part E1"):
+  `+c` is `-c` in bash, sh, dash and zsh and not in ksh93; `-o` and `-O` of bash and dash take the NEXT word and the rest of the cluster stays flags; zsh's `-o` takes the rest of the cluster else the next
+  word and zsh's `-O` is a flag; ksh93's `-o` takes the rest of the cluster else the next word unless that starts with `-` or `+` (then it lists the options); a ksh operand that names no file runs as a
+  command line; `--rcfile` and `--init-file` are bash's only. The wave-10 doc called "any flag cluster ending in `c`" complete and this wave-11 text said `-o` and `-O` take the rest of the cluster or the next
+  word and `+x` words are options: both were wrong for some of the shells. It serves bash, sh, zsh, dash, ksh, ash, fish (also `-C`, `--init-command`), csh and tcsh (the word after EVERY `c` of a cluster:
+  `-cc A B` runs B, `-c -f` runs the string `-f`, `-b` ends the options after its word and `+c` is a file name; only the last string is judged because only it runs; probed on tcsh 6.21.00, which is also
+  macOS's csh; wave 11 read the next word after `-c` and both readings were
+  judged), pwsh (`-c|-Command` and the rest of the words as one command line), `eval --`, the `find -exec sh -c -x` read rule (`execReadsFiles`, `execCommandWrites`), the script-reader check of
+  `written-scripts.ts`, and `su -c`, `su -lc`, `script -qc`, `script -q -c`, `flock -c`, `runuser -c` (a cluster holding `c`, the value attached or next). `sudo -s|-i|--shell|--login [CMD…]`
+  hands its words to `sh -c` (`WrapperSpec.shellLine`), judged joined and as the words typed. Wave 12 holds it against recordings of every installed shell instead (`fixtures/harness-shell-options/*.json` for bash, sh, dash, zsh, ksh, csh and tcsh, 623 to 634 echo-only option sequences each,
+  `harness-shell-options-wave12e1.test.ts`: every marker a real shell ran is a string the reader judges, and the discriminating probes `+c`, `-oc VAL`, `-O`, `-o -c` and `-cc` are exact; the live re-record
+  `harness-shell-options-live-wave12e1.test.ts` skips with a named reason where a shell is not installed). Wave 11 held it against the installed bash, zsh and sh only (echo only: the reader ran a string exactly when the
+  shell did, 63 rows, with no dash, ksh or csh row: R9-ADV-22). Every shell × 19 option spellings × five guarded commands, and 31 producers (including `ssh host bash -c --`, `docker exec|run|compose exec|podman run … bash -c --`, `xargs`, `watch`,
+  `timeout`, `nohup`, `busybox sh`, `env -S 'bash -c -- "…"'`) are never weaker than the command alone. Mutation: `--` not ending the options fails 25, `c` only when last fails 18, `-o` taking no value fails 13,
+  `--rcfile` fails 6, `shellLine` off fails 5.
+- *Re-quoting* (`wrappers.ts` `shellQuote`, `joinedAndQuoted`; R8-CR-3). `shellQuote` wrote a single quote as `'\''`, and the readers of `db-connect-commands.ts` lex the synthesized text WITHOUT decoding
+  backslashes, so `docker exec db psql -c "select dblink_connect('host=H')"`, `\c 'host=H'`, `mongosh --eval "connect('H')"`, `CREATE SERVER … OPTIONS (host 'H')` read `(\'host=H\')` and saw no
+  host (pre-existing; the seam of wave 10's two parts). A single quote is now `'"'"'` (the same word to a shell, no backslash to keep). `ssh host CMD…` and `watch CMD…` judge the words joined by spaces
+  (what the remote shell reads) AND quoted back (what the user meant): `ssh localhost bash -c -- 'CMD'` is `CMD` as meant, `git` as sent. A round-trip test holds 17 tricky strings (quotes, backslashes, `$`, newlines,
+  the empty string) through the guard's lexer in both modes and through the real `/bin/sh`, and through every re-quoting path (`docker exec|run`, `compose exec`, `podman exec|run`, `ssh`) as the last word
+  of the judged text; the dblink, `\c`, mongosh and `CREATE SERVER` forms are rows behind eleven wrappers.
+- *`exec` is read like `run`, and a wrapper's stdin reaches the command it runs* (`container-run.ts`, `stdin-texts.ts`, `nested-texts.ts`, `harness-container-exec-wave11.test.ts`; R8-ADV-5, R8-CR-4, R8-CR-5).
+  `docker|podman|nerdctl [container] exec` and `docker|podman compose exec`, `docker-compose exec` go through the function that reads `run` (`commandBehind`): `-e NAME=VALUE`, `--env`, `--env=`, `-eNAME=VALUE`, `-e=NAME=VALUE`
+  are assignments in front of the command (`docker exec -e PGHOST=<host> db psql` passed every rule until now), the options are the recorded ones, an unknown one asks (the question names the subcommand). The here-strings,
+  heredoc bodies and what an `echo` or `printf` earlier in the pipeline prints (since wave 12 part E2: what every earlier stage prints or carries, a here-string or heredoc of `cat`, `tee`, `sed`, `tr`, `head`,
+  `tail` or any stage, a process substitution, a known variable, and the redirect of a group or function) are handed to the command a wrapper runs for them as one here-string, so the client's `\c host=H`, `connect("H")`, `connect DB H`
+  readers see them behind `docker exec -i`, `docker run -i`, `compose exec -T`, `compose run`, `podman`, `ssh`, `bash -c`, `sh -c`: `docker exec -i db psql <<< '\c host=<host>'` was allowed (pre-existing). The text
+  is built only when a wrapper has a command to carry it to, and a pipeline is read 8 stages back; a text farther back, more than 64 texts of one kind and a variable cut at 8 values ASK (wave 12 part E2: `echo '\c host=H' | cat x9 | docker exec -i db psql` was
+  allowed on wave 11). Mutation: no `exec` branch fails 18, no stdin fails 11.
+- *`pnpm WORD` runs the PATH program* (`runners.ts`, `runner-grammars.ts`; R8-ADV-9). On pnpm 10.30 any first word that is no pnpm command and no script is run as `pnpm exec WORD`; the commands are those of
+  `pnpm help -a` (recorded) and the aliases and npm-forwarded commands `help -a` does not list (unverified). `pnpm git commit …`, `pnpm -r git …`, `pnpm --filter x git …`, `pnpm -C dir git …` are judged as the program;
+  `pnpm test`, `pnpm install`, `pnpm lint`, `pnpm dev`, `pnpm arch:fitness` and the commands stay allowed. Options AFTER `exec` are not pnpm's (it runs `-r` as a program), which the guard still reads as options: stricter, not weaker.
+- *zsh precommands and program words built by expansion* (`wrapper-specs.ts`, `program-words.ts`, `shell-lex.ts`, `harness-wrapper-tables-wave11.test.ts`; R8-ADV-7). `noglob`, `nocorrect`, a leading `-` and `repeat N` run the
+  command after them (held against the installed zsh, echo only: `- cmd` is a "bad option string" as the very first word of `zsh -c`, and works after any command). zsh's `=psql -h H` is read as `psql`; `psql${IFS}-h${IFS}H` is read split
+  and asks as well (IFS can change); `{psql,-h,H}` asks: `ungroup` in `shell-lex.ts` stripped the leading `{` of a brace-expansion word as if it opened a command group, so the program word never reached the rule that asks for
+  brace groups (`{ cmd; }` with a blank is still a group).
+- *More remote sessions ask* (`remote-access.ts`; R8-ADV-10, R8-CR-9). `limactl shell`, `colima ssh`, `orb`/`orbctl` with any word that is no management subcommand, `podman machine ssh`, `docker-machine ssh|scp`,
+  `minikube ssh`, `multipass exec|shell|transfer`, `vagrant ssh`, `lxc|incus exec|shell|console|file`, `oc exec|rsh|debug|attach|port-forward|cp|rsync`, `ctr run`, `ctr task exec`, `crictl exec|attach|port-forward|run`, `buildah run`,
+  `apptainer|singularity exec|run|shell|instance`, `kubectl run`, `kubectl get secret|secrets|secret/NAME|pods,secrets`, `kubectl config view --raw`, `docker --context X` and `DOCKER_CONTEXT=X` (every context but the local
+  `default`, `desktop-linux`, `orbstack`, `colima…`, `rancher-desktop`) ask; nerdctl's `-n NAMESPACE` and `-a ADDRESS` before `run`/`exec` are read. Wave 12 part E2 adds `podman --connection|--url|-r|--remote|--host|-H`,
+  `CONTAINER_HOST=ssh|tcp://`, `CONTAINER_CONNECTION=NAME`, `docker-compose|podman-compose -H|--host|--context`, an exported or statement-known engine variable, and an `--env-file|--env-from-file` that is a
+  process substitution, stdin or a descriptor. Each is ask-level only; **the corpus cost is stated below** and every
+  management form (`limactl list`, `colima status`, `orb list`, `kubectl get pods`, `docker --context default ps`, …) is a test row that stays allowed.
+- *Wrapper tables and file reads* (`wrapper-specs.ts`, `patterns.ts`, `parallel-command.ts`, `harness-wrapper-tables-wave11.test.ts`; R8-CR-10, R8-CR-11). `parallel --transfer` is a flag and `--transferfile`, `--tf`, `--trc` take a value (the
+  GNU parallel table is from the manual and unverified: it is not installed here); the data of `parallel` past 64 words are judged together once, each as a word of its own (a quoted joined datum hid a protected name); `docker run
+  --kernel-memory` (older docker) is a value option. The file a wrapper's own option reads (`sshpass -f F`, `xargs -a F`, `doas -C F`, `proxychains4 -f F`) is judged as a read whatever program runs behind it: `ls`
+  is on the read-only list, which skipped the secret check, so these went deny to allow when the wrappers were peeled in wave 10 (`Parsed.wrapperReads`, one function `secretFileVerdict`). Pins for the mutants that survived round 8:
+  `gtimeout`, `gchroot` and the other six g-prefixed tools (4 tests each), the parallel remainder (2), `docker run -e=PGHOST=H` and `--name=value` (the `-e=V` form of the option reader), `ecs execute-command`, `exec` with no command.
+- *Structure.* `words()` and `program()` moved out of `patterns.ts` into `command-words.ts` (`patterns.ts` 3,057 to 2,884 lines; the move alone changed no test); `nestedCommandVerdicts` hands the texts of `bash -c`, `eval`, a wrapper's string and a container to
+  `nested-texts.ts`; `classifySegment` is 288 lines (297 before: it shrank by extracting `secretFileVerdict`; measured again at the wave-12 tip `bd8b9d2cc`: 280 lines, `patterns.ts:2809` to the end of a 3,088-line file); `env-split.ts`'s scanner is four functions under 50 lines each; the duplicate `./sibling-sweeps` import is one; no module-level
+  `let` was added (the three that exist, `variableStatements` and the other one-shot states, are part D's and the earlier waves'). `program` is 98 lines with its 20-line return type (about 125 before its two word lists became one `Pair` with three helpers, 80 in wave 10) and `words` 67 (moved unchanged): both are still over 50 and are listed as not done. `harness-heavy-wave11.test.ts` gives the new readers their long inputs (5,000 shell options, a 60 KB split string for the environment wrapper, 14 levels of `bash -c --`, 3,000 modifiers, 5,000 `-e`, a 60 KB here-string, 3,000 pipe stages).
+- **Residuals (new or restated).** `bun x` and `pnpm dlx` are held by their help text only; a flag option no probe could settle stays `unverified` (33 pnpm names: `--node-linker`, `--registry`, `--resume-from`, `--trust-policy`, …) and asks. The pnpm
+  aliases and npm-forwarded commands are from the documentation. `npx` records only the options it reads itself (`-p`, `-n`, `--package`, `--call`, …), everything else is `npm exec`'s. nerdctl is not installed (its tables are docker's and podman's
+  union). A lax table still lets an unlisted FLAG with nothing bare after it pass (`strace -z ls` is not asked), and a lax table's unlisted SHORT option is a flag (`command -v git` must not ask). `docker --context` asks for every context that is not
+  a local one by name; a remote context that is named `default` would pass. `orb` asks for anything that is not a management subcommand it knows. `sudo -s` hands the words to `sh -c` joined; sudo escapes shell metacharacters, so a real
+  `sudo -s 'a b'` runs a program named `a b`: the guard judges both readings. The live test samples; the recorder's CLI re-records everything (about two minutes for npm). The wave-10 residuals not listed here stand (`make`, `just`, `task`, `bwrap`, `rlwrap`,
+  `hyperfine`, `ts`, `pv`; a computed program name; GNU parallel, yarn and the Linux-only wrappers are not installed).
+- **Corpus cost, measured on this tree against the REAL checkout** (140,767 distinct Bash commands of this machine, wave-10 merged tip `4299dac1f` against this tree, the live listings read from the real checkout, read only; nothing executed).
+  **3 transitions, 0.002%: 3 allow to ask, 0 allow to deny, 0 ask to deny, 0 deny to allow, 0 ask to allow; no throws; the slowest single classification 194 ms (264 ms on the wave-10 tip, same load).** The budget for this part was 0.03% (about 42 commands). The 3 are the commands of the review sessions themselves that hand `bun` an option it has not got (`bun --bogus …`), which the strict bun table now asks about; no real command is among them. The first run of the corpus found 52 asks in one bucket: 49 distinct real commands with `npx --no-install`, an npx spelling `npm config` does not list, hit the new "an unlisted `--name` followed by a bare word asks" rule; it is recorded as a flag of npx now and the 49 are gone. Every other rule of this part costs 0 real commands: the shell command string, `docker exec -e`, the stdin texts, re-quoting, `pnpm WORD` (every real `pnpm …` command is a pnpm command or a script), the zsh precommands, the brace and `$IFS` program words, the remote-session tools (no `limactl`, `orb`, `oc`, `kubectl get secret`, `docker --context` in the corpus), the wrapper file reads and `parallel --transfer`. The row-by-row differential of the seven spot-check scripts (`verify-cr5`, `-r5`, `-cr55`, `-everyday`, `-r6`, `-r7`, `-r8`: 629 rows) against the wave-10 tip has no weaker row except `docker run --kernel-memory 1g img ls` (ask to allow, a documented false-positive removal) and 105 stronger ones; `verify-r6.ts` and `verify-r7.ts` fail only on their documented rows; `verify-r8.ts` goes from 161 of 208 rows not as expected to 57, all of them part D's (ADV-4, -6, -8, -12 and CR-1, -7, -8). The 81 heavy payloads of the round-8 reviewer (5,000 assignments, 14 levels of `bash -c`, 3,000-wrapper chains, `parallel` with 3,000 data, docker with 5,000 `-e`) classify without a throw, the slowest in 191 ms in process, and through the real Claude and Codex hook commands every call exits 0 or 2 with a decision. The pinned hook commands replayed on this tree answer as on the wave-10 tip (43 to 98 ms per call, every corrupted-copy check still exit 2).
+
+| ID | What it was |
+|---|---|
+| R8-ADV-1, R8-ADV-13 | Wave-10 regression: `env -S` read as shell words (`\_`, `\c`, quotes inside the string, `${NAME}`, nested `env -S`) hid the command (deny to allow). |
+| R8-ADV-2, R8-ADV-13 | Wave-10 regression: `bun run --cwd x CMD` and 40 more valued options of `bun run` read as flags. |
+| R8-ADV-3 | Wave-10 regression: `pnpm --prefix x exec CMD`, `--workspace-packages`. |
+| R8-ADV-11 | npm's lax table: about 90 real value options read as flags before or after `npm exec`. |
+| R8-CR-2, R8-CR-6 | `bash -c -- 'CMD'`, `-cx`, `-o pipefail -c`, `sudo -s 'CMD'`, `script -qc`, `csh|tcsh|ash|pwsh -c`: the command string is the first operand after every option. |
+| R8-CR-3 | Re-quoting wrote `'\''`; the readers that do not decode backslashes missed `dblink_connect('host=H')` behind `docker exec`, `ssh`. |
+| R8-ADV-5, R8-CR-4 | `docker exec -e PGHOST=H db psql`: the `run` fix did not cover `exec`. |
+| R8-CR-5 | `\c host=H` fed by a here-string, heredoc or pipe behind a wrapper was never read. |
+| R8-ADV-9 | `pnpm git commit …`, `pnpm psql -h H`: pnpm runs the PATH program of an unknown word. |
+| R8-ADV-7 | `noglob`, `nocorrect`, `- cmd`, `repeat N`, `=psql`, `{psql,-h,H}`, `psql${IFS}-h${IFS}H`. |
+| R8-ADV-10, R8-CR-9 | `limactl shell`, `orb`, `podman machine ssh`, `oc exec`, `kubectl run`, `kubectl get secret`, `docker --context`: remote sessions outside the ask list. |
+| R8-CR-10, R8-CR-11 | `parallel --transfer*`, `docker run --kernel-memory`; a wrapper's file option (`sshpass -f`, `xargs -a`, `doas -C`, `proxychains4 -f`) read behind a read-only program. |
+| R8-CR-12 | Tautological and Homebrew-bound tests, weak kills: the recorder, the fixtures and the live test replace them (the PostgreSQL clients are part D's). |
+| R8-CR-13 | Over-long functions, a duplicate import, `words`/`program` in `patterns.ts`: moved and shortened where this part touched them. |
+
+
+## Wave 10 part B
+
+Round 7 (two cold reviews of waves 8 and 9) found three regressions of wave 9 in the database-target reader (a URI whose userinfo holds `?` or `#`, a `?`-gated
+slash rule, a flag-versus-value table) and a list of gaps in what the guard reads of a database target, a secret variable, a link and a sweep. Part B is the database
+targets, the secrets and the miscellany; part A (above or below this section) is shell structure, wrappers and runners. Every item has a RED test first (a payload that was
+allow on wave 9), a data-driven table test, hand mutants, everyday-neighbour allow tests and a corpus diff; the test files are `scripts/__tests__/harness-db-targets-wave10.test.ts`,
+`harness-db-uri.test.ts`, `harness-db-target-help.test.ts`, `harness-db-connect-commands.test.ts`, `harness-db-any-program-wave10.test.ts`,
+`harness-secret-variables-wave10.test.ts`, `harness-env-tar-wave10.test.ts`, `harness-listing-links-wave10.test.ts` and `harness-sweeps-persistence-wave10.test.ts`.
+- *The two string grammars are libpq's own* (`db-uri.ts`; B1, B2, B3; R7-CR-3, R7-CR-4, R7-CR-5, R7-ADV-1, R7-ADV-2). A URI is read as libpq's `conninfo_uri_parse` reads it (scheme, `//`, userinfo up to
+  the first `@` before the first `/`, host list, port, `/dbname`, then `?` and the query; `#` is not special) AND as a URL parser that ends the authority at `?`/`#` and takes
+  the userinfo to the last `@` reads it: at most three readings, the hosts and the `host=`/`hostaddr=`/`service=`/`passfile=`/`dbname=` parameters of all of them are judged. A connection string is parsed by a
+  character-for-character copy of `conninfo_parse` (a backslash escapes in and out of quotes; spaces around `=`; a quoted value ends at the next unescaped `'`). The guard receives the lexer's RAW word and the
+  shell's reading of it (the lexer keeps the backslashes of a quoted word, and cannot say whether the shell removed them): the hosts of both are recorded, and a string libpq would refuse (an open quote, or a
+  word with no `=` after a first `key=`) is `unparsed` (denied) only when NO reading parses. A string whose first word has no `=` (SQL handed to a shell function called `psql`) is not a connection string.
+  Verified with the real libpq 16 (`pg_isready -d STRING`, loopback addresses only, port 1, `harness-db-uri.test.ts` re-runs it when the client is installed).
+- *A flag is not a value option; a host option is found anywhere* (`db-target.ts`, `db-target-clients.ts`, `db-target-flags.ts`; B4, B5; R7-ADV-3, R7-CR-6, R7-CR-9). An exact option name wins over a prefix of a longer
+  one (`redis-cli --tls` is not `--tls-ciphers`, `pgbench --log` is not `--log-prefix`), a client that reads no abbreviation (redis-cli, valkey-cli, mongosh and the mongo tools, trino, cockroach, usql, sqlcmd, and the
+  newly added tools) is read by exact names only, `sqlcmd -W` and the `--password` of trino, clickhouse-client and the mongo tools are flags, and `-h`/`--host`/`--uri`/`--url`/`-u`/`-S`/`--server`/`--dsn` are
+  looked for in EVERY word (an over-reading: `psql -c -h H` is refused; real psql reads `-h` as the command). **Corrected in wave 11 (R8-ADV-4, R8-CR-12):** this paragraph said the tables "come from their real `--help`" and
+  that an abbreviation needs "two characters" (three for a plain value option). The real PostgreSQL 16 clients accept ONE character (`createdb --h=HOST`, `psql --d=URI`, `createdb --m=URI` connected and passed); the minimum is
+  now one, read by one reader (`db-long-options.ts`), and the tables are proven against the installed programs, see "Wave 11 part D". The other clients are from documentation and UNVERIFIED (none is installed here). `rs0/host,host`
+  is a replica-set prefix for the mongo tools only (`psql -h H/localhost` is the one host name `H/localhost`).
+- *Variables* (`db-variables.ts`, `variable-rebinding.ts`; B6; R7-ADV-8, R7-ADV-17, R7-CR-7). Wave 9 kept the one literal a command line assigns to a name and dropped a rebound name (so "unknown" read as "no host"),
+  and computed the map once at the outer text. Now every value an `export` / `declare` / bare assignment of a text assigns is kept, for every text (a nested `bash -c`, `sh -c`, `eval` string reads the statements around it
+  and its own; the inline `PGHOST=H` of `PGHOST=H bash -c '…'` is handed down), and a client reads each of them. A `$NAME` word in a target position (a libpq/mongosh/usql/cqlsh positional, `-d`, `--dbname`, `-u`, `--uri`,
+  `--url`, `--server`) is replaced by each value; a name bound by `read`, `printf -v`, `for`, `eval` or `+=` keeps its reference as a reading; what is still a variable or a substitution afterwards **asks**
+  (`psql "$URL"`, `psql -d "$DB"`; **wave 12, F-1:** a text with more than 256 variable statement words asks outright, because the tracker kept the first 256 and dropped the rest, so 256 junk assignments hid
+  `export PGHOST=<remote>`; a word with more than 8 readings, an indirection with more than 8 and a `dbname` that is itself a connection string nested past three levels no longer drop the rest silently: the
+  word stays as one reading nobody can place, and the nested string asks). ~~A variable inside a URI (`localhost:$PORT`, `$(cat f)@localhost`) does not bend the URI.~~ **Corrected in wave 11 (R8-CR-1):** that read `:$PORT` as a port whatever `$PORT` was and made every `$(…)` inert, so `read PORT <<< '1@H'; psql "postgres://localhost:$PORT/db"` and `psql "postgres://localhost:$(echo 1@H)/db"` connected to a non-local host (a deny to allow of wave 10). A URI or connection string that holds a command substitution, or a reference to a name some statement of the same text binds to something unplaceable (`read`, `printf -v`, `for`, `NAME=$(…)`, `mapfile`, `declare`), now ASKS; a literal expansion (`PORT=5433; …:$PORT/db`) and a plain unbound `$PORT` stay allowed. A statement that sets PGHOST/MYSQL_HOST/… from something the guard cannot place asks (an
+  inline `PGHOST=$(…) psql` stays a refusal, as in wave 9). Only `export`-style statements and bare assignments count (`PGHOST=H true; psql` sets it for `true` alone). **Residual:** `-h $HOST` with a name no
+  statement sets is refused as an unplaceable host, as before.
+- *Reconnection from inside a client* (`db-connect-commands.ts`; B7; R7-ADV-9). `\c`/`\connect` (a connection string or URI, `-reuse-previous=`, the host position of `\c db user host port`, a name that looks like a host)
+  of psql, pgcli, usql; `dblink_connect('…')` and `dblink('…', …)` literals and `CREATE SERVER … OPTIONS (host '…')`; mysql `connect DB HOST` and `\r DB HOST`; mongosh `connect("…")`/`Mongo("…")`: in `-c`, a here-string,
+  a heredoc and what an `echo` pipes in, with the same target reader. `\c NAME` with one plain word is a database name (the same host). **Residuals:** `psql -f FILE` of a file the agent wrote; a `dblink` whose connection
+  string is built at run time; `mongosh --eval` code that computes the address.
+- *Any program, and more clients* (`db-any-program.ts`, `db-target-clients-more.ts`; B8; R7-ADV-16, R7-ADV-23, R7-CR-15). A database host variable (`PGHOST`, `MYSQL_HOST`, `CLICKHOUSE_HOST`, `ETCDCTL_ENDPOINTS`, …) or a
+  variable that holds a database URI, set inline, by `export`, a bare assignment or `env X=v`, with a non-local host is **denied** for every program except those that cannot start another program (`echo`, `printf`, `cat`, `grep`, `rg` without `--pre`, `cp`, `ls`, `export` and kin; **corrected in wave 11, R8-ADV-6:** this list
+  also named `awk`, `sed`, `vim`, `bat`, `sort`, the pagers and `git`, which run a command: `awk 'BEGIN{system(…)}'`, `sed '1e …'`, `vim -c '!…'`, `bat --pager`, `sort --compress-program`, `git -c core.pager=…` started a client with the remote variable
+  in its environment; they now keep the rule unless their words are proven inert, see "Wave 11 part D"): `DATABASE_URL=H bun run db:migrate`, `… node x.js`, `… drizzle-kit push`, `… npx knex migrate:latest`. A database URI (`postgres(ql)`, `mysql`, `mariadb`, `mongodb(+srv)`, `redis(s)`, `valkey`, `clickhouse`,
+  `cockroachdb`, `sqlserver`, `cassandra`, `jdbc:…`) that is a whole word or the value of one (`--url=URI`, `-url=jdbc:…`, `-x url=URI`, `-e DATABASE_URL=URI`) in the words of a program that is not a client with a table
+  **asks** (the host may be a private container's network alias): a URI in the middle of a longer word (a `sed`/`perl` program, a message) is text and is not read. The table gained `createuser`, `dropuser`, `clusterdb`,
+  `pg_amcheck`, `pg_upgrade`, `redis-benchmark` (PostgreSQL 16 and redis 8 verified) and `pgmetrics`, `pgweb`, `harlequin`, `iredis`, `mysqlbinlog`, `mariadb-binlog`, `influx`, `nodetool`, `cypher-shell`, `etcdctl`, `kcat`,
+  `kafkacat`, `dbmate`, `goose`, `atlas`, `prisma`, `drizzle-kit`, `sqlx`, `diesel` (documentation, unverified): 71 programs in all. `alembic` and `flyway` carry the URL inside an option value and are read by the URI rule.
+  `PGDATABASE` is read as a connection string and `CQLSH_HOST` as a host (both from memory of the tools, unverified). **Residuals:** single-dash long options (`influx -host H`, `flyway -url=…` is read only because its value is a
+  URI); a DSN in the mysql/Go style `user:pw@tcp(H:3306)/db` (goose); a client behind a shell script.
+- *The repo's own key-encryption and administrative variables ask* (`env-shapes.ts`, `secret-reads.ts`, `harness-secret-variables-wave10.test.ts`; B9; R7-ADV-14). `echo $M34_TENANT_KEK`, `printenv M35_PSEUDONYM_KEY_KEK`,
+  `echo $DATABASE_ADMIN_URL`, `printenv REDIS_URL`, `printenv DOSESPOT_TENANT_CONFIGS`, `docker compose exec api printenv M34_TENANT_KEK` and the same names read by inline code **ask** (the names are those of the repo's example
+  env files: `*_KEK`, `*_KEK_RETIRED`, `DATABASE_ADMIN|PLATFORM|DESTRUCTION_URL`, `REDIS_URL`, `*_WEBHOOK_URL`, key rings, tenant configs, `APNS_KEY_P8`, service-account JSON): the documented host-seed workflow passes
+  `M34_TENANT_KEK` from the api container, so a human approves a deliberate one; the names that were denied (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `STRIPE_SECRET_KEY`, …) stay denied, and `echo $X_SECRETS` is denied now too. A ratchet test
+  reads the example env files and fails when a secret-looking name allows. **Corrected in wave 11 (R8-ADV-8):** this rule fired only on the operands of `echo`, `printf`, `cat` and `printenv`; the copy (`x=$NAME; echo $x`), the here-string and
+  here-document (`cat <<< $NAME`), the indirection (`${!K}`, `eval echo \$${K}_KEK`), `declare|typeset|export -p NAME` and interpreter code that spells the name in pieces, destructures it or prints it with `-p` now ASK as well (the new shapes ask, the
+  names that were denied keep their deny, a printed whole environment through `environ` is a dump); `MYSQL_PWD`, `REDISCLI_AUTH`, `MONGODB_URI` and kin are denied like a password.
+- *printenv and tar* (B10; R7-CR-14, R7-CR-10). `printenv -0`/`--null`/any option alone is a dump; `tar --creat`, `--cr`, `--appe`, `--upd` and every unambiguous prefix of `--create`, `--append`, `--update` create or extend
+  an archive (GNU tar and bsdtar; bsdtar `--creat` verified).
+- *Links* (B11; R7-CR-11, R7-ADV-21): see the correction under W9-0. *Files read as name lists* (`file-list-options.ts`; B12; R7-ADV-19): `file -f`, `--files-from`, `wc|du|sort --files0-from`, `git … --pathspec-from-file`,
+  `rsync --files-from|--exclude-from|--include-from`, `sed -f`, `awk -f` of a live env file are denied (they print the lines they cannot use). *More tree sweeps* (`sibling-sweeps.ts`; R7-ADV-20): `find … -exec` of an archiver, a copier
+  or a shell whose string holds a reader, `cpio -p` fed by a here-string or an `echo`, `7z a`, `hdiutil create -srcfolder` over a tree that holds a live env file ask. **Residual:** `find | xargs cat` and `… | while read` stay the pipe-fed residual.
+  *Persistence* (`persistence-commands.ts`; R7-ADV-22): `defaults write|import` and `plutil -insert|-replace|-create|-remove|-convert` on a `LaunchAgents`/`LaunchDaemons` plist, `crontab FILE|-|-e|-r`, `at`/`batch`, `osascript` with `do script`,
+  `do shell script`, `keystroke` ask. **Residual:** an `osascript` or `at` script handed in a heredoc body is not read for its text (`at` asks regardless). **Wave 11 (D10):** the persistence the round-8 review found still allowed now asks:
+  `defaults write … LoginHook|LogoutHook`, `PlistBuddy` changes to a launch job, a copy into `~/Library/LaunchDaemons`, `osascript` with JXA `doScript` or `write text` and any `.scpt`/`.applescript` file, `systemsetup -setremotelogin on`,
+  `dscl . -create|-append|-delete|-passwd`.
+- *Structure and tests* (B13, B14). The six hand mutants that survived round 7 are killed (the walked-root prefix, libpq's `@` split, the `tcp:`/`np:`/`lpc:` strip, the unquoted-backslash branch, git's `--open-files-in-pager`
+  minimum (`isGitPagerOption` is exported for its unit test), the plain-value-option abbreviation minimum), the database tests hold every spelling that failed in round 7, and the upper bound of `harness-hard-deadline.test.ts` is the real
+  deadline minus 500 ms (it was 4 s and flaked once under load 47; a hang the test seam missed still fails, because the default deadline is 6.5 s). `check-compliance-controls.ts` (986 lines; this said 984) says at its top why it stays one
+  file. `LinkTarget` is no longer exported. **Not done:** nothing of part B's list; `harness-db-target-help.test.ts` verified only the clients installed on the author's machine (and at a hard-coded Homebrew path, so it could not fail on Linux): wave 11 replaced it by the recorded fixtures.
+- *Corpus* (real Bash commands of this machine, 140,767 distinct, real checkout listing, wave 9 against wave 10 part B, `corpus-diff`). 54 allow to ask (0.038%) and one deny to allow, none allow to deny: 32 are a `$VAR` or substitution in the
+  target position of a `psql` (`psql -d "$DB"`, mostly inside a `docker exec` shell function; an ask), 19 are the guarded variables of B9 (the seed workflow; asks), 2 are a database URI in a program's words, 1 is an `osascript`
+  `do script`; the deny to allow is `psql -h $D` where the command line sets `D` to a socket directory (wave 9 refused it as an unplaceable host, now the literal is read). Nothing else changed: `printenv -0`, the
+  tar prefixes, links, `file -f`, the tree sweeps, `crontab` and `at` cost no real command. A first version refused 9 commands and asked 8 more (a variable that holds the host was not expanded, a URI in a `sed`/`perl` program, a
+  substitution inside a URI, a container network alias): they are the reason for the word-start rule, the expansion and the advisory ask above. Measured with the real checkout's listing (read-only).
+
+### Finding IDs cited in wave 10 part B
+
+| ID | What |
+|---|---|
+| R7-CR-3, R7-CR-4, R7-ADV-2 | A URI whose userinfo holds `?`/`#`, or whose `#` precedes `?host=`, hid a remote host (a wave-9 regression for the first). libpq's grammar plus the other URL readings. |
+| R7-CR-5, R7-ADV-1 | A libpq connection string with a backslash: the guard removed the backslash libpq owns, then a stray word stopped the reader with nothing recorded. |
+| R7-CR-6, R7-ADV-3 | A flag that prefixes a value option (`redis-cli --tls`, `pgbench --log`, `sqlcmd -W`, `trino --password`) swallowed the next word, `-h HOST` with it. |
+| R7-CR-9 | `hostsOf` stripped `^[^/,:]+/` for every client (a wave-9 regression for `psql -h H/localhost`): mongo only. |
+| R7-ADV-8, R7-ADV-17, R7-CR-7 | A rebound name vanished; a nested shell string was never tracked; a `$VAR` target was allowed. |
+| R7-ADV-9 | `\c host=H`, `\connect`, here-strings and heredocs reconnected unread. |
+| R7-ADV-16, R7-ADV-23, R7-CR-15 | A remote `DATABASE_URL`/`PGHOST` for a program that is not a client; clients missing from the table; `CQLSH_HOST`, `PGDATABASE`. |
+| R7-ADV-14 | The repo's own KEK and admin variables were printable. |
+| R7-CR-14, R7-CR-10 | `printenv -0`; `tar --creat`. |
+| R7-CR-11, R7-ADV-21 | A link into a skipped directory counted as walked; a file link was judged by its own name only. |
+| R7-ADV-19, R7-ADV-20, R7-ADV-22 | Files read as name lists; four tree sweeps; persistence by `defaults`, `plutil`, `crontab`, `at`, `osascript`. |
+| R7-CR-18 | Six surviving mutants; the hard-deadline upper bound. |
+| R7-CR-17, R7-CR-19 | Dead exports in part B's files; the doc claims of part B's area, corrected above. |
+
+## Wave 11 part D
+
+Round 8 (two cold reviews of the merged wave-10 tip) found one deny to allow regression in the database-target reader (R8-CR-1), a CRITICAL gap in the same area (R8-ADV-4) and a list of gaps in what the guard
+reads of a text tool, a secret variable, a sourced text, a forced add and a push. Part C of this wave holds the wrappers, runners, shell command strings and containers; this part holds the database targets, the secrets
+and the git rules. The lesson of the round, read twice: three CRITICAL regressions reached the merged tip although 11,395 tests were green, because option tables were hand-written and WRONG ABOUT THE REAL TOOL, and the
+test that "proved" them iterated the same table. **Rule 12 of the brief is the answer, and this part applies it to the PostgreSQL 16 and redis 8 client tables:** a recorder reads the INSTALLED program, a committed
+fixture holds what it saw, and a test that needs no tool fails when the production table reads a recorded option another way.
+
+- *Option tables proven against the real tools* (`scripts/__tests__/helpers/record-pg-options.ts`, `scripts/__tests__/fixtures/harness-db-tool-options/<tool>.<major>.json`, `harness-db-options-wave11.test.ts`; R8-ADV-4,
+  R8-CR-12, R8-CR-13). The recorder runs `psql`, `pg_dump`, `pg_dumpall`, `pg_restore`, `pg_isready`, `pgbench`, `createdb`, `dropdb`, `createuser`, `dropuser`, `clusterdb`, `vacuumdb`, `reindexdb`, `pg_amcheck`,
+  `pg_basebackup`, `pg_receivewal`, `pg_recvlogical`, `pg_upgrade` (16.13 and, since wave 12, as a second version in `fixtures/harness-db-tool-options/pg18/`, 18.4) and `redis-cli`, `redis-benchmark` (8.10) and records, for each option: its name and short
+  letter from `--help`, and the names the parser accepts although `--help` does not list them (`hidden: true`: `pg_dump --no-acl`, `pg_dumpall --no-acl`, `pg_restore --no-acl`, `pg_dump` and `pg_dumpall
+  --attribute-inserts`, found by probing a bounded candidate list: the known aliases, `--no-` plus every listed flag, every name the production table lists, every name another PostgreSQL program of the same
+  major lists); whether it takes a value, from the
+  program's OWN getopt parser (a valued option at the end of the line fails with "requires an argument", a long flag given `=x` with "doesn't allow an argument": both before any connection); its role (a probe whose value is `127.0.0.1`
+  that connects to 127.0.0.1 names a host, one whose value is `host=127.0.0.1 port=1` a connection string); and every abbreviation of every long option up to one character past where it is unique (`ambiguous`, `unrecognized`,
+  or what it resolves to). Every probe names 127.0.0.1 port 1, a closed local port, or no host with `-p 1` (the default socket does not exist), runs with no `PG*` variable and in a fresh temporary directory, detached from the terminal;
+  nothing reaches a non-local host. Where the help text and the parser disagree the parser wins and the recorder says which (`pg_amcheck --install-missing` takes an optional argument its help does not show; redis-cli `-X` and
+  redis-benchmark `--precision` take a value their help does not show). `--help` and `--version` of most PostgreSQL programs are read from `argv[1]`, not by getopt: the fixture marks them `argv1Only`, and the reader treats them
+  as flags that print and exit. `pg_restore` reads its archive before it connects, so its roles come from the help's metavariable (`HOSTNAME`, `NAME`); the recorder says so. The test (no tool needed, 2,900 cases) proves that
+  every recorded option is read by the production table as the real program reads it (a valued option is never a flag, a flag never valued, the role of a host or connection-string option is kept, an option missing from a table that must
+  be complete fails), that every recorded abbreviation resolves as getopt_long resolved it, that every spelling of every recorded option in front of a non-local host leaves the answer a refusal (the monotonicity walk iterates the
+  FIXTURE, not the table), and, when the program is installed (looked up on `PATH`, then in the package manager's directories: the hard-coded Homebrew path of wave 10 is gone), that a live re-recording equals the committed fixture:
+  it fails, it does not skip, when they differ. It skips when the program is not installed, and (silently, in the wave-11 test) when the installed major is not 16; since wave 12 the major-18 re-record
+  (psql, pg_dump, pg_restore) names the recorded and the installed major in its title and an installed but unrecorded major is a named `skip` in `harness-db-flags-wave12f.test.ts`. The production table is
+  NOT built from the fixtures at run time (`db-target-flags.ts` is a static
+  literal regenerated from them). The production table `TARGET_CLIENTS` is the hand table of `db-target-clients.ts` UNITED with that literal (`verified()` in `db-target-clients.ts`).
+  `harness-db-options-wave11.test.ts` compares the UNION with the fixtures; before wave 12 nothing compared the literal (`VERIFIED_OPTIONS`) with the fixtures alone (round-9 mutants P16 and P17 dropped
+  psql's `U` and `h` from it and no test failed, because the hand table held them too), so the tautology of wave 10 (a table checked against data it was built from) was only half gone with
+  `harness-db-target-help.test.ts`, which is deleted. `harness-db-flags-wave12f.test.ts` compares the literal with the fixtures for every tool (letters, valued names and flag names; `argv1Only` names aside).
+  `unverified.json` (`fixtures/harness-db-tool-options/unverified.json`: a note and a list of 51 client names, unchanged at wave 12) lists the 51 clients whose tables come from documentation (none of mysql, mongo, clickhouse, cockroach, usql, sqlcmd, trino, cqlsh, pgcli and the rest is installed here); the test requires the verified and the
+  unverified clients to partition the client table, and an unlisted long option of an unverified client asks when a bare word follows it (rule 2 of the brief: that word may be its value). PostgreSQL 18 (the
+  version the repository ships, `deploy/production/postgres/Dockerfile`) is recorded in `pg18/` since wave 12; its additions (`pg_dump --sync-method`, `--statistics-only`, `--no-statistics`, `--filter`,
+  `vacuumdb --missing-stats-only`, `pg_basebackup --incremental`, `pg_upgrade --swap`, ...) are NOT in the table and ask as unknown options of a verified client (a union would change which prefixes are
+  ambiguous, which the major-16 recording proves). `pgbench -d` is `--debug` in 16 and `--dbname` (a connection string) in 18: the table keeps the 16 reading.
+- *One long-option reader, minimum one character* (`db-long-options.ts`, `db-target.ts`; R8-ADV-4, R8-CR-13). Wave 10 kept a reader of its own (`longRole`/`prefixOf`, minimum two characters, three for a plain value option) beside
+  `option-grammar.ts` `resolveLong`. The real clients accept ONE: `createdb --h=HOST`, `createdb --h HOST`, `dropdb --h`, `pg_isready --h`, `vacuumdb --h`, `pgbench --h`, `psql --d=URI` and `pg_isready --d=URI`, `createdb --m=URI`
+  connected to the host and every one passed. The reader is built on `resolveLong`: an exact name first (so `pgbench --log` and `redis-cli --tls` stay flags), then a unique prefix over the flags and the value options together; a
+  prefix that spans a flag and a value option is ambiguous, one that names nothing is unknown, and both ASK (kind `option`), because the guard cannot tell whether the word names a host; a client whose table is proven against the
+  real program asks for any unknown long option (the real program refuses it), and an unverified one only when a bare word follows it. A client that reads no abbreviation (redis-cli, mongosh, usql, sqlcmd, trino, cockroach) reads exact names.
+  `psql --h` is ambiguous in the real tool (`--help`, `--host`) and asks. `--help` and `--version` of a program that reads them from `argv[1]` print and exit: they do not ask. This removes the duplicated reader of R8-CR-13. Everyday
+  neighbours keep allowing (`createdb -h localhost`, `psql --host=localhost -d db`, `psql --o URI` is the output FILE it is for the real program). One existing test changed its payload: `harness-db-targets-wave10.test.ts` pinned
+  `psql --ou URI` as a deny (the wave-10 minimum); it is the output file, so it allows, and `psql --p URI` (ambiguous) is still refused. git's long options are read by `git-long-options.ts` with git's own
+  rule (exact, else the one option it prefixes, else `ambiguous`), recorded from git 2.53.0 (wave 12).
+- *A variable or substitution inside a URI of a local host asks* (`db-variables.ts` `holdsUnplacedFill`, `db-target.ts`, `harness-db-uri-variables-wave11.test.ts`; R8-CR-1, a wave-10 regression). `PORT_SUFFIX` read `:$PORT` as a port
+  whatever `$PORT` was and `opaqueSubstitutions` made every `$(…)` inert, so `read PORT <<< '1@H'; psql "postgres://localhost:$PORT/db"`, `PORT=$(echo 1@H); …`, `psql "postgres://localhost:$(echo 1@H)/db"`, `…/$(echo 'db?host=H')`,
+  `…?sslmode=$(echo 'require&host=H')`, `…/db$(echo '?host=H')`, `read DB <<< 'x host=H'; psql "host=localhost dbname=$DB"` and the redis, mongo, mysql and clickhouse siblings reached a non-local host (in the port position libpq's,
+  Redis's and MongoDB's grammars read `1@H` as userinfo and a host). A URI or a connection string that holds a command substitution (any quoting: the guard cannot tell a single-quoted one), or a reference to a name some statement of the
+  same text binds to something unplaceable (`read`, `printf -v`, `for`, `NAME=$(…)`, backticks, `mapfile`, `declare`, `export`), ASKS. A literal expansion (`PORT=5433; …:$PORT/db`, `export PORT=…`, an inline `PORT=… psql`) and a
+  plain unbound `$PORT` stay allowed (the false-positive removal of wave 10 is kept). **Wave 12 (F-3):** a parameter expansion that TRANSFORMS its value (`${P/x/1@host}`, `${P//x/y}`, `${P/#x/y}`, `${P#x}`,
+  `${P%x}`, `${P^^}`, `${P:1:2}`, `${P@Q}`, `${#P}`, `${!X}`, `${1}`), a default whose text carries structure (`${Q:-host=H}`), a positional parameter (`$1`, `$@`, `$*`) and a brace expansion the lexer left whole
+  (`?{host=H,a=b}`, `-d {a,host=H}`) inside a URI, a connection string or a database-name position also ASKS. A plain default (`${PGUSER:-postgres}`, `${SSL:-disable}`) is read like a bare variable (the first
+  corpus measure found 25 real commands asking when every default did), and a positional parameter in the PATH of a URI (the database name a function is handed) is not a fill-in (24 of those 25 were there). The
+  `:-` forms in the PORT position were a deny before (the host read as `localhost:${P:-1}`) and still are. A name bound unplaceably inside the PATH of a URI (`...@localhost:5433/ds_$d`, `d` the variable of a `for` loop) is NOT asked about: the first corpus measure found 54 of 85 asks there, every one a script's loop variable, and a path variable was never read before wave 10 either (a stated residual; a substitution in the path still asks). Three existing payloads changed on purpose: `w=$(cat /tmp/pw) && psql "…:${w}@127.0.0.1:5433/…"`, `psql "…:$(cat /tmp/pw)@127.0.0.1:5433/…"`
+  and `psql '…@localhost:$(cat /tmp/port)/db'` allowed under the "does not bend the URI" reading and now ask (a password through a substitution costs an ask: about nine real commands, see the corpus below). The same reading is NOT
+  applied to a program that is not a client (`DATABASE_URL=…$(cat /tmp/pw)@localhost/… node x.js` stays allowed: `anyProgramTarget` makes the substitution opaque before the URI is read): the host there is judged by the same
+  reader without the substitution; this is a stated residual.
+- *Container-network names are local for a program that reads a database variable* (`db-container-hosts.ts`, `harness-db-container-hosts-wave11.test.ts`; R8-CR-8, a wave-10 false positive, removed). `DATABASE_URL=…@chartwarden-postgres:5432/x
+  bun run test` and `REDIS_URL=redis://valkey:6379 bun run dev` allowed in wave 9 and were DENIED in wave 10 (the shared local-host predicate knows only the services of the development compose file). Chosen: a table of the names this
+  repository's compose files and images use (`postgres`, `redis`, `valkey`, `minio`, `rustfs`, `seaweedfs`, `clamav`, `chartwarden-postgres`, `chartwarden-valkey`, `chartwarden-redis`; source: `docker-compose.yml`,
+  `deploy/production/compose.yml`) is local for a program that is not a client, and a second table of the names a compose file conventionally gives a database service (`db`, `database`, `mysql`, `mariadb`, `mongo`, `clickhouse`, …;
+  the repo does not use them, a throwaway container may, and a resolver search domain could resolve one elsewhere) ASKS (kind `alias`) instead of denying. `psql -h NAME` and `PGHOST=NAME psql` are NOT changed: a client run from this
+  shell resolves the name through the host, so they stay refused. A host that is not one of these names (`valkey.<remote domain>`, `db.<remote domain>`) is still a deny. `LOCAL_HOST` itself is unchanged.
+- *A text tool that can run a command keeps the remote-host-variable rule* (`text-programs.ts`, `db-any-program.ts`, `patterns.ts` `awkProgramVerdicts`, `harness-text-programs-wave11.test.ts`; R8-ADV-6). Wave 10 exempted every
+  "text tool" from refusing a remote `PGHOST`/`DATABASE_URL`; `awk 'BEGIN{system("psql -c 1")}'`, `sed '1e psql'`, `sed 's/x/psql/e'`, `vim -es -c '!psql'`, `bat --pager psql`, `sort --compress-program=psql`, the pagers, `git -c
+  core.pager=psql`, `find -exec`, `xargs` and `watch` started a client with the variable in its environment. The exemption names only programs that cannot start another program (`echo`, `printf`, `cat`, `head`, `tail`, `wc`, `grep`,
+  `cut`, `tr`, `uniq`, `tee`, `ls`, `cp`, `mv`, `rm`, `jq`, the variable-setting builtins, …; since wave 12 `rg` is exempt only without `--pre` and `--hostname-bin`, and `ag` and `ack` only without `--pager`: they
+  had been on the list although the module header said nothing with a pager is, R9-CR-14); `awk`/`gawk`/`mawk`/`nawk` are exempt only when EVERY candidate program text holds no `system(`, no pipe and no
+  `getline` (and each is at most 16 KB; the candidates are every word that is not an option and not the value of `-F`, `-v` or `-f`, the attached value of `-e` and `--source=`, and every word after `--`: the
+  macOS awk, BWK awk 20200816, ignores `-i`, `-l`, `-E`, `-W` and the rest with "unknown option -i ignored", so the word after one IS the program there, while gawk and mawk, not installed here and listed in
+  `awk/awk-unverified.json`, take a value; a program from a file, `-f`, `--file`, `-E`, `--exec`, `-i`, `--include`, `-W exec`, is not exempt),
+  `sed` only when every command is `p`, `d`, `q`, `n`, `N`, `=`, `D`, `g`, `y` or an `s` whose flags are only `g`, `p`, `i`, `I`, `m` and digits (never `e` or `w`; `SED_COMMAND` in `text-programs.ts`), `sort` only without `--co…` (every abbreviation of `--compress-program`), `git` and `gh` only without `-c`, `--config-env` or
+  `extension`. `source` and `.` keep the rule. Also, bare `awk 'BEGIN{system("psql -h H")}'`, `"cmd" | getline` and `print | "cmd"` are judged as command lines (the literals, concatenated as awk does); a command the program computes
+  (`system(cmd)`) asks. A pipe inside a regular-expression literal (`$1 ~ /a|b/`) or a string (`split($0, a, "|")`, `-F'|'`) is no pipe (the first corpus measure asked on 75 real awk programs for it; the program is scanned with regular expressions and quoted pipes masked). **Residual:** an awk program read from a file (`-f FILE`, gawk's `-E`/`--exec`/`-i`/`--include`, mawk's `-W exec`) is not read and does not ask by itself.
+- *A guarded variable printed by a route other than `echo $NAME`* (`secret-flows.ts`, `env-shapes.ts`, `secret-reads.ts`, `harness-secret-flows-wave11.test.ts`; R8-ADV-8). The new shapes ASK (the documented host-seed workflow passes
+  `M34_TENANT_KEK` from the api container): an assignment copy (`x=$NAME; echo $x`, `export X=$NAME; echo $X`, a chain of copies: a name is tainted when a statement assigns it a value that references a guarded, secret or tainted name),
+  a here-string or here-document (an unquoted body or a quoted one: both are read) or a pipe fed to a printing program (`cat`, `tee`, `head`, `base64`, `awk`, `sed`, `grep`, …), an indirect expansion (`K=M34_TENANT_KEK; echo ${!K}`,
+  `eval echo \$${K}_KEK`; an indirection whose name is unknown asks), `declare|typeset|export|readonly|local -p NAME`, and interpreter code that spells the name in pieces (`process.env["M34_"+"TENANT_KEK"]`, perl `"M34_"."TENANT_KEK"`,
+  php `getenv("M34_"."TENANT_KEK")`, python `"M34_" "TENANT_KEK"`: adjacent string literals are joined before the name is read), destructures it (`const {M34_TENANT_KEK: k} = process.env`), reads it with `getenv`, `$_ENV`, `$_SERVER` or a
+  bare `environ`, or prints it with `node -p`, `-pe`, `--print` (the value is wrapped in a `console.log`). A whole environment printed through `environ` is a dump (deny), as `os.environ` already was. The names that were denied keep their
+  deny (`echo $DATABASE_URL`); `MYSQL_PWD`, `REDISCLI_AUTH`, `REDIS_AUTH`, `MONGODB_URI`, `MONGO_URL`, `DATABASE_URI` are denied like a password (`PGPASSWORD` and the `*PASSWORD` names already were). A command whose standard output goes to a file (`cat > f <<EOF ... $NAME ... EOF`) prints nothing and is not asked about (the first corpus measure found 29 such heredocs); a redirect to `/dev/stdout`, `/dev/stderr`, `/dev/tty`, `/dev/fd/N`, `/dev/pts/N`, any other `/dev` path (except `/dev/null`), any `/proc` path or a
+  target the guard cannot place (`> $out`) is NOT a file and counts as a print (wave 12, R9-CR-7), and a file the value was written to is judged as the print it is when a later command of the same text reads it
+  back (`cat /tmp/f`, `cat < /tmp/f`); a `2>` redirect does not count. **Residuals:** a name built at run time
+  from something that is not a string literal, a variable read by a program the guard does not know prints it (`x=$NAME; some-tool --print x`), a copy through a function parameter that is not an indirection (`f() { x=$1; echo $x; }; f $NAME`). Wave 12
+  (F-2) resolved the other copies: `printenv X` of a copy (`export X=$NAME; printenv X`, `X=$NAME printenv X`), `read x <<< "$NAME"`, `mapfile`/`readarray` and `printf -v` from a guarded value, an indirection
+  through an array element or a positional parameter (`${!a[0]}`, `${!1}`: one-element array literals are resolved, any other array or a parameter ASKS), a nameref (`declare -n r=NAME`) and an interpreter that
+  aliases the environment before printing it (`const e = process.env; console.log(e)`, `import.meta.env`, `e = os.environ`, `%e = %ENV`) ask or deny as the direct form does. Still open: a multi-element array
+  literal read through an index (asks), a file written in one command and read in another.
+- *A sourced text and a forced add* (`source-carry.ts`, `git-add-force.ts`, `patterns.ts` `textVariableStatements`, `harness-source-git-wave11.test.ts`; R8-ADV-12). `eval 'export PGHOST=H'; psql` was refused, `source <(echo export PGHOST=H); psql`,
+  `. <(printf 'PGHOST=H\n'); psql` and `source /dev/stdin <<< 'export PGHOST=H'; psql` (and the here-document form) lost the variable: the statements of a sourced text now join the tracker for the commands after it; a database client after
+  a `source <( … )` whose text the guard cannot read (`source <(curl …)`) asks (corrected in wave 12 part E2: ANY database client in the same command line asks, not only one after it: the statements are tracked
+  for the whole text without order, and a function body defined before the `source` runs after it). `git add -f` of a name the secret-name rule protects, `--force` or any unambiguous prefix of it (`--fo`, `--forc`, `--f`: git accepts them, recorded from git 2.53.0; wave 12), a cluster (`-fv`), `git stage -f`,
+  `git update-index --add` (or `--ad`; `--cache` is `--cacheinfo`; also `--cacheinfo
+  MODE,SHA,PATH`) are refused like a read of that file; a forced add of everything (`-A -f`, `-f .`, `-f -u`) asks where the tree holds a live env file. An ordinary `git add` and a forced add of an ordinary file are untouched. `git add --pathspec-from-file` (any prefix of the option) asks when the add is forced or its source is standard input, a device or a
+  variable (a placed non-secret file stays allowed and a live env file stays denied, as in wave 10; wave 12).
+- *Push refspecs compared decoded* (`git-push-refs.ts`, `patterns.ts`, `harness-source-git-wave11.test.ts`; R8-CR-7). The force-push rule compared `main` as a literal regular expression over the typed word. Now the refspec is decoded
+  (backslashes removed, a variable the command line assigns to a literal replaced) and read as the destination (`+main`, `HEAD:main`, `refs/heads/main`, `feature:main`, `:main`); a force flag is any `--force*` option or a short cluster
+  with an `f` (`-fu`, `-uf`), and `-o VALUE`, `--push-option`, `--repo`, `--receive-pack`, `--exec` skip their value (wave 12: long options are read by git's prefix rule, `--mir` is `--mirror`, `--del` is
+  `--delete`, `--force-w` is `--force-with-lease`, and an ambiguous prefix that could be a force, mirror, delete, all or repo option, `--forc`, `--f`, `--d`, `--a`, ASKS; an unknown spelling that starts with
+  `force` is still a force; a destination is main as `main`, `heads/main` and `refs/heads/main`; braces expand before the ref is read, `{main,x}`, `ma{in,x}`; a destination with a `*` names main when the
+  pattern matches one of those spellings, `refs/heads/*:refs/heads/*`, `refs/*:refs/*`, `*:*`: a forced one is refused, an unforced one asks; a pattern that cannot match main, `refs/tags/*`, is not main). `ma\in`, `BR=main; … $BR` are refused. A refspec that still holds an expansion in a force, mirror or delete push
+  (`main$(true)`, `"main$EMPTY"`, `main${EMPTY}`, `$(echo main)`, `$BR` with no known value) asks; `--mirror`, `--all -f` and a forced push with no ref or only `HEAD` on a branch the guard does not know (`git push -f`) ask; on `main` the
+  last is refused, on a known feature branch it allows. `git push origin feature`, `git push --force-with-lease origin feature` and `git push -fu origin feature` allow. A delete of `main` asks as before.
+- *Persistence the review found still allowed* (`persistence-commands.ts`, `toolchain-paths.ts`, `harness-persistence-wave11.test.ts`; D10). Decided cheap, so each asks: `defaults write … LoginHook|LogoutHook`, `PlistBuddy` changes to a
+  launch job, `cp x ~/Library/LaunchDaemons/y.plist`, `osascript` with JXA `doScript` or `write text` and any `.scpt`/`.applescript` file, `systemsetup -setremotelogin on`, `dscl . -create|-append|-delete|-passwd`. Read-only twins allow.
+- *Structure and tests* (R8-CR-12, R8-CR-13). The `lastIndexOf("@")` mutant of `db-uri.ts` (the WHATWG reading) is killed by a test of `a@b@c?d@e/x` (not equivalent: it loses the host `c`). `harness-db-uri` failed three times under load
+  because its libpq differential used 127.0.0.2 as "the real host": macOS does not alias it, so every probe waited out `pg_isready`'s one-second connect timeout and three of them hit the five-second test limit; it uses 127.0.0.1 (refused at once),
+  finds the program through the recorder, and carries a 30 s test timeout. `listLiveSuiteFiles` (55 lines) and `storedSecretVerdict` (51) are under 50. The duplicated long-option reader of `db-target.ts` is gone. `classifySegment` shrank from
+  297 to 289 lines (at the wave-12 tip `bd8b9d2cc` it is 280 lines: `patterns.ts:2809` to the end of a 3,088-line file; part F did not touch it). **Not done:** the module-level `let variableStatements` of `patterns.ts` stays (it is one of the one-shot state variables of the classifier; threading it as a parameter touches `classifySegment`'s signature and
+  every caller, which part C edits in parallel: report to the orchestrator).
+- *Heavy shapes* (`harness-heavy-shapes-wave11.test.ts`; rule 11). Nineteen adversarial shapes of up to 64 KB for the new readers (15,000 adjacent awk strings, 5,000 sed commands, a 400-copy taint chain, 3,000 chained statements, 2,000
+  indirect expansions, 5,000 unplaceable push refs, 2,000 sourced substitutions, a URI of 10,000 substitutions, 8,000 ambiguous long options, …) finish with a decision, none throws, the slowest took 830 ms (the sourced substitutions) and one
+  took 480 ms (15,000 adjacent awk strings, which led to the 16 KB awk cap); the replay of the real pinned hooks answers in 44 to 59 ms. These shapes asserted a decision and no throw; wave 12
+  (`harness-statement-cap-wave12f.test.ts`) asserts the VERDICT at 250, 254, 255, 256, 257, 300, 1,000 and 5,000 assignment words (never an allow where the short form refuses).
+- **Corpus, measured on the final tree against the REAL checkout** (140,767 distinct Bash commands of this machine, in-process, read only, nothing executed; baseline the verified merged tip `4299dac1f`). Merged tip against this tree, `corpus-diff`, the real checkout's listing read only: **29 allow to ask (0.021%), 0 allow to deny, 0 ask to deny, 0 deny to allow, 0 ask to allow**; no throws; the slowest single classification 41 ms. The budget of this part was 0.03% (about 42 commands). By bucket: 15 `X could point anywhere` (a URI or connection string of a local host with a substitution, or a name bound by `read`, `printf -v`, `for`, `NAME=$(...)` in its port, userinfo or query; programs `cd`, `PW` and `cat` first words, an `export`); 8 `A forced git push with no ref` (programs `cd`, `git`, `bun`, `python3` first words; **a measurement artifact**: `corpus-diff` hands the classifier no current branch, the real hook does, so on a known feature branch these allow and on `main` they are refused, which leaves 4 in real use); 4 `A forced or deleting git push names a ref the guard cannot place` (`git push --force-with-lease origin $BRANCH` and kin); 2 guarded-variable prints (a copy or an inline-code spelling). **A first version cost 133 (0.094%) and was narrowed on the measure**, which is the reason for four rules above: 75 asks on an awk program with a regular-expression alternation or a quoted pipe (read as a pipe to an unplaceable command: now masked), 31 on `cat > file <<EOF` with a guarded variable in the body (written to a file, not printed: now skipped), 54 of a first 85 URI asks on a loop variable in the database name of a local URI (a path variable: now a stated residual), and a rule for non-client programs (`DATABASE_URL=...$(cat pw)@localhost/... node x.js`) that cost 56 and was dropped, the substitution there stays opaque. The DB option tables (D2) and the container names (D3) change no real command. The pinned hook commands replayed on this tree (Claude and Codex; the corrupted-copy fail-closed checks: `pre-tool-guard.ts`, `guard-judge.ts`, `patterns.ts`, `guard-worker.ts`, `hard-deadline.ts`, `bun` missing) answer as on the merged tip, 44 to 59 ms per call.
+- **Mutation testing.** Each finding's production code was mutated by hand (a condition flipped, a branch removed, a table shrunk, the wiring removed), the finding's test files run, and the file restored; failing-test counts. D2: no prefix resolution 1,309; an ambiguous prefix read as a flag 160; minimum prefix two characters 232; unknown option not asked 4; the verified marker dropped 4; flag listed before value 1 (nothing in the real tables names a flag and a valued option alike: it takes a synthetic table); one data letter flipped 1 (one test per recorded option, by design). D1: a substitution ignored 13; a bound name ignored 18; the URI call removed 29; the connection-string call removed 4; an unbound name also asks 6; a path variable asks 3; the query dropped 3. D3: container kind always null 11; generic read as project 13; aliases also for clients 2; generic allowed 12. D4: awk always inert 4, sed 11, sort 7, git 2 and (git never inert) 8, vim as non-executing 3, source 2, awk commands empty 9, wiring removed 8, unplaced not asked 5, sort abbreviation 4, awk mask removed 3 and 2, quoted pipe not masked 1, regular expression not masked 3. D5: taint empty 12, here-string 10, here-document 4, indirection 4, unknown indirection 2, declare -p 7, cat as printer 6, tee 3, fold 9, destructuring 3, print wrap 2, extra names 7, getenv 2, bare environ 3, wiring 29, stdout to a file never skipped 5, stderr counted as a file 1. D6: source statements 8, /dev/stdin 3, unreadable asks 3, forced add 4, cluster 3, update-index 1 (the other spellings of an env file are refused by the generic operand rule first: only `--cacheinfo` depends on it), everything 2, secret-name deny 8. D7: decode 2, mirror 3, all-forced 3, unplaced 12, tracking branch 6, cluster 4, plus ref 2, colon delete 2, `-o VALUE` skip 1 (near-equivalent: only the remote slot changes), known variable 2. D8: `lastIndexOf` 1. Mutants killed by one or two tests are the table-driven ones (one test per recorded option or per spelling) and the two near-equivalents named above.
+- **The spot-check scripts.** `verify-r8.ts`: 208 rows, 161 not as expected on the merged tip, 104 on this tip, ALL of this part's rows (ADV-4, 6, 8, 12 and CR-1, 7, 8: 9, 8, 15, 3, 9, 9 and 4 rows) as expected all 41 `ok-` rows allow and the four ND rows (CR-8a to CR-8d) do not deny; the 104 that remain
+  are part C's rows (and `CR-10c`, an A row that part C owns). `verify-r5`, `-cr5`, `-cr55`, `-everyday`, `-r6` (7 documented rows) and `-r7` (2 documented rows) answer identically to the merged tip row by row (33, 42, 6, 35, 228 and 77 rows: none weaker, none stronger); in `verify-r8` 53 rows
+  are stronger and 4 weaker, the four being CR-8a to CR-8d, the documented false-positive removal (deny to allow for `chartwarden-postgres` and `valkey`, deny to ask for `db` and `mysql`).
+
+### Finding IDs cited in wave 11 part D
+
+| ID | What |
+|---|---|
+| R8-CR-1 | A variable or substitution inside a URI of a local host was read as inert: `localhost:$PORT` bound by `read`, `$(echo 1@H)` in the port, path or query hid a non-local host (a wave-10 deny to allow). |
+| R8-ADV-4 | A one-character long-option prefix (`createdb --h=HOST`, `psql --d=URI`, `createdb --m=URI`) of the real PostgreSQL clients connected to a non-local host and passed. |
+| R8-CR-8 | A database variable naming a project container (`chartwarden-postgres`, `valkey`) denied (a wave-10 false positive). |
+| R8-ADV-6 | The text-tool exemption let `awk system()`, `sed e`, `vim -c '!'`, `bat --pager`, `sort --compress-program`, pagers and `git -c core.pager` run a client under a remote host variable. |
+| R8-ADV-8 | A guarded variable printed by a copy, a here-string, an indirection, `declare -p` or interpreter code that names it in pieces, destructures it or prints it with `-p`. |
+| R8-ADV-12 | `source <(echo export PGHOST=H); psql` lost the variable; `git add -f <live env file>` staged it. |
+| R8-CR-7 | `git push --force origin main$(true)`, `ma\in`, `$BR`, `-fu`, `--mirror`, `--all -f` and a forced push with no ref passed the force-push rule. |
+| R8-CR-12 | The tautological option test, the hard-coded Homebrew path, the survivor of `lastIndexOf("@")`, and the load-flaky `harness-db-uri`. |
+| R8-CR-13 | Two long functions, the duplicated long-option reader of `db-target.ts` (the `variableStatements` state and the doubled import are not part D's to remove). |
+
+## Wave 12 part E1
+
+Round 9 (three cold reviews of the merged wave-11 tip `b290ef92a`) found, in the shell, env, runner and wrapper area, three CRITICAL holes and a regression against wave 10, of two kinds. A rule
+written for ONE shape of a real tool was applied to the others: one bash-shaped reader for bash, sh, zsh, dash, ksh, csh and tcsh; `bun run --parallel` recorded as a flag without what it MEANS; `env -S`
+read once where env reads its options again over the split words. And a table was wrong about the real tool in the other direction: the wave-11 rule "an unlisted option before a bare word asks" fired
+where no program can follow, and let an unlisted letter through. This part fixes them with recordings of the installed tools and tests that assert the VERDICT at every cap. Parts E2, F and G of the same
+wave hold the stdin texts, the database, secret and git rules, and the timing and ledger hygiene. Corpus and mutation figures of each part were measured by its author on this machine and are kept in the
+part report; they are not repeated here (the corpus, the commands recorded in this machine's sessions, is not in the tree).
+
+- *Each shell reads its command string by its own recorded table* (`shell-grammars.ts`, `shell-command-string.ts`, `helpers/record-shell-options.ts`, `helpers/shell-probes.ts`,
+  `fixtures/harness-shell-options/*.json`, `harness-shell-options-wave12e1.test.ts`, `harness-shell-options-live-wave12e1.test.ts`, `harness-shell-strings-wave12e1.test.ts`; R9-ADV-1, R9-ADV-2, R9-ADV-6,
+  R9-ADV-17, R9-ADV-21, R9-ADV-22). Wave 11 held ONE rule against bash, zsh and sh and gave the other shells that rule: `bash +c 'CMD'` ran CMD past the guard, `zsh -O -c`, `ksh -o -c` and `ksh +o -c` were
+  refused by wave 10 and allowed by wave 11, `bash -oc pipefail 'CMD'` and `-Oc VAL` stopped scanning at the `o`, `csh -cc A CMD` ran the second word, `ksh 'CMD'` ran a non-file operand and
+  `su root -- -c 'CMD'` handed `-c` to the target's shell behind a `--`. The recorder runs the installed shell with 623 to 634 option sequences each (every word alone, every pair of the core words, seeded
+  random runs of three or four, and the discriminating probes of `shell-probes.ts`) followed by three `echo` operands, in a scratch directory and HOME with a closed stdin (a shell option may create a file
+  named like an option), and records which markers the shell RAN: 4,405 sequences in the seven fixtures. **Recorded against:** bash 3.2.57 (macOS), `sh` (the same bash 3.2.57 in POSIX mode), dash (it has no
+  version flag), zsh 5.9, ksh93u+ 2012-08-01, and csh and tcsh (both tcsh 6.21.00 on this macOS). What it found: `+c` is `-c` in bash, sh, dash and zsh and not in ksh93 (which runs its first operand as a
+  command line when no file of that name exists); `-o` and `-O` of bash, sh and dash take the NEXT word and the cluster goes on; zsh's `-o` takes the rest of the cluster (`zsh -oc x` names the option `c`,
+  an error) or the next word, and zsh's `-O` is a flag; ksh's `-o` takes the rest of the cluster or the next word unless that starts with `-` or `+` (`ksh -o -c 'CMD'` lists the options and runs CMD);
+  csh and tcsh take the next word after EVERY `c` of a cluster (the last one runs), `-b` ends the options after its word and `+c` is a file name. `shell-grammars.ts` is data, one entry per shell, read by
+  one scan; `sh` is read as bash AND as dash (Debian's `sh` is dash). The test that needs no shell checks that every marker a real shell ran is a string the reader judges, that the discriminating probes are
+  exact, that the table equals the recordings, and that a guarded command put where a real shell ran a marker is never allowed; the live test re-records and skips with a named reason where a shell is not
+  installed. **Not recorded:** fish, pwsh, powershell and ash (not installed, `UNVERIFIED_SHELLS`: their `-c` ASKS and the string is judged too), mksh, rbash and `ksh93` by name, a bash newer than 3.2 and any
+  Linux shell, and `su` itself (it needs a password: the reading after `--` is from its manual page).
+- *`env -S` string: options inside it are env's options* (`split-string-expand.ts`, `wrapper-peel.ts`, `command-words.ts`, `harness-env-wave12e1.test.ts`; R9-ADV-3). Wave 11 spliced the split words in as the
+  COMMAND, so `env -S '-i CMD'`, `-S '-u X CMD'`, `-S '-C dir CMD'`, `-S '-P dir CMD'`, `-S '-- CMD'`, `-S '-S CMD'`, `env -S '-i' CMD` and `env -i -S '-u X CMD'` judged `-i` (or `-u`) as the program. BSD env
+  reads the split words as if they had been typed where `-S STRING` stood (probed with `echo HIT`), so the words of the string REPLACE the option, round after round (a NAME=value word ends the options, as in
+  env), and the options of the rewritten list are read once, like any wrapper's. `-C` inside the string is a directory change. Nested `-S` is read for `MAX_SPLIT_ROUNDS` = 8 rounds and a deeper one asks; the
+  test asserts the verdict at depths 8, 9, 50 and 5,000. **Not verified:** GNU env on Linux (its long options `--unset=X` and `--chdir=DIR` are read the same way but were not probed; not installed).
+- *env and sudo take every `=` word as an assignment* (`command-words.ts`; R9-ADV-7). After `env` or `sudo`, a word holding a `=` after its first character is an assignment once the shell has removed its
+  backslashes (`env A.B=x CMD`, `A-B=1`, `1A=x`, `A:B=1`, `a/b=1`, `P\GHOST=H` is `PGHOST=H`: probed on BSD env, all run the command). The decoded word is one of the command's assignments (so the database rules
+  see `PGHOST=H`), and a NAME that holds an expansion (`env PG${E}HOST=H psql`, `env $N=x`, a backtick) asks. Other wrappers (`nice`, `command`) run such a word as the program, as before. GNU env and sudo were
+  not run.
+- *`bun run --parallel|--sequential`, repeated `-c`, `--no`* (`runners.ts`, `runner-grammars.ts`, `helpers/record-tool-options.ts`, `harness-runners-wave12e1.test.ts`; R9-CR-1, R9-ADV-10, R9-CR-18). bun 1.4.4
+  runs EVERY operand of `bun run --parallel 'CMD'` (and `bun --parallel run …`, `bun --parallel 'CMD'`) as a line of its own (probed: `bun run --parallel 'echo HIT'` prints `echo HIT | HIT`, while
+  `bun run 'echo HIT'` is "Script not found"); each word is judged as a command line and the words joined too. npm 11.11.0 runs the LAST `-c`/`--call` (probed: `npm exec -c true -c 'echo HIT'` prints HIT;
+  npx too), so every value is judged. `npm exec --no CMD` is a flag (it leaves CMD as the package) and is recorded. The recorder probes `runsOperandAsCommand` (a field of the fixtures: `bun run` and `bun`
+  `--parallel` and `--sequential`, `npm exec` and `npx` `--call`, env `-S`) and the monotonicity walk puts a guarded command behind each as a QUOTED operand (the walk of round 9 put only unquoted words behind
+  options).
+- *The lax rule asks only where a program could follow* (`option-grammar.ts`, `runner-grammars.ts`, `runners.ts`; R9-CR-8, R9-COMP-5). The managers' GLOBAL tables (before the subcommand: `NPM_GLOBAL`,
+  `PNPM_GLOBAL`, `YARN_GLOBAL`, `BUN_GLOBAL`) know their subcommands (recorded in the fixtures: `bun --help` 30, `npm help` 68, `pnpm help -a` 52; yarn's list is unverified), so `npm --no-fund install`,
+  `npm --silent run build`, `pnpm --frozen-lockfile install`, `bun --frozen-lockfile install` and `yarn --frozen-lockfile install` stay allowed (wave 11 asked on Claude and denied on Codex); after `exec`,
+  `dlx` and `x` the same word IS a program, so those tables have no subcommands and `npm exec --zz-unlisted install` still asks. bun's table before the subcommand is lax and exact (probed: an unknown option
+  there is a flag). An unlisted SHORT letter of a package manager or runner followed by a bare word that could be a program asks too (`pnpm -Z x exec CMD`, `bunx -Z x CMD`, `npm exec -Z x -- CMD`): npm itself
+  warns `Unknown cli config` for the letters it has no config of, so `npm-exec.11.11.0.json` keeps 33 letters as `rejected`. The five pnpm `fetch-*` settings are documented as numbers (pnpm.io/settings, `manual`
+  evidence: every probe errors before `echo` runs). Wrappers that take no option (`command`, `nohup`, the zsh precommands) keep every dash word as a flag. `drizzle-kit generate --name x`,
+  `prisma migrate dev --name x` and `prisma studio --port x` asked from the database client tables, not from the lax rule; they were fixed after the merge (`db-target-clients-more.ts`,
+  `harness-db-orm-names-wave12.test.ts`). `usql --no-psqlrc URI` still asks (see "Wave 12 follow-up").
+- *Shell strings that run operands, variables, substitutions, shell variables* (`shell-command-string.ts`, `nested-texts.ts`, `program-words.ts`, `patterns.ts` `shellWordVerdicts`,
+  `harness-shell-strings-wave12e1.test.ts`; R9-ADV-12 shell-string half, R9-ADV-22). A string that reads `$@`, `$*` or `$1` runs the operands behind it (`sh -c 'exec "$@"' _ CMD`,
+  `find -exec sh -c '"$@"' _ CMD \;`, `xargs sh -c '"$@"' _ CMD`): they are judged as a command line (joined and quoted back; the placeholder in `$0` is left out), and `$0` runs the first one. A string that
+  is one variable (`C='CMD'; bash -c "$C"`, `sh -c $C`) is each value a statement of the command gives it; a name no statement sets, a positional parameter and an unplaced value ask. A string that is one
+  command substitution is the text of a plain `echo` or `printf` (`bash -c "$(echo CMD)"`) and asks otherwise. A program word that stands for a shell (`$SHELL`, `$BASH`, a variable bound to a shell's name,
+  zsh's `=bash`) has its string judged as that shell's, and a variable asks too (`=bash -c CMD` was allowed: zsh equals-expansion judged `bash` but never its string). The stdin-fed shells
+  (`echo CMD | bash`, `bash /dev/stdin <<< CMD`) belong to part E2.
+- *Wrappers outside the table* (`wrapper-specs.ts`, `wrapper-peel.ts`, `wrappers.ts`, `runners.ts`, `unverified-tools.json`, `harness-wrappers-wave12e1.test.ts`; R9-ADV-16). Installed here and read from their
+  manual pages or `--help` (arities held against the real tools with `echo` only): `lockf [-knsw] [-t seconds] file command`, `taskpolicy [...] program` (`-p pid` runs none),
+  `sandbox-exec [-f|-n|-p|-D …] command`, `leaks … --atExit -- command` and `lldb … -- program` (a command only behind the `--`: `WrapperSpec.dashDash`), `dtrace -c cmd`. A tool's OWN script that can run
+  anything asks instead of being peeled (`WrapperSpec.asksWith`): `expect -c`, `lldb -o|-O|-s|-S|-k|-K|--one-line*|--source*`, `zx -e|--eval`. Not installed (documentation, unverified, lax):
+  `concurrently 'A' 'B'` (every operand is a shell line), `nodemon --exec|-x 'CMD'` (only the exec option starts a command: `Grammar.callOnly`), `watchexec … -- CMD` and `zx`. `npm-run-all`, `run-p` and `run-s`
+  run package scripts by name and are not command-string runners. `unverified-tools.json` grew from 81 to 91 tools with this part.
+- *The recorder never reads a failure as an answer* (`helpers/record-tool-options.ts`, `harness-tool-options-live-wave11.test.ts`, `harness-recorder-wave12e1.test.ts`; R9-CR-12, R9-CR-11, R9-CR-17).
+  `run` threw nothing for an exec error and read a SIGKILL after 8 s as "no HIT" (a valued option misread as a flag). Now a failure to start is an error, a timeout is `NoAnswer` after two retries, and an
+  option whose probe never answers is `unverified` (it found `pnpm --use-node-version exec echo HIT`, which waits for a download); the first flag-probe value is `zzx`, no subcommand or alias of any tool
+  (`bun --smol x run` is `bun x run`, which hangs); `installedVersion` runs inside the sandbox; the live test fails on a name the installed `--help` lists and the recording does not hold (and on subcommands),
+  names a version mismatch (a skip with the reason, after the table check) and re-asks an unanswered name alone. P21 (`\r` is a blank in env's split grammar), F2 (`--network` in the docker-run recording on its
+  own) and F9 (npx `-p` is `--package`, npm exec `-p` is `--parseable`) are pinned. The env table's `legacy` list no longer excuses the options BSD env records, and `OLDER_DOCKER` is gone.
+- **Residuals.** GNU env, Linux and a bash newer than 3.2 were not verified (nothing is installed here). fish, pwsh, powershell and ash are not recorded; mksh, rbash, ksh93 (by name), rzsh, yash and nu are not
+  read as shell names (`COMMAND_SHELLS` lists bash, sh, zsh, dash, ksh, fish, csh, tcsh, ash, pwsh and powershell). `su` and `sudo` are read from their manuals. A string held in a variable the command cannot
+  place asks (never guessed). `taskpolicy -b` printed nothing under the probe (the other taskpolicy options did run `echo`).
+- *Structure.* `shellQuote` and `joinedAndQuoted` moved out of `wrappers.ts` into `shell-quote.ts` so the shell reader can use them without an import cycle (`wrappers.ts` re-exports both); the `env -S`
+  expansion is `split-string-expand.ts` and the per-shell tables are `shell-grammars.ts`. `peelWrapper` came under 50 lines. The recorders `helpers/record-shell-options.ts` and `helpers/shell-probes.ts`, the
+  fixture directory `fixtures/harness-shell-options/` and the new `npm.11.11.0.json` (the 68 `npm` command names) are evidence files named by the register's evidence list.
+
+## Wave 12 part E2
+
+Round 9 found that the text a command is FED (a here-string, a heredoc, a pipe, a process substitution) was read from the typed words where the shell hands them decoded, that only `echo` and `printf` stages
+of a pipeline were read, that an 8-stage cap ended in a silent allow, that container engines and ssh could be pointed at another machine without a question, and that "remote-session tools ask" was a list of
+named subcommands written as if it were the whole tool. This part fixes R9-CR-2, R9-CR-3, R9-CR-15, R9-CR-16, R9-ADV-5, R9-ADV-12 (stdin half), R9-ADV-13, R9-ADV-14, R9-ADV-15, R9-ADV-20 (container half)
+and R9-COMP-3.
+
+- *What a command is fed, read once, as typed and as handed* (`stdin-texts.ts`, `inline-code.ts`, `db-client-escapes.ts` `clientTexts`, `patterns.ts` `walkInputOf` and `handedScriptVerdicts`,
+  `written-scripts.ts`, `harness-stdin-wave12e2.test.ts`; R9-CR-2, R9-CR-3, R9-ADV-14). `pipelineStdin` builds, for every command of one line, the texts it reads on stdin: its own here-strings and heredoc
+  bodies; the output of a process substitution (`psql < <(echo …)`, `psql -f <(…)`, `bash <(echo …)`); what every earlier command of its pipeline prints (`echo`, `printf`) or carries (a here-string or heredoc of
+  a `cat`, `tee`, `sed`, `tr`, `head`, `tail`, or any other stage); what a compound command or a function carries when the redirect is on it (`{ psql; } <<< '…'`, `( psql ) <<<`, `while …; done <<<`,
+  `f() { psql; }; f <<< '…'`, `function f { … }`, `f() ( … )`); and a statement-known variable or a command substitution that stands for the text (`X='\c host=H'; psql <<< "$X"`,
+  `echo "$(echo '\c host=H')" | psql`). Every text is read as typed AND as the shell hands it: the old readers kept `\'` where `bash -c` and `eval` decoded it, so `bash <<< '…'`, `printf '%s\n' … | bash`,
+  `source <(echo …)` and the dblink form hid (the typed reading stays, so nothing that was read is read less). The handed reading also holds for a script this line WRITES and runs (`echo '…' > x.sh;
+  bash x.sh`: `written-scripts.ts`) and for `source /dev/stdin <<< '…'`, `bash /dev/stdin <<< '…'` and `bash <(echo '…')` (judged as a script; a process substitution that is no plain print, `bash <(curl …)`,
+  asks like `curl … | sh`). `find -exec psql \; <<< '…'` carries the stdin of `find` to the command it runs. A shell handed a text that is one unknown expansion (`echo "$X" | bash`,
+  `bash <<< "$(cat x.sh)"`) asks.
+- *Every cap ends in an ask* (`stdin-texts.ts`, `harness-stdin-wave12e2.test.ts`, `harness-heavy-wave12e2.test.ts`; R9-ADV-5). A pipeline is read `MAX_PIPE_STAGES` = 8 stages back; a text farther back, a
+  pipeline with more than `MAX_FEED_TEXTS` = 64 texts of one kind, and a variable with more values than the tracker expands (`MAX_EXPANSIONS` = 8) are reported (`StdinFeed.overflow`) and the caller ASKS: a
+  client, a wrapper that runs a command, a shell, a `source /dev/stdin`. The tests assert the verdict at depth 8 (read: deny), 9, 50 and 5,000 (ask) for psql, `docker exec -i db psql`, `ssh localhost psql`,
+  `bash -c psql`, `docker compose exec -T`, mysql and bash, with literal depths (a test that follows the constant cannot see a changed cap). A leading pipe (`| psql`) threw `TypeError: source.prog` (the hook
+  failed closed): the chain now ends where there is no stage before it, and the whole line asks.
+- *Container engines pointed at another machine ask* (`remote-access.ts`, `patterns.ts`, `harness-container-remote-wave12e2.test.ts`; R9-ADV-13). `podman --connection NAME` (the machine's own
+  `podman-machine-default[-root]` is local), `--url`, `-r`, `--remote`, `--host`, `-H`, `-c`, `--context`, `CONTAINER_HOST=ssh|tcp://`, `CONTAINER_CONNECTION=NAME`, `docker-compose -H|--host|--context`
+  (also behind `-f FILE` or `-p NAME`) and `podman-compose` ask like the inline `DOCKER_HOST=… docker exec` and `docker -H`; an exported or bare-assigned DOCKER_HOST, CONTAINER_HOST, DOCKER_CONTEXT or
+  CONTAINER_CONNECTION counts too, also behind `bash -c`, `eval` and a subshell. The engine variables are read from the commands themselves (`engineVariableWords`, no cap) and from the variable tracker, so
+  thousands of statements in front of `export DOCKER_HOST=ssh://…` no longer hide it. A podman valued option before the subcommand (`--root`, `--runroot`, `--storage-driver`, `--identity`, `--tmpdir`, …)
+  is skipped, so it no longer ends the scan before `--connection`.
+- *An env-file the guard cannot see asks* (`container-run.ts` `hiddenEnvFile`, `nested-texts.ts`; R9-ADV-20 container half). `--env-file` and `--env-from-file` whose operand is a process substitution, stdin
+  (`/dev/stdin`, `-`) or a descriptor (`/dev/fd/N`, `/proc/self/fd/N`) set variables nobody can read: `docker|podman|nerdctl run|create|exec`, `compose run|exec` and a compose GLOBAL `--env-file` ask, also
+  with no command behind the image. A named file is judged by the secret-name rule as before (a live env file denies); a readable file in the tree is not opened.
+- *Jump hosts, forwards and proxies ask* (`ssh-hops.ts`, `remote-access.ts`, `wrappers.ts` `sshWords`, `harness-ssh-hops-wave12e2.test.ts`; R9-ADV-15). `ssh|scp|sftp -J`, `-o ProxyJump`, `-W H:port`, `-L` and
+  `-R` (`[bind:]port:host:hostport`, `local_socket:host:hostport`; a socket on the far side names no host), `-o LocalForward|RemoteForward`, `-o HostName`, `sftp HOST` (a bare host, `sftp://HOST/…`),
+  `mosh HOST` and `et HOST` (`et -j HOST`, `--host`, `mosh --ssh 'ssh -J H'`) ask when the host they name is not this machine or cannot be placed (`$`, a backtick, a brace, a space); `none` is no hop.
+  `ssh H psql` and `ssh -L 5433:localhost:5432 localhost` keep their verdicts. **Read against OpenSSH_10.6p1 with `ssh -G` (offline, `-F /dev/null`, a scratch HOME):** options are parsed up to the first
+  word after the host AND the options right after the host (`ssh localhost -L … -N`), a cluster ends at its first valued letter (`-NL spec`, `-qi KEY`, `-vo Option=x`), `-L port:/socket` has no host,
+  `-o ProxyJump=none` is no jump. `mosh` and `et` are NOT installed here: their option lists are from their manuals and UNVERIFIED, and an option they do not list asks. **A pre-existing hole found on the
+  way, fixed:** the ssh operand reader took only a lone valued letter (`-i KEY`) and read a clustered one as a flag, so the option's value stood for the host (`ssh -NL localhost:5433:localhost:5432
+  <remote host>`, `ssh -qi /tmp/k <remote host> ls` and `ssh -vo StrictHostKeyChecking=no <remote host> ls` ALLOWED); the cluster reader is `readCluster` in `ssh-hops.ts`, used by `wrappers.ts` too.
+- *Remote-session tools are NAMED SUBCOMMANDS* (`cloud-cli-sessions.ts`, `remote-access.ts`, `harness-cloud-sessions-wave12e2.test.ts`; R9-COMP-3). The register must say "named subcommands of the tools below
+  (other spellings pass)", not "a remote session tool asks". The lists are the data of `cloud-cli-sessions.ts` and are not repeated here; every entry asks whatever runs behind it (Codex denies). The tools:
+  `heroku`, `railway`, `render`, `az`, `doctl`, `aws` (all of `rds` and `rds-data`, and named `ssm`, `ecs`, `secretsmanager`, `ec2-instance-connect`, `ec2`, `eks` subcommands), `supabase` (`db dump|pull|push`
+  unless `--local`, `secrets`, `projects api-keys`, `link`, and any `db … --db-url|--linked`), `gcloud` (also after `alpha|beta|preview`), `kubectl` (the earlier list plus `proxy`, `create token` and
+  `get --raw` of a path that names secrets) and `fly|flyctl`. Everyday subcommands (`heroku logs`, `heroku ps`, `railway status|logs|up`, `aws s3 ls`, `aws sts get-caller-identity`,
+  `az account show`, `gcloud compute instances list`, `supabase start|status|db reset`, `kubectl get pods|logs`) stay allowed (rows in the test). **Proven against an installed tool:** the gcloud names
+  (`gcloud compute|cloud-shell|workstations|sql --help` of Google Cloud SDK 561.0.0) and the kubectl names (`kubectl --help` and `kubectl create --help` of v1.36.1), by a test that skips only when the tool
+  is not installed. **Not installed here, so unverified against a binary (from each tool's documentation):** heroku, railway, render, az, doctl, aws, supabase, fly, mosh, et.
+- *Comment and pins* (R9-CR-16, R9-CR-11 P14). `textVariableStatements` said a client AFTER a sourced text the guard cannot read asks; the code asks for ANY client in the same text (the statements are
+  tracked for the whole text without order, and a function body defined before the `source` runs after it): the comment and the reason now say so, and a test pins it.
+- **Residuals.** A stdin text that no plain print or here-string makes (`cat dump.sql | psql -h localhost`, `psql < file`) is a file's content the guard cannot read: allowed for a client, asked for a shell.
+  A transforming filter (`sed s/a/b/`, `tr`) is read as if it passed its input through unchanged: a text built by the filter is judged as typed. `ssh -F config` may hold a ProxyJump or HostName of its own
+  (the secret-file rule judges the path, the config's content is not read). `gcloud`, `heroku` and the other CLIs have more subcommands that reach production than the lists name: "other spellings pass".
+  The `heroku`, `railway`, `render`, `az`, `doctl`, `aws`, `supabase`, `fly`, `mosh` and `et` entries are from documentation. Linux and GNU userland are not exercised. `ssh -G` was the proof for
+  OpenSSH_10.6p1 only: an older OpenSSH that parses a cluster or an option after the host differently is not covered. Evidence files named by the register's evidence list: the new modules `ssh-hops.ts` and
+  `cloud-cli-sessions.ts`, the rewritten `stdin-texts.ts` and the new tests `harness-stdin-wave12e2`, `harness-container-remote-wave12e2`, `harness-ssh-hops-wave12e2`, `harness-cloud-sessions-wave12e2` and `harness-heavy-wave12e2`.
+
+## Wave 12 part F
+
+Round 9 found, in the database-target, secret-flow, git and text-tool readers, a CRITICAL silent cap (the variable tracker read 256 assignment words and dropped the rest), four HIGH gaps (what a guarded
+variable can reach the transcript through, the URI and connection-string fill-ins, the spellings of a forced push of `main` and of a forced `git add`) and a list of MEDIUM and LOW gaps (awk value options, psql
+variable interpolation, Redis commands that connect out, a connection string held in a database variable, hidden PostgreSQL aliases, survivors of the PostgreSQL option tests). The lessons of rounds 8 and 9,
+applied: every reader that has a cap or a "cannot place" case ENDS IN AN ASK (a test asserts the verdict at the cap, not only "no throw"), and a reader of a real tool's grammar is proven against the INSTALLED
+tool, abbreviations and quoted operands included.
+
+- *A cap ends in an ask* (`db-variables.ts`, `secret-flows.ts`, `db-target.ts`, `harness-statement-cap-wave12f.test.ts`; R9-ADV-4). `variableStatementWords` kept at most `MAX_STATEMENT_WORDS` = 256
+  `NAME=value` words per text and judged a longer list "by its first words": 256 junk `pN=1` before `export PGHOST=<remote>`, an exported `DATABASE_URL` or `x=$DATABASE_URL; echo $x` allowed on Claude and
+  Codex, and the wave-11 heavy tests asserted only "no throw". A text with MORE than 256 words now carries the marker word `CW_STATEMENT_WORDS_OVER_CAP=1` (`STATEMENT_CAP_MARKER`; it travels outward to nested
+  and sourced texts like any statement) and `secretFlowReason` asks for the text, so every rule that reads the tracker asks; exactly 256 words are read in full. The verdict is asserted on both sides of the
+  cap (from a handful of words to thousands, in the middle of the padding, inside `bash -c`, `eval` and `source <(echo ...)`). The audit of the other caps of the files found three more silent drops, all
+  fixed: `expandVariables` kept the first 8 readings of a word (the word now stays as one reading nobody can place), `secret-flows.ts` kept the first 8 readings of an indirection (an overflow counts as a
+  leak), and `db-target.ts` read a `dbname` that is itself a connection string only three levels deep (past that it asks). `live-env-files.ts` and `live-suite-files.ts` set `complete: false` at their caps
+  and the awk cap asks: checked, nothing to fix.
+- *More routes to a guarded variable* (`secret-flow-routes.ts` (new), `secret-flows.ts`, `harness-secret-flows-wave12f.test.ts`; R9-ADV-9, R9-CR-7). The decision stays: KEK-class names ask (the host-seed
+  workflow), `echo $DATABASE_URL` and the other deny names keep their deny. New asks: `printenv X` of a copy (`export X=$NAME; printenv X`, `X=$NAME printenv X`); `read x <<< "$NAME"`, `mapfile`,
+  `readarray` and `printf -v y '%s' "$x"` (binders: the bound name is tainted like an assignment); an indirection through an array element or a positional parameter (`${!a[0]}`, `${!1}`: a one-element
+  array literal is resolved, anything else asks) and through a name rebound to something unplaceable; a nameref (`declare|typeset|local -n r=NAME`); a redirect to a terminal-like target that was counted as
+  "a file" before (`/dev/stdout`, `/dev/stderr`, `/dev/tty`, `/dev/fd/N`, `/dev/pts/N`, any other `/dev` path but `/dev/null`, any `/proc` path, a target with a variable) is a print; a file the value was
+  written to and a later command of the same text reads back (`x=$D; cat <<< "$x" > /tmp/f; cat /tmp/f`) asks; an interpreter that aliases the environment before printing it
+  (`const e = process.env; console.log(e)`, `import.meta.env`, `e = os.environ`, `e = ENV`, `%e = %ENV`). `echo $HOME`, `x=$HOME; echo $x > /tmp/out.txt` and `echo hi > /dev/stdout` stay allowed.
+  **Residuals:** a copy through a function parameter that is not an indirection (`f() { x=$1; echo $x; }; f $NAME`), an array literal of several elements read through an index (asks), a file written in one
+  command and read in another.
+- *Fill-ins in a URI or connection string* (`db-variables.ts` `holdsRewritingFillIn`, `harness-db-fillins-wave12f.test.ts`; R9-ADV-11). A local URI whose port position holds `${P/x/1@H}` (the `/` of the
+  substitution ended the authority, so the host read as `localhost`), a query that holds a brace expansion (`?{host=H,a=b}`), `psql -h localhost -d {a,host=H}` and a function that builds the URI from `$1`
+  all passed. A parameter expansion that TRANSFORMS its value (the operators `/ # % ^ ,`, a slice, `@Q`, `${#P}`, `${!X}`, `${1}`), a default that carries structure (`${Q:-host=H}`), a positional
+  parameter and an unexpanded brace expansion inside a URI, a connection string or a database name now ASK (the host stays local, so not a deny). A bare `$NAME` keeps its older reading, and so does a plain
+  default (`${PGUSER:-postgres}`, `${SSL:-disable}`): a default whose text holds none of `= & ? @ / ,` or a blank is read like a bare variable. A positional parameter in the PATH of a URI (the database
+  name a shell function is handed) is not a fill-in either. The port, the userinfo, the query and a connection string keep the ask; the `:-` forms in the PORT position were a deny already and stay one.
+  Both exemptions came from the corpus measure of this part.
+- *Forced push of `main` and forced `git add`, by git's own rules* (`git-long-options.ts` (new), `git-push-refs.ts`, `git-add-force.ts`, `helpers/record-git-options.ts`,
+  `fixtures/harness-db-tool-options/git/`, `harness-git-wave12f.test.ts`; R9-ADV-8, R9-ADV-19, R9-CR-5, R9-CR-6). git takes an exact long option or the ONE option an abbreviation prefixes and refuses an
+  ambiguous one: `git add --fo <file>`, `--forc` and even `--f` are `--force`, `git push --mir` is `--mirror`, `--del` is `--delete`, `--force-w` is `--force-with-lease`, while `git push --forc` is refused
+  as ambiguous. **Recorded against the installed git 2.53.0** (`git-push.2.53.0.json`, `git-add.2.53.0.json`, `git-update-index.2.53.0.json`: 1,058, 1,003 and 1,250 recorded prefixes) in a scratch
+  repository (a throwaway bare remote, HOME inside it, no global or system config, `-n` on push and add): the option names from `-h`, flag or value from the parser, and every prefix of every option, each
+  followed by an option that does not exist so the command itself never runs. The test that needs no tool compares the production tables and the resolver with every recorded prefix; the live test re-records
+  and skips with a NAMED reason when git is absent or is not 2.53.0 (git's option set changes between versions). Pushes: a destination is `main` as `main`, `heads/main` and `refs/heads/main`; braces
+  expand before the ref is read (`{main,x}`, `ma{in,x}`); a destination with a `*` names main when the pattern matches one of those spellings (`refs/heads/*:refs/heads/*`, `refs/*:refs/*`, `*:*`): forced
+  it is refused, unforced it asks, and a pattern that cannot match main (`refs/tags/*`) is not main; an ambiguous abbreviation that could be a force, mirror, delete, all or repo option asks; an unknown
+  spelling that starts with `force` is still a force (a newer git); valued options skip their word by prefix. Adds: any unambiguous prefix of `--force` (and of `--all`, `--update`), `git update-index --ad`
+  and `--cache`; `-U N`, `--unified N`, `--inter-hunk-context N` and `--chmod +x` no longer put their word among the pathspecs. `--pathspec-from-file` (any prefix) asks when the add is forced or its source
+  is standard input, a device or a variable; a placed file stays judged as before (a live env file denied, `/tmp/paths` allowed). `git add -f` with a glob asks where a live env file exists (proven with an
+  injected listing: a checkout that holds none answers "allow", which is an artifact of the spot-check, not of the rule).
+- *Awk: every candidate program is judged* (`text-programs.ts`, `helpers/record-awk-options.ts`, `fixtures/harness-db-tool-options/awk/`, `harness-text-programs-wave12f.test.ts`; R9-CR-4, R9-CR-14).
+  `awkProgram` took the first non-option word as THE program and skipped the value of `-F -v -f`, so `gawk -i inplace 'BEGIN{system("psql -h H -c 1")}'`, `-l time`, `-E file`, `-e SRC` repeated,
+  `--source`, `--load` and `mawk -W opt` judged the option's value and never the program. **Recorded against the installed awk (macOS: BWK awk 20200816, `awk.bwk-20200816.json`)** with `awk OPTION
+  'BEGIN{print "HIT"}'`: `-F`, `-v`, `-f` take a value, `-d` and `-s` are flags, `--version` and `-version` print, and EVERY other letter is ignored with "unknown option -i ignored" (the word after it is the
+  program there). gawk and mawk are NOT installed here: their options are listed UNVERIFIED (`awk-unverified.json`, from their manuals) and the reader never relies on them. So only `-F -v -f` skip a word;
+  every other word that is not an option, the attached value of `-e` and `--source=`, and every word after `--` is a candidate program, and every candidate is judged (`system(`, `| getline`,
+  `print | "cmd"`; a command the program computes, or a candidate past 16 KB, asks). An awk is exempt from the remote-host-variable rule only when every candidate is inert and no program comes from a file
+  (`-f`, `--file`, `-E`, `--exec`, `-i`, `--include`, `-W exec`). `ag` and `ack` (`--pager`) and `rg` (`--pre`, `--hostname-bin`) left the "cannot execute" list: each is inert only without that option.
+  **Residual:** an awk program from a file is not read and does not ask by itself.
+- *psql variables and Redis commands that connect out* (`db-connect-commands.ts`, `db-target.ts`, `db-client-escapes.ts`, `harness-psql-redis-wave12f.test.ts`; R9-CR-9, R9-ADV-18). psql replaces `:name`,
+  `:'name'`, `:"name"` in an argument of a backslash command by a variable's value (`-v c='host=H'`, `\set`, `\gset`): `psql -v c='host=H' -c '\c :c'` connects to a host no text names. A connect command
+  (`\c`, `\conn`, `\connect`) with such an argument asks, whether or not the command line binds the name (a `~/.psqlrc` binds too), as does a `dblink`/`dblink_connect` call whose connection argument is one;
+  a literal backslash and `n` is read as a line break too (`sh`/zsh `echo` and `printf` interpret it). This follows the psql manual: psql could not be run against a server here, so the interpolation is NOT
+  verified live. `redis-cli ... REPLICAOF|SLAVEOF host port` (`NO ONE` stops), `CLUSTER MEET host port`, `MIGRATE host port ...` and `FAILOVER TO host port` make the LOCAL server connect out: they ask (kind
+  `outbound`) unless the host is local or a project container, as command words and as commands on stdin (`redis-cli` and `valkey-cli` joined the clients with a command language). The command names are
+  those of the Redis command reference (`redis-cli --help` lists none), not checked against a running server.
+- *A connection string in a database variable is read whole; PGSERVICE asks* (`db-any-program.ts`, `db-target.ts`, `harness-db-conninfo-wave12f.test.ts`; R9-ADV-20 conninfo half, R9-COMP-5). A database
+  variable set to a host key such as `host=<remote>` was allowed (a variable that holds a libpq connection string and not a URI was not read at all), and with it `host=chartwarden-postgres,<remote>` and
+  `host=chartwarden-postgres host=<remote>`, which the project-container exemption was never meant to cover (libpq tries each host of a comma list; the last duplicate `host=` wins). A variable whose value
+  names a `host`, `hostaddr` or `service` key is read whole by the connection-string reader, and the exemption holds only when every host is local or a project container; a string libpq would refuse is
+  refused. `PGSERVICE` and `PGSERVICEFILE` (a service file can name a remote host) ask for a program that reads database variables.
+- *PostgreSQL recordings: hidden aliases, PostgreSQL 18, the survivors* (`helpers/record-pg-options.ts`, `fixtures/harness-db-tool-options/` and `pg18/`, `db-target-flags.ts`,
+  `harness-db-flags-wave12f.test.ts`; R9-CR-10, R9-CR-11, R9-CR-12 PostgreSQL half). Real PostgreSQL 16.13 accepts `pg_dump --no-acl`, `pg_dumpall --no-acl`, `pg_restore --no-acl` and
+  `pg_dump`/`pg_dumpall --attribute-inserts` (the deprecated spellings of `--no-privileges` and `--column-inserts`): the recorder read names from `--help` only, so `pg_dump --no-owner --no-acl -h localhost
+  db` asked (and Codex denied it). The recorder now probes a bounded candidate list against the parser (the known aliases, `--no-` plus every listed flag, every name the production table lists for the
+  tool, every name another PostgreSQL program of the same major lists) and records what is accepted as `hidden`: exactly those five options, in the fixtures of 16.13 and of 18.4. PostgreSQL 18.4 (the
+  repository ships 18: `deploy/production/postgres/Dockerfile`) is recorded as a second version in `pg18/`. Its additions (`pg_dump --sync-method`, `--statistics-only`, `--no-statistics`, `--filter`,
+  `vacuumdb --missing-stats-only`, `pg_basebackup --incremental`, `pg_upgrade --swap`, ...) are NOT in the production table: a union with the major-16 data would change which prefixes are ambiguous, so
+  they stay unknown options of a verified client and ASK (a test asserts it for every addition). `pgbench -d` is `--debug` (a flag) in 16 and `--dbname` (a connection string) in 18: the table keeps the 16
+  reading. The recorded major is one constant (`RECORDED_MAJOR` in `db-target-flags.ts`) and a test that needs no tool fails when a committed fixture is another major; the live re-record of major 18 names
+  the recorded and the installed major in its title, and an installed but unrecorded major is a named `skip`. `VERIFIED_OPTIONS` (the data) is compared with the fixtures for every tool by
+  `harness-db-flags-wave12f.test.ts`: the production table is that data UNITED with the hand table, so round-9 mutants P16 and P17 (dropping `U` or `h` from psql's letters) survived wave 11; they are killed
+  now and the claim in the file header and the wave-11 section is corrected.
+- *Structure and tests.* Part F changed `patterns.ts` at one site (`forcedAddVerdict`); `classifySegment` did not grow. New modules: `secret-flow-routes.ts` (binders, redirect targets, environment aliases),
+  `git-long-options.ts` (the three option tables and git's prefix rule); new recorders `helpers/record-git-options.ts` and `helpers/record-awk-options.ts` (the PostgreSQL recorder gained the major argument and
+  the hidden-name probe). Test files: `harness-statement-cap-wave12f`, `harness-secret-flows-wave12f`, `harness-db-fillins-wave12f`, `harness-git-wave12f`, `harness-text-programs-wave12f`,
+  `harness-psql-redis-wave12f`, `harness-db-conninfo-wave12f`, `harness-db-flags-wave12f` and `harness-heavy-wave12f` (each fixture test loads only its own fixture directory: `git/`, `awk/` and `pg18/` are
+  subdirectories of `harness-db-tool-options/`, which the wave-11 test does not list). The recorders' `--check` modes re-verify the fixtures.
+- **What was not verified.** GNU `env` and Linux, gawk and mawk (not installed: their options are manual-derived and unverified, and the reader does not depend on them), the psql interpolation against a
+  server (psql exits at the connect step without one), the Redis command names against a running server, `su` and every shell (part E1), and PostgreSQL 17 (not installed: `libpq@17` holds no client
+  programs). Nothing ran on Linux. Under a machine load the tests that run the real pinned hooks can fail on the 6.5 s hard deadline and pass when rerun alone: a load artifact, not a change of this part.
+
+### Finding IDs cited in wave 12 part F
+
+| ID | What |
+|---|---|
+| R9-ADV-4 | The variable tracker kept 256 assignment words and silently dropped the rest: 256 junk assignments hid `export PGHOST=<remote>`, an exported `DATABASE_URL` or a copy of a guarded variable. |
+| R9-ADV-9, R9-CR-7 | A guarded variable still printable: `printenv` of a copy, `read`/`mapfile`, an indirection through an array element or a parameter, a nameref, a redirect to `/dev/stdout` or a descriptor path, a file read back, an interpreter that aliases the environment. |
+| R9-ADV-11 | A URI, connection string or database name holding a substitution operator, a positional parameter or a brace expansion supplied a host. |
+| R9-ADV-8, R9-CR-6 | A forced push of `main` by `heads/main`, braces, a pattern refspec or an abbreviated option. |
+| R9-ADV-19, R9-CR-5 | A forced `git add` of a live env file by `--fo`, `--forc` or `--pathspec-from-file`. |
+| R9-CR-4, R9-CR-14 | gawk/mawk value options hid the awk program; `ag --pager` and `rg --pre` were exempt "text tools". |
+| R9-CR-9 | psql `:name` interpolation in `\c` supplied a host. |
+| R9-ADV-18 | `redis-cli ... REPLICAOF`, `CLUSTER MEET` or `MIGRATE` to a host makes a local server connect out. |
+| R9-ADV-20 (conninfo), R9-COMP-5 (PGSERVICE) | A connection string in a database variable was not read; a second host passed the container exemption; a PGSERVICE variable set for a database program allowed. |
+| R9-CR-10, R9-CR-11, R9-CR-12 (PostgreSQL half) | Hidden PostgreSQL aliases missing from the recordings, PostgreSQL 18 unrecorded, `VERIFIED_OPTIONS` compared with nothing, a silent live skip. |
+
+## Wave 12 part G
+
+Timing assertions, the emergency-deny ledger and test-environment hygiene (round 9: R9-COMP-9, R9-COMP-10, R9-COMP-12, R9-COMP-13 measured, R9-CR-17 part). Part G edits no classifier rule, no option
+table and no fixture.
+
+### Timing assertions count the classifier's work (R9-COMP-9)
+
+The wall-clock bounds of the shell-classifier tests had been widened from 100 to 1,500 ms to 3 and 5 s (waves 5 and 6, after a load failure of a single-shot bound) without disclosure: a 5 s classifier is
+1.5 s from the guard's 6.5 s deadline, so a classifier ten times slower still passed (two test titles still said "2 s", one comment said "3 s" over a 5 s bound).
+
+- `scripts/__tests__/helpers/work-counters.ts` exposes `measure(cmd, ctx)`: the verdict, WHAT THE COMMAND SPENT of the per-command work budget of `work-budget.ts` (judged characters of
+  `MAX_COMMAND_JUDGED_CHARS` = 256 KB, brace alternatives of 4,096 and their 8 MB, path resolutions of 16,384 and their 8 MB: counts that are the same on every machine and every run), whether a budget ran
+  out, and the best of three wall-clock runs. A command over the 64 KB cap is refused before `classifyBash` refills the budget, so `measure` refills first (an oversize command spends nothing, and the test
+  says so).
+- The timing tests of `harness-shell-review3`, `harness-shell-review4`, `harness-shell-gaps` and `harness-bypasses` now assert counts first (every character judged once, a nested level once per level up to
+  the 256 KB text budget and no more, the brace and resolution budgets drawn down to their caps and no further, a cd chain linear in its length with no clock) and keep the wall clock only as a safety net:
+  `netMs(worst)` is twice the worst best-of-three of 20 loaded runs (shown at each use), never under a 20 ms floor (a bound under one scheduler quantum measures the scheduler), scaled by a machine factor
+  taken from a fixed string workload that never touches the classifier (so a slower classifier cannot pass as a slower machine).
+- `harness-timing-wave12.test.ts` pins the budget the counts are measured against (a change to a cap is a decision), the exact spending of six small commands, the closed form of the nested-substitution
+  spending, the linearity of a cd chain without a clock, and `netMs`.
+- Five `harness-shell-gaps` payloads (200,000 parentheses, 100,000 redirects and here-strings, 50,000 `sudo` words, 20,000 userinfo URLs) were written before the 64 KB cap and are refused before a character
+  is judged: they now assert exactly that, and their 60 KB variants are judged.
+- Not counted, so still only a clock: the content scan (`harness-bypasses` H3, regular expressions), glob matching and the lexer (the budget charges the text judged, not the work of a regular expression).
+- Seven other files still hold the loosened bounds: they are listed under "Wave 12 follow-up". `measure` and `netMs` are written to retire them.
+- The load failures that led to the widening were not a shared temporary path (these tests are pure: `classifyBash` with injected `root`, `home`, `exists`): they were single-shot 100 to 1,500 ms bounds
+  over a cold JIT and a loaded scheduler. Best of three removes the cold run; the floor and the machine factor remove the rest.
+
+### Every emergency deny is ledgered (R9-COMP-12, HIPAA 164.312(b))
+
+The deadline, a worker that died or errored, a malformed worker answer, and (found by this part) an input the guard cannot parse and an internal error answered deny with no ledger line. Now each writes ONE
+line of the shape the asks use (event `pre_tool`, tool, decision `deny`, a reason, the SHA-256 of a Bash command and never its text, nothing from an error's text):
+
+- The two denies the worker itself makes (`empty or unparseable hook input`, `internal error (TypeError)`) are logged in the worker by `logOwnDeny` in `guard-judge.ts`; the reason carries the kind of
+  error, not its text.
+- The entry thread (`hard-deadline.ts`) writes the deny to stdout and stderr FIRST, then runs `emergency-ledger.ts` as a child process (`process.execPath` with the three bun flags of the pinned commands,
+  stdout and stderr thrown away, SIGKILL after `LEDGER_TIMEOUT_MS` = 500 ms since wave 13 part B2, 1,000 ms before) and exits 2. The deny never waits on the ledger and cannot change: a locked ledger (the child waits its 10 x 10 ms and skips),
+  an unwritable directory, a hung file system (the child is killed) or a child that cannot be started loses the line only. 6.5 s (`DEADLINE_MS`) plus the 0.5 s bound plus bun's start is about 7.1 to 7.4 s,
+  which stays under Codex's 8 s alarm and Claude's 10 s hook timeout (it was about 7.6 s with the 1 s bound). The child loads `io.ts` and `synthetic-registry.ts` only, so a corrupted `patterns.ts` no longer
+  loses the line (wave 13, CR-8). The pinned shell tail's own refusals (a syntax error in `pre-tool-guard.ts` or `hard-deadline.ts`, a corrupted `io.ts`) and Codex's alarm leave no line. A child is used rather than an append in the entry thread because a file system that hangs cannot be bounded from inside the thread that waits on it, and a guard killed at Claude's
+  timeout lets the call run.
+- The line names the cause: `deadline`, `worker error`, `worker closed`, `malformed answer`, `worker could not start`; an unparseable input and an internal error have their own reasons. A call whose input
+  never ended names no tool. Claude lines say `Bash`, Codex lines `codex/Bash`; the root is the one every other line uses (`codexRoot` moved to `io.ts` for it).
+- `CW_AGENT_LEDGER=off` starts no child. Test seams (never set in production, rejected in the shared settings because the `env` block is an allow-list; `FORBIDDEN_ENV` in
+  `check-compliance-controls.ts` does not name the new one): `CW_HARNESS_TEST_FAULT=malformed` (the worker answers something that is not a decision) and `CW_HARNESS_TEST_LEDGER_FAULT=hang` (the ledger
+  child hangs, to prove its bound).
+- `harness-ledger-asks.test.ts` pins every path in both agents, the chain (`verifyChain`), that the command's text is not in the file, the unchanged deny (same stdout and exit code) with an unwritable
+  directory, a held lock and a hung child, and that the deny is on stdout before the child starts.
+- Residuals: a ledger line is best effort (an unwritable, locked or hung ledger loses it, the deny stands); a missing or broken `bun` cannot start the child (but then the whole guard cannot start either,
+  and the pinned tail refuses the call); the child is a second `bun` process on emergency paths only, no cost on a normal call.
+
+### Real tools in harness tests get a scrubbed environment (R9-COMP-10)
+
+`helpers/scrubbed-env.ts`: `scrubbedToolEnv(home, extra)` is `PATH`, a scratch `HOME`, `LANG=C` and the extras; `scrubbedGitEnv` adds `GIT_CONFIG_NOSYSTEM=1`; `withoutGuardSwitches` drops the developer's
+`CW_HARNESS_FAIL_OPEN` and the other guard seams from an inherited environment.
+
+- `harness-db-uri.test.ts` ran the real `pg_isready` with the inherited environment (a developer's `PGHOSTADDR`, `PGSERVICE`, `PGPASSFILE`, and a service or password file in their home reached libpq). It
+  runs with `PATH`, a scratch `HOME`, `LANG=C` and `PGCONNECT_TIMEOUT=2` like the recorders, and the real-libpq block poisons the parent (`PGHOSTADDR=127.0.0.3`, another loopback address, which libpq then
+  prints as the host it tries) so that dropping the scrub fails. Recorded against pg_isready 16.13 (Homebrew).
+- The git calls of `harness-codex-anchor`, `harness-codex-guard`, `harness-guard-review3` and `harness-bypasses` (temp repositories: `git init`, `add`, `commit`, and `phi-scan`) inherited `GIT_DIR`,
+  `GIT_INDEX_FILE` (set when a test run is started from a git hook: `git add` and `git commit` would then act on the REAL repository) and the developer's git configuration (`commit.gpgsign`,
+  `core.hooksPath`, `init.templateDir`); they run scrubbed now. Verified against git 2.53.0.
+- `_guard-copy.ts` (every real hook run on a guard copy: `runClaude`, `runCodex`) no longer passes the developer's guard switches to the hook (`CW_HARNESS_FAIL_OPEN=1` makes a deny an allow; a forced worker
+  fault refuses every call). `harness-test-env-wave12.test.ts` pins the helper against a poisoned parent (loopback addresses and scratch paths only).
+- Listed, not changed (not part G's files, or the guard under test with explicit seams): `harness-env-split-wave11`, `harness-shell-command-wave11`, `harness-wrapper-tables-wave11` and
+  `harness-tool-options-live-wave11` run real `env`, shells and package managers: the first three pass a fixed minimal `PATH` for their comparisons, but a few probes (the `env -S` version check, a `printf` through `/bin/sh`, and the help and version probes of the live test) inherit the developer's environment (the recorder `helpers/record-tool-options.ts` scrubs its own probes); about 25 direct
+  `spawnSync("bun", [GUARD])` sites in harness tests pass `process.env` plus overrides (`harness-hard-deadline` strips three switches itself; the others do not); `git ls-files` and `git check-ignore` in
+  `harness-destructive`, `harness-protected-definition`, `harness-protected-names`, `harness-bypasses` and `compliance-controls` deliberately read the real checkout.
+
+### Test cost, measured by part G (R9-COMP-13; measure only, no change)
+
+Measured on an Apple M4 Pro at a load average of 5 to 16, three runs each, not re-measured in the documentation pass. `harness-db-options-wave11.test.ts` (the PostgreSQL and redis re-record) takes about 59 s
+and `harness-tool-options-live-wave11.test.ts` about 28 s; `bun run test` over `harness- codex-patch compliance-controls` took about 64 s, set by the PostgreSQL file. In the PostgreSQL file `dropdb` and
+`dropuser` take about 20 s each: one probe of each waits out `PROBE_TIMEOUT_MS` (20,000 ms in `helpers/record-pg-options.ts`; the redis clients' `REDIS_PROBE_TIMEOUT_MS` is 3,000 ms), 40 s of the 56 s the
+sixteen re-record tests take. In the options file `bun` takes about 16 s of 26. Every per-tool test is independent (its own binary, scratch directory and scrubbed environment), so running them concurrently,
+or a 3 s per-probe timeout for `dropdb` and `dropuser`, would remove most of it; the part that owns those files decides. The ledger tests this part added take about 13 s of one file
+(`harness-ledger-asks`: each hung-child case waits the child's 1 s bound on purpose).
+
+### Found outside the list
+
+- Two denies the guard made itself had no ledger line either (an unparseable input; an internal error); both are logged now.
+- A backgrounded mutation run with the ledger child's timeout removed leaves hung `bun` children behind when its test times out; the mutant, not the production code, does that (the production child is
+  killed at its bound).
+- Evidence files named by the register's evidence list (`arch:compliance` resolves each one): `scripts/harness/emergency-ledger.ts`, `scripts/__tests__/harness-timing-wave12.test.ts`,
+  `scripts/__tests__/harness-test-env-wave12.test.ts`, `scripts/__tests__/helpers/work-counters.ts`, `scripts/__tests__/helpers/scrubbed-env.ts` and `scripts/__tests__/harness-ledger-asks.test.ts`.
+
+## Wave 12 follow-up (open items)
+
+What is NOT done after wave 12, measured at commit `bd8b9d2cc` (the tip of the pull-request branch when this section was written; the figures below move when the structure work lands).
+
+- **No cold review of the wave-12 changes had run when the pull request was opened.** Round 10 ran afterwards (see "Wave 13 and what is NOT done" below); the wave-13 changes themselves have had no cold review. Every part above was reviewed only by its own author and by the orchestrator's spot-check scripts.
+- **`usql --no-psqlrc <URI>` still asks, so the Codex guard denies it.** `usql` is an unverified client (`unverified.json`), and `--no-psqlrc` is not in its documentation-derived option table, so the word
+  behind it cannot be placed. `usql <URI>` allows. (`drizzle-kit` and `prisma` `--name` and `--port` were fixed after the merge: `harness-db-orm-names-wave12.test.ts`.)
+- **`sftp sftp://localhost/file` asks.** The older remote-target rule of `patterns.ts` (`ssh|scp|sftp|rsync`) takes the first word that holds a `:` or an `@` and reads the scheme `sftp` of the URL as the host
+  (the question says "Remote access to `sftp`"), although `ssh-hops.ts` reads the same URL as `localhost`; `sftp localhost` allows.
+- **`patterns.ts` is 3,088 lines and `classifySegment` is 280 lines** (`patterns.ts:2809` to the end of the file). The soft ceiling is 800 lines; the file was 2,969 lines at the wave-11 tip `b290ef92a` (the wave-11
+  part C text says 2,884, written before part D merged) and `classifySegment` was 280 there too. No hunk of the wave-12 diff lies inside `classifySegment`; `patterns.ts` grew by 119 lines in other functions
+  (`forcedAddVerdict` among them). Splitting the classifier is a refactor of its own: it threads the one-shot state variables (`variableStatements` among them) through every rule.
+- **Functions in `scripts/harness/*.ts` still over 50 lines**, 13 of about 740 top-level functions (739 by one count and 741 by another that includes arrow-function constants), counted from the first line of the declaration (signature and return type included) to the closing brace. Nested
+  functions and methods of object literals are not counted, and neither are the helpers under `scripts/__tests__/helpers/`.
+
+  | Lines | Function | Where |
+  |---|---|---|
+  | 280 | `classifySegment` | `patterns.ts:2809` |
+  | 155 | `judge` | `guard-judge.ts:397` |
+  | 112 | `program` | `command-words.ts:191` |
+  | 107 | `interactiveInvocation` | `patterns.ts:1362` |
+  | 102 | `main` | `stop-gate.ts:104` |
+  | 98 | `findActions` | `find-expr.ts:124` |
+  | 71 | `splitRaw` | `shell-lex.ts:678` |
+  | 70 | `wholeTreeWriterReason` | `git-tree-rules.ts:53` |
+  | 67 | `words` | `command-words.ts:59` |
+  | 67 | `parseApplyPatch` | `codex-patch.ts:64` |
+  | 62 | `recursiveSearchVerdict` | `patterns.ts:2565` |
+  | 58 | `persistenceReason` | `persistence-commands.ts:27` |
+  | 53 | `appendLedger` | `io.ts:175` |
+
+  `judgePart` (49, part E2) and `peelWrapper` (47, part E1) were over 50 before wave 12 and are under it now.
+- **Seven older test files still hold 3 to 5 s wall-clock bounds** that part G did not replace by work counts (each read in the tree): `harness-guard-review3.test.ts` (`FAST_MS` = 5,000 at line 414, titles
+  "in under 2 s" and "under 3 s", `THREE_S` = 3,000, and `HALF_S` = 3,000 under titles "in well under 1 s"), `harness-work-budget.test.ts` (`FAST_MS` = 5,000, used in nine places, and a 3,000 ms bound with a
+  "not a micro-benchmark" comment), `harness-backup-names-suffixes.test.ts` (3,000), `harness-path-spellings.test.ts` (3,000), `harness-shell-lex.test.ts` (3,000),
+  `harness-listing-symlinks-wave9.test.ts` (5,000) and `harness-mcp-claude-hook.test.ts` (5,000). A classifier ten times slower still passes them; `measure` and `netMs`
+  (`helpers/work-counters.ts`) are written to retire them.
+- **The wrapper peel is superlinear for some chains.** Measured in process, best of three, on this machine (idle load not checked): a chain of `env` words takes 3, 9, 30, 106 and 224 ms at 1,000, 2,000,
+  4,000, 8,000 and 12,000 words (48 KB), and a chain of `bunx` words 7, 23, 76 and 248 ms at 1,000, 2,000, 4,000 and 8,000 words (48 KB; `npx` is the same): about three to four times the time for twice the
+  words. That is under the 1 s per-command judging limit (`MAX_COMMAND_JUDGE_MS`) here, but a slower or loaded machine can reach it, and the command then asks. Chains of `sudo`, `nice`, `timeout`, `time`,
+  `xargs`, `nohup` and `command` took at most 10 ms up to the 64 KB cap. Part G reported 0.55 s for 12,000 `sudo` words (60 KB) and the same quadratic shape for `env`, `time`, `nohup`, `command` and
+  `xargs`; re-run at this tip, only `env` (and the runners `bunx` and `npx`, which G did not list) reproduce it.
+- **The PostgreSQL re-record test spends 40 of its 59 s on two probes** (`dropdb` and `dropuser` of `harness-db-options-wave11.test.ts`) that wait out `PROBE_TIMEOUT_MS` (20,000 ms in
+  `helpers/record-pg-options.ts`): part G's measurement, three runs; a 3 s timeout like the redis clients' (`REDIS_PROBE_TIMEOUT_MS`) or running the per-tool tests concurrently would remove most of it.
+- **Unverified, because the tool or platform is not installed here** (each part lists its own): GNU `env` and every GNU userland tool, Linux in general, `yarn`, GNU `parallel`, `nerdctl`, `mosh`, `et`,
+  `heroku`, `railway`, `render`, `az`, `doctl`, `aws`, `supabase`, `fly`, `fish`, `pwsh`, `powershell`, `ash`, `gawk`, `mawk` and PostgreSQL 17 (PostgreSQL 16.13 and 18.4 are recorded). Their option tables
+  and subcommand lists come from documentation (`unverified-tools.json`, `awk-unverified.json`, the cloud-CLI lists of `cloud-cli-sessions.ts`) and an option they do not list asks.
+
+## Wave 13 part A
+
+Round 10 (adversarial review R10-ADV; its rows were scratch scripts, not committed). Every row of the ids below ends non-allow in Claude mode; the everyday neighbours stay allow (`scripts/__tests__/harness-shell-words-wave13a.test.ts`). Where a wave-13 statement conflicts with an earlier section, the wave-13 text is current.
+
+**What changed**
+- A1, program word in upper case: `programName` and the `prog` of `command-words.ts` fold the BASE NAME to lower case, so every table lookup (wrappers, runners, rules) sees `git` for `GIT` (macOS APFS is case-insensitive; on Linux the fold only makes the guard stricter). `word` (as typed) is kept; a reason that prints the program prints the folded name. The project's permission rules (`git push *`, `gh pr merge *`, `gh secret *`) match text, so `permission-asks.ts` asks for those three commands when the program word is not lower case, when the words are not in a row (`gh pr -R x merge`), or when a reading (below) is what spells them. `PlistBuddy` is now matched as `plistbuddy`.
+- A2 and A3, words the shell builds: `word-readings.ts` writes a simple command out as the command the shell makes of it and `patterns.ts` judges that text too (`readingVerdicts`, one call site in `judgePart`). Known values come from EARLIER statements only (`NAME=literal`, `export`, `set --`, an array assignment, at most 8 readings, over the cap asks); a backslash before an ordinary character is removed; an expansion no statement places is removed only where it is spliced into a word that is then the program, a subcommand (`PLAIN_WORD`), an option (starts with `-`) or a protected or secret path. A reading that only guessed (a removed expansion) is capped at ask; a reading the command itself determines keeps its deny. A reading is not read again (`judgingReading`) and does not use the 300-line judge budget. The narrowness is the point: `git log --since=$d`, `git checkout $branch`, `git commit -m "$msg"` and `psql "postgres://localhost:$PORT/db"` have no reading.
+- A4: `readsScriptFromStdin` reads a shell's options with the per-shell scan of `shell-command-string.ts` (`shellOperandReadings`), so `bash -o pipefail`, `-euo pipefail`, `-O extglob`, `+o noglob`, `--rcfile F`, `-s -- a b` read their script from stdin. `-s` is new in the scan (`sawS`).
+- A5 and B9: `eval` reads `"$(echo CMD)"` and `$(printf '%s' CMD)` as CMD (the substitution reader of `bash -c`), asks on a downloader (`curl`, `wget`, `fetch`, `http`, `xh`, `aria2c`, `nc`, `ncat`, `socat`) inside a substitution, and `source <(curl …)` asks (`download-script.ts`). `eval "$(ssh-agent -s)"`, `direnv hook`, `fnm env`, `brew shellenv` and `source <(kubectl completion bash)` stay allow. A known variable as the eval string is the A3 reading.
+- A7: `XDG_CONFIG_HOME` asks next to a git command (`git-exec-strings.ts`, `CONFIG_HOME_VARIABLES`), also when an earlier statement exported it. Probed in a scratch repo with git 2.53.0 and HOME in scratch: a `core.hooksPath` of `/dev/null` in `$XDG_CONFIG_HOME/git/config`, in `GIT_CONFIG_GLOBAL`, in `GIT_CONFIG_SYSTEM`, in `GIT_CONFIG_COUNT/KEY_0/VALUE_0`, in `GIT_CONFIG_PARAMETERS` and in `$HOME/.gitconfig` each skipped a failing pre-commit hook; `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG` (old), `GIT_DIR` and `GIT_CEILING_DIRECTORIES` did not. When the repository's own config sets `core.hooksPath`, the global ones did not win (local wins), so the hole exists only where the local config names none.
+- A8: `git update-index --stdin` and `--index-info` (any unambiguous prefix) ask like `git add --pathspec-from-file=-` (the names come from stdin).
+- A9: `xargs-feed.ts`: the text a print hands `xargs` is part of the command: `-I REPL` (BSD; `-i`, `--replace` GNU, unverified) replaces REPL in the arguments with each line, `-J` with all items, otherwise the items are appended; the command lines made are judged. A text the guard cannot see asks only when the replacement string STARTS the program word or a word of a shell, `ssh`, `eval`, a wrapper or a container command (`sh -c '{}'`); `sh -c 'echo {}'` and `find … | xargs rm` stay allow.
+- A11: the words of a `shellLine` runner (`watchexec`, `bun exec`) are read joined as typed AND quoted back (`runners.ts`), so `watchexec -- bash -c 'CMD'` judges CMD.
+- B8: `@` is HEAD in a push (`git-push-refs.ts`; git's spelling, probed with `--dry-run`); a destination built by `$(` or a backtick asks whatever the options say.
+- B10: `screen`, `tmux` (new-session, new-window, split-window, run-shell, send-keys, respawn-*, if-shell, display-popup, pipe-pane, `-c`) and `open … --args` hand a command line on (`terminal-multiplexers.ts`, judged); `make -f -`, `awk -f -`, `expect` and `osascript` that are fed a script on stdin ask (`stdin-script-tools.ts`). screen's value letters come from its usage text; tmux and `open` were not run.
+- B11: `shellFamily` reads `bash-5.2`, `rbash`, `ksh93`, `mksh`, `pdksh`, `oksh`, `busybox` (as `sh`) like the shell they are, and `xonsh`, `elvish`, `nu` like `ash` (judged and asked). `COMMAND_SHELLS` is a family pattern now.
+- L3: Codex's refusal says which rule fired (`interactiveShellReason`): a shell command string (`-c`, also behind `xargs`/`watchexec`), a script on stdin, or a bare shell.
+- CR-11: `command -v` and `command -V` are lookups, not runs (no false ask for `command -v ssh git curl`).
+
+**Statements elsewhere in this document that this part changes**
+- "What the guard covers": an upper-case program word (`GIT`, `PSQL`) is judged as the tool; a word the shell builds from a known variable, an array, `set --`, a backslash or a spliced empty expansion is judged as the command it makes; `xargs` is judged with the text a print feeds it; the "judged" sentence for a command word built around a substitution now also holds for an option or a subcommand word.
+- A shell given an option with a value (`bash -o pipefail`, `-O extglob`, `--rcfile F`, `-s`) is read as a shell that reads stdin (it was read as a script file). `source <(curl …)`, `. <(curl …)` and `eval "$(curl …)"` ask; `source <(kubectl completion bash)` still passes.
+- The wrappers and runners list gains `screen`, `tmux` and `open --args`; `watchexec` and `bun exec` read their words joined as typed and quoted.
+- The Codex section's "A bare interactive shell or REPL is refused" names three reasons now (a shell command string, a script on stdin, a bare shell).
+- Decision table, "Claude asks every `git push`": the permission rule matches the text `git push …` only; `git -C dir push` is not matched by it.
+- `harness-env-wave12e1.test.ts` compares the program word in lower case (`a.b=x`); two `EMPTY=''` rows of `harness-source-git-wave11.test.ts` (D7) were `ask` and are `deny` now (the empty literal is known; rows moved to `harness-shell-words-wave13a.test.ts`, A3q and A3r).
+
+**Residuals (documented, not closed)**
+- A value that comes from a command substitution (`A=$(echo --x); git commit $A`) or from the environment is not read; an unplaced expansion standing alone as an argument (`git commit $FLAGS`) is not read (narrowness). A function body is read with its arguments unknown.
+- The permission rules still do not match `git -C dir push` (not asked here: everyday, and Codex has no such rule).
+- `busybox -c 'CMD'` is not a real busybox form (no applet `-c`); `busybox sh -c` is read.
+- GNU xargs (`-i`, `--replace`), tmux, `open`, `screen` behaviour and every shell other than the installed ones are unverified live.
+
+## Wave 13 part B
+
+Branch `fix/harness-review3-w13b`; commits `b99aea28c` (A6), `95473dfdb` (C2), `cf6f74966` (the ssh family: A10, CR-1, CR-2, CR-3, B12 ssh part; this commit carries a "wip" subject) and `6b2e6472f` (B12 cloud names, L1, C4).
+
+**What changed**
+- A6. `metaCommands` (`postgres-commands.ts`) ends a backslash command's arguments at the first backslash outside quotes, so `\x\c db user H`, `\timing\c ...`, `\set x 1\c ...` read the chained `\c`. A single-quoted argument takes a backslash as an escape; double and back quotes do not. The line end is found once per line (a 200,000-command line is linear).
+- A10, CR-2. New `remote-operands.ts` reads EVERY scp and rsync operand (`host:path` with the colon before any slash, `scp://`, `rsync://`, `host::module`, `[::1]:path`); an unplaceable host (`$HOST:dir`) asks. The old first-operand rule in `patterns.ts` now covers ssh and sftp only (so `scp scp://localhost/f ./g` no longer asks falsely).
+- CR-1, CR-3. `ssh -P tag` takes a value; `scp -O` is a flag. Recorded from the usage lines of the two OpenSSH builds on this machine (Homebrew OpenSSH_10.6p1 first on PATH, Apple OpenSSH_10.3p1 in /usr/bin) under `scripts/__tests__/fixtures/harness-ssh-options/`, with the recorder `scripts/__tests__/helpers/record-ssh-usage.ts`. A no-tool test compares every table to every recording; a live test compares the installed usage text and skips with a named reason when the build is not recorded.
+- B12 (ssh family). `ssh-keyscan` (every host, a comma list too; `-f FILE` asks), `ssh-copy-id` (the last word is the host; letters read from the installed script `getopts "io:p:F:t:fnsxh?"`), `sshfs` (not installed: every operand with a colon before a slash), and `scp -D` now asks like `sftp -D` (`option-commands.ts` reads `SD` for both; the old pin that said `scp -D` passes was changed because scp's usage line lists `-D sftp_server_path`).
+- B12 cloud names, L1, C4 (`cloud-cli-sessions.ts`): `az container exec|attach`, `gcloud app instances ssh|scp`, `doctl apps console`, `fly mpg connect|proxy`, `aws ec2-instance-connect ssh`, and the credential printers `gcloud auth print-access-token|print-identity-token`, `gcloud auth application-default print-access-token`, `aws sts get-session-token|get-federation-token`, `aws configure export-credentials`. UNVERIFIED against a binary: aws, az, doctl and fly are not installed, and gcloud's offline `--help` did not print these names.
+- C2 (CI portability). The live shell test, the `ssh -G` tests and the bun live test compare the installed version (and platform for shells) with the recording first and skip with a named reason on a difference; they no longer fail on a Linux runner. Proven by editing a fixture version and seeing 2 skips (bash, dash). Nothing has run on Linux.
+
+**Statements elsewhere that this part changes**
+- The wave-12 part E2 text and `ssh-hops.ts` say the option letters of ssh, scp and sftp come from "the manual pages of OpenSSH_10.6p1": they come from the recorded usage lines (two builds, 10.6p1 and 10.3p1); `ssh -P` is valued and `scp -O` is a flag.
+- "What the guard covers" (remote shells): scp and rsync are judged on every operand (`remote-operands.ts`); ssh and sftp keep the first-operand rule.
+- `harness-option-commands-wave8.test.ts` pinned `programOptionReason("scp", ["-D", "x"])` as null; it is not null now (`-D ssh` is still null).
+- The wave-12 live-test statements that the live shell test fails on a changed answer: it skips with a named reason on another version or platform; likewise the `ssh -G` tests and the bun live test.
+- Remote session tools: `cloud-cli-sessions.ts` lists more named subcommands than wave 12 part E2 names (above).
+
+**Residuals** `scp -qD prog` (a cluster) is not read by the program-option reader (same as `-qS`); rsync's `-e CMD` and `--rsh` are not read for a `-J` jump; an rsync option value that looks like `host:x` after a separate word (`--exclude a:b`) asks (every non-dash word is an operand); `ssh-copy-id -i FILE HOST` is read by the last word, so a key file given last is read as the host.
+
+## Wave 13 part B2 (stopped early)
+
+Branch `fix/harness-review3-w13b2`, three commits `9c1c6b159`, `1f83e3bfd`, `a72da3466`. The part was stopped by the owner's decision to end the wave-by-wave rounds; what is listed here is what landed, and nothing else of its list was started. Its merge broke one existing contract, found by the full run and fixed in the merge: L2's refusal of a non-object `tool_input` also refused Claude-mode MCP calls, which only ask (`harness-mcp-claude.test.ts`); the refusal now leaves Claude-mode MCP calls to their ask.
+
+- **L4, CR-8, L2 (ledger timing and fail-closed input).** `LEDGER_TIMEOUT_MS` is 500 (was 1,000): the entry deadline (6.5 s) + the child's bound (0.5 s) + bun's start is about 7.1 to 7.4 s against Codex's 8 s alarm (it was about 7.6 s). The registry types and `EMPTY_REGISTRY`/`registryFrom` moved to `synthetic-registry.ts` (no imports), so the emergency-ledger child loads `io.ts` and that file only: a corrupted `patterns.ts` no longer loses the ledger line. `appendLedger` gives up at once on a lock it cannot create (a read-only `.claude/audit` cost about 0.5 s per emergency) and takes the number of lock tries; the emergency child waits 10 x 10 ms. A `tool_input` that is not an object, or a Bash command that is not text (missing included), is denied and ledgered in both modes, except a Claude-mode MCP call (it asks). Claude mode used to read a missing command as empty and allow.
+- **B4, CR-6 (remote-session global options).** `cloud-global-options.ts` holds the global value options of kubectl, gcloud and aws, recorded from `kubectl options` (v1.36.1) and `gcloud --help` (SDK 561.0.0) by `helpers/record-cloud-options.ts` (fixtures `harness-cloud-options`); aws is not installed, its list is documentation and the fixture says unverified. An option before the subcommand that no table knows asks.
+- **B3 (docker short options with an attached value).** `engine-short-options.ts` reads the valued short letter of docker, podman and docker-compose with its value attached (`-cprod`), after an equals sign (`-c=prod`) or clustered behind flag letters (`-Dc prod`), as pflag does. The letters are recorded from `docker --help` (29.9.3), `podman --help` (6.0.2) and `docker-compose --help` (5.1.0) by `helpers/record-engine-options.ts` (fixtures `harness-engine-options`); nerdctl and podman's hidden `-r` are documentation, unverified.
+
+## Wave 13 and what is NOT done
+
+Round 10 (cold review of the wave-12 delta, tip `bd8b9d2cc`) ran once: adversarial (about 25 holes, 10 CRITICAL, none a regression of wave 12), code review (15 findings), compliance review (wording W1 to W7, C1 to C4). Parts A, B and B2 above fix the findings they name. **The wave-13 changes have NOT had their own cold review.** The rounds were stopped on purpose: each cold round found about twenty new holes in the text heuristics, because a text classifier cannot be closed. The register's position stands: the guard is a speed bump; the sandbox and the permission settings are the boundary.
+
+Not done (named, with the review's ids; the repro rows were scratch scripts and are not committed):
+
+- **CR-4 (CRITICAL), stdin text through compound commands is lost.** `(psql) <<< '\c db user H'`, `( cd /tmp; psql ) <<< …`, `echo '\c db user H' | ( cd /tmp; psql )`, `… | { cd /tmp; psql; }`, `… | if true; then psql; fi`, `|&` as a pipe, and the shell forms (`(bash) <<< 'CMD'`, `echo 'CMD' | ( cd /tmp; bash )`, `echo 'CMD' | tee >(bash)`, `echo 'CMD' | /bin/b?sh`) are read as a program with no input. Wave 12 reads `{ psql; } <<<`, `f(){ psql; }; f <<<` and `psql < <(echo …)` only.
+- **CR-5 (CRITICAL), a variable as the command word**: `x='CMD'; $x`, `x='CMD'; env $x`, `eval "$UNDEFINED"`, `x=$(echo 'CMD'); eval "$x"`. Part A reads known literals for options and subcommands (A2, A3); a value from a substitution or the environment is not read.
+- **CR-7 (HIGH)**: `echo '…' | bun run -`, `bun run /dev/stdin`, `lldb` fed a script on stdin (`platform shell`).
+- **CR-9 (MEDIUM), the wave-12 caps turn a deny into an ask**: `echo 'CMD' | cat x8 | bash` (wave 11 denied), nine `cat` stages into a psql reconnect, 257 junk assignments before `export PGHOST=H; psql -c 1`. Padding can turn a hard deny into a human click; Codex still denies.
+- **CR-10 (MEDIUM), a false ask (a Codex lockout) introduced by wave 12**: `cat > n.md <<'EOF'` whose body says `use $DATABASE_URL here`, then `wc -l n.md` or `grep -c x n.md` asks (a quoted-delimiter body is literal; `wc` and `grep -c` print no content). 4 of the 10 new corpus asks of wave 12 have this shape.
+- **B1, B2 (HIGH), PostgreSQL gaps**: `oid2name -h H`, `vacuumlo -h H x`, `pg_rewind --source-server='host=H'`; `psql -c` SQL that connects out (`dblink_connect($$host=H$$)`, `dblink_exec`, `create server … options (host …)`, `create subscription … connection 'host=H'`).
+- **B5 (HIGH)**: a variable that is the whole argument of a client (`X='\c db user H'; psql -c "$X"`, `redis-cli $X`, `mongosh --eval "connect('$H')"`).
+- **B7 (HIGH)**: guarded-variable prints through `set -- $KEK; echo "$1"`, functions, and interpreter aliases (`php -r`, `python3 -c 'from os import environ as e'`, `perl -e 'my %e = %ENV'`, `awk ENVIRON[e]`).
+- **B12 rest**: `redis-server --replicaof H`, `mongofiles --host H`, `et` and `mosh` forms.
+- **C1 (MEDIUM)**: `f() { psql "postgres://localhost/$1"; }; f "db?host=H"` (a positional parameter in a URI path is exempted since wave 11).
+- **CR-12, CR-13 (LOW)**: `bun run build && git commit -m "is read PGSERVICEFILE ask"` asks (words inside a quoted text read as `read NAME`); `psql "postgres://app@localhost:${PORT:-55432}/x"` denies.
+- **CR-14, CR-15, C3 (LOW)**: `git add --a`/`--no-a` differ from git's ambiguity answer; dead code (`engineVariableWords` and its plumbing; `MAX_READINGS` copied in three modules); `CW_HARNESS_TEST_LEDGER_FAULT` is not in `FORBIDDEN_ENV` of `scripts/check-compliance-controls.ts` (the allow-list covers it); `it.skipIf(fixture.exactLong !== true)` in `harness-db-options-wave11.test.ts` is dead (18 skipped tests).
+- The corpus differential was not re-run at the final tip (the cache was deleted), so the 95 "other" deny-to-allow commands of the corpus diff against main are untriaged.
+- The wave-12 follow-up items above (`usql --no-psqlrc`, `sftp sftp://localhost/file`, structure, test timing bounds, wrapper-peel superlinearity) are unchanged.

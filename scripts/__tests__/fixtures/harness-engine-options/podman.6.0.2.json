@@ -1,0 +1,20 @@
+{
+  "tool": "podman",
+  "version": "6.0.2",
+  "lines": [
+    "      --config string             Path to directory containing authentication config file",
+    "  -c, --connection string         Connection to use for remote Podman service (CONTAINER_CONNECTION)",
+    "      --help                      Help for podman",
+    "      --identity string           path to SSH identity file, (CONTAINER_SSHKEY)",
+    "      --log-level string          Log messages above specified level (trace, debug, info, warn, warning, error, fatal, panic) (default \"warn\")",
+    "      --out string                Send output (stdout) from podman to a file",
+    "      --ssh string                define the ssh mode (default \"golang\")",
+    "      --storage-opt stringArray   Used to pass an option to the storage driver",
+    "      --tls-ca string             path to TLS certificate Authority PEM file for remote.",
+    "      --tls-cert string           path to TLS client certificate PEM file for remote.",
+    "      --tls-details string        Path to a containers-tls-details.yaml(5) file",
+    "      --tls-key string            path to TLS client certificate private key PEM file for remote.",
+    "      --url string                URL to access Podman service (CONTAINER_HOST) (default \"unix:///tmp/storage-run-501/podman/podman.sock\")",
+    "  -v, --version                   version for podman"
+  ]
+}

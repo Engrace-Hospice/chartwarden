@@ -3,8 +3,10 @@
  * `allow` (or took longer than the hook's 10 s) at a491dd563; each describe block pairs them with the nearby
  * everyday commands that must stay allowed. `classifyBash` is pure: `root`, `cwd` and `home` are injected.
  */
+import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { classifyBash } from "../harness/patterns";
+import { FULL_BUDGET, type Measured, measure, netMs } from "./helpers/work-counters";
 
 const ROOT = "/repo";
 const HOME = "/Users/dev";
@@ -41,63 +43,81 @@ describe("a write after `A || cd X && W` may run where A ran, not only in X", ()
 // slow is a bypass. The 64 KB cap bounds the text, not the work: 1,300 words that each expand to 256 brace
 // alternatives, judged against 16 candidate directories, are five million path resolutions.
 describe("path resolution and brace expansion draw on a per-command budget", () => {
-  const FAST_MS = 2000;
   const cwd = { root: ROOT, home: HOME, cwd: ROOT };
   const cds = `${Array.from({ length: 15 }, (_, i) => `cd /tmp/d${i};`).join(" ")} `;
   const eightGroups = "{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}{o,p}";
   const eightEmpty = "{,}{,}{,}{,}{,}{,}{,}{,}";
   const words = (count: number, braces: string): string =>
     Array.from({ length: count }, (_, i) => `w${i}${braces}`).join(" ");
-  const timed = (cmd: string) => {
-    const started = performance.now();
-    const verdict = classifyBash(cmd, cwd);
-    return { verdict, ms: performance.now() - started };
-  };
+  // Wave 12 (G-1, R9-COMP-9): these rows asserted `< 5000` ms (2 s in their titles) and so passed a 100x slowdown.
+  // What stops the work is the BUDGET, so the counts say so: the brace and resolution budgets are drawn down to their
+  // cap and no further (a resolution budget is overdrawn by the one resolution that finds it empty), and every
+  // character is judged once. The clock is a safety net at twice the worst loaded run (`work-counters.ts`).
+  const OVERDRAW = 1;
+  // The caps themselves, spelled out (not read from the budget): a change to one is a decision about how much work a
+  // command may cost, so it fails here, in `harness-timing-wave12.test.ts` and in the work-budget tests together.
+  const BRACE_CAP = 4096;
+  const RESOLUTION_CAP = 16_384;
 
   it.each([
-    ["rm -f", eightGroups, 1300],
-    ["rm -f", eightEmpty, 1900],
-    ["touch", eightGroups, 1300],
-    ["touch", eightEmpty, 1900],
-    ["mv", eightGroups, 1300],
-    ["mv", eightEmpty, 1900],
+    ["rm -f", eightGroups, 1300, 35.7],
+    ["rm -f", eightEmpty, 1900, 44.3],
+    ["touch", eightGroups, 1300, 35.7],
+    ["touch", eightEmpty, 1900, 50.7],
+    ["mv", eightGroups, 1300, 44.5],
+    ["mv", eightEmpty, 1900, 47.7],
   ])(
-    "answers `%s` over many brace words after fifteen absolute cds in under 2 s (%s x %i)",
-    (prog, braces, count) => {
+    "answers `%s` over many brace words after fifteen absolute cds within its budget (%s x %i)",
+    (prog, braces, count, worstMs) => {
       const cmd = `${cds}${prog} ${words(count, braces)} /tmp/dest`;
       expect(cmd.length).toBeLessThan(64 * 1024);
-      const { verdict, ms } = timed(cmd);
-      expect(ms).toBeLessThan(FAST_MS);
-      expect(verdict.decision).toBe("ask");
-      expect(verdict.reason).toMatch(/too many/i);
-      expect(verdict.reason).not.toMatch(/cannot resolve/i);
+      const m = measure(cmd, cwd);
+      expect(m.spent.braces).toBe(BRACE_CAP); // expansion stopped at the cap, not before and not after
+      expect(m.spent.resolutions).toBeLessThanOrEqual(RESOLUTION_CAP + OVERDRAW);
+      expect(m.spent.chars).toBeLessThanOrEqual(cmd.length);
+      expect(m.ms).toBeLessThan(netMs(worstMs));
+      expect(m.verdict.decision).toBe("ask");
+      expect(m.verdict.reason).toMatch(/too many/i);
+      expect(m.verdict.reason).not.toMatch(/cannot resolve/i);
     },
     60_000,
   );
 
   it("asks about brace expansion alone, with no write and no cd to multiply it", () => {
-    const { verdict, ms } = timed(`cat ${words(1300, eightGroups)}`);
-    expect(verdict.decision).toBe("ask");
-    expect(verdict.reason).toMatch(/too many/i);
-    expect(ms).toBeLessThan(FAST_MS);
+    const m = measure(`cat ${words(1300, eightGroups)}`, cwd);
+    expect(m.verdict.decision).toBe("ask");
+    expect(m.verdict.reason).toMatch(/too many/i);
+    expect(m.spent.braces).toBe(BRACE_CAP);
+    expect(m.spent.resolutions).toBeLessThanOrEqual(1); // one `cat` operand resolved: nothing multiplies the braces
+    expect(m.ms).toBeLessThan(netMs(37.6));
   });
 
   it("asks about plain targets alone, with no brace to multiply them", () => {
     const plain = Array.from({ length: 9000 }, (_, i) => `f${i}`).join(" ");
-    const { verdict, ms } = timed(`${cds}rm -f ${plain}`);
-    expect(verdict.decision).toBe("ask");
-    expect(verdict.reason).toMatch(/too many/i);
-    expect(ms).toBeLessThan(FAST_MS);
+    const m = measure(`${cds}rm -f ${plain}`, cwd);
+    expect(m.verdict.decision).toBe("ask");
+    expect(m.verdict.reason).toMatch(/too many/i);
+    expect(m.spent.braces).toBe(0);
+    // 9,000 targets from 16 candidate directories would be 144,000 resolutions: the budget stops it at its cap.
+    expect(m.spent.resolutions).toBe(RESOLUTION_CAP + OVERDRAW);
+    expect(m.ms).toBeLessThan(netMs(57.2));
   });
 
   it("still denies a secret read that sits beside the expansion", () => {
     const cmd = `cat .env; ${cds}rm -f ${words(1300, eightGroups)}`;
-    expect(timed(cmd).verdict.decision).toBe("deny");
+    const m = measure(cmd, cwd);
+    expect(m.verdict.decision).toBe("deny");
+    expect(m.spent.braces).toBe(BRACE_CAP);
+    expect(m.ms).toBeLessThan(netMs(39.4));
   });
 
   it("spends the budget per command: the next command starts with a full one", () => {
-    expect(timed(`${cds}rm -f ${words(1300, eightGroups)}`).verdict.decision).toBe("ask");
+    expect(measure(`${cds}rm -f ${words(1300, eightGroups)}`, cwd).verdict.decision).toBe("ask");
     expect(d("rm -f build/a{,.orig} build/b{1,2,3}.tmp")).toBe("allow");
+    const next = measure("rm -f build/a{,.orig} build/b{1,2,3}.tmp", cwd);
+    // Five alternatives, each expanded at most twice: nothing of the last command's spending is carried over.
+    expect(next.exhausted).toBe(false);
+    expect(next.spent.braces).toBeLessThanOrEqual(2 * 5);
   });
 
   it.each([
@@ -240,6 +260,10 @@ describe("a harness switch asks however it is spelled, where the original text r
     /\b(CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR)=/;
 
   const SPELLINGS = [
+    // the escaped-quote spellings the first splitter read as an open quote (code review M4)
+    "echo \\' ; CODEX_HOME=/tmp/x codex exec hi",
+    "echo it\\'s ; CLAUDE_CONFIG_DIR=/tmp/c claude -p hi",
+    "echo hi # '\nCODEX_HOME=/tmp/x codex exec hi",
     // direct
     "CW_STOP_GATE=off claude",
     "CODEX_HOME=/tmp/h codex exec hi",
@@ -282,8 +306,8 @@ describe("a harness switch asks however it is spelled, where the original text r
     "git config alias.x '!CODEX_HOME=/tmp/h codex'",
   ];
 
-  it("lists at least 25 spellings, each one the original text rule asked about", () => {
-    expect(SPELLINGS.length).toBeGreaterThanOrEqual(25);
+  it("lists at least 35 spellings, each one the original text rule asked about", () => {
+    expect(SPELLINGS.length).toBeGreaterThanOrEqual(35);
     for (const cmd of SPELLINGS) expect(MAIN_TEXT_RULE.test(cmd), cmd).toBe(true);
   });
 
@@ -320,5 +344,325 @@ describe("a harness switch asks however it is spelled, where the original text r
     ]) {
       expect(d(cmd), cmd).not.toBe("allow");
     }
+  });
+});
+
+// Any construct that can move the shell and that the guard cannot model leaves the directory UNKNOWN, and a
+// relative write from an unknown directory asks. Every payload below really writes into scripts/harness in a
+// real shell (`harness/p` is `scripts/harness/p` once the shell is in `scripts`), yet answered allow.
+describe("a directory change the guard cannot model leaves the directory unknown", () => {
+  it.each([
+    // a cd inside something that runs in this shell
+    "eval 'cd scripts'; echo x > harness/p",
+    "eval \"$(printf 'cd scripts')\"; echo x > harness/p",
+    "case 1 in 1) cd scripts;; esac; echo x > harness/p",
+    "f() { cd scripts; }; f && echo x > harness/p",
+    "function f { cd scripts; }; f && echo x > harness/p",
+    "cd() { builtin cd scripts; }; cd && echo x > harness/p",
+    "source ./go-to-scripts.sh; echo x > harness/p",
+    ". ./go-to-scripts.sh && echo x > harness/p",
+    // a spelling of cd the program name hides
+    "\\cd scripts && echo x > harness/p",
+    "c\\d scripts && echo x > harness/p",
+    // the directory stack
+    "cd scripts && pushd /tmp && pushd && echo x > harness/p",
+    "cd scripts && pushd /tmp && pushd +1 && echo x > harness/p",
+    "cd scripts && pushd /tmp && pushd -0 && echo x > harness/p",
+    "pushd -n /tmp; echo x > notes.txt && pushd scripts && popd && echo x > harness/p",
+    // CDPATH makes `cd harness` land somewhere else
+    "CDPATH=/repo/scripts cd harness && echo x > p",
+    "export CDPATH=/repo/scripts; cd harness && echo x > p",
+    // env and sudo move the command they run
+    "env -C scripts/harness tee p < /dev/null",
+    "env --chdir=scripts sh -c 'echo x > harness/p'",
+    "env --chdir scripts tee harness/p < /dev/null",
+    "sudo -D scripts/harness tee p < /dev/null",
+    // a shell the command starts, with a cd in it
+    "find . -maxdepth 0 -exec sh -c 'cd scripts && echo x > harness/p' \\;",
+    "find . -maxdepth 0 -exec bash -c 'cd scripts && echo x > harness/p' ;",
+  ])("asks before %s", (cmd) => expect(d(cmd)).toBe("ask"));
+
+  it.each([
+    "cd apps/backend && bun run test",
+    "cd apps/web && echo x > notes.txt",
+    "builtin cd apps/web && bun run build",
+    "for f in a b; do echo $f; done; echo x > notes.txt",
+    "if [ -d dist ]; then rm -rf dist; fi",
+    "while read l; do echo $l; done < list.txt; echo x > notes.txt",
+    "case $1 in a) echo a;; esac; echo x > notes.txt",
+    "f() { echo hi; }; f && echo x > notes.txt",
+    "pushd apps/web && bun run build && popd",
+    "env -C apps/web bun run build",
+    "env NODE_ENV=test bun run test",
+    "env --chdir=apps/web bun run build",
+    "sudo -u root ls",
+    "sudo -D apps/web ls",
+    "find . -name '*.ts' -exec grep -l foo {} \\;",
+    "find . -maxdepth 0 -exec sh -c 'cd apps && ls' \\;",
+    'eval "$(ssh-agent -s)"',
+    "source .venv/bin/activate && pytest",
+    "\\rm -f dist/x.js",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+
+  it("reads a program name written with a backslash as the program", () => {
+    expect(d("\\rm -rf scripts/harness")).toBe("ask");
+    expect(d("\\tee scripts/harness/x < /tmp/in")).toBe("ask");
+  });
+});
+
+// A bare file name is a secret only when a file of that name exists where the command runs, so `cat server.key` is
+// judged against the files that are there. That test ran against the START directory only: after a `cd` into the
+// directory that holds the key, `cat server.key` found nothing and was allowed.
+describe("a secret file is found in the directory a cd left the command in", () => {
+  const FILES = new Set([
+    `${ROOT}/deploy/production/tls/server.key`,
+    `${ROOT}/apps/backend/id_rsa`,
+    `${ROOT}/apps/backend/package.json`,
+  ]);
+  const onDisk = {
+    root: ROOT,
+    home: HOME,
+    cwd: ROOT,
+    exists: (p: string) => FILES.has(p.startsWith("/") ? p : `${ROOT}/${p}`),
+  };
+
+  it.each([
+    "cd deploy/production/tls && cat server.key",
+    "cd deploy/production/tls; cat server.key",
+    "(cd deploy/production/tls && cat server.key)",
+    "cd deploy && cd production && cd tls && cat server.key",
+    "cd deploy/production/tls || true; cat server.key",
+    "cd apps/backend && cat id_rsa",
+    "cd apps/backend && head -1 id_rsa",
+    "cd deploy/production/tls && base64 server.key",
+    "cd deploy/production/tls && xxd server.key",
+    "cd deploy/production/tls && cp server.key /tmp/k",
+    "cd deploy/production/tls && grep -n BEGIN server.key",
+    "cd deploy/production/tls && cat < server.key",
+    'cd "$KEYDIR" && cat server.key',
+    "cd $(dirname $KEY) && cat server.key",
+  ])("denies %s", (cmd) => expect(d(cmd, onDisk)).toBe("deny"));
+
+  it.each([
+    "cat server.key",
+    "cd apps/web && cat server.key",
+    "cd deploy/production/tls && ls",
+    "cd deploy/production/tls; ls -la",
+    "cd apps/backend && cat package.json",
+    "cd apps/backend; cat package.json",
+    "cd apps/backend && grep -rn 'server.key' src",
+    'cd "$KEYDIR" && cat package.json',
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd, onDisk);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});
+
+// `~` and `~/…` name the home directory; every other tilde prefix (`~user`, `~+`, `~-`, `~1`) is a directory the
+// guard cannot place, and a `HOME` the command sets moves `~` itself. With HOME unset, `~` is still the user's
+// home (the account database knows it).
+describe("a tilde form the guard cannot place, and a spoofed HOME, do not hide a write onto the repo", () => {
+  const user = { root: "/Users/fabrice/Apps/x2/wardenx4", home: "/Users/fabrice" };
+
+  it.each([
+    "echo x > ~fabrice/Apps/x2/wardenx4/scripts/harness/p",
+    "echo x > ~+/scripts/harness/p",
+    "echo x > ~-/scripts/harness/p",
+    "echo x > ~1/scripts/harness/p",
+    "cd ~fabrice/Apps/x2/wardenx4 && echo x > scripts/harness/p",
+    "cd ~+ && echo x > scripts/harness/p",
+    "cd scripts && cd /tmp && cd ~- && echo x > harness/p",
+    "HOME=/Users/fabrice/Apps/x2/wardenx4 sh -c 'echo x > ~/scripts/harness/p'",
+    "HOME=/Users/fabrice/Apps/x2/wardenx4 cd && echo x > scripts/harness/p",
+    "export HOME=/Users/fabrice/Apps/x2/wardenx4; echo x > ~/scripts/harness/p",
+    "env HOME=/Users/fabrice/Apps/x2/wardenx4 tee ~/scripts/harness/p < /dev/null",
+  ])("asks before %s", (cmd) => expect(d(cmd, user)).toBe("ask"));
+
+  it.each([
+    "echo x > ~/notes.txt",
+    "cd ~ && ls",
+    "cd ~/Apps/other && echo x > notes.txt",
+    "echo $HOME",
+    "HOME_DIR=/tmp ls",
+    "XDG_CONFIG_HOME=/tmp/x bun test",
+    "rg HOME= scripts",
+    "cat ~/.zshrc | head -3",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd, user);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+
+  it("falls back to the account's home directory when HOME is unset or empty", () => {
+    const real = homedir();
+    const root = `${real}/x/repo`;
+    const saved = process.env.HOME;
+    try {
+      for (const value of [undefined, ""]) {
+        if (value === undefined) Reflect.deleteProperty(process.env, "HOME");
+        else process.env.HOME = value;
+        const verdict = classifyBash("echo x > ~/x/repo/scripts/harness/p", { root, home: "" });
+        expect(verdict.decision, `HOME=${JSON.stringify(value)}`).toBe("ask");
+      }
+    } finally {
+      if (saved === undefined) Reflect.deleteProperty(process.env, "HOME");
+      else process.env.HOME = saved;
+    }
+  });
+});
+
+// The 64 KB cap and the 300-call budget bound counts, not work: a command nested N deep in `$( )` holds nearly the
+// whole command at every level, and the old listing judged EVERY level from every level. Two payloads built that
+// way took 7.5 s and 25 s at 8a9eb5a, past the hook's 10 s, and the guard then lets the call run; a secret read
+// after the payload is the call that ran.
+describe("nested commands are judged once each, within a text budget and a time limit", () => {
+  const CAP = 64 * 1024;
+  const atRoot = { ...ctx, cwd: ROOT, exists: () => false };
+  // Wave 12 (G-1, R9-COMP-9): the bound was 2 s, then 5 s. The text budget is what stops a nested payload, so the
+  // count says so: the judged characters are drawn down past the cap by at most the one level that overdraws it, and
+  // the judging halts. The clock is a safety net at twice the worst loaded run (`work-counters.ts`).
+  /** The judged-text budget is checked after a level is charged, so one level (the whole text) can overdraw it. */
+  const stoppedByTheTextBudget = (m: Measured, cmd: string): void => {
+    expect(m.halted).toBe(true);
+    expect(m.spent.chars).toBeGreaterThan(FULL_BUDGET.chars);
+    expect(m.spent.chars).toBeLessThanOrEqual(FULL_BUDGET.chars + cmd.length);
+  };
+  const timed = (cmd: string) => measure(cmd, atRoot);
+  /** `$(` x levels, one huge word with sixteen brace groups, `)` x levels, then a secret read. */
+  const nestedBraces = (levels: number): string => {
+    const tail = "\ncat .env";
+    const room = CAP - tail.length - levels * 3 - 20;
+    return `${"$(".repeat(levels)}cat ${"y".repeat(room - 120)}${"{a,b}".repeat(16)}${")".repeat(levels)}${tail}`;
+  };
+  const nestedSegments = (): string =>
+    `${"$(".repeat(31)}${"a;".repeat(30_000)}${")".repeat(31)}\ncat .env`;
+
+  it.each([
+    [5, 28.2],
+    [7, 28.5],
+    [9, 27.4],
+    [20, 38.5],
+    [30, 30.8],
+  ])("denies the secret read after a payload nested %i deep, fast", (n, worstMs) => {
+    const cmd = nestedBraces(n);
+    const m = timed(cmd);
+    expect(m.verdict.decision).toBe("deny");
+    stoppedByTheTextBudget(m, cmd);
+    expect(m.ms).toBeLessThan(netMs(worstMs));
+  });
+
+  it("denies the secret read after 31 nested substitutions of 30,000 segments each, fast", () => {
+    const cmd = nestedSegments();
+    const m = timed(cmd);
+    expect(m.verdict.decision).toBe("deny");
+    stoppedByTheTextBudget(m, cmd);
+    expect(m.ms).toBeLessThan(netMs(20.4));
+  });
+
+  it("asks, not allows, when nothing in the payload is itself refused", () => {
+    const cheap = `${"$(".repeat(31)}${"a;".repeat(30_000)}${")".repeat(31)}`;
+    const m = timed(cheap);
+    expect(m.verdict.decision).toBe("ask");
+    expect(m.verdict.reason).toMatch(/too many|too big/i);
+    stoppedByTheTextBudget(m, cheap);
+    expect(m.ms).toBeLessThan(netMs(19.8));
+  });
+
+  // Cheap per character (one long word), so only the text budget, not the clock, can stop it: each level judges the
+  // whole text again, 6 x 60 KB is past 256 KB, 4 x 60 KB is not.
+  it("budgets the text judged across nested commands: 3 levels of 60 KB pass, 5 do not", () => {
+    const nested = (levels: number): string =>
+      `${"$(".repeat(levels)}echo ${"y".repeat(60_000)}${")".repeat(levels)}`;
+    const within = timed(nested(3));
+    expect(within.verdict.decision).toBe("allow");
+    expect(within.halted).toBe(false);
+    expect(within.spent.chars).toBeLessThanOrEqual(FULL_BUDGET.chars); // four passes over 60 KB: under 256 KB
+    expect(within.ms).toBeLessThan(netMs(21.4));
+    const cmd = nested(5);
+    const over = timed(cmd);
+    expect(over.verdict.decision).toBe("ask");
+    expect(over.verdict.reason).toMatch(/too many|too big/i);
+    stoppedByTheTextBudget(over, cmd);
+    expect(over.ms).toBeLessThan(netMs(18.3));
+  });
+
+  it("asks once its time limit has passed, and judges normally within it", () => {
+    expect(classifyBash("echo hi", { ...atRoot, judgeTimeLimitMs: -1 }).decision).toBe("ask");
+    expect(classifyBash("echo hi", { ...atRoot, judgeTimeLimitMs: 5000 }).decision).toBe("allow");
+    expect(classifyBash("cat .env", { ...atRoot, judgeTimeLimitMs: 5000 }).decision).toBe("deny");
+  });
+
+  it("still finds a read nested several levels down, and a write after a cd inside a substitution", () => {
+    expect(d("echo $(echo $(echo $(echo $(echo $(cat .env)))))")).toBe("deny");
+    expect(d(`echo ${"$(echo ".repeat(7)}cat .env${")".repeat(7)}`)).toBe("deny");
+    expect(d("echo $(cd scripts && echo $(echo x > harness/p))")).toBe("ask");
+    expect(d("echo $(echo `cat .env`)")).toBe("deny");
+  });
+
+  it.each([
+    "echo $(git rev-parse --show-toplevel)/x",
+    "x=$(echo $(date))",
+    'bash -c "echo $(cat package.json)"',
+    "echo $(echo $(echo $(echo $(echo $(echo hi)))))",
+    "diff <(sort a.txt) <(sort b.txt)",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});
+
+// Writers that name a directory or a file inside an option or an action rather than as an operand: wget `-P`,
+// curl `--output-dir`, find's `-fprint` family, sed's `w` command and flag, `git format-patch -o`.
+describe("a directory or file named inside an option or an action is a write target", () => {
+  it.each([
+    "wget -P compliance https://example.com/x",
+    "wget --directory-prefix=scripts/harness https://example.com/x",
+    "wget --directory-prefix .claude/rules https://example.com/x",
+    "wget --directory scripts/harness https://example.com/x",
+    "curl -o x.txt --output-dir compliance https://example.com/x",
+    "curl --output-dir scripts/harness -O https://example.com/x",
+    "curl -sSO --output-dir .githooks https://example.com/x",
+    "cd compliance && curl -O https://example.com/x",
+    "find . -fprint compliance/controls.yaml",
+    "find . -name '*.ts' -fprintf scripts/harness/x '%p\\n'",
+    "find . -fls .githooks/pre-commit",
+    "find . -fprint0 compliance/x",
+    "sed -n 'w compliance/controls.yaml' /tmp/x",
+    "sed 's/a/b/w scripts/harness/pre-tool-guard.ts' /tmp/x",
+    "sed -n '1,3w .githooks/pre-commit' /tmp/x",
+    "sed -e 'w CLAUDE.md' /tmp/x",
+    "sed --expression='w compliance/controls.yaml' /tmp/x",
+    "sed -n -e '/x/{' -e 'w compliance/c.yaml' -e '}' /tmp/x",
+    "git format-patch -o compliance HEAD~1",
+    "git format-patch --output-directory scripts/harness -1",
+    "git format-patch --output-directory=.githooks -1",
+    "git format-patch -1 -o .claude/rules",
+  ])("asks before %s", (cmd) => expect(d(cmd)).toBe("ask"));
+
+  it.each([
+    "wget -P /tmp/dl https://example.com/x",
+    "wget -P downloads https://example.com/x",
+    "wget --directory-prefix=/tmp/dl https://example.com/x",
+    "curl -o x.txt --output-dir /tmp https://example.com/x",
+    "curl -O https://example.com/x",
+    "curl --output-dir /tmp -O https://example.com/x",
+    "curl --output-dir compliance https://example.com/x",
+    "find . -fprint /tmp/files.txt",
+    "find . -name '*.ts' -fprint out.txt",
+    "find . -name '*.ts' -print",
+    "sed -n 'w /tmp/out.txt' /tmp/x",
+    "sed 's/a/b/w out.txt' /tmp/x",
+    "sed -n '/foo/p' file.txt",
+    "sed 's/ w x/y/' file.txt",
+    "sed -n 'p' compliance/AGENT_HARNESS.md",
+    "sed -n '1,5p' scripts/harness/patterns.ts",
+    "git format-patch -o /tmp/patches HEAD~1",
+    "git format-patch -o patches -1",
+    "git format-patch -1",
+  ])("allows the everyday %s", (cmd) => {
+    const verdict = v(cmd);
+    expect(verdict.decision, verdict.reason).toBe("allow");
   });
 });

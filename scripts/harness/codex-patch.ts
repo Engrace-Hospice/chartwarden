@@ -137,7 +137,19 @@ export type ShellPatch =
   | { readonly kind: "patch"; readonly text: string }
   | { readonly kind: "refuse"; readonly reason: string };
 
-const MENTIONS_APPLY_PATCH = /\bapply_?patch\b/;
+/**
+ * A command that could run `apply_patch`: its name in any case (macOS runs `APPLY_PATCH` from a case-insensitive
+ * disk), through quotes, backslashes or empty expansions that the shell removes (`'apply'_patch`, `apply\_patch`,
+ * `app""ly_patch`), or behind a variable (`a=apply; ${a}_patch`, `${a}patch`, `$(echo apply)_patch`). What a
+ * text heuristic cannot see (a name assembled from pieces at run time) stays with Codex's sandbox.
+ */
+const MENTIONS_APPLY_PATCH = /\bapply_?patch\b/i;
+const VARIABLE_PATCH = /\$\{[A-Za-z_]\w*\}_?patch\b|\$\([^)]*\)_?patch\b|`[^`]*`_?patch\b/i;
+const withoutShellQuoting = (cmd: string): string => cmd.replace(/\$\(\)|``|['"\\]/g, "");
+const mentionsApplyPatch = (cmd: string): boolean =>
+  MENTIONS_APPLY_PATCH.test(cmd) ||
+  MENTIONS_APPLY_PATCH.test(withoutShellQuoting(cmd)) ||
+  VARIABLE_PATCH.test(cmd);
 const HEREDOC_FORM =
   /^\s*apply_?patch\s+<<-?[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[ \t]*\n([\s\S]*)\n[ \t]*\2[ \t]*\n?\s*$/;
 const SHELL_FORM_REASON =
@@ -148,11 +160,11 @@ const SHELL_FORM_REASON =
  * PATH, so `cd x && apply_patch <<EOF`, `apply_patch < file` and `printf ... | apply_patch` all apply one
  * without the marker text appearing in the command. Anything that names `apply_patch` and is not exactly one
  * heredoc is refused; a heredoc whose body holds its own delimiter line is refused too (the shell would end
- * it there and run the rest as commands). Obfuscated names (`${a}_patch`) are beyond a text heuristic: the
- * real boundary there is Codex's sandbox.
+ * it there and run the rest as commands). A name built at run time from pieces the text never joins is beyond a
+ * text heuristic: the real boundary there is Codex's sandbox.
  */
 export function shellPatch(cmd: string): ShellPatch {
-  if (!MENTIONS_APPLY_PATCH.test(cmd)) return { kind: "none" };
+  if (!mentionsApplyPatch(cmd)) return { kind: "none" };
   const m = HEREDOC_FORM.exec(cmd);
   const delimiter = m?.[2];
   const body = m?.[3];

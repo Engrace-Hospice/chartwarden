@@ -27,9 +27,10 @@ import {
   scanLarge,
 } from "../harness/patterns";
 import { splitNul } from "../harness/stop-gate";
+import { ISSUED_SSN_PARTS } from "./_fixtures";
+import { scrubbedGitEnv } from "./helpers/scrubbed-env";
+import { netMs } from "./helpers/work-counters";
 
-// Fixture values are assembled at runtime so this file does not trip the scanner it tests.
-const ISSUED_SSN_DIGITS = ["524", "71", "3388"];
 const ROOT = join(__dirname, "../..");
 const tmp = mkdtempSync(join(tmpdir(), "cw-bypass-"));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
@@ -131,13 +132,25 @@ describe("H2 — secret reads through ordinary shell constructs", () => {
 });
 
 describe("H3 — the guard cannot be switched off by input", () => {
-  it("scans adversarial repeated keywords in linear time", () => {
-    for (const filler of ["SECRET", "TOKEN_", "A_PASSWORD", "API_KEY"]) {
-      const text = filler.repeat(Math.ceil(300_000 / filler.length));
-      const t0 = performance.now();
+  // Wave 12 (G-1, R9-COMP-9): the bound was 1.5 s, then 5 s with a comment that said 3 s. The content scan is a set of
+  // regular expressions, which no budget counts, so the clock is the only measure of them: it stays, as a safety net at
+  // twice the worst loaded best-of-three over 300 KB (0.7 to 1.5 ms; the 20 ms floor of `work-counters.ts`), next to
+  // what the scan must still answer (no finding, and not "unscannable": 300 KB is far under MAX_SCAN_CHARS).
+  it.each([
+    ["SECRET", 0.4],
+    ["TOKEN_", 0.7],
+    ["A_PASSWORD", 1.5],
+    ["API_KEY", 0.7],
+  ])("scans adversarial repeated keywords (%s) in linear time", (filler, worstMs) => {
+    const text = filler.repeat(Math.ceil(300_000 / filler.length));
+    expect(scanContent(text, EMPTY_REGISTRY, "src/x.ts")).toEqual([]);
+    let best = Number.POSITIVE_INFINITY;
+    for (let run = 0; run < 3; run++) {
+      const started = performance.now();
       scanContent(text, EMPTY_REGISTRY, "src/x.ts");
-      expect(performance.now() - t0).toBeLessThan(1500);
+      best = Math.min(best, performance.now() - started);
     }
+    expect(best).toBeLessThan(netMs(worstMs));
   });
   it("still finds a high-entropy keyed secret", () => {
     const secret = "Zq8v3LmP0xKd7RtYw2NbHs5JcAe9UfGi";
@@ -150,7 +163,7 @@ describe("H3 — the guard cannot be switched off by input", () => {
     expect(f.map((x) => x.kind)).toEqual(["unscannable"]);
   });
   it("scans a large FILE in chunks, with line numbers kept, instead of skipping it", () => {
-    const ssn = ISSUED_SSN_DIGITS.join("-");
+    const ssn = ISSUED_SSN_PARTS.join("-");
     const filler = `${"a".repeat(99)}\n`.repeat(Math.ceil((MAX_SCAN_CHARS + 1_000_000) / 100));
     const text = `${filler}x ${ssn}\n${filler}`;
     const f = scanLarge(text, EMPTY_REGISTRY, "docs/api/big.json");
@@ -367,17 +380,21 @@ describe("M7 — non-ASCII file names are scanned, not skipped", () => {
   });
   it("phi-scan fails on an SSN in a file whose name git would quote", () => {
     const repo = mkdtempSync(join(tmp, "repo-"));
-    const git = (...a: string[]) => spawnSync("git", a, { cwd: repo, encoding: "utf8" });
+    // Wave 12 (R9-COMP-10): no GIT_DIR / GIT_INDEX_FILE from a hook (they would aim `git add` at the real repository),
+    // no developer git configuration.
+    const env = scrubbedGitEnv(tmp);
+    const git = (...a: string[]) => spawnSync("git", a, { cwd: repo, encoding: "utf8", env });
     git("init", "-q");
     writeFileSync(
       join(repo, "café.ts"),
-      `export const p = { ssn: "${ISSUED_SSN_DIGITS.join("-")}" };\n`,
+      `export const p = { ssn: "${ISSUED_SSN_PARTS.join("-")}" };\n`,
     );
     git("add", ".");
     const scan = (flag: string) =>
       spawnSync("bun", [join(ROOT, "scripts/harness/phi-scan.ts"), flag], {
         cwd: repo,
         encoding: "utf8",
+        env,
       });
     const all = scan("--all");
     expect(all.status).toBe(1);
@@ -388,8 +405,8 @@ describe("M7 — non-ASCII file names are scanned, not skipped", () => {
 
 describe("L — detection coverage", () => {
   it("flags a keyed SSN written with spaces, once", () => {
-    const spaced = ISSUED_SSN_DIGITS.join(" ");
+    const spaced = ISSUED_SSN_PARTS.join(" ");
     expect(scanContent(`ssn ${spaced}`, EMPTY_REGISTRY).map((f) => f.kind)).toEqual(["ssn"]);
-    expect(scanContent(`ssn: ${ISSUED_SSN_DIGITS.join("-")}`, EMPTY_REGISTRY)).toHaveLength(1);
+    expect(scanContent(`ssn: ${ISSUED_SSN_PARTS.join("-")}`, EMPTY_REGISTRY)).toHaveLength(1);
   });
 });

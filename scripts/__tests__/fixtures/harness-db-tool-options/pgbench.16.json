@@ -1,0 +1,649 @@
+{
+  "tool": "pgbench",
+  "version": "16.13",
+  "command": "pgbench --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "initialize",
+      "short": "i",
+      "takesValue": false
+    },
+    {
+      "name": "init-steps",
+      "short": "I",
+      "takesValue": true
+    },
+    {
+      "name": "fillfactor",
+      "short": "F",
+      "takesValue": true
+    },
+    {
+      "name": "no-vacuum",
+      "short": "n",
+      "takesValue": false
+    },
+    {
+      "name": "quiet",
+      "short": "q",
+      "takesValue": false
+    },
+    {
+      "name": "scale",
+      "short": "s",
+      "takesValue": true
+    },
+    {
+      "name": "foreign-keys",
+      "takesValue": false
+    },
+    {
+      "name": "index-tablespace",
+      "takesValue": true
+    },
+    {
+      "name": "partition-method",
+      "takesValue": true
+    },
+    {
+      "name": "partitions",
+      "takesValue": true
+    },
+    {
+      "name": "tablespace",
+      "takesValue": true
+    },
+    {
+      "name": "unlogged-tables",
+      "takesValue": false
+    },
+    {
+      "name": "builtin",
+      "short": "b",
+      "takesValue": true
+    },
+    {
+      "name": "file",
+      "short": "f",
+      "takesValue": true
+    },
+    {
+      "name": "skip-some-updates",
+      "short": "N",
+      "takesValue": false
+    },
+    {
+      "name": "select-only",
+      "short": "S",
+      "takesValue": false
+    },
+    {
+      "name": "client",
+      "short": "c",
+      "takesValue": true
+    },
+    {
+      "name": "connect",
+      "short": "C",
+      "takesValue": false
+    },
+    {
+      "name": "define",
+      "short": "D",
+      "takesValue": true
+    },
+    {
+      "name": "jobs",
+      "short": "j",
+      "takesValue": true
+    },
+    {
+      "name": "log",
+      "short": "l",
+      "takesValue": false
+    },
+    {
+      "name": "latency-limit",
+      "short": "L",
+      "takesValue": true
+    },
+    {
+      "name": "protocol",
+      "short": "M",
+      "takesValue": true
+    },
+    {
+      "name": "progress",
+      "short": "P",
+      "takesValue": true
+    },
+    {
+      "name": "report-per-command",
+      "short": "r",
+      "takesValue": false
+    },
+    {
+      "name": "rate",
+      "short": "R",
+      "takesValue": true
+    },
+    {
+      "name": "transactions",
+      "short": "t",
+      "takesValue": true
+    },
+    {
+      "name": "time",
+      "short": "T",
+      "takesValue": true
+    },
+    {
+      "name": "vacuum-all",
+      "short": "v",
+      "takesValue": false
+    },
+    {
+      "name": "aggregate-interval",
+      "takesValue": true
+    },
+    {
+      "name": "failures-detailed",
+      "takesValue": false
+    },
+    {
+      "name": "log-prefix",
+      "takesValue": true
+    },
+    {
+      "name": "max-tries",
+      "takesValue": true
+    },
+    {
+      "name": "progress-timestamp",
+      "takesValue": false
+    },
+    {
+      "name": "random-seed",
+      "takesValue": true
+    },
+    {
+      "name": "sampling-rate",
+      "takesValue": true
+    },
+    {
+      "name": "show-script",
+      "takesValue": true
+    },
+    {
+      "name": "verbose-errors",
+      "takesValue": false
+    },
+    {
+      "name": "debug",
+      "short": "d",
+      "takesValue": false
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false,
+      "argv1Only": true
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "a",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ag",
+      "outcome": "value"
+    },
+    {
+      "prefix": "b",
+      "outcome": "value"
+    },
+    {
+      "prefix": "bu",
+      "outcome": "value"
+    },
+    {
+      "prefix": "c",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "cl",
+      "outcome": "value"
+    },
+    {
+      "prefix": "cli",
+      "outcome": "value"
+    },
+    {
+      "prefix": "co",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "con",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "d",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "de",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "deb",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "debu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "def",
+      "outcome": "value"
+    },
+    {
+      "prefix": "defi",
+      "outcome": "value"
+    },
+    {
+      "prefix": "f",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "fa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "fai",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "fi",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "fil",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "fill",
+      "outcome": "value"
+    },
+    {
+      "prefix": "fillf",
+      "outcome": "value"
+    },
+    {
+      "prefix": "fo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "for",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "h",
+      "outcome": "host"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "i",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "in",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ind",
+      "outcome": "value"
+    },
+    {
+      "prefix": "inde",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ini",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "init",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "init-",
+      "outcome": "value"
+    },
+    {
+      "prefix": "init-s",
+      "outcome": "value"
+    },
+    {
+      "prefix": "initi",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "initia",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "j",
+      "outcome": "value"
+    },
+    {
+      "prefix": "jo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "l",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "la",
+      "outcome": "value"
+    },
+    {
+      "prefix": "lat",
+      "outcome": "value"
+    },
+    {
+      "prefix": "lo",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "log-",
+      "outcome": "value"
+    },
+    {
+      "prefix": "log-p",
+      "outcome": "value"
+    },
+    {
+      "prefix": "m",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ma",
+      "outcome": "value"
+    },
+    {
+      "prefix": "n",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "par",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "part",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "parti",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "partit",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "partiti",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "partitio",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "partition",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "partition-",
+      "outcome": "value"
+    },
+    {
+      "prefix": "partition-m",
+      "outcome": "value"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "pr",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pro",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "prog",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "progr",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "progre",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "progres",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "progress-",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "progress-t",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "prot",
+      "outcome": "value"
+    },
+    {
+      "prefix": "proto",
+      "outcome": "value"
+    },
+    {
+      "prefix": "q",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "qu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "r",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ra",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ran",
+      "outcome": "value"
+    },
+    {
+      "prefix": "rand",
+      "outcome": "value"
+    },
+    {
+      "prefix": "rat",
+      "outcome": "value"
+    },
+    {
+      "prefix": "re",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "rep",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sa",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sam",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sca",
+      "outcome": "value"
+    },
+    {
+      "prefix": "se",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "sel",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "sh",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sho",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sk",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ski",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "t",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ta",
+      "outcome": "value"
+    },
+    {
+      "prefix": "tab",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ti",
+      "outcome": "value"
+    },
+    {
+      "prefix": "tim",
+      "outcome": "value"
+    },
+    {
+      "prefix": "tr",
+      "outcome": "value"
+    },
+    {
+      "prefix": "tra",
+      "outcome": "value"
+    },
+    {
+      "prefix": "u",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "un",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "unl",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    },
+    {
+      "prefix": "use",
+      "outcome": "value"
+    },
+    {
+      "prefix": "v",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "va",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "vac",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ve",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ver",
+      "outcome": "flag"
+    }
+  ]
+}

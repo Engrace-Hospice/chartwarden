@@ -1,0 +1,77 @@
+{
+  "tool": "npx",
+  "version": "11.11.0",
+  "command": "npx",
+  "method": "echo-hit",
+  "options": [
+    {
+      "name": "--call",
+      "short": "-c",
+      "takesValue": true,
+      "evidence": "probe",
+      "runsOperandAsCommand": true
+    },
+    {
+      "name": "--include-workspace-root",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-install",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--node-arg",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--package",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--workspace",
+      "short": "-w",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--workspaces",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--yes",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-n",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "-p",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "-q",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-y",
+      "takesValue": false,
+      "evidence": "probe"
+    }
+  ],
+  "rejected": []
+}
