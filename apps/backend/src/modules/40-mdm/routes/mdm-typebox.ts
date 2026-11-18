@@ -6,8 +6,7 @@ import type {
   MergeRequestRow as ServiceMergeRequestRow,
   NppesSyncRun as ServiceNppesSyncRun,
 } from "@chartwarden/mdm";
-import { pageLimit } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageLimit, parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/40-mdm/routes/mdm-typebox.ts — M40-T07 TypeBox route schemas for the
 // MDM API surface (M40 spec §4.1–4.2). Named `mdm-typebox` (not `*schema*`) so the table-ownership
 // import heuristic never mistakes a TypeBox-schema import for a Drizzle one.
@@ -16,8 +15,10 @@ import { ValidationError } from "@chartwarden/types";
 // with M1's `VALIDATION_FAILED` envelope and query scalars coerce (`limit=25` → 25) before the
 // shape check. The `:kind` param is the closed `MDM_ENTITY_KINDS` union, so an unknown kind is a
 // malformed request, never routed.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+
+export { parse };
 
 /** The closed `:kind` enum — every MDM entity kind (§2.3). */
 export const KindSchema = Type.Union(MDM_ENTITY_KINDS.map((k) => Type.Literal(k)));
@@ -246,16 +247,3 @@ type _MdmResolved = Conforms<
 type _BaaEntry = Conforms<Static<typeof BaaRegisterEntryResponseSchema>, ServiceBaaRegisterEntry>;
 type _MergeRow = Conforms<Static<typeof MergeRequestRowResponseSchema>, ServiceMergeRequestRow>;
 type _NppesRun = Conforms<Static<typeof NppesSyncRunResponseSchema>, ServiceNppesSyncRun>;
-
-/** Validate `raw` against `schema`, coercing query scalars first; throws M1's VALIDATION_FAILED. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

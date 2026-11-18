@@ -1,6 +1,6 @@
 import "@chartwarden/shared/route-kit";
+import { parse } from "@chartwarden/shared/route-kit";
 import type { EvvAggregatorSubmissionDto, EvvBracketDto, EvvEventDto } from "@chartwarden/types";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/18-evv/routes/evv-typebox.ts — M18-T06 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import for
 // a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` → M1's
@@ -8,7 +8,7 @@ import { ValidationError } from "@chartwarden/types";
 // `capturedAt`) so the two §4.7 capture predicates (`assigned_clinician_for_visit` ∧ `evv_within_visit_window`)
 // resolve at authz time. Coordinates (D10) never leave the system through these schemas except on the inbound
 // capture body; the read DTOs are coordinate-free.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   ArrivalView as ServiceArrivalView,
@@ -19,6 +19,8 @@ import type {
   MetricsView as ServiceMetricsView,
   MissingResolutionView as ServiceMissingResolutionView,
 } from "./service";
+
+export { parse };
 
 const Coords = Type.Object({
   lat: Type.Number({ minimum: -90, maximum: 90 }),
@@ -410,17 +412,3 @@ type _EvvArrival = Conforms<Static<typeof EvvArrivalView>, ServiceArrivalView>;
 
 export type CheckInBody = Static<typeof CheckInRequest>;
 export type CheckOutBody = Static<typeof CheckOutRequest>;
-
-/** Validate `value` against `schema` → the M1 VALIDATION_FAILED envelope on the first error (M17 idiom; query
- * primitives are coerced via `Value.Convert`). */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

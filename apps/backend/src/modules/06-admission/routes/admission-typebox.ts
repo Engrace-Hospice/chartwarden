@@ -1,11 +1,11 @@
-import { Uuid, pageQuery } from "@chartwarden/shared/route-kit";
-import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES, ValidationError } from "@chartwarden/types";
+import { Uuid, pageQuery, parse } from "@chartwarden/shared/route-kit";
+import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES } from "@chartwarden/types";
 // apps/backend/src/modules/06-admission/routes/admission-typebox.ts — M6-T06 TypeBox route schemas
 // (§4.2). Named `admission-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
 // mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
 // VALIDATION_FAILED envelope. Schemas mirror §4.2 1:1 (abbreviated where the spec is). Optimistic
 // locking: state-change PATCH/POST routes carry `ifVersion`.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   AdmissionDetail as ServiceAdmissionDetail,
@@ -578,6 +578,8 @@ export const TransferInSchema = Type.Object({
 export { DISCHARGE_REASONS, type DischargeReason } from "../discharge";
 import { DISCHARGE_REASONS } from "../discharge";
 import { PHYSICIAN_SIGNER_CAPACITIES } from "../physician-authority";
+
+export { parse };
 
 /** 42 CFR 418.25(a) / 418.26(b) — the physician signer capacities (physician-authority.ts). */
 export const PhysicianSignerCapacitySchema = Type.Union(
@@ -1179,18 +1181,5 @@ type _PatientElectionCertFlat = Conforms<
   >,
   Pick<ServicePatientElectionCert, "admission" | "complianceWindows">
 >;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}
 
 export { Uuid } from "@chartwarden/shared/route-kit";

@@ -1,5 +1,4 @@
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 import { SCALE_TYPES } from "@chartwarden/types";
 import type {
   ScaleDelta as ServiceScaleDelta,
@@ -21,6 +20,8 @@ import type {
   ScalePolicyView as ServiceScalePolicyView,
   SignificantChangeView as ServiceSignificantChangeView,
 } from "./service";
+
+export { parse };
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -390,16 +391,3 @@ type _ScalePolicyList = Conforms<
   Static<typeof ScalePolicyListResponseSchema>,
   { readonly policies: readonly ServiceScalePolicyView[] }
 >;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

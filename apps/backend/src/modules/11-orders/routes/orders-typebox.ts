@@ -1,7 +1,7 @@
 import "@chartwarden/shared/route-kit";
+import { parse } from "@chartwarden/shared/route-kit";
 import { ORDER_KINDS } from "@chartwarden/types";
 import type { OrderKind } from "@chartwarden/types";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/11-orders/routes/orders-typebox.ts — M11-T06 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox
 // import for a Drizzle one. Validation runs through TypeBox `Value` → M1's VALIDATION_FAILED envelope.
@@ -11,7 +11,7 @@ import { ValidationError } from "@chartwarden/types";
 // lifecycle-bearing envelope fields (kind / priority / signer / verbal-attestation / cosign-role /
 // discontinuation reason) are pinned here so the route → pure `@chartwarden/orders` machine flow is wired
 // end-to-end. Unions mirror the canonical `@chartwarden/types` order vocabularies (single source).
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   OrderDetailView as ServiceOrderDetailView,
@@ -21,6 +21,8 @@ import type {
   StandingOrderView as ServiceStandingOrderView,
   VerbalPolicyView as ServiceVerbalPolicyView,
 } from "./service";
+
+export { parse };
 
 // `recertification.periodEndDate` (packages/orders/src/kinds.ts) is `format: "date"` and this file never
 // registered it — every other format M11's own kinds use was covered, so nothing surfaced it until F-120's
@@ -516,16 +518,3 @@ type _Suggestions = Conforms<
   }
 >;
 type _Spawn = Conforms<Static<typeof SpawnResponseSchema>, { readonly orderId: string }>;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

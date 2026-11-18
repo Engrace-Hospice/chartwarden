@@ -1,4 +1,4 @@
-import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
+import { pageLimit, pageQuery, parse } from "@chartwarden/shared/route-kit";
 import { CODE_SYSTEM_IDS } from "@chartwarden/terminology";
 import type {
   CodeSystemId,
@@ -8,7 +8,6 @@ import type {
   ResolvedConcept as ServiceResolvedConcept,
   ValidateResult as ServiceValidateResult,
 } from "@chartwarden/terminology";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/38-terminology/routes/terminology-typebox.ts — M38-T06 complete
 // TypeBox route schemas for the terminology API surface (M38 spec §4.1–4.2). Named
 // `terminology-typebox` (not `*schema*`) so the table-ownership import heuristic never mistakes
@@ -20,7 +19,7 @@ import { ValidationError } from "@chartwarden/types";
 // before the shape check. The `:system` param is a closed union of `CODE_SYSTEM_IDS` (the
 // value-level mirror of the §4.5 `CodeSystemId` union), so an unknown / not-yet-licensed system
 // (e.g. `cpt`, §7.8) is rejected as a malformed request, never routed.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   LicenseAttestationEntry as StoreAttestationEntry,
@@ -28,6 +27,8 @@ import type {
   TenantExtensionGovernanceRow as StoreTenantExtensionGovernanceRow,
   ValueSetCatalogEntry as StoreValueSetCatalogEntry,
 } from "../ops-store";
+
+export { parse };
 
 // --- shared shapes (§4.2) ---------------------------------------------------------------------
 
@@ -441,21 +442,3 @@ type _AdminExtension = Conforms<
   Static<typeof AdminExtensionEntrySchema>,
   StoreTenantExtensionGovernanceRow
 >;
-
-/**
- * Validate `raw` against `schema`, coercing query-string scalars first (`limit=10` → 10,
- * `billableOnly=true` → true), and return the typed value. Throws M1's `VALIDATION_FAILED`
- * envelope (flat field list) on a miss, so a malformed request renders the standard 422 envelope
- * rather than a Fastify ajv 400.
- */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

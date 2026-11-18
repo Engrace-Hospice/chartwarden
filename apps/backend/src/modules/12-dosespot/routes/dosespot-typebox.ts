@@ -1,9 +1,6 @@
 import "@chartwarden/shared/route-kit";
-import {
-  HospiceCoverageFieldsSchema,
-  SetHospiceCoverageBodySchema,
-  ValidationError,
-} from "@chartwarden/types";
+import { parse } from "@chartwarden/shared/route-kit";
+import { HospiceCoverageFieldsSchema, SetHospiceCoverageBodySchema } from "@chartwarden/types";
 // apps/backend/src/modules/12-dosespot/routes/dosespot-typebox.ts — M12-T08 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` →
@@ -22,6 +19,8 @@ import type {
   RefillInboxPolicyView as ServiceRefillInboxPolicyView,
   RefillRequestView as ServiceRefillRequestView,
 } from "./service";
+
+export { parse };
 
 /** §2.1 — the medication taxonomy (mirrors `MedClass`). */
 const MED_CLASS = Type.Union([
@@ -520,16 +519,3 @@ type _Resulting = Conforms<
 type _DenyRefill = Conforms<Static<typeof DenyRefillResponseSchema>, { status: "denied" }>;
 type _RxBenefit = Conforms<Static<typeof RxBenefitResponseSchema>, RxBenefitLookupView>;
 type _Revoke = Conforms<Static<typeof RevokePrescriberResponseSchema>, { status: "revoked" }>;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

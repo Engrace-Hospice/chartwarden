@@ -1,5 +1,4 @@
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/04-audit/routes/audit-typebox.ts — M4-T06 complete TypeBox route
 // schemas for the audit query surface (M4 spec §4.3). Named `audit-typebox` (not `*schema*`) so
 // the table-ownership import heuristic never mistakes a TypeBox-schema import for a Drizzle one.
@@ -354,6 +353,8 @@ import type {
   PatientAccessEntry as ServicePatientAccessEntry,
 } from "@chartwarden/audit";
 
+export { parse };
+
 /** `T` (what the schema publishes) must be assignable to `V` (what the port returns). */
 type Conforms<T extends V, V> = T;
 type _AuditEvent = Conforms<Static<typeof AuditEventSchema>, ServiceAuditEventRecord>;
@@ -366,20 +367,3 @@ type _PatientAccessPage = Conforms<
   ServicePage<ServicePatientAccessEntry>
 >;
 type _Accounting = Conforms<Static<typeof AccountingResponseSchema>, ServiceAccountingReport>;
-
-/**
- * Validate `raw` against `schema`, coercing query-string scalars first (`limit=50` → 50), and
- * return the typed value. Throws M1's `VALIDATION_FAILED` envelope (flat field list) on a miss,
- * so a malformed request renders the standard 422 envelope rather than a Fastify ajv 400.
- */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

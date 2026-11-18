@@ -1,6 +1,7 @@
 import "@chartwarden/shared/route-kit";
 import { DISCIPLINE_NOTE_ADDENDUM_REASON_MAX } from "@chartwarden/idg";
-import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
+import { parse } from "@chartwarden/shared/route-kit";
+import { CHART_PROMOTION_REJECT_REASONS } from "@chartwarden/types";
 // apps/backend/src/modules/14-idg/routes/idg-typebox.ts — M14-T05 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` →
@@ -24,6 +25,8 @@ import type {
   PacketDigestView as ServicePacketDigestView,
   RecurringPolicyView as ServiceRecurringPolicyView,
 } from "./service";
+
+export { parse };
 
 const Nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 
@@ -792,16 +795,3 @@ type _Amendment = Conforms<
   Static<typeof AmendmentResponseSchema>,
   { readonly amendmentId: string; readonly minutesId: string }
 >;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

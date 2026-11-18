@@ -14,14 +14,15 @@ import type {
   PostMortemEligibilityView,
   ReRenderReceiptView,
 } from "@chartwarden/consent";
-import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageLimit, pageQuery, parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/39-consent/routes/consent-typebox.ts — M39-T07 TypeBox route schemas
 // (M39 spec §4.2). Named `consent-typebox` (not `*schema*`) so the table-ownership import heuristic
 // never mistakes a TypeBox-schema import for a Drizzle one. Validation runs through TypeBox `Value`
 // so a bad request fails with M1's VALIDATION_FAILED envelope and query scalars coerce first.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+
+export { parse };
 
 /** §4.12 cursor pagination — the kit's signed cursor plus M39's `pageSize` (default 50). */
 const consentPage = { cursor: pageQuery().cursor, pageSize: pageLimit({ defaultSize: 50 }) };
@@ -326,18 +327,6 @@ export const BereavementOutreachBodySchema = Type.Object({
   captureMethod: CAPTURE_METHOD,
   scopeDescriptor: Type.Unknown(),
 });
-
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}
 
 // ── §4.1 RESPONSE DTOs ─────────────────────────────────────────────────────────────────────────
 //

@@ -10,8 +10,8 @@ import type {
   NotificationPreferencesView as ServiceNotificationPreferencesView,
   ResolvedMessage as ServiceResolvedMessage,
 } from "@chartwarden/messaging";
-import { Uuid, pageQuery } from "@chartwarden/shared/route-kit";
-import { MENTION_KINDS, MESSAGE_REACTION_KEYS, ValidationError } from "@chartwarden/types";
+import { Uuid, pageQuery, parse } from "@chartwarden/shared/route-kit";
+import { MENTION_KINDS, MESSAGE_REACTION_KEYS } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/messaging-typebox.ts — M36-T07 complete TypeBox
 // route schemas for the messaging / notification / alert-rule API surface (M36 spec §4.1–4.2).
 // Named `messaging-typebox` (not `*schema*`) so the table-ownership import heuristic never
@@ -23,9 +23,11 @@ import { MENTION_KINDS, MESSAGE_REACTION_KEYS, ValidationError } from "@chartwar
 // Routing-map / quiet-hours SEMANTICS (unknown category/severity/channel → INVALID_ROUTING_MAP)
 // are validated in the service, not here: the structural schema accepts the record shape and the
 // service maps an unknown key to the §4.2 422 domain error.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ClinicalLinkViewSchema } from "./clinical-link-typebox";
+
+export { parse };
 
 // --- shared scalars ---------------------------------------------------------------------------
 
@@ -596,21 +598,3 @@ type _AlertRule = Conforms<Static<typeof AlertRuleResponseSchema>, ServiceAlertR
 export type SendMessageBody = Static<typeof SendMessageBodySchema>;
 export type PreferencesBody = Static<typeof PreferencesBodySchema>;
 export type AlertRulePatchBody = Static<typeof AlertRulePatchSchema>;
-
-/**
- * Validate `raw` against `schema`, coercing query-string scalars first (`limit=50` → 50,
- * `upTo=true` → true), and return the typed value. Throws M1's `VALIDATION_FAILED` envelope on a
- * miss (the same `parse` contract M38's routes use), so a malformed request renders the standard
- * 422 envelope rather than a Fastify ajv 400.
- */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

@@ -1,5 +1,5 @@
 import "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/17-scheduling/routes/scheduling-typebox.ts — M17-T07 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` → M1's
@@ -17,6 +17,8 @@ import type {
   SchedulingRouteService as ServiceType,
   VisitView as ServiceVisitView,
 } from "./service";
+
+export { parse };
 
 const Nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 
@@ -563,16 +565,3 @@ type _CredentialGrant = Conforms<
   Static<typeof CredentialViewSchema>,
   Awaited<ReturnType<ServiceType["grantCredential"]>>
 >;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

@@ -1,6 +1,5 @@
 import { TileReadQuery, TileReadResponse } from "@chartwarden/reporting";
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/33-reporting/routes/reporting-typebox.ts — M33 (§4.2).
 //
 // TypeBox request/response schemas for the M33 READ surface (dashboards / tiles / report-base &
@@ -14,8 +13,10 @@ import { ValidationError } from "@chartwarden/types";
 // `TileReadQuery` / `TileReadResponse` themselves are the canonical §4.2 shapes owned by the
 // @chartwarden/reporting package (packages/reporting/src/schemas/tile-read.ts); we re-export them so the
 // route plugins + the OpenAPI enrichment table reference ONE symbol.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+
+export { parse };
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -222,16 +223,3 @@ export const MvCommandAcceptedSchema = Type.Object({
   mvKey: Type.String(),
   jobId: Type.String(),
 });
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope (M22 `parse`). */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

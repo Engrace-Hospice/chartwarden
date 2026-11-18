@@ -1,5 +1,4 @@
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox.ts — M34 (§4.2).
 //
 // TypeBox request/response schemas for the platform-ops tenant-lifecycle route surface (§4.1 platform-ops
@@ -29,6 +28,8 @@ import type {
   TenantOverview as ServiceTenantOverview,
   TenantSummaryView as ServiceTenantSummaryView,
 } from "./service";
+
+export { parse };
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -644,16 +645,3 @@ type _Baa = Conforms<Static<typeof BaaRecordViewSchema>, ServiceBaaRecordView>;
 type _BaaListItem = Conforms<Static<typeof BaaRegisterListItemSchema>, ServiceBaaRegisterListItem>;
 type _Flag = Conforms<Static<typeof FeatureFlagViewSchema>, ServiceFeatureFlagView>;
 type _ExportJob = Conforms<Static<typeof TenantExportJobViewSchema>, ServiceTenantExportJobView>;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope (M22 `parse`). */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}
