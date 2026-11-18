@@ -177,7 +177,7 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
   it("closes the write-off from Cancel without writing, and not from the scrim", async () => {
     const { post } = mount();
     const dialog = await openModal("Declare unreturnable…", WRITE_OFF);
-    fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByRole("dialog", { name: WRITE_OFF })).toBe(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await modalGone(WRITE_OFF);
@@ -288,7 +288,7 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
       (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
     ).toBe(true);
     fireEvent.keyDown(dialog, { key: "Escape" });
-    fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByRole("dialog", { name: WRITE_OFF })).toBe(dialog);
     release();
     await modalGone(WRITE_OFF);
@@ -543,5 +543,69 @@ describe("comfort-kit return — assign and declare unreturnable", () => {
     // The reload shows a reconciled return; the open modal cannot write against it.
     expect(screen.getByRole("dialog", { name: WRITE_OFF })).toBe(dialog);
     expect(declare.disabled).toBe(true);
+  });
+
+  it("starts the write-off reason blank after a Cancel, with Save disabled", async () => {
+    mount();
+    const first = await openModal("Declare unreturnable…", WRITE_OFF);
+    fireEvent.change(within(first).getByLabelText("Attested reason"), {
+      target: { value: "The family could not be reached after three attempts." },
+    });
+    expect(
+      (within(first).getByRole("button", { name: "Declare unreturnable" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+    await modalGone(WRITE_OFF);
+    const second = await openModal("Declare unreturnable…", WRITE_OFF);
+    expect((within(second).getByLabelText("Attested reason") as HTMLTextAreaElement).value).toBe(
+      "",
+    );
+    expect(
+      (within(second).getByRole("button", { name: "Declare unreturnable" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("starts the retriever blank after a Cancel, with Assign disabled", async () => {
+    mount();
+    const first = await open("Assign retriever", "Assign the retrieving staff member");
+    fireEvent.change(within(first).getByLabelText("Retrieving membership id"), {
+      target: { value: "m-okafor" },
+    });
+    fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "Assign the retrieving staff member" }),
+      ).toBeNull(),
+    );
+    const second = await open("Assign retriever", "Assign the retrieving staff member");
+    expect(
+      (within(second).getByLabelText("Retrieving membership id") as HTMLInputElement).value,
+    ).toBe("");
+    expect(
+      (within(second).getByRole("button", { name: "Assign" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("keeps the page mounted through the reload after a write-off, so focus returns to the opener", async () => {
+    const { post, get } = mount();
+    const opener = await screen.findByRole("button", { name: "Declare unreturnable…" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: WRITE_OFF });
+    fireEvent.change(within(dialog).getByLabelText("Attested reason"), {
+      target: { value: "The family could not be reached after three attempts." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Declare unreturnable" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await modalGone(WRITE_OFF);
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(4));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(opener.isConnected).toBe(true);
+    expect(screen.getByRole("button", { name: "Declare unreturnable…" })).toBe(opener);
+    expect(document.activeElement).toBe(opener);
   });
 });

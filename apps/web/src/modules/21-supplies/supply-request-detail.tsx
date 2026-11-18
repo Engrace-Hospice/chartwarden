@@ -31,6 +31,7 @@ import {
   nowLocalInput,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -104,9 +105,17 @@ function toInstant(local: string): string {
   return Number.isNaN(ms) ? new Date().toISOString() : new Date(ms).toISOString();
 }
 
+/** The route's screen. Keyed by the request, so moving to another request (Back / Forward) starts a fresh screen: the
+ *  open step, its typed fields and its stamp never follow the responder onto another record. */
 export function SupplyRequestDetailScreen(): JSX.Element {
-  const client = useApiClient();
   const { supplyRequestId } = useParams<{ supplyRequestId: string }>();
+  return <SupplyRequestBody key={supplyRequestId} supplyRequestId={supplyRequestId} />;
+}
+
+function SupplyRequestBody({
+  supplyRequestId,
+}: { supplyRequestId: string | undefined }): JSX.Element {
+  const client = useApiClient();
   const [request, setRequest] = useState<RequestDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +123,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
   const startRead = useLatestRead();
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
 
   // ceremony fields
   const [vendorId, setVendorId] = useState("");
@@ -156,7 +166,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first read only. A refetch after a write keeps the page mounted, so the opener that launched
+  // the step is still there for the modal to hand focus back to.
+  if (loading && !request) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!request || !supplyRequestId)
     return (
@@ -169,18 +181,32 @@ export function SupplyRequestDetailScreen(): JSX.Element {
   const stamp = request.updatedAt;
   const isKit = KIT_REQUEST_KINDS.includes(request.kind);
 
+  /** Every step's fields back to their start. The steps share fields (the reason, the time) and a modal ceremony is an
+   *  attestation, so nothing typed for one step — or left behind by a Cancel — may reach the next open: a leftover
+   *  reason would arm an attestation the responder did not just write. The delivery / receipt time is a custody
+   *  timestamp, so it starts at the moment the step is opened, never at page load or at an earlier edit. */
+  const resetDrafts = () => {
+    setVendorId("");
+    setFulfillmentMode(DEFAULT_FULFILLMENT_MODE);
+    setPharmacyMode("");
+    setReason("");
+    setOrderReference("");
+    setTracking("");
+    setCarrier("");
+    setDeliveryMethod(DEFAULT_DELIVERY_METHOD);
+    setEvidenceDocumentId("");
+    setWhen(nowLocalInput());
+    setReceiptActor(DEFAULT_RECEIPT_ACTOR);
+  };
+
   const close = () => {
+    resetDrafts();
     setCeremony(null);
     setActionError(null);
   };
 
-  /** Open one step. The drawers share a few fields (the reason, the time), so a reason typed for one step must not
-   *  follow the responder into another when they switch with the drawer already open, and the delivery / receipt
-   *  time — custody timestamps — starts at the moment the step is opened, never at page load or at a time edited
-   *  in the other step. */
   const openCeremony = (next: Exclude<Ceremony, null>) => {
-    setReason("");
-    setWhen(nowLocalInput());
+    resetDrafts();
     setActionError(null);
     setCeremony(next);
   };
@@ -251,7 +277,13 @@ export function SupplyRequestDetailScreen(): JSX.Element {
   return (
     <>
       <div className={`wx-list-drawer${drawerOpen ? " has-drawer" : ""}`}>
-        <div className="wx-list-drawer-main wx-kit-column">
+        <div
+          ref={focusRef}
+          tabIndex={-1}
+          className="wx-list-drawer-main wx-kit-column"
+          aria-busy={loading}
+          style={{ outline: "none" }}
+        >
           <PageHeader
             title={
               <span style={pageTitleStyle}>Supply request {shortId(request.supplyRequestId)}</span>
@@ -559,7 +591,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               <Button
                 tone="primary"
                 type="button"
-                disabled={busy}
+                disabled={busy || loading}
                 onClick={() =>
                   void run(
                     () =>
@@ -626,7 +658,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               <Button
                 tone="primary"
                 type="button"
-                disabled={busy || orderReference.trim() === ""}
+                disabled={busy || loading || orderReference.trim() === ""}
                 onClick={() =>
                   void run(
                     () =>
@@ -663,7 +695,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
               <Button
                 tone="primary"
                 type="button"
-                disabled={busy || tracking.trim() === "" || carrier.trim() === ""}
+                disabled={busy || loading || tracking.trim() === "" || carrier.trim() === ""}
                 onClick={() =>
                   void run(
                     () =>
@@ -695,7 +727,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             <Button
               tone="primary"
               type="button"
-              disabled={busy}
+              disabled={busy || loading}
               onClick={() =>
                 void run(
                   () =>
@@ -746,7 +778,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             <Button
               tone="primary"
               type="button"
-              disabled={busy}
+              disabled={busy || loading}
               onClick={() =>
                 void run(
                   () =>
@@ -789,7 +821,7 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             <Button
               tone="primary"
               type="button"
-              disabled={busy || reason.trim() === ""}
+              disabled={busy || loading || reason.trim() === ""}
               onClick={() =>
                 void run(
                   () =>

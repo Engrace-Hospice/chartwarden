@@ -33,6 +33,7 @@ import {
   StatusPill,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -145,6 +146,7 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
   const { busy, run: runWrite } = useWrite();
   const { busy: inlineBusy, run: runInline } = useWrite();
   const startRead = useLatestRead();
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
 
   const [disposalMethod, setDisposalMethod] = useState(DEFAULT_DISPOSAL_METHOD);
@@ -242,7 +244,7 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
 
   const open = OPEN_RETURN_STATES.includes(ret.state);
   // While a reload is in flight the page still shows the previous read; its version stamp is about to change, so no
-  // stamped write is offered from it.
+  // stamped write is sent from it (the openers stay live, so the modal can hand focus back to the one that launched it).
   const writable = open && !loading;
   const witnessRequired = disposalMethod === WITNESS_REQUIRED_DISPOSAL_METHOD;
   const explanationsPresent = counts.every(
@@ -255,12 +257,22 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
     explanationsPresent &&
     (!witnessRequired || witnessMembershipId.trim() !== "");
 
+  /** Both steps' fields back to their start. The write-off is an irreversible attestation, so nothing typed for it
+   *  (or for the retriever) — or left behind by a Cancel — may reach the next open: a leftover reason would arm the
+   *  "assumption of loss" the responder did not just write. */
+  const resetDrafts = () => {
+    setRetrieverMembershipId("");
+    setUnreturnableReason("");
+  };
+
   const close = () => {
+    resetDrafts();
     setCeremony(null);
     setActionError(null);
   };
 
   const openCeremony = (next: Exclude<Ceremony, null>) => {
+    resetDrafts();
     setActionError(null);
     setCeremony(next);
   };
@@ -328,7 +340,13 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
   return (
     <>
       <div className={`wx-list-drawer${ceremony === "assign-retriever" ? " has-drawer" : ""}`}>
-        <div className="wx-list-drawer-main wx-kit-column">
+        <div
+          ref={focusRef}
+          tabIndex={-1}
+          className="wx-list-drawer-main wx-kit-column"
+          aria-busy={loading}
+          style={{ outline: "none" }}
+        >
           <PageHeader
             title={<span style={pageTitleStyle}>Comfort-kit return {shortId(ret.returnId)}</span>}
             actions={
@@ -656,20 +674,20 @@ function ReturnReconciliation({ returnId }: { returnId: string | undefined }): J
               <Button
                 tone="secondary"
                 type="button"
-                disabled={!writable}
+                disabled={!open}
                 title={open ? undefined : "This return has reached a terminal state."}
-                aria-disabled={!writable}
-                onClick={writable ? () => openCeremony("assign-retriever") : undefined}
+                aria-disabled={!open}
+                onClick={open ? () => openCeremony("assign-retriever") : undefined}
               >
                 Assign retriever
               </Button>
               <Button
                 tone="secondary"
                 type="button"
-                disabled={!writable}
+                disabled={!open}
                 title={open ? undefined : "This return has reached a terminal state."}
-                aria-disabled={!writable}
-                onClick={writable ? () => openCeremony("unreturnable") : undefined}
+                aria-disabled={!open}
+                onClick={open ? () => openCeremony("unreturnable") : undefined}
               >
                 {/* The ellipsis marks the opener: the open drawer's save button carries the plain name. */}
                 Declare unreturnable…

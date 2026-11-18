@@ -23,6 +23,7 @@ import {
   nowLocalInput,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -70,9 +71,15 @@ function toInstant(local: string): string {
   return Number.isNaN(ms) ? new Date().toISOString() : new Date(ms).toISOString();
 }
 
+/** The route's screen. Keyed by the dispatch, so moving to another dispatch (Back / Forward) starts a fresh screen: the
+ *  open step, its typed fields and its stamp never follow the responder onto another record. */
 export function ComfortKitDispatchDetail(): JSX.Element {
-  const client = useApiClient();
   const { dispatchId } = useParams<{ dispatchId: string }>();
+  return <DispatchBody key={dispatchId} dispatchId={dispatchId} />;
+}
+
+function DispatchBody({ dispatchId }: { dispatchId: string | undefined }): JSX.Element {
+  const client = useApiClient();
   const [dispatch, setDispatch] = useState<Dispatch | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +87,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null);
   const { busy, run: runWrite } = useWrite();
   const startRead = useLatestRead();
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [when, setWhen] = useState(nowLocalInput);
   const [returnReason, setReturnReason] = useState("");
 
@@ -111,7 +119,9 @@ export function ComfortKitDispatchDetail(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first read only. A refetch after a write keeps the page mounted, so the opener that launched
+  // the step is still there for the modal to hand focus back to.
+  if (loading && !dispatch) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!dispatch || !dispatchId)
     return (
@@ -125,15 +135,22 @@ export function ComfortKitDispatchDetail(): JSX.Element {
   const canReturn = ["deployed_at_patient", "partially_returned"].includes(dispatch.dispatchStatus);
   const controlled = dispatch.contents.filter((c) => c.isControlledSubstance);
 
+  /** Both steps' fields back to their start. A step is an attestation, so nothing typed for it — or left behind by a
+   *  Cancel — may reach the next open: a leftover return reason would arm a write the responder did not just
+   *  write. The deployment time is a custody timestamp, so it starts at the moment the step is opened. */
+  const resetDrafts = () => {
+    setWhen(nowLocalInput());
+    setReturnReason("");
+  };
+
   const close = () => {
+    resetDrafts();
     setCeremony(null);
     setActionError(null);
   };
 
-  /** Open a step. The deployment time is a custody timestamp, so it starts at the moment the modal is opened,
-   *  never at page load or at a time edited in an earlier open. */
   const openCeremony = (next: Exclude<Ceremony, null>) => {
-    setWhen(nowLocalInput());
+    resetDrafts();
     setActionError(null);
     setCeremony(next);
   };
@@ -166,7 +183,13 @@ export function ComfortKitDispatchDetail(): JSX.Element {
   ].filter((e): e is { label: string; at: string; by: string } => e !== null);
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      className="wx-kit-column"
+      aria-busy={loading}
+      style={{ ...columnStyle, outline: "none" }}
+    >
       <PageHeader
         title={<span style={pageTitleStyle}>Comfort kit {dispatch.kitSerialNumber}</span>}
         actions={
@@ -351,7 +374,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             <Button
               tone="primary"
               type="button"
-              disabled={busy}
+              disabled={busy || loading}
               onClick={() =>
                 void run(
                   () =>
@@ -383,7 +406,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             <Button
               tone="primary"
               type="button"
-              disabled={busy || returnReason.trim() === ""}
+              disabled={busy || loading || returnReason.trim() === ""}
               onClick={() =>
                 void run(
                   () => createReturn(client, { dispatchId, returnReason: returnReason.trim() }),

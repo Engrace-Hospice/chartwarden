@@ -82,14 +82,13 @@ function mount(
   onPost: () => Promise<unknown> = async () => ok({}),
   onGet: (requestId: string | undefined) => Promise<unknown> = async () =>
     ok(requestIn(status, kind)),
-): { post: ReturnType<typeof vi.fn> } {
+): { post: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> } {
   const post = vi.fn(onPost);
-  const client = {
-    GET: vi.fn(async (_path: string, init?: { params?: { path?: { supplyRequestId?: string } } }) =>
+  const get = vi.fn(
+    async (_path: string, init?: { params?: { path?: { supplyRequestId?: string } } }) =>
       onGet(init?.params?.path?.supplyRequestId),
-    ),
-    POST: post,
-  } as unknown as ApiClient;
+  );
+  const client = { GET: get, POST: post } as unknown as ApiClient;
   render(
     <MemoryRouter initialEntries={["/supplies/requests/r-1"]}>
       <Link to="/supplies/requests/r-2">Next request</Link>
@@ -103,7 +102,7 @@ function mount(
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { post };
+  return { post, get };
 }
 
 const open = async (button: string, drawerName: string): Promise<HTMLElement> => {
@@ -116,6 +115,10 @@ const openModal = async (button: string, name: string): Promise<HTMLElement> => 
 };
 const modalGone = (name: string) =>
   waitFor(() => expect(screen.queryByRole("dialog", { name })).toBeNull());
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 const posted = (post: ReturnType<typeof vi.fn>, call = 0) =>
   post.mock.calls[call] as unknown as [
     string,
@@ -498,7 +501,7 @@ describe("supply request — lifecycle steps", () => {
     async (_name, m) => {
       const { post } = mount(m.status, m.kind);
       const dialog = await openModal(m.opener, m.name);
-      fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
       expect(screen.getByRole("dialog", { name: m.name })).toBe(dialog);
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
       await modalGone(m.name);
@@ -526,7 +529,7 @@ describe("supply request — lifecycle steps", () => {
         (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
       ).toBe(true);
       fireEvent.keyDown(dialog, { key: "Escape" });
-      fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
       expect(screen.getByRole("dialog", { name: m.name })).toBe(dialog);
       release();
       await modalGone(m.name);
@@ -552,4 +555,151 @@ describe("supply request — lifecycle steps", () => {
       expect(screen.queryByRole("complementary")).toBeNull();
     },
   );
+
+  // Every step's fields start blank on every open: nothing typed or chosen for a step, or left behind by a Cancel,
+  // reaches the next open (a leftover reason would arm an attestation the responder did not just write).
+  const cancelAndReopen = async (
+    opener: string,
+    name: string,
+    surface: "drawer" | "modal",
+  ): Promise<HTMLElement> => {
+    const role = surface === "modal" ? "dialog" : "complementary";
+    fireEvent.click(
+      within(screen.getByRole(role, { name })).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(screen.queryByRole(role, { name })).toBeNull());
+    return surface === "modal" ? openModal(opener, name) : open(opener, name);
+  };
+  const select = (surface: HTMLElement, label: string | RegExp) =>
+    within(surface).getByLabelText(label) as HTMLSelectElement;
+  const field = (surface: HTMLElement, label: string | RegExp) =>
+    within(surface).getByLabelText(label) as HTMLInputElement;
+  const saveOf = (surface: HTMLElement, name: string) =>
+    within(surface).getByRole("button", { name }) as HTMLButtonElement;
+
+  it("starts the vendor assignment blank after a Cancel", async () => {
+    mount("requested");
+    const first = await open("Assign / override vendor", "Assign or override the vendor");
+    fireEvent.change(field(first, /^Vendor id/), { target: { value: "vendor-9" } });
+    fireEvent.change(select(first, "Fulfillment mode"), {
+      target: { value: "partner_pharmacy" },
+    });
+    const pharmacy = select(first, /^Pharmacy dispatch mode/);
+    fireEvent.change(pharmacy, { target: { value: pharmacy.options[1]?.value ?? "" } });
+    fireEvent.change(within(first).getByLabelText("Override reason"), {
+      target: { value: "Vendor of record is closed this week." },
+    });
+    const second = await cancelAndReopen(
+      "Assign / override vendor",
+      "Assign or override the vendor",
+      "drawer",
+    );
+    expect(field(second, /^Vendor id/).value).toBe("");
+    expect(select(second, "Fulfillment mode").value).toBe("vendor");
+    expect(select(second, /^Pharmacy dispatch mode/).value).toBe("");
+    expect((within(second).getByLabelText("Override reason") as HTMLTextAreaElement).value).toBe(
+      "",
+    );
+  });
+
+  it("starts the order record blank after a Cancel, with Save disabled", async () => {
+    mount("vendor_assigned");
+    const first = await open("Mark ordered…", "Record the vendor's acceptance");
+    fireEvent.change(field(first, "Vendor order reference"), { target: { value: "PO-2291" } });
+    expect(saveOf(first, "Mark ordered").disabled).toBe(false);
+    const second = await cancelAndReopen(
+      "Mark ordered…",
+      "Record the vendor's acceptance",
+      "drawer",
+    );
+    expect(field(second, "Vendor order reference").value).toBe("");
+    expect(saveOf(second, "Mark ordered").disabled).toBe(true);
+  });
+
+  it("starts the shipment record blank after a Cancel, with Save disabled", async () => {
+    mount("ordered");
+    const first = await open("Mark in transit…", "Record the shipment");
+    fireEvent.change(field(first, "Carrier"), { target: { value: "Northwind" } });
+    fireEvent.change(field(first, "Tracking number"), { target: { value: "TRK-0042" } });
+    expect(saveOf(first, "Mark in transit").disabled).toBe(false);
+    const second = await cancelAndReopen("Mark in transit…", "Record the shipment", "drawer");
+    expect(field(second, "Carrier").value).toBe("");
+    expect(field(second, "Tracking number").value).toBe("");
+    expect(saveOf(second, "Mark in transit").disabled).toBe(true);
+  });
+
+  it("starts the delivery attestation blank after a Cancel", async () => {
+    mount("in_transit");
+    const first = await openModal("Record delivery", "Attest delivery");
+    fireEvent.change(select(first, "Delivery method"), { target: { value: "patient_pickup" } });
+    fireEvent.change(field(first, /^Evidence document id/), { target: { value: "doc-77" } });
+    const second = await cancelAndReopen("Record delivery", "Attest delivery", "modal");
+    expect(select(second, "Delivery method").value).toBe("agency_courier");
+    expect(field(second, /^Evidence document id/).value).toBe("");
+  });
+
+  it("starts the receipt confirmation blank after a Cancel", async () => {
+    mount("delivered");
+    const first = await openModal("Confirm receipt…", "Confirm receipt");
+    fireEvent.change(select(first, "Confirmed by"), { target: { value: "supply_team" } });
+    const second = await cancelAndReopen("Confirm receipt…", "Confirm receipt", "modal");
+    expect(select(second, "Confirmed by").value).toBe("caregiver");
+  });
+
+  it.each([
+    ["requested", "supply", "Cancel this request…", "Cancel this request", "Cancel request"],
+    [
+      "delivered",
+      "comfort_kit_deploy",
+      "Initiate kit return",
+      "Initiate the kit return",
+      "Initiate return",
+    ],
+  ] as const)(
+    "starts the %s reason blank after a Cancel, with Save disabled",
+    async (status, kind, opener, name, save) => {
+      mount(status, kind);
+      const first = await openModal(opener, name);
+      fireEvent.change(within(first).getByLabelText("Reason"), {
+        target: { value: "The family declined the equipment." },
+      });
+      expect(saveOf(first, save).disabled).toBe(false);
+      const second = await cancelAndReopen(opener, name, "modal");
+      expect((within(second).getByLabelText("Reason") as HTMLTextAreaElement).value).toBe("");
+      expect(saveOf(second, save).disabled).toBe(true);
+    },
+  );
+
+  it("closes the open step and clears its drafts when the route moves to another request", async () => {
+    mount("requested");
+    const dialog = await openModal("Cancel this request…", "Cancel this request");
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "The family declined the equipment." },
+    });
+    fireEvent.click(screen.getByRole("link", { name: "Next request" }));
+    // The first request's modal does not reappear on the next one, with the next one's stamp and the first one's text.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const next = await openModal("Cancel this request…", "Cancel this request");
+    expect((within(next).getByLabelText("Reason") as HTMLTextAreaElement).value).toBe("");
+    expect(saveOf(next, "Cancel request").disabled).toBe(true);
+  });
+
+  it("keeps the page mounted through the refetch after a write, so focus returns to the opener", async () => {
+    const { post, get } = mount("requested");
+    const opener = await screen.findByRole("button", { name: "Cancel this request…" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "Cancel this request" });
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "The family declined the equipment." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel request" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await modalGone("Cancel this request");
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    await settle();
+    expect(opener.isConnected).toBe(true);
+    expect(screen.getByRole("button", { name: "Cancel this request…" })).toBe(opener);
+    expect(document.activeElement).toBe(opener);
+  });
 });

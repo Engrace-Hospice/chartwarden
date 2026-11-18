@@ -53,14 +53,12 @@ function mount(
   status: DispatchDetail["dispatchStatus"],
   onPost: () => Promise<unknown> = async () => ok({}),
   onGet: (dispatchId: string | undefined) => Promise<unknown> = async () => ok(dispatchIn(status)),
-): { post: ReturnType<typeof vi.fn> } {
+): { post: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> } {
   const post = vi.fn(onPost);
-  const client = {
-    GET: vi.fn(async (_path: string, init?: { params?: { path?: { dispatchId?: string } } }) =>
-      onGet(init?.params?.path?.dispatchId),
-    ),
-    POST: post,
-  } as unknown as ApiClient;
+  const get = vi.fn(async (_path: string, init?: { params?: { path?: { dispatchId?: string } } }) =>
+    onGet(init?.params?.path?.dispatchId),
+  );
+  const client = { GET: get, POST: post } as unknown as ApiClient;
   render(
     <MemoryRouter initialEntries={["/supplies/dispatches/d-1"]}>
       <Link to="/supplies/dispatches/d-2">Next dispatch</Link>
@@ -71,7 +69,7 @@ function mount(
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { post };
+  return { post, get };
 }
 
 const open = async (button: string, dialogName: string): Promise<HTMLElement> => {
@@ -105,9 +103,7 @@ describe("comfort-kit dispatch — deploy and return", () => {
     async (status, opener, name) => {
       const { post } = mount(status);
       const dialog = await open(opener, name);
-      const scrim = document.querySelector(".wx-modal-scrim");
-      expect(scrim).toBeTruthy();
-      fireEvent.click(scrim as Element);
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
       expect(screen.getByRole("dialog", { name })).toBe(dialog);
       expect(post).not.toHaveBeenCalled();
     },
@@ -192,7 +188,7 @@ describe("comfort-kit dispatch — deploy and return", () => {
         (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
       ).toBe(true);
       fireEvent.keyDown(dialog, { key: "Escape" });
-      fireEvent.click(document.querySelector(".wx-modal-scrim") as Element);
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
       expect(screen.getByRole("dialog", { name })).toBe(dialog);
       release();
       await gone(name);
@@ -260,5 +256,57 @@ describe("comfort-kit dispatch — deploy and return", () => {
     });
     expect(screen.queryByText("Comfort kit KIT-0001")).toBeNull();
     expect(screen.getByText("Comfort kit KIT-0002")).toBeTruthy();
+  });
+
+  it("starts the return reason blank after a Cancel, with Open return disabled", async () => {
+    mount("deployed_at_patient");
+    const first = await open("Initiate return", "Open the return obligation");
+    fireEvent.change(within(first).getByLabelText("Return reason"), {
+      target: { value: "Patient discharged; kit no longer needed." },
+    });
+    expect(
+      (within(first).getByRole("button", { name: "Open return" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+    await gone("Open the return obligation");
+    const second = await open("Initiate return", "Open the return obligation");
+    expect((within(second).getByLabelText("Return reason") as HTMLTextAreaElement).value).toBe("");
+    expect(
+      (within(second).getByRole("button", { name: "Open return" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("closes the open step and clears its drafts when the route moves to another dispatch", async () => {
+    mount("deployed_at_patient");
+    const dialog = await open("Initiate return", "Open the return obligation");
+    fireEvent.change(within(dialog).getByLabelText("Return reason"), {
+      target: { value: "Patient discharged; kit no longer needed." },
+    });
+    fireEvent.click(screen.getByRole("link", { name: "Next dispatch" }));
+    // The first dispatch's modal does not reappear on the next one, with the next one's stamp and the first one's text.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const next = await open("Initiate return", "Open the return obligation");
+    expect((within(next).getByLabelText("Return reason") as HTMLTextAreaElement).value).toBe("");
+    expect(
+      (within(next).getByRole("button", { name: "Open return" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("keeps the page mounted through the refetch after a write, so focus returns to the opener", async () => {
+    const { post, get } = mount("dispatched");
+    const opener = await screen.findByRole("button", { name: "Mark deployed at patient" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "Mark deployed at patient" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark deployed" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await gone("Mark deployed at patient");
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(opener.isConnected).toBe(true);
+    expect(screen.getByRole("button", { name: "Mark deployed at patient" })).toBe(opener);
+    expect(document.activeElement).toBe(opener);
   });
 });
