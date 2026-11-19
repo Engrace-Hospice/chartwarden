@@ -38,3 +38,24 @@ export function visitAsOf(input: VisitAsOfInput): string {
   const dayEnd = endOfLocalDay(input.serviceDate, input.orgTimeZone);
   return new Date(Math.min(dayEnd.getTime(), input.now.getTime())).toISOString();
 }
+
+export interface PreviousVisitAsOfInput extends VisitAsOfInput {
+  /** When the previous visit's note was signed (`encounter.signed_at`); `null` when it carries none. */
+  readonly signedAt: Date | null;
+}
+
+/**
+ * The instant a PREVIOUS visit's note described the patient at: its visit time, and never later than its signing. The note's own
+ * draft was computed at sign time (capped at the end of its service date), so a change made after that signing but before
+ * midnight is in neither note unless the next window starts at the signing. A note signed after its service date ended (a late
+ * entry) keeps the end of that date; one with no signing instant falls back to it too.
+ */
+export function previousVisitAsOf(input: PreviousVisitAsOfInput): string {
+  const visitMs = Date.parse(visitAsOf(input));
+  if (input.signedAt === null) return new Date(visitMs).toISOString();
+  const signedMs = input.signedAt.getTime();
+  if (Number.isNaN(signedMs)) {
+    throw new RangeError("previousVisitAsOf: signedAt is not a valid instant");
+  }
+  return new Date(Math.min(visitMs, signedMs)).toISOString();
+}

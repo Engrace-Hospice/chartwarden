@@ -1,7 +1,7 @@
 // S1 PR C2a — `visitAsOf` (VN-D11, design §3.2): the instant a visit note describes the patient at.
 // The rule: the earlier of `now` and the last millisecond of the service date in the organization's zone.
 import { describe, expect, it } from "vitest";
-import { visitAsOf } from "../src/modules/08-encounters/drafting/visit-time";
+import { previousVisitAsOf, visitAsOf } from "../src/modules/08-encounters/drafting/visit-time";
 
 const NEW_YORK = "America/New_York";
 const base = {
@@ -79,5 +79,33 @@ describe("visitAsOf", () => {
 
   it("rejects an invalid instant", () => {
     expect(() => visitAsOf({ ...base, now: new Date("nope") })).toThrow(RangeError);
+  });
+});
+
+describe("previousVisitAsOf", () => {
+  // The previous note's own draft was computed at sign time, capped at the end of its service date; a change made after
+  // that signing but before midnight is in neither note unless the next window starts at the signing.
+  it("is the signing instant when the note was signed before its service date ended", () => {
+    const signedAt = new Date("2026-11-10T20:00:00.000Z"); // 15:00 EST on Nov 10; the day ends at 23:59:59.999 EST
+    expect(previousVisitAsOf({ ...base, signedAt })).toBe("2026-11-10T20:00:00.000Z");
+  });
+
+  it("is the end of the service date when the note was signed after it (a late entry)", () => {
+    const signedAt = new Date("2026-11-12T15:00:00.000Z");
+    expect(previousVisitAsOf({ ...base, signedAt })).toBe("2026-11-11T04:59:59.999Z");
+  });
+
+  it("is the end of the service date when the signing instant is unknown", () => {
+    expect(previousVisitAsOf({ ...base, signedAt: null })).toBe("2026-11-11T04:59:59.999Z");
+  });
+
+  it("is never later than now", () => {
+    const now = new Date("2026-11-10T18:00:00.000Z");
+    const signedAt = new Date("2026-11-10T20:00:00.000Z");
+    expect(previousVisitAsOf({ ...base, now, signedAt })).toBe("2026-11-10T18:00:00.000Z");
+  });
+
+  it("rejects an invalid signing instant", () => {
+    expect(() => previousVisitAsOf({ ...base, signedAt: new Date("nope") })).toThrow(RangeError);
   });
 });

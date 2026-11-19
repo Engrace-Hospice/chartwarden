@@ -11,7 +11,7 @@ import { carePlanElementsOf } from "./care-plan-refs";
 import { readConfirmations, upsertConfirmation } from "./confirmations";
 import type { DraftStore } from "./draft-store";
 import type { DraftEncounter } from "./ports";
-import { visitAsOf } from "./visit-time";
+import { previousVisitAsOf } from "./visit-time";
 import { vitalsDraftInput } from "./vitals-input";
 
 const E = schema.encounters;
@@ -29,8 +29,9 @@ export interface DbDraftStoreDeps {
 }
 
 /**
- * The patient's most recent SIGNED encounter on an EARLIER service date (all seventeen encounter types are visit types), as that
- * encounter's own visit time. Same-day signed encounters are not "earlier", and a later-signed one wins a tie on the date.
+ * The patient's most recent SIGNED encounter on an EARLIER service date (all seventeen encounter types are visit types), as the instant
+ * that encounter's own note described the patient at (`previousVisitAsOf`: its visit time, never later than its signing). Same-day
+ * signed encounters are not "earlier", and a later-signed one wins a tie on the date.
  */
 async function previousSignedVisitAt(
   tx: DbClient,
@@ -38,7 +39,7 @@ async function previousSignedVisitAt(
   now: Date,
 ): Promise<Date | null> {
   const [previous] = await tx
-    .select({ serviceDate: E.serviceDate })
+    .select({ serviceDate: E.serviceDate, signedAt: E.signedAt })
     .from(E)
     .where(
       and(
@@ -52,7 +53,14 @@ async function previousSignedVisitAt(
     .limit(1);
   if (previous === undefined) return null;
   const orgTimeZone = await organizationTimezone(tx, encounter.organizationId);
-  return new Date(visitAsOf({ serviceDate: previous.serviceDate, orgTimeZone, now }));
+  return new Date(
+    previousVisitAsOf({
+      serviceDate: previous.serviceDate,
+      orgTimeZone,
+      now,
+      signedAt: previous.signedAt,
+    }),
+  );
 }
 
 async function latestVitals(tx: DbClient, encounterId: string, asOf: string) {

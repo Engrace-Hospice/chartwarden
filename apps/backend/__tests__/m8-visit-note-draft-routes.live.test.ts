@@ -166,7 +166,13 @@ describe.skipIf(!DB_URL)(
 
     async function seedEncounter(
       org: OrgFixture,
-      over: { status?: string; serviceDate?: string; patientId?: string; type?: string } = {},
+      over: {
+        status?: string;
+        serviceDate?: string;
+        patientId?: string;
+        type?: string;
+        signedAt?: string;
+      } = {},
     ): Promise<EncounterFixture> {
       const patientId = over.patientId ?? randomUUID();
       const status = over.status ?? "draft";
@@ -187,7 +193,7 @@ describe.skipIf(!DB_URL)(
           over.serviceDate ?? SERVICE_DATE,
           status,
           status === "draft" ? null : randomUUID(),
-          signed ? "2026-01-20T15:00:00Z" : null,
+          signed ? (over.signedAt ?? "2026-01-20T15:00:00Z") : null,
           voided ? "2026-01-21T15:00:00Z" : null,
           voided ? org.author.membershipId : null,
           voided
@@ -532,6 +538,21 @@ describe.skipIf(!DB_URL)(
         expect((await storeIn(orgs.A, (s) => s.previousSignedVisitAt(enc)))?.toISOString()).toBe(
           PREVIOUS_VISIT_AT,
         );
+      });
+
+      it("previousSignedVisitAt: a visit signed before its service date ended is previous as of its signing, so a change made after it is in the next window", async () => {
+        const current = await seedEncounter(orgs.A);
+        await seedEncounter(orgs.A, {
+          status: "signed",
+          serviceDate: PREVIOUS_DATE,
+          patientId: current.patientId,
+          signedAt: "2026-01-08T20:00:00Z", // 15:00 EST on the service date; its day ends at 04:59:59.999Z on the 9th
+        });
+        expect(
+          (
+            await storeIn(orgs.A, (s) => s.previousSignedVisitAt(draftEncounter(orgs.A, current)))
+          )?.toISOString(),
+        ).toBe("2026-01-08T20:00:00.000Z");
       });
 
       it("previousSignedVisitAt never reads another tenant's encounters", async () => {
