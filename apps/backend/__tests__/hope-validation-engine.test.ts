@@ -413,6 +413,23 @@ describe("HOPE v1.00.1 validation engine", () => {
       ).toEqual(["F"]);
     });
 
+    it("documents a Section by one answered item while an unanswered sibling still raises the item-level finding", () => {
+      const context = sectionsContext({
+        rfaKind: "01_admission",
+        isc: "HA",
+        items: [...SPEC_ITEMS, "F0002"],
+        answered: SPEC_ITEMS,
+      });
+      const findings = validationEngine.evaluate(context);
+
+      expect(missingSections(context)).toEqual([]);
+      expect(
+        findings
+          .filter((finding) => finding.ruleId === "CMS-HOPE-REQUIRED")
+          .map((finding) => finding.itemCode),
+      ).toEqual(["F0002"]);
+    });
+
     it("counts a Section as documented when every one of its items is skipped", () => {
       const withoutF = SPEC_ITEMS.filter((itemCode) => !itemCode.startsWith("F"));
       expect(
