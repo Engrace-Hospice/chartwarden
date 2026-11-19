@@ -15,12 +15,33 @@ export function draftUnavailable(read: string, cause?: unknown): EncounterStateE
   );
 }
 
-/** Run one read; any failure, synchronous or not, becomes `DRAFT_UNAVAILABLE` naming the read. Never swallowed. */
+/**
+ * How long one source read may take before the draft is unavailable. A read inside the sign transaction that never answers would hold that
+ * transaction (and its row lock) open, so every read is bounded; the bound is generous for an in-process seam and short enough that a hung
+ * one fails the request instead of the connection pool.
+ */
+export const DRAFT_SOURCE_READ_TIMEOUT_MS = 5_000;
+
+/**
+ * Run one read; any failure, synchronous or not, and any read that does not answer within `DRAFT_SOURCE_READ_TIMEOUT_MS`, becomes
+ * `DRAFT_UNAVAILABLE` naming the read. Never swallowed, never retried: a read that gave up is not a pass. The abandoned read is not
+ * cancelled (a seam has no cancel); its late answer is ignored.
+ */
 export async function guarded<T>(read: string, run: () => Promise<T> | T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(draftUnavailable(`${read} (no answer within ${DRAFT_SOURCE_READ_TIMEOUT_MS} ms)`)),
+      DRAFT_SOURCE_READ_TIMEOUT_MS,
+    );
+  });
   try {
-    return await run();
+    return await Promise.race([Promise.resolve().then(run), deadline]);
   } catch (cause) {
     if (cause instanceof EncounterStateError && cause.code === "DRAFT_UNAVAILABLE") throw cause;
     throw draftUnavailable(read, cause);
+  } finally {
+    clearTimeout(timer);
   }
 }
