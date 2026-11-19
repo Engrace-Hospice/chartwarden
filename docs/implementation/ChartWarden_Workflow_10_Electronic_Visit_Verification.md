@@ -286,8 +286,9 @@ delivery, vendor response, and payer claim outcome. No credential endpoint, vend
 behavior, schema, policy, or new PHI storage was added.
 
 Focused DOM behavior and injected-route contract tests pass. OpenAPI and the generated client are in
-sync. Tenant-isolation and worker/live proof remain release-gate work; this local slice does not claim a
-real vendor transmission or configuration-health check.
+sync. The owner-run private-PostgreSQL M18 read/RLS, write, worker, and DEK-rotation suites also pass.
+The new aggregator list projection still needs a live route-level cross-tenant/read-audit journey; this
+slice does not claim a real vendor transmission or configuration-health check.
 
 ### PR-4/PR-5 cross-repository audit note — 2026-11-19
 
