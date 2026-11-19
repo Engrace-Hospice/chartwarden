@@ -36,7 +36,7 @@ export function ComposerDraftStrip({
   // The strip takes no room when nothing is drafted, except while it holds what a retry just said (and the focus that retry left behind).
   if (!unavailable && !pending && said === "") return null;
   return (
-    <DraftStrip retry={{ anchor, said }}>
+    <DraftStrip retry={{ anchor, said: unavailable ? "" : said }}>
       {unavailable ? <DraftUnavailable retrying={noteDraft.refreshing} onRetry={retry} /> : null}
       {pending ? (
         <DraftSummary

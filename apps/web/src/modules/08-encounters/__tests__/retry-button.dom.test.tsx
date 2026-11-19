@@ -2,7 +2,7 @@
 // The retry beside a failed read keeps keyboard focus while the read is out, and says so in a status region that was already on the page
 // (S1 React review): a button that turns `disabled` on press drops focus to the page, and a region mounted with its text is not announced.
 // Synthetic data only.
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -98,8 +98,10 @@ describe("the retry of an amendment's review", () => {
         ],
       },
     };
+    let failAgain: () => void = () => undefined;
     function Host() {
       const [load, setLoad] = useState<DraftLoad>({ status: "unavailable" });
+      failAgain = () => setLoad({ status: "unavailable" });
       const draft: NoteDraft = {
         load,
         busySectionId: null,
@@ -133,6 +135,9 @@ describe("the retry of an amendment's review", () => {
     await waitFor(() => expect(region).toHaveFocus());
     expect(status).toBeInTheDocument();
     expect(status).toHaveTextContent(/The amended sections loaded/);
+    // A later read fails: what the last retry said must not sit beside the new failure.
+    act(() => failAgain());
+    expect(status).toBeEmptyDOMElement();
   });
 
   it("leaves focus alone when the retry is answered with a draft that still cannot be read", async () => {

@@ -138,7 +138,10 @@ export function NoteRow({
         />
         {/* Always on the page while a retry is in play, and filled in, so the outcome is announced (a region mounted with its text is not). */}
         {summary.kind === "unavailable" || phase !== "idle" ? (
-          <output className="wx-row-sub">{RETRY_WORDS[phase]}</output>
+          // "Read again" is stale once the note cannot be shown again.
+          <output className="wx-row-sub">
+            {summary.kind === "unavailable" && phase === "read" ? "" : RETRY_WORDS[phase]}
+          </output>
         ) : null}
       </td>
     </tr>

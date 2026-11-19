@@ -104,7 +104,8 @@ export function AmendmentReview({
       tabIndex={-1}
     >
       {body}
-      <output className="wx-row-sub">{said}</output>
+      {/* What a retry said is stale once the sections cannot be read again. */}
+      <output className="wx-row-sub">{load.status === "unavailable" ? "" : said}</output>
     </section>
   );
 }
