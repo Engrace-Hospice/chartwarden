@@ -633,6 +633,33 @@ describe("#91 — vitals capture", () => {
   });
 });
 
+describe("vitals recorded while the note is being signed", () => {
+  // A capture racing a sign either lands before the note is sealed or is refused 409 IMMUTABLE_AFTER_SIGN; the server's text is not shown.
+  it("say, in the app's words, that the note was signed and nothing was saved, with the next step", async () => {
+    writeFailure = {
+      status: 409,
+      body: {
+        error: {
+          code: "IMMUTABLE_AFTER_SIGN",
+          message: "encounter is 'signed'; edits are only permitted via an addendum",
+        },
+      },
+    };
+    writeFailurePath = "/vitals";
+    mountCompose();
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Vitals" })));
+    fireEvent.change(await waitFor(() => screen.getByLabelText(/BP systolic/i)), {
+      target: { value: "118" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record vitals" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/signed while you were working/);
+    expect(alert.textContent).toMatch(/not saved/);
+    expect(alert.textContent).toMatch(/Reload/);
+    expect(alert.textContent).not.toMatch(/edits are only permitted/);
+  });
+});
+
 describe("#91 — My notes (was My Drafts) leads somewhere a draft can be finished", () => {
   it("a draft row opens the COMPOSER, not the read screen", async () => {
     mount("/work/drafts", <MyDrafts />, "/work/drafts");

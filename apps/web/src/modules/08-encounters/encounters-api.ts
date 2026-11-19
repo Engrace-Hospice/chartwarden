@@ -31,6 +31,7 @@
 //   • §2.2 the encounter lifecycle, and the late-entry tier the service date implies.
 import { ENCOUNTER_DISCIPLINE_RULES } from "@chartwarden/types";
 import type { ApiClient, operations } from "@chartwarden/ui";
+import { IMMUTABLE_AFTER_SIGN_CODE, SIGNED_WHILE_WORKING_MESSAGE } from "./read-errors";
 
 // ── schema-derived type extraction (the four helpers every module's api layer uses) ─────────────────────
 
@@ -153,20 +154,22 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
   const message =
     code === "VOCAB_VERSION_MISMATCH"
       ? "The clinical vocabulary was updated while this note was open. Reload it before saving again — the wording of an already-selected phrase may have changed."
-      : code === "UNKNOWN_TEMPLATE_SECTION" || code === "UNKNOWN_VOCAB_CODE"
-        ? (detail ??
-          "This note referenced something its template does not contain. Reload and try again.")
-        : code === "STALE_VERSION"
-          ? "Someone else saved this note after you opened it. Reload to pick up their changes — saving now would discard them."
-          : httpStatus === 403
-            ? (detail ?? "Your role is not permitted to author on this encounter.")
-            : httpStatus === 409
-              ? (detail ?? "This encounter changed before your action was applied.")
-              : httpStatus === 404
-                ? "That encounter is no longer available to you."
-                : httpStatus === 422
-                  ? (detail ?? "The server rejected the details supplied.")
-                  : (detail ?? "The action could not be completed.");
+      : code === IMMUTABLE_AFTER_SIGN_CODE
+        ? SIGNED_WHILE_WORKING_MESSAGE
+        : code === "UNKNOWN_TEMPLATE_SECTION" || code === "UNKNOWN_VOCAB_CODE"
+          ? (detail ??
+            "This note referenced something its template does not contain. Reload and try again.")
+          : code === "STALE_VERSION"
+            ? "Someone else saved this note after you opened it. Reload to pick up their changes — saving now would discard them."
+            : httpStatus === 403
+              ? (detail ?? "Your role is not permitted to author on this encounter.")
+              : httpStatus === 409
+                ? (detail ?? "This encounter changed before your action was applied.")
+                : httpStatus === 404
+                  ? "That encounter is no longer available to you."
+                  : httpStatus === 422
+                    ? (detail ?? "The server rejected the details supplied.")
+                    : (detail ?? "The action could not be completed.");
   return { ok: false, status: httpStatus, code, message, details: err?.details };
 }
 

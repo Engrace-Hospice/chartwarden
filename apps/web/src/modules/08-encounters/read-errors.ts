@@ -1,6 +1,13 @@
 // apps/web/src/modules/08-encounters — reading an API error body for the encounter record's forms: the message to show, and the
 // per-field messages of a validation refusal. Pure; moved out of encounter-read.tsx unchanged so that file does not grow.
 
+/** The refusal of a write to a note that has been signed: a vitals capture or edit that raced the sign lands here (the server holds the row lock). */
+export const IMMUTABLE_AFTER_SIGN_CODE = "IMMUTABLE_AFTER_SIGN";
+
+/** The app's sentence for it, keyed on the code (the server's text names the status and the addendum route, which is no next step here). */
+export const SIGNED_WHILE_WORKING_MESSAGE =
+  "This note was signed while you were working, so your change was not saved. Reload the page to see the signed note; to add to it, open an addendum.";
+
 export function errorMessage(error: unknown, fallback: string): string {
   const body = error as {
     message?: string;
@@ -15,6 +22,9 @@ export function errorMessage(error: unknown, fallback: string): string {
     };
   } | null;
 
+  if ((body?.error?.code ?? body?.code) === IMMUTABLE_AFTER_SIGN_CODE) {
+    return SIGNED_WHILE_WORKING_MESSAGE;
+  }
   if (body?.detail) return body.detail;
   if (body?.message) return body.message;
   if (body?.title) return body.title;
