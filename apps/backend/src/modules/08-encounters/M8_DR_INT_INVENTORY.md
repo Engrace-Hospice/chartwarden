@@ -43,10 +43,27 @@ degradation must not block patient-care documentation or visit signing.
   documents an EVV-missing reason (route 10, D9 fallback) — the EVV bracket seam is an inert forward-seam
   in Phase 1 (deny-stub), so signing proceeds regardless.
 
+### Connections held while a source is asked (ADR-0114, S3): limit recorded
+
+The pool is 10 connections with a 10 s acquire timeout (`packages/db/src/client.ts`), and every seam the draft reads (M7, M9, M12, M39, and the tenant
+DEK of a sealed narrative) opens a pooled transaction of its own. A request that held its own connection across those reads could therefore
+deadlock the pool: ten concurrent ones would hold ten connections and each wait for an eleventh.
+
+- **The reads hold none.** `GET /encounters/:id/draft` and the amendment draft read the encounter and every store read in one short transaction that
+  CLOSES, ask the sources with no connection held, then read the confirmations in a second short transaction. `GET /encounters/:id` reads its rows in a
+  transaction, closes it, and opens the pinned narrative (tenant DEK) and asks the M39 Part 2 verdict afterwards, once for the view, the history and the
+  addenda's section ids together; the M18 bracket is resolved after it as before.
+- **The writes cannot.** Sign, the draft section PUTs, the amendment's section PUT and the amendment's sign MUST hold the encounter row lock (`FOR NO KEY
+  UPDATE`) while they read the draft they decide over, so they hold their transaction across the seam reads. The limit: a burst of those on one
+  pool can wait on the pool. The bound is `DRAFT_SOURCE_READ_TIMEOUT_MS` (5 s) per source read, and a request that cannot acquire a connection within
+  the 10 s acquire timeout fails with 503 (never a pass, never a partial write: the transaction rolls back). A tenant that signs through such a
+  burst retries; a burst that long is an operations signal, not a data one.
+
 ### Amendments of a signed drafted note (ADR-0114 VN-D30, PR E2): limits recorded
 
 An addendum may name sections of a signed drafted note it amends; its sign seals the author's confirmed redraft of each as an append-only
-amendment row (the note's own rows and pin never change) and publishes `m8.encounter.section_amended` per amended section. Same fail-closed
+amendment row (the note's own rows and pin never change) and publishes `m8.encounter.section_amended` per amended section (outbox: ids only; the audit
+event of the same name carries the Part 2 flag and files under the Part 2 retention class when it is true). Same fail-closed
 posture as the note's own sign (a source or key-ring outage is a 503, never a pass). Recorded limits:
 
 - **No billing re-open.** An amendment touches no claim, no billability read and no event M23/M24 consumes.
@@ -57,8 +74,15 @@ posture as the note's own sign (a source or key-ring outage is a 503, never a pa
   `encounter_signature` kind `addendum_cosignature` (migration 1524). The cosignature queue lists both kinds, told apart by `cosign.subject`.
 - **M22 has no Part 2 document path.** A rendered document shows the withheld marker where a Part 2 derived section (a note's, or an amendment's) is.
 - **A Part 2 section is amended only by an author with Part 2 disclosure** (`422 AMENDMENT_PART2_NOT_ENTITLED` at naming and again at sign; an M39 failure is
-  a 503, never a denial). An entitled author's redraft can still hold no Part 2 content when its sources no longer do; the current view then shows it and
-  the history of that section stays withheld whole for a viewer without disclosure.
+  a 503, never a denial). The section's LATEST signed version decides (the original row, or the latest signed amendment of it), so a section amended into a
+  Part 2 one stays guarded. The refusal says "a named section cannot be amended by this signer" and names no section. An entitled author's redraft can still hold
+  no Part 2 content when its sources no longer do; the current view then shows it, and a viewer without disclosure is shown no history of that section.
+- **Who may name sections.** Only the note's author or a supervisor (`403`, before any write; a free addendum is anyone's with the addendum permission).
+  The amendment's cosigner is never the note's author: the cosign service refuses the author at acknowledge and sign, so an author who is the only RN on
+  the caseload leaves the amendment `422 NO_ELIGIBLE_COSIGNER` before any write.
+- **A viewer without disclosure is told nothing about a Part 2 section's identity.** The current view keeps its place and a withheld flag with no section id,
+  amending addendum or date; the history omits every section with a withheld version (`null` when none is left); an addendum's `amendsSectionIds` drops the
+  ids of such sections, signed or not.
 - Only a section the draft can redraft can be amended; the previous-visit and discipline question, the web, the mobile app and other note types
   are out of scope.
 
@@ -86,7 +110,7 @@ M8 has **no direct external integration of its own** (HearthNote Layer 2 reaches
 | consume | M7 (Care Plan) | `CarePlanReader.relevantElementsAsOf` — the goals and interventions as of the visit time, per-viewer Part 2 redaction; a draft source (ADR-0114), fails closed | yes (text) |
 | consume | M9 (Assessments) | `ScaleSeriesProvider.series` seam — scored scale series over the visit window; a draft source (ADR-0114), fails closed | yes (scores) |
 | consume | M12 (DoseSpot) | `MedicationOrderProvider.getMedicationChangesBetween` seam — medication changes since the previous visit; `isSudTreatment` is not redacted by the seam, M8 applies the Part 2 verdict; a draft source (ADR-0114), fails closed | yes (names, dates) |
-| consume | M39 (Consent) | the per-actor Part 2 verdict (`evaluateForInternalAccess`, through M7's `sudDisclosureAllowedForActor`) — whether this viewer may read this patient's SUD content; its own errors read as "not allowed" | yes (ids) |
+| consume | M39 (Consent) | the per-actor Part 2 verdict (`evaluateForInternalAccess`, through M7's `sudDisclosureAllowedForActor`) — whether this viewer may read this patient's SUD content. M7's own reads read an M39 error as "not allowed"; **M8 fails CLOSED** (`onError: "throw"`, `drafting/default-ports.ts`): an M39 error is a thrown failure, never a denial and never a disclosure, so the draft is 503 `DRAFT_UNAVAILABLE`, sign and finalize 503 `COMPLIANCE_GATE_UNAVAILABLE`, a note view 503 `NOTE_VIEW_UNAVAILABLE` and an amendment's naming or sign 503 (see the exception above) | yes (ids) |
 | consume | M5 (Patient) | `PatientReader` — patient identity / caseload linkage | yes (ids) |
 | consume | M6 (Admission) | admission linkage (encounter belongs to an active election period) | minimal (ids) |
 | consume | M36 (Messaging) | `AlertEmitter` seam — cosignature SLA + late-entry-override alerts | minimal (ids) |
