@@ -12,6 +12,8 @@
 // goal would add it twice.
 // A box that cannot act says why beside it, because a disabled control cannot be focused to find the reason. While a change is being saved the
 // boxes are not `disabled` for the same reason (the one pressed would drop keyboard focus): they say so with `aria-disabled` and do nothing.
+// The same holds while links that are already known are read again (a draft resolve changed them, or a save left a re-read owed): only the
+// FIRST read, when nothing is known, leaves the boxes natively `disabled`.
 // ORDER. A re-read of the links that began before a change committed may answer after it: that answer is dropped and the links are read once
 // more when the change has settled, so an older picture never lands over a newer one.
 //
@@ -85,6 +87,7 @@ const hasLinkableLists = (
 const NOT_A_DRAFT_REASON = "Links can change only while the note is a draft.";
 const LOADING_REASON = "Loading this visit's care-plan links…";
 const SAVING_REASON = "Saving the change to this visit's care-plan links…";
+const REFRESHING_REASON = "Updating this visit's care-plan links…";
 const LINKS_ERROR_REASON =
   "The care-plan links could not be loaded for this visit, so they cannot be changed right now.";
 const REASON_ID = "care-plan-picker-reason";
@@ -100,6 +103,9 @@ export function ComposerCarePlanPicker({
   const [load, setLoad] = useState<ElementsLoad>({ status: "loading" });
   const [links, setLinks] = useState<readonly CarePlanLink[]>([]);
   const [linksStatus, setLinksStatus] = useState<LinksStatus>("loading");
+  // A read of the links is out. With the links already known (`linksStatus` "ready") the boxes wait but stay focusable; with none known they
+  // are `disabled` (the status is "loading").
+  const [linksReading, setLinksReading] = useState(false);
   const [linksReadKey, setLinksReadKey] = useState(0);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -140,7 +146,9 @@ export function ComposerCarePlanPicker({
   useEffect(() => {
     let active = true;
     const begunAt = changeEpoch.current;
-    setLinksStatus("loading");
+    // Links known stay known while they are read again; after a failure (or the first time) nothing is known and the read says "loading".
+    setLinksStatus((current) => (current === "ready" ? current : "loading"));
+    setLinksReading(true);
     void loadCarePlanLinks(client, encounterId).then((outcome) => {
       if (!active) return;
       if (saving.current || changeEpoch.current !== begunAt) {
@@ -152,6 +160,7 @@ export function ComposerCarePlanPicker({
       const read = outcome.ok ? outcome.data?.links : undefined;
       if (Array.isArray(read)) setLinks(read);
       setLinksStatus(Array.isArray(read) ? "ready" : "error");
+      setLinksReading(false);
     });
     return () => {
       active = false;
@@ -179,7 +188,9 @@ export function ComposerCarePlanPicker({
       ? LOADING_REASON
       : pendingKey !== null
         ? SAVING_REASON
-        : null;
+        : linksReading
+          ? REFRESHING_REASON
+          : null;
   const linksLocked = !editable || linksStatus !== "ready";
 
   /** Link or unlink `row`: the change to apply to the held links, or the refusal in words. */
@@ -198,7 +209,7 @@ export function ComposerCarePlanPicker({
   };
 
   const toggle = async (row: Row): Promise<void> => {
-    if (pendingKey !== null || linksLocked) return;
+    if (pendingKey !== null || linksLocked || linksReading) return;
     setPendingKey(row.target.id);
     setProblem(null);
     changeEpoch.current += 1;
@@ -233,7 +244,7 @@ export function ComposerCarePlanPicker({
                 type="checkbox"
                 checked={linkOf(links, row.target) !== undefined}
                 disabled={linksLocked}
-                aria-disabled={pendingKey !== null || undefined}
+                aria-disabled={pendingKey !== null || linksReading || undefined}
                 aria-describedby={reason ? REASON_ID : undefined}
                 onChange={() => void toggle(row)}
               />

@@ -168,11 +168,56 @@ describe("a re-read of the links while a link is being saved", () => {
     // A draft resolve changed the visit's links: the picker reads them again, served before the save below commits.
     bump(1);
     await waitFor(() => expect(linkReads()).toBe(2));
+    // The links are known, so the re-read does not make the box `disabled` (that would drop the focus the pressed box holds).
+    expect(goal).not.toBeDisabled();
+    expect(goal).toHaveFocus();
     post.open();
     await waitFor(() => expect(goal).toBeChecked());
+    expect(goal).not.toBeDisabled();
+    expect(goal).toHaveFocus();
     staleRead.open();
     await waitFor(() => expect(linkReads()).toBe(3));
-    await waitFor(() => expect(goal).toBeEnabled());
+    await waitFor(() => expect(goal).not.toHaveAttribute("aria-disabled"));
+    expect(goal).toBeEnabled();
     expect(goal).toBeChecked();
+    expect(goal).toHaveFocus();
+  });
+});
+
+// The visit's links are known once they have been read; a later re-read (a draft resolve changed them) must not take the boxes away from
+// someone who is on one: they wait (aria-disabled, still focusable, saying why) and the first load alone is a native `disabled`.
+describe("a re-read of links that are already known", () => {
+  it("keeps the focused box focusable and focused, waiting and saying why, and acts again once the read lands", async () => {
+    const reread = gate();
+    const firstRead = gate();
+    let reads = 0;
+    const { user, bump } = mountPicker({
+      [`GET ${BASE}/care-plan-links`]: async () => {
+        reads += 1;
+        if (reads === 1) await firstRead.promise;
+        if (reads === 2) await reread.promise;
+        return { body: { links } };
+      },
+    });
+    const goal = await screen.findByRole("checkbox", { name: GOAL_LABEL });
+    // Nothing known yet: a native disabled box, with its reason beside it.
+    expect(goal).toBeDisabled();
+    firstRead.open();
+    await waitFor(() => expect(goal).toBeEnabled());
+    goal.focus();
+    bump(1);
+    await waitFor(() => expect(linkReads()).toBe(2));
+    await waitFor(() => expect(goal).toHaveAttribute("aria-disabled", "true"));
+    expect(goal).not.toBeDisabled();
+    expect(goal).toHaveFocus();
+    expect(goal).toHaveAccessibleDescription(/updating|loading|reading/i);
+    // It does nothing while the links are read again.
+    await user.click(goal);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+    reread.open();
+    await waitFor(() => expect(goal).not.toHaveAttribute("aria-disabled"));
+    expect(goal).toHaveFocus();
+    await user.click(goal);
+    await waitFor(() => expect(goal).toBeChecked());
   });
 });
