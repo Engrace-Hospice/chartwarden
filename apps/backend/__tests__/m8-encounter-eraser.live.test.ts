@@ -27,7 +27,7 @@ import { LIVE_APP_ROLE_PASSWORD, dropLiveRoles, resetPublicSchema } from "./_liv
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const SERVICE_DATE = "2026-01-15"; // `encounter_service_date_not_future` forbids the future
+const SERVICE_DATE = "2026-01-15";
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** The distinctive synthetic string every seeded reason carries; it must not survive an erase. */
@@ -231,20 +231,22 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       }),
     );
     // A signed note whose delivery columns the 1513 freeze trigger guards: the tombstone must not touch them.
-    targets.set(
-      "signed",
-      await seedEncounter("A", targetPatient, {
-        status: "signed",
-        vocab_version_id: PIN,
-        signed_at: "2026-01-15T18:00:00Z",
-        started_at: "2026-01-15T14:00:00Z",
-        ended_at: "2026-01-15T15:00:00Z",
-        time_source: "clinician",
-        visit_modality: "in_person",
-        visit_modality_confirmed_at: "2026-01-15T18:00:00Z",
-        visit_modality_confirmed_by: author,
-      }),
-    );
+    for (const status of ["signed", "cosign_pending", "cosigned"]) {
+      targets.set(
+        status,
+        await seedEncounter("A", targetPatient, {
+          status,
+          vocab_version_id: PIN,
+          signed_at: "2026-01-15T18:00:00Z",
+          started_at: "2026-01-15T14:00:00Z",
+          ended_at: "2026-01-15T15:00:00Z",
+          time_source: "clinician",
+          visit_modality: "in_person",
+          visit_modality_confirmed_at: "2026-01-15T18:00:00Z",
+          visit_modality_confirmed_by: author,
+        }),
+      );
+    }
     // Already voided by a human, with free text that must be scrubbed too; the human's attribution stays.
     targets.set(
       "voided_by_human",
@@ -300,7 +302,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       [targetPatient, `%${MARKER}%`],
     );
     expect(carrying.rowCount).toBe(5);
-    expect(targets.size).toBe(8);
+    expect(targets.size).toBe(10);
     expect(ENCOUNTER_ERASED_REASON).not.toContain(MARKER);
     // the largest CHECK floor on any reason column is the administrative override's 100 characters
     expect(ENCOUNTER_ERASED_REASON.length).toBeGreaterThanOrEqual(100);
@@ -329,7 +331,14 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     beforeAll(async () => {
       rowsBefore = await snapshot([targetPatient]);
       othersBefore = await snapshot(everyoneElse());
-      startedAt = Date.now();
+      // The database's clock, not the host's: `voided_at` is stamped by `now()` in the destruction transaction.
+      startedAt = Number(
+        (
+          await admin.query<{ ms: string }>(
+            "SELECT extract(epoch FROM clock_timestamp()) * 1000 AS ms",
+          )
+        ).rows[0]?.ms,
+      );
       result = await eraseEncounterRecord(ORG_A, targetPatient, store);
     });
 
@@ -340,7 +349,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
 
     it("leaves every root in place, voided, with its structural shell untouched", async () => {
       const after = await snapshot([targetPatient]);
-      expect(after).toHaveLength(8);
+      expect(after).toHaveLength(10);
       for (const row of after) expect(row.status).toBe("voided");
       const byId = new Map(rowsBefore.map((row) => [row.id, row]));
       for (const row of after) {
@@ -377,7 +386,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
           expect(row.voided_by).toBe(voider);
         } else {
           expect(row.voided_by).toBe(was.authored_by_membership_id);
-          expect(Date.parse(row.voided_at as string)).toBeGreaterThanOrEqual(startedAt - 1000);
+          expect(Date.parse(row.voided_at as string)).toBeGreaterThanOrEqual(startedAt);
         }
         expect(row.vocab_version_id).toBe(was.vocab_version_id ?? PIN);
       }

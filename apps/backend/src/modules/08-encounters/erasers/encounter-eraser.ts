@@ -62,9 +62,11 @@ export interface EncounterEraseStore {
 
 /**
  * Erase a patient's encounter-record subtree under a destruction certificate (D7/D8): crypto-erase the
- * HearthNote ciphertext, delete the satellite rows, tombstone the `encounter` root(s), and report the
+ * HearthNote ciphertext, tombstone the `encounter` root(s), delete the satellite rows, and report the
  * total removed. Pure orchestration over the store — no I/O of its own. DEK-first so the PHI is
- * unreadable the instant the key is gone, even if a later step fails.
+ * unreadable the instant the key is gone, even if a later step fails; the root's free text is scrubbed
+ * before the deletes so a tombstone that fails leaves the satellites in place for a retry, never a
+ * root with its text and no satellites.
  */
 export async function eraseEncounterRecord(
   organizationId: string,
@@ -72,8 +74,8 @@ export async function eraseEncounterRecord(
   store: EncounterEraseStore,
 ): Promise<{ erased: number; counts: EncounterEraseCounts }> {
   await store.cryptoEraseHearthnote(organizationId, patientId);
-  const counts = await store.eraseEncounterSubtree(organizationId, patientId);
   await store.tombstoneEncounters(organizationId, patientId);
+  const counts = await store.eraseEncounterSubtree(organizationId, patientId);
   const erased = Object.values(counts).reduce((a, b) => a + b, 0);
   return { erased, counts };
 }
