@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { EVV_QUALITY_TONE, stateLabel } from "./evv-shared";
+import { EvvWorkspaceNav } from "./workspace-nav";
 
 interface EvvEventRow {
   id: string;
@@ -127,6 +128,7 @@ export function EvvEvents(): JSX.Element {
             </Button>
           }
         >
+          <EvvWorkspaceNav />
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review capture events without exposing latitude or longitude.
           </div>

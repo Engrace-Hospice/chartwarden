@@ -28,6 +28,7 @@ import { useSearchParams } from "react-router-dom";
 import { type MissingResolutionView, isResolutionOpen } from "./evv-api";
 import { type ResolutionAction, ResolutionActionModal } from "./evv-modals";
 import { EVV_RESOLUTION_TONE, stateLabel } from "./evv-shared";
+import { EvvWorkspaceNav } from "./workspace-nav";
 
 interface ResolutionRow {
   id: string;
@@ -151,8 +152,10 @@ export function EvvMissingResolutions(): JSX.Element {
               </Button>
             }
           >
+            <EvvWorkspaceNav />
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-              Track late-checkout and missing capture resolutions before billing release.
+              Resolve missing or questionable capture evidence. Medicare hospice EVV remains
+              operational and is never a universal federal claim gate.
             </div>
           </PageHeader>
         }

@@ -32,19 +32,23 @@ const RESULT = {
   ruleKey: RULE_KEY,
   ruleVersion: 1,
   outcome: "fail",
-  remediationSummary: null,
-  remediationFixAction: null,
+  remediationSummary: null as string | null,
+  remediationFixAction: null as string | null,
   at: RUN.at,
 };
 const RATIONALE = "Payer portal confirmed active coverage on the service date.";
 
-function makeApi(opts: { ruleConfig: unknown; post?: () => unknown }) {
+function makeApi(opts: {
+  ruleConfig: unknown;
+  post?: () => unknown;
+  result?: typeof RESULT;
+}) {
   return {
     GET: vi.fn((path: string) => {
       if (path === "/api/v1/medicaid-claims/{id}/validation-runs")
         return Promise.resolve(ok([RUN]));
       if (path === "/api/v1/medicaid-validation-runs/{id}")
-        return Promise.resolve(ok({ ...RUN, results: [RESULT] }));
+        return Promise.resolve(ok({ ...RUN, results: [opts.result ?? RESULT] }));
       if (path === "/api/v1/medicaid-rule-config") return Promise.resolve(opts.ruleConfig);
       return Promise.resolve(ok([]));
     }),
@@ -52,7 +56,7 @@ function makeApi(opts: { ruleConfig: unknown; post?: () => unknown }) {
   } as unknown as ApiClient & { POST: ReturnType<typeof vi.fn> };
 }
 
-async function openModal(api: ApiClient) {
+function renderWorklist(api: ApiClient): void {
   render(
     <MemoryRouter initialEntries={["/claims/claim-1/validation"]}>
       <ApiClientProvider client={api}>
@@ -62,6 +66,10 @@ async function openModal(api: ApiClient) {
       </ApiClientProvider>
     </MemoryRouter>,
   );
+}
+
+async function openModal(api: ApiClient) {
+  renderWorklist(api);
   fireEvent.click(await screen.findByRole("button", { name: `Override rule ${RULE_KEY}` }));
   return screen.findByRole("dialog");
 }
@@ -70,6 +78,23 @@ const rules = (role: string | null) =>
   ok([{ ruleKey: RULE_KEY, regulatoryRequired: false, overrideRoleRequired: role }]);
 
 describe("M24 override modal acting role", () => {
+  it("links an EVV remediation to the registered missing-resolution workspace", async () => {
+    renderWorklist(
+      makeApi({
+        ruleConfig: rules("compliance_officer"),
+        result: {
+          ...RESULT,
+          remediationFixAction: "resolve_in_m18",
+          remediationSummary: "Resolve the open EVV exception before retrying validation.",
+        },
+      }),
+    );
+    expect(await screen.findByRole("link", { name: /Resolve EVV visit/ })).toHaveAttribute(
+      "href",
+      "/evv/missing-resolutions?status=open",
+    );
+  });
+
   it("fixes the acting role to the rule's required role (no free pick)", async () => {
     await openModal(makeApi({ ruleConfig: rules("compliance_officer") }));
     expect(screen.queryByRole("combobox", { name: "Override role" })).toBeNull();

@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import type { GeofencePolicyView as PolicyWire } from "./evv-api";
 import { PerAddressOverrideModal, TenantPolicyModal } from "./evv-modals";
+import { EvvWorkspaceNav } from "./workspace-nav";
 
 interface OverrideRow {
   patientAddressId: string;
@@ -146,6 +147,7 @@ export function EvvGeofencePolicy(): JSX.Element {
               </div>
             }
           >
+            <EvvWorkspaceNav />
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Review tenant geofence defaults and address-specific tighten-only overrides.
             </div>

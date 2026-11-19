@@ -26,6 +26,7 @@ import { useSearchParams } from "react-router-dom";
 import { type AggregatorSubmissionView, submissionActions } from "./evv-api";
 import { type SubmissionAction, SubmissionActionModal } from "./evv-modals";
 import { EVV_SUBMISSION_TONE, stateLabel } from "./evv-shared";
+import { EvvWorkspaceNav } from "./workspace-nav";
 
 interface SubmissionRow {
   id: string;
@@ -163,6 +164,7 @@ export function EvvAggregatorSubmissions(): JSX.Element {
               </Button>
             }
           >
+            <EvvWorkspaceNav />
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Monitor state aggregator handoffs, retries, and rejected submissions.
             </div>

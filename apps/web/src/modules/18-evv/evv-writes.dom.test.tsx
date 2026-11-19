@@ -1,9 +1,8 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/18-evv — #91: nine EVV read screens, zero mutations.
 //
-// EVV is a FEDERAL requirement — the 21st Century Cures Act obliges every state Medicaid programme to
-// verify home-visit delivery electronically. Four queues stand between a delivered visit and a paid one,
-// and none of them had a control:
+// The 21st Century Cures Act requires state Medicaid programmes to verify qualifying personal-care and
+// home-health visits electronically. These operational surfaces had no write controls:
 //   • the DEVICE roster. Capture is refused outright without an APPROVED `evv_device` (D8), so a
 //     clinician who self-registered from their handset could not verify a single visit until someone
 //     approved them — and nothing on this platform could.

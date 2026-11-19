@@ -23,20 +23,9 @@
 // between runs. It is not made self-supplying because device self-registration is the mobile flow this
 // spec's header is about NOT faking.
 //
-// TWO FINDINGS THIS SPEC DOES NOT FIX, recorded here because chasing them is how it got written:
-//
-//   1. The missing-EVV resolution queue can only ever be populated by a CORRECTION. `evv_missing_
-//      resolution` has exactly one writer in the backend — the correction-of-record path, which needs
-//      a check-in to already exist in order to correct it. A visit that simply never captured produces
-//      nothing. The designed path is M17's late-check sweep emitting
-//      `m17.visit.late_check_out_suspected`, whose catalog entry says in as many words "M18 opens an
-//      evv_missing_resolution row (M18 §7 / D6)". M18's side of that is a REGISTERED deferral in
-//      `scripts/outbox-deferred-consumers.ts` ("the remainder are forward declarations") — a declared
-//      absence, correctly tracked. The M17 side is not: NOTHING in the codebase emits that event. So
-//      even binding the consumer would deliver nothing, and the queue that exists to prove a visit
-//      happened when the device did not record it is unreachable.
-//   2. Consequently the Aggregator Submission queue is empty too, and its resubmit/cancel controls are
-//      likewise unexercisable on a seeded stack.
+// The late-check sweep, missing-resolution consumer, and aggregator preparation worker are now built
+// and wired. They remain outside this browser spec because the seed does not provide a deterministic
+// late-check or rejected-submission journey; worker/domain suites exercise those paths instead.
 //
 // Signs in as the SUPERVISOR, not the RN who owns the handset: `/me/evv/devices` deliberately offers no
 // approve control, because approving a device is an act on someone else's equipment.

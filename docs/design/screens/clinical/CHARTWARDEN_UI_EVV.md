@@ -9,9 +9,12 @@ Module: Electronic Visit Verification (M18)
 ## Purpose
 
 The EVV screen manages electronic verification that a visit physically happened — right
-address, right person, right time — per the 21st Century Cures Act. It surfaces the
+address, right person, right time. The 21st Century Cures Act mandate applies to qualifying Medicaid
+personal-care and home-health services; Medicare hospice EVV is operational and never a universal federal
+claim gate (ADR-0008). It surfaces the
 exception-reconciliation queue, state-aggregator submission status, registered devices, and
-geofence policy. EVV bracket state gates encounter signing (M08) and Medicaid claims (M24).
+geofence policy. EVV bracket state informs encounter reconciliation (M08) and conditionally applicable
+Medicaid validation (M24); state, payer program and service type determine applicability.
 
 ---
 
@@ -29,7 +32,7 @@ geofence policy. EVV bracket state gates encounter signing (M08) and Medicaid cl
 Use Work Queue.
 
 ```text
-Page Header (tabs: Exceptions · Aggregator · Devices · Geofence)
+Page Header (permission-filtered navigation: Overview · Needs attention · Events · Submissions · Policies · Devices)
 KPI Strip
 Exception / Submission Table  |  Right: Detail / Resolution Actions
 ```
@@ -97,13 +100,12 @@ Coordinates are encrypted at rest and require a separate `read coords` permissio
 from general EVV read; every coordinate read emits a warn-level audit event. Portal
 projections never expose coordinates.
 
----
-
 ## Mobile / Offline
 
-Check-in/out captured on-device; events queue encrypted offline and sync on reconnect
-(server de-dupes by device + local id). Captured time is preserved; server records receive
-time separately.
+The server accepts on-device check-in/out and durable offline replay, de-duplicated by device + local id.
+No mobile/Capacitor capture client or encrypted local queue is currently implemented, so offline capture is a
+deferred capability rather than an available user workflow. The contract preserves captured time separately
+from server receive time.
 
 ---
 
