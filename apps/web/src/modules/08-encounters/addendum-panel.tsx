@@ -21,7 +21,7 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { type BlockerFunction, Link, useBlocker } from "react-router-dom";
 import { useSession } from "../../shell/session";
@@ -72,8 +72,11 @@ interface PanelProps {
   readonly addenda: readonly AddendumRow[];
   /** The signed note's author (membership id), when known: the cosigner of an amendment is neither the note's author nor the amendment's. */
   readonly noteAuthorId?: string | null;
-  /** Re-read the encounter after any state change so statuses come from the server again. */
-  readonly onChanged: () => void;
+  /**
+   * Re-read the encounter after any state change so statuses come from the server again. May return the read: a sign then holds its row
+   * busy until the page shows the new status.
+   */
+  readonly onChanged: () => void | Promise<void>;
 }
 
 /** A refusal rendered as user-facing prose; step-up gets the real ceremony link. */
@@ -122,6 +125,13 @@ export function AddendaPanel({
 }: PanelProps): JSX.Element {
   const client = useApiClient();
   const session = useSession();
+  // Each row, so focus can go to the one that was signed once the Sign button it came from is gone. The request is an object, so asking
+  // again for the same row still moves focus; it is acted on after React has committed the page that no longer has that button.
+  const rows = useRef(new Map<string, HTMLLIElement>());
+  const [focusRow, setFocusRow] = useState<{ readonly addendumId: string } | null>(null);
+  useEffect(() => {
+    if (focusRow) rows.current.get(focusRow.addendumId)?.focus();
+  }, [focusRow]);
   // Coming back from /step-up: reopen the editor whose unsaved selections were stashed.
   const [editingId, setEditingId] = useState<string | null>(() => {
     const stashed = findStepUpDraftResourceId(session, ADDENDUM_DRAFT_ACTION);
@@ -148,12 +158,21 @@ export function AddendaPanel({
     setBusyId(addendumId);
     setFailure(null);
     const res = await signAddendum(client, { encounterId, addendumId });
-    setBusyId(null);
     setSigningId(null);
-    if (!res.ok) return setFailure({ addendumId, error: res });
+    if (!res.ok) {
+      setBusyId(null);
+      return setFailure({ addendumId, error: res });
+    }
     const text = signedAmendmentMessage(res.value);
     setSignedNote(text === null ? null : { addendumId, text });
-    onChanged();
+    // The row still reads "finalized" until the encounter is read again, so it stays busy (its Sign and its sections' choices wait, still
+    // focusable) until that lands; then the Sign button is gone, and focus goes to the addendum rather than the page.
+    try {
+      await onChanged();
+    } finally {
+      setBusyId(null);
+    }
+    setFocusRow({ addendumId });
   }
 
   const signing = addenda.find((a) => a.id === signingId) ?? null;
@@ -171,6 +190,10 @@ export function AddendaPanel({
               encounterId={encounterId}
               addendum={a}
               name={addendumName(index + 1, addenda.length, a.createdAt)}
+              rowRef={(element) => {
+                if (element) rows.current.set(a.id, element);
+                else rows.current.delete(a.id);
+              }}
               noteAuthorId={noteAuthorId}
               busy={busyId === a.id}
               editing={editingId === a.id}
@@ -220,6 +243,7 @@ interface ItemProps {
   readonly addendum: AddendumRow;
   /** `addendumName`: this addendum among its siblings. */
   readonly name: string;
+  readonly rowRef: (element: HTMLLIElement | null) => void;
   readonly noteAuthorId: string | null;
   readonly busy: boolean;
   /** This addendum's selections editor is open. */
@@ -246,6 +270,7 @@ function AddendumItem({
   encounterId,
   addendum: a,
   name,
+  rowRef,
   noteAuthorId,
   busy,
   editing,
@@ -277,7 +302,7 @@ function AddendumItem({
   }, [failure, reloadAmendment]);
 
   return (
-    <li style={item} aria-label={`Addendum ${a.id}`}>
+    <li style={item} aria-label={`Addendum ${a.id}`} ref={rowRef} tabIndex={-1}>
       <StackedRows
         rows={[
           {
@@ -316,6 +341,7 @@ function AddendumItem({
           addendumId={a.id}
           addendumName={name}
           sectionIds={amends}
+          locked={busy}
           draft={amendment}
         />
       ) : null}
@@ -342,14 +368,15 @@ function AddendumItem({
               </Button>
             </>
           ) : (
+            // Not `disabled` while the row is busy: the ceremony hands focus back to this button, and a disabled one cannot take it.
             <Button
               size="sm"
-              disabled={busy}
-              aria-disabled={blockReason !== null || undefined}
+              aria-disabled={blockReason !== null || busy || undefined}
+              aria-busy={busy || undefined}
               aria-describedby={blockReason !== null ? blockId : undefined}
-              style={blockReason !== null ? WAITING_STYLE : undefined}
+              style={blockReason !== null || busy ? WAITING_STYLE : undefined}
               onClick={() => {
-                if (blockReason === null) onSign();
+                if (blockReason === null && !busy) onSign();
               }}
             >
               Sign addendum

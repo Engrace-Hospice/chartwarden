@@ -27,6 +27,8 @@ export interface AmendmentReviewProps {
   /** The sections the addendum names, in the order the clinician chose them. */
   readonly sectionIds: readonly string[];
   readonly draft: NoteDraft;
+  /** Something else is being done to this addendum (it is being signed, and the page has not shown it signed yet): nothing is resolved now. */
+  readonly locked?: boolean;
 }
 
 export function AmendmentReview({
@@ -34,6 +36,7 @@ export function AmendmentReview({
   addendumName,
   sectionIds,
   draft,
+  locked = false,
 }: AmendmentReviewProps): JSX.Element {
   const { load, notes, busySectionId, refreshing } = draft;
   const idPrefix = `amend-${addendumId}`;
@@ -71,7 +74,7 @@ export function AmendmentReview({
                       section={section}
                       note={notes[sectionId] ?? amendedSectionNote(section.state)}
                       busy={busySectionId === sectionId}
-                      blockedReason={blockedReasonOf(busySectionId, refreshing, sectionId)}
+                      blockedReason={blockedReasonOf(busySectionId, refreshing, locked, sectionId)}
                       onResolve={(resolution) => draft.resolve(section, resolution)}
                     />
                   ) : (
@@ -97,8 +100,10 @@ export function AmendmentReview({
 function blockedReasonOf(
   busySectionId: string | null,
   refreshing: boolean,
+  locked: boolean,
   sectionId: string,
 ): string | null {
+  if (locked) return "This addendum is being updated. Wait for it to finish.";
   if (refreshing) return "Updating the drafted text. Confirm or deselect it once it has loaded.";
   if (busySectionId !== null && busySectionId !== sectionId) {
     return "Another section is being recorded. Wait for it to finish.";

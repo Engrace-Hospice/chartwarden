@@ -1581,7 +1581,7 @@ export function EncounterRead(): JSX.Element {
                     encounterId={e.id}
                     addenda={e.addenda}
                     noteAuthorId={e.authoredByUserId}
-                    onChanged={() => void load(true)}
+                    onChanged={() => load(true)}
                   />
                 </div>
               ) : null}

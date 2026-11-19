@@ -55,10 +55,16 @@ const signedEncounter = (addendum: Record<string, unknown>) => ({
   evvBracketPresent: true,
 });
 
-function mount() {
+/** `holdSecondRead` keeps the read that follows the sign out until the test lets it land. */
+function mount({ holdSecondRead }: { holdSecondRead?: Promise<void> } = {}) {
   let addendum: Record<string, unknown> = finalized;
+  let encounterCalls = 0;
   const GET = vi.fn(async (path: string) => {
-    if (path === ENCOUNTER) return { data: signedEncounter(addendum) };
+    if (path === ENCOUNTER) {
+      encounterCalls += 1;
+      if (encounterCalls === 2 && holdSecondRead) await holdSecondRead;
+      return { data: signedEncounter(addendum) };
+    }
     if (path === "/api/v1/encounters/{encounterId}/cosignature") return { data: { status: null } };
     if (path === "/api/v1/patients/{id}") {
       return {
@@ -111,9 +117,10 @@ function mount() {
       data: { status: "signed", amendedSectionIds: ["pain"], cosignatureRequestId: "req-1" },
     };
   });
+  const PUT = vi.fn();
   render(
     <MemoryRouter initialEntries={["/patients/patient-1/encounters/enc-1"]}>
-      <ApiClientProvider client={{ GET, PATCH: vi.fn(), POST } as never}>
+      <ApiClientProvider client={{ GET, PATCH: vi.fn(), POST, PUT } as never}>
         <ToastProvider>
           <SessionProvider
             session={{ userId: "user-1", organizationId: "org-1", permissions: ["encounter.read"] }}
@@ -129,7 +136,7 @@ function mount() {
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  return { GET, POST };
+  return { GET, POST, PUT };
 }
 
 const encounterReads = (GET: ReturnType<typeof mount>["GET"]) =>
@@ -169,5 +176,48 @@ describe("signing an amending addendum on the encounter page", () => {
     await user.click(screen.getByRole("button", { name: "Sign & commit" }));
     await waitFor(() => expect(encounterReads(GET)).toBe(2));
     expect(screen.getByLabelText("Addendum add-1")).toBe(row);
+  });
+});
+
+// Until the encounter has been read again the row still says "finalized", so Sign and the review's choices would still be offered beside
+// "Addendum signed": a second press would run the ceremony again and the server would refuse. They wait (aria-disabled, never disabled, so
+// the opener keeps keyboard focus), and when the read lands, the Sign button that goes away must not take focus with it (S1 React review).
+describe("the moment between signing an addendum and the page showing it signed", () => {
+  it("offers nothing that could sign or resolve again, then puts focus on the addendum", async () => {
+    const user = userEvent.setup();
+    let land: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      land = resolve;
+    });
+    const { GET, POST, PUT } = mount({ holdSecondRead: held });
+    const row = await screen.findByLabelText("Addendum add-1");
+    const sign = await within(row).findByRole("button", { name: "Sign addendum" });
+    await waitFor(() => expect(sign).not.toHaveAttribute("aria-disabled"));
+    await user.click(sign);
+    await user.click(screen.getByLabelText(/I attest this addendum/));
+    await user.click(screen.getByRole("button", { name: "Sign & commit" }));
+    await waitFor(() => expect(encounterReads(GET)).toBe(2));
+    expect(await screen.findByText(/^Addendum signed\. 1 section amended/)).toBeInTheDocument();
+
+    // The row still reads finalized: Sign is there, but waiting, and the opener of the ceremony kept its focus.
+    expect(sign).toBeInTheDocument();
+    expect(sign).not.toBeDisabled();
+    expect(sign).toHaveAttribute("aria-disabled", "true");
+    await user.click(sign);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const deselect = within(row).getByRole("button", { name: "Deselect section" });
+    expect(deselect).not.toBeDisabled();
+    expect(deselect).toHaveAttribute("aria-disabled", "true");
+    await user.click(deselect);
+    expect(PUT).not.toHaveBeenCalled();
+    expect(POST.mock.calls.filter(([path]) => path === SIGN)).toHaveLength(1);
+
+    land();
+    await waitFor(() =>
+      expect(within(row).queryByRole("button", { name: "Sign addendum" })).toBeNull(),
+    );
+    // The Sign button that held focus is gone: focus is on a real element, the addendum itself, not the page.
+    await waitFor(() => expect(row).toHaveFocus());
+    expect(document.body).not.toHaveFocus();
   });
 });
