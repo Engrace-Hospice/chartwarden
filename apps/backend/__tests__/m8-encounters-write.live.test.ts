@@ -108,6 +108,8 @@ const CIPHERS = createHearthnoteCiphers({
 describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T02)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
+  /** A real `chartwarden_destruction` login — the role the eraser runs as (0157, 1517-1519 grants). */
+  let destructionHandle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEncounterRouteService>;
   /** The same service with NO DEK envelope bound — the §3.6 / §2.6 refusal paths. */
   let noCipherSvc: ReturnType<typeof createDbEncounterRouteService>;
@@ -295,6 +297,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
+    await admin.query(
+      `ALTER ROLE chartwarden_destruction LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`,
+    );
+    const destructionUrl = new URL(DB_URL as string);
+    destructionUrl.username = "chartwarden_destruction";
+    destructionUrl.password = LIVE_APP_ROLE_PASSWORD;
+    destructionHandle = createDbClient({ connectionString: destructionUrl.toString() });
     // F-064 (#159) — M6's REAL `AdmissionStatusReader` over the seeded active admission: `createDraft`
     // validates the admission (org/patient/status/service window) and resolves the encounter's ARCH-011
     // siting through it. Without it the write path has no siting and the assertions below would be
@@ -321,6 +330,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   afterAll(async () => {
     await handle?.close();
+    await destructionHandle?.close();
     if (admin) await admin.end();
   });
 
@@ -793,9 +803,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     // The eraser has always handled `hearthnote_assembled_output` — it ran against a table that had never
     // held a row. This is the first time the §3.6 DEK-first shred has had one. Only the shred is driven
-    // here: the delete half runs as `chartwarden_destruction` (0157), and this suite's connection is the
-    // NOBYPASSRLS `chartwarden_app` role, which holds DELETE on no M8 table by design (append-only).
-    const store = createDrizzleEncounterEraseStore(handle.db);
+    // here, as the real `chartwarden_destruction` login: the app role (`handle`) holds UPDATE on no sealed
+    // table by design (append-only), and the eraser never runs as it.
+    const store = createDrizzleEncounterEraseStore(destructionHandle.db);
     await store.cryptoEraseHearthnote(ORG_A, PATIENT);
     const out = await admin.query(
       "SELECT layer1_cipher, final_cipher FROM hearthnote_assembled_output WHERE encounter_id=$1",
