@@ -1551,3 +1551,88 @@
     justify-content: space-between;
   }
 }
+
+/* Visit-note draft (ADR-0114): a drafted section inside the composer, the strip that counts them, and the score-trend rows. Flat, as the
+   rest of the kit: hairlines and spacing, no card inside a card. Tokens only. */
+.wx-draft {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 0 1rem;
+  border-bottom: 1px solid var(--color-outline-variant);
+}
+.wx-draft-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.wx-draft-title {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+.wx-draft-title:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+.wx-draft-text {
+  margin: 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--color-primary);
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.wx-draft-text.is-left-out {
+  border-left-color: var(--color-outline-variant);
+  color: var(--color-on-surface-variant);
+}
+.wx-draft-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0 0.75rem;
+}
+.wx-draft-status {
+  display: block;
+}
+.wx-draft-status:empty {
+  display: none;
+}
+.wx-draft-summary {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.25rem 0 0.5rem;
+  font-size: 0.8125rem;
+}
+.wx-draft-summary-line {
+  margin: 0;
+  color: var(--color-on-surface);
+}
+.wx-draft-todo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-draft-todo li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.wx-draft-slot {
+  padding: 0 1.15rem;
+}
+.wx-draft-rail {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}

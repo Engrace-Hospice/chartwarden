@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  InlineAlert,
   LoadingSpinner,
   Modal,
   PageHeader,
@@ -24,6 +25,18 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { ComposerCarePlanPicker } from "./composer-care-plan-picker";
+import { ComposerScoreTrend } from "./composer-score-trend";
+import type { DraftSectionView, Resolution } from "./draft-api";
+import {
+  STATE_LABEL,
+  describeIssues,
+  draftIsActive,
+  draftIssuesFrom,
+  touchesCarePlan,
+} from "./draft-model";
+import { DraftSectionPanel } from "./draft-section-panel";
+import { DraftSummary } from "./draft-summary";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
@@ -40,6 +53,7 @@ import {
   toSelectionsBody,
   unmetRequiredSections,
 } from "./encounters-api";
+import { useNoteDraft } from "./use-note-draft";
 
 const humanize = (k: string): string =>
   k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -136,6 +150,10 @@ export function EncounterCompose(): JSX.Element {
   const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}));
   const [vitalsOpen, setVitalsOpen] = useState(false);
   const loadSequence = useRef(0);
+  // ADR-0114: the pre-drafted sections. "off" (the tenant switch, or nothing drafted) leaves the composer exactly as it was.
+  const noteDraft = useNoteDraft(encounterId);
+  const [carePlanRevision, setCarePlanRevision] = useState(0);
+  const [draftRefusal, setDraftRefusal] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<EncounterView | null> => {
     if (!encounterId) return null;
@@ -298,6 +316,21 @@ export function EncounterCompose(): JSX.Element {
     }));
   }
 
+  const headingOfSection = (sectionId: string): string =>
+    template?.sections.find((section) => section.sectionId === sectionId)?.heading ??
+    humanize(sectionId);
+
+  /** Confirm or deselect one drafted section. A resolve that changed the visit's care-plan links re-reads the picker's list. */
+  async function resolveSection(
+    section: DraftSectionView,
+    resolution: Resolution,
+  ): Promise<boolean> {
+    setDraftRefusal(null);
+    const recorded = await noteDraft.resolve(section, resolution);
+    if (recorded && touchesCarePlan(section)) setCarePlanRevision((revision) => revision + 1);
+    return recorded;
+  }
+
   async function save(): Promise<void> {
     if (!encounterId) return;
 
@@ -315,6 +348,8 @@ export function EncounterCompose(): JSX.Element {
       setVersion(res.value.version);
       setPreview(res.value.layer1Preview);
       setLastSavedDraft(currentDraft);
+      // A save changes the clinician's own words inside a drafted section, so its text, hash and state are re-read.
+      void noteDraft.reload();
       setFeedback({
         tone: "success",
         title: "Draft saved",
@@ -345,11 +380,25 @@ export function EncounterCompose(): JSX.Element {
       setVersion(saved.value.version);
       setPreview(saved.value.layer1Preview);
       setLastSavedDraft(currentDraft);
+      void noteDraft.reload();
 
       finalizationAttempted = true;
       const res = await finalizeEncounter(client, encounterId);
 
       if (!res.ok) {
+        const issues = draftIssuesFrom(res.details);
+        if (issues.length > 0) {
+          // The gate named drafted sections: say which and why, beside the draft strip, and re-read what the server now holds.
+          void noteDraft.reload();
+          setDraftRefusal(describeIssues(issues, headingOfSection));
+          setFeedback({
+            tone: "error",
+            title: "Drafted sections need your review",
+            message:
+              "The note was not finalized. Confirm or deselect the sections listed under the progress summary, then finalize again.",
+          });
+          return;
+        }
         setFeedback(feedbackFor(res));
         return;
       }
@@ -416,6 +465,22 @@ export function EncounterCompose(): JSX.Element {
   const activeSelectionCount = activeDraft?.entries.length ?? 0;
   const activeHasFreeText = (activeDraft?.freeText.trim().length ?? 0) > 0;
   const recordPath = `/patients/${encounter.patientId}/encounters/${encounter.id}`;
+  // ADR-0114: `drafted` is the draft only when something was drafted; otherwise the composer below renders exactly as before.
+  const drafted =
+    noteDraft.load.status === "ready" && draftIsActive(noteDraft.load.draft)
+      ? noteDraft.load.draft
+      : null;
+  const draftedActive = drafted?.sections.find(
+    (section) => section.sectionId === active?.sectionId,
+  );
+  const draftBlockedReason =
+    encounter.status !== "draft" && encounter.status !== "finalized"
+      ? `This note is ${stateLabel(encounter.status).toLowerCase()}, so its drafted sections can no longer be changed.`
+      : busy
+        ? "Wait for the save to finish."
+        : dirty
+          ? "You have unsaved changes. Save the draft first, so what you confirm is what you will sign."
+          : null;
   const banner = patient ? (
     <PatientBanner
       name={`${patient.firstName} ${patient.lastName}`}
@@ -572,6 +637,28 @@ export function EncounterCompose(): JSX.Element {
               </section>
             )}
 
+            {noteDraft.load.status === "unavailable" ? (
+              <section className="wx-draft-summary" aria-label="Drafted sections">
+                <InlineAlert tone="warning">
+                  The pre-drafted text could not be loaded. Your own documentation is not affected,
+                  but the note cannot be finalized until the draft can be read.
+                </InlineAlert>
+                <div>
+                  <Button tone="secondary" size="sm" onClick={() => void noteDraft.reload()}>
+                    Try again
+                  </Button>
+                </div>
+              </section>
+            ) : null}
+            {drafted ? (
+              <DraftSummary
+                draft={drafted}
+                headingOf={headingOfSection}
+                onOpenSection={setOpenSection}
+                refusal={draftRefusal}
+              />
+            ) : null}
+
             {vitalsOpen ? (
               <VitalsPanel
                 encounterId={encounter.id}
@@ -611,6 +698,11 @@ export function EncounterCompose(): JSX.Element {
                       : missingRequired
                         ? "Required"
                         : "Not started";
+                    const draftedState = drafted?.sections.find(
+                      (candidate) =>
+                        candidate.sectionId === section.sectionId &&
+                        candidate.state !== "not_drafted",
+                    )?.state;
 
                     return (
                       <button
@@ -618,7 +710,9 @@ export function EncounterCompose(): JSX.Element {
                         type="button"
                         onClick={() => setOpenSection(section.sectionId)}
                         aria-current={isActive ? "step" : undefined}
-                        aria-label={`${section.heading}: ${sectionState}`}
+                        aria-label={`${section.heading}: ${sectionState}${
+                          draftedState ? `, draft ${STATE_LABEL[draftedState].toLowerCase()}` : ""
+                        }`}
                         style={{
                           ...sectionNavButton,
                           ...(isActive ? sectionNavButtonActive : null),
@@ -653,6 +747,9 @@ export function EncounterCompose(): JSX.Element {
                           >
                             {sectionState}
                           </span>
+                          {draftedState ? (
+                            <span style={sectionNavMeta}>Draft: {STATE_LABEL[draftedState]}</span>
+                          ) : null}
                         </span>
                       </button>
                     );
@@ -698,6 +795,19 @@ export function EncounterCompose(): JSX.Element {
                         </span>
                       </div>
                     </header>
+
+                    {draftedActive ? (
+                      <div className="wx-draft-slot">
+                        <DraftSectionPanel
+                          key={draftedActive.sectionId}
+                          section={draftedActive}
+                          note={noteDraft.notes[draftedActive.sectionId] ?? null}
+                          busy={noteDraft.busySectionId === draftedActive.sectionId}
+                          blockedReason={draftBlockedReason}
+                          onResolve={(resolution) => resolveSection(draftedActive, resolution)}
+                        />
+                      </div>
+                    ) : null}
 
                     <div style={editorBody}>
                       {active.entries.length === 0 ? (
@@ -841,6 +951,22 @@ export function EncounterCompose(): JSX.Element {
                     </footer>
                   ) : null}
                 </section>
+
+                {drafted ? (
+                  <div className="wx-draft-rail">
+                    <ComposerScoreTrend
+                      patientId={encounter.patientId}
+                      serviceDate={encounter.serviceDate}
+                      visitTime={drafted.asOf}
+                    />
+                    <ComposerCarePlanPicker
+                      encounter={encounter}
+                      editable={editable}
+                      revision={carePlanRevision}
+                      onChanged={() => void noteDraft.reload()}
+                    />
+                  </div>
+                ) : null}
               </aside>
             </div>
           </main>

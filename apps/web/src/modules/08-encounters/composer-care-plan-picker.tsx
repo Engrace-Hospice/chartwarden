@@ -1,0 +1,199 @@
+// apps/web/src/modules/08-encounters — the care-plan picker of the visit-note composer (M8 spec §5.2; ADR-0114 VN-D8, VN-D15). The goals and
+// interventions the visit may address, each linked to this visit or not. Until now the picker lived only on Encounter Read.
+//
+// LINK RULES. A link ties an element to THIS visit; a note never changes the care plan. Confirming a drafted section links its goals and
+// interventions; deselecting one unlinks them (and the same list shows it). Linking an element again here brings it back into the
+// draft. Both directions change what the draft is built from, so the caller re-reads the draft after every change here (`onChanged`),
+// and re-reads this list when a draft resolve changed the visit's links (`revision`). The server is the judge of every link: a refusal is
+// shown in words and the checkbox stays where the server left it.
+//
+// NO EMPTY FRAME: a visit with no care plan, no linkable goals or interventions, or a viewer who may not read them shows nothing.
+import { InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
+import { useEffect, useState } from "react";
+import type { JSX } from "react";
+import {
+  type CarePlanLink,
+  type LinkTarget,
+  type PickerEncounter,
+  type RelevantElements,
+  describeDraftRefusal,
+  linkCarePlanElement,
+  loadCarePlanLinks,
+  loadRelevantElements,
+  unlinkCarePlanElement,
+} from "./draft-api";
+import { useIsMounted } from "./use-is-mounted";
+
+export interface ComposerCarePlanPickerProps {
+  readonly encounter: PickerEncounter;
+  /** Links can change only while the note is a draft. */
+  readonly editable: boolean;
+  /** Bumped when a draft resolve changed this visit's links, so the list re-reads them. */
+  readonly revision: number;
+  /** A link was added or removed here: the draft is built from the links, so the caller re-reads it. */
+  readonly onChanged: () => void;
+}
+
+type ElementsLoad =
+  | { readonly status: "loading" }
+  | { readonly status: "none" }
+  | { readonly status: "error" }
+  | { readonly status: "ready"; readonly elements: RelevantElements };
+
+interface Row {
+  readonly target: LinkTarget;
+  readonly label: string;
+}
+
+type LinksChange = (current: readonly CarePlanLink[]) => readonly CarePlanLink[];
+
+const goalRows = (elements: RelevantElements): readonly Row[] =>
+  elements.goals.map((goal) => ({
+    target: { kind: "goal", id: goal.goalId },
+    label: goal.text,
+  }));
+
+const interventionRows = (elements: RelevantElements): readonly Row[] =>
+  elements.interventions.map((intervention) => ({
+    target: { kind: "intervention", id: intervention.interventionId },
+    label: intervention.frequencyText
+      ? `${intervention.scopeText} · ${intervention.frequencyText}`
+      : intervention.scopeText,
+  }));
+
+const linkOf = (links: readonly CarePlanLink[], target: LinkTarget): CarePlanLink | undefined =>
+  links.find((link) => (target.kind === "goal" ? link.goalId : link.interventionId) === target.id);
+
+const NOT_SHOWN_STATUSES: readonly number[] = [403, 404];
+
+export function ComposerCarePlanPicker({
+  encounter,
+  editable,
+  revision,
+  onChanged,
+}: ComposerCarePlanPickerProps): JSX.Element | null {
+  const client = useApiClient();
+  const mounted = useIsMounted();
+  const [load, setLoad] = useState<ElementsLoad>({ status: "loading" });
+  const [links, setLinks] = useState<readonly CarePlanLink[]>([]);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const { id: encounterId, patientId, admissionId, encounterType, discipline } = encounter;
+
+  useEffect(() => {
+    let active = true;
+    setLoad({ status: "loading" });
+    void loadRelevantElements(client, {
+      id: encounterId,
+      patientId,
+      admissionId,
+      encounterType,
+      discipline,
+    }).then((outcome) => {
+      if (!active) return;
+      if (outcome.ok) setLoad({ status: "ready", elements: outcome.data });
+      else setLoad({ status: NOT_SHOWN_STATUSES.includes(outcome.status) ? "none" : "error" });
+    });
+    return () => {
+      active = false;
+    };
+  }, [client, encounterId, patientId, admissionId, encounterType, discipline]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `revision` is the re-read trigger, not read in the body.
+  useEffect(() => {
+    let active = true;
+    void loadCarePlanLinks(client, encounterId).then((outcome) => {
+      if (active && outcome.ok) setLinks(outcome.data.links);
+    });
+    return () => {
+      active = false;
+    };
+  }, [client, encounterId, revision]);
+
+  if (load.status === "loading" || load.status === "none") return null;
+  if (load.status === "error") {
+    return (
+      <Panel title="Care plan for this visit" icon="clipboard-list">
+        <InlineAlert tone="warning">
+          The care plan could not be loaded. Your documentation is not affected.
+        </InlineAlert>
+      </Panel>
+    );
+  }
+
+  const goals = goalRows(load.elements);
+  const interventions = interventionRows(load.elements);
+  if (goals.length + interventions.length === 0 && !load.elements.redacted) return null;
+
+  /** Link or unlink `row`: the change to apply to the held links, or the refusal in words. */
+  const send = async (row: Row): Promise<LinksChange | string> => {
+    const existing = linkOf(links, row.target);
+    if (existing) {
+      const outcome = await unlinkCarePlanElement(client, encounterId, existing.id);
+      return outcome.ok
+        ? (current) => current.filter((link) => link.id !== existing.id)
+        : describeDraftRefusal(outcome).message;
+    }
+    const outcome = await linkCarePlanElement(client, encounterId, row.target);
+    return outcome.ok
+      ? (current) => [...current, outcome.data]
+      : describeDraftRefusal(outcome).message;
+  };
+
+  const toggle = async (row: Row): Promise<void> => {
+    if (pendingKey !== null) return;
+    setPendingKey(row.target.id);
+    setProblem(null);
+    const result = await send(row);
+    if (!mounted.current) return;
+    setPendingKey(null);
+    if (typeof result === "string") {
+      setProblem(result);
+      return;
+    }
+    setLinks(result);
+    onChanged();
+  };
+
+  const group = (legend: string, rows: readonly Row[]): JSX.Element | null =>
+    rows.length === 0 ? null : (
+      <fieldset className="wx-form-stack wx-fieldset-reset">
+        <legend>{legend}</legend>
+        {rows.map((row) => {
+          const inputId = `care-plan-${row.target.kind}-${row.target.id}`;
+          return (
+            <div key={inputId} className="wx-action-check">
+              <input
+                id={inputId}
+                type="checkbox"
+                checked={linkOf(links, row.target) !== undefined}
+                disabled={!editable || pendingKey !== null}
+                onChange={() => void toggle(row)}
+              />
+              <label htmlFor={inputId}>{row.label}</label>
+            </div>
+          );
+        })}
+      </fieldset>
+    );
+
+  return (
+    <Panel
+      title="Care plan for this visit"
+      icon="clipboard-list"
+      description="A link ties an item to this visit only. The care plan itself is never changed."
+      stack
+    >
+      {group("Goals worked toward", goals)}
+      {group("Interventions performed", interventions)}
+      {load.elements.redacted ? (
+        <p className="wx-row-sub">Some items are hidden by privacy or consent settings.</p>
+      ) : null}
+      <p className="wx-row-sub">
+        Confirming a drafted section links its goals and interventions here. Deselecting it unlinks
+        them.
+      </p>
+      {problem ? <InlineAlert tone="error">{problem}</InlineAlert> : null}
+    </Panel>
+  );
+}

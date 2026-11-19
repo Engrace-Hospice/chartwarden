@@ -219,6 +219,13 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     encounterStatus = "finalized";
     finalizeSucceeded = true;
   }
+  // ADR-0114: the tenant has the visit-note draft switched off, so its read answers 404 and the composer is exactly as before.
+  if (method === "GET" && path.endsWith("/draft")) {
+    return new Response(JSON.stringify({ error: { code: "NOT_FOUND", message: "not found" } }), {
+      status: 404,
+      headers: { "content-type": "application/json" },
+    });
+  }
   return new Response(JSON.stringify(bodyFor(method, path)), {
     status: 200,
     headers: { "content-type": "application/json" },
