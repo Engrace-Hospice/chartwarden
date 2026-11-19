@@ -53,7 +53,10 @@ received a second authenticated browser/device pass.
 
 ## 4. Not run or not evidenced
 
-- M18 live database read/write/worker and key-rotation suites on a private disposable PostgreSQL cluster.
+- M18 live database read/write/worker and key-rotation suites. A fresh `chartwarden-postgres:dev`
+  container was started on isolated port 5569 with its own database and the required lock setting, but
+  the compliance harness refused the suite because Codex cannot acknowledge its `DROP ROLE
+  chartwarden_app` confirmation. The suite did not start; the container was stopped and removed.
 - A post-PR-3 authenticated Playwright journey against the Docker application stack.
 - Cross-tenant live reads using the real NOBYPASSRLS application role for the newly projected aggregator evidence.
 - Screenshots suitable for release review.
