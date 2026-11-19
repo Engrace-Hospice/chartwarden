@@ -7,8 +7,11 @@ import {
   type AssemblyContext,
   HearthnoteAssemblyError,
   type SelectionState,
+  NOTE_BLOCK_SEPARATOR,
   assemble,
+  assembleBlocks,
   assembleLayer1,
+  joinBlocks,
   missingRequiredSections,
   resolveTemplate,
 } from "../src/index";
@@ -192,5 +195,46 @@ describe("missingRequiredSections — Layer-3 check-1 input", () => {
       sections: [{ sectionId: "chief_concern", entries: [], freeText: "Per plan." }],
     });
     expect(missingRequiredSections(template, sel)).not.toContain("chief_concern");
+  });
+});
+
+describe("assembleBlocks / joinBlocks — the section blocks Layer 1 joins (ADR-0114 sealing)", () => {
+  const template = resolveTemplate("routine_visit", "rn")!;
+
+  it("joining the blocks is exactly the Layer-1 narrative, and each block is a heading and its body", () => {
+    const blocks = assembleBlocks(template, rnRoutineSelection(), CONTEXT);
+    expect(blocks.map((b) => b.sectionId)).toEqual([
+      "chief_concern",
+      "assessment",
+      "symptom_management",
+      "plan",
+    ]);
+    expect(blocks[0]?.text).toBe("Reason for Visit\nRoutine scheduled visit per care plan.");
+    expect(joinBlocks(blocks)).toBe(assembleLayer1(template, rnRoutineSelection(), CONTEXT).narrative);
+    expect(blocks.map((b) => b.text).join(NOTE_BLOCK_SEPARATOR)).toBe(joinBlocks(blocks));
+  });
+
+  it("a body override replaces the rendered selection of that section only, even where the clinician selected nothing", () => {
+    const blocks = assembleBlocks(template, rnRoutineSelection(), CONTEXT, {
+      plan: "Drafted plan text.",
+      interventions: "Drafted interventions text.",
+    });
+    const byId = new Map(blocks.map((b) => [b.sectionId, b.text]));
+    expect(byId.get("plan")).toBe("Plan and Next Visit\nDrafted plan text.");
+    expect(byId.get("interventions")).toBe("Interventions\nDrafted interventions text.");
+    expect(byId.get("chief_concern")).toBe("Reason for Visit\nRoutine scheduled visit per care plan.");
+    // template order, not selection or override order
+    expect(blocks.map((b) => b.sectionId)).toEqual([
+      "chief_concern",
+      "assessment",
+      "symptom_management",
+      "interventions",
+      "plan",
+    ]);
+  });
+
+  it("an empty override body omits the section like an empty selection does", () => {
+    const blocks = assembleBlocks(template, rnRoutineSelection(), CONTEXT, { plan: "" });
+    expect(blocks.map((b) => b.sectionId)).not.toContain("plan");
   });
 });
