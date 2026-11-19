@@ -329,6 +329,29 @@ describe("SiaCard: units basis", () => {
   });
 });
 
+describe("SiaCard: width on the pricing row", () => {
+  const cardOf = (): HTMLElement => screen.getByRole("region", { name: HEADING });
+
+  it("takes the whole row when it carries a visit table, so no column is pushed out of view", () => {
+    render(
+      <MemoryRouter>
+        <SiaCard sia={unitsSia()} patientId="patient-1" />
+      </MemoryRouter>,
+    );
+    expect(cardOf().style.flex).toBe("1 1 100%");
+  });
+
+  const withoutVisitTable: ReadonlyArray<readonly [string, SiaPricing | null]> = [
+    ["no SIA", null],
+    ["a minutes-based calculation", legacySia()],
+    ["a units calculation with no visits", unitsSia({ visits: [] })],
+  ];
+  it.each(withoutVisitTable)("shares the row with the per-diem card for %s", (_label, sia) => {
+    render(<SiaCard sia={sia} />);
+    expect(cardOf().style.flex).toBe("1 1 16rem");
+  });
+});
+
 describe("ClaimEditor: the SIA card", () => {
   const CLAIM = "c1c1c1c1-0000-4000-8000-000000000001";
   const ok = (data: unknown) => ({ data, error: undefined, response: new Response(null) });
