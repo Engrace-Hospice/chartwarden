@@ -11,6 +11,7 @@ import {
   type EncounterDiscipline,
   type EncounterType,
 } from "@chartwarden/types";
+import type { VocabCategory } from "@chartwarden/narrative-vocab";
 import type { HearthnoteTemplate, TemplateSection } from "./types";
 import { templateKey } from "./types";
 
@@ -87,6 +88,23 @@ const SECTION: Record<string, TemplateSection> = {
   idg_followup: { id: "idg_followup", heading: "IDG Decision Follow-Up", required: true },
 };
 
+/**
+ * VN-D15 (S1 PR B): phrase categories for the RN routine visit's three uncategorized sections. Wired for
+ * THIS template only — `chief_concern` and `plan` are shared with every discipline, and a category there
+ * would empty their menus (the new entries are tagged for the RN routine visit alone). `plan` also keeps
+ * `care_plan_element`, the category of the care-plan phrases its menu already offered. Every other
+ * template resolves exactly the sections it had before.
+ */
+const ROUTINE_VISIT_RN_CATEGORIES: Readonly<Record<string, readonly VocabCategory[]>> = {
+  chief_concern: ["chief_concern"],
+  vitals_review: ["vitals_review"],
+  plan: ["plan", "care_plan_element"],
+};
+
+/** Per-template category wiring, keyed by template key then section id. */
+const CATEGORY_WIRING: ReadonlyMap<string, Readonly<Record<string, readonly VocabCategory[]>>> =
+  new Map([[templateKey("routine_visit", "rn"), ROUTINE_VISIT_RN_CATEGORIES]]);
+
 /** The base section ids a discipline documents, before encounter-type specialization. */
 function baseSectionIds(discipline: EncounterDiscipline): readonly string[] {
   switch (discipline) {
@@ -149,14 +167,16 @@ function buildTemplate(
   for (const id of [...base, ...extraSectionIds(encounterType)]) {
     if (!ordered.includes(id)) ordered.push(id);
   }
+  const key = templateKey(encounterType, discipline);
   return {
-    key: templateKey(encounterType, discipline),
+    key,
     encounterType,
     discipline,
     sections: ordered.map((id) => {
       const section = SECTION[id];
       if (section === undefined) throw new Error(`unknown section id '${id}'`);
-      return section;
+      const wired = CATEGORY_WIRING.get(key)?.[id];
+      return wired === undefined ? section : { ...section, allowedCategories: wired };
     }),
   };
 }

@@ -56,6 +56,11 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
     id: "81dcb265-d2ef-456b-b029-1bcce25105e7",
     releasedOn: "2026-06-01",
   },
+  {
+    version: "narrative-vocab@2026.11.0",
+    id: "0e92f042-d45f-426c-918a-d3391387dd69",
+    releasedOn: "2026-11-18",
+  },
 ];
 
 /** Raised when {@link VOCAB_VERSION} names a release this registry does not carry. */

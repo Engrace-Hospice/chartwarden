@@ -8,7 +8,12 @@ import type { VocabEntry } from "./types";
 import { VOCABULARY } from "./vocabulary";
 
 export type { VocabBodySystem, VocabCategory, VocabEntry } from "./types";
-export { VOCABULARY, VOCAB_VERSION } from "./vocabulary";
+export {
+  CORPUS_CLINICAL_REVIEW,
+  VOCABULARY,
+  VOCAB_VERSION,
+  type ClinicalReviewStatus,
+} from "./vocabulary";
 export {
   NARRATIVE_VOCAB_RELEASES,
   UnregisteredNarrativeVocabRelease,
