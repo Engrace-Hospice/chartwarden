@@ -8,6 +8,7 @@
 // disclosure keyboard- and screen-reader-complete with no script.
 import { Glyph, StatusPill } from "@chartwarden/ui";
 import type { JSX } from "react";
+import { amendmentCosignTone, amendmentCosignWords } from "./cosign-model";
 import { humanizeSection } from "./sign-draft-notice";
 import {
   type FinalDocumentationView,
@@ -57,11 +58,16 @@ function SectionText({
 }
 
 function VersionRow({ version }: { readonly version: NoteVersion }): JSX.Element {
+  // An amendment's own cosignature, in words: nothing for the original, or when none was required or the API stated none.
+  const cosignWords = amendmentCosignWords(version.cosignStatus);
   return (
     <li className="wx-note-version">
       <div className="wx-note-version-head">
         <strong>{version.kind === "original" ? "Original" : "Amendment"}</strong>
         {version.current ? <StatusPill label="Current" tone="success" /> : null}
+        {cosignWords !== null && version.cosignStatus ? (
+          <StatusPill label={cosignWords} tone={amendmentCosignTone(version.cosignStatus)} />
+        ) : null}
         {version.signedAt ? (
           <time dateTime={version.signedAt} className="wx-row-sub">
             {shortStamp(version.signedAt)}

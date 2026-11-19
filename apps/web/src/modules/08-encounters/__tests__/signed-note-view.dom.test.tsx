@@ -238,3 +238,80 @@ describe("an amended section", () => {
     expect(screen.getByText("Earlier versions are not available.")).toBeInTheDocument();
   });
 });
+
+describe("the cosignature of each amendment version, in words", () => {
+  const version = (
+    addendumId: string | null,
+    cosignStatus: NoteHistory["sections"][number]["versions"][number]["cosignStatus"],
+    over: Partial<NoteHistory["sections"][number]["versions"][number]> = {},
+  ): NoteHistory["sections"][number]["versions"][number] => ({
+    kind: addendumId === null ? "original" : "amendment",
+    addendumId,
+    authoredByMembershipId: "mem-1",
+    signedAt: "2026-10-02T09:30:00Z",
+    text: `Text of ${addendumId ?? "original"}.`,
+    withheld: false,
+    current: false,
+    cosignStatus,
+    ...over,
+  });
+  const view: FinalDocumentationView = {
+    withheld: false,
+    sections: [section("pain", { amendedByAddendumId: "add-4" })],
+  };
+  const openVersions = async (versions: NoteHistory["sections"][number]["versions"]) => {
+    const user = userEvent.setup();
+    render(
+      <SignedNoteView
+        view={view}
+        history={{ sections: [{ sectionId: "pain", versions }] }}
+        fallbackText="legacy"
+      />,
+    );
+    const pain = screen.getByRole("region", { name: "Pain" });
+    await user.click(within(pain).getByText(/Version history/));
+    return within(pain).getAllByRole("listitem");
+  };
+
+  it("says pending cosignature, cosigned and released on the amendment that has each", async () => {
+    const rows = await openVersions([
+      version(null, null),
+      version("add-1", "pending"),
+      version("add-2", "cosigned"),
+      version("add-3", "released"),
+    ]);
+    expect(within(rows[1] as HTMLElement).getByText("Pending cosignature")).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).getByText("Cosigned")).toBeInTheDocument();
+    expect(
+      within(rows[3] as HTMLElement).getByText("Released by a supervisor"),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing for the original, a cosignature that was not required, or one the API did not state", async () => {
+    const rows = await openVersions([
+      version(null, null),
+      version("add-1", "not_required"),
+      version("add-2", null),
+    ]);
+    for (const row of rows) {
+      expect(row.querySelector(".wx-status-pill")).toBeNull();
+    }
+    expect(screen.queryByText(/cosign/i)).toBeNull();
+  });
+
+  it("states the cosignature of a withheld amendment without showing any of its text", async () => {
+    const rows = await openVersions([
+      version(null, null),
+      version("add-1", "pending", { text: null, withheld: true }),
+    ]);
+    const withheld = rows[1] as HTMLElement;
+    expect(within(withheld).getByText("Pending cosignature")).toBeInTheDocument();
+    expect(within(withheld).getByText(PART2)).toBeInTheDocument();
+    expect(withheld.textContent).not.toMatch(/Text of add-1/);
+  });
+
+  it("has no axe violations with the statuses showing", async () => {
+    await openVersions([version(null, null), version("add-1", "pending")]);
+    expect((await axe.run(document.body)).violations).toEqual([]);
+  });
+});
