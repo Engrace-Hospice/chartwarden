@@ -680,6 +680,7 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
           serviceFrom: "2026-10-01",
           serviceTo: "2026-10-31",
           kind,
+          rbArrangementId: "f0000000-0845-4000-8000-0000000000a5",
         },
       );
     const before = (await admin.query("SELECT count(*)::int AS n FROM medicaid_claim")).rows[0].n;

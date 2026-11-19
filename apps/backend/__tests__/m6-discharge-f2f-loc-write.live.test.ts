@@ -820,7 +820,8 @@ describe.skipIf(!DB_URL)(
         },
         USER,
       );
-      const blocker = await admin.connect();
+      const blocker = new Client({ connectionString: DB_URL });
+      await blocker.connect();
       let blockedQuery: string | null = null;
       let cosign: ReturnType<typeof svc.cosignDischarge> | undefined;
       try {
@@ -849,8 +850,8 @@ describe.skipIf(!DB_URL)(
           await new Promise((resolve) => setTimeout(resolve, 10));
         }
       } finally {
-        await blocker.query("ROLLBACK");
-        blocker.release();
+        await blocker.query("ROLLBACK").catch(() => undefined);
+        await blocker.end();
       }
       if (!cosign) throw new Error("the cosign transaction was not started");
       const cosigned = await cosign;
