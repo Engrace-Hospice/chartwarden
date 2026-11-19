@@ -69,6 +69,7 @@ describe("historyOfSection", () => {
             text: "Before.",
             withheld: false,
             current: false,
+            cosignStatus: null,
           },
           {
             kind: "amendment",
@@ -78,6 +79,7 @@ describe("historyOfSection", () => {
             text: "After.",
             withheld: false,
             current: true,
+            cosignStatus: "not_required",
           },
         ],
       },

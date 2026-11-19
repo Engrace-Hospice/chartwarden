@@ -195,6 +195,7 @@ describe("the signed note on the encounter record", () => {
                 text: "Pain, as first signed.",
                 withheld: false,
                 current: false,
+                cosignStatus: null,
               },
               {
                 kind: "amendment",
@@ -204,6 +205,7 @@ describe("the signed note on the encounter record", () => {
                 text: "Pain, amended.",
                 withheld: false,
                 current: true,
+                cosignStatus: "not_required",
               },
             ],
           },

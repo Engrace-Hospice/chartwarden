@@ -127,6 +127,7 @@ describe("withheld text", () => {
                   text: null,
                   withheld: true,
                   current: false,
+                  cosignStatus: null,
                 },
                 {
                   kind: "amendment",
@@ -136,6 +137,7 @@ describe("withheld text", () => {
                   text: "After.",
                   withheld: false,
                   current: true,
+                  cosignStatus: "not_required",
                 },
               ],
             },
@@ -164,6 +166,7 @@ describe("an amended section", () => {
             text: "Pain controlled.",
             withheld: false,
             current: false,
+            cosignStatus: null,
           },
           {
             kind: "amendment",
@@ -173,6 +176,7 @@ describe("an amended section", () => {
             text: "Pain controlled, new breakthrough pain.",
             withheld: false,
             current: false,
+            cosignStatus: "not_required",
           },
           {
             kind: "amendment",
@@ -182,6 +186,7 @@ describe("an amended section", () => {
             text: null,
             withheld: true,
             current: true,
+            cosignStatus: "not_required",
           },
         ],
       },
