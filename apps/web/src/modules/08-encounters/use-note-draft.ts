@@ -54,7 +54,11 @@ function loadStateOf(outcome: Outcome<DraftView>): DraftLoad {
     : { status: "unavailable" };
 }
 
-export function useNoteDraft(encounterId: string | undefined): NoteDraft {
+/**
+ * `refreshKey` re-reads the draft when it changes (a note that moved from draft to finalized pins its text); `encounterId` undefined reads
+ * nothing yet (a page that does not know its encounter until it has loaded it).
+ */
+export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): NoteDraft {
   const client = useApiClient();
   const mounted = useIsMounted();
   const [load, setLoad] = useState<DraftLoad>({ status: "loading" });
@@ -71,13 +75,14 @@ export function useNoteDraft(encounterId: string | undefined): NoteDraft {
     if (mine === sequence.current) setLoad(loadStateOf(outcome));
   }, [client, encounterId]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `refreshKey` is the re-read trigger, not read in the body.
   useEffect(() => {
     setLoad({ status: "loading" });
     void reload();
     return () => {
       sequence.current += 1;
     };
-  }, [reload]);
+  }, [reload, refreshKey]);
 
   const resolve = useCallback(
     async (section: DraftSectionView, resolution: Resolution): Promise<boolean> => {

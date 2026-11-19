@@ -24,7 +24,10 @@ import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assess
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
 import type { AddendumRow } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
+import { describeIssues, draftIsActive, draftIssuesFrom, reviewCounts } from "./draft-model";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
+import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice, humanizeSection } from "./sign-draft-notice";
+import { useNoteDraft } from "./use-note-draft";
 import {
   type DeliveryDraft,
   asVisitModality,
@@ -285,6 +288,11 @@ export function EncounterRead(): JSX.Element {
   }>();
 
   const [encounter, setEncounter] = useState<Encounter | null>(null);
+  // ADR-0114: the pre-drafted sections the signer must have resolved. Read once the encounter is known, and again when its status moves.
+  const { load: draftLoad, reload: reloadDraft } = useNoteDraft(
+    encounter ? encounter.id : undefined,
+    encounter?.status,
+  );
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [cosignStatus, setCosignStatus] = useState<string | null>(null);
   const [carePlan, setCarePlan] = useState<CarePlanRelevant | null>(null);
@@ -679,6 +687,7 @@ export function EncounterRead(): JSX.Element {
           error?: {
             code?: string;
             message?: string;
+            details?: unknown;
           };
         };
         response?: Response;
@@ -766,6 +775,19 @@ export function EncounterRead(): JSX.Element {
           );
         } else if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED") {
           setActionError("Your step-up expired — try again.");
+        } else if (errCode === "DRAFT_SECTION_STALE") {
+          // ADR-0114: the signer's drafted sections are not resolved against the draft as it stands now. Re-read it, and say which.
+          const issues = draftIssuesFrom(err?.error?.details);
+          void reloadDraft();
+          setActionError(
+            `Some drafted sections need another look before this note can be signed${
+              issues.length > 0 ? `: ${describeIssues(issues, humanizeSection)}` : ""
+            }. Review them in the note editor, then sign again.`,
+          );
+        } else if (errCode === "COMPLIANCE_GATE_UNAVAILABLE") {
+          setActionError(
+            "The visit-note draft could not be checked right now. Try again in a moment.",
+          );
         } else if (errCode === "STALE_VERSION") {
           setActionError("This encounter changed since you opened it — reload to retry.");
         } else if (response?.status === 403) {
@@ -797,6 +819,7 @@ export function EncounterRead(): JSX.Element {
       load,
       clearFieldError,
       refreshClosureStatus,
+      reloadDraft,
     ],
   );
 
@@ -1101,6 +1124,11 @@ export function EncounterRead(): JSX.Element {
    * These remain unchanged.
    */
   const canSign = e.status === "finalized";
+  // ADR-0114: signing is blocked until every drafted section is resolved; the server is the judge, this only tells the signer first.
+  const draftSections =
+    draftLoad.status === "ready" && draftIsActive(draftLoad.draft) ? draftLoad.draft : null;
+  const sectionsToReview = draftSections ? reviewCounts(draftSections).needReview : [];
+  const signBlockedByDraft = canSign && sectionsToReview.length > 0;
 
   const canAcknowledge =
     cosignStatus === "pending" || cosignStatus === "routed" || cosignStatus === "escalated";
@@ -1825,6 +1853,13 @@ export function EncounterRead(): JSX.Element {
                   )}
                 </div>
 
+                {signBlockedByDraft ? (
+                  <SignDraftNotice
+                    sections={sectionsToReview}
+                    composePath={`/patients/${e.patientId}/encounters/${e.id}/compose`}
+                  />
+                ) : null}
+
                 <div style={quickActionButtons}>
                   {canSupervisorRelease ? (
                     <button
@@ -1868,6 +1903,8 @@ export function EncounterRead(): JSX.Element {
                   {canSign ? (
                     <button
                       type="button"
+                      disabled={signBlockedByDraft}
+                      aria-describedby={signBlockedByDraft ? SIGN_DRAFT_NOTICE_ID : undefined}
                       onClick={() => {
                         setDelivery(
                           initialDelivery(
@@ -1880,6 +1917,7 @@ export function EncounterRead(): JSX.Element {
                       style={{
                         ...primaryBtn,
                         width: "100%",
+                        ...(signBlockedByDraft ? { opacity: 0.55, cursor: "not-allowed" } : null),
                       }}
                     >
                       Sign encounter
