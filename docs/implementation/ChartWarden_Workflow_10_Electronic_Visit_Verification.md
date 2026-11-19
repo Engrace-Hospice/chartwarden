@@ -2,7 +2,7 @@
 
 **Repository destination:** `docs/implementation/ChartWarden_Workflow_10_Electronic_Visit_Verification.md`
 **Executor:** Codex
-**Status:** WP0 APPROVED — 2026-11-19; approved PR-0/PR-1 supervisor workspace, PR-2 event correction, and PR-3 honest aggregator evidence slices implemented locally
+**Status:** WP0 APPROVED — 2026-11-19; approved PR-0/PR-1 supervisor workspace, PR-2 event correction, and PR-3 honest aggregator evidence slices implemented locally; PR-4/PR-5 mobile source audited cross-repository and release-blocked on device/live evidence
 **Sequence:** After Workflow 09 (Clinical Visits & Documentation), before Workflow 11 (Medication Orders)
 **Baseline:** The historical ZIP proposal has been superseded by the current-branch WP0 evidence at
 [`evidence/10-evv-current-state.md`](./evidence/10-evv-current-state.md). That audit includes static source
@@ -50,6 +50,7 @@ These paths were observed in the uploaded repository. Their presence is not proo
 | `docs/design/screens/clinical/CHARTWARDEN_UI_EVV.md` | Existing intended UX; not proof that features are implemented. |
 | `e2e/specs/evv.spec.ts`, `apps/web/src/modules/18-evv/evv-writes.dom.test.tsx` | UI/e2e test inventory. |
 | `apps/backend/__tests__/evv-*.test.ts`, `m17-evv-*.live.test.ts`, `m18-evv-*.test.ts` | Existing lifecycle, authorization, geofence, offline, worker and integration tests; distinguish live tests from unit tests. |
+| `chartwarden-mobile/src/features/visits/use-visit-workflow.ts`, `visit-detail-screen.tsx`, `features/evv/` (separate repository) | React Native/Expo foreground location, device self-registration, online capture, evidence reconciliation, and default-off encrypted offline sync. Cross-repository source evidence only; not production readiness. |
 
 ### High-value findings requiring verification
 
@@ -58,8 +59,10 @@ These paths were observed in the uploaded repository. Their presence is not proo
 - The route source describes **server-session-backed fresh step-up** for correction-of-record and supervisor overrides. Do not replace it with a client-provided flag.
 - The route dependency `deviceAttestationEnforced` is documented as **default OFF** pending an attested client. Audit runtime configuration; do not claim device attestation is enforced merely because a gate exists.
 - Late-check, aggregator and spoof-detection workers are wired in the current composition root; see WP0 §11.
-  This proves construction and focused tests, not a live vendor transmission, mobile offline client or real-device
-  anti-spoofing behavior.
+  This proves construction and focused tests, not a live vendor transmission or real-device anti-spoofing behavior.
+- The separate `chartwarden-mobile` repository contains React Native/Expo online capture, self-registration and
+  encrypted offline-sync source. Its own release records mark authenticated live and physical-device proof NO-GO;
+  do not restate source presence as a released mobile capability.
 - A UI module for devices and geofence policy exists; do not make geolocation mandatory for all visits or store/display exact coordinates beyond policy and least-privilege needs.
 
 ## 2. WP0 — Current-state audit (APPROVED 2026-11-19)
@@ -266,8 +269,8 @@ Use fictional test data. Adapt expected behavior to actual contracts and applica
 | PR-1 | Shared EVV UI, status language, routing | Component/accessibility and navigation tests |
 | PR-2 | Event evidence timeline and existing correction route UI | Step-up, permission, provenance and contract tests |
 | PR-3 | Honest aggregator configuration/status presentation and drill-down | Vendor-state truthfulness, tenant isolation and worker/live proof |
-| PR-4 | Mobile/Capacitor capture and device registration, separately approved | Real-device location, attestation and privacy evidence |
-| PR-5 | Offline v2 client queue, only after PR-4 and an approved local PHI model | Encryption, account/device isolation, replay and recovery tests |
+| PR-4 | React Native/Expo capture and device registration in the separate `chartwarden-mobile` repository | Source implemented; release requires real-device location, attestation and privacy evidence |
+| PR-5 | Default-off offline v2 client queue in `chartwarden-mobile` under the approved encrypted local-PHI model | Source implemented; release requires SQLCipher, account/device isolation, replay and recovery device proof |
 | PR-6 | Vendor/state adapter work, separately approved | BAA/trading-partner, sandbox, production refusal and rollback evidence |
 
 Do not merge large cross-domain changes in one PR. If a backend safety defect is discovered, propose a separate narrow fix with proof, migration impact and approval.
@@ -285,6 +288,23 @@ behavior, schema, policy, or new PHI storage was added.
 Focused DOM behavior and injected-route contract tests pass. OpenAPI and the generated client are in
 sync. Tenant-isolation and worker/live proof remain release-gate work; this local slice does not claim a
 real vendor transmission or configuration-health check.
+
+### PR-4/PR-5 cross-repository audit note — 2026-11-19
+
+The authoritative architecture targets a separately versioned React Native/Expo app, not the historical
+Capacitor wrapper. At audited mobile commit `77f450ddbf02afa4ad0d662d392afdfd7fa8cbc5`, the sibling
+`chartwarden-mobile` repository already contains foreground-only fresh-location capture, device
+self-registration with approval gating, server-bracket reconciliation, and an encrypted offline v2
+queue behind a default-off build flag. The mobile documentation explicitly forbids treating local source
+and unit tests as authenticated live or physical-device evidence.
+
+PR-4 and PR-5 therefore move from “unimplemented here” to “source implemented cross-repository, release
+NO-GO.” Remaining gates include iOS and Android location/permission behavior, SQLCipher and backup
+exclusion, wrong-key and logout/account isolation, response-loss and replay recovery, attestation-on/off,
+access-denial cases, accessibility, and live backend reconciliation. This repository must not add
+`apps/mobile`, Capacitor dependencies, or a competing offline queue. ADR-0072 still records formal owner
+ratification as pending, so any change to renderer ownership or cross-repository contracts remains an
+architecture decision, not an implementation-plan shortcut.
 
 ## 7. Definition of done
 
