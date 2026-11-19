@@ -106,88 +106,105 @@ export async function runEncounterAttentionCron(deps: M8WorkerDeps): Promise<voi
   });
 }
 
+/**
+ * The cosignature SLA tick: 12h overdue alert, 24h escalation, 48h hard cap (§2.4 D3, ../cosignature/sla-clock.ts). It sweeps BOTH kinds of request with
+ * one body (ADR-0114 VN-D30): the note's own (`cosignature_request`) and the one an amending addendum opened (`addendum_cosignature_request`, its own
+ * `routed_at` clock). An amendment's alerts and events carry its `addendumId`; the two tables have the same columns, so one set of statements serves both.
+ */
 export async function runCosignatureSlaCron(deps: M8WorkerDeps): Promise<void> {
   const alerts = alertEmitterOf(deps);
   const now = (deps.now ?? (() => new Date()))();
   const nowIso = now.toISOString();
+  const OPEN = ["routed", "acknowledged", "escalated"] as const;
+  const kinds = [
+    { table: schema.cosignatureRequests, aggregateKind: "cosignature_request" },
+    {
+      // The same columns as `cosignature_request` (pinned by visit-note-draft-migration-pins.test.ts); typed as one table for the shared statements.
+      table: schema.addendumCosignatureRequests as unknown as typeof schema.cosignatureRequests,
+      aggregateKind: "addendum_cosignature_request",
+    },
+  ] as const;
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
     const supervisorId = await supervisorMembershipId(deps.db, organizationId);
     await withOrgContext(deps.db, systemOrgContext(organizationId), async (txRaw) => {
       const tx = txRaw as DbClient;
-      const CR = schema.cosignatureRequests;
-      const requests = await tx
-        .select()
-        .from(CR)
-        .where(
-          and(
-            eq(CR.organizationId, organizationId),
-            inArray(CR.status, ["routed", "acknowledged", "escalated"]),
-          ),
-        );
-      for (const req of requests) {
-        const routedAt = iso(req.routedAt);
-        const stage = decideCosignatureSlaStage({
-          routedAtInstant: routedAt,
-          asOfInstant: nowIso,
-          currentStatus: req.status as CosignatureStatus,
-        });
-        if (stage === "none") continue;
-        if (stage === "overdue") {
-          await alerts.emit(organizationId, {
-            eventType: "m8.encounter.cosignature_overdue",
-            severity: "warn",
-            correlationId: `m8:cosign-overdue:${req.id}`,
-            payload: {
-              encounterId: req.encounterId,
-              routedToMembershipId: req.routedToMembershipId,
-              hoursOverdue: Math.floor(hoursBetween(routedAt, nowIso)),
-              deepLink: "/work/cosignatures",
-            },
+      for (const { table: CR, aggregateKind } of kinds) {
+        const requests = await tx
+          .select()
+          .from(CR)
+          .where(and(eq(CR.organizationId, organizationId), inArray(CR.status, [...OPEN])));
+        for (const req of requests) {
+          // An amendment's request names its addendum; a note's does not.
+          const addendumId =
+            "addendumId" in req && typeof req.addendumId === "string" ? req.addendumId : undefined;
+          const subject = addendumId === undefined ? {} : { addendumId };
+          const routedAt = iso(req.routedAt);
+          const stage = decideCosignatureSlaStage({
+            routedAtInstant: routedAt,
+            asOfInstant: nowIso,
+            currentStatus: req.status as CosignatureStatus,
           });
-          continue;
-        }
-        if (supervisorId === null) {
-          await alerts.emit(organizationId, {
-            eventType: "m8.encounter.cosignature_overdue",
-            severity: "critical",
-            correlationId: `m8:cosign-supervisor-missing:${req.id}`,
-            payload: {
-              encounterId: req.encounterId,
-              routedToMembershipId: req.routedToMembershipId,
-              deepLink: "/work/cosignatures",
-            },
-          });
-          continue;
-        }
-        const transition = transitionCosignature(req.status as CosignatureStatus, {
-          type: stage === "escalate" ? "escalate" : "reachHardCap",
-          supervisorMembershipId: supervisorId,
-          at: nowIso,
-        });
-        await tx
-          .update(CR)
-          .set({
-            status: transition.to,
-            escalatedAt: stage === "escalate" ? now : req.escalatedAt,
-            hardCapAt: stage === "hard_cap" ? now : req.hardCapAt,
-            version: Number(req.version) + 1,
-            updatedAt: now,
-          })
-          .where(and(eq(CR.id, req.id), eq(CR.status, req.status)));
-        await deps.outbox.publish(tx, {
-          eventName:
-            stage === "escalate"
-              ? "m8.encounter.cosignature_escalated"
-              : "m8.encounter.cosignature_hard_cap_reached",
-          organizationId,
-          aggregateKind: "cosignature_request",
-          aggregateId: req.id,
-          payload: {
-            encounterId: req.encounterId,
-            routedToMembershipId: req.routedToMembershipId,
+          if (stage === "none") continue;
+          if (stage === "overdue") {
+            await alerts.emit(organizationId, {
+              eventType: "m8.encounter.cosignature_overdue",
+              severity: "warn",
+              correlationId: `m8:cosign-overdue:${req.id}`,
+              payload: {
+                encounterId: req.encounterId,
+                ...subject,
+                routedToMembershipId: req.routedToMembershipId,
+                hoursOverdue: Math.floor(hoursBetween(routedAt, nowIso)),
+                deepLink: "/work/cosignatures",
+              },
+            });
+            continue;
+          }
+          if (supervisorId === null) {
+            await alerts.emit(organizationId, {
+              eventType: "m8.encounter.cosignature_overdue",
+              severity: "critical",
+              correlationId: `m8:cosign-supervisor-missing:${req.id}`,
+              payload: {
+                encounterId: req.encounterId,
+                ...subject,
+                routedToMembershipId: req.routedToMembershipId,
+                deepLink: "/work/cosignatures",
+              },
+            });
+            continue;
+          }
+          const transition = transitionCosignature(req.status as CosignatureStatus, {
+            type: stage === "escalate" ? "escalate" : "reachHardCap",
             supervisorMembershipId: supervisorId,
-          },
-        });
+            at: nowIso,
+          });
+          await tx
+            .update(CR)
+            .set({
+              status: transition.to,
+              escalatedAt: stage === "escalate" ? now : req.escalatedAt,
+              hardCapAt: stage === "hard_cap" ? now : req.hardCapAt,
+              version: Number(req.version) + 1,
+              updatedAt: now,
+            })
+            .where(and(eq(CR.id, req.id), eq(CR.status, req.status)));
+          await deps.outbox.publish(tx, {
+            eventName:
+              stage === "escalate"
+                ? "m8.encounter.cosignature_escalated"
+                : "m8.encounter.cosignature_hard_cap_reached",
+            organizationId,
+            aggregateKind,
+            aggregateId: req.id,
+            payload: {
+              encounterId: req.encounterId,
+              ...subject,
+              routedToMembershipId: req.routedToMembershipId,
+              supervisorMembershipId: supervisorId,
+            },
+          });
+        }
       }
     });
   }

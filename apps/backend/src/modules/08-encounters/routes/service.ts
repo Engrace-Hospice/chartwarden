@@ -61,7 +61,11 @@ import {
 } from "../chart-promotion";
 import { type WithClosure, myNotesOf } from "../closure/my-notes";
 import { DEFAULT_CLOSURE_POLICY } from "../closure/policy-service";
-import { type CosignatureState, transitionCosignature } from "../cosignature/index";
+import {
+  type CosignDisplayStatus,
+  type CosignatureState,
+  transitionCosignature,
+} from "../cosignature/index";
 import type { NoteHistory, StructuredNoteView } from "../drafting/note-versions";
 import {
   type GateSectionSelection,
@@ -331,6 +335,23 @@ export interface EncounterView {
 export type MyNoteView = WithClosure<EncounterView>;
 
 /**
+ * Which cosignature request a queue entry is, so a queue and its screen can tell a NOTE awaiting its cosigner from an AMENDMENT of a signed note
+ * awaiting its own (ADR-0114 VN-D30). The entry is still the encounter, as before; an amendment's carries its parent. Additive.
+ */
+export interface CosignQueueRef {
+  readonly subject: "note" | "addendum";
+  /** The addendum the request is for; `null` for a note's own request. */
+  readonly addendumId: string | null;
+  /** The cosignature request itself (a note awaiting cosignature always has one; `null` only for a legacy row routed before requests were persisted). */
+  readonly requestId: string | null;
+  readonly status: CosignatureState | null;
+  /** When the request was routed: the start of its own 12h/24h/48h clock. */
+  readonly routedAt: string | null;
+}
+
+export type CosignQueueEntry = EncounterView & { readonly cosign: CosignQueueRef };
+
+/**
  * One addendum as the encounter workspace view projects it. `authoredByUserId` is the AUTHOR's membership
  * (GAP-028) — shown read-only by the UI; the UI never sends an author identity back.
  */
@@ -344,6 +365,8 @@ export interface AddendumSummary {
   readonly version: number;
   /** ADR-0114 VN-D30: the sections the addendum amends; empty for a free addendum. */
   readonly amendsSectionIds?: readonly string[];
+  /** ADR-0114 VN-D30: where the addendum's own cosignature stands (`not_required` unless it amended a section of a note that needed a cosigner). */
+  readonly cosignStatus?: CosignDisplayStatus;
 }
 
 /** One live care-plan link as the encounter workspace view projects it (`GET /encounters/:id`). */
@@ -747,27 +770,41 @@ export interface EncounterRouteService {
     encounterId: string,
     args: { isAdmin: boolean; reason: string; at: LocalDate; actorMembershipId: string },
   ): Promise<{ status: "voided" }>;
+  /**
+   * The four cosignature methods serve two SUBJECTS (ADR-0114 VN-D30): the note's own request, or - with `addendumId` - the request an amending
+   * addendum opened (its parent needed a cosigner). One workflow, one state machine, the same error codes; see ../cosignature/db-cosignature.ts.
+   */
   getCosignature(
     organizationId: string,
     encounterId: string,
+    addendumId?: string,
   ): Promise<{ status: CosignatureState | null }>;
-  /** `actor` is the CALLER: it may never be the encounter's author (GAP-029 — ForbiddenError). */
+  /** `actor` is the CALLER: it may never be the author of what it cosigns, the encounter's or the addendum's (GAP-029 — ForbiddenError). */
   cosignAcknowledge(
     organizationId: string,
     encounterId: string,
     actor: SigningActor,
     at: LocalDate,
+    addendumId?: string,
   ): Promise<{ status: CosignatureState }>;
+  /** Answers the encounter's status: `cosigned` after a note's cosignature, unchanged after an amendment's. */
   cosignSign(
     organizationId: string,
     encounterId: string,
     actor: SigningActor,
-    args: { isQualifiedRn: boolean; at: LocalDate },
+    args: { isQualifiedRn: boolean; at: LocalDate; addendumId?: string },
   ): Promise<{ status: EncounterStatus; cosignedAt: string }>;
   supervisorRelease(
     organizationId: string,
     encounterId: string,
-    args: { isSupervisor: boolean; reason: string; at: LocalDate },
+    args: {
+      isSupervisor: boolean;
+      reason: string;
+      at: LocalDate;
+      addendumId?: string;
+      /** The releasing supervisor's membership (the session's); recorded as who released. */
+      actorMembershipId?: string;
+    },
   ): Promise<{ status: CosignatureState }>;
   createAddendum(
     organizationId: string,
@@ -780,6 +817,8 @@ export interface EncounterRouteService {
       promotion?: AddendumPromotionInput;
       /** ADR-0114 VN-D30: section ids of the signed note's sealed rows this addendum amends (absent: a free addendum). */
       amendsSectionIds?: readonly string[];
+      /** The author's session roles (never the request body): the Part 2 verdict for a named section whose original is Part 2 derived (VN-D30). */
+      roles?: readonly string[];
     },
   ): Promise<{ id: string; status: "draft" }>;
   /** WP 3.7: the proposals waiting on a reviewer for this encounter's patient (`enabled:false` when the hub flag is off). */
@@ -828,7 +867,8 @@ export interface EncounterRouteService {
     organizationId: string,
     filters?: EncounterListFilters,
   ): Promise<{ encounters: EncounterView[] }>;
-  cosignatureQueue(organizationId: string): Promise<{ encounters: EncounterView[] }>;
+  /** Every open cosignature request of the tenant: each note awaiting its cosigner, and each amendment awaiting its own (`cosign` tells them apart). */
+  cosignatureQueue(organizationId: string): Promise<{ encounters: CosignQueueEntry[] }>;
   /** The author's OPEN notes (draft + finalized), nearest closure deadline first, legacy (clockless) notes last. */
   myDrafts(organizationId: string, actorUserId: string): Promise<{ encounters: MyNoteView[] }>;
   billable(
@@ -1537,12 +1577,15 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return { status: "voided" };
     },
 
-    async getCosignature(organizationId, encounterId) {
+    async getCosignature(organizationId, encounterId, addendumId) {
       const r = load(organizationId, encounterId);
+      // The slice never opens an amendment's cosignature request (it has no sealed rows to amend).
+      if (addendumId !== undefined) throw new NotFoundError("cosignature_request");
       return { status: r.cosignature };
     },
-    async cosignAcknowledge(organizationId, encounterId, actor, at) {
+    async cosignAcknowledge(organizationId, encounterId, actor, at, addendumId) {
       const r = load(organizationId, encounterId);
+      if (addendumId !== undefined) throw new NotFoundError("cosignature_request");
       assertNotAuthor(r.authoredByUserId, actor.membershipId);
       const t = transitionCosignature(r.cosignature ?? "routed", { type: "acknowledge", at });
       r.cosignature = t.to;
@@ -1550,6 +1593,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     },
     async cosignSign(organizationId, encounterId, actor, args) {
       const r = load(organizationId, encounterId);
+      if (args.addendumId !== undefined) throw new NotFoundError("cosignature_request");
       assertNotAuthor(r.authoredByUserId, actor.membershipId);
       const ct = transitionCosignature(r.cosignature ?? "routed", {
         type: "sign",
@@ -1567,6 +1611,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     },
     async supervisorRelease(organizationId, encounterId, args) {
       const r = load(organizationId, encounterId);
+      if (args.addendumId !== undefined) throw new NotFoundError("cosignature_request");
       const t = transitionCosignature(r.cosignature ?? "hard_cap_reached", {
         type: "release",
         isSupervisor: args.isSupervisor,
@@ -1747,7 +1792,16 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return {
         encounters: [...byId.values()]
           .filter((r) => r.organizationId === organizationId && r.status === "cosign_pending")
-          .map(toView),
+          .map((r) => ({
+            ...toView(r),
+            cosign: {
+              subject: "note" as const,
+              addendumId: null,
+              requestId: null,
+              status: r.cosignature,
+              routedAt: null,
+            },
+          })),
       };
     },
     async myDrafts(organizationId, actorUserId) {

@@ -18,6 +18,7 @@ const POLICY = read("1519_m8_visit_note_draft_policy.sql");
 const FROZEN = read("1521_m8_assembled_output_frozen_after_sign.sql");
 const PART2_PIN = read("1522_m8_assembled_output_part2_derived.sql");
 const AMENDMENTS = read("1523_m8_note_amendments.sql");
+const COSIGN_KIND = read("1524_m8_addendum_cosignature_signature_kind.sql");
 
 /** The privilege list of the `GRANT ... ON "<table>" TO chartwarden_app` statement. */
 function appGrant(source: string, table: string): readonly string[] {
@@ -305,6 +306,26 @@ describe("migration 1523: amendments of a signed drafted note ride the addendum 
     expect(AMENDMENTS).toContain(
       "e.provider_entity_id IS NOT DISTINCT FROM NEW.provider_entity_id",
     );
+  });
+});
+
+describe("migration 1524: an amendment's cosignature is a signature kind of its own (VN-D30)", () => {
+  it("stays an expand (arch:migration-compat reads this header) and only adds an enum value", () => {
+    expect(COSIGN_KIND.startsWith("-- compat: expand")).toBe(true);
+    const statements = COSIGN_KIND.replace(/^--.*$/gm, "").trim();
+    expect(statements).toBe(
+      `ALTER TYPE "public"."signature_kind" ADD VALUE IF NOT EXISTS 'addendum_cosignature';`,
+    );
+  });
+
+  it("is mirrored in the Drizzle enum, and the encounter's own cosignature kind and its one-per-encounter index are untouched", () => {
+    expect(schema.signatureKind.enumValues).toEqual([
+      "primary",
+      "cosignature",
+      "addendum",
+      "addendum_cosignature",
+    ]);
+    expect(COSIGN_KIND.replace(/^--.*$/gm, "")).not.toMatch(/unique_cosig_idx/);
   });
 });
 

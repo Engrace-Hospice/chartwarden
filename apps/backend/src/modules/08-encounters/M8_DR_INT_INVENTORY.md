@@ -47,16 +47,18 @@ degradation must not block patient-care documentation or visit signing.
 
 An addendum may name sections of a signed drafted note it amends; its sign seals the author's confirmed redraft of each as an append-only
 amendment row (the note's own rows and pin never change) and publishes `m8.encounter.section_amended` per amended section. Same fail-closed
-posture as the note's own sign (a source or key-ring outage is a 503, never a pass). Recorded limits, none of them a decision to defer a defect:
+posture as the note's own sign (a source or key-ring outage is a 503, never a pass). Recorded limits:
 
 - **No billing re-open.** An amendment touches no claim, no billability read and no event M23/M24 consumes.
-- **The amendment's cosignature request is created, not worked.** `addendum_cosignature_request` is a sibling of `cosignature_request` (that one is
-  `UNIQUE (encounter_id)`; relaxing it is a contract migration). It is opened, routed to the RN case manager and clocked when an amendment of a note
-  that needed a cosigner signs. Acknowledge / sign / supervisor release, its place in the cosignature queue, its 12h/24h/48h SLA alerts and its
-  `m8.encounter.cosignature_routed` notification are NOT built: the queue reads the note's status and the SLA cron reads `cosignature_request`.
+- **The amendment's cosignature request is worked like a note's** (PR E2b). `addendum_cosignature_request` is a sibling of `cosignature_request` (that one
+  is `UNIQUE (encounter_id)`; relaxing it is a contract migration); the §2.4 workflow (acknowledge, sign, supervisor release, the 12h/24h/48h SLA cron,
+  the `cosignature_routed` alert) runs for both through one generalisation by subject (`cosignature/subject.ts`, `cosignature/db-cosignature.ts`, the
+  cron's two-table sweep). Signing publishes `m8.encounter.addendum_cosigned` (no consumer), not `m8.encounter.cosigned`, and its provenance row is the new
+  `encounter_signature` kind `addendum_cosignature` (migration 1524). The cosignature queue lists both kinds, told apart by `cosign.subject`.
 - **M22 has no Part 2 document path.** A rendered document shows the withheld marker where a Part 2 derived section (a note's, or an amendment's) is.
-- **An amendment by a viewer without Part 2 disclosure** is drafted from sources that exclude the SUD content, so a section that held it reads
-  shorter in the current view (the original stays in the history for an entitled viewer). Refusing it is a follow-up decision.
+- **A Part 2 section is amended only by an author with Part 2 disclosure** (`422 AMENDMENT_PART2_NOT_ENTITLED` at naming and again at sign; an M39 failure is
+  a 503, never a denial). An entitled author's redraft can still hold no Part 2 content when its sources no longer do; the current view then shows it and
+  the history of that section stays withheld whole for a viewer without disclosure.
 - Only a section the draft can redraft can be amended; the previous-visit and discipline question, the web, the mobile app and other note types
   are out of scope.
 

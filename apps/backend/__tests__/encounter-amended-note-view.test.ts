@@ -26,6 +26,7 @@ const amendment = (
   addendumId: string,
   signedAt: string,
   part2Derived = false,
+  cosignStatus: AmendmentRow["cosignStatus"] = "not_required",
 ): AmendmentRow => ({
   sectionId,
   textCipher: `cipher-${sectionId}-${addendumId}`,
@@ -33,6 +34,7 @@ const amendment = (
   addendumId,
   authoredByMembershipId: `author-${addendumId}`,
   signedAt: new Date(signedAt),
+  cosignStatus,
 });
 
 const NOTE: PinnedNoteRows = {
@@ -228,8 +230,8 @@ describe("viewNoteHistory", () => {
     const history = await viewNoteHistory(
       NOTE,
       [
-        amendment("plan", "a1", "2026-11-19T10:00:00.000Z"),
-        amendment("plan", "a2", "2026-11-20T10:00:00.000Z"),
+        amendment("plan", "a1", "2026-11-19T10:00:00.000Z", false, "cosigned"),
+        amendment("plan", "a2", "2026-11-20T10:00:00.000Z", false, "pending"),
       ],
       ORIGINAL,
       ENTITLED,
@@ -247,6 +249,7 @@ describe("viewNoteHistory", () => {
               text: "open(cipher-plan)",
               withheld: false,
               current: false,
+              cosignStatus: null,
             },
             {
               kind: "amendment",
@@ -256,6 +259,7 @@ describe("viewNoteHistory", () => {
               text: "open(cipher-plan-a1)",
               withheld: false,
               current: false,
+              cosignStatus: "cosigned",
             },
             {
               kind: "amendment",
@@ -265,6 +269,7 @@ describe("viewNoteHistory", () => {
               text: "open(cipher-plan-a2)",
               withheld: false,
               current: true,
+              cosignStatus: "pending",
             },
           ],
         },

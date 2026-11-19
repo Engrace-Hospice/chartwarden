@@ -345,6 +345,8 @@ const COSIGNATURE_STATUS = [
   "supervisor_released",
   "signed",
 ] as const;
+/** Where an amendment's own cosignature stands, for a screen (mirrors `CosignDisplayStatus`). */
+const COSIGN_DISPLAY_STATUS = lit(["not_required", "pending", "cosigned", "released"] as const);
 
 /** Route 1 — the created draft summary (`{ id, status, templateKey, templateVersion, version }`). */
 export const CreatedEncounterResponseSchema = Type.Object({
@@ -432,6 +434,8 @@ export const EncounterViewResponseSchema = Type.Object({
         version: Type.Integer(),
         /** ADR-0114 VN-D30: the sections the addendum amends; empty for a free addendum. */
         amendsSectionIds: Type.Optional(Type.Array(Type.String())),
+        /** ADR-0114 VN-D30: where the addendum's own cosignature stands; `not_required` unless it amended a section of a note that needed a cosigner. */
+        cosignStatus: Type.Optional(COSIGN_DISPLAY_STATUS),
       }),
     ),
   ),
@@ -456,6 +460,8 @@ export const EncounterViewResponseSchema = Type.Object({
                 text: Type.Union([Type.String(), Type.Null()]),
                 withheld: Type.Boolean(),
                 current: Type.Boolean(),
+                /** An amendment's own cosignature (`not_required | pending | cosigned | released`); null for the original version. */
+                cosignStatus: Type.Union([COSIGN_DISPLAY_STATUS, Type.Null()]),
               }),
             ),
           }),
@@ -466,9 +472,31 @@ export const EncounterViewResponseSchema = Type.Object({
   ),
 });
 
-/** The `{ encounters }` envelope the list / queue / signed-since reads return. */
+/** The `{ encounters }` envelope the list / signed-since reads return. */
 export const EncounterListResponseSchema = Type.Object({
   encounters: Type.Array(EncounterViewResponseSchema),
+});
+
+/**
+ * Route 27 - the cosignature queue: every open cosignature request of the tenant. Each entry is the encounter (as before) plus `cosign`, which says
+ * which request it is: a NOTE awaiting its cosigner (`subject: "note"`), or an AMENDMENT of a signed note awaiting its own (`subject: "addendum"`, with the
+ * `addendumId`; the entry is then the parent encounter). Additive: a client that reads only the encounter is unaffected.
+ */
+export const CosignatureQueueResponseSchema = Type.Object({
+  encounters: Type.Array(
+    Type.Composite([
+      EncounterViewResponseSchema,
+      Type.Object({
+        cosign: Type.Object({
+          subject: lit(["note", "addendum"] as const),
+          addendumId: Type.Union([Type.String(), Type.Null()]),
+          requestId: Type.Union([Type.String(), Type.Null()]),
+          status: Type.Union([lit(COSIGNATURE_STATUS), Type.Null()]),
+          routedAt: Type.Union([Type.String(), Type.Null()]),
+        }),
+      }),
+    ]),
+  ),
 });
 
 /**
@@ -793,6 +821,10 @@ type Conforms<T extends V, V> = T;
 type _Created = Conforms<Static<typeof CreatedEncounterResponseSchema>, ServiceCreatedEncounter>;
 type _View = Conforms<Static<typeof EncounterViewResponseSchema>, ServiceEncounterView>;
 type _List = Conforms<Static<typeof EncounterListResponseSchema>, Ret<"listEncounters">>;
+type _CosignQueue = Conforms<
+  Static<typeof CosignatureQueueResponseSchema>,
+  Ret<"cosignatureQueue">
+>;
 type _Vitals = Conforms<Static<typeof VitalsResultResponseSchema>, ServiceVitalsResult>;
 // F-063 — the two reads that had no counterpart write... the other way round: two WRITES that had no read.
 type _Template = Conforms<Static<typeof EncounterTemplateResponseSchema>, Ret<"getTemplate">>;

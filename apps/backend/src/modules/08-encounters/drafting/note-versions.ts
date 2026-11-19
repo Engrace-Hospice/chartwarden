@@ -13,6 +13,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { joinBlocks } from "@chartwarden/hearthnote";
 import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { type CosignDisplayStatus, cosignDisplayStatus } from "../cosignature/subject";
 import {
   PART2_WITHHELD_MARKER,
   type PinnedNoteReaders,
@@ -23,6 +24,7 @@ import {
 
 const SIGNED = schema.hearthnoteSignedSections;
 const ADDENDUM = schema.encounterAddenda;
+const ADDENDUM_REQUEST = schema.addendumCosignatureRequests;
 
 /** One signed amendment row as stored, text unopened. Rows exist only for a signed addendum (the guard trigger writes them in its sign). */
 export interface AmendmentRow {
@@ -32,6 +34,8 @@ export interface AmendmentRow {
   readonly addendumId: string;
   readonly authoredByMembershipId: string;
   readonly signedAt: Date | null;
+  /** Where the addendum's own cosignature stands (ADR-0114 VN-D30): `not_required` unless its note needed a cosigner and it amended a section. */
+  readonly cosignStatus: CosignDisplayStatus;
 }
 
 /** Who wrote the note and when it was signed: the author and date of the ORIGINAL version of every section. */
@@ -51,6 +55,8 @@ export interface SectionVersion {
   readonly withheld: boolean;
   /** The latest version of the section: what the current view shows. */
   readonly current: boolean;
+  /** An amendment's own cosignature (`not_required | pending | cosigned | released`); `null` for the original version. */
+  readonly cosignStatus: CosignDisplayStatus | null;
 }
 
 export interface NoteHistory {
@@ -74,12 +80,17 @@ export async function loadAmendmentRows(
       addendumId: ADDENDUM.id,
       authoredByMembershipId: ADDENDUM.authoredByMembershipId,
       signedAt: ADDENDUM.signedAt,
+      cosignRequestStatus: ADDENDUM_REQUEST.status,
     })
     .from(SIGNED)
     .innerJoin(ADDENDUM, eq(ADDENDUM.id, SIGNED.addendumId))
+    .leftJoin(ADDENDUM_REQUEST, eq(ADDENDUM_REQUEST.addendumId, ADDENDUM.id))
     .where(and(eq(SIGNED.encounterId, encounterId), isNotNull(SIGNED.addendumId)))
     .orderBy(asc(ADDENDUM.signedAt), asc(ADDENDUM.id), asc(SIGNED.position));
-  return rows;
+  return rows.map(({ cosignRequestStatus, ...row }) => ({
+    ...row,
+    cosignStatus: cosignDisplayStatus(cosignRequestStatus),
+  }));
 }
 
 const hasPart2 = (note: PinnedNoteRows, amendments: readonly AmendmentRow[]): boolean =>
@@ -193,6 +204,7 @@ interface Candidate {
   readonly signedAt: Date | null;
   readonly textCipher: string;
   readonly part2Derived: boolean;
+  readonly cosignStatus: CosignDisplayStatus | null;
 }
 
 async function versionOf(
@@ -211,6 +223,7 @@ async function versionOf(
     text: withheld ? null : await readers.open(candidate.textCipher),
     withheld,
     current,
+    cosignStatus: candidate.cosignStatus,
   };
 }
 
@@ -227,7 +240,7 @@ export async function viewNoteHistory(
     const amended = amendments.filter((a) => a.sectionId === originalRow.sectionId);
     if (amended.length === 0) continue;
     const candidates: Candidate[] = [
-      { ...original, kind: "original", addendumId: null, ...originalRow },
+      { ...original, kind: "original", addendumId: null, cosignStatus: null, ...originalRow },
       ...amended.map((a): Candidate => ({ ...a, kind: "amendment" })),
     ];
     const versions: SectionVersion[] = [];

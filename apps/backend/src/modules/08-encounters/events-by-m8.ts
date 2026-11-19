@@ -215,6 +215,21 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m8.encounter.addendum_cosigned",
+    moduleOwner: "m8",
+    description:
+      "An RN cosigned an AMENDMENT of a signed note (ADR-0114 VN-D30). The note's own status is not changed by it and no billing consumer reads it: an amendment never re-opens billing, which is why it is not `m8.encounter.cosigned`.",
+    payloadSchema: Type.Object({
+      encounterId: Type.String({ minLength: 1 }),
+      addendumId: Type.String({ minLength: 1 }),
+      cosignedByMembershipId: Type.String({ minLength: 1 }),
+      cosignedAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
+    isOutboxOnly: true,
+  },
   // ── cosignature SLA chain (§2.4 D3) ───────────────────────────────────────────────────────────────
   {
     eventName: "m8.encounter.cosignature_routed",
@@ -222,6 +237,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     description: "A cosignature request was created and routed to the assigned cosigner (§7.2).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
+      /** ADR-0114 VN-D30: set when the request is an AMENDMENT's (the addendum it is for); absent for a note's own request. */
+      addendumId: Type.Optional(Type.String({ minLength: 1 })),
       routedToMembershipId: Type.String({ minLength: 1 }),
       signedAt: Type.String({ minLength: 1 }),
     }),
@@ -235,6 +252,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     description: "The 12h cosignature SLA tick fired with no cosignature (warn).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
+      /** ADR-0114 VN-D30: set when the request is an AMENDMENT's (the addendum it is for); absent for a note's own request. */
+      addendumId: Type.Optional(Type.String({ minLength: 1 })),
       routedToMembershipId: Type.String({ minLength: 1 }),
       hoursOverdue: Type.Integer({ minimum: 0 }),
     }),
@@ -248,6 +267,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     description: "The 24h cosignature SLA tick escalated the request to the supervisor (warn).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
+      /** ADR-0114 VN-D30: set when the request is an AMENDMENT's (the addendum it is for); absent for a note's own request. */
+      addendumId: Type.Optional(Type.String({ minLength: 1 })),
       routedToMembershipId: Type.String({ minLength: 1 }),
       supervisorMembershipId: Type.String({ minLength: 1 }),
     }),
@@ -262,6 +283,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       "The 48h cosignature hard cap was reached; the supervisor must release/sign (critical).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
+      /** ADR-0114 VN-D30: set when the request is an AMENDMENT's (the addendum it is for); absent for a note's own request. */
+      addendumId: Type.Optional(Type.String({ minLength: 1 })),
       routedToMembershipId: Type.String({ minLength: 1 }),
       supervisorMembershipId: Type.String({ minLength: 1 }),
     }),

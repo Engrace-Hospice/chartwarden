@@ -87,8 +87,13 @@ import { myNotesOf } from "./closure/my-notes";
 import { OPEN_NOTE_STATUS_LIST_SQL } from "./closure/open-status";
 import { readClosurePolicy } from "./closure/policy-service";
 import { seedModalityFor } from "./consumers/seed-modality";
-import { transitionCosignature } from "./cosignature/index";
-import type { CosignatureState } from "./cosignature/index";
+import {
+  acknowledgeCosignature,
+  readCosignatureStatus,
+  releaseCosignature,
+  signCosignature,
+} from "./cosignature/db-cosignature";
+import { COSIGN_OPEN_STATUSES, cosignDisplayStatus, cosignSubjectOf } from "./cosignature/index";
 import { createAmendmentFlow } from "./drafting/amendment-flow";
 import { namedSectionIds } from "./drafting/amendment-store";
 import { defaultDraftPorts } from "./drafting/default-ports";
@@ -229,8 +234,6 @@ function stepUpFactorToSignatureMethod(
  *  et al. above). */
 const PRIMARY_ATTESTATION_TEXT =
   "I attest that this clinical documentation is accurate and complete to the best of my knowledge, and that I am the practitioner responsible for the care described (primary signature, pending final legal copy).";
-const COSIGNATURE_ATTESTATION_TEXT =
-  "I attest, as the qualified RN cosigner, that I have reviewed this clinical documentation and concur with the care described (cosignature, pending final legal copy).";
 const ADDENDUM_ATTESTATION_TEXT =
   "I attest that this addendum is accurate and complete to the best of my knowledge (addendum signature, pending final legal copy).";
 
@@ -994,6 +997,19 @@ export function createDbEncounterRouteService(
     });
   }
 
+  /** What the cosignature workflow needs of this service: the transactional outbox and the server-verified signature provenance. */
+  const cosignatureDeps = {
+    emit: (
+      tx: DbClient,
+      org: string,
+      eventName: string,
+      aggregateKind: string,
+      aggregateId: string,
+      payload: Record<string, unknown>,
+    ) => emit(tx, org, eventName, aggregateKind, aggregateId, payload),
+    resolveProvenance: resolveSignatureProvenance,
+  };
+
   /** GAP-177 — `m8.encounter.orphan_recorded`: a just-signed encounter with NO `visit_id` (ad-hoc /
    *  retroactive) is the M17 reconciliation fact (D2). Emitted beside `.signed`, on the same tx. */
   async function emitOrphanIfUnlinked(
@@ -1180,13 +1196,6 @@ export function createDbEncounterRouteService(
     }
   }
 
-  /** Load an encounter's live cosignature request (the D3 workflow row) or the non-leaking 404. */
-  async function loadCosign(t: DbClient, encounterId: string): Promise<typeof COSIGN.$inferSelect> {
-    const [row] = await t.select().from(COSIGN).where(eq(COSIGN.encounterId, encounterId)).limit(1);
-    if (!row) throw new NotFoundError("cosignature_request");
-    return row;
-  }
-
   /**
    * ADR-0114 VN-D30: the RN a signed AMENDMENT must be cosigned by, or `null` when its note never needed a cosigner (it has no cosignature request).
    * Refuses (422 NO_ELIGIBLE_COSIGNER, before any write) when the note needed one and there is none, or the signer is that RN, exactly as the note's
@@ -1246,6 +1255,20 @@ export function createDbEncounterRouteService(
         })
         .returning({ id: ADDENDUM_COSIGN.id }),
       "addendum_cosignature_request insert returned no row",
+    );
+    // The same `cosignature_routed` the note's own request publishes (M36 alerts on it), now naming the addendum.
+    await emit(
+      t,
+      addendum.organizationId,
+      "m8.encounter.cosignature_routed",
+      "addendum_cosignature_request",
+      created.id,
+      {
+        encounterId: addendum.encounterId,
+        addendumId: addendum.id,
+        routedToMembershipId,
+        signedAt: routedAt.toISOString(),
+      },
     );
     return created.id;
   }
@@ -1337,8 +1360,11 @@ export function createDbEncounterRouteService(
           encounterId,
           providerEntityId: r.providerEntityId,
           locationId: r.locationId,
+          patientId: r.patientId,
         },
         args.amendsSectionIds ?? [],
+        // The session's roles and the author's membership: the Part 2 verdict of the author who names a Part 2 section.
+        { roles: args.roles ?? [], membershipId: args.authorMembershipId },
       );
       return { id: a.id, status: "draft" as const };
     });
@@ -1533,7 +1559,15 @@ export function createDbEncounterRouteService(
       .from(ADDENDUM)
       .where(eq(ADDENDUM.encounterId, encounterId))
       .orderBy(asc(ADDENDUM.createdAt), asc(ADDENDUM.id));
-    // ADR-0114 VN-D30: the sections each addendum names (one read for the encounter, not one per addendum).
+    // ADR-0114 VN-D30: where each amendment's own cosignature stands (one read for the encounter), and the sections each addendum names.
+    const cosigns = new Map(
+      (
+        await t
+          .select({ addendumId: ADDENDUM_COSIGN.addendumId, status: ADDENDUM_COSIGN.status })
+          .from(ADDENDUM_COSIGN)
+          .where(eq(ADDENDUM_COSIGN.encounterId, encounterId))
+      ).map((request) => [request.addendumId, request.status]),
+    );
     const named = await t
       .select({ addendumId: AMENDMENT.addendumId, sectionId: AMENDMENT.sectionId })
       .from(AMENDMENT)
@@ -1548,6 +1582,7 @@ export function createDbEncounterRouteService(
       signedAt: iso(a.signedAt),
       version: Number(a.version),
       amendsSectionIds: named.filter((n) => n.addendumId === a.id).map((n) => n.sectionId),
+      cosignStatus: cosignDisplayStatus(cosigns.get(a.id) ?? null),
     }));
   }
 
@@ -1713,12 +1748,82 @@ export function createDbEncounterRouteService(
     },
     async cosignatureQueue(organizationId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const rows = (await tx
+        const t = tx as unknown as DbClient;
+        // The notes awaiting their cosigner (as before), each with its request.
+        const noteRows = (await t
           .select(encounterCols)
           .from(ENC)
           .where(eq(ENC.status, "cosign_pending"))
           .orderBy(desc(ENC.signedAt), desc(ENC.id))) as EncounterRow[];
-        return { encounters: rows.map(toView) };
+        const noteRequests = new Map(
+          noteRows.length === 0
+            ? []
+            : (
+                await t
+                  .select({
+                    id: COSIGN.id,
+                    encounterId: COSIGN.encounterId,
+                    status: COSIGN.status,
+                    routedAt: COSIGN.routedAt,
+                  })
+                  .from(COSIGN)
+                  .where(
+                    inArray(
+                      COSIGN.encounterId,
+                      noteRows.map((r) => r.id),
+                    ),
+                  )
+              ).map((request) => [request.encounterId, request]),
+        );
+        const notes = noteRows.map((r) => {
+          const request = noteRequests.get(r.id);
+          return {
+            ...toView(r),
+            cosign: {
+              subject: "note" as const,
+              addendumId: null,
+              requestId: request?.id ?? null,
+              status: request?.status ?? null,
+              routedAt: request ? iso(request.routedAt) : null,
+            },
+          };
+        });
+        // ADR-0114 VN-D30: the amendments of signed notes awaiting THEIR cosigner. The parent stays signed or cosigned; the entry is the parent encounter.
+        const amendmentRequests = await t
+          .select()
+          .from(ADDENDUM_COSIGN)
+          .where(inArray(ADDENDUM_COSIGN.status, [...COSIGN_OPEN_STATUSES]))
+          .orderBy(desc(ADDENDUM_COSIGN.routedAt), desc(ADDENDUM_COSIGN.id));
+        const parentRows = new Map(
+          amendmentRequests.length === 0
+            ? []
+            : (
+                (await t
+                  .select(encounterCols)
+                  .from(ENC)
+                  .where(
+                    inArray(ENC.id, [...new Set(amendmentRequests.map((r) => r.encounterId))]),
+                  )) as EncounterRow[]
+              ).map((r) => [r.id, r]),
+        );
+        const amendments = amendmentRequests.flatMap((request) => {
+          const parent = parentRows.get(request.encounterId);
+          return parent === undefined
+            ? []
+            : [
+                {
+                  ...toView(parent),
+                  cosign: {
+                    subject: "addendum" as const,
+                    addendumId: request.addendumId,
+                    requestId: request.id,
+                    status: request.status,
+                    routedAt: iso(request.routedAt),
+                  },
+                },
+              ];
+        });
+        return { encounters: [...notes, ...amendments] };
       });
     },
     // ADR-0113: "My notes" = the author's OPEN notes (draft + finalized, a finalized note is closed only once signed), each with
@@ -1777,22 +1882,10 @@ export function createDbEncounterRouteService(
     },
 
     // ── Cosignature-request read (status derived from the D3 workflow row) ────────────────────────────
-    async getCosignature(organizationId, encounterId) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [enc] = await tx
-          .select({ id: ENC.id })
-          .from(ENC)
-          .where(eq(ENC.id, encounterId))
-          .limit(1);
-        if (!enc) throw new NotFoundError("encounter"); // mirror the in-memory `load` (404 before status)
-        const [cr] = await tx
-          .select({ status: COSIGN.status })
-          .from(COSIGN)
-          .where(eq(COSIGN.encounterId, encounterId))
-          .limit(1);
-        // No request row → no cosignature workflow yet (the in-memory slice returns `null`).
-        return { status: cr ? (cr.status as CosignatureState) : null };
-      });
+    async getCosignature(organizationId, encounterId, addendumId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        readCosignatureStatus(tx as unknown as DbClient, cosignSubjectOf(encounterId, addendumId)),
+      );
     },
 
     // ── Draft creation (§2.3 genesis; route 1) ───────────────────────────────────────────────────────
@@ -2910,95 +3003,37 @@ export function createDbEncounterRouteService(
     },
 
     // ── Cosignature-request chain (§2.4 D3) ────────────────────────────────────────────────────────────
-    async cosignAcknowledge(organizationId, encounterId, actor, at) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const t = tx as unknown as DbClient;
-        const cr = await loadCosign(t, encounterId);
-        assertNotAuthor((await loadEnc(t, encounterId)).authoredByMembershipId, actor.membershipId);
-        const trans = transitionCosignature(cr.status, { type: "acknowledge", at });
-        await t
-          .update(COSIGN)
-          .set({ status: trans.to, acknowledgedAt: new Date(), updatedAt: new Date() })
-          .where(eq(COSIGN.id, cr.id));
-        return { status: trans.to };
-      });
+    // One workflow, two subjects (the note's own request, or an amending addendum's): ./cosignature/db-cosignature.ts.
+    async cosignAcknowledge(organizationId, encounterId, actor, at, addendumId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        acknowledgeCosignature(
+          tx as unknown as DbClient,
+          cosignSubjectOf(encounterId, addendumId),
+          actor,
+          at,
+        ),
+      );
     },
     async cosignSign(organizationId, encounterId, actor, args) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const t = tx as unknown as DbClient;
-        const cr = await loadCosign(t, encounterId);
-        const enc = await loadEnc(t, encounterId);
-        assertNotAuthor(enc.authoredByMembershipId, actor.membershipId);
-        const now = new Date();
-        const provenance = await resolveSignatureProvenance(organizationId, actor.sessionId);
-        const ct = transitionCosignature(cr.status, {
-          type: "sign",
-          isQualifiedRn: args.isQualifiedRn,
-          stepUpFresh: provenance.stepUpFresh,
-          at: args.at,
-        });
-        await t
-          .update(COSIGN)
-          .set({ status: ct.to, signedAt: now, updatedAt: now })
-          .where(eq(COSIGN.id, cr.id));
-        const et = transitionEncounter(enc.status, { type: "recordCosignature", at: args.at });
-        await t
-          .update(ENC)
-          .set({ status: et.to, cosignedAt: now, updatedAt: now })
-          .where(eq(ENC.id, encounterId));
-        if (!enc.providerEntityId || !enc.locationId) {
-          throw new EncounterStateError(
-            "ILLEGAL_TRANSITION",
-            "encounter must be sited (provider entity + location) before it can be cosigned",
-          );
-        }
-        await t.insert(SIG).values({
+      return withOrgContext(db, { organizationId, userId: actor.userId ?? "" }, async (tx) =>
+        signCosignature(
+          tx as unknown as DbClient,
+          cosignatureDeps,
           organizationId,
-          providerEntityId: enc.providerEntityId,
-          locationId: enc.locationId,
-          encounterId,
-          kind: "cosignature",
-          // The RN cosigner's discipline: the ct transition above already required isQualifiedRn true,
-          // so 'rn' is the only discipline a cosignature can legally carry.
-          signedByMembershipId: actor.membershipId,
-          signedByDiscipline: "rn",
-          signedAt: now,
-          method: provenance.method,
-          sessionId: actor.sessionId,
-          stepUpAuthAt: provenance.stepUpAuthAt,
-          attestationText: COSIGNATURE_ATTESTATION_TEXT,
-          layer2InvolvedAtSigning: false,
-        });
-        await emit(t, organizationId, "m8.encounter.cosigned", "encounter", encounterId, {
-          encounterId,
-          cosignedByMembershipId: actor.membershipId,
-          cosignedAt: now.toISOString(),
-        });
-        return { status: et.to, cosignedAt: now.toISOString() };
-      });
+          cosignSubjectOf(encounterId, args.addendumId),
+          actor,
+          args,
+        ),
+      );
     },
     async supervisorRelease(organizationId, encounterId, args) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const t = tx as unknown as DbClient;
-        const cr = await loadCosign(t, encounterId);
-        const trans = transitionCosignature(cr.status, {
-          type: "release",
-          isSupervisor: args.isSupervisor,
-          reason: args.reason,
-          at: args.at,
-        });
-        await t
-          .update(COSIGN)
-          .set({
-            status: trans.to,
-            supervisorReleasedAt: new Date(),
-            supervisorReleasedBy: cr.routedToMembershipId, // no distinct supervisor actor threaded
-            supervisorReleasedReason: args.reason,
-            updatedAt: new Date(),
-          })
-          .where(eq(COSIGN.id, cr.id));
-        return { status: trans.to };
-      });
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        releaseCosignature(
+          tx as unknown as DbClient,
+          cosignSubjectOf(encounterId, args.addendumId),
+          args,
+        ),
+      );
     },
 
     // ── Addendum aggregate (§2.3 — draft → finalize → sign) ────────────────────────────────────────────
