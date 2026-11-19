@@ -143,14 +143,28 @@ export function AddendaPanel({
   // What the last sign of an amending addendum did (sections amended, cosignature requested), until the next action.
   const [signedNote, setSignedNote] = useState<{ addendumId: string; text: string } | null>(null);
 
+  // After a step that landed: the row stays busy (its buttons wait, still focusable) until the encounter has been read again and shows the
+  // new status; then the button that was pressed is gone, and focus goes to the addendum rather than the page.
+  async function settled(addendumId: string): Promise<void> {
+    try {
+      await onChanged();
+    } finally {
+      setBusyId(null);
+    }
+    setFocusRow({ addendumId });
+  }
+
   async function finalize(addendumId: string): Promise<void> {
+    if (busyId !== null) return;
     setBusyId(addendumId);
     setFailure(null);
     setSignedNote(null);
     const res = await finalizeAddendum(client, { encounterId, addendumId });
-    setBusyId(null);
-    if (!res.ok) return setFailure({ addendumId, error: res });
-    onChanged();
+    if (!res.ok) {
+      setBusyId(null);
+      return setFailure({ addendumId, error: res });
+    }
+    await settled(addendumId);
   }
 
   async function sign(addendumId: string): Promise<void> {
@@ -165,14 +179,7 @@ export function AddendaPanel({
     }
     const text = signedAmendmentMessage(res.value);
     setSignedNote(text === null ? null : { addendumId, text });
-    // The row still reads "finalized" until the encounter is read again, so it stays busy (its Sign and its sections' choices wait, still
-    // focusable) until that lands; then the Sign button is gone, and focus goes to the addendum rather than the page.
-    try {
-      await onChanged();
-    } finally {
-      setBusyId(null);
-    }
-    setFocusRow({ addendumId });
+    await settled(addendumId);
   }
 
   const signing = addenda.find((a) => a.id === signingId) ?? null;
@@ -201,6 +208,7 @@ export function AddendaPanel({
               failure={failure?.addendumId === a.id ? failure.error : null}
               signedNote={signedNote?.addendumId === a.id ? signedNote.text : null}
               onChanged={onChanged}
+              onSettled={() => setFocusRow({ addendumId: a.id })}
               onEdit={() => setEditingId(a.id)}
               onCloseEditor={() => {
                 clearStepUpDraft(stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, a.id));
@@ -254,7 +262,9 @@ interface ItemProps {
   readonly failure: Failure | null;
   /** What its last sign did, for an amending addendum. */
   readonly signedNote: string | null;
-  readonly onChanged: () => void;
+  readonly onChanged: () => void | Promise<void>;
+  /** The cosigner's step has been read back (the request and the page): focus goes to this addendum. */
+  readonly onSettled: () => void;
   readonly onEdit: () => void;
   readonly onCloseEditor: () => void;
   readonly onFinalize: () => void;
@@ -278,6 +288,7 @@ function AddendumItem({
   failure,
   signedNote,
   onChanged,
+  onSettled,
   onEdit,
   onCloseEditor,
   onFinalize,
@@ -352,18 +363,39 @@ function AddendumItem({
           addendumName={name}
           noteAuthorId={noteAuthorId}
           onChanged={onChanged}
+          onSettled={onSettled}
         />
       ) : null}
       {a.status !== "signed" ? (
         <div style={actions}>
           {a.status === "draft" ? (
             <>
+              {/* Not `disabled` while the row is busy: the one pressed would drop keyboard focus, and a finalize that landed leaves these
+                  on the page until the encounter has been read again. */}
               {!editing ? (
-                <Button tone="secondary" size="sm" disabled={busy || editorLocked} onClick={onEdit}>
+                <Button
+                  tone="secondary"
+                  size="sm"
+                  disabled={editorLocked}
+                  aria-disabled={busy || undefined}
+                  style={busy ? WAITING_STYLE : undefined}
+                  onClick={() => {
+                    if (!busy) onEdit();
+                  }}
+                >
                   Edit draft
                 </Button>
               ) : null}
-              <Button size="sm" disabled={busy || editing} onClick={onFinalize}>
+              <Button
+                size="sm"
+                disabled={editing}
+                aria-disabled={busy || undefined}
+                aria-busy={busy || undefined}
+                style={busy ? WAITING_STYLE : undefined}
+                onClick={() => {
+                  if (!busy) onFinalize();
+                }}
+              >
                 {busy ? "Working…" : "Finalize addendum"}
               </Button>
             </>

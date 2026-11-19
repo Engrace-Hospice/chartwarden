@@ -20,6 +20,7 @@ import {
   cosignActionsFor,
   cosignRequestWords,
 } from "./cosign-model";
+import type { CosignStep } from "./cosign-model";
 import { humanizeSection } from "./sign-draft-notice";
 import { useCosignCeremony } from "./use-cosign-ceremony";
 import { useIsMounted } from "./use-is-mounted";
@@ -31,8 +32,13 @@ interface Props {
   readonly addendumName: string;
   /** The signed note's author (membership id), when the page knows it: the note's author cannot cosign its amendment either. */
   readonly noteAuthorId: string | null;
-  /** Read the encounter again after a step lands, so the amendment's status comes from the server again. */
-  readonly onChanged: () => void;
+  /**
+   * Read the encounter again after a step lands, so the amendment's status comes from the server again. Returns the read: the panel's
+   * buttons wait until it (and the request's own read) has landed.
+   */
+  readonly onChanged: () => void | Promise<void>;
+  /** The step has been read back: the page asks for focus on the addendum (the button that was pressed may be gone). */
+  readonly onSettled: () => void;
 }
 
 type RequestRead =
@@ -46,6 +52,7 @@ export function AddendumCosign({
   addendumName,
   noteAuthorId,
   onChanged,
+  onSettled,
 }: Props): JSX.Element | null {
   const client = useApiClient();
   const session = useSession();
@@ -75,10 +82,24 @@ export function AddendumCosign({
     () => ({ kind: "addendum" as const, encounterId, addendumId: addendum.id }),
     [encounterId, addendum.id],
   );
-  const ceremony = useCosignCeremony(subject, () => {
-    void readRequest();
-    onChanged();
+  // A step that landed: the request and the page are read again, and until both have landed the panel still offers the step just taken, so
+  // its buttons wait (aria-disabled, still focusable) rather than let a second press be refused by the server.
+  const [settling, setSettling] = useState(false);
+  const ceremony = useCosignCeremony(subject, async () => {
+    setSettling(true);
+    try {
+      await Promise.all([readRequest(), onChanged()]);
+    } finally {
+      setSettling(false);
+    }
+    onSettled();
   });
+  const open = (step: CosignStep): void => {
+    if (!settling) ceremony.open(step);
+  };
+  const waiting = settling
+    ? { "aria-disabled": true, "aria-busy": true, style: waitingStyle }
+    : undefined;
 
   // Opened from the cosignature queue: the link's anchor names this panel.
   useEffect(() => {
@@ -126,17 +147,17 @@ export function AddendumCosign({
           ) : null}
           <div style={actions}>
             {canAcknowledge ? (
-              <Button size="sm" tone="secondary" onClick={() => ceremony.open("acknowledge")}>
+              <Button size="sm" tone="secondary" {...waiting} onClick={() => open("acknowledge")}>
                 Acknowledge cosignature
               </Button>
             ) : null}
             {canSign ? (
-              <Button size="sm" onClick={() => ceremony.open("sign")}>
+              <Button size="sm" {...waiting} onClick={() => open("sign")}>
                 Sign cosignature
               </Button>
             ) : null}
             {canRelease ? (
-              <Button size="sm" tone="secondary" onClick={() => ceremony.open("release")}>
+              <Button size="sm" tone="secondary" {...waiting} onClick={() => open("release")}>
                 Supervisor release
               </Button>
             ) : null}
@@ -165,5 +186,6 @@ const box: CSSProperties = {
 };
 const metaText: CSSProperties = { margin: 0, fontSize: "0.72rem", color: t.onSurfaceVariant };
 const reasonText: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.onSurface };
+const waitingStyle: CSSProperties = { opacity: 0.6, cursor: "not-allowed" };
 const alertText: CSSProperties = { margin: 0, fontSize: "0.78rem", color: t.error };
 const actions: CSSProperties = { display: "flex", gap: "0.5rem", flexWrap: "wrap" };

@@ -1,5 +1,7 @@
 import { ApiClientProvider } from "@chartwarden/ui";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
@@ -393,5 +395,76 @@ describe("Addendum draft survives the step-up round trip (GAP-027)", () => {
       throw new Error("blocked");
     });
     await typeAndSave(stepUpPatch());
+  });
+});
+
+// Until the encounter has been read again the row still reads "draft", so Finalize (and Edit draft) would still be offered after a
+// finalize that landed: a second press would be refused by the server. They wait (aria-disabled, never disabled, so the pressed button
+// keeps keyboard focus), and when the read lands the buttons that go away must not take focus with them (S1 React review).
+describe("the moment between finalizing an addendum and the page showing it finalized", () => {
+  it("offers nothing that could finalize again, then puts focus on the addendum", async () => {
+    const user = userEvent.setup();
+    let land: () => void = () => undefined;
+    const read = new Promise<void>((resolve) => {
+      land = resolve;
+    });
+    const POST = vi.fn(async () => ({ data: { status: "finalized" } }));
+    const client = {
+      GET: vi.fn(async () => ({ data: { sections: [], layer1Preview: "", version: 1 } })),
+      PATCH: vi.fn(),
+      POST,
+    };
+    const onChanged = vi.fn(() => read);
+    function Host() {
+      const [addenda, setAddenda] = useState<readonly AddendumRow[]>([draft]);
+      return (
+        <AddendaPanel
+          encounterId="enc-1"
+          addenda={addenda}
+          onChanged={() => {
+            onChanged();
+            return read.then(() => setAddenda([{ ...draft, status: "finalized" }]));
+          }}
+        />
+      );
+    }
+    const router = createMemoryRouter([{ path: "*", element: <Host /> }], {
+      initialEntries: ["/patients/patient-1/encounters/enc-1"],
+    });
+    render(
+      <ApiClientProvider client={client as never}>
+        <SessionProvider session={null}>
+          <RouterProvider router={router} />
+        </SessionProvider>
+      </ApiClientProvider>,
+    );
+    const row = screen.getByLabelText("Addendum add-1");
+    const finalize = within(row).getByRole("button", { name: "Finalize addendum" });
+    await user.click(finalize);
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+
+    // The row still reads draft: the buttons are there, but waiting, and the pressed one kept its focus.
+    expect(finalize).toBeInTheDocument();
+    expect(finalize).not.toBeDisabled();
+    expect(finalize).toHaveAttribute("aria-disabled", "true");
+    expect(finalize).toHaveFocus();
+    const edit = within(row).getByRole("button", { name: "Edit draft" });
+    expect(edit).not.toBeDisabled();
+    expect(edit).toHaveAttribute("aria-disabled", "true");
+    await user.click(finalize);
+    await user.click(edit);
+    expect(POST).toHaveBeenCalledTimes(1);
+    expect(within(row).queryByLabelText("Pain controlled")).toBeNull();
+
+    land();
+    await waitFor(() =>
+      expect(within(row).queryByRole("button", { name: "Finalize addendum" })).toBeNull(),
+    );
+    expect(within(row).getByRole("button", { name: "Sign addendum" })).not.toHaveAttribute(
+      "aria-disabled",
+    );
+    // The Finalize button that held focus is gone: focus is on the addendum itself, not the page.
+    await waitFor(() => expect(row).toHaveFocus());
+    expect(document.body).not.toHaveFocus();
   });
 });

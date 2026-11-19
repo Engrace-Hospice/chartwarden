@@ -67,8 +67,11 @@ export interface CosignCeremony {
   commit(): Promise<void>;
 }
 
-/** `onDone` runs after a step lands, so the screen reads the request (and the page) again. */
-export function useCosignCeremony(subject: CosignSubject, onDone: () => void): CosignCeremony {
+/** `onDone` runs after a step lands, so the screen reads the request (and the page) again; it may return that read. */
+export function useCosignCeremony(
+  subject: CosignSubject,
+  onDone: () => void | Promise<void>,
+): CosignCeremony {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();

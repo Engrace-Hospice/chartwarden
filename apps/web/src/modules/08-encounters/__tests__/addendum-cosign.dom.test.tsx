@@ -38,10 +38,15 @@ const rn: Session = {
 
 let requestStatus: string | null;
 let requestRead: "ok" | "refused";
+/** Holds the request's second read (the one after a step) until a test lets it land. */
+let secondRead: Promise<void> | null;
+let requestReads: number;
 
 beforeEach(() => {
   requestStatus = "routed";
   requestRead = "ok";
+  secondRead = null;
+  requestReads = 0;
 });
 afterEach(cleanup);
 
@@ -53,11 +58,19 @@ function mount(
     post = vi.fn(async () => ({ data: { status: "acknowledged" } })),
     noteAuthorId = "mem-note",
     at = "/patients/patient-1/encounters/enc-1",
-  }: { session?: Session | null; post?: Post; noteAuthorId?: string | null; at?: string } = {},
+    onChanged = vi.fn(),
+  }: {
+    session?: Session | null;
+    post?: Post;
+    noteAuthorId?: string | null;
+    at?: string;
+    onChanged?: () => void | Promise<void>;
+  } = {},
 ) {
-  const onChanged = vi.fn();
   const GET = vi.fn(async (path: string) => {
     if (path !== BASE) return { data: { promotions: [] } };
+    requestReads += 1;
+    if (requestReads === 2 && secondRead) await secondRead;
     return requestRead === "ok"
       ? { data: { status: requestStatus } }
       : { error: { error: { code: "NOT_FOUND", message: "no" } }, response: { status: 404 } };
@@ -104,6 +117,49 @@ describe("the cosigner's panels of two amendments opened in the same minute", ()
     expect(names[0]).toContain("addendum 1 of 2");
     expect(names[1]).toContain("addendum 2 of 2");
     for (const name of names) expect(name).toContain("2026-10-01 10:00");
+  });
+});
+
+// A step that landed changes the request, but until the request and the page have been read again the panel still offers the step just
+// taken: a second press would be refused by the server. The buttons wait (aria-disabled, never disabled, so the pressed one keeps focus),
+// and when the read lands the button that goes away must not take focus with it (S1 React review).
+describe("the moment between a cosignature step and the page showing it", () => {
+  it("offers nothing that could repeat the step, then puts focus on the addendum", async () => {
+    let landRequest: () => void = () => undefined;
+    secondRead = new Promise<void>((resolve) => {
+      landRequest = resolve;
+    });
+    let landPage: () => void = () => undefined;
+    const page = new Promise<void>((resolve) => {
+      landPage = resolve;
+    });
+    const { user, post } = mount([pending], { onChanged: () => page });
+    const acknowledge = await within(row()).findByRole("button", {
+      name: "Acknowledge cosignature",
+    });
+    await user.click(acknowledge);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Acknowledge" }),
+    );
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // The request still reads "routed": the button is there, waiting, and still focusable.
+    expect(acknowledge).toBeInTheDocument();
+    expect(acknowledge).not.toBeDisabled();
+    expect(acknowledge).toHaveAttribute("aria-disabled", "true");
+    await user.click(acknowledge);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(post).toHaveBeenCalledTimes(1);
+
+    requestStatus = "acknowledged";
+    landRequest();
+    landPage();
+    expect(await within(row()).findByRole("button", { name: "Sign cosignature" })).toBeEnabled();
+    expect(within(row()).queryByRole("button", { name: "Acknowledge cosignature" })).toBeNull();
+    // The Acknowledge button that held focus is gone: focus is on the addendum itself, not the page.
+    await waitFor(() => expect(row()).toHaveFocus());
+    expect(document.body).not.toHaveFocus();
   });
 });
 
