@@ -9,6 +9,7 @@ import type { FastifyInstance } from "fastify";
 import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predicates";
 import { createDbClosureRouteService } from "./closure/closure-route-service";
 import type { ClosurePolicyCache } from "./closure/policy-service";
+import { createDbDraftRouteService } from "./drafting/route-service";
 import {
   type EncounterWriteOutboxPort,
   createDbEncounterAbacResolver,
@@ -16,6 +17,7 @@ import {
 } from "./encounters-route-service-db";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
 import { registerClosureRoutes as _registerM8ClosureRoutes } from "./routes/closure-routes";
+import { registerDraftingRoutes as _registerM8DraftingRoutes } from "./routes/drafting-routes";
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
 
 /**
@@ -27,6 +29,7 @@ import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounter
  * clinical-core scaffold mount for M8.
  *
  * ADR-0113: also mounts the visit-note closure routes (closure-status, overdue-notes, closure-overrides, closure-policy).
+ * ADR-0114: also mounts the visit-note draft switch routes (draft-policy, PR C1).
  * `closure.policyCache` is the policy cache the request-time closure gate reads; pass the SAME instance to both so a policy PUT
  * invalidates what the gate sees. Absent, the closure routes build their own (the gate would then lag a PUT by up to its TTL).
  */
@@ -59,6 +62,7 @@ export function mountEncounterRoutes(
         : {}),
     }),
   });
+  _registerM8DraftingRoutes(app, { service: createDbDraftRouteService({ db }) });
 }
 
 // ADR-0113 — the visit-note closure clock: the pure clock, the tenant policy (+ its cache), the supervisor override, the shared
@@ -69,6 +73,14 @@ export {
   CLOSURE_OVERRIDE_STEP_UP_KEY,
   registerClosureRoutes,
 } from "./routes/closure-routes";
+
+// ADR-0114 — the visit-note draft: the per-tenant switch (PR C1), and the reader PR C2 calls to gate the draft.
+export * from "./drafting/index";
+export {
+  type DraftingRouteDeps,
+  DRAFT_POLICY_STEP_UP_KEY,
+  registerDraftingRoutes,
+} from "./routes/drafting-routes";
 
 export * from "./lifecycle/index";
 // #121 — the §2.6 Layer-3 compliance gate + the register of what each of its twelve checks is today.
