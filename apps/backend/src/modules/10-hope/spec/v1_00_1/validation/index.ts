@@ -1,4 +1,4 @@
-import { HOPE_VALIDATION_RULES, missingRequiredSections } from "@chartwarden/hope";
+import { HOPE_VALIDATION_RULES, REQUIRED_SECTIONS_BY_RFA } from "@chartwarden/hope";
 import { ssnCmsProblem } from "@chartwarden/types";
 import { isRequiredHopeItemForRfa } from "../../required-items";
 import {
@@ -270,11 +270,42 @@ const OPTIONAL_ASSESSMENT_ITEMS = new Set([
   "A0700", // Patient Medicaid number
 ]);
 
+/**
+ * Which required Sections are missing from a record, as one list the rule maps to findings.
+ *
+ * A Section is documented when the stored payload carries it (the legacy typed `data` shape) OR when any of its
+ * active assessment items has been answered or skipped (the answers API, which never writes the payload: an
+ * answers-only record would otherwise miss every Section and could never be signed). The CMS-required matrix lists
+ * letters the imported HOPE spec has no items for (it defines A, F, I, J, M, N and Z), and nothing can document
+ * those through answers, so once the record has spec items only a letter its instrument defines is required. A
+ * record with no active items (payload-only) is still held to the whole matrix. Items still unanswered inside a
+ * documented Section are the item-level rules' findings, not this one's. The workflow-completion item (Z0500B, the
+ * signature date) is answered by signing itself, so it neither defines nor documents a Section: where it is Section
+ * Z's only item (admission and discharge), this rule never requires Z, before or after signing. Readiness injects
+ * the A0050/A0250 workflow answers, so Section A always counts as documented on that path; the item-level
+ * requiredness rule still flags any unanswered Section A item.
+ */
+function missingRequiredSectionsFor(ctx: HopeValidationContext): readonly string[] {
+  const sectionOfItem = (item: { itemCode: string; sectionLabel: string }): string =>
+    (item.sectionLabel.trim() || sectionOf(item.itemCode)).toUpperCase();
+  const items = ctx.activeItems.filter(
+    (item) => item.kind === "assessment" && !WORKFLOW_COMPLETION_ITEMS.has(item.itemCode),
+  );
+  const defined = new Set(items.map(sectionOfItem));
+  const documented = new Set<string>(ctx.presentSections);
+  for (const item of items) {
+    if (ctx.answers.has(item.itemCode)) documented.add(sectionOfItem(item));
+  }
+  return REQUIRED_SECTIONS_BY_RFA[ctx.assessment.rfaKind].filter(
+    (section) => (defined.size === 0 || defined.has(section)) && !documented.has(section),
+  );
+}
+
 const requiredSectionsRule: HopeValidationRule = {
   id: "hope-v1.00.1-final-required-sections",
   evaluate(ctx) {
     if (ctx.mode !== "final") return [];
-    return missingRequiredSections(ctx.assessment.rfaKind, ctx.presentSections).map((section) => ({
+    return missingRequiredSectionsFor(ctx).map((section) => ({
       ruleId: HOPE_VALIDATION_RULES.REQUIRED_SECTION_MISSING,
       severity: "error" as const,
       findingKind: "missing_required" as const,
