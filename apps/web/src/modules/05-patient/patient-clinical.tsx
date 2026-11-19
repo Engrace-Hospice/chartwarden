@@ -1,5 +1,6 @@
 import { visitPurposeLabel } from "@chartwarden/types";
 import {
+  Button,
   CountBadge,
   DeniedState,
   ErrorState,
@@ -23,6 +24,7 @@ import {
 import { type JSX, type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PatientSummaryPanel, medicareTail } from "../../shell/patient-context";
+import { type NoteSummary, type SummarisedNote, summariseNote } from "./clinical-note-summary";
 import {
   EmptyLine,
   Loading,
@@ -71,14 +73,13 @@ interface Vitals {
   weightUnit: string | null;
   capturedAt: string;
 }
-interface EncounterDetail {
+interface EncounterDetail extends SummarisedNote {
   id: string;
   serviceDate: string;
   encounterType: string | null;
   discipline: string | null;
   status: string | null;
   authoredByUserId: string;
-  finalDocumentation: string | null;
   vitals: Vitals | null;
 }
 interface Consent {
@@ -113,9 +114,16 @@ export interface ClinicalData {
   dpoaRead?: ReadStatus;
   /** Re-runs the clinical reads (wired to the failed-read retry buttons). */
   retry?: () => void;
+  /** Reads one recent note again (a note whose Part 2 view could not be decided); resolves true once it was read. */
+  retryNote?: (encounterId: string) => Promise<boolean>;
 }
 
 type Client = ReturnType<typeof useApiClient>;
+
+/** The refusal of an encounter read whose Part 2 disclosure check could not be decided (M8; its own helper lives in 08-encounters). */
+const NOTE_VIEW_UNAVAILABLE = "NOTE_VIEW_UNAVAILABLE";
+const errorCodeOf = (error: unknown): string | undefined =>
+  (error as { error?: { code?: string } } | null)?.error?.code;
 
 async function settle<T>(p: Promise<{ data?: unknown; error?: unknown }>): Promise<T | undefined> {
   try {
@@ -151,6 +159,29 @@ export function ReadNotice({
 
 const daysAgo = (n: number): string =>
   new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
+type ListedEncounter = NonNullable<PatientChartData["encounters"]>[number];
+
+/**
+ * One recent note. A read refused 503 NOTE_VIEW_UNAVAILABLE (the Part 2 check could not be decided) keeps its row, from the chart's own
+ * list, marked so the row can say so and offer a retry; any other failure is dropped as before.
+ */
+async function readNote(
+  client: Client,
+  listed: ListedEncounter,
+): Promise<EncounterDetail | undefined> {
+  try {
+    const { data, error } = await client.GET("/api/v1/encounters/{encounterId}", {
+      params: { path: { encounterId: listed.id } },
+    });
+    if (!error) return data as unknown as EncounterDetail;
+    return errorCodeOf(error) === NOTE_VIEW_UNAVAILABLE
+      ? { ...listed, finalDocumentation: null, vitals: null, viewUnavailable: true }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * The Clinical tab's own sources, fetched in parallel; the encounter details follow the chart's list.
@@ -281,15 +312,7 @@ export function useClinicalData(
       .filter((e) => e.status !== "voided")
       .sort((a, b) => b.serviceDate.localeCompare(a.serviceDate))
       .slice(0, 4);
-    void Promise.all(
-      recent.map((e) =>
-        settle<EncounterDetail>(
-          client.GET("/api/v1/encounters/{encounterId}", {
-            params: { path: { encounterId: e.id } },
-          }),
-        ),
-      ),
-    ).then((rows) => {
+    void Promise.all(recent.map((e) => readNote(client, e))).then((rows) => {
       if (active) {
         setData((d) => ({
           ...d,
@@ -302,7 +325,18 @@ export function useClinicalData(
     };
   }, [client, encounters, enabled]);
 
-  return { ...data, retry };
+  const retryNote = useCallback(
+    async (encounterId: string): Promise<boolean> => {
+      const listed = encounters?.find((e) => e.id === encounterId);
+      const row = listed ? await readNote(client, listed) : undefined;
+      if (!row || row.viewUnavailable) return false;
+      setData((d) => ({ ...d, notes: d.notes?.map((n) => (n.id === encounterId ? row : n)) }));
+      return true;
+    },
+    [client, encounters],
+  );
+
+  return { ...data, retry, retryNote };
 }
 
 // ---------- helpers ----------
@@ -1044,10 +1078,76 @@ function FunctionalPanel({
   );
 }
 
-function noteSummary(text: string | null): string {
-  if (!text) return "—";
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > 90 ? `${flat.slice(0, 88)}…` : flat;
+/** A recent note whose Part 2 view could not be decided: said in words, with a retry that reads just this note again. */
+function UnavailableNote({
+  visit,
+  onRetry,
+}: {
+  visit: string;
+  onRetry: () => Promise<boolean>;
+}): JSX.Element {
+  const [retrying, setRetrying] = useState(false);
+  const [failedAgain, setFailedAgain] = useState(false);
+  const retry = async (): Promise<void> => {
+    setRetrying(true);
+    setFailedAgain(false);
+    const read = await onRetry();
+    // A note that is read again swaps this cell out; only a refusal leaves it to say so.
+    if (!read) {
+      setFailedAgain(true);
+      setRetrying(false);
+    }
+  };
+  return (
+    <span>
+      <span>The note cannot be shown right now</span>{" "}
+      <Button
+        tone="tertiary"
+        size="sm"
+        loading={retrying}
+        aria-label={`Try again: ${visit}`}
+        onClick={() => void retry()}
+      >
+        Try again
+      </Button>
+      {failedAgain ? (
+        <output className="wx-row-sub"> Still not available. Try again in a moment.</output>
+      ) : null}
+    </span>
+  );
+}
+
+function NoteSummaryCell({
+  summary,
+  visit,
+  onRetry,
+}: {
+  summary: NoteSummary;
+  visit: string;
+  onRetry: () => Promise<boolean>;
+}): JSX.Element {
+  switch (summary.kind) {
+    case "unavailable":
+      return <UnavailableNote visit={visit} onRetry={onRetry} />;
+    case "withheld":
+      return (
+        <span>
+          <StatusPill label="Withheld" tone="neutral" />{" "}
+          <span className="wx-row-sub">42 CFR Part 2</span>
+        </span>
+      );
+    case "text":
+      return (
+        <span>
+          {summary.text}
+          {summary.someWithheld ? (
+            <span className="wx-row-sub"> Some sections withheld</span>
+          ) : null}
+        </span>
+      );
+    case "none":
+      return <span>—</span>;
+  }
 }
 
 function ClinicalNotesPanel({
@@ -1100,7 +1200,13 @@ function ClinicalNotesPanel({
                   </Link>
                 </td>
                 <td>{memberName(data, n.authoredByUserId) ?? "—"}</td>
-                <td style={{ color: t.onSurfaceVariant }}>{noteSummary(n.finalDocumentation)}</td>
+                <td style={{ color: t.onSurfaceVariant }}>
+                  <NoteSummaryCell
+                    summary={summariseNote(n)}
+                    visit={`${ENCOUNTER_LABEL[n.encounterType ?? ""] ?? "Visit"} ${fmtDate(n.serviceDate)}`}
+                    onRetry={() => clinical.retryNote?.(n.id) ?? Promise.resolve(false)}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
