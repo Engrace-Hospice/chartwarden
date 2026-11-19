@@ -5,11 +5,14 @@ import type { DraftSectionView, DraftView } from "../draft-api";
 import {
   describeChange,
   describeIssues,
+  draftGateRefusal,
   draftIsActive,
   draftIssuesFrom,
+  isDraftSectionView,
   replaceSection,
   resolutionNote,
   reviewCounts,
+  signStaleMessage,
   touchesCarePlan,
   trendOf,
   trendWindow,
@@ -111,6 +114,59 @@ describe("draftIssuesFrom", () => {
   });
 });
 
+describe("isDraftSectionView", () => {
+  it("accepts a section with a known state and known origins", () => {
+    expect(isDraftSectionView(section())).toBe(true);
+    expect(isDraftSectionView(EMPTY)).toBe(true);
+  });
+
+  it("refuses a section the screens could not read: unknown state, unknown or missing origins, not an object", () => {
+    expect(isDraftSectionView({ ...section(), state: "approved" })).toBe(false);
+    expect(isDraftSectionView({ ...section(), state: "toString" })).toBe(false);
+    expect(isDraftSectionView({ ...section(), origins: ["telepathy"] })).toBe(false);
+    expect(isDraftSectionView({ ...section(), origins: undefined })).toBe(false);
+    expect(isDraftSectionView({ ...section(), sectionId: 4 })).toBe(false);
+    expect(isDraftSectionView(null)).toBe(false);
+    expect(isDraftSectionView("plan")).toBe(false);
+  });
+});
+
+describe("draftGateRefusal", () => {
+  it("splits a finalize refusal into the drafted sections it names and every other detail", () => {
+    const vitals = { field: "vitals", code: "VITALS_REQUIRED", message: "Vitals are required" };
+    const refusal = draftGateRefusal([
+      vitals,
+      { field: "plan", code: "DRAFT_SECTION_UNRESOLVED", message: "x" },
+    ]);
+    expect(refusal?.issues).toEqual([{ sectionId: "plan", reason: "unresolved" }]);
+    expect(refusal?.others).toEqual([vitals]);
+  });
+
+  it("is null when the refusal is not about the draft at all", () => {
+    expect(draftGateRefusal([{ field: "vitals", code: "VITALS_REQUIRED" }])).toBeNull();
+    expect(draftGateRefusal(undefined)).toBeNull();
+  });
+});
+
+describe("signStaleMessage", () => {
+  const headingOf = (id: string): string => ({ plan: "Plan" })[id] ?? id;
+
+  it("names the sections the sign refusal listed", () => {
+    const text = signStaleMessage(
+      [{ field: "plan", code: "DRAFT_SECTION_STALE", message: "changed" }],
+      headingOf,
+    );
+    expect(text).toContain("need another look before this note can be signed");
+    expect(text).toContain("Plan (changed since you resolved it)");
+  });
+
+  it("still says what to do when the refusal names none", () => {
+    const text = signStaleMessage(undefined, headingOf);
+    expect(text).toContain("need another look before this note can be signed.");
+    expect(text).toContain("Review them in the note editor, then sign again.");
+  });
+});
+
 describe("describeIssues", () => {
   const headingOf = (id: string): string => ({ plan: "Plan and Next Visit" })[id] ?? id;
 
@@ -201,7 +257,12 @@ describe("trendWindow", () => {
   });
 
   it("takes only the date of a date-time", () => {
-    expect(trendWindow("2026-11-17T08:00:00.000Z").to).toBe("2026-11-17");
+    expect(trendWindow("2026-11-17T08:00:00.000Z")?.to).toBe("2026-11-17");
+  });
+
+  it("has no window for a service date it cannot read, instead of throwing", () => {
+    expect(trendWindow("not-a-date")).toBeNull();
+    expect(trendWindow("")).toBeNull();
   });
 });
 

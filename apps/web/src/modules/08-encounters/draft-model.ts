@@ -41,6 +41,26 @@ export function originsText(origins: readonly DraftOrigin[]): string {
 
 const CARE_PLAN_ORIGINS: readonly DraftOrigin[] = ["care_plan_goal", "care_plan_intervention"];
 
+const isKnownState = (value: unknown): value is DraftSectionState =>
+  typeof value === "string" && Object.hasOwn(STATE_LABEL, value);
+const isKnownOrigin = (value: unknown): value is DraftOrigin =>
+  typeof value === "string" && Object.hasOwn(ORIGIN_LABEL, value);
+
+/**
+ * Whether `value` is a section the screens can render: a section id, a state with a label, and origins that each read as words. A draft
+ * with any other section is a broken answer (the load says "unavailable"), never a half-rendered section ("Built from undefined.").
+ */
+export function isDraftSectionView(value: unknown): value is DraftSectionView {
+  if (value === null || typeof value !== "object") return false;
+  const { sectionId, state, origins } = value as Record<string, unknown>;
+  return (
+    typeof sectionId === "string" &&
+    isKnownState(state) &&
+    Array.isArray(origins) &&
+    origins.every(isKnownOrigin)
+  );
+}
+
 export const touchesCarePlan = (section: Pick<DraftSectionView, "origins">): boolean =>
   section.origins.some((origin) => CARE_PLAN_ORIGINS.includes(origin));
 
@@ -116,6 +136,32 @@ export function describeIssues(
   return issues
     .map((issue) => `${headingOf(issue.sectionId)} (${ISSUE_WORDS[issue.reason]})`)
     .join(", ");
+}
+
+/** What a finalize 422 (`COMPLIANCE_GATE_FAILED`) says: the drafted sections it names, and every other detail the gate listed. */
+export interface DraftGateRefusal {
+  readonly issues: readonly DraftIssue[];
+  readonly others: readonly unknown[];
+}
+
+/** The draft part of a finalize refusal, or null when the gate named no drafted section (the refusal is then not about the draft). */
+export function draftGateRefusal(details: unknown): DraftGateRefusal | null {
+  const issues = draftIssuesFrom(details);
+  if (issues.length === 0) return null;
+  const others = (Array.isArray(details) ? details : []).filter(
+    (detail) => draftIssuesFrom([detail]).length === 0,
+  );
+  return { issues, others };
+}
+
+/** What the signer reads when the sign is refused 409 `DRAFT_SECTION_STALE`: the sections named (when it named any) and what to do. */
+export function signStaleMessage(
+  details: unknown,
+  headingOf: (sectionId: string) => string,
+): string {
+  const issues = draftIssuesFrom(details);
+  const named = issues.length > 0 ? `: ${describeIssues(issues, headingOf)}` : "";
+  return `Some drafted sections need another look before this note can be signed${named}. Review them in the note editor, then sign again.`;
 }
 
 // ── what a resolve says back ───────────────────────────────────────────────────────────────────────────
@@ -197,11 +243,17 @@ export function trendOf(points: readonly ScorePoint[], notAfter?: string): Score
 const TREND_WINDOW_DAYS = 90;
 const MS_PER_DAY = 86_400_000;
 
-/** The series window the trend reads: the 90 days up to the visit's service date (the route takes whole dates, end of day inclusive). */
-export function trendWindow(serviceDate: string): { readonly from: string; readonly to: string } {
+/**
+ * The series window the trend reads: the 90 days up to the visit's service date (the route takes whole dates, end of day inclusive).
+ * Null for a service date that is not a date: there is no window to ask for, and `toISOString` would throw.
+ */
+export function trendWindow(
+  serviceDate: string,
+): { readonly from: string; readonly to: string } | null {
   const to = serviceDate.slice(0, 10);
-  const from = new Date(Date.parse(`${to}T00:00:00Z`) - TREND_WINDOW_DAYS * MS_PER_DAY);
-  return { from: from.toISOString().slice(0, 10), to };
+  const end = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(end)) return null;
+  return { from: new Date(end - TREND_WINDOW_DAYS * MS_PER_DAY).toISOString().slice(0, 10), to };
 }
 
 export function describeChange(change: number | null): string {

@@ -42,10 +42,15 @@ export function ComposerScoreTrend({
   // biome-ignore lint/correctness/useExhaustiveDependencies: `reloadKey` is the retry trigger, not read in the body.
   useEffect(() => {
     let active = true;
+    // A service date that is not a date has no 90 days before it: nothing to ask for, so nothing to show.
+    const range = trendWindow(serviceDate);
+    if (range === null) {
+      setLoad({ status: "hidden" });
+      return;
+    }
     setLoad({ status: "loading" });
-    const window = trendWindow(serviceDate);
     void Promise.all(
-      TREND_SCALES.map((scale) => loadScaleSeries(client, patientId, scale, window)),
+      TREND_SCALES.map((scale) => loadScaleSeries(client, patientId, scale, range)),
     ).then((outcomes) => {
       if (!active) return;
       if (outcomes.every((outcome) => !outcome.ok && outcome.status === FORBIDDEN)) {

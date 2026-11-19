@@ -1,12 +1,18 @@
 // apps/web/src/modules/08-encounters — the visit-note draft of one encounter, as the composer and the sign step hold it (ADR-0114).
 //
 //   off          the tenant has the draft switched off, or this viewer may not read it: the screen is exactly as it was before drafts
-//   unavailable  a source could not be read (503) or nothing answered: say so, never pretend there is no draft
+//   unavailable  a source could not be read (503), nothing answered, or the answer is not a draft: say so, never pretend there is no draft
 //   ready        the draft for THIS viewer; each section has a state the server decided
 //
 // The server is the only judge of a state. A resolve that answers 409 DRAFT_SECTION_STALE means the clinician acted on text that is no
 // longer the text there is: nothing was recorded, so the whole draft is re-read and the section says so. The draft is never cached
 // across encounters or viewers: it is re-read on mount and whenever the caller says what it is built from changed (a save, a link).
+//
+// ORDER. Two things may answer out of order, and neither may put an older picture over a newer one:
+//   - a resolve whose encounter changed (or whose screen closed) before it answered: its answer belongs to a draft that is no longer
+//     shown, so it writes nothing (`epoch`);
+//   - a re-read asked for while a resolve is in flight: a GET served before the PUT commits could answer after it, so the re-read waits
+//     for the resolve to land and then reads once (`rereadAfterResolve`).
 import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -19,8 +25,12 @@ import {
   loadDraft,
   resolveDraftSection,
 } from "./draft-api";
-import { type SectionNote, replaceSection, resolutionNote } from "./draft-model";
-import { useIsMounted } from "./use-is-mounted";
+import {
+  type SectionNote,
+  isDraftSectionView,
+  replaceSection,
+  resolutionNote,
+} from "./draft-model";
 
 export type DraftLoad =
   | { readonly status: "loading" }
@@ -34,6 +44,8 @@ export interface NoteDraft {
   readonly busySectionId: string | null;
   /** What the last action on each section said; cleared whenever the draft is re-read. */
   readonly notes: Readonly<Record<string, SectionNote>>;
+  /** A re-read of the draft is in flight: the text on screen may be about to change, so nothing should be resolved against it. */
+  readonly refreshing: boolean;
   /** Re-read the draft (after a save or a link changed what it is built from). */
   readonly reload: () => Promise<void>;
   /** Confirm or deselect one drafted section. True when the server recorded it. */
@@ -43,9 +55,10 @@ export interface NoteDraft {
 const NOT_ALLOWED_STATUSES: readonly number[] = [403, 404];
 
 function loadStateOf(outcome: Outcome<DraftView>): DraftLoad {
-  // A 200 that is not a draft (no sections list) is a broken answer, not an empty draft.
   if (outcome.ok) {
-    return Array.isArray(outcome.data.sections)
+    // A 200 that is not a draft (no sections list, or a section the screens cannot read) is a broken answer, not an empty draft.
+    const sections: unknown = outcome.data?.sections;
+    return Array.isArray(sections) && sections.every(isDraftSectionView)
       ? { status: "ready", draft: outcome.data }
       : { status: "unavailable" };
   }
@@ -60,50 +73,79 @@ function loadStateOf(outcome: Outcome<DraftView>): DraftLoad {
  */
 export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): NoteDraft {
   const client = useApiClient();
-  const mounted = useIsMounted();
   const [load, setLoad] = useState<DraftLoad>({ status: "loading" });
   const [busySectionId, setBusySectionId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Readonly<Record<string, SectionNote>>>({});
+  const [refreshing, setRefreshing] = useState(false);
   const sequence = useRef(0);
+  const epoch = useRef(0);
   const inFlight = useRef(false);
+  const rereadAfterResolve = useRef(false);
 
   const reload = useCallback(async (): Promise<void> => {
     if (!encounterId) return;
+    if (inFlight.current) {
+      rereadAfterResolve.current = true;
+      return;
+    }
     const mine = ++sequence.current;
     setNotes({});
+    setRefreshing(true);
     const outcome = await loadDraft(client, encounterId);
-    if (mine === sequence.current) setLoad(loadStateOf(outcome));
+    if (mine !== sequence.current) return;
+    setRefreshing(false);
+    setLoad(loadStateOf(outcome));
   }, [client, encounterId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `refreshKey` is the re-read trigger, not read in the body.
   useEffect(() => {
     setLoad({ status: "loading" });
+    setRefreshing(false);
     void reload();
     return () => {
       sequence.current += 1;
     };
   }, [reload, refreshKey]);
 
+  // A resolve belongs to the encounter (and the screen) it started in. When either goes, its answer is stale: it must write nothing,
+  // and the guard it held must not outlive it (a resolve the next encounter starts is its own).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `encounterId` is the trigger for the cleanup, not read in the body.
+  useEffect(
+    () => () => {
+      epoch.current += 1;
+      inFlight.current = false;
+      rereadAfterResolve.current = false;
+      setBusySectionId(null);
+    },
+    [encounterId],
+  );
+
   const resolve = useCallback(
     async (section: DraftSectionView, resolution: Resolution): Promise<boolean> => {
       if (!encounterId || inFlight.current) return false;
+      const startedIn = epoch.current;
+      const stillHere = (): boolean => startedIn === epoch.current;
       inFlight.current = true;
       setBusySectionId(section.sectionId);
       setNotes(({ [section.sectionId]: _gone, ...rest }) => rest);
       const noteFor = (sectionId: string, note: SectionNote): void =>
         setNotes((current) => ({ ...current, [sectionId]: note }));
       const outcome = await resolveDraftSection(client, encounterId, section, resolution);
+      if (!stillHere()) return false;
       inFlight.current = false;
-      if (!mounted.current) return false;
       setBusySectionId(null);
+      const rereadAsked = rereadAfterResolve.current;
+      rereadAfterResolve.current = false;
       if (outcome.ok) {
         setLoad((current) =>
           current.status === "ready"
             ? { status: "ready", draft: replaceSection(current.draft, outcome.data) }
             : current,
         );
-        noteFor(section.sectionId, resolutionNote(resolution, section, outcome.data));
-        return true;
+        if (rereadAsked) await reload();
+        if (stillHere())
+          noteFor(section.sectionId, resolutionNote(resolution, section, outcome.data));
+        return stillHere();
       }
       if (outcome.status === 404) {
         setLoad({ status: "off" });
@@ -112,14 +154,15 @@ export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): 
       const failure = describeDraftRefusal(outcome);
       if (failure.code === SECTION_STALE_CODE) {
         await reload();
-        if (mounted.current) noteFor(section.sectionId, { tone: "warning", text: failure.message });
+        if (stillHere()) noteFor(section.sectionId, { tone: "warning", text: failure.message });
         return false;
       }
-      noteFor(section.sectionId, { tone: "error", text: failure.message });
+      if (rereadAsked) await reload();
+      if (stillHere()) noteFor(section.sectionId, { tone: "error", text: failure.message });
       return false;
     },
-    [client, encounterId, mounted, reload],
+    [client, encounterId, reload],
   );
 
-  return { load, busySectionId, notes, reload, resolve };
+  return { load, busySectionId, notes, refreshing, reload, resolve };
 }

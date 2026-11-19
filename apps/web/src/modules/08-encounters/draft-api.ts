@@ -163,13 +163,16 @@ export function linkCarePlanElement(
   );
 }
 
-/** Soft-remove a live link (a draft encounter only). The reply has no body, so success is `data: undefined` made explicit here. */
-export async function unlinkCarePlanElement(
+/**
+ * Soft-remove a live link (a draft encounter only). The reply has no body, so success is the response's own status, made `data: true`
+ * here: the client hands back `error: ""` (falsy) for a refusal with an empty body, which must not read as a removal.
+ */
+export function unlinkCarePlanElement(
   client: ApiClient,
   encounterId: string,
   linkId: string,
 ): Promise<Outcome<true>> {
-  const outcome = await settle(async () => {
+  return settle(async () => {
     const result = await client.DELETE(
       "/api/v1/encounters/{encounterId}/care-plan-links/{linkId}",
       {
@@ -177,12 +180,11 @@ export async function unlinkCarePlanElement(
       },
     );
     return {
-      data: result.error ? undefined : (true as const),
+      data: result.response.ok ? (true as const) : undefined,
       error: result.error,
       response: result.response,
     };
   });
-  return outcome;
 }
 
 // ── the score trend ────────────────────────────────────────────────────────────────────────────────────
