@@ -11,8 +11,17 @@ the `chartwarden-mobile` repository (written `wardenx-mobile` in older text).
 [ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md) supersedes ADR-0035, and the owner
 ratified that supersession on 2026-11-18. Current architecture sections below are aligned to that
 target so backend contracts do not extend the obsolete Capacitor design; historical changelog rows
-remain historical. The ADR status does not claim that owner ratification or native device controls
-have been completed.
+remain historical. The ratification does not claim that native device controls have been completed or
+that the security owner has signed ADR-0072 decisions 8-12 as controls.
+
+## Document Control — FireNote and DocLens corrections (2026-11-18)
+
+Two statements in §10.5 and §11 did not match a corpus check on 2026-11-18 and are corrected in place; no decision changes. Decision record: [ADR-0114](../adr/ADR-0114-deterministic-visit-note-drafting.md) (Proposed). Design: `docs/implementation/04-visit-note-drafting-redesign.md`.
+
+|Change                                                                                                                                                                                                                  |Driver                                    |
+|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------|
+|§10.5 trademark note: FireNote also markets separate AI tools (“Ember AI”, rolling out one tool at a time, vendor-claimed); the sentence that FireNote explicitly does not offer an LLM layer is replaced.                              |Competitor comparison, 2026-11-18         |
+|§11 row and §10.5 DocLens flow: seeding admission selections from document extractions is marked a design target, not built (nothing in M8 or `packages/hearthnote` seeds from extractions).                            |Code check, 2026-11-18                    |
 
 ## Document Control — Module 41 reconciliation (2026-11-11)
 
@@ -106,7 +115,7 @@ an ADR under `docs/adr/`. Module specs re-lock against these in later phases.
 |Module 22 (Document Management) updated — DocLens is first-class capability                                                                                                                            |Workflow integration                                                                                   |
 |Module 5, 7, 9, 11, 12 updated — extraction-commit entry paths                                                                                                                                         |Receive validated extractions                                                                          |
 |Module 32 (AI Platform) updated — document classifier and Claude verification pass                                                                                                                     |AI capabilities inventory                                                                              |
-|HearthNote integration: extracted H&P findings can seed admission note selections                                                                                                                      |Compound time savings — extraction → narrative                                                         |
+|HearthNote integration: extracted H&P findings can seed admission note selections (design target, not built as of 2026-11-18)                                                                                                                      |Compound time savings — extraction → narrative                                                         |
 |§23.13 (new) DocLens audit and provenance traceability                                                                                                                                                 |Surveyor defensibility of extraction-sourced chart data                                                |
 
 ## Document Control — Changes from v0.4
@@ -974,7 +983,7 @@ The AI Platform is module 32, called by other modules through a typed SDK in `pa
 
 HearthNote is ChartWarden’s clinical narrative system. It is **not** generative-AI-first. It is a deterministic, rules-based documentation engine with an optional LLM enhancement layer and a non-negotiable compliance gate. It is the documentation surface for every clinical encounter, every IDG meeting, every discipline-specific note.
 
-> **Trademark note:** HearthNote is the ChartWarden-internal name. RapidChart® is a registered trademark of FireNote and is not used in ChartWarden. The architectural inspiration acknowledges FireNote’s deterministic approach, but HearthNote adds an opt-in LLM enhancement layer that FireNote explicitly does not offer.
+> **Trademark note:** HearthNote is the ChartWarden-internal name. RapidChart® is a registered trademark of FireNote and is not used in ChartWarden. The architectural inspiration acknowledges FireNote’s deterministic approach, but HearthNote adds an opt-in LLM enhancement layer (Layer 2, a deny-stub as built on 2026-11-18). As of 2026-11-18 FireNote also markets AI tools under “Ember AI”, rolling out “one tool at a time” (vendor wording; which are live is not stated; https://firenote.health/ember), and describes its documentation as “non-generative” (vendor-claimed, https://firenote.health/).
 
 ### 10.5.1 Three-layer architecture
 
@@ -1361,7 +1370,7 @@ The most valuable composite workflow:
 1. Admissions nurse uploads referral bundle → DocLens extracts everything
 1. Admissions nurse reviews and approves extractions (15-30 min for a typical bundle)
 1. Approved data populates the chart (demographics, meds, dx, allergies, code status)
-1. Admissions nurse opens the admission HearthNote — Layer 1 selections are *pre-populated* from extracted data
+1. Admissions nurse opens the admission HearthNote — Layer 1 selections are *pre-populated* from extracted data (design target, not built as of 2026-11-18; see `docs/implementation/04-visit-note-drafting-redesign.md`)
 1. Admissions nurse confirms / edits the pre-populated selections, adds her own observations
 1. Layer 2 (if opted in) polishes the narrative
 1. Layer 3 verifies completion
