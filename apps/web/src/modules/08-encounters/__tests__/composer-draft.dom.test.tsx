@@ -12,6 +12,8 @@ import { SessionProvider } from "../../../shell/session";
 import { EncounterCompose } from "../encounter-compose";
 import { type Call, type Responder, makeFetch } from "./closure-test-harness";
 
+// axe walks the whole composer subtree in jsdom, which is slow on a busy machine; the default 50s was not always enough.
+const AXE_TEST_TIMEOUT_MS = 180_000;
 const PATIENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const ENC = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const LINK_ID = "cccccccc-3333-4333-8333-cccccccccccc";
@@ -821,23 +823,27 @@ describe("the score trend", () => {
 });
 
 describe("accessibility", () => {
-  it("has no axe violations on the drafted section, its summary and the right rail", async () => {
-    const user = userEvent.setup();
-    mountComposer();
-    await ready();
-    await openSection(user, /^Plan and Next Visit/);
-    await screen.findByRole("heading", { name: "Care plan for this visit" });
-    await screen.findByRole("heading", { name: "Scores and trend" });
-    for (const name of ["Drafted sections", "Pre-drafted from the record"]) {
-      const region = screen.getByRole("region", { name });
-      const results = await axe.run(region);
-      expect(results.violations).toEqual([]);
-    }
-    for (const name of ["Care plan for this visit", "Scores and trend"]) {
-      const results = await axe.run(
-        (await screen.findByRole("heading", { name })).closest("section") as HTMLElement,
-      );
-      expect(results.violations).toEqual([]);
-    }
-  });
+  it(
+    "has no axe violations on the drafted section, its summary and the right rail",
+    async () => {
+      const user = userEvent.setup();
+      mountComposer();
+      await ready();
+      await openSection(user, /^Plan and Next Visit/);
+      await screen.findByRole("heading", { name: "Care plan for this visit" });
+      await screen.findByRole("heading", { name: "Scores and trend" });
+      for (const name of ["Drafted sections", "Pre-drafted from the record"]) {
+        const region = screen.getByRole("region", { name });
+        const results = await axe.run(region);
+        expect(results.violations).toEqual([]);
+      }
+      for (const name of ["Care plan for this visit", "Scores and trend"]) {
+        const results = await axe.run(
+          (await screen.findByRole("heading", { name })).closest("section") as HTMLElement,
+        );
+        expect(results.violations).toEqual([]);
+      }
+    },
+    AXE_TEST_TIMEOUT_MS,
+  );
 });
