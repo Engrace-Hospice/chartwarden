@@ -312,6 +312,42 @@ describe("deselecting a section: the care-plan links and the hash it is bound to
     });
   });
 
+  it("a deselect that empties a section the clinician had confirmed withdraws that confirmation: re-linking the same goal reads needs_reconfirmation, not confirmed", async () => {
+    const mem = memoryDraftStore(withPrevious);
+    const seen = await hashOf("plan", withPrevious);
+    await resolveWith(mem.store, "plan", "confirmed", seen);
+    const out = await resolveWith(mem.store, "plan", "deselected", seen);
+    // The section is empty now (not_drafted), but the row is kept and withdrawn: bound to a hash no recomputed section can equal.
+    expect(out.view).toMatchObject({ sectionId: "plan", state: "not_drafted", text: null });
+    const withdrawn = mem.saved.get("plan");
+    expect(withdrawn).toMatchObject({ resolution: "deselected", sourceRefs: [] });
+    expect(withdrawn?.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(withdrawn?.contentHash).not.toBe(seen.contentHash);
+    expect(out.event).toMatchObject({
+      contentHash: seen.contentHash,
+      boundContentHash: withdrawn?.contentHash,
+      carePlanElementsRemoved: 1,
+    });
+    // The picker brings the goal back: the section hashes to what the clinician once confirmed, and must not read as confirmed.
+    await mem.store.linkCarePlan(encounter, [{ kind: "care_plan_goal", id: "goal-1" }]);
+    const reopened = await computeDraft({ ...seams(), ...mem.store }, encounter, viewer(), NOW);
+    const relinked = reopened.draft.sections.find((s) => s.sectionId === "plan");
+    if (relinked?.state !== "drafted") throw new Error("the re-linked goal should be drafted");
+    expect(relinked.contentHash).toBe(seen.contentHash);
+    const states = sectionStates(reopened.draft, await mem.store.confirmations(encounter.id));
+    expect(states.find((s) => s.sectionId === "plan")?.state).toBe("needs_reconfirmation");
+  });
+
+  it("a deselect that empties a section never confirmed keeps no row, so a re-link reads unresolved", async () => {
+    const mem = memoryDraftStore(withPrevious);
+    await resolveWith(mem.store, "plan", "deselected", await hashOf("plan", withPrevious));
+    expect(mem.saved.size).toBe(0);
+    await mem.store.linkCarePlan(encounter, [{ kind: "care_plan_goal", id: "goal-1" }]);
+    const reopened = await computeDraft({ ...seams(), ...mem.store }, encounter, viewer(), NOW);
+    const states = sectionStates(reopened.draft, await mem.store.confirmations(encounter.id));
+    expect(states.find((s) => s.sectionId === "plan")?.state).toBe("unresolved");
+  });
+
   it("a mixed section (care plan + medication change) is bound to the hash recomputed AFTER the links change", async () => {
     const mem = memoryDraftStore(withPrevious);
     const seen = await hashOf("interventions", withPrevious);

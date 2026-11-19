@@ -6,7 +6,10 @@
 //   * confirmed: the section's care-plan elements are linked to the encounter, and the confirmation is bound to the hash seen.
 //   * deselected: the section's care-plan elements are removed from the encounter (VN-D8), which CHANGES the section, so the draft is
 //     recomputed and the `deselected` row is bound to the hash of what remains (the medication changes or other sentences of the
-//     section are deselected with it). A section that is empty after the removal needs no row: it reads `not_drafted`.
+//     section are deselected with it). A section that is empty after the removal needs no row: it reads `not_drafted`. When the clinician
+//     had already resolved that section, the row they left would otherwise outlive the removal (the section hashes to the same content
+//     if the goal is linked again, and would read `confirmed` with no new confirmation), so it is withdrawn: kept as `deselected`
+//     and bound to a hash no recomputed section can equal (`withdrawnHash`), which a re-link reads as `needs_reconfirmation`.
 //
 // Idempotent: confirming the same content again, or deselecting a section that is already `deselected` and current, writes nothing and
 // reports no event. A retry of a deselect that left the section empty carries the old hash, finds nothing drafted and is stale: the
@@ -14,7 +17,7 @@
 import type { DraftSection, DraftedSection } from "@chartwarden/hearthnote";
 import { EncounterStateError } from "../lifecycle/errors";
 import { isCarePlanRef } from "./care-plan-refs";
-import { computeDraftOverview } from "./compute";
+import { computeDraftOverview, sha256Hex } from "./compute";
 import type { DraftEncounterRow, DraftResolvedEvent, DraftStore } from "./draft-store";
 import { type DraftSectionView, sectionView } from "./draft-view";
 import type { DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
@@ -43,6 +46,13 @@ const stale = (sectionId: string): EncounterStateError =>
     "DRAFT_SECTION_STALE",
     `section '${sectionId}' no longer matches the draft you resolved: refetch the draft, review it and resolve the section again`,
   );
+
+/**
+ * The hash a withdrawn resolution is bound to: SHA-256 of a string no section's canonical content is, so no recomputed section (the
+ * same sources linked again included) can match it, and the row reads `needs_reconfirmation` until the clinician resolves it afresh.
+ */
+const withdrawnHash = (sectionId: string, corpusVersion: string): string =>
+  sha256Hex(`withdrawn:${sectionId}:${corpusVersion}`);
 
 function findSection(draft: readonly DraftSection[], sectionId: string): DraftSection | undefined {
   return draft.find((s) => s.sectionId === sectionId);
@@ -111,16 +121,31 @@ export async function resolveSection(
     bound = after?.state === "drafted" ? after : null;
   }
 
-  if (bound !== null) {
+  // A deselect that left the section empty: with no row there is nothing to keep, with one it is withdrawn (see the header).
+  const kept =
+    bound !== null
+      ? {
+          contentHash: bound.contentHash,
+          corpusVersion: bound.corpusVersion,
+          part2Derived: bound.part2Derived,
+          sourceRefs: bound.sourceRefs,
+        }
+      : confirmations.some((c) => c.sectionId === sectionId)
+        ? {
+            contentHash: withdrawnHash(sectionId, seen.corpusVersion),
+            corpusVersion: seen.corpusVersion,
+            // The withdrawn row keeps no source ids, but what the clinician saw keeps its Part 2 class (fail closed).
+            part2Derived: seen.part2Derived,
+            sourceRefs: [],
+          }
+        : null;
+  if (kept !== null) {
     await store.saveConfirmation({
       encounter,
       sectionId,
       resolution,
-      contentHash: bound.contentHash,
-      corpusVersion: bound.corpusVersion,
+      ...kept,
       edited,
-      part2Derived: bound.part2Derived,
-      sourceRefs: bound.sourceRefs,
       resolvedByMembershipId: input.actorMembershipId,
       resolvedAt: now,
     });
@@ -137,7 +162,7 @@ export async function resolveSection(
       resolution,
       edited,
       contentHash: seen.contentHash,
-      boundContentHash: bound?.contentHash ?? null,
+      boundContentHash: kept?.contentHash ?? null,
       corpusVersion: seen.corpusVersion,
       part2Derived: seen.part2Derived,
       sourceRefs: seen.sourceRefs,
