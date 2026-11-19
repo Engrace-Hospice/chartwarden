@@ -18,22 +18,26 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import { useNoteClosure } from "../../shell/note-closure";
-import { useSession } from "../../shell/session";
 import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assessments-api";
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
-import { type AddendumRow, openAddendum } from "./addenda-api";
+import { openAddendum } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
 import { AmendSectionsPicker } from "./amend-sections-picker";
-import { mayNameSections } from "./amendment-model";
 import { CosignCeremonyModals } from "./cosign-ceremony-modals";
 import { cosignActionsFor } from "./cosign-model";
 import { draftIsActive, reviewCounts } from "./draft-model";
-import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
 import {
-  NOTE_VIEW_UNAVAILABLE_DESCRIPTION,
-  NoteViewUnavailable,
-  isNoteViewUnavailable,
-} from "./note-view-unavailable";
+  type AssessmentRow,
+  type CarePlanLink,
+  type CarePlanRelevant,
+  type Encounter,
+  type MileageForm,
+  type PatientSummary,
+  type VitalsForm,
+  readEncounter,
+} from "./encounter-read-load";
+import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
+import { NoteViewUnavailable } from "./note-view-unavailable";
 import {
   type FieldErrors,
   errorMessage,
@@ -42,12 +46,8 @@ import {
   validationDetails,
 } from "./read-errors";
 import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice } from "./sign-draft-notice";
-import {
-  type FinalDocumentationView,
-  type NoteHistory,
-  amendableSections,
-} from "./signed-note-model";
 import { SignedNoteView } from "./signed-note-view";
+import { useAmendableSections } from "./use-amendable-sections";
 import { useCosignCeremony } from "./use-cosign-ceremony";
 import { useNoteDraft } from "./use-note-draft";
 import {
@@ -65,94 +65,6 @@ import { authFailureRedirect } from "./write-workflow";
 
 // The sign ceremony; the cosigner's three (acknowledge, sign, supervisor release) are `useCosignCeremony`, shared with an amendment's request.
 type CeremonyMode = "sign" | null;
-
-interface Encounter {
-  id: string;
-  patientId: string;
-  admissionId: string;
-  visitId: string | null;
-  /** The note's author (membership id): the note's author cannot cosign an amendment of it. */
-  authoredByUserId: string;
-  encounterType: string;
-  discipline: string;
-  serviceDate: string;
-  status: string;
-  lateEntryTier: string;
-  version: number;
-  isF2f: boolean;
-  signedAt: string | null;
-  cosignedAt: string | null;
-  /** How the visit was delivered, as seeded or confirmed; null = unknown. */
-  visitModality?: string | null;
-  /** True only once a clinician confirmed `visitModality`; an unconfirmed one is the scheduler's guess. */
-  visitModalityConfirmed?: boolean;
-  /** An M18 EVV bracket is on file, so the sign ceremony takes no typed times. */
-  evvBracketPresent?: boolean;
-  selections: Record<string, unknown> | null;
-  finalDocumentation: string | null;
-  /** The signed note as structured data for this viewer (a withheld part has no text); null = nothing pinned, absent = an older API. */
-  finalDocumentationView?: FinalDocumentationView | null;
-  noteHistory?: NoteHistory | null;
-  vitals: Record<string, unknown> | null;
-  mileage: Record<string, unknown> | null;
-  carePlanLinks: CarePlanLink[];
-  addenda: AddendumRow[];
-}
-
-interface PatientSummary {
-  mrn: string;
-  lastName: string;
-  firstName: string;
-  dob: string;
-  status: string;
-}
-
-interface CarePlanProblem {
-  problemId: string;
-  description: string;
-  status: string;
-}
-
-interface CarePlanGoal {
-  goalId: string;
-  problemId: string;
-  text: string;
-  status: string;
-}
-
-interface CarePlanIntervention {
-  interventionId: string;
-  problemId: string;
-  scopeText: string;
-  frequencyText: string;
-  discipline: string;
-  status: string;
-}
-
-interface CarePlanRelevant {
-  problems: CarePlanProblem[];
-  goals: CarePlanGoal[];
-  interventions: CarePlanIntervention[];
-  redacted: boolean;
-}
-
-interface CarePlanLink {
-  linkId?: string;
-  problemId: string | null;
-  goalId: string | null;
-  interventionId: string | null;
-}
-
-interface AssessmentRow {
-  id: string;
-  assessmentId?: string;
-  scaleType?: string;
-  kind?: string;
-  status: string;
-  sourceEncounterId?: string | null;
-  capturedAt?: string;
-  assessmentIdLabel?: string;
-}
 
 type EncounterSection =
   | "documentation"
@@ -208,7 +120,6 @@ export function EncounterRead(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { refresh: refreshClosureStatus } = useNoteClosure();
-  const session = useSession();
 
   const { patientId, encounterId } = useParams<{
     patientId: string;
@@ -221,6 +132,8 @@ export function EncounterRead(): JSX.Element {
     encounter ? encounter.id : undefined,
     encounter?.status,
   );
+  // The sections an amending addendum may name: offered to this viewer only when the draft is on and the session does not rule them out.
+  const amendable = useAmendableSections(draftLoad, encounter);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [cosignStatus, setCosignStatus] = useState<string | null>(null);
   const [carePlan, setCarePlan] = useState<CarePlanRelevant | null>(null);
@@ -263,7 +176,7 @@ export function EncounterRead(): JSX.Element {
 
   const [noteText, setNoteText] = useState("");
 
-  const [vitals, setVitals] = useState({
+  const [vitals, setVitals] = useState<VitalsForm>({
     bpSystolic: "",
     bpDiastolic: "",
     heartRate: "",
@@ -275,7 +188,7 @@ export function EncounterRead(): JSX.Element {
     painScale: "nrs_0_10",
   });
 
-  const [mileage, setMileage] = useState({
+  const [mileage, setMileage] = useState<MileageForm>({
     odometerStart: "",
     odometerEnd: "",
     milesDriven: "",
@@ -308,7 +221,7 @@ export function EncounterRead(): JSX.Element {
   }>;
 
   // `inPlace` reads the encounter again without replacing the page by a spinner, so what the screen holds (an addendum's result line, an
-  // open editor, the scroll position) survives the read.
+  // open editor, the scroll position) survives the read. The promise settles when the screen holds the new read.
   const load = useCallback(
     async (inPlace?: boolean) => {
       if (!encounterId) return;
@@ -317,198 +230,24 @@ export function EncounterRead(): JSX.Element {
       setError(null);
       setRetryable(false);
 
-      const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
-        params: {
-          path: {
-            encounterId,
-          },
-        },
-      });
+      const read = await readEncounter(client, encounterId, patientId);
 
-      if (err || !data?.id) {
-        const noteViewUnavailable = isNoteViewUnavailable(err);
-        setRetryable(noteViewUnavailable);
-        setError(
-          noteViewUnavailable ? NOTE_VIEW_UNAVAILABLE_DESCRIPTION : "Could not load the encounter.",
-        );
+      if (!read.ok) {
+        setRetryable(read.noteViewUnavailable);
+        setError(read.message);
         setLoading(false);
         return;
       }
 
-      const selections =
-        (
-          data as {
-            selections?: Record<string, unknown> | null;
-          }
-        ).selections ?? null;
-
-      const loadedVitals = (
-        data as {
-          vitals?: Record<string, unknown> | null;
-        }
-      ).vitals;
-
-      const loadedMileage = (
-        data as {
-          mileage?: Record<string, unknown> | null;
-        }
-      ).mileage;
-
-      setEncounter({
-        id: data.id,
-        patientId: data.patientId,
-        admissionId: data.admissionId,
-        visitId: data.visitId ?? null,
-        authoredByUserId: data.authoredByUserId,
-        encounterType: data.encounterType,
-        discipline: data.discipline,
-        serviceDate: data.serviceDate,
-        status: data.status,
-        lateEntryTier: data.lateEntryTier,
-        version: data.version,
-        isF2f: data.isF2f,
-        signedAt: data.signedAt ?? null,
-        cosignedAt: data.cosignedAt ?? null,
-        visitModality: data.visitModality ?? null,
-        visitModalityConfirmed: data.visitModalityConfirmed === true,
-        evvBracketPresent: data.evvBracketPresent === true,
-        selections,
-        finalDocumentation:
-          (
-            data as {
-              finalDocumentation?: string | null;
-            }
-          ).finalDocumentation ?? null,
-        finalDocumentationView: data.finalDocumentationView,
-        noteHistory: data.noteHistory,
-        vitals: loadedVitals ?? null,
-        mileage: loadedMileage ?? null,
-        carePlanLinks:
-          (
-            data as {
-              carePlanLinks?: CarePlanLink[];
-            }
-          ).carePlanLinks ?? [],
-        addenda: (data as { addenda?: AddendumRow[] }).addenda ?? [],
-      });
-
-      const pid = patientId ?? data.patientId;
-
-      if (loadedVitals) {
-        setVitals({
-          bpSystolic: String(loadedVitals.bpSystolic ?? ""),
-          bpDiastolic: String(loadedVitals.bpDiastolic ?? ""),
-          heartRate: String(loadedVitals.heartRate ?? ""),
-          respiratoryRate: String(loadedVitals.respiratoryRate ?? ""),
-          temperature: String(loadedVitals.temperature ?? ""),
-          temperatureUnit: String(loadedVitals.temperatureUnit ?? "f"),
-          spo2: String(loadedVitals.spo2 ?? ""),
-          painScore: String(loadedVitals.painScore ?? ""),
-          painScale: String(loadedVitals.painScale ?? "nrs_0_10"),
-        });
-      }
-
-      if (loadedMileage) {
-        setMileage({
-          odometerStart: String(loadedMileage.odometerStart ?? ""),
-          odometerEnd: String(loadedMileage.odometerEnd ?? ""),
-          milesDriven: String(loadedMileage.milesDriven ?? ""),
-          source: String(loadedMileage.source ?? "manual_override"),
-          manualOverrideReason: String(loadedMileage.manualOverrideReason ?? ""),
-        });
-      }
-
-      const [cos, pat, cp, ass, hope, sel] = await Promise.all([
-        client.GET("/api/v1/encounters/{encounterId}/cosignature", {
-          params: {
-            path: {
-              encounterId,
-            },
-          },
-        }),
-
-        client.GET("/api/v1/patients/{id}", {
-          params: {
-            path: {
-              id: pid,
-            },
-          },
-        }),
-
-        client.GET(
-          "/api/v1/internal/care-plan/relevant-elements" as never,
-          {
-            params: {
-              query: {
-                patientId: data.patientId,
-                admissionId: data.admissionId,
-                encounterType: data.encounterType,
-                discipline: data.discipline,
-              },
-            },
-          } as never,
-        ),
-
-        client.GET("/api/v1/patients/{patientId}/assessments", {
-          params: {
-            path: {
-              patientId: data.patientId,
-            },
-          },
-        } as never),
-
-        client.GET("/api/v1/patients/{patientId}/hope/assessments", {
-          params: {
-            path: {
-              patientId: data.patientId,
-            },
-          },
-        } as never),
-
-        // #114 — the stored HearthNote tree, assembled (Layer-1). The note is authored in the composer;
-        // this screen shows what it currently reads as.
-        client.GET("/api/v1/encounters/{encounterId}/selections", {
-          params: { path: { encounterId } },
-        }),
-      ]);
-
-      setCosignStatus(cos.data?.status ?? null);
-
-      if (pat.data) {
-        setPatient(pat.data as PatientSummary);
-      }
-
-      setCarePlan((cp.data ?? null) as CarePlanRelevant | null);
-
-      setAssessments(
-        (
-          (
-            ass.data as
-              | {
-                  assessments?: AssessmentRow[];
-                }
-              | undefined
-          )?.assessments ?? []
-        ).filter((row) => row.sourceEncounterId === encounterId),
-      );
-
-      setHopeAssessments(
-        ((
-          hope.data as
-            | {
-                assessments?: AssessmentRow[];
-              }
-            | undefined
-        )?.assessments ?? []) as AssessmentRow[],
-      );
-      // A preview only once something is documented — an empty tree still assembles the template's
-      // headings, which would read as a note that says nothing.
-      setNoteText(
-        sel.data?.sections?.some((s) => s.entries.length > 0 || Boolean(s.freeText))
-          ? (sel.data?.layer1Preview ?? "")
-          : "",
-      );
-
+      setEncounter(read.encounter);
+      if (read.vitals) setVitals(read.vitals);
+      if (read.mileage) setMileage(read.mileage);
+      setCosignStatus(read.cosignStatus);
+      if (read.patient) setPatient(read.patient);
+      setCarePlan(read.carePlan);
+      setAssessments(read.assessments);
+      setHopeAssessments(read.hopeAssessments);
+      setNoteText(read.noteText);
       setLoading(false);
     },
     [client, encounterId, patientId],
@@ -970,13 +709,6 @@ export function EncounterRead(): JSX.Element {
    * These remain unchanged.
    */
   const canSign = e.status === "finalized";
-  // Amending sections is offered only when the draft is on for this viewer (the same read the composer holds), the note has sealed sections,
-  // and the session does not show the viewer to be neither the note's author nor a supervisor (the server refuses them 403; a viewer it
-  // cannot tell is offered the choice and told in words if refused).
-  const amendable =
-    draftLoad.status === "ready" && mayNameSections(session, e.authoredByUserId)
-      ? amendableSections(e.finalDocumentationView)
-      : [];
   // ADR-0114: signing is blocked until every drafted section is resolved; the server is the judge, this only tells the signer first.
   const draftSections =
     draftLoad.status === "ready" && draftIsActive(draftLoad.draft) ? draftLoad.draft : null;
