@@ -19,7 +19,7 @@ en double.
 
 | Domaine | Classement | Existant vérifié | Exigence mobile / écart |
 |---|---|---|---|
-| Gouvernance stack | condition humaine | ADR-0072 propose le remplacement du wrap Capacitor par le repo Expo séparé ; corpus autoritaire aligné | ratifier ADR-0072 sans réécrire ADR-0035 |
+| Gouvernance stack | condition humaine | ADR-0072 remplace le wrap Capacitor par le repo Expo séparé (ratifié le 2026-11-18) ; corpus autoritaire aligné | ratification faite ; reste la validation sécurité des décisions 8 à 12 |
 | Better Auth | prêt côté serveur | instance unique avec plugin Expo, username, TOTP, passkey navigateur, magic link, cookies/session dans `packages/auth/src/identity/auth.ts` | pinner la version client compatible et prouver le transport SecureStore sur appareils ; aucun token maison |
 | Session/CSRF | contrat backend prêt | CSRF navigateur inchangé ; bootstrap authentifié `GET /api/v1/auth/csrf` et double-submit exact | appliquer le protocole du contrat PR C et tester iOS/Android réel |
 | Auth context | réutilisable tel quel | `/api/v1/auth/context` retourne identité, org, membership, roles, locations, scope, permissions | ajouter une politique de refresh foreground/403 ; aucune permission calculée côté client |
