@@ -29,6 +29,8 @@ export function fakeDb(rowsByTable: Record<string, FakeRows>): { db: DbClient; r
       limit: () => chain,
       orderBy: () => chain,
       returning: () => chain,
+      // The row lock of `loadEnc(..., { lock: true })`: a fake has no rows to lock, so `.for("no key update")` is the same chain.
+      for: () => chain,
       onConflictDoNothing: () => chain,
       // biome-ignore lint/suspicious/noThenProperty: a deliberate thenable stand-in for an awaited Drizzle query
       then: (resolve: (v: unknown[]) => unknown) => resolve(rows),
