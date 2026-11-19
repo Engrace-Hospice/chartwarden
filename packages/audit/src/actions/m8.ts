@@ -222,4 +222,12 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: [],
     isPartTwoEligible: false,
   },
+  {
+    action: "m8.encounter.draft_policy_changed",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "A tenant's visit-note draft switch was written (previousEnabled, enabled, enabledAt; severity warn; booleans and an instant only, no free text; ADR-0114 VN-D17). No patient, so never Part 2.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
 ];

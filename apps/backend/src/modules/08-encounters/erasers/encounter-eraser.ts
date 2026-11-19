@@ -3,7 +3,8 @@
 //
 // M8 owns the destruction callback for a patient's ENCOUNTER record — the visit-note satellites M8
 // creates around the M5 patient spine: encounter signatures, addenda, care-plan links, cosignature
-// requests, vitals, mileage, and the HearthNote selection / assembled-output / llm-modification rows.
+// requests, vitals, mileage, the HearthNote selection / assembled-output / llm-modification rows, and (ADR-0114) the visit-note
+// draft's per-section confirmations and sealed per-section signed rows.
 // Under an M4 destruction certificate it (1) cryptographically erases the HearthNote ciphertext via the
 // tenant DEK (§3.6 — `hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.*_cipher`),
 // then (2) deletes that subtree for the subject patient while leaving the `encounter` root as a
@@ -34,6 +35,10 @@ export interface EncounterEraseCounts {
   readonly hearthnoteSelections: number;
   readonly hearthnoteAssembledOutputs: number;
   readonly hearthnoteLlmModifications: number;
+  /** ADR-0114: the visit-note draft's per-section confirmations. */
+  readonly draftConfirmations: number;
+  /** ADR-0114: the sealed per-section rows written at sign. */
+  readonly signedSections: number;
 }
 
 /** The narrow data port the encounter eraseFn composes over (Drizzle deletes in prod, under RLS). */
@@ -84,6 +89,8 @@ export function createInMemoryEncounterEraseStore(seed: Partial<EncounterEraseCo
     hearthnoteSelections: 0,
     hearthnoteAssembledOutputs: 0,
     hearthnoteLlmModifications: 0,
+    draftConfirmations: 0,
+    signedSections: 0,
   };
   const counts: EncounterEraseCounts = { ...zero, ...seed };
   const tombstoned: string[] = [];
@@ -132,6 +139,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
   const SEL = schema.hearthnoteSelections;
   const AO = schema.hearthnoteAssembledOutputs;
   const LLM = schema.hearthnoteLlmModifications;
+  const CONFIRM = schema.encounterDraftConfirmations;
+  const SIGNED = schema.hearthnoteSignedSections;
 
   /** The patient's encounter-root ids — every satellite is keyed on `encounter_id`, not the patient. */
   const encounterIdsFor = async (tx: Tx, patientId: string): Promise<string[]> =>
@@ -172,6 +181,11 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           .update(AO)
           .set({ layer1Cipher: "", layer2Cipher: null, finalCipher: "" })
           .where(assembledScope(encounterIds, addendumIds));
+        // ADR-0114: the sealed per-section text is a NOT NULL cipher too, so it shreds to "" like final_cipher.
+        await tx
+          .update(SIGNED)
+          .set({ textCipher: "" })
+          .where(inArray(SIGNED.encounterId, encounterIds));
       });
     },
 
@@ -188,6 +202,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           hearthnoteSelections: 0,
           hearthnoteAssembledOutputs: 0,
           hearthnoteLlmModifications: 0,
+          draftConfirmations: 0,
+          signedSections: 0,
         };
         if (encounterIds.length === 0) return zero; // idempotent: a second erase finds nothing.
         const addendumIds = await addendumIdsFor(tx, encounterIds);
@@ -207,6 +223,19 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
               ),
             )
             .returning({ id: LLM.id }),
+        );
+        // The sealed sections reference the assembled output (cascade), so they go first and are counted by their own delete.
+        const signedSections = await del(() =>
+          tx
+            .delete(SIGNED)
+            .where(inArray(SIGNED.encounterId, encounterIds))
+            .returning({ id: SIGNED.id }),
+        );
+        const draftConfirmations = await del(() =>
+          tx
+            .delete(CONFIRM)
+            .where(inArray(CONFIRM.encounterId, encounterIds))
+            .returning({ id: CONFIRM.id }),
         );
         const hearthnoteAssembledOutputs = await del(() =>
           tx.delete(AO).where(assembledScope(encounterIds, addendumIds)).returning({ id: AO.id }),
@@ -252,6 +281,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           hearthnoteSelections,
           hearthnoteAssembledOutputs,
           hearthnoteLlmModifications,
+          draftConfirmations,
+          signedSections,
         };
       });
     },

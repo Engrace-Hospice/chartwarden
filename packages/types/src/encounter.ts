@@ -217,7 +217,9 @@ export type M8TableName =
   | "mileage"
   | "hearthnote_selection"
   | "hearthnote_assembled_output"
-  | "hearthnote_llm_modification";
+  | "hearthnote_llm_modification"
+  | "encounter_draft_confirmation"
+  | "hearthnote_signed_section";
 
 /** Per-table audit denylist (§3.1 / §8.1). Empty array = no free-text PHI on that table. */
 export const M8_AUDIT_DENYLIST: { readonly [K in M8TableName]: readonly string[] } = {
@@ -237,6 +239,9 @@ export const M8_AUDIT_DENYLIST: { readonly [K in M8TableName]: readonly string[]
   hearthnote_selection: ["free_text_cipher"],
   hearthnote_assembled_output: ["layer1_cipher", "layer2_cipher", "final_cipher"],
   hearthnote_llm_modification: ["diff_json", "per_passage_decisions"],
+  // ADR-0114: confirmations carry ids and hashes only; the signed section's sealed text never reaches the audit diff.
+  encounter_draft_confirmation: [],
+  hearthnote_signed_section: ["text_cipher"],
 } as const;
 
 // ── §4.4 outbox event names (the `m8.*` namespace the dispatcher + arch:gaps catalog validate) ───────

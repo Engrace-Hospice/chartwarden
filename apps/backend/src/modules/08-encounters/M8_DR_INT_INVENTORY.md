@@ -87,7 +87,7 @@ Notes:
   read/summary/portal-derivation path; SUD-flagged content is dropped regardless of snapshot content and
   the response carries `redacted: true`. The M31 family-portal visit summary is derived from the
   `m8.encounter.signed` payload subject to M39 consent, with SUD content omitted.
-- **Cross-tenant (T5):** RLS on all ten owned tables keys on `app.org_id` with `WITH CHECK`; even with
+- **Cross-tenant (T5):** RLS on every owned table (the ten above plus the ADR-0113 / ADR-0114 additions) keys on `app.org_id` with `WITH CHECK`; even with
   RBAC/ABAC stubbed open, RLS alone blocks the cross-tenant read; a forged `encounterId` returns 404 (the
   row is RLS-hidden), never 403 — no existence disclosure. Proven on real Postgres (§9.3 / §9.4).
 
@@ -96,9 +96,11 @@ Notes:
 The `encounter_record` data class is erased ONLY through the M4 destruction-cert workflow (M8-T12
 eraser). The eraser (1) cryptographically erases the HearthNote ciphertext by destroying the tenant DEK
 (`hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.layer1_cipher`/`layer2_cipher`/
-`final_cipher`) FIRST so the PHI is irrecoverable the instant the key is gone, (2) deletes the encounter
+`final_cipher`, and the sealed `hearthnote_signed_section.text_cipher` of ADR-0114) FIRST so the PHI is
+irrecoverable the instant the key is gone, (2) deletes the encounter
 subtree (signatures, addenda, care-plan links, cosignature requests, vitals, mileage, HearthNote
-selection/assembled-output/llm-modification) for the subject patient, and (3) tombstones the `encounter`
+selection/assembled-output/llm-modification, and ADR-0114's `encounter_draft_confirmation` and
+`hearthnote_signed_section` rows) for the subject patient, and (3) tombstones the `encounter`
 root (the PK survives for FK integrity) — disjoint from M5's `clinical_record` (patient spine), M6's
 `admission_record` (admission subtree), and M7's `care_plan_record` (care-plan subtree). `subjectId` is
 the patient being destroyed. (The spec §3.6 `clinical_record` mention is reconciled to this disjoint

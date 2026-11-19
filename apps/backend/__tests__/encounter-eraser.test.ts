@@ -32,10 +32,15 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       hearthnoteSelections: 5,
       hearthnoteAssembledOutputs: 2,
       hearthnoteLlmModifications: 1,
+      draftConfirmations: 3,
+      signedSections: 6,
     });
     const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
-    expect(erased).toBe(20);
+    expect(erased).toBe(29);
     expect(counts.vitals).toBe(4);
+    // ADR-0114: the draft's confirmations and the sealed per-section rows go with the rest of the encounter subtree.
+    expect(counts.draftConfirmations).toBe(3);
+    expect(counts.signedSections).toBe(6);
     expect(cryptoErased).toEqual(["pat_1"]); // DEK destroyed before structural delete
     expect(tombstoned).toEqual(["pat_1"]);
   });
@@ -75,8 +80,9 @@ describe("M8-T12 — m8 audit action catalog (§8.1)", () => {
     }
   });
 
-  it("covers all 22 §8.1 events plus the four ADR-0113 closure events (override granted, revoked and denied, policy changed)", () => {
-    expect(M8_ACTION_CATALOG.length).toBe(26);
+  it("covers all 22 §8.1 events, the four ADR-0113 closure events (override granted, revoked and denied, policy changed) and the ADR-0114 draft policy event", () => {
+    expect(M8_ACTION_CATALOG.length).toBe(27);
+    expect(M8_ACTION_CATALOG.map((e) => e.action)).toContain("m8.encounter.draft_policy_changed");
   });
 
   it("the reason carriers scrub narrative free text", () => {

@@ -555,6 +555,9 @@ export const MODULES: ModuleDef[] = [
       "hearthnote_llm_modification",
       "documentation_obligation_policy", // ADR-0113 — per-tenant closure-clock mode + threshold (org-level, no patient)
       "documentation_obligation_override", // ADR-0113 — supervisor override of the block (append-only, org-level)
+      "encounter_draft_confirmation", // ADR-0114 — per-section confirmation of a drafted visit note (PHI satellite)
+      "hearthnote_signed_section", // ADR-0114 — sealed per-section rows written at sign (append-only PHI satellite)
+      "visit_note_draft_policy", // ADR-0114 — per-tenant draft switch, default off (org-level, no patient)
     ],
   },
   {
