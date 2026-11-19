@@ -68708,6 +68708,12 @@ export interface operations {
                         status: "pending" | "queued" | "submitting" | "submitted" | "accepted" | "rejected" | "timeout" | "cancelled";
                         aggregatorTransactionId: string | null;
                         attemptCount: number;
+                        lastAttemptAt: string | null;
+                        nextRetryAt: string | null;
+                        submittedAt: string | null;
+                        aggregatorResponseAt: string | null;
+                        aggregatorRejectionCode: string | null;
+                        aggregatorRejectionReason: string | null;
                     }[];
                 };
             };
@@ -68746,6 +68752,12 @@ export interface operations {
                         status: "pending" | "queued" | "submitting" | "submitted" | "accepted" | "rejected" | "timeout" | "cancelled";
                         aggregatorTransactionId: string | null;
                         attemptCount: number;
+                        lastAttemptAt: string | null;
+                        nextRetryAt: string | null;
+                        submittedAt: string | null;
+                        aggregatorResponseAt: string | null;
+                        aggregatorRejectionCode: string | null;
+                        aggregatorRejectionReason: string | null;
                     };
                 };
             };
@@ -68784,6 +68796,12 @@ export interface operations {
                         status: "pending" | "queued" | "submitting" | "submitted" | "accepted" | "rejected" | "timeout" | "cancelled";
                         aggregatorTransactionId: string | null;
                         attemptCount: number;
+                        lastAttemptAt: string | null;
+                        nextRetryAt: string | null;
+                        submittedAt: string | null;
+                        aggregatorResponseAt: string | null;
+                        aggregatorRejectionCode: string | null;
+                        aggregatorRejectionReason: string | null;
                     };
                 };
             };

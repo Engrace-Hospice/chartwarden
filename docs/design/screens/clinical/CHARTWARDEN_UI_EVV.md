@@ -75,8 +75,16 @@ GPS quality flags: `High`, `Acceptable`, `Degraded (attested)`, `Outside Geofenc
 ## Aggregator Submissions
 
 Per-visit, per-state submission to the Medicaid aggregator. Statuses: `Pending`, `Queued`,
-`Submitting`, `Submitted`, `Accepted`, `Rejected`, `Timeout`, `Cancelled`. Show rejection
-code/reason and retry.
+`Submitting`, `Submitted`, `Accepted`, `Rejected`, `Timeout`, `Cancelled`. The queue must not infer
+integration readiness from the presence or absence of records. Until a tenant-safe configuration-health
+contract exists, label readiness as unavailable and explain that credentials, connectivity, and worker
+health are not shown.
+
+Every row offers an accessible evidence drill-down with the vendor transaction id, attempt count,
+attempt/submission/response/retry timestamps, and—when rejected—the vendor code and reason. Keep
+free-text rejection details out of the dense queue row. `Accepted` means the aggregator accepted the EVV
+submission; it never means that a payer accepted or paid a claim. Resubmit clears stale rejection evidence
+through the server-owned transition.
 
 ---
 

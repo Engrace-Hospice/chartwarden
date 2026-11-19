@@ -137,6 +137,12 @@ export interface EvvAggregatorSubmissionSeed {
   readonly status: EvvAggregatorSubmissionStatus;
   readonly aggregatorTransactionId?: string | null;
   readonly attemptCount?: number;
+  readonly lastAttemptAt?: string | null;
+  readonly nextRetryAt?: string | null;
+  readonly submittedAt?: string | null;
+  readonly aggregatorResponseAt?: string | null;
+  readonly aggregatorRejectionCode?: string | null;
+  readonly aggregatorRejectionReason?: string | null;
 }
 export interface EvvMissingResolutionSeed {
   readonly organizationId: string;
@@ -175,6 +181,12 @@ interface SubmissionRow {
   status: EvvAggregatorSubmissionStatus;
   aggregatorTransactionId: string | null;
   attemptCount: number;
+  lastAttemptAt: string | null;
+  nextRetryAt: string | null;
+  submittedAt: string | null;
+  aggregatorResponseAt: string | null;
+  aggregatorRejectionCode: string | null;
+  aggregatorRejectionReason: string | null;
 }
 interface ResolutionRow {
   organizationId: string;
@@ -266,6 +278,12 @@ export class EvvRouteService implements EvvAbacResolver {
         status: s.status,
         aggregatorTransactionId: s.aggregatorTransactionId ?? null,
         attemptCount: s.attemptCount ?? 0,
+        lastAttemptAt: s.lastAttemptAt ?? null,
+        nextRetryAt: s.nextRetryAt ?? null,
+        submittedAt: s.submittedAt ?? null,
+        aggregatorResponseAt: s.aggregatorResponseAt ?? null,
+        aggregatorRejectionCode: s.aggregatorRejectionCode ?? null,
+        aggregatorRejectionReason: s.aggregatorRejectionReason ?? null,
       });
     }
     for (const r of seed.resolutions ?? []) {
@@ -833,6 +851,11 @@ export class EvvRouteService implements EvvAbacResolver {
     const t = transitionAggregatorSubmission(s.status, event);
     s.status = t.status;
     if (t.incrementsAttempt) s.attemptCount += 1;
+    if (event.type === "resubmit") {
+      s.nextRetryAt = null;
+      s.aggregatorRejectionCode = null;
+      s.aggregatorRejectionReason = null;
+    }
     return this.toSubmissionDto(s);
   }
   private toSubmissionDto(s: SubmissionRow): EvvAggregatorSubmissionDto {
@@ -844,6 +867,12 @@ export class EvvRouteService implements EvvAbacResolver {
       status: s.status,
       aggregatorTransactionId: s.aggregatorTransactionId,
       attemptCount: s.attemptCount,
+      lastAttemptAt: s.lastAttemptAt,
+      nextRetryAt: s.nextRetryAt,
+      submittedAt: s.submittedAt,
+      aggregatorResponseAt: s.aggregatorResponseAt,
+      aggregatorRejectionCode: s.aggregatorRejectionCode,
+      aggregatorRejectionReason: s.aggregatorRejectionReason,
     };
   }
 

@@ -2,7 +2,7 @@
 
 **Repository destination:** `docs/implementation/ChartWarden_Workflow_10_Electronic_Visit_Verification.md`
 **Executor:** Codex
-**Status:** WP0 APPROVED — 2026-11-19; approved PR-0/PR-1 supervisor workspace and PR-2 event-correction slices implemented locally
+**Status:** WP0 APPROVED — 2026-11-19; approved PR-0/PR-1 supervisor workspace, PR-2 event correction, and PR-3 honest aggregator evidence slices implemented locally
 **Sequence:** After Workflow 09 (Clinical Visits & Documentation), before Workflow 11 (Medication Orders)
 **Baseline:** The historical ZIP proposal has been superseded by the current-branch WP0 evidence at
 [`evidence/10-evv-current-state.md`](./evidence/10-evv-current-state.md). That audit includes static source
@@ -271,6 +271,20 @@ Use fictional test data. Adapt expected behavior to actual contracts and applica
 | PR-6 | Vendor/state adapter work, separately approved | BAA/trading-partner, sandbox, production refusal and rollback evidence |
 
 Do not merge large cross-domain changes in one PR. If a backend safety defect is discovered, propose a separate narrow fix with proof, migration impact and approval.
+
+### PR-3 implementation note — 2026-11-19
+
+The submission queue now explicitly says that configuration readiness is unavailable because the
+current tenant-safe read contract has no credential, connectivity, or worker-health signal. An empty
+queue is therefore presented as “no submission records,” not as proof of a configured integration.
+The audited submission read additively exposes existing transaction, attempt/response/retry timestamps,
+and rejection code/reason fields in a details dialog. Status explanations distinguish local preparation,
+delivery, vendor response, and payer claim outcome. No credential endpoint, vendor adapter, worker
+behavior, schema, policy, or new PHI storage was added.
+
+Focused DOM behavior and injected-route contract tests pass. OpenAPI and the generated client are in
+sync. Tenant-isolation and worker/live proof remain release-gate work; this local slice does not claim a
+real vendor transmission or configuration-health check.
 
 ## 7. Definition of done
 

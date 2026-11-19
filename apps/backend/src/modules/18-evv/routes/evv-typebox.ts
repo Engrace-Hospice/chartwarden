@@ -298,6 +298,12 @@ export const EvvAggregatorSubmissionView = Type.Object({
   status: AggregatorStatusEnum,
   aggregatorTransactionId: Type.Union([Type.String(), Type.Null()]),
   attemptCount: Type.Integer(),
+  lastAttemptAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  nextRetryAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  submittedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  aggregatorResponseAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  aggregatorRejectionCode: Type.Union([Type.String(), Type.Null()]),
+  aggregatorRejectionReason: Type.Union([Type.String(), Type.Null()]),
 });
 export const EvvAggregatorSubmissionListResponse = Type.Array(EvvAggregatorSubmissionView);
 

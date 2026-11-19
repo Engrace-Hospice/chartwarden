@@ -174,6 +174,12 @@ const toSubmissionDto = (s: typeof AGG.$inferSelect): EvvAggregatorSubmissionDto
   status: s.status as EvvAggregatorSubmissionStatus,
   aggregatorTransactionId: s.aggregatorTransactionId ?? null,
   attemptCount: s.attemptCount,
+  lastAttemptAt: s.lastAttemptAt?.toISOString() ?? null,
+  nextRetryAt: s.nextRetryAt?.toISOString() ?? null,
+  submittedAt: s.submittedAt?.toISOString() ?? null,
+  aggregatorResponseAt: s.aggregatorResponseAt?.toISOString() ?? null,
+  aggregatorRejectionCode: s.aggregatorRejectionCode ?? null,
+  aggregatorRejectionReason: s.aggregatorRejectionReason ?? null,
 });
 
 /** The transactional-outbox port (§4.10): the bound publisher validates every emit against the boot catalog and
