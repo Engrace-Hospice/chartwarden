@@ -231,6 +231,14 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: true,
   },
   {
+    action: "m8.encounter.section_amended",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "One section of a signed visit note was amended by a signed addendum (encounterId, addendumId, sectionId, part2Derived = the compiler's verdict on the confirmed amendment; severity info; ids and one flag only, never text, a content hash or a source id; one event per amended section, published with m8.encounter.addendum_signed in the same transaction; ADR-0114 VN-D30). No patient and no content, so never filed under Part 2.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m8.encounter.draft_policy_changed",
     moduleOwner: "m8",
     defaultRetentionClass: "compliance",

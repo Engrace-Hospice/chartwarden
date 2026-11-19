@@ -74,3 +74,17 @@ export function draftView(
     ),
   };
 }
+
+/** The draft of a signed note as an AMENDING addendum's author sees it: only the sections the addendum names, in template order. */
+export interface AmendmentDraftView extends DraftView {
+  readonly addendumId: string;
+}
+
+export function amendmentDraftView(
+  addendumId: string,
+  sectionIds: readonly string[],
+  view: DraftView,
+): AmendmentDraftView {
+  const named = new Set(sectionIds);
+  return { ...view, addendumId, sections: view.sections.filter((s) => named.has(s.sectionId)) };
+}

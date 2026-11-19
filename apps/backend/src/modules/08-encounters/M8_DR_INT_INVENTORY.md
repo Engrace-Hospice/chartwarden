@@ -43,6 +43,23 @@ degradation must not block patient-care documentation or visit signing.
   documents an EVV-missing reason (route 10, D9 fallback) — the EVV bracket seam is an inert forward-seam
   in Phase 1 (deny-stub), so signing proceeds regardless.
 
+### Amendments of a signed drafted note (ADR-0114 VN-D30, PR E2): limits recorded
+
+An addendum may name sections of a signed drafted note it amends; its sign seals the author's confirmed redraft of each as an append-only
+amendment row (the note's own rows and pin never change) and publishes `m8.encounter.section_amended` per amended section. Same fail-closed
+posture as the note's own sign (a source or key-ring outage is a 503, never a pass). Recorded limits, none of them a decision to defer a defect:
+
+- **No billing re-open.** An amendment touches no claim, no billability read and no event M23/M24 consumes.
+- **The amendment's cosignature request is created, not worked.** `addendum_cosignature_request` is a sibling of `cosignature_request` (that one is
+  `UNIQUE (encounter_id)`; relaxing it is a contract migration). It is opened, routed to the RN case manager and clocked when an amendment of a note
+  that needed a cosigner signs. Acknowledge / sign / supervisor release, its place in the cosignature queue, its 12h/24h/48h SLA alerts and its
+  `m8.encounter.cosignature_routed` notification are NOT built: the queue reads the note's status and the SLA cron reads `cosignature_request`.
+- **M22 has no Part 2 document path.** A rendered document shows the withheld marker where a Part 2 derived section (a note's, or an amendment's) is.
+- **An amendment by a viewer without Part 2 disclosure** is drafted from sources that exclude the SUD content, so a section that held it reads
+  shorter in the current view (the original stays in the history for an entitled viewer). Refusing it is a follow-up decision.
+- Only a section the draft can redraft can be amended; the previous-visit and discipline question, the web, the mobile app and other note types
+  are out of scope.
+
 ### Cosignature SLA clock during outages (§2.4)
 
 The 12h/24h/48h cosignature SLA is computed from the `timestamptz` primary-sign time, not a running
@@ -106,7 +123,7 @@ Notes:
   read/summary/portal-derivation path; SUD-flagged content is dropped regardless of snapshot content and
   the response carries `redacted: true`. The M31 family-portal visit summary is derived from the
   `m8.encounter.signed` payload subject to M39 consent, with SUD content omitted.
-- **Cross-tenant (T5):** RLS on every owned table (the ten above plus the five ADR-0113 / ADR-0114 additions: `documentation_obligation_policy`, `documentation_obligation_override`, `encounter_draft_confirmation`, `hearthnote_signed_section`, `visit_note_draft_policy`) keys on `app.org_id` with `WITH CHECK`; even with
+- **Cross-tenant (T5):** RLS on every owned table (the ten above plus the seven ADR-0113 / ADR-0114 additions: `documentation_obligation_policy`, `documentation_obligation_override`, `encounter_draft_confirmation`, `hearthnote_signed_section`, `visit_note_draft_policy`, and the two of ADR-0114 VN-D30 (amendments), `encounter_amendment` and `addendum_cosignature_request`) keys on `app.org_id` with `WITH CHECK`; even with
   RBAC/ABAC stubbed open, RLS alone blocks the cross-tenant read; a forged `encounterId` returns 404 (the
   row is RLS-hidden), never 403 — no existence disclosure. Proven on real Postgres (§9.3 / §9.4).
 
@@ -118,8 +135,9 @@ eraser). The eraser (1) cryptographically erases the HearthNote ciphertext by de
 `final_cipher`, and the sealed `hearthnote_signed_section.text_cipher` of ADR-0114) FIRST so the PHI is
 irrecoverable the instant the key is gone, (2) deletes the encounter
 subtree (signatures, addenda, care-plan links, cosignature requests, vitals, mileage, HearthNote
-selection/assembled-output/llm-modification, and ADR-0114's `encounter_draft_confirmation` and
-`hearthnote_signed_section` rows) for the subject patient, and (3) tombstones the `encounter`
+selection/assembled-output/llm-modification, and ADR-0114's `encounter_draft_confirmation`,
+`hearthnote_signed_section` (an amendment's rows included: they carry the encounter id, so the same shred and delete cover them),
+`encounter_amendment` and `addendum_cosignature_request` rows) for the subject patient, and (3) tombstones the `encounter`
 root (the PK survives for FK integrity) — disjoint from M5's `clinical_record` (patient spine), M6's
 `admission_record` (admission subtree), and M7's `care_plan_record` (care-plan subtree). `subjectId` is
 the patient being destroyed. (The spec §3.6 `clinical_record` mention is reconciled to this disjoint

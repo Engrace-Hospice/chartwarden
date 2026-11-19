@@ -200,6 +200,21 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m8.encounter.section_amended",
+    moduleOwner: "m8",
+    description:
+      "One section of a signed visit note was amended by a signed addendum (ADR-0114 VN-D30): one event per amended section, published with `.addendum_signed` in the same transaction. Ids and a Part 2 flag only; never text, a hash or a source id.",
+    payloadSchema: Type.Object({
+      encounterId: Type.String({ minLength: 1 }),
+      addendumId: Type.String({ minLength: 1 }),
+      sectionId: Type.String({ minLength: 1 }),
+      part2Derived: Type.Boolean(),
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
+    isOutboxOnly: true,
+  },
   // ── cosignature SLA chain (§2.4 D3) ───────────────────────────────────────────────────────────────
   {
     eventName: "m8.encounter.cosignature_routed",

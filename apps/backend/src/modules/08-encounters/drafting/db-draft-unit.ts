@@ -4,10 +4,12 @@
 import { audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { HearthnoteCiphers } from "../hearthnote-crypto";
+import { createAmendmentDraftStore, namedSectionIds } from "./amendment-store";
 import { createDbDraftStore } from "./db-draft-store";
 import type {
+  AmendmentRef,
   DraftEncounterRow,
   DraftResolvedEvent,
   DraftScope,
@@ -20,6 +22,7 @@ import { isVisitNoteDraftEnabled } from "./policy-service";
 export const DRAFT_SECTION_AUDIT_EVENT = "m8.encounter.draft_section_resolved";
 
 const E = schema.encounters;
+const ADDENDUM = schema.encounterAddenda;
 const PART2_RETENTION_CLASS = "compliance_42cfr_part2";
 const DEFAULT_RETENTION_CLASS = "compliance";
 
@@ -50,15 +53,41 @@ async function loadEncounter(
   return row ?? null;
 }
 
+async function loadAmendment(
+  tx: DbClient,
+  encounterId: string,
+  addendumId: string,
+): Promise<AmendmentRef | null> {
+  const [row] = await tx
+    .select({
+      id: ADDENDUM.id,
+      status: ADDENDUM.status,
+      authoredByMembershipId: ADDENDUM.authoredByMembershipId,
+    })
+    .from(ADDENDUM)
+    .where(and(eq(ADDENDUM.id, addendumId), eq(ADDENDUM.encounterId, encounterId)))
+    .limit(1);
+  if (row === undefined) return null;
+  return {
+    id: row.id,
+    status: row.status as AmendmentRef["status"],
+    authoredByMembershipId: row.authoredByMembershipId,
+    sectionIds: await namedSectionIds(tx, row.id),
+  };
+}
+
 function createUnit(
   tx: DbClient,
   scope: DraftScope,
   ciphers: HearthnoteCiphers | undefined,
 ): DraftUnit {
+  const store = createDbDraftStore(tx, { now: scope.now, freeTextCipher: ciphers?.freeText });
   return {
     enabled: () => isVisitNoteDraftEnabled(tx, scope.organizationId),
     encounter: (encounterId, forUpdate) => loadEncounter(tx, encounterId, forUpdate),
-    store: createDbDraftStore(tx, { now: scope.now, freeTextCipher: ciphers?.freeText }),
+    store,
+    amendment: (encounterId, addendumId) => loadAmendment(tx, encounterId, addendumId),
+    amendmentStore: (addendumId) => createAmendmentDraftStore(tx, store, addendumId),
     async recordResolved(event: DraftResolvedEvent) {
       if (scope.audit === undefined)
         throw new Error("a draft write needs the request's audit context");

@@ -63,6 +63,15 @@ export interface DraftResolvedEvent {
   readonly carePlanElementsRemoved: number;
 }
 
+/** An addendum of the encounter as the amendment routes load it: its state, its author and the sections it names (VN-D30). */
+export interface AmendmentRef {
+  readonly id: string;
+  readonly status: "draft" | "finalized" | "signed" | "voided";
+  readonly authoredByMembershipId: string;
+  /** The sections the addendum amends, by section id; empty for a free addendum. */
+  readonly sectionIds: readonly string[];
+}
+
 /** Everything one request does inside one tenant transaction. */
 export interface DraftUnit {
   /** Whether the tenant has the visit-note draft switched on (`isVisitNoteDraftEnabled`). */
@@ -74,6 +83,10 @@ export interface DraftUnit {
   encounter(encounterId: string, forUpdate: boolean): Promise<DraftEncounterRow | null>;
   readonly store: DraftStore;
   recordResolved(event: DraftResolvedEvent): Promise<void>;
+  /** The addendum of that encounter, or `null` (absent, another encounter's or another tenant's). */
+  amendment(encounterId: string, addendumId: string): Promise<AmendmentRef | null>;
+  /** `store` with the addendum's resolutions in place of the note's and no care-plan link changes (`createAmendmentDraftStore`). */
+  amendmentStore(addendumId: string): DraftStore;
 }
 
 export interface DraftScope {

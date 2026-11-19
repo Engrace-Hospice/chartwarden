@@ -831,6 +831,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const res = await service.createAddendum(organizationId, encounterIdOf(request), {
         reason: body.reason,
         authorMembershipId: userId,
+        ...(body.amendsSectionIds !== undefined ? { amendsSectionIds: body.amendsSectionIds } : {}),
         ...(body.promotionRequestId !== undefined
           ? {
               promotion: {

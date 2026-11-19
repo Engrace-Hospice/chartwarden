@@ -2,6 +2,9 @@
 //
 //   GET /api/v1/encounters/:encounterId/draft                       the draft for the SESSION viewer, every section with its state   encounter.read
 //   PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId   confirm or deselect one section against the content seen          encounter.author
+//   GET /api/v1/encounters/:encounterId/addenda/:addendumId/draft   (PR E2, VN-D30) the draft of the SIGNED note as an amending addendum's
+//                                                                   author sees it: only the sections the addendum names               encounter.read
+//   PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId   the addendum's author confirms or deselects one   encounter.addendum_author
 //
 // Both also need the read key of each SOURCE domain the draft is compiled from (SOURCE_DOMAIN_READS): the care plan (M7), the medication
 // orders (M12) and the scored scales (M9) reach the draft through seams that apply no permission check of their own, so without them a role
@@ -28,6 +31,8 @@ import type { TObject } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { DraftService } from "../drafting/draft-service";
 import {
+  AmendmentDraftParamsSchema,
+  AmendmentSectionParamsSchema,
   DraftParamsSchema,
   DraftSectionParamsSchema,
   ResolveSectionSchema,
@@ -44,6 +49,12 @@ const SOURCE_DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.r
 );
 const READ = requirePermission("encounter.read") as PreHandler;
 const AUTHOR = requirePermission("encounter.author") as PreHandler;
+const ADDENDUM_AUTHOR = requirePermission("encounter.addendum_author") as PreHandler;
+/** Only the addendum's own author resolves the sections it amends (the same predicate the addendum's selections, finalize and sign carry). */
+const IS_ADDENDUM_AUTHOR = requireAbac(
+  "encounter.addendum_author",
+  "is_addendum_author",
+) as PreHandler;
 const NO_AI = rejectAiActor(
   "AI principals cannot confirm or deselect a visit-note section (D13)",
 ) as PreHandler;
@@ -146,6 +157,83 @@ export function registerDraftSectionRoutes(
           membershipId: actor.membershipId,
         },
         encounterId,
+        sectionId,
+        body,
+        auditContextOf(request),
+      );
+    },
+  );
+  // ── PR E2 (VN-D30): amending a signed note through the addendum path ─────────────────────────────────────────────────────────────────
+  app.get(
+    "/api/v1/encounters/:encounterId/addenda/:addendumId/draft",
+    {
+      preHandler: [
+        READ,
+        ...SOURCE_DOMAIN_READS,
+        PARAMS_VALID(AmendmentDraftParamsSchema),
+        SCOPE_FOR("encounter.read"),
+      ],
+      config: {
+        auditRead: {
+          resourceKind: "encounter_amendment_draft",
+          resourceIdParam: "addendumId",
+          patientIdPayloadPath: "patientId",
+          fields: [
+            "sections",
+            "state",
+            "text",
+            "contentHash",
+            "corpusVersion",
+            "part2Derived",
+            "origins",
+          ],
+        },
+      },
+    },
+    async (request) => {
+      const { encounterId, addendumId } = parse(AmendmentDraftParamsSchema, request.params);
+      const actor = actorOf(request);
+      return service.getAmendmentDraft(
+        {
+          organizationId: actor.organizationId,
+          userId: actor.userId,
+          roles: actor.roles,
+          membershipId: actor.membershipId,
+        },
+        encounterId,
+        addendumId,
+      );
+    },
+  );
+
+  app.put(
+    "/api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId",
+    {
+      preHandler: [
+        ADDENDUM_AUTHOR,
+        ...SOURCE_DOMAIN_READS,
+        NO_AI,
+        PARAMS_VALID(AmendmentSectionParamsSchema),
+        SCOPE_FOR("encounter.addendum_author"),
+        IS_ADDENDUM_AUTHOR,
+      ],
+    },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { encounterId, addendumId, sectionId } = parse(
+        AmendmentSectionParamsSchema,
+        request.params,
+      );
+      const body = parse(ResolveSectionSchema, request.body);
+      return service.resolveAmendmentSection(
+        {
+          organizationId: actor.organizationId,
+          userId: actor.userId,
+          roles: actor.roles,
+          membershipId: actor.membershipId,
+        },
+        encounterId,
+        addendumId,
         sectionId,
         body,
         auditContextOf(request),

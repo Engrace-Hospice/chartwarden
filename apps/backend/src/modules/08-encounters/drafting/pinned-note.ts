@@ -71,7 +71,8 @@ export async function loadPinnedNote(
   return { finalCipher: pinned.finalCipher, part2Derived: pinned.part2Derived, sections };
 }
 
-async function mayReadPart2(entitled: () => Promise<boolean>): Promise<boolean> {
+/** The verdict of `entitled`, or 503 `NOTE_VIEW_UNAVAILABLE` when it cannot be decided (never a silent denial, never a disclosure). */
+export async function mayReadPart2(entitled: () => Promise<boolean>): Promise<boolean> {
   try {
     return await guarded("the Part 2 disclosure check", entitled);
   } catch (cause) {

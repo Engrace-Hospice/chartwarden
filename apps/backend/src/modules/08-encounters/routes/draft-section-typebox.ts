@@ -12,6 +12,18 @@ export const DraftSectionParamsSchema = Type.Object({
   sectionId: Type.String({ pattern: "^[a-z][a-z0-9_]{0,63}$" }),
 });
 
+export const AmendmentDraftParamsSchema = Type.Object({
+  encounterId: Type.String({ format: "uuid" }),
+  addendumId: Type.String({ format: "uuid" }),
+});
+
+export const AmendmentSectionParamsSchema = Type.Object({
+  encounterId: Type.String({ format: "uuid" }),
+  addendumId: Type.String({ format: "uuid" }),
+  /** A template section id the addendum names. */
+  sectionId: Type.String({ pattern: "^[a-z][a-z0-9_]{0,63}$" }),
+});
+
 /** What the clinician saw: the server recomputes the draft for the same viewer and refuses (409 DRAFT_SECTION_STALE) unless both still match. */
 export const ResolveSectionSchema = Type.Object({
   resolution: Type.Union([Type.Literal("confirmed"), Type.Literal("deselected")]),
@@ -60,4 +72,10 @@ export const DraftResponseSchema = Type.Object({
   asOf: Type.String({ format: "date-time" }),
   /** Every section of the template, in template order. */
   sections: Type.Array(DraftSectionResponseSchema),
+});
+
+/** The draft of the signed note for an AMENDING addendum's author: the sections the addendum names only, each against the addendum's own resolutions. */
+export const AmendmentDraftResponseSchema = Type.Object({
+  addendumId: Type.String(),
+  ...DraftResponseSchema.properties,
 });

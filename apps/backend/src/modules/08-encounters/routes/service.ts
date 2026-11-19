@@ -62,6 +62,7 @@ import {
 import { type WithClosure, myNotesOf } from "../closure/my-notes";
 import { DEFAULT_CLOSURE_POLICY } from "../closure/policy-service";
 import { type CosignatureState, transitionCosignature } from "../cosignature/index";
+import type { NoteHistory, StructuredNoteView } from "../drafting/note-versions";
 import {
   type GateSectionSelection,
   assertGatePassed,
@@ -308,11 +309,19 @@ export interface EncounterView {
   readonly evvBracketPresent?: boolean;
   readonly selections?: Record<string, unknown> | null;
   readonly finalDocumentation?: string | null;
+  /**
+   * ADR-0114 VN-D30 (single-read only): `finalDocumentation` as structured data, for the same viewer under the same Part 2 rule. The latest signed text
+   * per section; a withheld section (or the whole note, `withheld: true`) carries `text: null`, so no marker string and no content reach a client as data.
+   * `null` when nothing is pinned. `finalDocumentation` stays as it was (the marker is in the string).
+   */
+  readonly finalDocumentationView?: StructuredNoteView | null;
   readonly vitals?: Record<string, unknown> | null;
   readonly mileage?: Record<string, unknown> | null;
   readonly carePlanLinks?: readonly CarePlanLinkResult[];
   /** The encounter's addenda, oldest first (single-read only; §4.1 route 2 — GAP-027). */
   readonly addenda?: readonly AddendumSummary[];
+  /** ADR-0114 VN-D30 (single-read only): every version of each amended section, per viewer; `null` when nothing was amended. */
+  readonly noteHistory?: NoteHistory | null;
 }
 
 /**
@@ -333,6 +342,8 @@ export interface AddendumSummary {
   readonly createdAt: string;
   readonly signedAt: string | null;
   readonly version: number;
+  /** ADR-0114 VN-D30: the sections the addendum amends; empty for a free addendum. */
+  readonly amendsSectionIds?: readonly string[];
 }
 
 /** One live care-plan link as the encounter workspace view projects it (`GET /encounters/:id`). */
@@ -767,6 +778,8 @@ export interface EncounterRouteService {
       authorMembershipId: string;
       /** WP 3.7: author this addendum from a proposed secure message (the reviewer still writes their own text). */
       promotion?: AddendumPromotionInput;
+      /** ADR-0114 VN-D30: section ids of the signed note's sealed rows this addendum amends (absent: a free addendum). */
+      amendsSectionIds?: readonly string[];
     },
   ): Promise<{ id: string; status: "draft" }>;
   /** WP 3.7: the proposals waiting on a reviewer for this encounter's patient (`enabled:false` when the hub flag is off). */
@@ -804,7 +817,13 @@ export interface EncounterRouteService {
     addendumId: string,
     actor: SigningActor,
     args: { at: LocalDate },
-  ): Promise<{ status: "signed"; signedAt: string }>;
+  ): Promise<{
+    status: "signed";
+    signedAt: string;
+    /** ADR-0114 VN-D30: the sections the addendum amended and the cosignature request it opened (absent for a free addendum). */
+    amendedSectionIds?: readonly string[];
+    cosignatureRequestId?: string | null;
+  }>;
   listEncounters(
     organizationId: string,
     filters?: EncounterListFilters,
@@ -1578,6 +1597,13 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
           (x) => x.promotionRequestId === args.promotion?.requestId,
         );
         if (taken) throw new ConflictError("that proposal already has an addendum");
+      }
+      // The slice holds no sealed rows, so a section named here is never one the note carries (ADR-0114 VN-D30).
+      if (args.amendsSectionIds !== undefined && args.amendsSectionIds.length > 0) {
+        throw new EncounterStateError(
+          "UNKNOWN_TEMPLATE_SECTION",
+          "this encounter has no signed sections to amend",
+        );
       }
       const id = subId();
       r.addenda.set(id, {

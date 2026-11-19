@@ -12,6 +12,11 @@ import type { EncounterRenderPayload, MileagePayrollRow } from "@chartwarden/typ
 import { and, asc, between, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import { seedModalityFor } from "../consumers/seed-modality";
+import {
+  addendumDocumentText,
+  amendmentTextsByAddendum,
+  loadAmendmentRows,
+} from "../drafting/note-versions";
 import { readPinnedNote } from "../drafting/pinned-note";
 import type { HearthnoteEnvelopeCipher } from "../hearthnote-crypto";
 import { checkEncounterDisciplinePair } from "../lifecycle/index";
@@ -100,12 +105,22 @@ export function createEncounterStoreOps(db: DbClient, deps: EncounterStoreOpsDep
           .leftJoin(OUT, and(eq(OUT.addendumId, ADDENDUM.id), eq(OUT.kind, "addendum_finalize")))
           .where(and(eq(ADDENDUM.encounterId, encounterId), eq(ADDENDUM.status, "signed")))
           .orderBy(asc(ADDENDUM.signedAt));
+        // ADR-0114 VN-D30: the sections an addendum amended follow its own text, a Part 2 derived one as the withheld marker (a document is broadly
+        // readable and M22 cannot classify it, so this consumer is never entitled). An addendum that names no section carries exactly its own text.
+        const amended = await amendmentTextsByAddendum(
+          await loadAmendmentRows(tx as unknown as DbClient, encounterId),
+          {
+            open: (envelope) => cipher.open(enc.organizationId, envelope),
+            entitled: async () => false,
+          },
+        );
         const addenda = [];
         for (const a of addendumRows) {
+          const own = a.finalCipher ? await cipher.open(enc.organizationId, a.finalCipher) : "";
           addenda.push({
             addendumId: a.addendumId,
             reason: a.reason,
-            text: a.finalCipher ? await cipher.open(enc.organizationId, a.finalCipher) : "",
+            text: addendumDocumentText(own, amended.get(a.addendumId)),
             signedAt: (a.signedAt ?? new Date(0)).toISOString(),
           });
         }

@@ -267,6 +267,19 @@ export const CreateAddendumSchema = Type.Object({
    * unless the proposal is open, for this encounter's patient, and visible to the caller.
    */
   promotionRequestId: Type.Optional(Type.String({ format: "uuid" })),
+  /**
+   * ADR-0114 VN-D30: amend sections of the signed note. Each id is a section of the note's own sealed rows; the author must then confirm
+   * the redrafted section (`GET|PUT .../addenda/{addendumId}/draft`) before the addendum can sign. Only for a tenant with the visit-note draft
+   * on and a note that has sealed rows: 404 for a tenant with the draft off, 422 UNKNOWN_TEMPLATE_SECTION for a section the note does not carry.
+   * Absent, the addendum is a free addendum exactly as before.
+   */
+  amendsSectionIds: Type.Optional(
+    Type.Array(Type.String({ pattern: "^[a-z][a-z0-9_]{0,63}$" }), {
+      minItems: 1,
+      maxItems: 12,
+      uniqueItems: true,
+    }),
+  ),
 });
 
 /** WP 3.7 - params of the reviewer routes on an encounter's chart promotions. */
@@ -369,6 +382,31 @@ export const EncounterViewResponseSchema = Type.Object({
   evvBracketPresent: Type.Optional(Type.Boolean()),
   selections: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   finalDocumentation: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  /**
+   * `finalDocumentation` as structured data (single-read only), for the same viewer under the same 42 CFR Part 2 rule: the LATEST signed text per section
+   * (an amendment replaces the section it amends). A withheld section carries `text: null` and `withheld: true`, and a note withheld whole (a finalized pin
+   * that carries Part 2 text has no sealed rows to cut by section) is `withheld: true` with no sections, so no marker string reaches a client as data.
+   * `sectionId` is null for a pin with no sealed rows (finalized, or signed with the draft off): the whole narrative is one block. Null when nothing is pinned.
+   */
+  finalDocumentationView: Type.Optional(
+    Type.Union([
+      Type.Object({
+        withheld: Type.Boolean(),
+        sections: Type.Array(
+          Type.Object({
+            sectionId: Type.Union([Type.String(), Type.Null()]),
+            text: Type.Union([Type.String(), Type.Null()]),
+            withheld: Type.Boolean(),
+            /** The addendum whose amendment is this section's latest version; null when the section is as the note was signed. */
+            amendedByAddendumId: Type.Union([Type.String(), Type.Null()]),
+            /** When the latest version was signed. */
+            signedAt: Type.Union([Type.String(), Type.Null()]),
+          }),
+        ),
+      }),
+      Type.Null(),
+    ]),
+  ),
   vitals: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   mileage: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   carePlanLinks: Type.Optional(
@@ -392,8 +430,39 @@ export const EncounterViewResponseSchema = Type.Object({
         createdAt: Type.String(),
         signedAt: Type.Union([Type.String(), Type.Null()]),
         version: Type.Integer(),
+        /** ADR-0114 VN-D30: the sections the addendum amends; empty for a free addendum. */
+        amendsSectionIds: Type.Optional(Type.Array(Type.String())),
       }),
     ),
+  ),
+  /**
+   * ADR-0114 VN-D30, single-read only: the version history of every AMENDED section of a signed note (original first, then each amendment in
+   * the order its addendum was signed, the last one `current`), `null` when nothing was amended. `finalDocumentation` is the CURRENT view
+   * (the latest signed text per section). Each version's text is the withheld marker where the reader may not see 42 CFR Part 2 content.
+   */
+  noteHistory: Type.Optional(
+    Type.Union([
+      Type.Object({
+        sections: Type.Array(
+          Type.Object({
+            sectionId: Type.String(),
+            versions: Type.Array(
+              Type.Object({
+                kind: lit(["original", "amendment"] as const),
+                addendumId: Type.Union([Type.String(), Type.Null()]),
+                authoredByMembershipId: Type.String(),
+                signedAt: Type.Union([Type.String(), Type.Null()]),
+                /** The version's signed text; null when the reader may not see it (no marker string is ever sent as data). */
+                text: Type.Union([Type.String(), Type.Null()]),
+                withheld: Type.Boolean(),
+                current: Type.Boolean(),
+              }),
+            ),
+          }),
+        ),
+      }),
+      Type.Null(),
+    ]),
   ),
 });
 
@@ -699,6 +768,10 @@ export const AddendumFinalizeResponseSchema = Type.Object({ status: Type.Literal
 export const AddendumSignResponseSchema = Type.Object({
   status: Type.Literal("signed"),
   signedAt: Type.String(),
+  /** ADR-0114 VN-D30: the sections the signed addendum amended (the author's confirmed ones); absent for a free addendum. */
+  amendedSectionIds: Type.Optional(Type.Array(Type.String())),
+  /** ADR-0114 VN-D30: the cosignature request the signed amendment opened (its parent needed a cosigner); absent or null otherwise. */
+  cosignatureRequestId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
 /** Route 29 — BillableEncounterReader seam projection (M23/M24). */

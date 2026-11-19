@@ -37,8 +37,12 @@ export interface EncounterEraseCounts {
   readonly hearthnoteLlmModifications: number;
   /** ADR-0114: the visit-note draft's per-section confirmations. */
   readonly draftConfirmations: number;
-  /** ADR-0114: the sealed per-section rows written at sign. */
+  /** ADR-0114: the sealed per-section rows written at sign (an amendment's rows, VN-D30, are among them: they carry the encounter id). */
   readonly signedSections: number;
+  /** ADR-0114 VN-D30: the sections an addendum named and the author's resolution of each. */
+  readonly amendments: number;
+  /** ADR-0114 VN-D30: the cosignature requests amending addenda opened. */
+  readonly addendumCosignatureRequests: number;
 }
 
 /** The narrow data port the encounter eraseFn composes over (Drizzle deletes in prod, under RLS). */
@@ -91,6 +95,8 @@ export function createInMemoryEncounterEraseStore(seed: Partial<EncounterEraseCo
     hearthnoteLlmModifications: 0,
     draftConfirmations: 0,
     signedSections: 0,
+    amendments: 0,
+    addendumCosignatureRequests: 0,
   };
   const counts: EncounterEraseCounts = { ...zero, ...seed };
   const tombstoned: string[] = [];
@@ -141,6 +147,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
   const LLM = schema.hearthnoteLlmModifications;
   const CONFIRM = schema.encounterDraftConfirmations;
   const SIGNED = schema.hearthnoteSignedSections;
+  const AMEND = schema.encounterAmendments;
+  const ADD_COSIGN = schema.addendumCosignatureRequests;
 
   /** The patient's encounter-root ids — every satellite is keyed on `encounter_id`, not the patient. */
   const encounterIdsFor = async (tx: Tx, patientId: string): Promise<string[]> =>
@@ -204,6 +212,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           hearthnoteLlmModifications: 0,
           draftConfirmations: 0,
           signedSections: 0,
+          amendments: 0,
+          addendumCosignatureRequests: 0,
         };
         if (encounterIds.length === 0) return zero; // idempotent: a second erase finds nothing.
         const addendumIds = await addendumIdsFor(tx, encounterIds);
@@ -236,6 +246,19 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
             .delete(CONFIRM)
             .where(inArray(CONFIRM.encounterId, encounterIds))
             .returning({ id: CONFIRM.id }),
+        );
+        // ADR-0114 VN-D30: both reference the addendum, so they go before `encounter_addendum`.
+        const amendments = await del(() =>
+          tx
+            .delete(AMEND)
+            .where(inArray(AMEND.encounterId, encounterIds))
+            .returning({ id: AMEND.id }),
+        );
+        const addendumCosignatureRequests = await del(() =>
+          tx
+            .delete(ADD_COSIGN)
+            .where(inArray(ADD_COSIGN.encounterId, encounterIds))
+            .returning({ id: ADD_COSIGN.id }),
         );
         const hearthnoteAssembledOutputs = await del(() =>
           tx.delete(AO).where(assembledScope(encounterIds, addendumIds)).returning({ id: AO.id }),
@@ -283,6 +306,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           hearthnoteLlmModifications,
           draftConfirmations,
           signedSections,
+          amendments,
+          addendumCosignatureRequests,
         };
       });
     },
