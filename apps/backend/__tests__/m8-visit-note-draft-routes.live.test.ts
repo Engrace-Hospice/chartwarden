@@ -3536,7 +3536,7 @@ describe.skipIf(!DB_URL)(
             ).toBe(false);
             // S1: no history, no id and no amending addendum for a section with a Part 2 version
             expect(without.noteHistory).toBeNull();
-            expect(without.addenda.map((x) => x.amendsSectionIds)).toEqual([[]]);
+            expect(without.addenda?.map((x) => x.amendsSectionIds)).toEqual([[]]);
             // the row's audit image records no source id, no text and no hash, and files under the Part 2 class
             const rowAudit = await rows<{
               after: Record<string, unknown>;
@@ -3574,7 +3574,7 @@ describe.skipIf(!DB_URL)(
             expect(current?.text).not.toContain("Morphine");
             // the section had a Part 2 version, so a viewer without disclosure is shown no history of it and no id of it in the addenda (S1)
             expect(without.noteHistory).toBeNull();
-            expect(without.addenda.map((x) => x.amendsSectionIds)).toEqual([[]]);
+            expect(without.addenda?.map((x) => x.amendsSectionIds)).toEqual([[]]);
             // a viewer with disclosure sees both versions
             const entitled = await viewOf(f, orgs.A.author, ["rn", "part2"]);
             expect(
