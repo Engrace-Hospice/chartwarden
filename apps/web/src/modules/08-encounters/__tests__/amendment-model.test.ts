@@ -1,13 +1,16 @@
 // The words and rules of amending a signed note through an addendum (ADR-0114 VN-D30): what each refusal says and what to do next, which
 // drafted sections hold the Sign button back, and what each named section will do when the addendum signs.
+import { NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import {
   MAX_AMENDED_SECTIONS,
+  SUPERVISOR_ROLE_KEYS,
   addendumRefusalMessage,
   amendCreateRefusal,
   amendedSectionNote,
   amendedSectionOutcome,
   isSectionRefusal,
+  mayNameSections,
   signBlockReason,
   signedAmendmentMessage,
 } from "../amendment-model";
@@ -58,9 +61,49 @@ describe("amendCreateRefusal", () => {
     expect(amendCreateRefusal(422, "AMENDMENT_PART2_NOT_ENTITLED")).toMatch(/42 CFR Part 2/);
   });
 
+  it("says only the note's author or a supervisor can choose sections for a 403 FORBIDDEN, changing nothing, with the next step", () => {
+    const text = amendCreateRefusal(403, "FORBIDDEN");
+    expect(text).toMatch(/only the author of this note or a supervisor/i);
+    expect(text).toMatch(/Nothing was changed/);
+    expect(text).toMatch(/without choosing sections/);
+  });
+
+  it("leaves a 403 that is not that rule (step-up, a note-closure block) to the server's own words", () => {
+    expect(amendCreateRefusal(403, "STEP_UP_REQUIRED")).toBeNull();
+    expect(amendCreateRefusal(403, "NOTE_CLOSURE_REQUIRED")).toBeNull();
+    expect(amendCreateRefusal(403, null)).toBeNull();
+  });
+
   it("leaves any other refusal to the server's own words", () => {
     expect(amendCreateRefusal(500, "INTERNAL")).toBeNull();
     expect(amendCreateRefusal(422, "VALIDATION_ERROR")).toBeNull();
+  });
+});
+
+describe("mayNameSections", () => {
+  const author = "mem-author";
+  it("is true for the note's author and for a supervisor", () => {
+    expect(mayNameSections({ membershipId: author, roles: ["rn"] }, author)).toBe(true);
+    expect(
+      mayNameSections({ membershipId: "mem-2", roles: ["rn", "director_of_nursing"] }, author),
+    ).toBe(true);
+  });
+
+  it("is false only when the session shows the viewer is neither", () => {
+    expect(mayNameSections({ membershipId: "mem-2", roles: ["rn"] }, author)).toBe(false);
+    expect(mayNameSections({ membershipId: "mem-2", roles: [] }, author)).toBe(false);
+  });
+
+  it("is true when the session cannot say who the viewer is: the server decides, and a refusal is worded", () => {
+    expect(mayNameSections(null, author)).toBe(true);
+    expect(mayNameSections({}, author)).toBe(true);
+    expect(mayNameSections({ membershipId: "mem-2" }, author)).toBe(true);
+    expect(mayNameSections({ roles: ["rn"] }, author)).toBe(true);
+    expect(mayNameSections({ membershipId: "mem-2", roles: ["rn"] }, undefined)).toBe(true);
+  });
+
+  it("uses the supervisor role keys the platform grants by (one set, copied because the web may not import the backend's)", () => {
+    expect([...SUPERVISOR_ROLE_KEYS].sort()).toEqual([...NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS].sort());
   });
 });
 
@@ -113,17 +156,31 @@ describe("addendumRefusalMessage", () => {
     ).toMatch(/Try again in a moment/);
   });
 
-  it("says no cosigner is available, and what to ask for", () => {
+  it("says no cosigner is available, that the case manager cannot cosign what they wrote (the note or the amendment), and what to ask for", () => {
     const text = addendumRefusalMessage({ ...refusal("NO_ELIGIBLE_COSIGNER"), status: 422 });
     expect(text).toMatch(/cosign/i);
+    expect(text).toMatch(/a note or an amendment they wrote themselves/);
     expect(text).toMatch(/Nothing was changed/);
+    expect(text).toMatch(/wrote neither the note nor this amendment/);
   });
 
-  it("explains an amendment of text the signer's access does not include", () => {
-    expect(
-      addendumRefusalMessage({ ...refusal("AMENDMENT_PART2_NOT_ENTITLED"), status: 422 }),
-    ).toMatch(/42 CFR Part 2/);
-  });
+  // The server's message for this code is generic and names no section: the sentence is keyed on the CODE, whatever the message says.
+  it.each([
+    "a named section cannot be amended by this signer",
+    "",
+    "something else a later server might say",
+  ])(
+    "explains an amendment of text the signer's access does not include, whatever the server's message (%j)",
+    (message) => {
+      const text = addendumRefusalMessage({
+        ...refusal("AMENDMENT_PART2_NOT_ENTITLED", undefined, message),
+        status: 422,
+      });
+      expect(text).toMatch(/42 CFR Part 2/);
+      expect(text).toMatch(/Nothing was changed/);
+      if (message !== "") expect(text).not.toContain(message);
+    },
+  );
 
   it("words the machine's stale step-up (412) in the app's own sentence, with the next step", () => {
     const text = addendumRefusalMessage({ ...refusal("STEP_UP_AUTH_REQUIRED"), status: 412 });

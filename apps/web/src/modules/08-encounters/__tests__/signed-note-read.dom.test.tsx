@@ -8,7 +8,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SessionProvider } from "../../../shell/session";
+import { type Session, SessionProvider } from "../../../shell/session";
 import { EncounterRead } from "../encounter-read";
 
 // A stand-in for the legacy string the API still sends: it must never reach the screen when the structured view is there.
@@ -68,7 +68,14 @@ beforeEach(() => {
   draftOn = true;
 });
 
-function mount(postImpl: PostImpl = opened) {
+// A session that cannot say who the viewer is (no membership, no roles): the server decides who may name sections.
+const UNKNOWN_VIEWER: Session = {
+  userId: "user-1",
+  organizationId: "org-1",
+  permissions: ["encounter.read"],
+};
+
+function mount(postImpl: PostImpl = opened, session: Session = UNKNOWN_VIEWER) {
   const get = vi.fn(async (path: string) => {
     if (path === "/api/v1/encounters/{encounterId}") return { data: encounter };
     if (path === "/api/v1/encounters/{encounterId}/cosignature") return { data: { status: null } };
@@ -107,9 +114,7 @@ function mount(postImpl: PostImpl = opened) {
     <MemoryRouter initialEntries={["/patients/patient-1/encounters/enc-1"]}>
       <ApiClientProvider client={{ GET: get, PATCH: vi.fn(), POST: post } as never}>
         <ToastProvider>
-          <SessionProvider
-            session={{ userId: "user-1", organizationId: "org-1", permissions: ["encounter.read"] }}
-          >
+          <SessionProvider session={session}>
             <Routes>
               <Route
                 path="/patients/:patientId/encounters/:encounterId"
@@ -349,6 +354,104 @@ describe("the addendum dialog", () => {
     );
     await user.click(dialog.getByRole("button", { name: "Confirm" }));
     expect(await dialog.findByRole("alert")).toHaveTextContent(/switched off.*free addendum/s);
+  });
+
+  // Only the note's author (`authoredByUserId` is a membership id) or a supervisor may choose sections; the server refuses anyone else 403.
+  describe("who is offered the sections", () => {
+    const viewer = (membershipId: string, roles: string[]): Session => ({
+      ...UNKNOWN_VIEWER,
+      membershipId,
+      roles,
+    });
+    const group = (dialog: ReturnType<typeof within>) =>
+      dialog.queryByRole("group", { name: /Amend sections/ });
+
+    it("offers them to the note's author", async () => {
+      const user = userEvent.setup();
+      encounter = sealed();
+      mount(opened, viewer("mem-1", ["rn"]));
+      const dialog = await openDialog(user);
+      expect(await dialog.findByRole("group", { name: /Amend sections/ })).toBeInTheDocument();
+    });
+
+    it("offers them to a supervisor who did not write the note", async () => {
+      const user = userEvent.setup();
+      encounter = sealed();
+      mount(opened, viewer("mem-2", ["clinical_supervisor"]));
+      const dialog = await openDialog(user);
+      expect(await dialog.findByRole("group", { name: /Amend sections/ })).toBeInTheDocument();
+    });
+
+    it("offers them when the session cannot say who the viewer is, and leaves the refusal to the server", async () => {
+      const user = userEvent.setup();
+      encounter = sealed();
+      mount(opened, UNKNOWN_VIEWER);
+      const dialog = await openDialog(user);
+      expect(await dialog.findByRole("group", { name: /Amend sections/ })).toBeInTheDocument();
+    });
+
+    it("does not offer them to a viewer the session shows is neither, who can still open a free addendum", async () => {
+      const user = userEvent.setup();
+      encounter = sealed();
+      const { post } = mount(opened, viewer("mem-2", ["rn"]));
+      const dialog = await openDialog(user);
+      expect(dialog.getByRole("textbox", { name: "Reason" })).toBeInTheDocument();
+      // The draft read has been answered by now (the group is offered only after it), so the absence is not a race.
+      await waitFor(() => expect(group(dialog)).toBeNull());
+      await user.type(
+        dialog.getByRole("textbox", { name: "Reason" }),
+        "A late report from the family.",
+      );
+      await user.click(dialog.getByRole("button", { name: "Confirm" }));
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      expect(post).toHaveBeenCalledWith(ADDENDA_PATH, {
+        params: { path: { encounterId: "enc-1" } },
+        body: { reason: "A late report from the family." },
+      });
+    });
+  });
+
+  it("says only the author or a supervisor can choose sections, in the app's words, when the API answers 403 FORBIDDEN", async () => {
+    const user = userEvent.setup();
+    encounter = sealed();
+    mount(async () => ({
+      error: {
+        error: { code: "FORBIDDEN", message: "only the author of a signed note, or a supervisor" },
+      },
+      response: new Response(null, { status: 403 }),
+    }));
+    const dialog = await openDialog(user);
+    await user.click(await dialog.findByRole("checkbox", { name: "Plan" }));
+    await user.type(
+      dialog.getByRole("textbox", { name: "Reason" }),
+      "The plan changed after the call.",
+    );
+    await user.click(dialog.getByRole("button", { name: "Confirm" }));
+    const alert = await dialog.findByRole("alert");
+    expect(alert).toHaveTextContent(/Only the author of this note or a supervisor/);
+    expect(alert).toHaveTextContent(/Nothing was changed/);
+    expect(alert).not.toHaveTextContent(/signed note, or a supervisor/);
+    // The dialog stays open with what was typed and chosen, so the free addendum is one click away.
+    expect(dialog.getByRole("textbox", { name: "Reason" })).toHaveValue(
+      "The plan changed after the call.",
+    );
+    expect(dialog.getByRole("checkbox", { name: "Plan" })).toBeChecked();
+  });
+
+  it("leaves a 403 that is not that rule to the server's own words", async () => {
+    const user = userEvent.setup();
+    encounter = sealed();
+    mount(async () => ({
+      error: {
+        error: { code: "NOTE_CLOSURE_REQUIRED", message: "Close your overdue note first." },
+      },
+      response: new Response(null, { status: 403 }),
+    }));
+    const dialog = await openDialog(user);
+    await user.click(await dialog.findByRole("checkbox", { name: "Plan" }));
+    await user.type(dialog.getByRole("textbox", { name: "Reason" }), "The plan changed.");
+    await user.click(dialog.getByRole("button", { name: "Confirm" }));
+    expect(await dialog.findByRole("alert")).toHaveTextContent("Close your overdue note first.");
   });
 
   it("says a chosen section is not part of the signed note when the API answers 422 UNKNOWN_TEMPLATE_SECTION", async () => {

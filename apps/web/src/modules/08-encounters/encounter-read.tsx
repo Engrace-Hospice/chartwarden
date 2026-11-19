@@ -18,11 +18,13 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import { useNoteClosure } from "../../shell/note-closure";
+import { useSession } from "../../shell/session";
 import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assessments-api";
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
 import { type AddendumRow, openAddendum } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
 import { AmendSectionsPicker } from "./amend-sections-picker";
+import { mayNameSections } from "./amendment-model";
 import { CosignCeremonyModals } from "./cosign-ceremony-modals";
 import { cosignActionsFor } from "./cosign-model";
 import { draftIsActive, reviewCounts } from "./draft-model";
@@ -206,6 +208,7 @@ export function EncounterRead(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { refresh: refreshClosureStatus } = useNoteClosure();
+  const session = useSession();
 
   const { patientId, encounterId } = useParams<{
     patientId: string;
@@ -967,8 +970,13 @@ export function EncounterRead(): JSX.Element {
    * These remain unchanged.
    */
   const canSign = e.status === "finalized";
-  // Amending sections is offered only when the draft is on for this viewer (the same read the composer holds) and the note has sealed sections.
-  const amendable = draftLoad.status === "ready" ? amendableSections(e.finalDocumentationView) : [];
+  // Amending sections is offered only when the draft is on for this viewer (the same read the composer holds), the note has sealed sections,
+  // and the session does not show the viewer to be neither the note's author nor a supervisor (the server refuses them 403; a viewer it
+  // cannot tell is offered the choice and told in words if refused).
+  const amendable =
+    draftLoad.status === "ready" && mayNameSections(session, e.authoredByUserId)
+      ? amendableSections(e.finalDocumentationView)
+      : [];
   // ADR-0114: signing is blocked until every drafted section is resolved; the server is the judge, this only tells the signer first.
   const draftSections =
     draftLoad.status === "ready" && draftIsActive(draftLoad.draft) ? draftLoad.draft : null;

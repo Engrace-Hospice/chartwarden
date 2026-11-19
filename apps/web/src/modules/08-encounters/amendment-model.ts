@@ -19,13 +19,47 @@ const PART2_NOT_ENTITLED =
   "A section you chose holds 42 CFR Part 2 information that your access does not include, so it cannot be amended by you. Nothing was changed. Ask a colleague whose access includes it to amend that section; a free addendum can still add what you need.";
 
 /**
+ * The role keys the server treats as a supervisor (`SUPERVISOR_ROLE_KEYS` of 08-encounters, the same set as the note-closure grants).
+ * A copy: the web may not import the backend's, and a test pins it to the platform's own constant.
+ */
+export const SUPERVISOR_ROLE_KEYS = [
+  "clinical_supervisor",
+  "director_of_nursing",
+  "don",
+  "clinical_lead",
+] as const;
+
+/**
+ * Whether the viewer may choose the sections an addendum amends: only the signed note's author or a supervisor may (403 otherwise, before
+ * anything is written). False only when the session positively shows the viewer is neither; a session that cannot say who the viewer is
+ * (no membership or no roles, or the note's author not known) leaves it to the server, whose refusal is worded (`amendCreateRefusal`).
+ */
+export function mayNameSections(
+  viewer: { readonly membershipId?: string; readonly roles?: readonly string[] } | null,
+  noteAuthorMembershipId: string | null | undefined,
+): boolean {
+  const membershipId = viewer?.membershipId;
+  const roles = viewer?.roles;
+  if (membershipId === undefined || roles === undefined || !noteAuthorMembershipId) return true;
+  return (
+    membershipId === noteAuthorMembershipId ||
+    roles.some((role) => (SUPERVISOR_ROLE_KEYS as readonly string[]).includes(role))
+  );
+}
+
+/**
  * What opening an amending addendum says when the server refuses it, or null for a refusal whose own words should show. A 404 is the
- * answer for a tenant with the visit-note draft off (the same answer as an absent note, so it is worded as the likelier cause).
+ * answer for a tenant with the visit-note draft off (the same answer as an absent note, so it is worded as the likelier cause). A 403
+ * FORBIDDEN is the rule that only the note's author or a supervisor may choose sections (any other 403, a step-up or a note-closure block,
+ * has its own code and its own words).
  */
 export function amendCreateRefusal(
   status: number | null | undefined,
   code: string | null | undefined,
 ): string | null {
+  if (status === 403 && code === "FORBIDDEN") {
+    return "Only the author of this note or a supervisor can choose sections to amend. Nothing was changed. Open the addendum without choosing sections, or ask the author or a supervisor to amend them.";
+  }
   if (status === 404) {
     return "Sections of this note cannot be amended right now: the visit-note draft is switched off for your organization. Open a free addendum instead, or ask an administrator to switch the visit-note draft on (Admin, Visit-note Draft).";
   }
@@ -62,7 +96,7 @@ export function addendumRefusalMessage({ code, message, details }: AddendumRefus
     case "COMPLIANCE_GATE_UNAVAILABLE":
       return "The addendum could not be checked right now: a record it depends on did not answer. Nothing was changed. Try again in a moment.";
     case "NO_ELIGIBLE_COSIGNER":
-      return "This note needed a cosigner, so its amendment does too, and no eligible cosigner was found (the patient's RN case manager cannot cosign their own amendment). Nothing was changed. Ask a supervisor to assign a case manager, then sign again.";
+      return "This note needed a cosigner, so its amendment does too, and no eligible cosigner was found: the patient's RN case manager cannot cosign a note or an amendment they wrote themselves. Nothing was changed. Ask a supervisor to assign an RN case manager who wrote neither the note nor this amendment, then sign again.";
     case "AMENDMENT_PART2_NOT_ENTITLED":
       return PART2_NOT_ENTITLED;
     case "STEP_UP_AUTH_REQUIRED":
