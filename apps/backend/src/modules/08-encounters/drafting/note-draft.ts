@@ -82,3 +82,13 @@ export async function readNoteDraft(
 export function assertResolved(draft: NoteDraft | null): void {
   if (draft !== null && draft.actions.length > 0) throw sectionsNeedResolving(draft.actions);
 }
+
+/**
+ * The drafted sections the clinician CONFIRMED against the draft as it stands now: their text is what the note will say, so gate check 1
+ * counts each as populated (a deselected, unresolved or stale section is not, and an undrafted one has nothing to count). `undefined`
+ * when the draft is off, so that check 1 is as it was.
+ */
+export function confirmedSectionIds(draft: NoteDraft | null): ReadonlySet<string> | undefined {
+  if (draft === null) return undefined;
+  return new Set(draft.states.filter((s) => s.state === "confirmed").map((s) => s.sectionId));
+}

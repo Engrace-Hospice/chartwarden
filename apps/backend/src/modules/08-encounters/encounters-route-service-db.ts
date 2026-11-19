@@ -90,9 +90,10 @@ import { seedModalityFor } from "./consumers/seed-modality";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
 import { defaultDraftPorts } from "./drafting/default-ports";
-import { assertResolved } from "./drafting/note-draft";
+import { assertResolved, confirmedSectionIds } from "./drafting/note-draft";
 import type { NoteDraft } from "./drafting/note-draft";
 import { createNoteDraftFlow } from "./drafting/note-draft-flow";
+import { readPinnedNote } from "./drafting/pinned-note";
 import { isVisitNoteDraftEnabled } from "./drafting/policy-service";
 import type { DraftSeamPorts, DraftViewer } from "./drafting/ports";
 import { deriveEvvAtSign } from "./evv-at-sign";
@@ -766,7 +767,13 @@ export function createDbEncounterRouteService(
       vitalsCaptured: captured,
       vitalsClinicallyNotIndicated: clinicallyNotIndicated,
       scalesPresent: await scalesPresentFor(r.patientId, r.encounterType),
-      ...(draft === null ? {} : { draftSectionActions: draft.actions }),
+      ...(draft === null
+        ? {}
+        : {
+            draftSectionActions: draft.actions,
+            // Check 1 (project-lead decision): a section the clinician confirmed drafted text for is populated.
+            draftConfirmedSectionIds: confirmedSectionIds(draft),
+          }),
     });
     assertGatePassed(verdict, at);
     return verdict.pass;
@@ -866,6 +873,8 @@ export function createDbEncounterRouteService(
       readonly vocabVersionId: string;
       /** ADR-0114: the note's text when the visit-note draft is on (the confirmed draft and the clinician's own selections); absent, Layer 1 from the selections. */
       readonly narrative?: string;
+      /** ADR-0114: that text carries a Part 2 derived section (`hearthnote_assembled_output.part2_derived`). */
+      readonly part2Derived?: boolean;
     },
   ): Promise<void> {
     if (!narrativeCipher) {
@@ -914,6 +923,7 @@ export function createDbEncounterRouteService(
       layer2Cipher: null,
       layer2InvolvedAtFinalize: outcome.enhanced,
       layer2Eligibility: outcome.reason,
+      part2Derived: input.part2Derived ?? false,
       assemblyTemplateKey: hearthnoteTemplateKey(input.encounterType, input.discipline),
       vocabVersionId: input.vocabVersionId,
     });
@@ -1264,23 +1274,43 @@ export function createDbEncounterRouteService(
     return { providerEntityId: m.providerEntityId, locationId: locs[0] as string };
   }
 
-  /** The pinned (finalize-time) narrative, opened — `null` when nothing is pinned yet or no DEK cipher
-   *  is bound to open it. `final_cipher` is sealed under the tenant DEK (#122); never project it raw. */
+  /**
+   * Whether `viewer` may read this patient's 42 CFR Part 2 content: M39's per-actor verdict, the one the draft asks (a failure is not a "no",
+   * see `readPinnedNote`). A document consumer has no viewer and is never entitled: documents are broadly readable (design 3.1).
+   */
+  const part2Entitlement =
+    (organizationId: string, patientId: string, viewer: DraftViewer | null) =>
+    async (): Promise<boolean> =>
+      viewer !== null && draftSeams().part2DisclosureAllowed({ organizationId, patientId, viewer });
+
+  /** Opens one pinned narrative envelope under the tenant DEK; unbound, the pinned narrative cannot be shown at all. */
+  const openPinned = (organizationId: string) => (cipher: string) => {
+    if (!narrativeCipher) {
+      throw new EncounterStateError(
+        "HEARTHNOTE_CIPHER_UNBOUND",
+        "the encounter's narrative is pinned but no per-tenant DEK envelope is bound to open it",
+      );
+    }
+    return withTenantDek("the pinned narrative could not be opened", () =>
+      narrativeCipher.open(organizationId, cipher),
+    );
+  };
+
+  /** The pinned (finalize-time or signed) narrative as `viewer` may see it (VN-D13: Part 2 sections withheld from a viewer without disclosure),
+   *  or `null` when nothing is pinned yet or no DEK cipher is bound to open it. `final_cipher` is sealed under the tenant DEK (#122); never
+   *  project it raw. */
   async function latestFinalPayload(
     t: DbClient,
     organizationId: string,
-    encounterId: string,
+    encounter: { readonly id: string; readonly patientId: string },
+    viewer: DraftViewer,
   ): Promise<string | null> {
-    const [row] = await t
-      .select({ finalCipher: OUT.finalCipher })
-      .from(OUT)
-      .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
-      .orderBy(desc(OUT.createdAt))
-      .limit(1);
-    if (!row || !narrativeCipher) return null;
-    return withTenantDek("the pinned narrative could not be opened", () =>
-      narrativeCipher.open(organizationId, row.finalCipher),
-    );
+    if (!narrativeCipher) return null;
+    const note = await readPinnedNote(t, encounter.id, {
+      open: openPinned(organizationId),
+      entitled: part2Entitlement(organizationId, encounter.patientId, viewer),
+    });
+    return note?.text ?? null;
   }
 
   async function carePlanLinksFor(
@@ -1302,7 +1332,13 @@ export function createDbEncounterRouteService(
     }));
   }
 
-  async function workspaceFieldsFor(t: DbClient, organizationId: string, encounterId: string) {
+  async function workspaceFieldsFor(
+    t: DbClient,
+    organizationId: string,
+    encounter: { readonly id: string; readonly patientId: string },
+    viewer: DraftViewer,
+  ) {
+    const encounterId = encounter.id;
     const [selection] = await t
       .select({ selections: SEL.selections })
       .from(SEL)
@@ -1351,7 +1387,7 @@ export function createDbEncounterRouteService(
       .limit(1);
     return {
       selections: (selection?.selections as Record<string, unknown> | undefined) ?? null,
-      finalDocumentation: await latestFinalPayload(t, organizationId, encounterId),
+      finalDocumentation: await latestFinalPayload(t, organizationId, encounter, viewer),
       vitals: vital ? { ...vital, capturedAt: iso(vital.capturedAt) } : null,
       mileage: mileage ? { ...mileage, capturedAt: iso(mileage.capturedAt) } : null,
       carePlanLinks: await carePlanLinkRowsFor(t, encounterId),
@@ -1468,13 +1504,13 @@ export function createDbEncounterRouteService(
 
   return {
     // ── Encounter reads ────────────────────────────────────────────────────────────────────────────
-    async getEncounter(organizationId, encounterId) {
+    async getEncounter(organizationId, encounterId, viewer = ANONYMOUS_VIEWER) {
       const { view, row } = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [r] = await t.select(encounterCols).from(ENC).where(eq(ENC.id, encounterId)).limit(1);
         if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
         return {
-          view: { ...toView(r), ...(await workspaceFieldsFor(t, organizationId, encounterId)) },
+          view: { ...toView(r), ...(await workspaceFieldsFor(t, organizationId, r, viewer)) },
           row: r,
         };
       });
@@ -1494,26 +1530,15 @@ export function createDbEncounterRouteService(
         // The PINNED bytes win whenever they exist (#122). This is the whole point of the pin: what M22
         // prints and M28 exposes is what was assembled at finalize, not what the current corpus would
         // produce from the same selections today.
-        const [pinned] = await t
-          .select({ finalCipher: OUT.finalCipher })
-          .from(OUT)
-          .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
-          .orderBy(desc(OUT.createdAt))
-          .limit(1);
-        if (pinned) {
-          if (!narrativeCipher) {
-            throw new EncounterStateError(
-              "HEARTHNOTE_CIPHER_UNBOUND",
-              "the encounter's narrative is pinned but no per-tenant DEK envelope is bound to open it",
-            );
-          }
-          return {
-            encounterId: r.id,
-            final: await withTenantDek("the pinned narrative could not be opened", () =>
-              narrativeCipher.open(organizationId, pinned.finalCipher),
-            ),
-            pinned: true,
-          };
+        //
+        // ADR-0114 (VN-D13): a document is broadly readable and M22 has no per-document Part 2 signal for it (its retention class is the
+        // template's), so the document consumer is never entitled: a note with a Part 2 derived section renders those sections withheld.
+        const pinned = await readPinnedNote(t, encounterId, {
+          open: openPinned(organizationId),
+          entitled: part2Entitlement(organizationId, r.patientId, null),
+        });
+        if (pinned !== null) {
+          return { encounterId: r.id, final: pinned.text, pinned: true };
         }
         // No pin: either a draft (nothing has been finalized, so a live preview is the only answer there
         // is) or a row finalized before #122 shipped. `pinned: false` is the difference, and it is on the
@@ -2255,7 +2280,12 @@ export function createDbEncounterRouteService(
           serviceDate: r.serviceDate,
           vocabVersionId,
           // The gate has passed, so every drafted section is resolved: the pin carries the confirmed text, not Layer 1 alone.
-          ...(draft === null ? {} : { narrative: noteDraft.narrativeOf(draft) }),
+          ...(draft === null
+            ? {}
+            : {
+                narrative: noteDraft.narrativeOf(draft),
+                part2Derived: noteDraft.part2DerivedOf(draft),
+              }),
         });
         await emit(t, organizationId, "m8.encounter.finalized", "encounter", encounterId, {
           encounterId,
@@ -2370,6 +2400,8 @@ export function createDbEncounterRouteService(
           membershipId: actor.membershipId,
         });
         assertResolved(draft);
+        // The draft off at sign over a pin it produced that carries Part 2 text: nothing to seal rows from, so refused (LOW-4).
+        await noteDraft.assertDraftNotWithdrawn(t, r, draft);
         const careplanLinks = await carePlanLinksFor(t, encounterId);
         // The pinned narrative is sealed under the tenant DEK (#122); it is NOT copied into the outbox
         // payload in the clear. M22 renders through `renderPayload` (route 31), which opens the pin.

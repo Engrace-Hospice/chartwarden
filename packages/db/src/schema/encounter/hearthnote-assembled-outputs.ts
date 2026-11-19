@@ -36,6 +36,9 @@ export const hearthnoteAssembledOutputs = pgTable(
 
     layer2Eligibility: layer2EligibilityReason("layer2_eligibility").notNull(),
     layer2InvolvedAtFinalize: boolean("layer2_involved_at_finalize").notNull().default(false),
+    // Migration 1522 (ADR-0114): the pinned narrative carries a section drafted from sources that may hold 42 CFR Part 2 content (the
+    // compiler's fail-closed flag). Written with the pin at finalize and rewritten at sign; false for a pin with no drafted text.
+    part2Derived: boolean("part2_derived").notNull().default(false),
 
     assemblyTemplateKey: text("assembly_template_key").notNull(),
     // Pinned per D11 — the parent's own pin, resolved once per finalize so the version the bytes were

@@ -3,6 +3,7 @@
 import { runWithRequestContext } from "@chartwarden/tenancy";
 import { describe, expect, it, vi } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
+import { PART2_WITHHELD_MARKER } from "../src/modules/08-encounters/drafting/pinned-note";
 import { deriveEvvAtSign, evvStateOrMissing } from "../src/modules/08-encounters/evv-at-sign";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
 
@@ -175,7 +176,8 @@ describe("createDrizzleEncounterReaderStore ops (GAP-069)", () => {
     const open = vi.fn(async (_org: string, env: string) => `plain:${env}`);
     const { db } = fakeDb([
       [{ id: "e-1", organizationId: ORG }],
-      [{ finalCipher: "ENV-FINAL" }],
+      [{ id: "out-1", finalCipher: "ENV-FINAL", part2Derived: false }],
+      [], // the sealed per-section rows of the pin: none (a note with no Part 2 derived section is read from final_cipher)
       [
         {
           addendumId: "a-1",
@@ -205,10 +207,34 @@ describe("createDrizzleEncounterReaderStore ops (GAP-069)", () => {
   });
 
   it("renderPayload refuses a pinned narrative when no cipher is bound (never an empty note)", async () => {
-    const { db } = fakeDb([[{ id: "e-1", organizationId: ORG }], [{ finalCipher: "ENV" }]]);
+    const { db } = fakeDb([
+      [{ id: "e-1", organizationId: ORG }],
+      [{ id: "out-1", finalCipher: "ENV", part2Derived: false }],
+      [],
+    ]);
     const store = createDrizzleEncounterReaderStore(db);
     await expect(runWithRequestContext(CTX, () => store.renderPayload("e-1"))).rejects.toThrow(
       /no cipher is bound/,
     );
+  });
+
+  it("renderPayload is always the withheld view of a note with a Part 2 derived section, and never opens that section's text (ADR-0114, VN-D13)", async () => {
+    const open = vi.fn(async (_org: string, env: string) => `plain:${env}`);
+    const { db } = fakeDb([
+      [{ id: "e-1", organizationId: ORG }],
+      [{ id: "out-1", finalCipher: "ENV-FINAL", part2Derived: true }],
+      [
+        { sectionId: "assessment", textCipher: "ENV-A", part2Derived: false },
+        { sectionId: "interventions", textCipher: "ENV-SECRET", part2Derived: true },
+      ],
+      [],
+    ]);
+    const store = createDrizzleEncounterReaderStore(db, {
+      narrativeCipher: { seal: async (_o, p) => p, open },
+    });
+    const out = await runWithRequestContext(CTX, () => store.renderPayload("e-1"));
+    expect(out?.final).toBe(`plain:ENV-A\n\n${PART2_WITHHELD_MARKER}`);
+    expect(open).not.toHaveBeenCalledWith(ORG, "ENV-SECRET");
+    expect(open).not.toHaveBeenCalledWith(ORG, "ENV-FINAL");
   });
 });

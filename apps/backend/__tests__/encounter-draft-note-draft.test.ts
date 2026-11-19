@@ -5,7 +5,11 @@ import type { SelectionState } from "@chartwarden/hearthnote";
 import { VOCAB_VERSION } from "@chartwarden/narrative-vocab";
 import { describe, expect, it } from "vitest";
 import type { DraftEncounterRow } from "../src/modules/08-encounters/drafting/draft-store";
-import { assertResolved, readNoteDraft } from "../src/modules/08-encounters/drafting/note-draft";
+import {
+  assertResolved,
+  confirmedSectionIds,
+  readNoteDraft,
+} from "../src/modules/08-encounters/drafting/note-draft";
 import { EncounterStateError } from "../src/modules/08-encounters/lifecycle/errors";
 import { NOW, carePlan, change, fakePorts, viewer } from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
@@ -245,5 +249,43 @@ describe("assertResolved: sign refuses a note whose drafted sections are not all
         ["plan", "DRAFT_SECTION_STALE"],
       ]);
     }
+  });
+});
+
+describe("confirmedSectionIds: what gate check 1 counts as populated (project-lead decision)", () => {
+  it("is absent when the draft is off, so check 1 is as it was", async () => {
+    expect(confirmedSectionIds(null)).toBeUndefined();
+    const { result } = await read({ enabled: false });
+    expect(confirmedSectionIds(result)).toBeUndefined();
+  });
+
+  it("names the drafted sections the clinician confirmed against the draft as it stands now", async () => {
+    const { result } = await read({}, seams(), undefined, confirmAll());
+    expect([...(confirmedSectionIds(result) ?? [])].sort()).toEqual(["interventions", "plan"]);
+  });
+
+  it("does not name a deselected section: its own selections and free text are all that can satisfy it", async () => {
+    const { result } = await read({}, seams(), undefined, confirmAll("deselected"));
+    expect([...(confirmedSectionIds(result) ?? ["x"])]).toEqual([]);
+  });
+
+  it("does not name an unresolved section, a stale confirmation or an undrafted section", async () => {
+    const { result } = await read({}, seams(), undefined, async (unit, hashes) => {
+      await unit.store.saveConfirmation(
+        confirmation("plan", "confirmed", { ...hashes.plan!, contentHash: "0".repeat(64) }),
+      );
+    });
+    expect([...(confirmedSectionIds(result) ?? ["x"])]).toEqual([]);
+    expect(result?.states.find((s) => s.sectionId === "chief_concern")?.state).toBe("not_drafted");
+  });
+
+  it("names only the sections confirmed when the others are resolved otherwise", async () => {
+    const { result } = await read({}, seams(), undefined, async (unit, hashes) => {
+      await unit.store.saveConfirmation(confirmation("plan", "confirmed", hashes.plan!));
+      await unit.store.saveConfirmation(
+        confirmation("interventions", "deselected", hashes.interventions!),
+      );
+    });
+    expect([...(confirmedSectionIds(result) ?? [])]).toEqual(["plan"]);
   });
 });

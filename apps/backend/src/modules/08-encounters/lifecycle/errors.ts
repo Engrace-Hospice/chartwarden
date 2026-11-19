@@ -68,6 +68,12 @@ export const M8_ERROR_STATUS = {
   /** The clinician confirmed or deselected a drafted section against content that is no longer the draft: the section's content
    *  hash or the phrase-corpus version differs from the recomputed draft (VN-D12). Refetch the draft, review, resolve again. */
   DRAFT_SECTION_STALE: 409,
+  /** The note was finalized with drafted text that may hold 42 CFR Part 2 content and the draft is now switched off for the organization,
+   *  so sign could not seal it section by section (VN-D13 would then have no section to withhold). Switch the draft back on, then sign. */
+  DRAFT_OFF_AFTER_FINALIZE: 409,
+  /** A signed note's text could not be shown to this viewer because the 42 CFR Part 2 disclosure check (M39) could not be decided. An
+   *  outage is never a silent denial and never a silent disclosure: 503, retry. */
+  NOTE_VIEW_UNAVAILABLE: 503,
   // Visit delivery at sign (migration 1510): the clinician must say how the visit was delivered (Medicare
   // hospice SIA / visit lines count in-person visits only), and any documented start/end must be a real,
   // ordered, past bracket on the service date. Both are fixable by the clinician, hence 422.

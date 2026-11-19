@@ -49,6 +49,8 @@ export const GATE_CHECKS: Readonly<Record<GateCheckId, GateCheck>> = {
   required_sections: {
     ordinal: 1,
     spec: "all required HearthNote sections per (encounter_type × discipline) have at least one selection",
+    // ADR-0114: with the draft on, a section the clinician CONFIRMED drafted text for counts as populated (`draftConfirmedSectionIds`, from
+    // sections in state `confirmed` against the signer's recomputed draft); a deselected one does not. Off, the check is exactly as it was.
     state: { kind: "evaluated" },
   },
   required_vitals: {

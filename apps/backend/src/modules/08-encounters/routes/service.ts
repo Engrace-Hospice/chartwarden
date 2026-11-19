@@ -575,7 +575,16 @@ export interface EncounterRouteService {
     actorUserId: string,
     args: CreateEncounterArgs,
   ): Promise<CreatedEncounter>;
-  getEncounter(organizationId: string, encounterId: string): Promise<EncounterView>;
+  /**
+   * `viewer` is the SESSION identity (roles and active membership from the server-assembled session, never the request): a note pinned with a
+   * 42 CFR Part 2 derived section shows its text (`finalDocumentation`) only to a viewer with Part 2 disclosure, any other viewer gets that
+   * section withheld (ADR-0114, VN-D13). Absent, the caller is read as a member with no role and no release (fails closed).
+   */
+  getEncounter(
+    organizationId: string,
+    encounterId: string,
+    viewer?: { readonly roles: readonly string[]; readonly membershipId: string | null },
+  ): Promise<EncounterView>;
   /**
    * `actorMembershipId` (here and on the vitals and mileage writes) is the caller's membership, or `null` for a caller with no acting
    * member (a system or test caller), and it is REQUIRED so no call site can leave it out by accident. ADR-0113: the first authoring

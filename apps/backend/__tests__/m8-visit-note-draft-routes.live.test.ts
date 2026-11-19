@@ -24,6 +24,11 @@
  *      viewer's), one sealed row per section equal to `final_cipher` and append-only, a deselected section that adds nothing, a failed seal that
  *      fails the sign as one, a switched-off tenant that is untouched, and tenant isolation.
  *
+ *   8. PR E1: the per-viewer view of the pinned note (VN-D13): a viewer with Part 2 disclosure, or a note with no Part 2 derived section, reads
+ *      `final_cipher` and the sealed rows join to it; any other viewer reads the sections with the Part 2 derived ones withheld, never their text (GET
+ *      encounter), a finalized pin with Part 2 text is withheld whole, an M39 outage is 503, and the M22 render payload (route 31 and the seam) is
+ *      always the withheld view. LOW-4: a sign with the draft off over a Part 2 pin is a clean 409. Gate check 1 counts a confirmed drafted section.
+ *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m8:visit-note-draft-routes:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1. Never point this at the shared Docker cluster.
  */
@@ -44,7 +49,7 @@ import {
 } from "@chartwarden/auth";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { DRAFT_VOCAB_CODES } from "@chartwarden/narrative-vocab";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
@@ -54,6 +59,7 @@ import { registerSeam } from "../src/bootstrap/seams/registry";
 import { createDbDraftStore } from "../src/modules/08-encounters/drafting/db-draft-store";
 import { createDbRunInOrg } from "../src/modules/08-encounters/drafting/db-draft-unit";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
+import { PART2_WITHHELD_MARKER } from "../src/modules/08-encounters/drafting/pinned-note";
 import { putDraftPolicy } from "../src/modules/08-encounters/drafting/policy-service";
 import type { DraftEncounter } from "../src/modules/08-encounters/drafting/ports";
 import type {
@@ -65,9 +71,11 @@ import {
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
   createHearthnoteCiphers,
+  registerEncounterRoutes,
 } from "../src/modules/08-encounters/index";
 import { registerDraftSectionRoutes } from "../src/modules/08-encounters/routes/draft-section-routes";
 import { assembleSelections } from "../src/modules/08-encounters/routes/service";
+import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/index";
 import { carePlan, change, fakePorts } from "./_encounter-draft-fixtures";
 import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
@@ -784,7 +792,8 @@ describe.skipIf(!DB_URL)(
       it("a role with encounter.read and encounter.author but without prescribing.read is refused the draft and the section write (403), and nothing is written", async () => {
         const f = await seedDraftWithPrevious();
         const seen = sectionOf((await getDraft(f)).body, "plan");
-        const viewsBefore = (await auditEvents(ORG_A, "encounter_draft.viewed", f.encounterId)).length;
+        const viewsBefore = (await auditEvents(ORG_A, "encounter_draft.viewed", f.encounterId))
+          .length;
         const asLimited = as(orgs.A, limitedA);
         const get = await app.inject({
           method: "GET",
@@ -1891,6 +1900,320 @@ describe.skipIf(!DB_URL)(
           ] as const) {
             expect(reads[name], name).not.toHaveBeenCalled();
           }
+        });
+      });
+
+      describe("the per-viewer view of the pinned note (VN-D13, PR E1)", () => {
+        const PART2_TEXT = "Morphine sulfate was started on 2026-01-12";
+        const sudChange = () => [
+          change("started", UNSIGNED_CHANGES_SINCE, { id: "order-sud", isSudTreatment: true }),
+        ];
+        let noteApp: FastifyInstance;
+
+        beforeAll(async () => {
+          noteApp = buildServer({
+            db: handle.db,
+            authenticate: headerAuth,
+            security: { rateLimitEnabled: false },
+          });
+          registerEncounterRoutes(noteApp, { service: svc, caseloadPatientIds: async () => [] });
+          await noteApp.ready();
+        });
+        afterAll(async () => {
+          await noteApp?.close();
+        });
+
+        /** GET /encounters/:id as `member` holding `roles` (the session roles the viewer's Part 2 verdict reads). */
+        const getEncounterAs = (f: EncounterFixture, member: Member, roles: string) =>
+          noteApp.inject({
+            method: "GET",
+            url: `/api/v1/encounters/${f.encounterId}`,
+            headers: { ...as(orgs.A, member), "x-test-roles": roles },
+          });
+        const shownOf = (res: { json: () => unknown }): string =>
+          (res.json() as { finalDocumentation: string }).finalDocumentation;
+        const part2Asked = () => currentSeams.part2DisclosureAllowed.mock.calls.length;
+        const pinPart2Of = async (f: EncounterFixture) =>
+          one(
+            await rows<{ part2_derived: boolean }>(
+              "SELECT part2_derived FROM hearthnote_assembled_output WHERE encounter_id = $1 AND kind = 'primary_finalize'",
+              [f.encounterId],
+            ),
+          ).part2_derived;
+
+        /** A note whose `interventions` section holds a SUD-treatment medication change: confirmed, finalized and signed by a viewer with Part 2 disclosure. */
+        async function signedWithPart2(): Promise<EncounterFixture> {
+          currentSeams = liveSeams({ medicationChangesBetween: async () => sudChange() });
+          const f = await prepared();
+          await resolveAll(orgs.A, f, {}, ["rn", "part2"]);
+          await finalize(orgs.A, f, ["rn", "part2"]);
+          await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A", ["rn", "part2"]), SIGN_ARGS);
+          return f;
+        }
+
+        it("a viewer with Part 2 disclosure reads the note as pinned, and the sealed rows join to exactly that text", async () => {
+          const f = await signedWithPart2();
+          const res = await getEncounterAs(f, orgs.A.author, "rn,part2");
+          expect(res.statusCode).toBe(200);
+          const shown = shownOf(res);
+          expect(shown).toBe(await open(ORG_A, one(await outputsOf(f)).final_cipher));
+          expect(shown).toContain(PART2_TEXT);
+          expect(shown).not.toContain(PART2_WITHHELD_MARKER);
+          const sealed = await signedRowsOf(f);
+          expect(sealed.find((r) => r.section_id === "interventions")?.part2_derived).toBe(true);
+          expect(
+            (await Promise.all(sealed.map((r) => open(ORG_A, r.text_cipher)))).join("\n\n"),
+          ).toBe(shown);
+          expect(await pinPart2Of(f)).toBe(true);
+        });
+
+        it("any other viewer (a cosigner or colleague without disclosure, or the author without it) gets the Part 2 section withheld and never its text", async () => {
+          const f = await signedWithPart2();
+          for (const [member, roles] of [
+            [orgs.A.otherRn, "rn"],
+            [orgs.A.author, "rn"],
+          ] as const) {
+            const res = await getEncounterAs(f, member, roles);
+            expect(res.statusCode).toBe(200);
+            const shown = shownOf(res);
+            expect(shown).toContain(PART2_WITHHELD_MARKER);
+            // The whole drafted section goes, the care-plan intervention beside the medication change included; nothing of it is in the response.
+            for (const hidden of ["Morphine", "Repositioning schedule review"]) {
+              expect(shown).not.toContain(hidden);
+              expect(res.body).not.toContain(hidden);
+            }
+            // A section that is not Part 2 derived is still the note's own text.
+            expect(shown).toContain("Pain controlled at an acceptable level");
+            expect(shown.split("\n\n")).toHaveLength((await signedRowsOf(f)).length);
+          }
+        });
+
+        it("the M22 render payload is ALWAYS the withheld view for such a note (route 31 and the signed-encounters seam), the entitled author included, and asks no one", async () => {
+          const f = await signedWithPart2();
+          const asked = part2Asked();
+          const viaRoute = await svc.renderPayload(ORG_A, f.encounterId);
+          const store = createDrizzleEncounterReaderStore(handle.db, {
+            narrativeCipher: CIPHERS.narrative,
+          });
+          const viaSeam = await runWithRequestContext(
+            { organizationId: ORG_A, userId: orgs.A.author.userId } as never,
+            () => store.renderPayload(f.encounterId),
+          );
+          expect(viaRoute.pinned).toBe(true);
+          expect(viaRoute.final).toContain(PART2_WITHHELD_MARKER);
+          expect(viaSeam?.final).toBe(viaRoute.final);
+          for (const hidden of ["Morphine", "Repositioning schedule review"]) {
+            expect(viaRoute.final).not.toContain(hidden);
+          }
+          expect(viaRoute.final).toContain("Pain controlled at an acceptable level");
+          expect(part2Asked()).toBe(asked);
+        });
+
+        it("a note with no Part 2 derived section is unchanged: final_cipher for every viewer, the render payload included, and no disclosure is asked", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          await finalize(orgs.A, f);
+          await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS);
+          const finalText = await open(ORG_A, one(await outputsOf(f)).final_cipher);
+          const asked = part2Asked();
+          const res = await getEncounterAs(f, orgs.A.otherRn, "rn");
+          expect(shownOf(res)).toBe(finalText);
+          expect(finalText).not.toContain(PART2_WITHHELD_MARKER);
+          expect((await svc.renderPayload(ORG_A, f.encounterId)).final).toBe(finalText);
+          expect(part2Asked()).toBe(asked);
+          expect(await pinPart2Of(f)).toBe(false);
+        });
+
+        it("an M39 outage is 503 NOTE_VIEW_UNAVAILABLE: never a silent denial and never a disclosure", async () => {
+          const f = await signedWithPart2();
+          currentSeams = liveSeams({
+            part2DisclosureAllowed: async () => {
+              throw new Error("synthetic M39 outage");
+            },
+          });
+          for (const roles of ["rn", "rn,part2"]) {
+            const res = await getEncounterAs(f, orgs.A.otherRn, roles);
+            expect(res.statusCode).toBe(503);
+            expect(res.json().error.code).toBe("NOTE_VIEW_UNAVAILABLE");
+            expect(res.body).not.toContain("synthetic M39 outage");
+            expect(res.body).not.toContain("Morphine");
+          }
+          // The document view asks nobody, so it still serves the withheld text.
+          expect((await svc.renderPayload(ORG_A, f.encounterId)).final).toContain(
+            PART2_WITHHELD_MARKER,
+          );
+        });
+
+        it("a finalized note (no sealed rows yet) whose pin carries Part 2 text is withheld whole from a viewer without disclosure", async () => {
+          currentSeams = liveSeams({ medicationChangesBetween: async () => sudChange() });
+          const f = await prepared();
+          await resolveAll(orgs.A, f, {}, ["rn", "part2"]);
+          await finalize(orgs.A, f, ["rn", "part2"]);
+          expect(await signedRowsOf(f)).toEqual([]);
+          expect(await pinPart2Of(f)).toBe(true);
+          const without = await getEncounterAs(f, orgs.A.otherRn, "rn");
+          expect(shownOf(without)).toBe(PART2_WITHHELD_MARKER);
+          const entitled = await getEncounterAs(f, orgs.A.author, "rn,part2");
+          expect(shownOf(entitled)).toContain(PART2_TEXT);
+          expect((await svc.renderPayload(ORG_A, f.encounterId)).final).toBe(PART2_WITHHELD_MARKER);
+        });
+      });
+
+      describe("switching the draft off between finalize and sign (LOW-4)", () => {
+        const setSwitch = (org: OrgFixture, enabled: boolean) =>
+          inOrg(org, (tx) =>
+            putDraftPolicy(tx, {
+              organizationId: org.orgId,
+              enabled,
+              actorMembershipId: org.author.membershipId,
+              audit: auditOf(org),
+              corpusReview: APPROVED,
+            }),
+          );
+        const pinPart2Of = async (f: EncounterFixture) =>
+          one(
+            await rows<{ part2_derived: boolean }>(
+              "SELECT part2_derived FROM hearthnote_assembled_output WHERE encounter_id = $1 AND kind = 'primary_finalize'",
+              [f.encounterId],
+            ),
+          ).part2_derived;
+        const PART2_ROLES = ["rn", "part2"];
+        // Org C is the suite's switch-off tenant: each test sets what it needs and the describe puts it back.
+        afterAll(async () => {
+          await setSwitch(orgs.C, false);
+        });
+
+        it("refuses the sign with a 409 and a remediation when the pin carries Part 2 text and the draft is off now, changes nothing, and signs once the draft is back on", async () => {
+          await setSwitch(orgs.C, true);
+          currentSeams = liveSeams({
+            medicationChangesBetween: async () => [
+              change("started", UNSIGNED_CHANGES_SINCE, { id: "order-sud", isSudTreatment: true }),
+            ],
+          });
+          const f = await prepared(orgs.C);
+          await resolveAll(orgs.C, f, {}, PART2_ROLES);
+          await finalize(orgs.C, f, PART2_ROLES);
+          expect(await pinPart2Of(f)).toBe(true);
+          const pinned = (await outputsOf(f))[0]?.final_cipher;
+
+          await setSwitch(orgs.C, false);
+          const error = await svc
+            .sign(ORG_C, f.encounterId, actorOf(orgs.C, "C", PART2_ROLES), SIGN_ARGS)
+            .catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "DRAFT_OFF_AFTER_FINALIZE", statusCode: 409 });
+          expect((error as Error).message).toMatch(/switch the draft back on/);
+          expect(await statusOf(f)).toBe("finalized");
+          expect(await signedRowsOf(f)).toEqual([]);
+          expect(await signaturesOf(f)).toEqual([]);
+          expect((await outputsOf(f))[0]?.final_cipher).toBe(pinned);
+
+          await setSwitch(orgs.C, true);
+          expect(
+            (await svc.sign(ORG_C, f.encounterId, actorOf(orgs.C, "C", PART2_ROLES), SIGN_ARGS))
+              .status,
+          ).toBe("signed");
+          const sealed = await signedRowsOf(f);
+          expect(sealed.find((r) => r.section_id === "interventions")?.part2_derived).toBe(true);
+          expect(await pinPart2Of(f)).toBe(true);
+        });
+
+        it("a pin with no Part 2 text signs with the draft off exactly as before: nothing to seal, and every viewer reads final_cipher", async () => {
+          await setSwitch(orgs.C, true);
+          currentSeams = liveSeams();
+          const f = await prepared(orgs.C);
+          await resolveAll(orgs.C, f);
+          await finalize(orgs.C, f);
+          expect(await pinPart2Of(f)).toBe(false);
+          await setSwitch(orgs.C, false);
+          expect(
+            (await svc.sign(ORG_C, f.encounterId, actorOf(orgs.C, "C"), SIGN_ARGS)).status,
+          ).toBe("signed");
+          expect(await signedRowsOf(f)).toEqual([]);
+          const finalText = await open(ORG_C, one(await outputsOf(f)).final_cipher);
+          const view = await svc.getEncounter(ORG_C, f.encounterId, {
+            roles: ["rn"],
+            membershipId: orgs.C.author.membershipId,
+          });
+          expect(view.finalDocumentation).toBe(finalText);
+        });
+      });
+
+      describe("gate check 1: a confirmed drafted section satisfies its required section (project-lead decision)", () => {
+        const withoutPlan = {
+          sections: requireSelections.sections.filter((s) => s.sectionId !== "plan"),
+        };
+        /** Documented to the floor EXCEPT the required `plan` section, which only the draft (the care-plan goal) can fill. */
+        async function preparedWithoutPlan(org: OrgFixture = orgs.A) {
+          const f = await seedDraftWithPrevious(org);
+          await svc.updateSelections(
+            org.orgId,
+            f.encounterId,
+            0,
+            withoutPlan,
+            org.author.membershipId,
+          );
+          const vitals = requiredVitalsCapture("routine_visit", "rn");
+          if (vitals)
+            await svc.captureVitals(org.orgId, f.encounterId, vitals, org.author.membershipId);
+          return f;
+        }
+
+        it("while the drafted section is unresolved the required section is still missing, beside the draft's own refusal", async () => {
+          const f = await preparedWithoutPlan();
+          const error = await finalize(orgs.A, f).catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "COMPLIANCE_GATE_FAILED", statusCode: 422 });
+          expect(detailsOf(error)).toEqual(
+            expect.arrayContaining([
+              ["plan", "MISSING_SECTION"],
+              ["plan", "DRAFT_SECTION_UNRESOLVED"],
+            ]),
+          );
+        });
+
+        it("once the nurse confirms every drafted section the finalize and the sign pass with no statement of their own in `plan`, and the note carries the confirmed text", async () => {
+          const f = await preparedWithoutPlan();
+          await resolveAll(orgs.A, f);
+          expect((await finalize(orgs.A, f)).status).toBe("finalized");
+          expect(
+            (await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS)).status,
+          ).toBe("signed");
+          const signedText = await open(ORG_A, one(await outputsOf(f)).final_cipher);
+          expect(signedText).toMatch(
+            /Plan and Next Visit\n[^\n]*Pain controlled at an acceptable level/,
+          );
+        });
+
+        it("a deselected section does not satisfy it: the clinician's own free text still can", async () => {
+          const f = await preparedWithoutPlan();
+          await resolveAll(orgs.A, f, { plan: "deselected", interventions: "confirmed" });
+          const error = await finalize(orgs.A, f).catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "COMPLIANCE_GATE_FAILED", statusCode: 422 });
+          expect(detailsOf(error)).toEqual([["plan", "MISSING_SECTION"]]);
+          const version = (await svc.getEncounter(ORG_A, f.encounterId)).version;
+          await svc.updateSelections(
+            ORG_A,
+            f.encounterId,
+            version,
+            {
+              sections: [
+                ...withoutPlan.sections,
+                { sectionId: "plan", entries: [], freeText: OWN_TEXT },
+              ],
+            },
+            orgs.A.author.membershipId,
+          );
+          expect((await finalize(orgs.A, f)).status).toBe("finalized");
+        });
+
+        it("a tenant with the draft off is judged exactly as today: the required section is missing", async () => {
+          const f = await preparedWithoutPlan(orgs.B);
+          const error = await svc
+            .finalize(ORG_B, f.encounterId, SERVICE_DATE as never, {
+              viewer: viewerOf(orgs.B.author),
+            })
+            .catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "COMPLIANCE_GATE_FAILED", statusCode: 422 });
+          expect(detailsOf(error)).toEqual([["plan", "MISSING_SECTION"]]);
         });
       });
 

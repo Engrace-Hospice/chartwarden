@@ -501,3 +501,57 @@ describe("§2.6 Layer-3 gate — check 13, every drafted section is resolved (AD
     expect(checks).toEqual(new Set(["required_sections", "draft_sections_resolved"]));
   });
 });
+
+describe("§2.6 Layer-3 gate — check 1 counts a confirmed drafted section as populated (ADR-0114, project-lead decision)", () => {
+  const REQUIRED = ["assessment", "chief_concern", "plan", "vitals_review"] as const;
+  const base = {
+    encounterType: "routine_visit",
+    discipline: "rn",
+    sections: [],
+    carePlanOverdue: null,
+    vitalsCaptured: ALL_VITALS_CAPTURED,
+    vitalsClinicallyNotIndicated: NO_CNI,
+    scalesPresent: NO_SCALES_PRESENT,
+  } as const;
+  const missingOf = (r: ReturnType<typeof runEncounterComplianceGate>) =>
+    r.pass ? [] : r.remediation.filter((x) => x.check === "required_sections").map((x) => x.field);
+
+  it("is unchanged when the draft is off: the fact is absent and every required section is still demanded", () => {
+    expect(missingOf(runEncounterComplianceGate(base)).sort()).toEqual([...REQUIRED].sort());
+  });
+
+  it("a section the clinician confirmed drafted text for (the care-plan goals of `plan`) satisfies its required section, with no selection of their own", () => {
+    const r = runEncounterComplianceGate({
+      ...base,
+      sections: documented("routine_visit", "rn").filter((s) => s.sectionId !== "plan"),
+      draftConfirmedSectionIds: new Set(["plan"]),
+    });
+    expect(r).toEqual({ pass: true });
+  });
+
+  it("only the named sections are covered: another required section with nothing in it is still missing", () => {
+    const r = runEncounterComplianceGate({
+      ...base,
+      draftConfirmedSectionIds: new Set(["plan"]),
+    });
+    expect(missingOf(r).sort()).toEqual(REQUIRED.filter((id) => id !== "plan").sort());
+  });
+
+  it("an empty set changes nothing (a draft that confirmed nothing)", () => {
+    const r = runEncounterComplianceGate({ ...base, draftConfirmedSectionIds: new Set() });
+    expect(missingOf(r).sort()).toEqual([...REQUIRED].sort());
+  });
+
+  it("keeps the per-check result shape: the remediation entries are what they were", () => {
+    const r = runEncounterComplianceGate({
+      ...base,
+      draftConfirmedSectionIds: new Set(["plan"]),
+    });
+    expect(r.pass).toBe(false);
+    if (r.pass) return;
+    for (const entry of r.remediation) {
+      expect(Object.keys(entry).sort()).toEqual(["check", "code", "field", "message"]);
+      expect(entry.code).toBe("MISSING_SECTION");
+    }
+  });
+});

@@ -32,6 +32,8 @@ export interface FinalNoteSection {
 export interface FinalNote {
   readonly narrative: string;
   readonly sections: readonly FinalNoteSection[];
+  /** True when any section of the note is Part 2 derived: what `hearthnote_assembled_output.part2_derived` records beside the pin. */
+  readonly part2Derived: boolean;
 }
 
 export function finalNoteOf(computed: ComputedDraft, states: readonly SectionState[]): FinalNote {
@@ -49,14 +51,16 @@ export function finalNoteOf(computed: ComputedDraft, states: readonly SectionSta
 
   const template = resolveSelectionTemplate(computed.selection);
   const blocks = assembleBlocks(template, computed.selection, computed.context, bodies);
+  const sections = blocks.map((block, position) => ({
+    sectionId: block.sectionId,
+    position,
+    text: block.text,
+    part2Derived: provenance.get(block.sectionId)?.part2Derived ?? false,
+    sourceRefs: provenance.get(block.sectionId)?.sourceRefs ?? [],
+  }));
   return {
     narrative: joinBlocks(blocks),
-    sections: blocks.map((block, position) => ({
-      sectionId: block.sectionId,
-      position,
-      text: block.text,
-      part2Derived: provenance.get(block.sectionId)?.part2Derived ?? false,
-      sourceRefs: provenance.get(block.sectionId)?.sourceRefs ?? [],
-    })),
+    sections,
+    part2Derived: sections.some((section) => section.part2Derived),
   };
 }

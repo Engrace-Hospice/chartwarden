@@ -117,6 +117,28 @@ describe("finalNoteOf: what the signed note says", () => {
     expect(note.narrative).not.toContain("Morphine sulfate");
   });
 
+  it("the note is Part 2 derived exactly when a confirmed section carries the compiler's fail-closed flag (what the pin records)", async () => {
+    const computed = await draftOf(); // `interventions` holds a SUD medication change, so the compiler flags it
+    const confirmedBoth = finalNoteOf(
+      computed,
+      statesOf(computed, [
+        resolution(computed, "plan", "confirmed"),
+        resolution(computed, "interventions", "confirmed"),
+      ]),
+    );
+    expect(blockOf(confirmedBoth, "interventions")?.part2Derived).toBe(true);
+    expect(confirmedBoth.part2Derived).toBe(true);
+    // Deselected, the SUD-derived sentences are in neither the text nor the flag.
+    const deselected = finalNoteOf(
+      computed,
+      statesOf(computed, [
+        resolution(computed, "plan", "confirmed"),
+        resolution(computed, "interventions", "deselected"),
+      ]),
+    );
+    expect(deselected.part2Derived).toBe(false);
+  });
+
   it("a section that was not drafted is the clinician's selections as Layer 1 renders them", async () => {
     const computed = await draftOf();
     const note = finalNoteOf(

@@ -113,7 +113,7 @@ function signingActorOf(request: FastifyRequest): SigningActor {
   };
 }
 
-/** The finalizing member as the visit-note draft sees them (ADR-0114): the session's roles and active membership, never the body. */
+/** The member acting as the visit-note draft and the signed-note view see them (ADR-0114): the session's roles and active membership, never the body. */
 function draftViewerOf(request: FastifyRequest): {
   roles: readonly string[];
   membershipId: string | null;
@@ -324,7 +324,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
     async (request) => {
       const { organizationId } = membershipActorOf(request);
-      return service.getEncounter(organizationId, encounterIdOf(request));
+      return service.getEncounter(organizationId, encounterIdOf(request), draftViewerOf(request));
     },
   );
 

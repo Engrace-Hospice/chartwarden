@@ -81,6 +81,13 @@ export interface EncounterGateFacts {
    * section is resolved. A draft that could not be computed never reaches here: the service refuses with COMPLIANCE_GATE_UNAVAILABLE.
    */
   readonly draftSectionActions?: readonly SectionAction[];
+  /**
+   * Check 1 (ADR-0114) — the sections the clinician CONFIRMED drafted text for: confirmed against the signer's recomputed draft (the bound
+   * hash still matches), so that text is what the note will say for the section. Such a section counts as populated even with no selection
+   * or free text of the clinician's own. A deselected, never resolved, stale or undrafted section is not in the set (a deselected section
+   * still passes through the clinician's own selections and free text). ABSENT when the draft is off, and then check 1 is exactly as it was.
+   */
+  readonly draftConfirmedSectionIds?: ReadonlySet<string>;
 }
 
 /** One structured remediation hint — the §2.6 "422 with remediation" payload, one entry per failure. */
@@ -122,7 +129,10 @@ export function runEncounterComplianceGate(facts: EncounterGateFacts): GateResul
       message: `no HearthNote template exists for '${facts.encounterType} × ${facts.discipline}'`,
     });
   } else {
-    const populated = new Set(facts.sections.filter(isPopulated).map((s) => s.sectionId));
+    const populated = new Set([
+      ...facts.sections.filter(isPopulated).map((s) => s.sectionId),
+      ...(facts.draftConfirmedSectionIds ?? []),
+    ]);
     for (const section of template.sections) {
       if (!section.required || populated.has(section.id)) continue;
       remediation.push({

@@ -55,7 +55,8 @@ export interface SignedNoteWrite {
 /**
  * At sign, inside the sign transaction: pins the signed note's text as the encounter's `final_cipher` (and `layer1_cipher`, equal to it
  * while Layer 2 is off) and writes one sealed row per section next to it. The finalize-time pin is what the author's draft said then; this
- * is what the signer's draft says now, and a note is signed against exactly that. Refuses (`ILLEGAL_TRANSITION`) when there is no pinned
+ * is what the signer's draft says now, and a note is signed against exactly that (`part2_derived` moves with it: it says whether that text carries
+ * a Part 2 derived section, as the rows do one by one). Refuses (`ILLEGAL_TRANSITION`) when there is no pinned
  * output to update or Layer 2 took part in it, since this write has no Layer-2 text to carry.
  */
 export async function pinAndSealSignedNote(tx: DbClient, write: SignedNoteWrite): Promise<void> {
@@ -78,7 +79,7 @@ export async function pinAndSealSignedNote(tx: DbClient, write: SignedNoteWrite)
   ]);
   const updated = await tx
     .update(OUT)
-    .set({ layer1Cipher, finalCipher })
+    .set({ layer1Cipher, finalCipher, part2Derived: write.note.part2Derived })
     .where(and(eq(OUT.id, pinned.id), eq(OUT.layer2InvolvedAtFinalize, false)))
     .returning({ id: OUT.id });
   if (updated.length === 0) {
@@ -103,4 +104,18 @@ export async function pinAndSealSignedNote(tx: DbClient, write: SignedNoteWrite)
       sourceRefs: [...row.sourceRefs],
     })),
   );
+}
+
+/**
+ * Whether the encounter's pinned narrative carries a Part 2 derived section (`hearthnote_assembled_output.part2_derived`, set at finalize from
+ * the author's confirmed draft). `false` when nothing is pinned.
+ */
+export async function pinCarriesPart2(tx: DbClient, encounterId: string): Promise<boolean> {
+  const [pinned] = await tx
+    .select({ part2Derived: OUT.part2Derived })
+    .from(OUT)
+    .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
+    .orderBy(desc(OUT.createdAt))
+    .limit(1);
+  return pinned?.part2Derived ?? false;
 }

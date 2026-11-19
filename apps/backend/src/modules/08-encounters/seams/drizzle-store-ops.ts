@@ -9,9 +9,10 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type { EncounterRenderPayload, MileagePayrollRow } from "@chartwarden/types";
-import { and, asc, between, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, between, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import { seedModalityFor } from "../consumers/seed-modality";
+import { readPinnedNote } from "../drafting/pinned-note";
 import type { HearthnoteEnvelopeCipher } from "../hearthnote-crypto";
 import { checkEncounterDisciplinePair } from "../lifecycle/index";
 import type { EncounterReaderStore } from "./store";
@@ -47,6 +48,8 @@ export interface EncounterStoreOpsDeps {
   readonly narrativeCipher?: HearthnoteEnvelopeCipher;
 }
 
+const UNBOUND_CIPHER = "renderPayload: the encounter narrative is pinned but no cipher is bound";
+
 /** The ambient request tenant — the port methods are id-keyed and carry no org argument. */
 function ambientOrg(operation: string): { organizationId: string; userId: string } {
   const ctx = getRequestContext();
@@ -71,22 +74,21 @@ export function createEncounterStoreOps(db: DbClient, deps: EncounterStoreOpsDep
           .where(eq(E.id, encounterId))
           .limit(1);
         if (!enc) return null;
-        const [pinned] = await tx
-          .select({ finalCipher: OUT.finalCipher })
-          .from(OUT)
-          .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
-          .orderBy(desc(OUT.createdAt))
-          .limit(1);
+        // ADR-0114 (VN-D13): this seam feeds documents, which are broadly readable and which M22 cannot classify as Part 2, so it is never
+        // entitled: a Part 2 derived section is withheld from `final`, the same view route 31 serves.
+        const cipher = deps.narrativeCipher;
+        const pinned = await readPinnedNote(tx as unknown as DbClient, encounterId, {
+          open: async (envelope) => {
+            if (!cipher) throw new Error(UNBOUND_CIPHER);
+            return cipher.open(enc.organizationId, envelope);
+          },
+          entitled: async () => false,
+        });
         // No pin ⇒ nothing was finalized: the seam serves SIGNED records only, so "not found" is the answer
         // (route 31 owns the unpinned preview). Never an empty string a renderer would print as a note.
-        if (!pinned) return null;
-        const cipher = deps.narrativeCipher;
-        if (!cipher) {
-          throw new Error(
-            "renderPayload: the encounter narrative is pinned but no cipher is bound",
-          );
-        }
-        const final = await cipher.open(enc.organizationId, pinned.finalCipher);
+        if (pinned === null) return null;
+        if (!cipher) throw new Error(UNBOUND_CIPHER);
+        const final = pinned.text;
         const addendumRows = await tx
           .select({
             addendumId: ADDENDUM.id,

@@ -16,6 +16,7 @@ const CONFIRMATION = read("1517_m8_encounter_draft_confirmation.sql");
 const SIGNED_SECTION = read("1518_m8_hearthnote_signed_section.sql");
 const POLICY = read("1519_m8_visit_note_draft_policy.sql");
 const FROZEN = read("1521_m8_assembled_output_frozen_after_sign.sql");
+const PART2_PIN = read("1522_m8_assembled_output_part2_derived.sql");
 
 /** The privilege list of the `GRANT ... ON "<table>" TO chartwarden_app` statement. */
 function appGrant(source: string, table: string): readonly string[] {
@@ -130,7 +131,9 @@ describe("hearthnote_signed_section", () => {
 
   it("ties the output to the row's own encounter and the siting pair to the encounter's", () => {
     expect(SIGNED_SECTION).toContain("o.encounter_id = NEW.encounter_id");
-    expect(SIGNED_SECTION).toContain("e.provider_entity_id IS NOT DISTINCT FROM NEW.provider_entity_id");
+    expect(SIGNED_SECTION).toContain(
+      "e.provider_entity_id IS NOT DISTINCT FROM NEW.provider_entity_id",
+    );
     expect(SIGNED_SECTION).toContain("e.location_id IS NOT DISTINCT FROM NEW.location_id");
   });
 
@@ -175,7 +178,9 @@ describe("migration 1521: the signed narrative is frozen", () => {
   });
 
   it("freezes at signed, cosign_pending and cosigned and fails closed on an unreadable parent", () => {
-    expect(FROZEN).toContain("v_status IS NULL OR v_status IN ('signed', 'cosign_pending', 'cosigned')");
+    expect(FROZEN).toContain(
+      "v_status IS NULL OR v_status IN ('signed', 'cosign_pending', 'cosigned')",
+    );
     expect(FROZEN).toContain("ERRCODE = 'restrict_violation'");
   });
 
@@ -183,6 +188,26 @@ describe("migration 1521: the signed narrative is frozen", () => {
     expect(FROZEN).toContain("pg_has_role(current_user, 'chartwarden_destruction', 'MEMBER')");
     expect(FROZEN).toContain("r.rolsuper");
     expect(FROZEN).toContain("NEW.final_cipher = ''");
+  });
+});
+
+describe("migration 1522: the pin records whether it carries Part 2 derived text", () => {
+  it("stays an expand (arch:migration-compat reads this header)", () => {
+    expect(PART2_PIN.startsWith("-- compat: expand")).toBe(true);
+  });
+
+  it("adds one NOT NULL boolean that defaults to false, so every existing pin reads as carrying none", () => {
+    expect(PART2_PIN).toMatch(
+      /ALTER TABLE "hearthnote_assembled_output"\s+ADD COLUMN "part2_derived" boolean DEFAULT false NOT NULL/,
+    );
+  });
+
+  it("is mirrored in the Drizzle schema, not null with a false default", () => {
+    const column = getTableConfig(schema.hearthnoteAssembledOutputs).columns.find(
+      (c) => c.name === "part2_derived",
+    );
+    expect(column?.notNull).toBe(true);
+    expect(column?.default).toBe(false);
   });
 });
 

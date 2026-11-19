@@ -3,19 +3,22 @@
 //
 //   read        the viewer's draft against the stored confirmations (`null` when the tenant has the switch off): the facts the gate
 //               decides check 13 over, and what sign refuses on.
-//   narrativeOf the text finalize pins as `final_cipher` (`undefined` when the draft is off, so the pin is Layer 1 as it always was).
+//   narrativeOf the text finalize pins as `final_cipher` (`undefined` when the draft is off, so the pin is Layer 1 as it always was), and
+//   part2DerivedOf whether that text carries a Part 2 derived section, which the pin records beside it.
 //   sealSigned  at sign: pins the signed note's text and writes its sealed per-section rows, in the sign transaction.
+//   assertDraftNotWithdrawn at sign: refuses a pin whose Part 2 derived text could not be sealed because the draft is off now.
 //
 // Everything runs on the transaction it is handed, so RLS scopes every read and the writes commit or roll back with the sign.
 import type { DbClient } from "@chartwarden/db";
 import type { HearthnoteEnvelopeCipher } from "../hearthnote-crypto";
+import { EncounterStateError } from "../lifecycle/errors";
 import { createDbDraftStore } from "./db-draft-store";
 import { finalNoteOf } from "./final-note";
 import { type NoteDraft, readNoteDraft } from "./note-draft";
 import { isVisitNoteDraftEnabled } from "./policy-service";
 import type { DraftEncounter, DraftSeamPorts, DraftViewer } from "./ports";
 import { serialSeams } from "./serial-seams";
-import { pinAndSealSignedNote } from "./signed-sections";
+import { pinAndSealSignedNote, pinCarriesPart2 } from "./signed-sections";
 
 /** What the flow needs of an encounter row: the draft's projection and the siting the sealed rows copy. */
 export interface FlowEncounter extends DraftEncounter {
@@ -36,6 +39,18 @@ export interface NoteDraftFlowDeps {
 export interface NoteDraftFlow {
   read(tx: DbClient, encounter: FlowEncounter, viewer: DraftViewer): Promise<NoteDraft | null>;
   narrativeOf(draft: NoteDraft | null): string | undefined;
+  part2DerivedOf(draft: NoteDraft | null): boolean;
+  /**
+   * Sign with the draft off (the switch, or a template the corpus does not draft) over a pin the draft produced: when the pin carries
+   * a Part 2 derived section no sealed row can be written for it, so there would be nothing for the per-viewer view to withhold. 409
+   * `DRAFT_OFF_AFTER_FINALIZE`. Nothing is asked when the draft is on (sign then reseals the signer's own text), and a pin made without
+   * the draft (the switch off at finalize) carries no such section.
+   */
+  assertDraftNotWithdrawn(
+    tx: DbClient,
+    encounter: FlowEncounter,
+    draft: NoteDraft | null,
+  ): Promise<void>;
   sealSigned(tx: DbClient, encounter: FlowEncounter, draft: NoteDraft | null): Promise<void>;
 }
 
@@ -55,6 +70,18 @@ export function createNoteDraftFlow(deps: NoteDraftFlowDeps): NoteDraftFlow {
 
     narrativeOf(draft) {
       return draft === null ? undefined : finalNoteOf(draft.computed, draft.states).narrative;
+    },
+
+    part2DerivedOf(draft) {
+      return draft !== null && finalNoteOf(draft.computed, draft.states).part2Derived;
+    },
+
+    async assertDraftNotWithdrawn(tx, encounter, draft) {
+      if (draft !== null || !(await pinCarriesPart2(tx, encounter.id))) return;
+      throw new EncounterStateError(
+        "DRAFT_OFF_AFTER_FINALIZE",
+        "this note was finalized with drafted text that may hold 42 CFR Part 2 content, and the visit-note draft is now switched off for this organization, so the note cannot be sealed section by section: switch the draft back on for the organization, then sign again",
+      );
     },
 
     async sealSigned(tx, encounter, draft) {
