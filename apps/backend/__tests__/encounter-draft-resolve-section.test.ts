@@ -121,7 +121,12 @@ describe("confirming a section", () => {
       ...seams(),
       carePlanAsOf: async () =>
         carePlan({
-          goals: [{ ...(carePlan().goals[0] as never), text: "Pain controlled at a lower level" }],
+          goals: [
+            {
+              ...(carePlan().goals[0] as object),
+              text: "Pain controlled at a lower level",
+            } as never,
+          ],
         }),
     };
     const { draft } = await computeDraft({ ...changed, ...mem.store }, encounter, viewer(), NOW);

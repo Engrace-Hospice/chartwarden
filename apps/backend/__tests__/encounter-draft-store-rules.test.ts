@@ -1,5 +1,6 @@
 // S1 PR C2b1 — the pure rules the Drizzle draft store executes: the care-plan link planners (VN-D8) and the vitals row -> draft input
 // mapping (VN-D5, design §3.2 "Vitals"). The tables themselves are proven by the live suite.
+import { M8_ACTION_CATALOG } from "@chartwarden/audit";
 import { describe, expect, it } from "vitest";
 import {
   type LinkRowState,
@@ -9,6 +10,7 @@ import {
   planRemovals,
   removedElementIdsOf,
 } from "../src/modules/08-encounters/drafting/care-plan-refs";
+import { DRAFT_SECTION_AUDIT_EVENT } from "../src/modules/08-encounters/drafting/db-draft-unit";
 import {
   type VitalsRow,
   vitalsDraftInput,
@@ -144,5 +146,12 @@ describe("a vitals row as a draft input", () => {
     expect(out).not.toHaveProperty("temperature");
     expect(out).not.toHaveProperty("temperatureUnit");
     expect(out).not.toHaveProperty("painScore");
+  });
+});
+
+describe("the explicit audit event of a resolution", () => {
+  it("is catalogued, so the audit helper and the catalog agree on its name", () => {
+    expect(DRAFT_SECTION_AUDIT_EVENT).toBe("m8.encounter.draft_section_resolved");
+    expect(M8_ACTION_CATALOG.map((e) => e.action)).toContain(DRAFT_SECTION_AUDIT_EVENT);
   });
 });

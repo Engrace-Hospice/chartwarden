@@ -239,7 +239,7 @@ describe("GET /encounters/:encounterId/draft", () => {
     const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     app.addHook("onRoute", (route) => {
       if (route.url.endsWith("/draft") && route.method === "GET") {
-        declared.push(route.config?.auditRead as Record<string, unknown>);
+        declared.push(route.config?.auditRead as unknown as Record<string, unknown>);
       }
     });
     registerDraftSectionRoutes(app, { service: fakeService() as unknown as DraftService });
