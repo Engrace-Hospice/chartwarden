@@ -59,6 +59,7 @@ const EXPECTED_ALLOWLIST = [
   "GET /api/v1/encounters/:encounterId/care-plan-links",
   "GET /api/v1/encounters/:encounterId/chart-promotions",
   "GET /api/v1/encounters/:encounterId/cosignature",
+  "GET /api/v1/encounters/:encounterId/draft",
   "GET /api/v1/encounters/:encounterId/mileage",
   "GET /api/v1/encounters/:encounterId/selections",
   "GET /api/v1/encounters/:encounterId/template",
@@ -289,6 +290,7 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/triage-calls/:triageCallId/resume",
   "POST /api/v1/triage-calls/paper-reentry",
   "POST /api/v1/verbal-orders",
+  "PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId",
   "PUT /api/v1/medication-orders/:id/coverage-determination",
 ];
 
