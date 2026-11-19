@@ -10,6 +10,13 @@ import type {
   Resolution,
 } from "./draft-api";
 
+/** What a screen knows of one draft: not yet read, off for this viewer (switch off or no access), unreadable, or the draft itself. */
+export type DraftLoad =
+  | { readonly status: "loading" }
+  | { readonly status: "off" }
+  | { readonly status: "unavailable" }
+  | { readonly status: "ready"; readonly draft: DraftView };
+
 export const STATE_LABEL: Readonly<Record<DraftSectionState, string>> = {
   not_drafted: "Nothing to draft",
   unresolved: "Needs your review",

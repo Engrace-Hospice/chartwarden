@@ -262,3 +262,71 @@ describe("reading the draft", () => {
     expect(result.current.refreshing).toBe(false);
   });
 });
+
+// An amending addendum's own draft (ADR-0114 VN-D30): the same hook, read and resolved through the addendum's routes, so the note's
+// draft and the addendum's never mix.
+describe("the draft of an amending addendum", () => {
+  const ADDENDUM = "cccccccc-3333-4333-8333-cccccccccccc";
+  const DRAFT_ROUTE = `GET /api/v1/encounters/${ENC_A}/addenda/${ADDENDUM}/draft`;
+  const PUT_ROUTE = `PUT /api/v1/encounters/${ENC_A}/addenda/${ADDENDUM}/draft/sections/plan`;
+
+  function setupAddendum(routes: Record<string, Responder>) {
+    const calls: Call[] = [];
+    const client = createApiClient({
+      baseUrl: "http://localhost",
+      fetch: makeFetch(routes, calls),
+    });
+    const wrapper = ({ children }: { children: ReactNode }): JSX.Element => (
+      <ApiClientProvider client={client}>{children}</ApiClientProvider>
+    );
+    const view = renderHook(() => useNoteDraft(ENC_A, "", ADDENDUM), { wrapper });
+    return { ...view, calls };
+  }
+
+  it("reads and resolves a section through the addendum's own routes, never the note's", async () => {
+    const { result, calls } = setupAddendum({
+      [DRAFT_ROUTE]: () => ({
+        body: { ...draftOf(ENC_A, drafted("Amended goal.")), addendumId: ADDENDUM },
+      }),
+      [PUT_ROUTE]: () => ({ body: drafted("Amended goal.", "confirmed") }),
+    });
+    await waitFor(() => expect(textOf(result.current.load)).toBe("Amended goal."));
+    const section = (result.current.load as { draft: { sections: Section[] } }).draft
+      .sections[0] as Section;
+    await act(async () => {
+      await result.current.resolve(section, "confirmed");
+    });
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      `GET /api/v1/encounters/${ENC_A}/addenda/${ADDENDUM}/draft`,
+      `PUT /api/v1/encounters/${ENC_A}/addenda/${ADDENDUM}/draft/sections/plan`,
+    ]);
+    expect(calls[1]?.body).toEqual({
+      resolution: "confirmed",
+      contentHash: "hash-Amended goal.",
+      corpusVersion: CORPUS,
+    });
+    await waitFor(() =>
+      expect(
+        (result.current.load as { draft: { sections: Section[] } }).draft.sections[0]?.state,
+      ).toBe("confirmed"),
+    );
+  });
+
+  it("is off for a 404 (the draft switch is off, or the addendum names no section)", async () => {
+    const { result } = setupAddendum({
+      [DRAFT_ROUTE]: () => ({ status: 404, body: { error: { code: "NOT_FOUND" } } }),
+    });
+    await waitFor(() => expect(result.current.load.status).toBe("off"));
+  });
+
+  it("reads nothing while the addendum is not known", async () => {
+    const calls: Call[] = [];
+    const client = createApiClient({ baseUrl: "http://localhost", fetch: makeFetch({}, calls) });
+    renderHook(() => useNoteDraft(undefined, "", "any"), {
+      wrapper: ({ children }: { children: ReactNode }): JSX.Element => (
+        <ApiClientProvider client={client}>{children}</ApiClientProvider>
+      ),
+    });
+    expect(calls).toEqual([]);
+  });
+});

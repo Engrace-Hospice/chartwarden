@@ -4,6 +4,8 @@
 //
 //   GET  /api/v1/encounters/{id}/draft                       the draft for the signed-in viewer, every template section with its state
 //   PUT  /api/v1/encounters/{id}/draft/sections/{sectionId}  confirm or deselect one section against the content seen (hash + corpus)
+//   GET  /api/v1/encounters/{id}/addenda/{addendumId}/draft  the same, for an amending addendum: only the sections it names (S1 PR E3)
+//   PUT  /api/v1/encounters/{id}/addenda/{addendumId}/draft/sections/{sectionId}   confirm or deselect one of them
 //   GET / PUT /api/v1/encounters/draft-policy                 the tenant's switch; PUT needs a fresh step-up and may be refused 409
 //                                                             CORPUS_REVIEW_PENDING
 //   GET / POST / DELETE /api/v1/encounters/{id}/care-plan-links   the visit's live care-plan links (the composer's picker)
@@ -26,6 +28,9 @@ type Ok<Op> = Op extends { responses: { 200: infer R } }
     : never;
 
 export type DraftView = Ok<operations["getApiV1EncountersByEncounterIdDraft"]>;
+export type AmendmentDraftView = Ok<
+  operations["getApiV1EncountersByEncounterIdAddendaByAddendumIdDraft"]
+>;
 export type DraftSectionView = DraftView["sections"][number];
 export type DraftSectionState = DraftSectionView["state"];
 export type DraftOrigin = DraftSectionView["origins"][number];
@@ -51,6 +56,10 @@ const REFUSAL_COPY: Readonly<Record<string, string>> = {
   DRAFT_UNAVAILABLE:
     "The draft could not be checked right now. Nothing was changed. Try again in a moment.",
   IMMUTABLE_AFTER_SIGN: "This note is already signed and can no longer be changed.",
+  UNKNOWN_TEMPLATE_SECTION:
+    "That section is not one this addendum amends. Nothing was changed. Reload the page and try again.",
+  ILLEGAL_TRANSITION:
+    "This addendum is already signed or voided, so its sections can no longer be changed.",
   FORBIDDEN: "You do not have access to do that on this note.",
 };
 
@@ -89,6 +98,41 @@ export function resolveDraftSection(
   return settle(() =>
     client.PUT("/api/v1/encounters/{encounterId}/draft/sections/{sectionId}", {
       params: { path: { encounterId, sectionId } },
+      body: { resolution, contentHash, corpusVersion },
+    }),
+  );
+}
+
+// ── an amending addendum's own draft (VN-D30) ──────────────────────────────────────────────────────────
+
+/** The draft of the SIGNED note as the addendum's author sees it, restricted to the sections the addendum names. */
+export function loadAmendmentDraft(
+  client: ApiClient,
+  encounterId: string,
+  addendumId: string,
+): Promise<Outcome<AmendmentDraftView>> {
+  return settle(() =>
+    client.GET("/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft", {
+      params: { path: { encounterId, addendumId } },
+    }),
+  );
+}
+
+/** Confirm or deselect one named section of an addendum's draft; same hash and corpus rules as the note's section. */
+export function resolveAmendmentSection(
+  client: ApiClient,
+  encounterId: string,
+  addendumId: string,
+  section: Pick<DraftSectionView, "sectionId" | "contentHash" | "corpusVersion">,
+  resolution: Resolution,
+): Promise<Outcome<DraftSectionView>> {
+  const { sectionId, contentHash, corpusVersion } = section;
+  if (contentHash === null || corpusVersion === null) {
+    return Promise.resolve({ ok: false, status: 0, error: null });
+  }
+  return settle(() =>
+    client.PUT("/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft/sections/{sectionId}", {
+      params: { path: { encounterId, addendumId, sectionId } },
       body: { resolution, contentHash, corpusVersion },
     }),
   );

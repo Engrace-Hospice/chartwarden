@@ -15,6 +15,7 @@
 //     for the resolve to land and then reads once (`rereadAfterResolve`).
 import { useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { amendedSectionNote } from "./amendment-model";
 import {
   type DraftSectionView,
   type DraftView,
@@ -22,21 +23,20 @@ import {
   type Resolution,
   SECTION_STALE_CODE,
   describeDraftRefusal,
+  loadAmendmentDraft,
   loadDraft,
+  resolveAmendmentSection,
   resolveDraftSection,
 } from "./draft-api";
 import {
+  type DraftLoad,
   type SectionNote,
   isDraftSectionView,
   replaceSection,
   resolutionNote,
 } from "./draft-model";
 
-export type DraftLoad =
-  | { readonly status: "loading" }
-  | { readonly status: "off" }
-  | { readonly status: "unavailable" }
-  | { readonly status: "ready"; readonly draft: DraftView };
+export type { DraftLoad };
 
 export interface NoteDraft {
   readonly load: DraftLoad;
@@ -69,9 +69,14 @@ function loadStateOf(outcome: Outcome<DraftView>): DraftLoad {
 
 /**
  * `refreshKey` re-reads the draft when it changes (a note that moved from draft to finalized pins its text); `encounterId` undefined reads
- * nothing yet (a page that does not know its encounter until it has loaded it).
+ * nothing yet (a page that does not know its encounter until it has loaded it). With `addendumId` the draft is that amending addendum's
+ * own (S1 PR E3, VN-D30): its named sections only, read and resolved through the addendum's routes, never the note's.
  */
-export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): NoteDraft {
+export function useNoteDraft(
+  encounterId: string | undefined,
+  refreshKey = "",
+  addendumId?: string,
+): NoteDraft {
   const client = useApiClient();
   const [load, setLoad] = useState<DraftLoad>({ status: "loading" });
   const [busySectionId, setBusySectionId] = useState<string | null>(null);
@@ -91,11 +96,13 @@ export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): 
     const mine = ++sequence.current;
     setNotes({});
     setRefreshing(true);
-    const outcome = await loadDraft(client, encounterId);
+    const outcome = await (addendumId === undefined
+      ? loadDraft(client, encounterId)
+      : loadAmendmentDraft(client, encounterId, addendumId));
     if (mine !== sequence.current) return;
     setRefreshing(false);
     setLoad(loadStateOf(outcome));
-  }, [client, encounterId]);
+  }, [client, encounterId, addendumId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `refreshKey` is the re-read trigger, not read in the body.
   useEffect(() => {
@@ -107,9 +114,9 @@ export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): 
     };
   }, [reload, refreshKey]);
 
-  // A resolve belongs to the encounter (and the screen) it started in. When either goes, its answer is stale: it must write nothing,
+  // A resolve belongs to the encounter, addendum (and the screen) it started in. When either goes, its answer is stale: it must write nothing,
   // and the guard it held must not outlive it (a resolve the next encounter starts is its own).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `encounterId` is the trigger for the cleanup, not read in the body.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `encounterId` and `addendumId` are the triggers for the cleanup, not read in the body.
   useEffect(
     () => () => {
       epoch.current += 1;
@@ -117,7 +124,7 @@ export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): 
       rereadAfterResolve.current = false;
       setBusySectionId(null);
     },
-    [encounterId],
+    [encounterId, addendumId],
   );
 
   const resolve = useCallback(
@@ -130,7 +137,9 @@ export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): 
       setNotes(({ [section.sectionId]: _gone, ...rest }) => rest);
       const noteFor = (sectionId: string, note: SectionNote): void =>
         setNotes((current) => ({ ...current, [sectionId]: note }));
-      const outcome = await resolveDraftSection(client, encounterId, section, resolution);
+      const outcome = await (addendumId === undefined
+        ? resolveDraftSection(client, encounterId, section, resolution)
+        : resolveAmendmentSection(client, encounterId, addendumId, section, resolution));
       if (!stillHere()) return false;
       inFlight.current = false;
       setBusySectionId(null);
@@ -143,8 +152,10 @@ export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): 
             : current,
         );
         if (rereadAsked) await reload();
-        if (stillHere())
-          noteFor(section.sectionId, resolutionNote(resolution, section, outcome.data));
+        if (stillHere()) {
+          const amended = addendumId === undefined ? null : amendedSectionNote(outcome.data.state);
+          noteFor(section.sectionId, amended ?? resolutionNote(resolution, section, outcome.data));
+        }
         return stillHere();
       }
       if (outcome.status === 404) {
@@ -161,7 +172,7 @@ export function useNoteDraft(encounterId: string | undefined, refreshKey = ""): 
       if (stillHere()) noteFor(section.sectionId, { tone: "error", text: failure.message });
       return false;
     },
-    [client, encounterId, reload],
+    [client, encounterId, addendumId, reload],
   );
 
   return { load, busySectionId, notes, refreshing, reload, resolve };

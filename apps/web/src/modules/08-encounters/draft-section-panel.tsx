@@ -11,6 +11,7 @@
 // `aria-disabled` and points at its reason with `aria-describedby`: a disabled button cannot take focus, so its reason would never be read.
 import { Button, InlineAlert, StatusPill } from "@chartwarden/ui";
 import type { JSX } from "react";
+import { amendedSectionOutcome } from "./amendment-model";
 import type { DraftSectionView, Resolution } from "./draft-api";
 import {
   STATE_LABEL,
@@ -29,6 +30,12 @@ export interface DraftSectionPanelProps {
   /** Why confirm and deselect cannot act right now (unsaved edits, a read-only note, another section in flight), else null. */
   readonly blockedReason: string | null;
   readonly onResolve: (resolution: Resolution) => Promise<boolean>;
+  /** Prefix of the element ids, when more than one draft is on the page (each amending addendum has its own); default is the note's. */
+  readonly idPrefix?: string;
+  /** The section belongs to an amending addendum (VN-D30): its words say "amendment" where the note's say "note", and care-plan links are never touched. */
+  readonly amending?: boolean;
+  /** The panel's heading and region name; default "Pre-drafted from the record". Each amended section names itself, so regions stay unique. */
+  readonly label?: string;
 }
 
 const STALE_EXPLANATION =
@@ -46,6 +53,9 @@ export function DraftSectionPanel({
   busy,
   blockedReason,
   onResolve,
+  idPrefix = "draft",
+  amending = false,
+  label = "Pre-drafted from the record",
 }: DraftSectionPanelProps): JSX.Element {
   // The heading of a drafted section, or the whole region of an empty one (a deselect can leave a section with nothing to draft).
   // Focus is moved after React has committed the new state: when a deselect leaves the section empty, the element that had the focus
@@ -53,7 +63,7 @@ export function DraftSectionPanel({
   const [focusRef, requestFocus] = useFocusRequest<HTMLHeadingElement>();
   const { state } = section;
   const waiting = busy || blockedReason !== null;
-  const reasonId = `draft-reason-${section.sectionId}`;
+  const reasonId = `${idPrefix}-reason-${section.sectionId}`;
   const resolve = async (resolution: Resolution): Promise<void> => {
     if (waiting) return;
     if (await onResolve(resolution)) requestFocus();
@@ -72,16 +82,12 @@ export function DraftSectionPanel({
 
   if (state === "not_drafted") {
     return (
-      <section
-        className="wx-draft wx-draft-empty"
-        aria-label="Pre-drafted from the record"
-        ref={focusRef}
-        tabIndex={-1}
-      >
+      <section className="wx-draft wx-draft-empty" aria-label={label} ref={focusRef} tabIndex={-1}>
         <StatusPill label={STATE_LABEL.not_drafted} tone="neutral" />
         <span className="wx-row-sub">
-          There is nothing in the record to draft this section from. Use the statements and notes
-          below.
+          {amending
+            ? amendedSectionOutcome("not_drafted")
+            : "There is nothing in the record to draft this section from. Use the statements and notes below."}
         </span>
         {status}
       </section>
@@ -94,15 +100,15 @@ export function DraftSectionPanel({
   const leftOut = state === "deselected";
 
   return (
-    <section className="wx-draft" aria-labelledby={`draft-title-${section.sectionId}`}>
+    <section className="wx-draft" aria-labelledby={`${idPrefix}-title-${section.sectionId}`}>
       <header className="wx-draft-head">
         <h3
-          id={`draft-title-${section.sectionId}`}
+          id={`${idPrefix}-title-${section.sectionId}`}
           ref={focusRef}
           tabIndex={-1}
           className="wx-draft-title"
         >
-          Pre-drafted from the record
+          {label}
         </h3>
         <StatusPill label={STATE_LABEL[state]} tone={STATE_TONE[state]} />
       </header>
@@ -113,7 +119,11 @@ export function DraftSectionPanel({
         </InlineAlert>
       ) : null}
       {state === "unresolved" ? <p className="wx-row-sub">{REVIEW_EXPLANATION}</p> : null}
-      {leftOut ? <p className="wx-row-sub">Left out of the note:</p> : null}
+      {leftOut ? (
+        <p className="wx-row-sub">
+          {amending ? "Not used for the amendment:" : "Left out of the note:"}
+        </p>
+      ) : null}
       <p className={leftOut ? "wx-draft-text is-left-out" : "wx-draft-text"}>{section.text}</p>
       <div className="wx-drawer-actions">
         {canConfirm ? (
@@ -145,7 +155,7 @@ export function DraftSectionPanel({
           {blockedReason}
         </p>
       ) : null}
-      {canDeselect && touchesCarePlan(section) ? (
+      {!amending && canDeselect && touchesCarePlan(section) ? (
         <p className="wx-row-sub">{CARE_PLAN_DESELECT_HINT}</p>
       ) : null}
       {status}

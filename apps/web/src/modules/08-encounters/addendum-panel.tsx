@@ -13,6 +13,7 @@ import {
   Button,
   CeremonyModal,
   EmptyState,
+  InlineAlert,
   Modal,
   StatusPill,
   TextAreaField,
@@ -39,7 +40,14 @@ import {
   saveAddendumSelections,
   signAddendum,
 } from "./addenda-api";
-import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
+import {
+  addendumRefusalMessage,
+  isSectionRefusal,
+  signBlockReason,
+  signedAmendmentMessage,
+} from "./amendment-model";
+import { AmendmentReview } from "./amendment-review";
+import { COSIGN_TONE, ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
   type TemplateView,
@@ -49,6 +57,9 @@ import {
   unmetRequiredSections,
 } from "./encounters-api";
 import { ProposedFromMessage } from "./proposed-from-message";
+import { humanizeSection } from "./sign-draft-notice";
+import { shortStamp } from "./signed-note-model";
+import { useNoteDraft } from "./use-note-draft";
 import { authFailureRedirect } from "./write-workflow";
 
 type Failure = Extract<AddendumResult<unknown>, { ok: false }>;
@@ -72,7 +83,7 @@ function FailureAlert({ failure }: { failure: Failure }): JSX.Element {
   const redirect = stepUp ?? (failure.status === 401 ? "/login" : null);
   return (
     <div role="alert" style={alertBox}>
-      <span>{failure.message}</span>
+      <span>{addendumRefusalMessage(failure)}</span>
       {redirect ? (
         <Link to={redirect} style={alertLink}>
           {failure.status === 401 ? "Sign in again" : "Re-authenticate"}
@@ -106,10 +117,13 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
   const [signingId, setSigningId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ addendumId: string; error: Failure } | null>(null);
+  // What the last sign of an amending addendum did (sections amended, cosignature requested), until the next action.
+  const [signedNote, setSignedNote] = useState<{ addendumId: string; text: string } | null>(null);
 
   async function finalize(addendumId: string): Promise<void> {
     setBusyId(addendumId);
     setFailure(null);
+    setSignedNote(null);
     const res = await finalizeAddendum(client, { encounterId, addendumId });
     setBusyId(null);
     if (!res.ok) return setFailure({ addendumId, error: res });
@@ -123,6 +137,8 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
     setBusyId(null);
     setSigningId(null);
     if (!res.ok) return setFailure({ addendumId, error: res });
+    const text = signedAmendmentMessage(res.value);
+    setSignedNote(text === null ? null : { addendumId, text });
     onChanged();
   }
 
@@ -136,75 +152,26 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
       ) : (
         <ul style={list}>
           {addenda.map((a) => (
-            <li key={a.id} style={item} aria-label={`Addendum ${a.id}`}>
-              <StackedRows
-                rows={[
-                  {
-                    label: "Status",
-                    value: (
-                      <StatusPill
-                        label={stateLabel(a.status)}
-                        tone={ENCOUNTER_TONE[a.status] ?? "neutral"}
-                      />
-                    ),
-                  },
-                  {
-                    label: "Author (membership)",
-                    value: <span style={mono}>{a.authoredByUserId}</span>,
-                  },
-                  { label: "Reason", value: a.reason },
-                  { label: "Opened", value: shortStamp(a.createdAt) },
-                  ...(a.signedAt ? [{ label: "Signed", value: shortStamp(a.signedAt) }] : []),
-                ]}
-              />
-              {a.status !== "signed" ? (
-                <div style={actions}>
-                  {a.status === "draft" ? (
-                    <>
-                      {editingId !== a.id ? (
-                        <Button
-                          tone="secondary"
-                          size="sm"
-                          disabled={busyId === a.id || editingId !== null}
-                          onClick={() => setEditingId(a.id)}
-                        >
-                          Edit draft
-                        </Button>
-                      ) : null}
-                      <Button
-                        size="sm"
-                        disabled={busyId === a.id || editingId === a.id}
-                        onClick={() => void finalize(a.id)}
-                      >
-                        {busyId === a.id ? "Working…" : "Finalize addendum"}
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      size="sm"
-                      disabled={busyId === a.id}
-                      onClick={() => {
-                        setFailure(null);
-                        setSigningId(a.id);
-                      }}
-                    >
-                      Sign addendum
-                    </Button>
-                  )}
-                </div>
-              ) : null}
-              {failure?.addendumId === a.id ? <FailureAlert failure={failure.error} /> : null}
-              {editingId === a.id && a.status === "draft" ? (
-                <AddendumEditor
-                  encounterId={encounterId}
-                  addendumId={a.id}
-                  onClose={() => {
-                    clearStepUpDraft(stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, a.id));
-                    setEditingId(null);
-                  }}
-                />
-              ) : null}
-            </li>
+            <AddendumItem
+              key={a.id}
+              encounterId={encounterId}
+              addendum={a}
+              busy={busyId === a.id}
+              editing={editingId === a.id}
+              editorLocked={editingId !== null}
+              failure={failure?.addendumId === a.id ? failure.error : null}
+              signedNote={signedNote?.addendumId === a.id ? signedNote.text : null}
+              onEdit={() => setEditingId(a.id)}
+              onCloseEditor={() => {
+                clearStepUpDraft(stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, a.id));
+                setEditingId(null);
+              }}
+              onFinalize={() => void finalize(a.id)}
+              onSign={() => {
+                setFailure(null);
+                setSigningId(a.id);
+              }}
+            />
           ))}
         </ul>
       )}
@@ -230,9 +197,138 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
   );
 }
 
-// Same "YYYY-MM-DD HH:mm" form the Sign-off card uses (UTC wall time from the server string).
-function shortStamp(iso: string): string {
-  return iso.slice(0, 16).replace("T", " ");
+interface ItemProps {
+  readonly encounterId: string;
+  readonly addendum: AddendumRow;
+  readonly busy: boolean;
+  /** This addendum's selections editor is open. */
+  readonly editing: boolean;
+  /** Some addendum's editor is open: only one at a time. */
+  readonly editorLocked: boolean;
+  /** The last refusal of an action on THIS addendum. */
+  readonly failure: Failure | null;
+  /** What its last sign did, for an amending addendum. */
+  readonly signedNote: string | null;
+  readonly onEdit: () => void;
+  readonly onCloseEditor: () => void;
+  readonly onFinalize: () => void;
+  readonly onSign: () => void;
+}
+
+/**
+ * One addendum and the next step its server status allows. An addendum that names sections of the signed note (VN-D30) also reads its own
+ * draft (only until it is signed): the named sections are reviewed here, and Sign waits, naming them, until each is confirmed or
+ * deselected. The server still judges the sign; this tells the signer first, so the button is not a dead end.
+ */
+function AddendumItem({
+  encounterId,
+  addendum: a,
+  busy,
+  editing,
+  editorLocked,
+  failure,
+  signedNote,
+  onEdit,
+  onCloseEditor,
+  onFinalize,
+  onSign,
+}: ItemProps): JSX.Element {
+  const amends = a.amendsSectionIds ?? [];
+  const reviewing = amends.length > 0 && a.status !== "signed";
+  // Reads nothing (undefined encounter) for a free or a signed addendum.
+  const amendment = useNoteDraft(reviewing ? encounterId : undefined, a.status, a.id);
+  const blockReason = reviewing ? signBlockReason(amendment.load) : null;
+  const blockId = `amend-block-${a.id}`;
+  // A sign refused for stale sections says so: read the draft again, so the sections it names show their new state.
+  const { reload: reloadAmendment } = amendment;
+  useEffect(() => {
+    if (isSectionRefusal(failure?.code)) void reloadAmendment();
+  }, [failure, reloadAmendment]);
+
+  return (
+    <li style={item} aria-label={`Addendum ${a.id}`}>
+      <StackedRows
+        rows={[
+          {
+            label: "Status",
+            value: (
+              <StatusPill
+                label={stateLabel(a.status)}
+                tone={ENCOUNTER_TONE[a.status] ?? "neutral"}
+              />
+            ),
+          },
+          {
+            label: "Author (membership)",
+            value: <span style={mono}>{a.authoredByUserId}</span>,
+          },
+          { label: "Reason", value: a.reason },
+          ...(amends.length > 0
+            ? [{ label: "Amends", value: amends.map(humanizeSection).join(", ") }]
+            : []),
+          ...(amends.length > 0 && a.cosignStatus
+            ? [
+                {
+                  label: "Cosignature of this amendment",
+                  value: (
+                    <StatusPill
+                      label={stateLabel(a.cosignStatus)}
+                      tone={COSIGN_TONE[a.cosignStatus] ?? "neutral"}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          { label: "Opened", value: shortStamp(a.createdAt) },
+          ...(a.signedAt ? [{ label: "Signed", value: shortStamp(a.signedAt) }] : []),
+        ]}
+      />
+      {reviewing ? (
+        <AmendmentReview addendumId={a.id} sectionIds={amends} draft={amendment} />
+      ) : null}
+      {a.status !== "signed" ? (
+        <div style={actions}>
+          {a.status === "draft" ? (
+            <>
+              {!editing ? (
+                <Button tone="secondary" size="sm" disabled={busy || editorLocked} onClick={onEdit}>
+                  Edit draft
+                </Button>
+              ) : null}
+              <Button size="sm" disabled={busy || editing} onClick={onFinalize}>
+                {busy ? "Working…" : "Finalize addendum"}
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              disabled={busy}
+              aria-disabled={blockReason !== null || undefined}
+              aria-describedby={blockReason !== null ? blockId : undefined}
+              style={blockReason !== null ? WAITING_STYLE : undefined}
+              onClick={() => {
+                if (blockReason === null) onSign();
+              }}
+            >
+              Sign addendum
+            </Button>
+          )}
+        </div>
+      ) : null}
+      {blockReason !== null ? (
+        <div id={blockId}>
+          <InlineAlert tone="warning" live={false}>
+            {blockReason}
+          </InlineAlert>
+        </div>
+      ) : null}
+      {signedNote !== null ? <output style={metaText}>{signedNote}</output> : null}
+      {failure ? <FailureAlert failure={failure} /> : null}
+      {editing && a.status === "draft" ? (
+        <AddendumEditor encounterId={encounterId} addendumId={a.id} onClose={onCloseEditor} />
+      ) : null}
+    </li>
+  );
 }
 
 interface StackedRow {
@@ -504,6 +600,8 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
   );
 }
 
+/** The kit Button sets opacity and cursor inline, so the look of a waiting button has to be inline too. */
+const WAITING_STYLE: CSSProperties = { opacity: 0.6, cursor: "not-allowed" };
 const stack: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.5rem" };
 const shell: CSSProperties = { display: "flex", flexDirection: "column" };
 const rowsList: CSSProperties = { margin: 0, display: "grid", rowGap: "0.55rem" };

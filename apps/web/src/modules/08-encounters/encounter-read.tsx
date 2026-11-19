@@ -22,8 +22,9 @@ import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail
 import { useNoteClosure } from "../../shell/note-closure";
 import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assessments-api";
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
-import type { AddendumRow } from "./addenda-api";
+import { type AddendumRow, openAddendum } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
+import { AmendSectionsPicker } from "./amend-sections-picker";
 import { draftIsActive, reviewCounts } from "./draft-model";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
 import {
@@ -31,7 +32,20 @@ import {
   NoteViewUnavailable,
   isNoteViewUnavailable,
 } from "./note-view-unavailable";
+import {
+  type FieldErrors,
+  errorMessage,
+  fieldErrorsFrom,
+  fieldKeyFromPath,
+  validationDetails,
+} from "./read-errors";
 import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice } from "./sign-draft-notice";
+import {
+  type FinalDocumentationView,
+  type NoteHistory,
+  amendableSections,
+} from "./signed-note-model";
+import { SignedNoteView } from "./signed-note-view";
 import { useNoteDraft } from "./use-note-draft";
 import {
   type DeliveryDraft,
@@ -72,6 +86,9 @@ interface Encounter {
   evvBracketPresent?: boolean;
   selections: Record<string, unknown> | null;
   finalDocumentation: string | null;
+  /** The signed note as structured data for this viewer (a withheld part has no text); null = nothing pinned, absent = an older API. */
+  finalDocumentationView?: FinalDocumentationView | null;
+  noteHistory?: NoteHistory | null;
   vitals: Record<string, unknown> | null;
   mileage: Record<string, unknown> | null;
   carePlanLinks: CarePlanLink[];
@@ -140,103 +157,6 @@ type EncounterSection =
   | "assessments"
   | "mileage"
   | "global";
-
-function errorMessage(error: unknown, fallback: string): string {
-  const body = error as {
-    message?: string;
-    title?: string;
-    detail?: string;
-    code?: string;
-    error?: {
-      message?: string;
-      title?: string;
-      detail?: string;
-      code?: string;
-    };
-  } | null;
-
-  if (body?.detail) return body.detail;
-  if (body?.message) return body.message;
-  if (body?.title) return body.title;
-  if (body?.error?.detail) return body.error.detail;
-  if (body?.error?.message) return body.error.message;
-  if (body?.error?.title) return body.error.title;
-
-  return fallback;
-}
-
-type FieldErrors = Record<string, string>;
-
-function validationDetails(error: unknown): Array<{ field?: string; message?: string }> {
-  const body = error as {
-    details?: unknown;
-    error?: {
-      details?: unknown;
-    };
-  } | null;
-
-  const raw = body?.error?.details ?? body?.details;
-  if (!Array.isArray(raw)) return [];
-
-  return raw.flatMap((detail) => {
-    if (typeof detail !== "object" || detail === null) return [];
-
-    const row = detail as {
-      field?: unknown;
-      path?: unknown;
-      message?: unknown;
-    };
-
-    const field =
-      typeof row.field === "string"
-        ? row.field
-        : typeof row.path === "string"
-          ? row.path
-          : undefined;
-
-    return [
-      {
-        field,
-        message: typeof row.message === "string" ? row.message : undefined,
-      },
-    ];
-  });
-}
-
-function fieldKeyFromPath(path: string | undefined): string | null {
-  if (!path) return null;
-
-  const normalized = path
-    .replace(/^body\./, "")
-    .replace(/^data\./, "")
-    .replace(/^selections\./, "");
-
-  if (
-    normalized.includes("clinicalSummary") ||
-    normalized === "finalDocumentation" ||
-    normalized === "documentation" ||
-    normalized === "narrative"
-  ) {
-    return "clinicalSummary";
-  }
-
-  return normalized.split(".").filter(Boolean).at(-1) ?? null;
-}
-
-function fieldErrorsFrom(error: unknown, supportedFields: readonly string[]): FieldErrors {
-  const supported = new Set(supportedFields);
-  const result: FieldErrors = {};
-
-  for (const detail of validationDetails(error)) {
-    const key = fieldKeyFromPath(detail.field);
-
-    if (key && supported.has(key) && detail.message && !result[key]) {
-      result[key] = detail.message;
-    }
-  }
-
-  return result;
-}
 
 function FieldError({ message }: { message?: string }): JSX.Element | null {
   if (!message) return null;
@@ -333,6 +253,11 @@ export function EncounterRead(): JSX.Element {
   const [sectionErrors, setSectionErrors] = useState<Partial<Record<EncounterSection, string>>>({});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [reason, setReason] = useState("");
+  // The sections an amending addendum names (VN-D30): chosen in the addendum dialog, and empty each time it opens.
+  const [amendIds, setAmendIds] = useState<readonly string[]>([]);
+  useEffect(() => {
+    if (utilityModal !== "addendum") setAmendIds([]);
+  }, [utilityModal]);
   const [notice, setNotice] = useState<string | null>(null);
   // The sign ceremony's delivery step (how the visit was delivered + optional documented times).
   const [delivery, setDelivery] = useState<DeliveryDraft>(() => initialDelivery(null));
@@ -451,6 +376,8 @@ export function EncounterRead(): JSX.Element {
             finalDocumentation?: string | null;
           }
         ).finalDocumentation ?? null,
+      finalDocumentationView: data.finalDocumentationView,
+      noteHistory: data.noteHistory,
       vitals: loadedVitals ?? null,
       mileage: loadedMileage ?? null,
       carePlanLinks:
@@ -1058,18 +985,10 @@ export function EncounterRead(): JSX.Element {
     if (!encounterId) return;
 
     await runMutation(
-      () =>
-        post("/api/v1/encounters/{encounterId}/addenda", {
-          params: {
-            path: {
-              encounterId,
-            },
-          },
-          body: {
-            reason: reason.trim(),
-          },
-        }),
-      "Addendum opened.",
+      () => openAddendum(client, encounterId, reason.trim(), amendIds),
+      amendIds.length > 0
+        ? "Addendum opened. Review the redrafted sections in the Addenda panel, then sign it."
+        : "Addendum opened.",
       ["reason"],
     );
   }
@@ -1111,6 +1030,8 @@ export function EncounterRead(): JSX.Element {
    * These remain unchanged.
    */
   const canSign = e.status === "finalized";
+  // Amending sections is offered only when the draft is on for this viewer (the same read the composer holds) and the note has sealed sections.
+  const amendable = draftLoad.status === "ready" ? amendableSections(e.finalDocumentationView) : [];
   // ADR-0114: signing is blocked until every drafted section is resolved; the server is the judge, this only tells the signer first.
   const draftSections =
     draftLoad.status === "ready" && draftIsActive(draftLoad.draft) ? draftLoad.draft : null;
@@ -1375,11 +1296,15 @@ export function EncounterRead(): JSX.Element {
                   </div>
                 ) : (
                   <div style={readOnlyPanel}>
-                    <p style={noteBody}>
-                      {e.finalDocumentation ||
+                    <SignedNoteView
+                      view={e.finalDocumentationView}
+                      history={e.noteHistory}
+                      fallbackText={
+                        e.finalDocumentation ||
                         noteText ||
-                        "No assembled documentation is available."}
-                    </p>
+                        "No assembled documentation is available."
+                      }
+                    />
                   </div>
                 )}
               </section>
@@ -2409,6 +2334,15 @@ export function EncounterRead(): JSX.Element {
             />
             <FieldError message={fieldErrors.reason} />
           </label>
+
+          {utilityModal === "addendum" && amendable.length > 0 ? (
+            <AmendSectionsPicker
+              sections={amendable}
+              chosen={amendIds}
+              onChange={setAmendIds}
+              disabled={busy}
+            />
+          ) : null}
 
           <div style={modalActions}>
             <button
