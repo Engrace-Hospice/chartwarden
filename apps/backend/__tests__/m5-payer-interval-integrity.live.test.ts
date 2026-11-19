@@ -632,7 +632,7 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
       );
     const before = (await admin.query("SELECT count(*)::int AS n FROM medicaid_claim")).rows[0].n;
     await expect(assemble("2026-09-01", "2026-09-30")).rejects.toMatchObject({
-      code: "MEDICAID_COVERAGE_NOT_IN_FORCE",
+      code: "MEDICAID_COVERAGE_CHANGED",
       statusCode: 409,
     });
     // Coverage that ends mid-window (a gap) is refused the same way.

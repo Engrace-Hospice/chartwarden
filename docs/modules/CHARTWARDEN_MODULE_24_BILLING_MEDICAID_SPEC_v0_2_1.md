@@ -125,6 +125,43 @@ Medicare adjudication/payment evidence, complete COB, R&B qualification, or auth
 combined secondary claim workflow below is a historical proposal and is not verified evidence of a supported Oregon
 electronic claim format. M24 electronic submission remains independently fail-closed.
 
+### 1.3.2 Claim structure and R&B day ownership (#876 L2)
+
+Assembly requires line families to match `kind`: hospice-only has hospice lines and no R&B arrangement; R&B-only
+has an applicable arrangement and at least one RHC/CHC day line with no hospice lines; combined requires both line
+families. The arrangement is resolved within the claim transaction and must match organization, patient, provider
+entity, facility identity, contract evidence and service dates. Historical days remain eligible only inside the
+arrangement's effective window (including a terminated arrangement's pre-termination dates).
+
+Assembly locks the arrangement and the patient's ordered day rows, rechecks each billable day against its identity,
+arrangement, current M6 LOC-period snapshot and stored routine per-diem, then conditionally changes `billable` to
+`billed` with the claim-line pointer and version. `rb_day_count_snapshot` equals committed R&B lines. Any conflict
+rolls back the claim header, lines, encounter joins, history, outbox event and day transitions. R&B days already
+billed or pending are not silently omitted from an overlapping claim. An R&B-owning pre-submission draft cannot be
+abandoned until a transaction-bound M6 re-evaluation can safely release those days; this release behavior remains
+deferred. The service does not calculate Medicaid payable amounts or apply a universal 95% factor.
+
+M24 locks the M6 admission row before reading LOC periods. M6 LOC change, bed-confirmation and signed-order consumer
+writes use that same row lock, so the separate M6 reader's snapshot remains stable until M24 commits. A day whose
+status is explicitly overridden to `billable` may retain its prior exclusion reason as history; assembly validates
+the current status and underlying LOC/rate/identity snapshots without erasing that reason.
+
+R&B assembly also reads M6's effective stay-end facts on the locked admission transaction. A non-death discharge,
+revocation or transfer-out excludes the effective end date and later days; a death date remains eligible while
+later days are excluded. A terminal admission with missing or conflicting effective-end evidence fails closed.
+For-cause discharge dates awaiting cosign are also read in that transaction; R&B days on or after the pending
+effective date remain blocked until the discharge is accepted or declined. M6 cosign takes the same admission
+lock before changing the existing discharge event, preventing M24 from observing a partially completed discharge.
+This check is separate from the LOC-period snapshot because `admission.discharged_at` records processing time and
+does not identify the effective service end date. A previously materialized day cannot be consumed based only on
+its old `billable` status while the asynchronous M24 discharge consumer is pending.
+
+The app role has no claim-header DELETE privilege and claim state history is append-only. The legacy DELETE route
+therefore refuses physical deletion with a typed error. The explicit POST abandon lifecycle archives eligible
+pre-submission non-R&B drafts without deleting their claim lines or history; it refuses any claim with a submission
+record and refuses R&B drafts while their days remain reserved. Rejected submitted claims retain their external
+submission evidence and never release their R&B day ownership through the draft path.
+
 Sources: [OAR 410-142-0040](https://secure.sos.state.or.us/oard/viewSingleRule.action?ruleVrsnRsn=87222);
 [OAR Division 142, including 410-142-0290](https://secure.sos.state.or.us/oard/displayDivisionRules.action?selectedDivision=1729).
 
@@ -232,17 +269,18 @@ DRAFT
   │                           ├─[all rules pass]→ READY
   │                           ├─[has failures, no override]→ FAILED_VALIDATION
   │                           └─[failed but all overridden]→ READY
-  ├─[user deletes draft]→ (gone — DRAFT-only delete)
+  ├─[user abandons; no submission or reserved R&B days]→ ABANDONED (claim evidence retained)
   └─[user assembles into the wrong state's pipe]→ (rejected at route; no row written)
 
 FAILED_VALIDATION
   ├─[user edits upstream then re-validates]→ VALIDATING
   ├─[approver applies override]→ VALIDATING (re-runs to confirm only that rule was the blocker)
-  └─[user deletes draft]→ (gone)
+  └─[user abandons; no submission or reserved R&B days]→ ABANDONED (claim evidence retained)
 
 READY
   ├─[Medicare-primary not yet ACK_ACCEPTED]→ AWAITING_MEDICARE_PRIMARY
   ├─[user clicks Submit + step-up auth]→ SUBMITTED (via outbox + worker)
+  ├─[user abandons; no submission or reserved R&B days]→ ABANDONED (claim evidence retained)
   └─[upstream change triggers re-validate]→ VALIDATING
 
 AWAITING_MEDICARE_PRIMARY
@@ -287,7 +325,9 @@ REPLACED → terminal (chain head moved to replacement; original preserved)
 VOIDED → terminal (zeroed; chain preserved)
 DENIED → terminal-until-appeal (M25 owns the appeal flow)
 ABANDONED → terminal (kept for retention)
-FAILED_MEDICARE_PRIMARY → resolves when M23 primary repaired
+FAILED_MEDICARE_PRIMARY
+  ├─[M23 primary repaired and acknowledged]→ READY
+  └─[user abandons; no submission or reserved R&B days]→ ABANDONED (claim evidence retained)
 ```
 
 #### `noe_record` / `notr_record` — **not owned by M24**
@@ -1168,12 +1208,12 @@ The M4 destruction-cert workflow includes M24 in the per-tenant destruction swee
 |2  |GET   |`/medicaid-claims`                                         |List with filters (state, kind, mco, age-bucket, status, patient, period)         |`medicaid.claim.read`                        |`provider_entity_medicaid_billing_scope`     |—      |—         |
 |3  |GET   |`/medicaid-claims/:id`                                     |Read one claim with lines, history, validation runs, R&B context                  |`medicaid.claim.read`                        |`medicaid_claim_in_billing_manager_caseload` |—      |—         |
 |4  |PATCH |`/medicaid-claims/:id`                                     |Update DRAFT claim (ICD reordering, line edits, modifier corrections)             |`medicaid.claim.update_draft`                |`medicaid_claim_in_billing_manager_caseload` |—      |If-Match  |
-|5  |DELETE|`/medicaid-claims/:id`                                     |Delete a DRAFT claim                                                              |`medicaid.claim.delete_draft`                |`medicaid_claim_in_billing_manager_caseload` |—      |If-Match  |
+|5  |DELETE|`/medicaid-claims/:id`                                     |Legacy physical deletion is refused; use audited abandon                          |`medicaid.claim.delete_draft`                |`medicaid_claim_in_billing_manager_caseload` |—      |If-Match  |
 |6  |POST  |`/medicaid-claims/:id/validate`                            |Trigger manual re-validate                                                        |`medicaid.validation.run`                    |`medicaid_claim_in_billing_manager_caseload` |—      |—         |
 |7  |POST  |`/medicaid-claims/:id/submit`                              |Transition READY → SUBMITTED (drives outbox + worker)                             |`medicaid.claim.submit`                      |`medicaid_claim_in_billing_manager_caseload` |Yes    |If-Match  |
 |8  |POST  |`/medicaid-claims/:id/replace`                             |Build a TOB 817 replacement claim                                                 |`medicaid.claim.replace`                     |`medicaid_claim_in_billing_manager_caseload` |Yes    |If-Match  |
 |9  |POST  |`/medicaid-claims/:id/void`                                |Build a TOB 818 void                                                              |`medicaid.claim.void`                        |`medicaid_claim_in_billing_manager_caseload` |Yes    |If-Match  |
-|10 |POST  |`/medicaid-claims/:id/abandon`                             |Mark ACK_REJECTED claim as ABANDONED                                              |`medicaid.claim.update_draft`                |`medicaid_claim_in_billing_manager_caseload` |—      |If-Match  |
+|10 |POST  |`/medicaid-claims/:id/abandon`                             |Archive eligible pre-submission or ACK_REJECTED claim; R&B ownership is retained |`medicaid.claim.update_draft`                |`medicaid_claim_in_billing_manager_caseload` |—      |If-Match  |
 |11 |GET   |`/medicaid-claims/:id/lines`                               |Read claim lines (read-only post-DRAFT)                                           |`medicaid.claim.read`                        |`medicaid_claim_in_billing_manager_caseload` |—      |—         |
 |12 |GET   |`/medicaid-claims/:id/submissions`                         |Read submission attempts for a claim                                              |`medicaid.claim.read`                        |`medicaid_claim_in_billing_manager_caseload` |—      |—         |
 |13 |GET   |`/medicaid-claims/:id/acknowledgments`                     |Read ack history for a claim                                                      |`medicaid.claim.read`                        |`medicaid_claim_in_billing_manager_caseload` |—      |—         |
@@ -1694,7 +1734,7 @@ export const M24_PERMISSION_KEYS = [
   { key: 'medicaid.claim.assemble', category: 'medicaid_billing', description: 'Assemble a Medicaid claim from clinical artifacts' },
   { key: 'medicaid.claim.read', category: 'medicaid_billing', description: 'Read claims + lines + history within PE scope' },
   { key: 'medicaid.claim.update_draft', category: 'medicaid_billing', description: 'Edit a DRAFT Medicaid claim' },
-  { key: 'medicaid.claim.delete_draft', category: 'medicaid_billing', description: 'Delete a DRAFT Medicaid claim' },
+  { key: 'medicaid.claim.delete_draft', category: 'medicaid_billing', description: 'Request deletion of a DRAFT claim; physical deletion is refused to preserve audit evidence' },
   { key: 'medicaid.claim.submit', category: 'medicaid_billing', description: 'Submit a READY claim to the state (step-up)' },
   { key: 'medicaid.claim.replace', category: 'medicaid_billing', description: 'Build a TOB 817 replacement' },
   { key: 'medicaid.claim.void', category: 'medicaid_billing', description: 'Build a TOB 818 void' },
@@ -1917,8 +1957,8 @@ export const M24_ALERTS = {
 |--------------------------------------------------|---------------------------------------------------------------|-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 |Medicaid AR Dashboard                             |`/medicaid/billing/ar-dashboard`                               |Billing Manager        |Aging buckets by state and MCO, denial rate rolling, R&B billing rate, AR balance by patient                                                                       |
 |Medicaid Claim Workbench                          |`/medicaid/billing/claims`                                     |Biller                 |Filterable list of claims by state, MCO, status, kind, age, patient; bulk actions limited to validate-now and abandon                                              |
-|Medicaid Claim Editor                             |`/medicaid/billing/claims/:id`                                 |Biller                 |Single-claim editor with line-by-line view, validation results panel, R&B context panel, COB context panel (when dual-eligible), submission timeline, ack timeline |
-|Medicaid Assembly Wizard                          |`/medicaid/billing/claims/new`                                 |Biller                 |Stepped wizard: patient + range → kind selection (combined/hospice-only/rb-only) → MCO routing preview → COB confirmation (if dual) → assemble                     |
+|Medicaid Claim Editor                             |`/medicaid/billing/claims/:id`                                 |Biller                 |Single-claim editor with line-by-line view, validation results panel, R&B context panel, Medicare-linkage limitations, submission timeline, ack timeline             |
+|Medicaid Assembly Wizard                          |`/medicaid/billing/claims/new`                                 |Biller                 |Stepped wizard: patient + range → kind selection → R&B arrangement when applicable → advisory MCO routing → Medicare coordination notice → assemble               |
 |Medicaid Validation Worklist                      |`/medicaid/billing/validation-worklist`                        |Biller / Compliance    |Org-wide view of FAILED_VALIDATION + ACK_PARTIAL claims grouped by rule-key with remediation deep-links                                                            |
 |Medicaid Override Modal                           |(modal inside Claim Editor)                                    |Compliance / Manager   |Apply override on a failed rule; step-up auth required; reason ≥40 chars; role-eligibility check inline                                                            |
 |Medicaid Submission Confirmation                  |(modal inside Claim Editor)                                    |Billing Manager        |Pre-submit summary with channel + MCO + control-number preview; step-up auth at submit                                                                             |

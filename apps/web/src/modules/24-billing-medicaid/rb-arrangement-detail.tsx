@@ -453,6 +453,9 @@ function DayOverrideModal({
 
         <Field label="Service date" value={shortDate(day.serviceDate)} />
         <Field label="Current status" value={humanize(day.status)} />
+        {day.exclusionReason ? (
+          <Field label="Recorded exclusion reason" value={day.exclusionReason} />
+        ) : null}
 
         <label style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
           <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface)" }}>New status</span>
@@ -489,6 +492,13 @@ function DayOverrideModal({
               </span>
             ) : null}
           </label>
+        ) : null}
+
+        {day.status === "excluded" && day.exclusionReason ? (
+          <p style={mutedStyle}>
+            The exclusion reason is retained as history. Verify the current service and clinical
+            facts before requesting an authorized status override to make this day billable.
+          </p>
         ) : null}
 
         {error ? (

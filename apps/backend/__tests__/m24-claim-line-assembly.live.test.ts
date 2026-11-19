@@ -23,6 +23,7 @@ import { buildProviderEntityCcnResolver } from "../src/bootstrap/provider-entity
 import { createAdmissionLocPeriodsReader } from "../src/modules/06-admission";
 import {
   type LevelOfCarePeriodReaderPort,
+  type AdmissionCadenceReaderPort,
   type SignedEncounterWindowReaderPort,
   buildDrizzleM24WriteService as buildProductionM24WriteService,
 } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
@@ -37,11 +38,30 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const RB_PATIENT = "66666666-6666-6666-6666-666666666666";
 const RB_ADMISSION = "77777777-7777-7777-7777-777777777777";
+const STATUS_READER_PATIENT = "abababab-abab-abab-abab-abababababab";
 const LOC_1 = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
 const LOC_2 = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 let TEST_PE_ID = "";
 
-function buildDrizzleM24WriteService(
+const testCadenceReader: AdmissionCadenceReaderPort = {
+  cadenceSnapshotInTransaction: async (_tx, _org, admissionId) => ({
+    patientId: admissionId === RB_ADMISSION ? RB_PATIENT : PATIENT,
+    providerEntityId: TEST_PE_ID,
+    dischargedAt: null,
+    status: "active",
+    stayEndFacts: {
+      dischargeDate: null,
+      dischargeReason: null,
+      deceasedDate: null,
+      pendingDischargeDates: [],
+      transferOut: null,
+      revocationDate: null,
+    },
+  }),
+};
+
+function buildDrizzleM24WriteServiceWithCadence(
+  cadenceReader: AdmissionCadenceReaderPort,
   ...args: Parameters<typeof buildProductionM24WriteService>
 ): ReturnType<typeof buildProductionM24WriteService> {
   return buildProductionM24WriteService(
@@ -56,17 +76,17 @@ function buildDrizzleM24WriteService(
     args[8],
     args[9],
     args[10],
-    {
-      cadenceSnapshotInTransaction: async (_tx, _org, admissionId) => ({
-        patientId: admissionId === RB_ADMISSION ? RB_PATIENT : PATIENT,
-        providerEntityId: TEST_PE_ID,
-        dischargedAt: null,
-      }),
-    },
-    {
+    args[11] ?? cadenceReader,
+    args[12] ?? {
       adapterForState: () => ({ replacementTob: () => "817", voidTob: () => "818" }),
     },
   );
+}
+
+function buildDrizzleM24WriteService(
+  ...args: Parameters<typeof buildProductionM24WriteService>
+): ReturnType<typeof buildProductionM24WriteService> {
+  return buildDrizzleM24WriteServiceWithCadence(testCadenceReader, ...args);
 }
 
 describe.skipIf(!DB_URL)(
@@ -836,8 +856,8 @@ describe.skipIf(!DB_URL)(
       // surface as a billable LOC period. This proves that exact predicate against real Postgres, not just
       // that the fake reader this suite otherwise uses behaves as scripted.
       const adm = await admin.query(
-        "INSERT INTO admission (organization_id, patient_id) VALUES ($1,$2) RETURNING id",
-        [ORG, PATIENT],
+        "INSERT INTO admission (organization_id, patient_id, status) VALUES ($1,$2,'closed') RETURNING id",
+        [ORG, STATUS_READER_PATIENT],
       );
       const admissionId = adm.rows[0].id;
       // `lcp_adm_open_idx` permits only one open (ended_at IS NULL) period per admission — end this one so
@@ -880,7 +900,24 @@ describe.skipIf(!DB_URL)(
       );
       const rbDayId = rbDay.rows[0].id;
 
-      const svc = buildDrizzleM24WriteService(
+      const waCadenceReader: AdmissionCadenceReaderPort = {
+        cadenceSnapshotInTransaction: async () => ({
+          patientId: PATIENT,
+          providerEntityId: waPeId,
+          dischargedAt: null,
+          status: "active",
+          stayEndFacts: {
+            dischargeDate: null,
+            dischargeReason: null,
+            deceasedDate: null,
+            pendingDischargeDates: [],
+            transferOut: null,
+            revocationDate: null,
+          },
+        }),
+      };
+      const svc = buildDrizzleM24WriteServiceWithCadence(
+        waCadenceReader,
         handle.db,
         NOOP_OUTBOX,
         OPEN_CIPHER,
@@ -1011,16 +1048,19 @@ describe.skipIf(!DB_URL)(
       const ESC_LOC_ASSIGNING = "cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd";
 
       beforeAll(async () => {
-        // `level_of_care_period` FKs an admission this suite never builds; replica mode skips the FK
-        // triggers for the fixture rows only — the reads under test still run as `chartwarden_app` under RLS.
-        await admin.query("SET session_replication_role = replica");
+        // Seed the real synthetic admission so the production cadence reader verifies the same patient and
+        // provider identity as the request, and the LOC reader can follow the actual M6 relationship.
+        await admin.query(
+          `INSERT INTO admission (id, organization_id, provider_entity_id, patient_id, status, admission_at)
+           VALUES ($1,$2,$3,$4,'active','2026-03-01')`,
+          [ESC_ADMISSION, ORG, peId, ESC_PATIENT],
+        );
         await admin.query(
           `INSERT INTO level_of_care_period (id, organization_id, admission_id, level_of_care, effective_at, ended_at, status)
            VALUES ($1,$3,$4,'routine_home_care','2026-03-01','2026-03-31','active'),
                   ($2,$3,$4,'general_inpatient_care','2026-03-15',NULL,'assigning')`,
           [ESC_LOC, ESC_LOC_ASSIGNING, ORG, ESC_ADMISSION],
         );
-        await admin.query("SET session_replication_role = DEFAULT");
       });
 
       it("ccnReader reads provider_entity under the org's RLS context (was a 22P02 500 with no app.org_id)", async () => {
@@ -1038,7 +1078,8 @@ describe.skipIf(!DB_URL)(
       });
 
       it("assembleClaim with both real readers writes the line (the dev-seed M24 assemble 500)", async () => {
-        const svc = buildDrizzleM24WriteService(
+        const svc = buildDrizzleM24WriteServiceWithCadence(
+          createAdmissionLocPeriodsReader(handle.db),
           handle.db,
           NOOP_OUTBOX,
           OPEN_CIPHER,

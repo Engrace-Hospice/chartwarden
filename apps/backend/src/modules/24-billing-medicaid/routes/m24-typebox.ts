@@ -142,19 +142,32 @@ const RouteReadinessDto = Type.Object({
 // ── request bodies (§4.2) ───────────────────────────────────────────────────────────────────────────────
 
 /** POST /api/v1/medicaid-claims — assemble a draft over a patient + service range (§2.1). */
-export const AssembleClaimBody = Type.Object(
-  {
-    patientId: uuid(),
-    admissionId: uuid(),
-    providerEntityId: uuid(),
-    serviceFrom: isoDate(),
-    serviceTo: isoDate(),
-    kind: lit(CLAIM_KIND),
-    rbArrangementId: Type.Optional(uuid()),
-    medicareClaimId: Type.Optional(uuid()),
-  },
-  { additionalProperties: false },
-);
+const AssembleClaimFields = {
+  patientId: uuid(),
+  admissionId: uuid(),
+  providerEntityId: uuid(),
+  serviceFrom: isoDate(),
+  serviceTo: isoDate(),
+};
+
+export const AssembleClaimBody = Type.Union([
+  Type.Object(
+    { ...AssembleClaimFields, kind: lit(["hospice_only"] as const) },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { ...AssembleClaimFields, kind: lit(["rb_only"] as const), rbArrangementId: uuid() },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      ...AssembleClaimFields,
+      kind: lit(["combined_hospice_rb"] as const),
+      rbArrangementId: uuid(),
+    },
+    { additionalProperties: false },
+  ),
+]);
 
 /** PATCH /api/v1/medicaid-claims/:id — no tenant-supplied payer/MCO routing mutation is supported. */
 export const UpdateDraftClaimBody = Type.Object({}, { additionalProperties: false });

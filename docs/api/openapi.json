@@ -195219,62 +195219,132 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "required": [
-                  "patientId",
-                  "admissionId",
-                  "providerEntityId",
-                  "serviceFrom",
-                  "serviceTo",
-                  "kind"
-                ],
-                "properties": {
-                  "patientId": {
-                    "format": "uuid",
-                    "type": "string"
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "patientId",
+                      "admissionId",
+                      "providerEntityId",
+                      "serviceFrom",
+                      "serviceTo",
+                      "kind"
+                    ],
+                    "properties": {
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "providerEntityId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "serviceFrom": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "serviceTo": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "hospice_only",
+                        "type": "string"
+                      }
+                    }
                   },
-                  "admissionId": {
-                    "format": "uuid",
-                    "type": "string"
+                  {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "patientId",
+                      "admissionId",
+                      "providerEntityId",
+                      "serviceFrom",
+                      "serviceTo",
+                      "kind",
+                      "rbArrangementId"
+                    ],
+                    "properties": {
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "providerEntityId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "serviceFrom": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "serviceTo": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "rb_only",
+                        "type": "string"
+                      },
+                      "rbArrangementId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    }
                   },
-                  "providerEntityId": {
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "serviceFrom": {
-                    "format": "date",
-                    "type": "string"
-                  },
-                  "serviceTo": {
-                    "format": "date",
-                    "type": "string"
-                  },
-                  "kind": {
-                    "anyOf": [
-                      {
+                  {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "patientId",
+                      "admissionId",
+                      "providerEntityId",
+                      "serviceFrom",
+                      "serviceTo",
+                      "kind",
+                      "rbArrangementId"
+                    ],
+                    "properties": {
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "providerEntityId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "serviceFrom": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "serviceTo": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "kind": {
                         "const": "combined_hospice_rb",
                         "type": "string"
                       },
-                      {
-                        "const": "hospice_only",
-                        "type": "string"
-                      },
-                      {
-                        "const": "rb_only",
+                      "rbArrangementId": {
+                        "format": "uuid",
                         "type": "string"
                       }
-                    ]
-                  },
-                  "rbArrangementId": {
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "medicareClaimId": {
-                    "format": "uuid",
-                    "type": "string"
+                    }
                   }
-                }
+                ]
               }
             }
           }

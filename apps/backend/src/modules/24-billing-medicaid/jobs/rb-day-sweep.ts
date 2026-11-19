@@ -6,9 +6,10 @@
 // SEAM PULL, not outbox push (checked against the spec): §2.2 says an rb_day is "created by daily-r-and-b-
 // sweep cron when patient is NF-resident on that date", and §4.9 lists the cron `rb-day-daily-sweep` (daily
 // 01:30) as the producer. The M6 LOC-of-day is PULLED through an injected port (`RbLocPeriodsPort`) because
-// M24 does not list M6 in `dependsOn`; the composition root binds it over M6's org-explicit
-// `levelOfCarePeriodsForPatientForOrg`. Reads/writes on M24-owned tables run under `withOrgContext` (a cron
-// tick is not a request).
+// M24 does not list M6 in `dependsOn`; the composition root binds it over M6's admission-locking LOC snapshot
+// seam. The daily materializer holds those M6 admission locks through its M24 arrangement/day writes, matching
+// claim assembly's admission -> arrangement -> day order. Reads/writes run under `withOrgContext` (a cron tick
+// is not a request); the non-transactional M6 read remains available to read-only consumers.
 //
 // Day derivation (§2.2 lifecycle + §1.1 D6): for each ACTIVE arrangement, for every UTC calendar day from
 // `effective_from` through min(asOf, `effective_to`) that has NO rb_day yet for the patient (any status — a
@@ -24,6 +25,7 @@
 // LOC is not yet known, and a day without a LOC period is skipped rather than parked).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { DegradedError } from "@chartwarden/types";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { EligibilityWatchdogStore, RbDaySweepStore } from "./m24-jobs";
 
@@ -65,6 +67,19 @@ export interface RbLocPeriodsPort {
     patientId: string,
     range: { readonly from: Date; readonly to: Date },
   ): Promise<readonly RbSweepLocPeriod[]>;
+  /** Lock every patient admission and read this LOC snapshot on the caller's tenant transaction. */
+  periodsForPatientInTransaction(
+    transaction: unknown,
+    organizationId: string,
+    patientId: string,
+    range: { readonly from: Date; readonly to: Date },
+  ): Promise<readonly RbSweepLocPeriod[]>;
+  /** Acquire the M6 admission locks before a transaction-bound M24 arrangement/day read. */
+  lockPatientAdmissionsInTransaction(
+    transaction: unknown,
+    organizationId: string,
+    patientId: string,
+  ): Promise<void>;
 }
 
 export interface RbSweepArrangement {
@@ -174,6 +189,12 @@ export interface RbDaySweepStoreDeps {
 export function buildDrizzleRbDaySweepStore(deps: RbDaySweepStoreDeps): RbDaySweepStore {
   return {
     async sweepPendingDays(organizationId, asOf) {
+      if (!deps.locPeriods.periodsForPatientInTransaction) {
+        throw new DegradedError(
+          "M24_RB_LOC_TRANSACTION_READER_UNBOUND",
+          "the R&B day sweep requires M6's admission-locked LOC snapshot on the claim transaction",
+        );
+      }
       const asOfDay = utcDayStart(new Date(`${asOf}T00:00:00.000Z`));
       const ctx = { organizationId, userId: M24_SWEEP_SYSTEM_USER_ID };
       const arrangements = await withOrgContext(deps.db, ctx, (tx) =>
@@ -188,13 +209,28 @@ export function buildDrizzleRbDaySweepStore(deps: RbDaySweepStoreDeps): RbDaySwe
         const fromDay = utcDayStart(arr.effectiveFrom);
         const toDay = Math.min(asOfDay, arr.effectiveTo ? utcDayStart(arr.effectiveTo) : asOfDay);
         if (fromDay > toDay) continue;
-        // M6 read on its own org-scoped tx, never held open across the M24 write below.
-        const periods = await deps.locPeriods.periodsForPatient(organizationId, arr.patientId, {
-          from: new Date(fromDay),
-          to: new Date(toDay + MS_PER_DAY - 1),
-        });
-        if (periods.length === 0) continue;
         swept += await withOrgContext(deps.db, ctx, async (tx) => {
+          // Read LOC only after locking the M6 admissions, and hold those locks through the M24 write.
+          // This is the same admission -> arrangement -> day order used by claim assembly. A LOC change
+          // can no longer commit between the sweep snapshot and its rb_day inserts.
+          const periods = await deps.locPeriods.periodsForPatientInTransaction(
+            tx,
+            organizationId,
+            arr.patientId,
+            { from: new Date(fromDay), to: new Date(toDay + MS_PER_DAY - 1) },
+          );
+          if (periods.length === 0) return 0;
+          // Serialize materialization with claim assembly and arrangement edits. The initial list/read is
+          // only a candidate snapshot; never create days from an arrangement that became inactive or
+          // changed while the M6 periods were being fetched.
+          const currentRows = await tx
+            .select()
+            .from(RB)
+            .where(and(eq(RB.organizationId, organizationId), eq(RB.id, arr.id)))
+            .limit(1)
+            .for("update");
+          const current = currentRows[0];
+          if (!current || current.state !== "ACTIVE" || current.version !== arr.version) return 0;
           const existing = await tx
             .select({ serviceDate: RD.serviceDate })
             .from(RD)
@@ -207,7 +243,7 @@ export function buildDrizzleRbDaySweepStore(deps: RbDaySweepStoreDeps): RbDaySwe
               ),
             );
           const derived = deriveRbDays({
-            arrangement: arr,
+            arrangement: current,
             periods,
             fromDay,
             toDay,
@@ -219,10 +255,10 @@ export function buildDrizzleRbDaySweepStore(deps: RbDaySweepStoreDeps): RbDaySwe
             .values(
               derived.map((d) => ({
                 organizationId,
-                providerEntityId: arr.providerEntityId,
-                locationId: arr.locationId,
-                patientId: arr.patientId,
-                rbArrangementId: arr.id,
+                providerEntityId: current.providerEntityId,
+                locationId: current.locationId,
+                patientId: current.patientId,
+                rbArrangementId: current.id,
                 serviceDate: d.serviceDate,
                 locOfDay: d.locOfDay,
                 locPeriodIdSnapshot: d.locPeriodIdSnapshot,

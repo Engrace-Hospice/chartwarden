@@ -161,8 +161,9 @@ export function buildM6LevelOfCareChangeSignedConsumer(
         const [adm] = await tx
           .select({ status: ADM.status })
           .from(ADM)
-          .where(eq(ADM.id, admissionId))
-          .limit(1);
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+          .limit(1)
+          .for("update");
         if (!adm) {
           // Refuse rather than guess — an order-signed event for an admission M6 cannot resolve is a
           // genuine integration defect or a cross-tenant mismatch, not a business outcome.
@@ -170,6 +171,15 @@ export function buildM6LevelOfCareChangeSignedConsumer(
             `${M6_LEVEL_OF_CARE_CHANGE_SIGNED_CONSUMER.consumerName}: no admission ${admissionId} in org ${organizationId}`,
           );
         }
+        // M24 locks the admission while reading its LOC history and consuming R&B days. Serialize this
+        // consumer on that same row, then repeat the source-order check in case an identical delivery
+        // committed while this handler was waiting for the lock.
+        const [afterLock] = await tx
+          .select({ id: LOC.id })
+          .from(LOC)
+          .where(and(eq(LOC.organizationId, organizationId), eq(LOC.sourceOrderId, orderId)))
+          .limit(1);
+        if (afterLock) return;
 
         // The same pure §2.3.5 guard `changeLoc` runs — may throw ILLEGAL_TRANSITION /
         // IPU_FACILITY_REQUIRED / GIP_DOCUMENTATION_INSUFFICIENT / LEVEL_OF_CARE_OVERLAP (see file

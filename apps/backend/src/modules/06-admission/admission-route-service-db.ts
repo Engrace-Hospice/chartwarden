@@ -5582,9 +5582,13 @@ export function createDbAdmissionRouteService(
         const [adm] = await tx
           .select({ status: ADM.status })
           .from(ADM)
-          .where(eq(ADM.id, admissionId))
-          .limit(1);
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+          .limit(1)
+          .for("update");
         if (!adm) throw new ResourceNotFoundError(admissionId);
+        // M24 claim assembly locks this row while validating the admission's LOC snapshot and consuming
+        // R&B days. Serialize every LOC mutation on the same row so that snapshot remains authoritative
+        // through the claim transaction, even though the M6 reader uses its own read transaction.
         // §2.3.5 requestAssign — the guards (admission active/on-hold, no overlap, GIP documentation,
         // IRC/GIP facility). IRC/GIP land in `assigning` until confirmLocBedAssignment (below) verifies a
         // real M37 bed; RHC/CHC go straight to `active`.
@@ -5674,6 +5678,26 @@ export function createDbAdmissionRouteService(
     },
     async confirmLocBedAssignment(organizationId, locPeriodId, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [initial] = await tx
+          .select({
+            status: LOC.status,
+            version: LOC.version,
+            admissionId: LOC.admissionId,
+            effectiveAt: LOC.effectiveAt,
+          })
+          .from(LOC)
+          .where(and(eq(LOC.organizationId, organizationId), eq(LOC.id, locPeriodId)))
+          .limit(1);
+        if (!initial) throw new ResourceNotFoundError(locPeriodId);
+        // Keep the M24 LOC snapshot stable through claim assembly; it locks the admission before reading
+        // these periods. Acquire that same lock before changing an assigning period to active.
+        const [admission] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, initial.admissionId)))
+          .limit(1)
+          .for("update");
+        if (!admission) throw new ResourceNotFoundError(initial.admissionId);
         const [cur] = await tx
           .select({
             status: LOC.status,
@@ -5682,7 +5706,7 @@ export function createDbAdmissionRouteService(
             effectiveAt: LOC.effectiveAt,
           })
           .from(LOC)
-          .where(eq(LOC.id, locPeriodId))
+          .where(and(eq(LOC.organizationId, organizationId), eq(LOC.id, locPeriodId)))
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(locPeriodId);
         assertVersion(locPeriodId, Number(cur.version), ifVersion);
@@ -6472,6 +6496,32 @@ export function createDbAdmissionRouteService(
           throw conflict(
             `discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`,
           );
+        // M24 serializes R&B assembly on the admission row, then reads the current discharge event.
+        // Take that same lock BEFORE changing this existing child row: an UPDATE of discharge_event
+        // does not acquire the admission FK lock that an INSERT would. Otherwise M24 could read the
+        // old pending state while this transaction has already completed the event, then consume days
+        // after its effective discharge date.
+        const [lockedAdmission] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, cur.admissionId)))
+          .limit(1)
+          .for("update");
+        if (!lockedAdmission) throw new ResourceNotFoundError(cur.admissionId);
+        // Re-read after acquiring the admission lock, because another cosign/decline may have won while
+        // this request waited. Keep the established admission → discharge-event lock order.
+        const [lockedDischarge] = await tx
+          .select({ status: DE.status, version: DE.version })
+          .from(DE)
+          .where(and(eq(DE.organizationId, organizationId), eq(DE.id, id)))
+          .limit(1)
+          .for("update");
+        if (!lockedDischarge) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(lockedDischarge.version), ifVersion);
+        if (lockedDischarge.status !== "pending_cosign")
+          throw conflict(
+            `discharge ${id} is not awaiting a medical-director cosign (state '${lockedDischarge.status}')`,
+          );
         // W-DC-02 — the cosign completes the discharge AND discharges the admission held active while
         // awaiting governance sign-off (D11).
         const outcome = resolveForCauseDischarge("cosign");
@@ -6493,7 +6543,14 @@ export function createDbAdmissionRouteService(
               version: sql`${DE.version} + 1`,
               updatedAt: now(),
             })
-            .where(and(eq(DE.id, id), eq(DE.version, ifVersion)))
+            .where(
+              and(
+                eq(DE.organizationId, organizationId),
+                eq(DE.id, id),
+                eq(DE.version, lockedDischarge.version),
+                eq(DE.status, "pending_cosign"),
+              ),
+            )
             .returning({ id: DE.id, status: DE.status, version: DE.version }),
           "discharge not found",
         );

@@ -79097,11 +79097,38 @@ export interface operations {
                     serviceFrom: string;
                     /** Format: date */
                     serviceTo: string;
-                    kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                    /** @constant */
+                    kind: "hospice_only";
+                } | {
                     /** Format: uuid */
-                    rbArrangementId?: string;
+                    patientId: string;
                     /** Format: uuid */
-                    medicareClaimId?: string;
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    serviceFrom: string;
+                    /** Format: date */
+                    serviceTo: string;
+                    /** @constant */
+                    kind: "rb_only";
+                    /** Format: uuid */
+                    rbArrangementId: string;
+                } | {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    serviceFrom: string;
+                    /** Format: date */
+                    serviceTo: string;
+                    /** @constant */
+                    kind: "combined_hospice_rb";
+                    /** Format: uuid */
+                    rbArrangementId: string;
                 };
             };
         };

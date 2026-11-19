@@ -24,6 +24,8 @@ export * from "./control-number";
 export * from "./tob";
 // M24 payer-responsibility gate: claim kind, selected Medicaid and actual cross-kind primary coverage.
 export * from "./payer-policy";
+// M24 claim kind ↔ line-family structural invariant (separate from payer responsibility and state format).
+export * from "./claim-structure";
 // §4.6 the validation rule MODEL + REGISTRY + runner + the 13 platform-default rules.
 export * from "./rules";
 // §4.5 the MedicaidAdapter interface + DTOs.

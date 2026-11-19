@@ -13,7 +13,11 @@ import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { levelOfCarePeriodsForPatientForOrg } from "../src/modules/06-admission/seams/loc-periods-for-patient";
+import {
+  levelOfCarePeriodsForPatientForOrg,
+  levelOfCarePeriodsForPatientInTransaction,
+  lockPatientAdmissionsInTransaction,
+} from "../src/modules/06-admission/seams/loc-periods-for-patient";
 import {
   buildDrizzleEligibilityWatchdogStore,
   buildDrizzleRbDaySweepStore,
@@ -30,6 +34,7 @@ const USER = "33333333-3333-3333-3333-333333333333";
 const PATIENT_A = "44444444-4444-4444-4444-444444444444";
 const PATIENT_B = "55555555-5555-5555-5555-555555555555";
 const NF = "66666666-6666-6666-6666-666666666666";
+const LOCKED_PATIENT = "77777777-7777-7777-7777-777777777777";
 
 describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-071)", () => {
   let admin: Client;
@@ -66,14 +71,18 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
       );
     }
   }
-  const sweepStore = () =>
-    buildDrizzleRbDaySweepStore({
-      db: handle.db,
-      locPeriods: {
-        periodsForPatient: (organizationId, patientId, range) =>
-          levelOfCarePeriodsForPatientForOrg(handle.db, organizationId, patientId, range),
-      },
-    });
+  const locPeriods = {
+    periodsForPatient: (organizationId: string, patientId: string, range: { from: Date; to: Date }) =>
+      levelOfCarePeriodsForPatientForOrg(handle.db, organizationId, patientId, range),
+    periodsForPatientInTransaction: (
+      transaction: unknown,
+      organizationId: string,
+      patientId: string,
+      range: { from: Date; to: Date },
+    ) => levelOfCarePeriodsForPatientInTransaction(transaction, organizationId, patientId, range),
+    lockPatientAdmissionsInTransaction,
+  };
+  const sweepStore = () => buildDrizzleRbDaySweepStore({ db: handle.db, locPeriods });
   const dayRows = async (orgId: string, patientId: string) =>
     (
       await admin.query(
@@ -181,6 +190,70 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
     expect(await sweepStore().sweepPendingDays(ORG_B, "2026-05-20")).toBe(0);
   });
 
+  it("holds the admission lock from the LOC snapshot through R&B day materialization", async () => {
+    const arrangementId = await seedArrangement(ORG_A, LOCKED_PATIENT, "2026-06-01");
+    const admissionId = (
+      await admin.query(
+        "INSERT INTO admission (organization_id, patient_id) VALUES ($1,$2) RETURNING id",
+        [ORG_A, LOCKED_PATIENT],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO level_of_care_period
+         (organization_id, admission_id, level_of_care, status, effective_at)
+       VALUES ($1,$2,'routine_home_care','active','2026-06-01')`,
+      [ORG_A, admissionId],
+    );
+
+    const lockHolder = new Client({ connectionString: DB_URL });
+    await lockHolder.connect();
+    await lockHolder.query("BEGIN");
+    await lockHolder.query("SELECT id FROM admission WHERE id=$1 FOR UPDATE", [admissionId]);
+
+    let sweepFinished = false;
+    const sweep = sweepStore()
+      .sweepPendingDays(ORG_A, "2026-06-01")
+      .finally(() => {
+        sweepFinished = true;
+      });
+    try {
+      const deadline = Date.now() + 5_000;
+      let waitingOnAdmission = false;
+      while (Date.now() < deadline) {
+        const waits = await admin.query(
+          `SELECT 1 FROM pg_stat_activity
+            WHERE pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock'
+              AND query ILIKE '%admission%'
+            LIMIT 1`,
+        );
+        if (waits.rowCount) {
+          waitingOnAdmission = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(waitingOnAdmission).toBe(true);
+      expect(sweepFinished).toBe(false);
+      expect(
+        await admin.query("SELECT id FROM rb_day WHERE rb_arrangement_id=$1", [arrangementId]),
+      ).toMatchObject({ rows: [] });
+
+      await lockHolder.query("COMMIT");
+      expect(await sweep).toBe(1);
+    } finally {
+      await lockHolder.query("ROLLBACK").catch(() => undefined);
+      await lockHolder.end();
+    }
+
+    const materialized = await admin.query(
+      "SELECT status, loc_period_id_snapshot FROM rb_day WHERE rb_arrangement_id=$1",
+      [arrangementId],
+    );
+    expect(materialized.rows).toHaveLength(1);
+    expect(materialized.rows[0]).toMatchObject({ status: "billable" });
+  });
+
   it("eligibility watchdog returns patients whose latest check is past stale_at (RLS-scoped)", async () => {
     await admin.query(
       `INSERT INTO medicaid_eligibility_check (organization_id, patient_id, patient_payer_id, service_state,
@@ -202,10 +275,7 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
     const consumers = () =>
       buildM24RbDayConsumers({
         db: handle.db,
-        locPeriods: {
-          periodsForPatient: (organizationId, patientId, range) =>
-            levelOfCarePeriodsForPatientForOrg(handle.db, organizationId, patientId, range),
-        },
+        locPeriods,
         admissions: { patientIdForAdmission: async (_o, a) => ADMISSION_OF.get(a) ?? null },
       });
     const handler = (eventType: string) => {
