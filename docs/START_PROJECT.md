@@ -63,7 +63,7 @@ WORKER_PORT=3001
 
 The provided `.env.example` is a broad configuration template. These values align it
 with the local Compose services and ensure that the runtime role password stays in sync
-with the migration bootstrap. The `MINIO_*` names are the backend's S3 adapter contract and
+with the migration bootstrap. The `OBJECT_STORE_*` names are the backend's S3 adapter contract and
 point at RustFS locally; they are not a MinIO dependency.
 
 ## 3. Start local dependencies
