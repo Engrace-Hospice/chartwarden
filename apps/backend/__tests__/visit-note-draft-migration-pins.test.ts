@@ -47,6 +47,11 @@ describe.each([
     expect(source).toContain(`FUNCTION audit_phi_write_${table}()`);
   });
 
+  it("guards that the rows it references belong to its own organization (single-column FKs ignore RLS)", () => {
+    expect(source).toContain(`CREATE TRIGGER "trg_${table}_org_guard"`);
+    expect(source).toMatch(/RAISE EXCEPTION[^;]*USING ERRCODE = '23503'/);
+  });
+
   it("lets the destruction role delete the rows for tenant destruction", () => {
     expect(source).toMatch(
       new RegExp(`GRANT SELECT, (UPDATE, )?DELETE ON "${table}" TO chartwarden_destruction`),

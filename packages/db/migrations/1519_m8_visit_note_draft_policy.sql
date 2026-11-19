@@ -57,6 +57,21 @@ CREATE TRIGGER "trg_audit_visit_note_draft_policy"
   AFTER INSERT OR UPDATE OR DELETE ON visit_note_draft_policy
   FOR EACH ROW EXECUTE FUNCTION audit_phi_write_visit_note_draft_policy();--> statement-breakpoint
 
+-- The acting member must belong to the row's own organization (the single-column FK ignores RLS; the 1514 / 1517 guard shape, SECURITY
+-- INVOKER so the read runs under the caller's RLS).
+CREATE OR REPLACE FUNCTION visit_note_draft_policy_org_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM membership m WHERE m.id = NEW.changed_by_membership_id AND m.organization_id = NEW.organization_id) THEN
+    RAISE EXCEPTION 'visit_note_draft_policy: the acting member must belong to the row''s organization'
+      USING ERRCODE = '23503';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER "trg_visit_note_draft_policy_org_guard"
+  BEFORE INSERT OR UPDATE ON "visit_note_draft_policy"
+  FOR EACH ROW EXECUTE FUNCTION visit_note_draft_policy_org_guard();--> statement-breakpoint
+
 -- Tenant destruction (the 1099 / 1478 / 1514 pattern).
 GRANT SELECT, DELETE ON "visit_note_draft_policy" TO chartwarden_destruction;--> statement-breakpoint
 CREATE POLICY "visit_note_draft_policy_destruction" ON "visit_note_draft_policy"
