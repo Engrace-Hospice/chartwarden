@@ -6,6 +6,18 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-19 — Visit-note drafting (M8, ADR-0114): second review of slice 1 (one Part 2 decision, author-only amendment draft, audit)
+
+**No new route and no new field. Behaviour changes on routes that are not released yet; nothing changes for a tenant with the draft off, for an addendum that names no section, or for a reader with Part 2 disclosure.**
+
+- **`POST /encounters/{encounterId}/addenda`** with `amendsSectionIds`: `422 AMENDMENT_PART2_NOT_ENTITLED` is now decided on the NOTE, not the named section. When the note holds 42 CFR Part 2 content in any section at any version (its pin, an original or an amendment of any section) and the author has no Part 2 disclosure, naming ANY section is refused the same way, so the refusal no longer tells the author which sections hold Part 2. The message is now the generic "this note cannot be amended by this signer" (it was "a named section cannot be amended by this signer"). An unknown section id keeps `422 UNKNOWN_TEMPLATE_SECTION`; a free addendum is unaffected; the verdict is asked only when the note has Part 2 content. `POST .../addenda/{addendumId}/sign` runs the same check for the signer.
+- **`GET /encounters/{encounterId}`, a reader WITHOUT Part 2 disclosure.** One rule for every field: a section with a Part 2 derived version AT ANY TIME (the original or any amendment, whatever the latest text holds) is withheld whole. Before, the current view hid only a section whose LATEST version was Part 2, so a Part 2 original amended into non-Part 2 text showed its id, amending addendum and date. `addenda[].amendsSectionIds` drops such sections, and an addendum whose every named section is withheld reads as a free addendum: `cosignStatus` is `not_required` whatever its request says. An addendum with a visible named section keeps its `cosignStatus`.
+- **`GET /encounters/{encounterId}/addenda/{addendumId}/draft`** is the addendum AUTHOR's view alone: `403` for anyone else (the note's author and a supervisor included), whether the addendum is free, amending or absent. The author of a free addendum still gets `404`. A client that showed this draft to a reader who is not the addendum's author gets `403` from now on.
+- **Audit.** The audit event `m8.encounter.section_amended` is now ONE per signed addendum, `{ addendumId, sectionCount }`, standard retention class, not Part 2 eligible (it was one per section with `sectionId` and `part2Derived`, filed under the Part 2 class for a Part 2 section: `audit.read` is not Part 2 gated, so that told an audit reader which sections hold Part 2 content). The per-section trail is the row trigger of the sealed amendment row. The outbox event of the same name is unchanged (one per section, ids only).
+- **Audit actor.** The row-trigger audit images of the addendum's creation (and its naming rows), its finalize, a note's finalize and a vitals capture and edit are now filed under the acting user (they were filed as `system`).
+
+---
+
 ## 2026-11-19 — Visit-note drafting (M8, ADR-0114): review fixes to slice 1 (who confirms, per-viewer ids, who may amend)
 
 **No new route. Behaviour changes on routes that are not released yet, and nothing changes for a tenant with the draft off or for an addendum that names no section.**

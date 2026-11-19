@@ -62,8 +62,9 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 ### Amendments of a signed drafted note (ADR-0114 VN-D30, PR E2): limits recorded
 
 An addendum may name sections of a signed drafted note it amends; its sign seals the author's confirmed redraft of each as an append-only
-amendment row (the note's own rows and pin never change) and publishes `m8.encounter.section_amended` per amended section (outbox: ids only; the audit
-event of the same name carries the Part 2 flag and files under the Part 2 retention class when it is true). Same fail-closed
+amendment row (the note's own rows and pin never change) and publishes `m8.encounter.section_amended` per amended section (outbox: ids only). The audit
+event of the same name is ONE per signed addendum, `{ addendumId, sectionCount }`, standard retention class and not Part 2 eligible (`audit.read` is not Part 2
+gated, so no section id, flag or Part 2 class may sit on it); the per-section trail is the row trigger of the sealed amendment row. Same fail-closed
 posture as the note's own sign (a source or key-ring outage is a 503, never a pass). Recorded limits:
 
 - **No billing re-open.** An amendment touches no claim, no billability read and no event M23/M24 consumes.
@@ -73,16 +74,23 @@ posture as the note's own sign (a source or key-ring outage is a 503, never a pa
   cron's two-table sweep). Signing publishes `m8.encounter.addendum_cosigned` (no consumer), not `m8.encounter.cosigned`, and its provenance row is the new
   `encounter_signature` kind `addendum_cosignature` (migration 1524). The cosignature queue lists both kinds, told apart by `cosign.subject`.
 - **M22 has no Part 2 document path.** A rendered document shows the withheld marker where a Part 2 derived section (a note's, or an amendment's) is.
-- **A Part 2 section is amended only by an author with Part 2 disclosure** (`422 AMENDMENT_PART2_NOT_ENTITLED` at naming and again at sign; an M39 failure is
-  a 503, never a denial). The section's LATEST signed version decides (the original row, or the latest signed amendment of it), so a section amended into a
-  Part 2 one stays guarded. The refusal says "a named section cannot be amended by this signer" and names no section. An entitled author's redraft can still hold
-  no Part 2 content when its sources no longer do; the current view then shows it, and a viewer without disclosure is shown no history of that section.
+- **A note that holds Part 2 content is amended only by an author with Part 2 disclosure** (`422 AMENDMENT_PART2_NOT_ENTITLED` at naming and again at sign; an
+  M39 failure is a 503, never a denial). "Holds Part 2 content" is ONE note-wide fact: its pin is `part2_derived`, or any sealed row is (an original, or an
+  amendment of any section). A signer without disclosure is refused the same way whichever section they name, so the refusal says nothing of which sections are
+  Part 2 (answering "unknown section" for one would be the same oracle: template section ids are public). The refusal says "this note cannot be amended by this
+  signer" and names no section; the verdict is asked only when the note has Part 2 content, and a free addendum is unaffected. An entitled author's redraft can
+  still hold no Part 2 content when its sources no longer do; a viewer without disclosure still gets that section withheld whole, because it had a Part 2 version.
 - **Who may name sections.** Only the note's author or a supervisor (`403`, before any write; a free addendum is anyone's with the addendum permission).
   The amendment's cosigner is never the note's author: the cosign service refuses the author at acknowledge and sign, so an author who is the only RN on
   the caseload leaves the amendment `422 NO_ELIGIBLE_COSIGNER` before any write.
-- **A viewer without disclosure is told nothing about a Part 2 section's identity.** The current view keeps its place and a withheld flag with no section id,
-  amending addendum or date; the history omits every section with a withheld version (`null` when none is left); an addendum's `amendsSectionIds` drops the
-  ids of such sections, signed or not.
+- **A viewer without disclosure is told nothing about a Part 2 section's identity: one withheld set decides every field.** A section with a Part 2 version at
+  any time is withheld whole. The current view keeps its place and a withheld flag with no section id, amending addendum or date; the history omits it (`null`
+  when none is left); an addendum's `amendsSectionIds` drops its id, signed or not, and an addendum whose every named section is withheld reads as a free
+  addendum (`cosignStatus` `not_required`). Its own `signedAt` stays, as a free addendum has one.
+- **The amendment draft is its addendum author's view alone.** `GET .../addenda/{addendumId}/draft` is `403` for anyone else (the note's author and a supervisor
+  included), whether the addendum is free, amending or absent, so the refusal cannot be probed for which addenda name sections; the author of a free addendum
+  still gets `404`. The writes before a sign (the addendum's creation and finalize, a note's finalize, a vitals capture and edit) are filed under the acting user.
+  Recorded: the selections saves, the mileage writes and the EVV reconciliation are still filed under the system actor.
 - Only a section the draft can redraft can be amended; the previous-visit and discipline question, the web, the mobile app and other note types
   are out of scope.
 

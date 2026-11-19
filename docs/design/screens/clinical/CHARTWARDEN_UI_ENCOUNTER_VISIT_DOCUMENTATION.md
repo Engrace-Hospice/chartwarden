@@ -186,8 +186,10 @@ per section.
   sections the API sent: for a viewer without Part 2 disclosure it leaves out any Part 2 section the addendum
   named, signed or not, so the list is never read as a total, and no count is derived from it. An addendum
   whose named sections were all left out reads as a free addendum to that viewer: no **Amends**, no review, no
-  cosignature region), and, until it
-  is signed, shows an **Amended sections** region: for each named section the note's own drafted-section
+  cosignature region, and its cosignature status is `not_required` whatever its request says), and, until it
+  is signed, shows an **Amended sections** region to the addendum's AUTHOR alone (the API answers 403 to anyone
+  else for the addendum's draft, whether it is free or amending, so the page does not read it for another
+  viewer): for each named section the note's own drafted-section
   panel, fed by the addendum's own draft (its own resolutions, never the note's), with **Confirm section** and
   **Deselect section**. Confirmed, the status line reads "This section will be amended with the text you
   confirmed."; deselected, "Deselected: this amends nothing, and the section stays as it was signed."; a
@@ -210,7 +212,8 @@ per section.
   switch is off; offers the free addendum and names Admin, Visit-note Draft), 422 `UNKNOWN_TEMPLATE_SECTION`
   (reload and choose again), 422 `AMENDMENT_PART2_NOT_ENTITLED` (ask a colleague whose access includes it;
   the sentence is the app's, keyed on the code: the server's message is generic and names no section, and is
-  never shown). Resolving a section: 403 `FORBIDDEN` (only the addendum's author can confirm or deselect the
+  never shown; the server refuses the same way whichever section is named, so the sentence says that THIS NOTE
+  holds information the viewer's access does not include and never points at the section they chose). Resolving a section: 403 `FORBIDDEN` (only the addendum's author can confirm or deselect the
   sections it amends; nothing was changed; the section stays unresolved and Sign keeps waiting), 409
   `DRAFT_SECTION_STALE` (re-read, confirm again), 422 `UNKNOWN_TEMPLATE_SECTION`, 409 `ILLEGAL_TRANSITION`
   (already signed or voided). Signing: 409 `DRAFT_SECTION_STALE` names each unresolved or changed section and
