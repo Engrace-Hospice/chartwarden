@@ -61,6 +61,21 @@ const SECTION = {
 
 type SlotMap = Readonly<Record<string, SlotValue>>;
 
+const VITAL_CODES = {
+  bp: "nv.vit.bp",
+  hr: "nv.vit.hr",
+  rr: "nv.vit.rr",
+  temp: "nv.vit.temp",
+  spo2: "nv.vit.spo2",
+  pain: "nv.vit.pain",
+} as const;
+
+const CARE_PLAN_CODES = {
+  goalListed: "nv.cp.goal_listed",
+  goalProgress: "nv.cp.goal_progress",
+  interventionPerformed: "nv.cp.intervention_performed",
+} as const;
+
 /** Render one corpus phrase as a finished sentence. */
 function sentence(code: string, params: SlotMap): string {
   const entry = getVocabEntry(code);
@@ -174,11 +189,11 @@ function vitalsSentences(v: VitalsDraftInput): readonly string[] {
   const pain = num(v.painScore, "pain score");
 
   if (systolic !== undefined && diastolic !== undefined) {
-    sentences.push(sentence("nv.vit.bp", { bp_systolic: systolic, bp_diastolic: diastolic }));
+    sentences.push(sentence(VITAL_CODES.bp, { bp_systolic: systolic, bp_diastolic: diastolic }));
   }
-  if (heartRate !== undefined) sentences.push(sentence("nv.vit.hr", { heart_rate: heartRate }));
+  if (heartRate !== undefined) sentences.push(sentence(VITAL_CODES.hr, { heart_rate: heartRate }));
   if (respiratoryRate !== undefined) {
-    sentences.push(sentence("nv.vit.rr", { respiratory_rate: respiratoryRate }));
+    sentences.push(sentence(VITAL_CODES.rr, { respiratory_rate: respiratoryRate }));
   }
   if (v.temperature !== undefined) {
     const temperature = decimalText(v.temperature, "vitals temperature");
@@ -187,12 +202,12 @@ function vitalsSentences(v: VitalsDraftInput): readonly string[] {
     }
     if (v.temperatureUnit !== undefined) {
       sentences.push(
-        sentence("nv.vit.temp", { temperature, temperature_unit: v.temperatureUnit.toUpperCase() }),
+        sentence(VITAL_CODES.temp, { temperature, temperature_unit: v.temperatureUnit.toUpperCase() }),
       );
     }
   }
-  if (spo2 !== undefined) sentences.push(sentence("nv.vit.spo2", { spo2 }));
-  if (pain !== undefined) sentences.push(sentence("nv.vit.pain", { pain_score: pain }));
+  if (spo2 !== undefined) sentences.push(sentence(VITAL_CODES.spo2, { spo2 }));
+  if (pain !== undefined) sentences.push(sentence(VITAL_CODES.pain, { pain_score: pain }));
   return sentences;
 }
 
@@ -210,8 +225,8 @@ function goalGroups(carePlan: CarePlanDraftInput | null): readonly SourceGroup[]
     const progress = goal.progressStatement?.trim() ?? "";
     const text =
       progress.length === 0
-        ? sentence("nv.cp.goal_listed", { goal_text: goalText })
-        : sentence("nv.cp.goal_progress", { goal_text: goalText, progress_statement: progress });
+        ? sentence(CARE_PLAN_CODES.goalListed, { goal_text: goalText })
+        : sentence(CARE_PLAN_CODES.goalProgress, { goal_text: goalText, progress_statement: progress });
     return group("care_plan_goal", goal, [text]);
   });
 }
@@ -219,7 +234,7 @@ function goalGroups(carePlan: CarePlanDraftInput | null): readonly SourceGroup[]
 function interventionGroups(carePlan: CarePlanDraftInput | null): readonly SourceGroup[] {
   return sortedBy(carePlan?.interventions ?? [], (i) => [i.id]).map((intervention) =>
     group("care_plan_intervention", intervention, [
-      sentence("nv.cp.intervention_performed", {
+      sentence(CARE_PLAN_CODES.interventionPerformed, {
         intervention_text: sentenceText(
           intervention.interventionText,
           `care-plan intervention '${intervention.id}' text`,
@@ -257,6 +272,26 @@ function medicationGroups(
     },
   );
 }
+
+const scaleCodesOf = (sectionId: string): readonly string[] =>
+  Object.values(SCALE_SPECS).flatMap((spec) =>
+    spec !== undefined && spec.sectionId === sectionId ? Object.values(spec.codes) : [],
+  );
+
+/**
+ * The corpus phrases each section is drafted from: exactly the codes the builders above render. `scope.ts` reads the corpus's
+ * encounter-type and discipline tags of these codes to decide which templates draft at all. A section absent here is never drafted.
+ */
+export const DRAFT_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> = {
+  [SECTION.vitals]: Object.values(VITAL_CODES),
+  [SECTION.assessment]: scaleCodesOf(SECTION.assessment),
+  [SECTION.symptoms]: scaleCodesOf(SECTION.symptoms),
+  [SECTION.interventions]: [
+    CARE_PLAN_CODES.interventionPerformed,
+    ...Object.values(MEDICATION_CODES),
+  ],
+  [SECTION.plan]: [CARE_PLAN_CODES.goalListed, CARE_PLAN_CODES.goalProgress],
+};
 
 /** Every section that has at least one source, with its sources in order. Empty sections are absent. */
 export function collectSourceGroups(

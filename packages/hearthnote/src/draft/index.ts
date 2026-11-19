@@ -20,4 +20,5 @@ export type {
 } from "./types";
 export { type CanonicalValue, canonicalJson, normalizeText } from "./canonical";
 export { compileDraft } from "./compile";
+export { draftedSectionIds, emptyDraft, templateHasDraftedSection } from "./scope";
 export { DraftInputError } from "./validate";

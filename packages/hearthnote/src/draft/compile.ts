@@ -13,6 +13,7 @@ import {
 import { joinSentences } from "../assembly/grammar";
 import { templateKey } from "../templates/types";
 import { canonicalJson, normalizeText } from "./canonical";
+import { draftedSectionIds } from "./scope";
 import { type SourceGroup, collectSourceGroups } from "./sources";
 import type {
   Draft,
@@ -84,10 +85,13 @@ export function compileDraft(inputs: DraftInputs, deps: DraftDeps): Draft {
       `selection is for '${template.key}' but the draft is for '${claimed}'`,
     );
   }
-  const groups = collectSourceGroups(inputs, asOfMs);
+  // The corpus decides which sections of this template draft (scope.ts); a template with none builds no source group at all.
+  const drafted = draftedSectionIds(template.encounterType, template.discipline);
+  const groups: ReadonlyMap<string, readonly SourceGroup[]> =
+    drafted.size === 0 ? new Map() : collectSourceGroups(inputs, asOfMs);
   const selections = new Map(inputs.selection.sections.map((s) => [s.sectionId, s]));
   const sections = template.sections.map((section): DraftSection => {
-    const sourced = groups.get(section.id);
+    const sourced = drafted.has(section.id) ? groups.get(section.id) : undefined;
     if (sourced === undefined) return emptySection(section.id);
     const own = selections.get(section.id);
     const ownText = own === undefined ? "" : renderSection(own, inputs.context);
