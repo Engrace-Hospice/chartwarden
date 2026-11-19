@@ -47,6 +47,7 @@ offline storage was introduced by these commits.
 | M18 private PostgreSQL live suites | Owner-run evidence passed the read/RLS, write lifecycle, worker/tenant-scope, and DEK rotation/audit suites against fresh databases in an isolated `chartwarden-postgres:dev` container. The updated read suite passed 5/5, including the production aggregator route's evidence projection, cross-tenant exclusion, and actor-attributed list-read audit event under the NOBYPASSRLS application role. The updated write suite passed 29/29, including the production correction route's stale-step-up denial, successful immutable supersession, scrubbed M4 audit rows, outbox membership attribution, and replay conflict. |
 | OpenAPI and generated client | Regenerated and check-clean. |
 | EVV documentation corpus | Check-clean. |
+| Platform boot check | Passed with `DATABASE_PLATFORM_URL` set: the backend returned `/health` 200 and the outbox relay was polling. |
 | PR-1 browser sweep | Six EVV screens were checked at 375, 768, and 1440 px without horizontal overflow or automated axe violations. No screenshot artifact was retained. |
 
 The PR-3 evidence dialog was tested in the DOM accessibility suite after that browser sweep; it has not
@@ -60,7 +61,7 @@ received a second authenticated browser/device pass.
 - Physical iOS/Android foreground-location, permission, approximate-location, interruption, and attestation cases.
 - SQLCipher, WAL/SHM plaintext scan, backup exclusion, lost/wrong key, logout, account switch, reinstall, and offline replay recovery on devices.
 - Sandata sandbox submission/polling, vendor schema conformance, executed agreement/BAA verification, or production rollback rehearsal.
-- Full repository non-live test command and platform boot check after PR-3; focused EVV tests, typechecks, and architecture gates were run instead.
+- A completed full repository non-live test run after PR-3. The first attempt inherited an unavailable ambient database URL and also exposed a timing-sensitive harness test under full-suite contention; the harness test passed all 196 cases when isolated. A second run with `DATABASE_URL` and `DATABASE_PLATFORM_URL` removed continued for an extended period without completing and was terminated, so it is not recorded as passing. Focused EVV tests, full test typecheck, architecture gates, and the platform boot check passed.
 
 ## 5. Rollback and data safety
 
