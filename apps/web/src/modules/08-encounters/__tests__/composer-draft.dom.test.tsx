@@ -961,6 +961,76 @@ describe("a draft that is being re-read", () => {
     expect(screen.queryByText(/pre-drafted text could not be loaded/)).toBeNull();
   });
 
+  // The retry goes when the draft loads. The person who pressed it is left on the strip that took its place, which says what happened in a
+  // status that was on the page before (a region mounted with its text is not announced).
+  it("keeps focus on the strip and says the draft loaded, once the retry succeeds", async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    mountComposer({
+      [`GET ${BASE}/draft`]: () => {
+        attempts += 1;
+        return attempts === 1 ? errorBody(503, "DRAFT_UNAVAILABLE") : { body: draftBody() };
+      },
+    });
+    await ready();
+    const unavailable = await screen.findByRole("region", { name: "Drafted sections" });
+    // The strip's own status (its last child), not the retry's, which goes with it.
+    const status = unavailable.lastElementChild as HTMLOutputElement;
+    expect(status.tagName).toBe("OUTPUT");
+    expect(status).toBeEmptyDOMElement();
+    const retry = screen.getByRole("button", { name: "Try again" });
+    await user.click(retry);
+    await waitFor(() => expect(retry).not.toBeInTheDocument());
+    const strip = screen.getByRole("region", { name: "Drafted sections" });
+    expect(strip).toBe(unavailable);
+    await waitFor(() => expect(strip).toHaveFocus());
+    expect(strip.lastElementChild).toBe(status);
+    expect(status).toHaveTextContent(/The pre-drafted text loaded/);
+    expect(strip).toHaveTextContent(/drafted sections are resolved/);
+  });
+
+  it("keeps the strip for the person's place even when the draft that loads has nothing to review", async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    mountComposer({
+      [`GET ${BASE}/draft`]: () => {
+        attempts += 1;
+        if (attempts === 1) return errorBody(503, "DRAFT_UNAVAILABLE");
+        world.draftSections = world.draftSections.map((s) => empty(s.sectionId));
+        return { body: draftBody() };
+      },
+    });
+    await ready();
+    await screen.findByText(/pre-drafted text could not be loaded/);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    const strip = await screen.findByRole("region", { name: "Drafted sections" });
+    await waitFor(() => expect(strip).toHaveTextContent(/The pre-drafted text loaded/));
+    await waitFor(() => expect(strip).toHaveFocus());
+    expect(strip).not.toHaveTextContent(/could not be loaded/);
+  });
+
+  it("does not take focus from where the person went while the draft was being read again", async () => {
+    const user = userEvent.setup();
+    const retry = gate();
+    let attempts = 0;
+    mountComposer({
+      [`GET ${BASE}/draft`]: async () => {
+        attempts += 1;
+        if (attempts === 1) return errorBody(503, "DRAFT_UNAVAILABLE");
+        await retry.promise;
+        return { body: draftBody() };
+      },
+    });
+    await ready();
+    await screen.findByText(/pre-drafted text could not be loaded/);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    const save = screen.getByRole("button", { name: "Save draft" });
+    save.focus();
+    retry.open();
+    expect(await screen.findByText(/drafted sections are resolved/)).toBeInTheDocument();
+    expect(save).toHaveFocus();
+  });
+
   it("says the draft could not be checked, in words, when finalizing answers 503", async () => {
     const user = userEvent.setup();
     mountComposer({

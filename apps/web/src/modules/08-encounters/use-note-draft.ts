@@ -48,8 +48,11 @@ export interface NoteDraft {
   readonly notes: Readonly<Record<string, SectionNote>>;
   /** A re-read of the draft is in flight: the text on screen may be about to change, so nothing should be resolved against it. */
   readonly refreshing: boolean;
-  /** Re-read the draft (after a save or a link changed what it is built from). */
-  readonly reload: () => Promise<void>;
+  /**
+   * Re-read the draft (after a save or a link changed what it is built from). Resolves to what the screen now knows of it, or null when this
+   * read was not the one that counted (another was already out, or the screen moved on): then it says nothing about the outcome.
+   */
+  readonly reload: () => Promise<DraftLoad | null>;
   /** Confirm or deselect one drafted section. True when the server recorded it. */
   readonly resolve: (section: DraftSectionView, resolution: Resolution) => Promise<boolean>;
 }
@@ -97,11 +100,11 @@ export function useNoteDraft(
   // is about to change.
   const reading = useRef(false);
 
-  const reload = useCallback(async (): Promise<void> => {
-    if (!encounterId) return;
+  const reload = useCallback(async (): Promise<DraftLoad | null> => {
+    if (!encounterId) return null;
     if (inFlight.current) {
       rereadAfterResolve.current = true;
-      return;
+      return null;
     }
     const mine = ++sequence.current;
     setNotes({});
@@ -110,10 +113,12 @@ export function useNoteDraft(
     const outcome = await (addendumId === undefined
       ? loadDraft(client, encounterId)
       : loadAmendmentDraft(client, encounterId, addendumId));
-    if (mine !== sequence.current) return;
+    if (mine !== sequence.current) return null;
     reading.current = false;
     setRefreshing(false);
-    setLoad(loadStateOf(outcome, addendumId !== undefined));
+    const next = loadStateOf(outcome, addendumId !== undefined);
+    setLoad(next);
+    return next;
   }, [client, encounterId, addendumId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `refreshKey` is the re-read trigger, not read in the body.

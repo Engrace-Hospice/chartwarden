@@ -11,6 +11,7 @@ import { amendedSectionNote } from "./amendment-model";
 import { DraftSectionPanel } from "./draft-section-panel";
 import { RetryButton } from "./retry-button";
 import { humanizeSection } from "./sign-draft-notice";
+import { useDraftRetry } from "./use-draft-retry";
 import type { NoteDraft } from "./use-note-draft";
 
 const OFF_TEXT =
@@ -19,6 +20,9 @@ const UNAVAILABLE_TEXT = "The amended sections could not be read. Nothing was ch
 // The addendum's draft is its author's alone. Worded here, in the app's words: the server's text for the refusal is never shown.
 const NOT_AUTHOR_TEXT =
   "Only the author of this addendum can review the sections it amends. Nothing was changed. Ask the author to review and sign it, or open your own addendum.";
+
+// The "closed" answers (the draft is off for this viewer, or is the author's alone) say so in the region's own alert.
+const RETRY_WORDS = { ready: "The amended sections loaded.", closed: "" } as const;
 
 export interface AmendmentReviewProps {
   readonly addendumId: string;
@@ -40,6 +44,8 @@ export function AmendmentReview({
 }: AmendmentReviewProps): JSX.Element {
   const { load, notes, busySectionId, refreshing } = draft;
   const idPrefix = `amend-${addendumId}`;
+  // The region stays on the page whatever the retry finds, so it is where focus goes and where the outcome is said.
+  const { anchor, said, retry } = useDraftRetry<HTMLElement>(draft.reload, RETRY_WORDS);
 
   const body = (() => {
     switch (load.status) {
@@ -54,7 +60,7 @@ export function AmendmentReview({
           <>
             <InlineAlert tone="warning">{UNAVAILABLE_TEXT}</InlineAlert>
             <div>
-              <RetryButton retrying={refreshing} onRetry={() => void draft.reload()} />
+              <RetryButton retrying={refreshing} onRetry={retry} />
             </div>
           </>
         );
@@ -91,8 +97,14 @@ export function AmendmentReview({
   })();
 
   return (
-    <section className="wx-amend" aria-label={`Amended sections, ${addendumName}`}>
+    <section
+      className="wx-amend"
+      aria-label={`Amended sections, ${addendumName}`}
+      ref={anchor}
+      tabIndex={-1}
+    >
       {body}
+      <output className="wx-row-sub">{said}</output>
     </section>
   );
 }

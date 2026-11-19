@@ -213,7 +213,7 @@ describe("a note whose Part 2 check could not be decided", () => {
     });
     const row = await rowAt(1);
     const retry = await row.findByRole("button", { name: /Try again/ });
-    const status = retry.parentElement?.querySelector("output") as HTMLOutputElement;
+    const status = row.getByRole("status");
     expect(status).not.toBeNull();
     expect(status.textContent).toBe("");
 
@@ -229,6 +229,68 @@ describe("a note whose Part 2 check could not be decided", () => {
     await waitFor(() => expect(status.textContent).toMatch(/Still not available/));
     expect(retry).not.toHaveAttribute("aria-disabled");
     expect(retry).toHaveFocus();
+  });
+
+  it("puts focus on the note's own link once the retry succeeds, and says so in a status that was already there", async () => {
+    const user = userEvent.setup();
+    let reads = 0;
+    mount({
+      e1: () => {
+        reads += 1;
+        return reads === 1
+          ? noteViewUnavailable()
+          : detail("e1", {
+              finalDocumentationView: {
+                withheld: false,
+                sections: [sectionOf("pain", { text: "Pain controlled now." })],
+              },
+            });
+      },
+      e2: () => detail("e2", { finalDocumentation: "Other." }),
+    });
+    const row = await rowAt(1);
+    const retry = await row.findByRole("button", { name: /Try again/ });
+    const status = row.getByRole("status");
+    expect(status).toHaveTextContent("");
+    await user.click(retry);
+    expect(await screen.findByText("Pain controlled now.")).toBeInTheDocument();
+    // The button went with the unavailable cell: focus is on the row's link, not the page, and the outcome was announced.
+    expect(retry).not.toBeInTheDocument();
+    expect(row.getByRole("link", { name: "SN Visit" })).toHaveFocus();
+    expect(row.getByRole("status")).toBe(status);
+    expect(status).toHaveTextContent(/The note was read again/);
+  });
+
+  it("leaves focus where the person moved it while the note was being read again", async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reads = 0;
+    mount({
+      e1: () => {
+        reads += 1;
+        return reads === 1
+          ? noteViewUnavailable()
+          : held.then(() =>
+              detail("e1", {
+                finalDocumentationView: {
+                  withheld: false,
+                  sections: [sectionOf("pain", { text: "Pain controlled now." })],
+                },
+              }),
+            );
+      },
+      e2: () => detail("e2", { finalDocumentation: "Other." }),
+    });
+    const row = await rowAt(1);
+    await user.click(await row.findByRole("button", { name: /Try again/ }));
+    const elsewhere = (await rowAt(2)).getByRole("link", { name: "SN Visit" });
+    elsewhere.focus();
+    release();
+    expect(await screen.findByText("Pain controlled now.")).toBeInTheDocument();
+    expect(elsewhere).toHaveFocus();
   });
 
   it("says so again when the retry is refused the same way, and offers the retry again", async () => {

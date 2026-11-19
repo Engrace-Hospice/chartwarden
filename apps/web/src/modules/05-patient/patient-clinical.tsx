@@ -23,7 +23,7 @@ import {
 import { type JSX, type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PatientSummaryPanel, medicareTail } from "../../shell/patient-context";
-import { NoteSummaryCell } from "./clinical-note-cell";
+import { NoteRow } from "./clinical-note-cell";
 import { type EncounterDetail, readNote } from "./clinical-note-read";
 import { summariseNote } from "./clinical-note-summary";
 import {
@@ -1070,24 +1070,15 @@ function ClinicalNotesPanel({
           </thead>
           <tbody>
             {notes.map((n) => (
-              <tr key={n.id}>
-                <td className="wx-nums" style={{ whiteSpace: "nowrap" }}>
-                  {fmtDate(n.serviceDate)}
-                </td>
-                <td style={{ whiteSpace: "nowrap" }}>
-                  <Link to={`/patients/${patientId}/encounters/${n.id}`}>
-                    {ENCOUNTER_LABEL[n.encounterType ?? ""] ?? "Visit"}
-                  </Link>
-                </td>
-                <td>{memberName(data, n.authoredByUserId) ?? "—"}</td>
-                <td style={{ color: t.onSurfaceVariant }}>
-                  <NoteSummaryCell
-                    summary={summariseNote(n)}
-                    visit={`${ENCOUNTER_LABEL[n.encounterType ?? ""] ?? "Visit"} ${fmtDate(n.serviceDate)}`}
-                    onRetry={() => clinical.retryNote?.(n.id) ?? Promise.resolve(false)}
-                  />
-                </td>
-              </tr>
+              <NoteRow
+                key={n.id}
+                href={`/patients/${patientId}/encounters/${n.id}`}
+                date={fmtDate(n.serviceDate)}
+                typeLabel={ENCOUNTER_LABEL[n.encounterType ?? ""] ?? "Visit"}
+                author={memberName(data, n.authoredByUserId) ?? "—"}
+                summary={summariseNote(n)}
+                onRetry={() => clinical.retryNote?.(n.id) ?? Promise.resolve(false)}
+              />
             ))}
           </tbody>
         </table>

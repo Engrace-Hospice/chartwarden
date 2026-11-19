@@ -5,8 +5,14 @@ import type { JSX } from "react";
 import { ComposerCarePlanPicker } from "./composer-care-plan-picker";
 import { ComposerScoreTrend } from "./composer-score-trend";
 import type { DraftView, PickerEncounter } from "./draft-api";
-import { DraftSummary, DraftUnavailable } from "./draft-summary";
+import { DraftStrip, DraftSummary, DraftUnavailable } from "./draft-summary";
+import { useDraftRetry } from "./use-draft-retry";
 import type { NoteDraft } from "./use-note-draft";
+
+const RETRY_WORDS = {
+  ready: "The pre-drafted text loaded.",
+  closed: "The pre-drafted text is not available for this note.",
+} as const;
 
 export interface ComposerDraftStripProps {
   readonly noteDraft: NoteDraft;
@@ -24,12 +30,14 @@ export function ComposerDraftStrip({
   headingOf,
   onOpenSection,
   refusal,
-}: ComposerDraftStripProps): JSX.Element {
+}: ComposerDraftStripProps): JSX.Element | null {
+  const { anchor, said, retry } = useDraftRetry<HTMLElement>(noteDraft.reload, RETRY_WORDS);
+  const unavailable = noteDraft.load.status === "unavailable";
+  // The strip takes no room when nothing is drafted, except while it holds what a retry just said (and the focus that retry left behind).
+  if (!unavailable && !pending && said === "") return null;
   return (
-    <>
-      {noteDraft.load.status === "unavailable" ? (
-        <DraftUnavailable retrying={noteDraft.refreshing} onRetry={() => void noteDraft.reload()} />
-      ) : null}
+    <DraftStrip retry={{ anchor, said }}>
+      {unavailable ? <DraftUnavailable retrying={noteDraft.refreshing} onRetry={retry} /> : null}
       {pending ? (
         <DraftSummary
           draft={pending}
@@ -38,7 +46,7 @@ export function ComposerDraftStrip({
           refusal={refusal}
         />
       ) : null}
-    </>
+    </DraftStrip>
   );
 }
 

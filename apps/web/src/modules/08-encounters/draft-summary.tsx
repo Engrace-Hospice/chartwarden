@@ -2,17 +2,34 @@
 // (ADR-0114 VN-D7): how many drafted sections are resolved and which ones are not, each a button that opens that section. When the
 // server refused a finalize or a sign for specific sections, they are named here in words. The strip is flat (no card): it sits between the
 // required-documentation line and the workspace and takes no room at all when nothing is drafted (the caller does not render it).
-// The same strip says so when the draft could not be read, with the retry: a note whose draft is unknown cannot be finalized.
+// The same strip says so when the draft could not be read, with the retry: a note whose draft is unknown cannot be finalized. The strip's
+// frame (`DraftStrip`) belongs to the composer's chrome, so the one element stays when the retry succeeds and can take focus.
 import { Button, InlineAlert } from "@chartwarden/ui";
-import type { JSX, ReactNode } from "react";
+import type { JSX, ReactNode, RefObject } from "react";
 import type { DraftView } from "./draft-api";
 import { STATE_LABEL, reviewCounts } from "./draft-model";
 import { RetryButton } from "./retry-button";
 
-function DraftStrip({ children }: { readonly children: ReactNode }): JSX.Element {
+export interface DraftStripProps {
+  readonly children: ReactNode;
+  /**
+   * Makes the strip something focus can be sent to (the retry that was pressed in it is about to go) and gives it a status that is always
+   * on the page, filled with what the retry found: a region mounted with its text is not announced.
+   */
+  readonly retry?: { readonly anchor: RefObject<HTMLElement>; readonly said: string };
+}
+
+/** The strip's frame; `DraftUnavailable` and `DraftSummary` are what goes inside it. */
+export function DraftStrip({ children, retry }: DraftStripProps): JSX.Element {
   return (
-    <section className="wx-draft-summary" aria-label="Drafted sections">
+    <section
+      className="wx-draft-summary"
+      aria-label="Drafted sections"
+      ref={retry?.anchor}
+      tabIndex={retry ? -1 : undefined}
+    >
       {children}
+      {retry ? <output className="wx-row-sub">{retry.said}</output> : null}
     </section>
   );
 }
@@ -25,7 +42,7 @@ export interface DraftUnavailableProps {
 
 export function DraftUnavailable({ retrying, onRetry }: DraftUnavailableProps): JSX.Element {
   return (
-    <DraftStrip>
+    <>
       <InlineAlert tone="warning">
         The pre-drafted text could not be loaded. Your own documentation is not affected, but the
         note cannot be finalized until the draft can be read.
@@ -33,7 +50,7 @@ export function DraftUnavailable({ retrying, onRetry }: DraftUnavailableProps): 
       <div>
         <RetryButton retrying={retrying} onRetry={onRetry} />
       </div>
-    </DraftStrip>
+    </>
   );
 }
 
@@ -53,7 +70,7 @@ export function DraftSummary({
 }: DraftSummaryProps): JSX.Element {
   const { drafted, resolved, needReview } = reviewCounts(draft);
   return (
-    <DraftStrip>
+    <>
       <p className="wx-draft-summary-line">
         <strong>
           {resolved} of {drafted}
@@ -76,6 +93,6 @@ export function DraftSummary({
         </ul>
       ) : null}
       {refusal ? <InlineAlert tone="error">{refusal}</InlineAlert> : null}
-    </DraftStrip>
+    </>
   );
 }
