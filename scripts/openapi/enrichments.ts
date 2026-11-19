@@ -2159,6 +2159,11 @@ import {
   OverdueNotesResponseSchema as M8OverdueNotesResponseSchema,
   PutClosurePolicySchema as M8PutClosurePolicySchema,
 } from "../../apps/backend/src/modules/08-encounters/routes/closure-typebox";
+// ADR-0114 visit-note draft switch (M8).
+import {
+  DraftPolicyResponseSchema as M8DraftPolicyResponseSchema,
+  PutDraftPolicySchema as M8PutDraftPolicySchema,
+} from "../../apps/backend/src/modules/08-encounters/routes/drafting-typebox";
 import {
   AddendumFinalizeResponseSchema as M8AddendumFinalizeResponseSchema,
   AddendumSelectionsResponseSchema as M8AddendumSelectionsResponseSchema,
@@ -5805,6 +5810,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Set the tenant's visit-note closure policy. Moving to block stamps enforce_from = now server-side so notes already overdue get a fresh window",
     body: M8PutClosurePolicySchema,
     response: M8ClosurePolicyResponseSchema,
+  },
+  // ADR-0114 - the visit-note draft switch. A static `/encounters/<segment>` path: it wins over `/encounters/:encounterId`.
+  "GET /api/v1/encounters/draft-policy": {
+    summary:
+      "The tenant's visit-note draft switch (`enabled`, off for an unset tenant) and the phrase corpus's clinical review state (`reviewStatus` pending | approved, `reviewer`); encounter.draft_policy_admin",
+    response: M8DraftPolicyResponseSchema,
+  },
+  "PUT /api/v1/encounters/draft-policy": {
+    summary:
+      "Switch the tenant's visit-note draft and its sign gate on or off (needs a fresh step-up; encounter.draft_policy_admin). Enabling is refused with 409 CORPUS_REVIEW_PENDING while the phrase corpus has not had its clinical review; disabling is always allowed. Every write records an m8.encounter.draft_policy_changed audit event (previous and new value)",
+    body: M8PutDraftPolicySchema,
+    response: M8DraftPolicyResponseSchema,
   },
 });
 

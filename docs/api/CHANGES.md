@@ -6,6 +6,16 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-18 — Visit-note draft switch (M8, ADR-0114): `GET` and `PUT /encounters/draft-policy`, a new permission, and `409 CORPUS_REVIEW_PENDING`
+
+**Additive; nothing changes for a tenant until its administrator switches the draft on, and that is refused until the phrase corpus has had its clinical review.** The switch defaults to off. Later slices of the same work make the draft and its sign gate real behind it.
+
+- **`GET /encounters/draft-policy`** (`encounter.draft_policy_admin`): `enabled` (off for a tenant that never set it), `reviewStatus` pending | approved and `reviewer`, the state of the platform phrase corpus's clinical review.
+- **`PUT /encounters/draft-policy`** (`encounter.draft_policy_admin`, fresh step-up; AI principals refused): body `{ "enabled": boolean }`. Enabling answers `409 CORPUS_REVIEW_PENDING` while `reviewStatus` is `pending`; disabling is always allowed. Every write records an `m8.encounter.draft_policy_changed` audit event (previous and new value).
+- **New permission `encounter.draft_policy_admin`**, granted to `director_of_nursing`, `don`, `org_admin` and `administrator` (and `superadmin`), the same holders as `encounter.closure_policy_admin`, not to `clinical_supervisor` or `clinical_lead`.
+
+---
+
 ## 2026-11-18 — Visit-note closure clock (M8, ADR-0113): a new `403 NOTE_CLOSURE_REQUIRED` and `503 NOTE_CLOSURE_UNAVAILABLE` for a clinician with an overdue note, six new routes under `/encounters`, a `closure` field on My notes
 
 **Additive for a tenant that does nothing; a tenant that sets the policy to `block` changes what a clinician's session may call.** The policy defaults to `warn` (banner and alerts, nothing refused), so no existing integration changes until a tenant opts in. A new status code on every non-allowlisted route is the thing an integrator has to plan for once a tenant does.

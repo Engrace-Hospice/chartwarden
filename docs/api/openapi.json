@@ -154591,6 +154591,128 @@
         }
       }
     },
+    "/api/v1/encounters/draft-policy": {
+      "get": {
+        "operationId": "getApiV1EncountersDraftpolicy",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The tenant's visit-note draft switch (`enabled`, off for an unset tenant) and the phrase corpus's clinical review state (`reviewStatus` pending | approved, `reviewer`); encounter.draft_policy_admin",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "reviewStatus",
+                    "reviewer"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "reviewStatus": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "reviewer": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1EncountersDraftpolicy",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Switch the tenant's visit-note draft and its sign gate on or off (needs a fresh step-up; encounter.draft_policy_admin). Enabling is refused with 409 CORPUS_REVIEW_PENDING while the phrase corpus has not had its clinical review; disabling is always allowed. Every write records an m8.encounter.draft_policy_changed audit event (previous and new value)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "reviewStatus",
+                    "reviewer"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "reviewStatus": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "reviewer": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/encounters/my-drafts": {
       "get": {
         "operationId": "getApiV1EncountersMydrafts",

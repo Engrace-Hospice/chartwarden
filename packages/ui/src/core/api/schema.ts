@@ -12133,6 +12133,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/draft-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's visit-note draft switch (`enabled`, off for an unset tenant) and the phrase corpus's clinical review state (`reviewStatus` pending | approved, `reviewer`); encounter.draft_policy_admin */
+        get: operations["getApiV1EncountersDraftpolicy"];
+        /** Switch the tenant's visit-note draft and its sign gate on or off (needs a fresh step-up; encounter.draft_policy_admin). Enabling is refused with 409 CORPUS_REVIEW_PENDING while the phrase corpus has not had its clinical review; disabling is always allowed. Every write records an m8.encounter.draft_policy_changed audit event (previous and new value) */
+        put: operations["putApiV1EncountersDraftpolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/my-drafts": {
         parameters: {
             query?: never;
@@ -68264,6 +68282,64 @@ export interface operations {
                                 version: number;
                             }[];
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersDraftpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        reviewStatus: "pending" | "approved";
+                        reviewer: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersDraftpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        reviewStatus: "pending" | "approved";
+                        reviewer: string;
                     };
                 };
             };
