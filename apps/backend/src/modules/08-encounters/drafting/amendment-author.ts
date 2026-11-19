@@ -5,6 +5,7 @@
 // `is_author_or_supervisor` rule, evaluated on the parent note), may. Anyone else with the permission can still write a free addendum, which
 // changes no section. 403, before any write.
 import { ForbiddenError } from "@chartwarden/types";
+import { EncounterStateError } from "../lifecycle/errors";
 import { hasSupervisorRole } from "../supervisor-roles";
 
 export interface SectionNamer {
@@ -23,4 +24,23 @@ export function assertMayAmendSectionsOf(
   throw new ForbiddenError(
     "only the author of a signed note, or a supervisor, may amend its sections by addendum",
   );
+}
+
+/**
+ * The in-memory backend (the slice) holds no sealed rows, so a section named there is never one the note carries: the same 422 the Drizzle service
+ * answers for a note with none, after the same author-or-supervisor check.
+ */
+export function assertSliceNamesNoSection(
+  noteAuthorMembershipId: string,
+  namer: Omit<SectionNamer, "namesSections">,
+  sectionIds: readonly string[] | undefined,
+): void {
+  const namesSections = (sectionIds?.length ?? 0) > 0;
+  assertMayAmendSectionsOf(noteAuthorMembershipId, { ...namer, namesSections });
+  if (namesSections) {
+    throw new EncounterStateError(
+      "UNKNOWN_TEMPLATE_SECTION",
+      "this encounter has no signed sections to amend",
+    );
+  }
 }

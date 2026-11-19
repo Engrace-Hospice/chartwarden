@@ -96,6 +96,7 @@ import {
 } from "./cosignature/index";
 import { recordSectionsAmended } from "./drafting/amendment-audit";
 import { assertMayAmendSectionsOf } from "./drafting/amendment-author";
+import { cosignerForAmendment } from "./drafting/amendment-cosigner";
 import { createAmendmentFlow } from "./drafting/amendment-flow";
 import { defaultDraftPorts } from "./drafting/default-ports";
 import { assertResolved, confirmedSectionIds } from "./drafting/note-draft";
@@ -104,8 +105,8 @@ import { createNoteDraftFlow } from "./drafting/note-draft-flow";
 import { readPinnedNote } from "./drafting/pinned-note";
 import { isVisitNoteDraftEnabled } from "./drafting/policy-service";
 import type { DraftSeamPorts, DraftViewer } from "./drafting/ports";
-import { deriveEvvAtSign } from "./evv-at-sign";
 import { createWorkspaceReader } from "./drafting/workspace-read";
+import { deriveEvvAtSign } from "./evv-at-sign";
 import {
   type GateSectionSelection,
   assertGatePassed,
@@ -1185,38 +1186,6 @@ export function createDbEncounterRouteService(
         `encounter cannot ${event} from '${status}'`,
       );
     }
-  }
-
-  /**
-   * ADR-0114 VN-D30: the RN a signed AMENDMENT must be cosigned by, or `null` when its note never needed a cosigner (it has no cosignature request).
-   * Refuses (422 NO_ELIGIBLE_COSIGNER, before any write) when the note needed one and there is none, or the signer is that RN, exactly as the note's
-   * own sign does: an amendment nobody may cosign would leave the note's cosignature requirement unmet.
-   */
-  async function cosignerForAmendment(
-    t: DbClient,
-    organizationId: string,
-    parent: typeof ENC.$inferSelect,
-    signerMembershipId: string,
-  ): Promise<string | null> {
-    const [parentRequest] = await t
-      .select({ id: COSIGN.id })
-      .from(COSIGN)
-      .where(eq(COSIGN.encounterId, parent.id))
-      .limit(1);
-    if (parentRequest === undefined) return null;
-    // The signer AND the note's author are excluded: the cosign service refuses either at acknowledge and sign, so an amendment routed to the
-    // note's author (the only RN on a small caseload, say) would be raised at someone who cannot act on it and stay pending for ever (C3).
-    const cosigner = await cosignerMembershipIdFor(organizationId, parent.patientId, [
-      signerMembershipId,
-      parent.authoredByMembershipId,
-    ]);
-    if (cosigner === null) {
-      throw new EncounterStateError(
-        "NO_ELIGIBLE_COSIGNER",
-        "this note needed a cosignature, so its amendment does too, and no cosignature-eligible RN other than the signer and the note's author exists on the patient's caseload",
-      );
-    }
-    return cosigner;
   }
 
   /** The cosignature request an amending addendum opens, routed to the RN case manager with its own clock (`routed_at`); the note's own request is untouched. */
@@ -3060,7 +3029,9 @@ export function createDbEncounterRouteService(
         // An amendment of a note that needed a cosigner needs one too (its own request and clock; the note's own are untouched).
         const cosignerMembershipId =
           amendedSections.length > 0
-            ? await cosignerForAmendment(t, organizationId, enc, actor.membershipId)
+            ? await cosignerForAmendment(t, enc, actor.membershipId, (patientId, excluded) =>
+                cosignerMembershipIdFor(organizationId, patientId, excluded),
+              )
             : null;
         // The sealed amendment rows go in BEFORE the status flips: the guard trigger takes rows only for a `finalized` addendum. Any failure
         // (a seal, the key ring, the guard) fails the sign as one.

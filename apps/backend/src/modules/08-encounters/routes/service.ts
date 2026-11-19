@@ -67,7 +67,7 @@ import {
   type CosignatureState,
   transitionCosignature,
 } from "../cosignature/index";
-import { assertMayAmendSectionsOf } from "../drafting/amendment-author";
+import { assertSliceNamesNoSection } from "../drafting/amendment-author";
 import type { NoteHistory, StructuredNoteView } from "../drafting/note-versions";
 import {
   type GateSectionSelection,
@@ -821,7 +821,7 @@ export interface EncounterRouteService {
       promotion?: AddendumPromotionInput;
       /** ADR-0114 VN-D30: section ids of the signed note's sealed rows this addendum amends (absent: a free addendum). */
       amendsSectionIds?: readonly string[];
-      /** The author's session roles (never the request body): the Part 2 verdict for a named section whose original is Part 2 derived (VN-D30). */
+      /** The author's session roles (never the request body): the Part 2 verdict for naming a section of a note that holds Part 2 content (VN-D30). */
       roles?: readonly string[];
     },
   ): Promise<{ id: string; status: "draft" }>;
@@ -1651,18 +1651,11 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         );
         if (taken) throw new ConflictError("that proposal already has an addendum");
       }
-      assertMayAmendSectionsOf(r.authoredByUserId, {
-        membershipId: args.authorMembershipId,
-        roles: args.roles ?? [],
-        namesSections: (args.amendsSectionIds?.length ?? 0) > 0,
-      });
-      // The slice holds no sealed rows, so a section named here is never one the note carries (ADR-0114 VN-D30).
-      if (args.amendsSectionIds !== undefined && args.amendsSectionIds.length > 0) {
-        throw new EncounterStateError(
-          "UNKNOWN_TEMPLATE_SECTION",
-          "this encounter has no signed sections to amend",
-        );
-      }
+      assertSliceNamesNoSection(
+        r.authoredByUserId,
+        { membershipId: args.authorMembershipId, roles: args.roles ?? [] },
+        args.amendsSectionIds,
+      );
       const id = subId();
       r.addenda.set(id, {
         ...(args.promotion ? { promotionRequestId: args.promotion.requestId } : {}),
