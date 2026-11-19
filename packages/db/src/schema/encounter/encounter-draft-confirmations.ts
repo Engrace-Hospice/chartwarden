@@ -1,7 +1,7 @@
 // @chartwarden/db — `encounter_draft_confirmation` (M8, migration 1517, ADR-0114 VN-D7 / VN-D12). One row per (encounter, drafted
 // section): how the clinician resolved it (`confirmed` against the content hash they saw, or `deselected`), the corpus version it was
 // compiled under, whether the section carried the clinician's own text (`edited`), and the ids of its sources (ids only, never text; they
-// reach the audit trail through the row trigger). A re-confirmation upserts on (encounter_id, section_id). PHI-bearing, three-column
+// reach the audit trail through the row trigger, except for a Part 2 row, whose audit image withholds them; the content hash is never audited). A re-confirmation upserts on (encounter_id, section_id). PHI-bearing, three-column
 // tenancy copied from the encounter (the siting pair is nullable, like every satellite since mig 0128). RLS + grants + audit trigger +
 // org guard land in migration 1517.
 import { sql } from "drizzle-orm";
@@ -47,6 +47,8 @@ export const encounterDraftConfirmations = pgTable(
     contentHash: text("content_hash").notNull(),
     corpusVersion: text("corpus_version").notNull(),
     edited: boolean("edited").notNull(),
+    /** The compiler's Part 2 verdict on the section (no default: the writer decides, fail closed); a Part 2 row's audit image withholds its source ids. */
+    part2Derived: boolean("part2_derived").notNull(),
     sourceRefs: jsonb("source_refs")
       .$type<readonly DraftSourceRef[]>()
       .notNull()

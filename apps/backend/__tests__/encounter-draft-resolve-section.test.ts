@@ -69,6 +69,66 @@ const staleError = (p: Promise<unknown>) =>
     (e: unknown) => e,
   );
 
+describe("the Part 2 verdict on a resolution", () => {
+  const sudSeams = (disclosed: boolean) =>
+    fakePorts({
+      carePlanAsOf: async () => carePlan(),
+      scaleSeries: honestSeries({}),
+      medicationChangesBetween: async () => [
+        change("started", "2026-11-12T16:00:00.000Z", {
+          id: "order-sud",
+          drugName: "Buprenorphine",
+          isSudTreatment: true,
+        }),
+      ],
+      part2DisclosureAllowed: async () => disclosed,
+    });
+  const seenOf = async (ports: ReturnType<typeof sudSeams>, sectionId: string) => {
+    const { store } = memoryDraftStore(withPrevious);
+    const { draft } = await computeDraft({ ...ports, ...store }, encounter, viewer(), NOW);
+    const section = draft.sections.find((s) => s.sectionId === sectionId);
+    if (section?.state !== "drafted") throw new Error(`section ${sectionId} is not drafted`);
+    return section;
+  };
+
+  it("carries part2Derived true on the stored confirmation and on the audit event when the section drew on SUD content", async () => {
+    const ports = sudSeams(true);
+    const mem = memoryDraftStore(withPrevious);
+    const seen = await seenOf(ports, "interventions");
+    expect(seen.part2Derived).toBe(true);
+    const out = await resolveSection(
+      ports,
+      mem.store,
+      input({
+        sectionId: "interventions",
+        resolution: "confirmed",
+        contentHash: seen.contentHash,
+        corpusVersion: seen.corpusVersion,
+      }),
+    );
+    expect(mem.saved.get("interventions")?.part2Derived).toBe(true);
+    expect(out.event?.part2Derived).toBe(true);
+  });
+
+  it("carries part2Derived false for a section with no SUD source", async () => {
+    const ports = sudSeams(true);
+    const mem = memoryDraftStore(withPrevious);
+    const seen = await seenOf(ports, "plan");
+    const out = await resolveSection(
+      ports,
+      mem.store,
+      input({
+        sectionId: "plan",
+        resolution: "confirmed",
+        contentHash: seen.contentHash,
+        corpusVersion: seen.corpusVersion,
+      }),
+    );
+    expect(mem.saved.get("plan")?.part2Derived).toBe(false);
+    expect(out.event?.part2Derived).toBe(false);
+  });
+});
+
 describe("confirming a section", () => {
   it("keeps a confirmation bound to the hash and corpus the clinician saw, and reads back as confirmed", async () => {
     const mem = memoryDraftStore(withPrevious);

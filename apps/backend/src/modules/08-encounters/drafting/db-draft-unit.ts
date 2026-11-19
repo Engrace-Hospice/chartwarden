@@ -20,6 +20,8 @@ import { isVisitNoteDraftEnabled } from "./policy-service";
 export const DRAFT_SECTION_AUDIT_EVENT = "m8.encounter.draft_section_resolved";
 
 const E = schema.encounters;
+const PART2_RETENTION_CLASS = "compliance_42cfr_part2";
+const DEFAULT_RETENTION_CLASS = "compliance";
 
 async function loadEncounter(
   tx: DbClient,
@@ -64,16 +66,20 @@ function createUnit(
         resourceId: event.encounterId,
         outcome: "success",
         severity: "info",
-        retentionClass: "compliance",
-        // Ids, enums, hashes and counts only: the source ids are the VN-D7 provenance; no sentence of the note is copied here.
+        // A Part 2 section files under the Part 2 retention class (the catalog marks the event Part 2 eligible) and records no source ids:
+        // the audit read path (`audit.read`) is not Part 2 gated, and a medication id tied to a patient discloses the SUD treatment.
+        retentionClass: event.part2Derived ? PART2_RETENTION_CLASS : DEFAULT_RETENTION_CLASS,
+        // Ids, enums and counts only: the source ids are the VN-D7 provenance for a plain section; no sentence of the note is copied here,
+        // and no content hash (an unsalted SHA-256 of low-entropy text is an offline guessing oracle; the hash lives on the confirmation row).
         after: {
           sectionId: event.sectionId,
           resolution: event.resolution,
           edited: event.edited,
-          contentHash: event.contentHash,
-          boundContentHash: event.boundContentHash,
           corpusVersion: event.corpusVersion,
-          sourceRefs: event.sourceRefs.map((ref) => ({ kind: ref.kind, id: ref.id })),
+          part2Derived: event.part2Derived,
+          ...(event.part2Derived
+            ? {}
+            : { sourceRefs: event.sourceRefs.map((ref) => ({ kind: ref.kind, id: ref.id })) }),
           carePlanElementsLinked: event.carePlanElementsLinked,
           carePlanElementsRemoved: event.carePlanElementsRemoved,
         },

@@ -5,10 +5,15 @@
 -- INSERT + UPDATE and, like every M8 table, no DELETE.
 --   * content_hash is the SHA-256 (64 lowercase hex) of the section's canonical rendered content; corpus_version is the phrase-corpus
 --     release the draft was compiled under. A confirmation whose hash or corpus no longer matches the recomputed draft reads as
---     "needs re-confirmation" and blocks signing (design 3.2); nothing here decides that, the service does.
+--     "needs re-confirmation" and blocks signing (design 3.2); nothing here decides that, the service does. The hash is compared at read
+--     time, so it stays stored; it is NOT audited: an unsalted SHA-256 of low-entropy clinical text lets anyone holding audit.read confirm a
+--     guessed sentence offline, so the row trigger scrubs it (the M8 denylist mirror agrees).
+--   * part2_derived is the compiler's verdict on the section (no default: the writer decides, fail closed), the same flag the sealed
+--     section carries. A Part 2 row's audit image withholds its source ids (the audit read path is not Part 2 gated: audit.read returns
+--     before/after for every retention class) and is filed under compliance_42cfr_part2, not the 7-year class.
 --   * edited records whether the section carried the clinician's own text when it was confirmed (the rubber-stamp indicator, VN-D18).
 --   * source_refs is a JSON array of {kind, id} objects: IDS ONLY, never text. It reaches the audit trail through the row trigger
---     (VN-D7: source ids live in the audit trail, never in the signed text), so nothing about it is scrubbed.
+--     (VN-D7: source ids live in the audit trail, never in the signed text) for a plain row; a part2_derived row's audit image withholds it.
 --   * Three-column tenancy, copied from the encounter exactly as the other satellites do: provider_entity_id / location_id are nullable
 --     (the draft route captures neither when the M6 admission is unsited, mig 0128 / 0231).
 -- Two guard checks the single-column FKs cannot express (an FK check ignores RLS): the encounter and the resolving membership must belong
@@ -26,6 +31,7 @@ CREATE TABLE "encounter_draft_confirmation" (
   "content_hash" text NOT NULL,
   "corpus_version" text NOT NULL,
   "edited" boolean NOT NULL,
+  "part2_derived" boolean NOT NULL,
   "source_refs" jsonb DEFAULT '[]'::jsonb NOT NULL,
   "resolved_by_membership_id" uuid NOT NULL REFERENCES "membership"("id") ON DELETE RESTRICT,
   "resolved_at" timestamptz DEFAULT now() NOT NULL,
@@ -51,12 +57,16 @@ GRANT SELECT, INSERT, UPDATE ON "encounter_draft_confirmation" TO chartwarden_ap
 
 CREATE OR REPLACE FUNCTION audit_phi_write_encounter_draft_confirmation() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
-DECLARE v_before jsonb; v_after jsonb;
+DECLARE v_before jsonb; v_after jsonb; v_part2 boolean;
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE')
-    THEN public.audit_scrub(to_jsonb(OLD), ARRAY[]::text[]) ELSE NULL END;
+    THEN public.audit_scrub(to_jsonb(OLD), ARRAY['content_hash']::text[]) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE')
-    THEN public.audit_scrub(to_jsonb(NEW), ARRAY[]::text[]) ELSE NULL END;
+    THEN public.audit_scrub(to_jsonb(NEW), ARRAY['content_hash']::text[]) ELSE NULL END;
+  -- A Part 2 row (either image of an update) withholds its source ids and files under the Part 2 retention class.
+  v_part2 := COALESCE(OLD.part2_derived, false) OR COALESCE(NEW.part2_derived, false);
+  IF v_part2 AND v_before IS NOT NULL THEN v_before := public.audit_scrub(v_before, ARRAY['source_refs']::text[]); END IF;
+  IF v_part2 AND v_after IS NOT NULL THEN v_after := public.audit_scrub(v_after, ARRAY['source_refs']::text[]); END IF;
   INSERT INTO public.audit_event (
     organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id,
     correlation_id, outcome, severity, before, after, context, retention_class
@@ -71,7 +81,7 @@ BEGIN
     jsonb_build_object(
       'provider_entity_id', NULLIF(current_setting('app.provider_entity_id', true), ''),
       'location_id', NULLIF(current_setting('app.location_id', true), '')),
-    'compliance'
+    CASE WHEN v_part2 THEN 'compliance_42cfr_part2'::audit_retention_class ELSE 'compliance'::audit_retention_class END
   );
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint

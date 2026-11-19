@@ -2364,6 +2364,9 @@ export function createDbEncounterRouteService(
             evvAskFailure,
             signedByMembershipId,
           );
+          // ADR-0114: the signed note's text and its sealed section rows, in this transaction (no-op with the draft off). BEFORE the status
+          // flips: migration 1521 freezes the pinned narrative once the encounter reads signed, so the pin is the last write it accepts.
+          await noteDraft.sealSigned(t, r, draft);
           await t
             .update(ENC)
             .set({
@@ -2389,8 +2392,6 @@ export function createDbEncounterRouteService(
             attestationText: PRIMARY_ATTESTATION_TEXT,
             layer2InvolvedAtSigning: false,
           });
-          // ADR-0114: the signed note's text and its sealed section rows, in this transaction (no-op with the draft off).
-          await noteDraft.sealSigned(t, r, draft);
           await emit(t, organizationId, "m8.encounter.signed", "encounter", encounterId, {
             encounterId,
             patientId: r.patientId,
@@ -2437,6 +2438,9 @@ export function createDbEncounterRouteService(
           evvAskFailure,
           signedByMembershipId,
         );
+        // ADR-0114: the signed note's text and its sealed section rows, in this transaction (no-op with the draft off). BEFORE the status
+        // flips: migration 1521 freezes the pinned narrative once the encounter reads signed, so the pin is the last write it accepts.
+        await noteDraft.sealSigned(t, r, draft);
         await t
           .update(ENC)
           .set({
@@ -2462,8 +2466,6 @@ export function createDbEncounterRouteService(
           attestationText: PRIMARY_ATTESTATION_TEXT,
           layer2InvolvedAtSigning: false,
         });
-        // ADR-0114: the signed note's text and its sealed section rows, in this transaction (no-op with the draft off).
-        await noteDraft.sealSigned(t, r, draft);
         await emit(t, organizationId, "m8.encounter.signed", "encounter", encounterId, {
           encounterId,
           patientId: r.patientId,

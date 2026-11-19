@@ -30,6 +30,7 @@ export async function upsertConfirmation(tx: DbClient, write: ConfirmationWrite)
     contentHash: write.contentHash,
     corpusVersion: write.corpusVersion,
     edited: write.edited,
+    part2Derived: write.part2Derived,
     sourceRefs: [...write.sourceRefs],
     resolvedByMembershipId: write.resolvedByMembershipId,
     resolvedAt: write.resolvedAt,

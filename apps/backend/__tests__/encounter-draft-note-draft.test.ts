@@ -74,6 +74,7 @@ const confirmation = (
   contentHash: seen.contentHash,
   corpusVersion: seen.corpusVersion,
   edited: false,
+  part2Derived: false,
   sourceRefs: [],
   resolvedByMembershipId: MEMBER,
   resolvedAt: NOW,

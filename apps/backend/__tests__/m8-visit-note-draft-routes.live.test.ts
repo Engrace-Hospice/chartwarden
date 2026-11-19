@@ -125,6 +125,8 @@ describe.skipIf(!DB_URL)(
     let handle: ReturnType<typeof createDbClient>;
     let app: FastifyInstance;
     const orgs = {} as Record<"A" | "B" | "C", OrgFixture>;
+    /** An org-A member holding encounter.read and encounter.author but NOT the medication read key (prescribing.read). */
+    let limitedA: Member;
     let counter = 0;
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -417,28 +419,33 @@ describe.skipIf(!DB_URL)(
       resetAuthorizationContract();
       resetRbacEngine();
       resetAbacRegistry();
-      const members = [orgs.A.author, orgs.A.otherRn, orgs.B.author];
+      limitedA = await seedMember(ORG_A, "limited-a");
+      // The draft is compiled from the care plan, medication orders and scored scales, so both routes need those domains' read keys too.
+      const DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
+      const grant = (orgId: string, member: Member, permissionKeys: string[]) => ({
+        orgId,
+        userId: member.userId,
+        grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys }],
+      });
       registerEffectivePermissionResolver(
-        createInMemoryEffectivePermissionStore(
-          [
-            [ORG_A, orgs.A.author],
-            [ORG_A, orgs.A.otherRn],
-            [ORG_B, orgs.B.author],
-          ].map(([orgId, member]) => ({
-            orgId: orgId as string,
-            userId: (member as Member).userId,
-            grants: [
-              {
-                roleKey: "seed",
-                enabled: true,
-                expiresAt: null,
-                permissionKeys: ["encounter.read", "encounter.author"],
-              },
-            ],
-          })),
-        ).store,
+        createInMemoryEffectivePermissionStore([
+          ...(
+            [
+              [ORG_A, orgs.A.author],
+              [ORG_A, orgs.A.otherRn],
+              [ORG_B, orgs.B.author],
+            ] as const
+          ).map(([orgId, member]) =>
+            grant(orgId, member, ["encounter.read", "encounter.author", ...DOMAIN_READS]),
+          ),
+          grant(ORG_A, limitedA, [
+            "encounter.read",
+            "encounter.author",
+            "care_plan.read",
+            "assessment.read_trend",
+          ]),
+        ]).store,
       );
-      void members;
       const registry = createPredicateRegistry({ ...M3_INTRINSIC_PREDICATES });
       const predicates = buildEncounterAbacPredicates({
         resolver: createDbEncounterAbacResolver(handle.db),
@@ -773,6 +780,29 @@ describe.skipIf(!DB_URL)(
       });
     });
 
+    describe("2b. the source domains' read keys", () => {
+      it("a role with encounter.read and encounter.author but without prescribing.read is refused the draft and the section write (403), and nothing is written", async () => {
+        const f = await seedDraftWithPrevious();
+        const seen = sectionOf((await getDraft(f)).body, "plan");
+        const viewsBefore = (await auditEvents(ORG_A, "encounter_draft.viewed", f.encounterId)).length;
+        const asLimited = as(orgs.A, limitedA);
+        const get = await app.inject({
+          method: "GET",
+          url: draftUrl(f.encounterId),
+          headers: asLimited,
+        });
+        expect(get.statusCode).toBe(403);
+        expect(get.json().error.message).toContain("prescribing.read");
+        const put = await putSection(f, "plan", "confirmed", seen, asLimited);
+        expect(put.statusCode).toBe(403);
+        expect(put.json().error.message).toContain("prescribing.read");
+        expect(await confirmationsOf(f.encounterId)).toEqual([]);
+        expect((await auditEvents(ORG_A, "encounter_draft.viewed", f.encounterId)).length).toBe(
+          viewsBefore,
+        );
+      });
+    });
+
     // ===============================================================================================================
     // 3. confirm
     // ===============================================================================================================
@@ -817,8 +847,7 @@ describe.skipIf(!DB_URL)(
           sectionId: "plan",
           resolution: "confirmed",
           edited: false,
-          contentHash: seen.contentHash,
-          boundContentHash: seen.contentHash,
+          part2Derived: false,
           sourceRefs: [{ kind: "care_plan_goal", id: GOAL }],
           carePlanElementsLinked: 1,
           carePlanElementsRemoved: 0,
@@ -830,6 +859,8 @@ describe.skipIf(!DB_URL)(
         expect(rowEvents).toHaveLength(1);
         expect(rowEvents[0]?.after.source_refs).toEqual([{ kind: "care_plan_goal", id: GOAL }]);
         expect(JSON.stringify([explicit, rowEvents])).not.toContain("Pain controlled");
+        // no content hash anywhere in the audit trail of this resolution: an unsalted SHA-256 of low-entropy text is a guessing oracle
+        expect(JSON.stringify([explicit, rowEvents])).not.toContain(seen.contentHash);
 
         expect(sectionOf((await getDraft(f)).body, "plan").state).toBe("confirmed");
       });
@@ -989,10 +1020,10 @@ describe.skipIf(!DB_URL)(
         );
         expect(event?.after).toMatchObject({
           resolution: "deselected",
-          contentHash: seen.contentHash,
-          boundContentHash: null,
+          part2Derived: false,
           carePlanElementsRemoved: 1,
         });
+        expect(JSON.stringify(event?.after)).not.toContain(seen.contentHash);
 
         const reopened = sectionOf((await getDraft(f)).body, "plan");
         expect(reopened).toMatchObject({ state: "not_drafted", text: null });
@@ -1706,6 +1737,35 @@ describe.skipIf(!DB_URL)(
           const f = await prepared();
           // Confirmed by a viewer holding the Part 2 disclosure: the section shows the SUD-treatment medication change.
           await resolveAll(orgs.A, f, {}, ["rn", "part2"]);
+          // The Part 2 section's resolution is filed under the Part 2 class and records no source ids anywhere in the audit trail;
+          // the plain section next to it keeps both the 7-year class and its ids.
+          const resolved = await rows<{
+            section: string;
+            retention: string;
+            after: Record<string, unknown>;
+          }>(
+            `SELECT after->>'sectionId' AS section, retention_class::text AS retention, after FROM audit_event
+             WHERE organization_id = $1 AND event_type = 'm8.encounter.draft_section_resolved' AND resource_id::text = $2`,
+            [ORG_A, f.encounterId],
+          );
+          const part2Event = resolved.find((r) => r.section === "interventions");
+          expect(part2Event?.retention).toBe("compliance_42cfr_part2");
+          expect(part2Event?.after).toMatchObject({ part2Derived: true });
+          expect(part2Event?.after).not.toHaveProperty("sourceRefs");
+          expect(resolved.find((r) => r.section === "plan")?.retention).toBe("compliance");
+          const part2Row = one(
+            await rows<{ retention: string; source_refs: unknown; content_hash: unknown }>(
+              `SELECT retention_class::text AS retention, after->'source_refs' AS source_refs, after->'content_hash' AS content_hash FROM audit_event
+               WHERE organization_id = $1 AND resource_kind = 'encounter_draft_confirmation' AND event_type = 'encounter_draft_confirmation.insert'
+                 AND after->>'encounter_id' = $2 AND after->>'section_id' = 'interventions'`,
+              [ORG_A, f.encounterId],
+            ),
+          );
+          expect(part2Row).toEqual({
+            retention: "compliance_42cfr_part2",
+            source_refs: "<changed>",
+            content_hash: "<changed>",
+          });
           await finalize(orgs.A, f, ["rn", "part2"]);
           const error = await svc
             .sign(ORG_A, f.encounterId, actorOf(orgs.A, "A", ["rn"]), SIGN_ARGS)

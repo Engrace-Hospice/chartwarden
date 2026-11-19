@@ -95,6 +95,7 @@ describe.skipIf(!DB_URL)(
   () => {
     let admin: Client;
     let appPg: Client;
+    let destructionPg: Client;
     let handle: ReturnType<typeof createDbClient>;
     let destructionHandle: ReturnType<typeof createDbClient>;
     const orgs = {} as Record<"A" | "B", OrgFixture>;
@@ -205,6 +206,20 @@ describe.skipIf(!DB_URL)(
       }
     }
 
+    /** One transaction as a `chartwarden_destruction` login (the eraser's role) on a raw pg connection, org context set. */
+    async function asDestruction<T>(org: string, fn: (client: Client) => Promise<T>): Promise<T> {
+      await destructionPg.query("BEGIN");
+      try {
+        await destructionPg.query("SELECT set_config('app.org_id', $1, true)", [org]);
+        const result = await fn(destructionPg);
+        await destructionPg.query("COMMIT");
+        return result;
+      } catch (error) {
+        await destructionPg.query("ROLLBACK");
+        throw error;
+      }
+    }
+
     async function sqlFailure(
       run: Promise<unknown>,
     ): Promise<{ code?: string; constraint?: string }> {
@@ -234,7 +249,7 @@ describe.skipIf(!DB_URL)(
       );
 
     const CONFIRMATION_COLUMNS =
-      "organization_id, provider_entity_id, location_id, encounter_id, section_id, resolution, content_hash, corpus_version, edited, source_refs, resolved_by_membership_id";
+      "organization_id, provider_entity_id, location_id, encounter_id, section_id, resolution, content_hash, corpus_version, edited, source_refs, resolved_by_membership_id, part2_derived";
     const confirmationValues = (
       org: OrgFixture,
       o: {
@@ -246,6 +261,7 @@ describe.skipIf(!DB_URL)(
         encounterId?: string;
         organizationId?: string;
         membershipId?: string;
+        part2Derived?: boolean;
       } = {},
     ): unknown[] => [
       o.organizationId ?? org.orgId,
@@ -259,10 +275,11 @@ describe.skipIf(!DB_URL)(
       o.edited ?? false,
       JSON.stringify(o.sourceRefs ?? [{ kind: "vitals", id: randomUUID() }]),
       o.membershipId ?? org.author.membershipId,
+      o.part2Derived ?? false,
     ];
     const insertConfirmation = (client: Client, values: unknown[]) =>
       client.query(
-        `INSERT INTO encounter_draft_confirmation (${CONFIRMATION_COLUMNS}) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+        `INSERT INTO encounter_draft_confirmation (${CONFIRMATION_COLUMNS}) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
         values,
       );
 
@@ -278,11 +295,14 @@ describe.skipIf(!DB_URL)(
         encounterId?: string;
         organizationId?: string;
         textCipher?: string;
+        sourceRefs?: unknown;
+        /** Overrides the row's siting pair (a sited encounter's rows must carry the encounter's own). */
+        locationId?: string | null;
       } = {},
     ): unknown[] => [
       o.organizationId ?? org.orgId,
       org.providerEntityId,
-      org.locationId,
+      o.locationId === undefined ? org.locationId : o.locationId,
       o.encounterId ?? org.encounterId,
       o.outputId ?? org.outputId,
       o.sectionId ?? "assessment",
@@ -290,7 +310,7 @@ describe.skipIf(!DB_URL)(
       o.textCipher ?? SEALED_A,
       hash("b"),
       o.part2Derived === undefined ? false : o.part2Derived,
-      JSON.stringify([{ kind: "care_plan_goal", id: randomUUID() }]),
+      JSON.stringify(o.sourceRefs ?? [{ kind: "care_plan_goal", id: randomUUID() }]),
     ];
     const insertSection = (client: Client, values: unknown[]) =>
       client.query(
@@ -331,12 +351,15 @@ describe.skipIf(!DB_URL)(
       destructionUrl.username = "chartwarden_destruction";
       destructionUrl.password = LIVE_APP_ROLE_PASSWORD;
       destructionHandle = createDbClient({ connectionString: destructionUrl.toString() });
+      destructionPg = new Client({ connectionString: destructionUrl.toString() });
+      await destructionPg.connect();
     }, 600_000);
 
     afterAll(async () => {
       await handle?.close();
       await destructionHandle?.close();
       if (appPg) await appPg.end();
+      if (destructionPg) await destructionPg.end();
       if (admin) await admin.end();
     });
 
@@ -524,10 +547,10 @@ describe.skipIf(!DB_URL)(
           run((c) =>
             c.query(
               `INSERT INTO encounter_draft_confirmation (${CONFIRMATION_COLUMNS})
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
              ON CONFLICT (encounter_id, section_id) DO UPDATE
                SET resolution=EXCLUDED.resolution, content_hash=EXCLUDED.content_hash, edited=EXCLUDED.edited,
-                   source_refs=EXCLUDED.source_refs, resolved_by_membership_id=EXCLUDED.resolved_by_membership_id, resolved_at=now()`,
+                   part2_derived=EXCLUDED.part2_derived, source_refs=EXCLUDED.source_refs, resolved_by_membership_id=EXCLUDED.resolved_by_membership_id, resolved_at=now()`,
               confirmationValues(a(), {
                 sectionId: "upsert_section",
                 resolution,
@@ -1101,6 +1124,246 @@ describe.skipIf(!DB_URL)(
         const before = await count();
         await admin.query(migration());
         expect(await count()).toBe(before);
+      });
+    });
+
+    // ===============================================================================================================
+    // 8. the signed-section guard and the destruction grant
+    // ===============================================================================================================
+    describe("8. hearthnote_signed_section is tied to its own encounter and siting; the eraser may write text_cipher and nothing else", () => {
+      const a = () => orgs.A;
+      const run = <T>(fn: (c: Client) => Promise<T>) => asApp(ORG_A, a().author.userId, fn);
+
+      it("refuses an output that belongs to ANOTHER encounter of the same organization", async () => {
+        const other = await seedEncounter(ORG_A, a().providerEntityId, a().locationId, a().author);
+        const otherOutput = await seedOutput(a(), other.encounterId);
+        const failure = await sqlFailure(
+          run((c) =>
+            insertSection(
+              c,
+              sectionValues(a(), { sectionId: "cross_encounter", position: 40, outputId: otherOutput }),
+            ),
+          ),
+        );
+        expect(failure.code).toBe("23503");
+      });
+
+      it("refuses a siting pair that is not the encounter's own", async () => {
+        const failure = await sqlFailure(
+          run((c) =>
+            insertSection(
+              c,
+              sectionValues(a(), { sectionId: "wrong_siting", position: 41, locationId: null }),
+            ),
+          ),
+        );
+        expect(failure.code).toBe("23503");
+      });
+
+      it("accepts the encounter's own output with the encounter's own siting", async () => {
+        await run((c) => insertSection(c, sectionValues(a(), { sectionId: "own_output", position: 42 })));
+      });
+
+      it("the eraser's role may UPDATE text_cipher (the shred) but no other column", async () => {
+        const id = one(
+          (await run((c) => insertSection(c, sectionValues(a(), { sectionId: "grant_probe", position: 43 }))))
+            .rows,
+        ).id;
+        await asDestruction(ORG_A, (c) =>
+          c.query("UPDATE hearthnote_signed_section SET text_cipher='' WHERE id=$1", [id]),
+        );
+        for (const column of ["content_hash=repeat('c',64)", "part2_derived=true", "section_id='x'"]) {
+          const refused = await sqlFailure(
+            asDestruction(ORG_A, (c) =>
+              c.query(`UPDATE hearthnote_signed_section SET ${column} WHERE id=$1`, [id]),
+            ),
+          );
+          expect(refused.code, column).toBe("42501");
+        }
+      });
+    });
+
+    // ===============================================================================================================
+    // 9. the signed narrative is frozen in the database
+    // ===============================================================================================================
+    describe("9. hearthnote_assembled_output: once the encounter is signed the ciphers are frozen, bar the eraser's shred", () => {
+      const a = () => orgs.A;
+      const run = <T>(fn: (c: Client) => Promise<T>) => asApp(ORG_A, a().author.userId, fn);
+      const SIGNED_STATUSES = ["signed", "cosign_pending", "cosigned"] as const;
+
+      async function seedAt(status: "finalized" | "signed" | "cosign_pending" | "cosigned") {
+        const encounter = await seedEncounter(ORG_A, a().providerEntityId, a().locationId, a().author);
+        const outputId = await seedOutput(a(), encounter.encounterId);
+        await setStatus(encounter.encounterId, status);
+        return { ...encounter, outputId };
+      }
+      async function setStatus(encounterId: string, status: string) {
+        const signedAt = ["signed", "cosign_pending", "cosigned"].includes(status) ? "now()" : "NULL";
+        await admin.query(
+          `UPDATE encounter SET status=$2::encounter_status, vocab_version_id=gen_random_uuid(), signed_at=${signedAt} WHERE id=$1`,
+          [encounterId, status],
+        );
+      }
+      const cipherOf = async (outputId: string) =>
+        one(
+          (
+            await admin.query(
+              "SELECT layer1_cipher, layer2_cipher, final_cipher FROM hearthnote_assembled_output WHERE id=$1",
+              [outputId],
+            )
+          ).rows,
+        );
+
+      it("a finalized encounter's pin is still writable by the app role (the sign path writes it before the status flips)", async () => {
+        const { outputId } = await seedAt("finalized");
+        const result = await run((c) =>
+          c.query(
+            "UPDATE hearthnote_assembled_output SET layer1_cipher='v1.new', final_cipher='v1.new' WHERE id=$1",
+            [outputId],
+          ),
+        );
+        expect(result.rowCount).toBe(1);
+        expect((await cipherOf(outputId)).final_cipher).toBe("v1.new");
+      });
+
+      it("pin, then status flip, in ONE app-role transaction: the sign shape works", async () => {
+        const { encounterId, outputId } = await seedAt("finalized");
+        await run(async (c) => {
+          await c.query("UPDATE hearthnote_assembled_output SET final_cipher='v1.signed' WHERE id=$1", [outputId]);
+          await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [encounterId]);
+        });
+        expect((await cipherOf(outputId)).final_cipher).toBe("v1.signed");
+        // ... and the same two statements in the other order are refused: the freeze is real, the order is the contract.
+        const second = await seedAt("finalized");
+        const reordered = await sqlFailure(
+          run(async (c) => {
+            await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [second.encounterId]);
+            await c.query("UPDATE hearthnote_assembled_output SET final_cipher='v1.late' WHERE id=$1", [second.outputId]);
+          }),
+        );
+        expect(reordered.code).toBe("23001");
+        expect((await cipherOf(second.outputId)).final_cipher).toBe(SEALED_A);
+      });
+
+      it.each(SIGNED_STATUSES)("a %s encounter's layer1, layer2 and final ciphers are refused to the app role", async (status) => {
+        const { outputId } = await seedAt(status);
+        for (const set of ["layer1_cipher='v1.x'", "layer2_cipher='v1.x'", "final_cipher='v1.x'", "final_cipher=''", "layer2_cipher=NULL, final_cipher='v1.x'"]) {
+          const refused = await sqlFailure(
+            run((c) => c.query(`UPDATE hearthnote_assembled_output SET ${set} WHERE id=$1`, [outputId])),
+          );
+          expect(refused.code, `${status}: ${set}`).toBe("23001");
+        }
+        expect(await cipherOf(outputId)).toEqual({ layer1_cipher: SEALED_A, layer2_cipher: null, final_cipher: SEALED_A });
+      });
+
+      it("a write that changes no cipher is not refused after sign", async () => {
+        const { outputId } = await seedAt("signed");
+        const result = await run((c) =>
+          c.query("UPDATE hearthnote_assembled_output SET final_cipher=final_cipher WHERE id=$1", [outputId]),
+        );
+        expect(result.rowCount).toBe(1);
+      });
+
+      it("the eraser's role still shreds a signed note (the sentinel), and writes nothing else to a cipher", async () => {
+        const { outputId } = await seedAt("signed");
+        const arbitrary = await sqlFailure(
+          asDestruction(ORG_A, (c) =>
+            c.query("UPDATE hearthnote_assembled_output SET final_cipher='v1.other' WHERE id=$1", [outputId]),
+          ),
+        );
+        expect(arbitrary.code).toBe("23001");
+        await asDestruction(ORG_A, (c) =>
+          c.query(
+            "UPDATE hearthnote_assembled_output SET layer1_cipher='', layer2_cipher=NULL, final_cipher='' WHERE id=$1",
+            [outputId],
+          ),
+        );
+        expect(await cipherOf(outputId)).toEqual({ layer1_cipher: "", layer2_cipher: null, final_cipher: "" });
+      });
+    });
+
+    // ===============================================================================================================
+    // 10. what the row triggers write to the audit trail
+    // ===============================================================================================================
+    describe("10. the row audit keeps content hashes out, files Part 2 rows under the Part 2 class and withholds their source ids", () => {
+      const a = () => orgs.A;
+      const run = <T>(fn: (c: Client) => Promise<T>) => asApp(ORG_A, a().author.userId, fn);
+      const auditOf = async (eventType: string, sectionId: string) =>
+        one(
+          (
+            await admin.query(
+              `SELECT after, retention_class::text AS retention FROM audit_event
+              WHERE organization_id=$1 AND event_type=$2 AND after->>'section_id'=$3`,
+              [ORG_A, eventType, sectionId],
+            )
+          ).rows,
+        );
+
+      it("a confirmation: the hash is scrubbed, a plain row keeps its source ids under the 7-year class", async () => {
+        const refs = [{ kind: "care_plan_goal", id: randomUUID() }];
+        await run((c) =>
+          insertConfirmation(c, confirmationValues(a(), { sectionId: "audit_plain", contentHash: hash("7"), sourceRefs: refs })),
+        );
+        const event = await auditOf("encounter_draft_confirmation.insert", "audit_plain");
+        expect(event.after.content_hash).toBe("<changed>");
+        expect(JSON.stringify(event.after)).not.toContain(hash("7"));
+        expect(event.after.source_refs).toEqual(refs);
+        expect(event.retention).toBe("compliance");
+      });
+
+      it("a Part 2 confirmation: Part 2 retention class, the source ids withheld, the flag kept", async () => {
+        const refs = [{ kind: "medication_order", id: randomUUID() }];
+        await run((c) =>
+          insertConfirmation(c, confirmationValues(a(), { sectionId: "audit_part2", sourceRefs: refs, part2Derived: true })),
+        );
+        const event = await auditOf("encounter_draft_confirmation.insert", "audit_part2");
+        expect(event.retention).toBe("compliance_42cfr_part2");
+        expect(event.after.part2_derived).toBe(true);
+        expect(event.after.source_refs).toBe("<changed>");
+        expect(JSON.stringify(event.after)).not.toContain(refs[0]?.id);
+      });
+
+      it("a Part 2 re-confirmation's before image withholds the source ids too", async () => {
+        const refs = [{ kind: "medication_order", id: randomUUID() }];
+        await run((c) =>
+          insertConfirmation(c, confirmationValues(a(), { sectionId: "audit_part2_update", sourceRefs: refs, part2Derived: true })),
+        );
+        await run((c) =>
+          c.query(
+            "UPDATE encounter_draft_confirmation SET resolution='deselected' WHERE encounter_id=$1 AND section_id='audit_part2_update'",
+            [a().encounterId],
+          ),
+        );
+        const updated = one(
+          (
+            await admin.query(
+              `SELECT before, after, retention_class::text AS retention FROM audit_event
+              WHERE organization_id=$1 AND event_type='encounter_draft_confirmation.update' AND after->>'section_id'='audit_part2_update'`,
+              [ORG_A],
+            )
+          ).rows,
+        );
+        expect(updated.retention).toBe("compliance_42cfr_part2");
+        expect(JSON.stringify(updated)).not.toContain(refs[0]?.id);
+      });
+
+      it("a signed section: the hash and the sealed text are scrubbed; a Part 2 section is filed under the Part 2 class with its source ids withheld", async () => {
+        const plainRefs = [{ kind: "care_plan_goal", id: randomUUID() }];
+        const part2Refs = [{ kind: "medication_order", id: randomUUID() }];
+        await run(async (c) => {
+          await insertSection(c, sectionValues(a(), { sectionId: "sig_audit_plain", position: 50, sourceRefs: plainRefs }));
+          await insertSection(c, sectionValues(a(), { sectionId: "sig_audit_part2", position: 51, sourceRefs: part2Refs, part2Derived: true }));
+        });
+        const plain = await auditOf("hearthnote_signed_section.insert", "sig_audit_plain");
+        expect(plain.after.content_hash).toBe("<changed>");
+        expect(plain.after.source_refs).toEqual(plainRefs);
+        expect(plain.retention).toBe("compliance");
+        const part2 = await auditOf("hearthnote_signed_section.insert", "sig_audit_part2");
+        expect(part2.after.content_hash).toBe("<changed>");
+        expect(part2.after.source_refs).toBe("<changed>");
+        expect(part2.after.part2_derived).toBe(true);
+        expect(part2.retention).toBe("compliance_42cfr_part2");
+        expect(JSON.stringify(part2.after)).not.toContain(part2Refs[0]?.id);
       });
     });
   },

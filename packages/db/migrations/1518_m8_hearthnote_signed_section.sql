@@ -7,13 +7,18 @@
 --     STRING the narrative cipher (hearthnote-crypto.ts) returns, so the column is `text` like final_cipher, not bytea. This migration
 --     only creates the column; it never writes a value. The encounter eraser shreds it to "" (the NOT NULL sentinel) before deleting.
 --   * APPEND-ONLY for the application role: it holds SELECT and INSERT and nothing else, so an UPDATE or a DELETE is refused with
---     insufficient_privilege. (`hearthnote_assembled_output` itself keeps UPDATE for its finalize path; these rows have no such path.)
---     chartwarden_destruction alone may UPDATE (the crypto-shred) and DELETE, for tenant destruction.
---   * source_refs is a JSON array of {kind, id}: ids only, never text. The row trigger scrubs text_cipher from the audit snapshot.
+--     insufficient_privilege. (`hearthnote_assembled_output` itself keeps UPDATE for its finalize path, frozen after sign by 1521; these
+--     rows have no such path.) chartwarden_destruction alone may UPDATE `text_cipher` (the crypto-shred, a column grant) and DELETE, for
+--     tenant destruction.
+--   * source_refs is a JSON array of {kind, id}: ids only, never text. The row trigger scrubs text_cipher and content_hash from the audit
+--     snapshot (an unsalted SHA-256 of low-entropy section text is an offline guessing oracle for anyone with audit.read; the hash stays
+--     stored, it is compared at read time). A part2_derived row's audit image also withholds source_refs (the audit read path is not Part 2
+--     gated: audit.read returns before/after for every retention class) and is filed under compliance_42cfr_part2, not the 7-year class.
 --   * UNIQUE (assembled_output_id, section_id) and (assembled_output_id, position): a note has each section once, in one place.
 --   * Three-column tenancy copied from the encounter, the siting pair nullable (mig 0128 / 0226 / 0231). No amends column: the amendment
 --     PR adds it.
--- The guard trigger makes the encounter and the assembled output belong to the row's own organization (single-column FKs ignore RLS).
+-- The guard trigger makes the encounter and the assembled output belong to the row's own organization (single-column FKs ignore RLS), the
+-- output belong to THAT encounter (a same-organization output of another encounter is refused), and the row's siting pair be the encounter's.
 -- Roles are the post-1139 names (chartwarden_*).
 
 CREATE TABLE "hearthnote_signed_section" (
@@ -52,12 +57,16 @@ GRANT SELECT, INSERT ON "hearthnote_signed_section" TO chartwarden_app;--> state
 
 CREATE OR REPLACE FUNCTION audit_phi_write_hearthnote_signed_section() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
-DECLARE v_before jsonb; v_after jsonb;
+DECLARE v_before jsonb; v_after jsonb; v_part2 boolean;
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE')
-    THEN public.audit_scrub(to_jsonb(OLD), ARRAY['text_cipher']::text[]) ELSE NULL END;
+    THEN public.audit_scrub(to_jsonb(OLD), ARRAY['text_cipher', 'content_hash']::text[]) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE')
-    THEN public.audit_scrub(to_jsonb(NEW), ARRAY['text_cipher']::text[]) ELSE NULL END;
+    THEN public.audit_scrub(to_jsonb(NEW), ARRAY['text_cipher', 'content_hash']::text[]) ELSE NULL END;
+  -- A Part 2 row (either image of an update) withholds its source ids and files under the Part 2 retention class.
+  v_part2 := COALESCE(OLD.part2_derived, false) OR COALESCE(NEW.part2_derived, false);
+  IF v_part2 AND v_before IS NOT NULL THEN v_before := public.audit_scrub(v_before, ARRAY['source_refs']::text[]); END IF;
+  IF v_part2 AND v_after IS NOT NULL THEN v_after := public.audit_scrub(v_after, ARRAY['source_refs']::text[]); END IF;
   INSERT INTO public.audit_event (
     organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id,
     correlation_id, outcome, severity, before, after, context, retention_class
@@ -72,7 +81,7 @@ BEGIN
     jsonb_build_object(
       'provider_entity_id', NULLIF(current_setting('app.provider_entity_id', true), ''),
       'location_id', NULLIF(current_setting('app.location_id', true), '')),
-    'compliance'
+    CASE WHEN v_part2 THEN 'compliance_42cfr_part2'::audit_retention_class ELSE 'compliance'::audit_retention_class END
   );
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint
@@ -84,9 +93,15 @@ CREATE TRIGGER "trg_audit_hearthnote_signed_section"
 CREATE OR REPLACE FUNCTION hearthnote_signed_section_org_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM encounter e WHERE e.id = NEW.encounter_id AND e.organization_id = NEW.organization_id)
-     OR NOT EXISTS (SELECT 1 FROM hearthnote_assembled_output o WHERE o.id = NEW.assembled_output_id AND o.organization_id = NEW.organization_id) THEN
-    RAISE EXCEPTION 'hearthnote_signed_section: the encounter and the assembled output must belong to the row''s organization'
+  IF NOT EXISTS (
+       SELECT 1 FROM encounter e
+        WHERE e.id = NEW.encounter_id AND e.organization_id = NEW.organization_id
+          AND e.provider_entity_id IS NOT DISTINCT FROM NEW.provider_entity_id
+          AND e.location_id IS NOT DISTINCT FROM NEW.location_id)
+     OR NOT EXISTS (
+       SELECT 1 FROM hearthnote_assembled_output o
+        WHERE o.id = NEW.assembled_output_id AND o.organization_id = NEW.organization_id AND o.encounter_id = NEW.encounter_id) THEN
+    RAISE EXCEPTION 'hearthnote_signed_section: the encounter and the assembled output must belong to the row''s organization, the output to that encounter, and the siting pair be the encounter''s'
       USING ERRCODE = '23503';
   END IF;
   RETURN NEW;
@@ -95,8 +110,10 @@ CREATE TRIGGER "trg_hearthnote_signed_section_org_guard"
   BEFORE INSERT ON "hearthnote_signed_section"
   FOR EACH ROW EXECUTE FUNCTION hearthnote_signed_section_org_guard();--> statement-breakpoint
 
--- Tenant destruction: the encounter eraser shreds text_cipher (UPDATE) and then deletes the rows, as it does for the assembled output.
-GRANT SELECT, UPDATE, DELETE ON "hearthnote_signed_section" TO chartwarden_destruction;--> statement-breakpoint
+-- Tenant destruction: the encounter eraser shreds text_cipher (a COLUMN grant, the 1514 shape: nothing else on the row is writable) and then
+-- deletes the rows, as it does for the assembled output.
+GRANT SELECT, DELETE ON "hearthnote_signed_section" TO chartwarden_destruction;--> statement-breakpoint
+GRANT UPDATE ("text_cipher") ON "hearthnote_signed_section" TO chartwarden_destruction;--> statement-breakpoint
 CREATE POLICY "hearthnote_signed_section_destruction" ON "hearthnote_signed_section"
   FOR ALL TO chartwarden_destruction
   USING ("organization_id" = nullif(current_setting('app.org_id', true), '')::uuid)

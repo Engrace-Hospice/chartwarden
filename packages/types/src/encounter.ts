@@ -239,9 +239,10 @@ export const M8_AUDIT_DENYLIST: { readonly [K in M8TableName]: readonly string[]
   hearthnote_selection: ["free_text_cipher"],
   hearthnote_assembled_output: ["layer1_cipher", "layer2_cipher", "final_cipher"],
   hearthnote_llm_modification: ["diff_json", "per_passage_decisions"],
-  // ADR-0114: confirmations carry ids and hashes only; the signed section's sealed text never reaches the audit diff.
-  encounter_draft_confirmation: [],
-  hearthnote_signed_section: ["text_cipher"],
+  // ADR-0114: confirmations carry ids only; neither table's content hash (an unsalted SHA-256 of low-entropy text) reaches the audit diff,
+  // nor does the signed section's sealed text. A Part 2 row also withholds `source_refs`, row-conditionally, in the same triggers.
+  encounter_draft_confirmation: ["content_hash"],
+  hearthnote_signed_section: ["text_cipher", "content_hash"],
 } as const;
 
 // ── §4.4 outbox event names (the `m8.*` namespace the dispatcher + arch:gaps catalog validate) ───────

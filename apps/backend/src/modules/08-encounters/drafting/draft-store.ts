@@ -18,6 +18,8 @@ export interface DraftEncounterRow extends DraftEncounter {
 export interface ConfirmationWrite extends ConfirmationRecord {
   readonly encounter: DraftEncounterRow;
   readonly edited: boolean;
+  /** The compiler's Part 2 verdict on the section: the row's audit image withholds its source ids and files under the Part 2 class. */
+  readonly part2Derived: boolean;
   readonly sourceRefs: readonly DraftSourceRef[];
   readonly resolvedByMembershipId: string;
   readonly resolvedAt: Date;
@@ -51,6 +53,8 @@ export interface DraftResolvedEvent {
   /** The hash the stored confirmation is bound to; `null` when the section was left empty and no row was kept. */
   readonly boundContentHash: string | null;
   readonly corpusVersion: string;
+  /** The section's Part 2 verdict: it selects the audit retention class and whether the source ids are recorded. */
+  readonly part2Derived: boolean;
   readonly sourceRefs: readonly DraftSourceRef[];
   readonly carePlanElementsLinked: number;
   readonly carePlanElementsRemoved: number;

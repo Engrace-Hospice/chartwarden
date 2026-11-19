@@ -15,6 +15,7 @@ const read = (name: string): string =>
 const CONFIRMATION = read("1517_m8_encounter_draft_confirmation.sql");
 const SIGNED_SECTION = read("1518_m8_hearthnote_signed_section.sql");
 const POLICY = read("1519_m8_visit_note_draft_policy.sql");
+const FROZEN = read("1521_m8_assembled_output_frozen_after_sign.sql");
 
 /** The privilege list of the `GRANT ... ON "<table>" TO chartwarden_app` statement. */
 function appGrant(source: string, table: string): readonly string[] {
@@ -75,6 +76,20 @@ describe("encounter_draft_confirmation", () => {
     expect(CONFIRMATION).toContain(`jsonb_typeof("source_refs") = 'array'`);
   });
 
+  it("scrubs the content hash from the audit snapshot (an offline guessing oracle for anyone with audit.read), in SQL and in the M8 denylist mirror", () => {
+    expect(CONFIRMATION).toMatch(/audit_scrub\(to_jsonb\(NEW\), ARRAY\['content_hash'\]/);
+    expect(M8_AUDIT_DENYLIST.encounter_draft_confirmation).toEqual(["content_hash"]);
+  });
+
+  it("carries part2_derived with no default, files Part 2 rows under the Part 2 class and withholds their source ids from the audit image", () => {
+    expect(CONFIRMATION).toMatch(/"part2_derived" boolean NOT NULL,/);
+    expect(CONFIRMATION).toContain("compliance_42cfr_part2");
+    expect(CONFIRMATION).toMatch(/audit_scrub\(v_after, ARRAY\['source_refs'\]/);
+    expect(getTableConfig(schema.encounterDraftConfirmations).columns.map((c) => c.name)).toContain(
+      "part2_derived",
+    );
+  });
+
   it("matches its Drizzle mirror's constraint names", () => {
     const names = getTableConfig(schema.encounterDraftConfirmations).checks.map((c) => c.name);
     for (const name of names) expect(CONFIRMATION).toContain(`"${name}"`);
@@ -92,10 +107,31 @@ describe("hearthnote_signed_section", () => {
     expect(SIGNED_SECTION).toContain('UNIQUE ("assembled_output_id", "position")');
   });
 
-  it("scrubs the sealed text from the audit snapshot, in SQL and in the M8 denylist mirror", () => {
-    expect(SIGNED_SECTION).toMatch(/audit_scrub\(to_jsonb\(NEW\), ARRAY\['text_cipher'\]/);
-    expect(M8_AUDIT_DENYLIST.hearthnote_signed_section).toEqual(["text_cipher"]);
-    expect(M8_AUDIT_DENYLIST.encounter_draft_confirmation).toEqual([]);
+  it("scrubs the sealed text and the content hash from the audit snapshot, in SQL and in the M8 denylist mirror", () => {
+    expect(SIGNED_SECTION).toMatch(
+      /audit_scrub\(to_jsonb\(NEW\), ARRAY\['text_cipher', 'content_hash'\]/,
+    );
+    expect(M8_AUDIT_DENYLIST.hearthnote_signed_section).toEqual(["text_cipher", "content_hash"]);
+  });
+
+  it("files a Part 2 section under the Part 2 retention class and withholds its source ids from the audit image", () => {
+    expect(SIGNED_SECTION).toContain("compliance_42cfr_part2");
+    expect(SIGNED_SECTION).toMatch(/audit_scrub\(v_after, ARRAY\['source_refs'\]/);
+  });
+
+  it("gives the destruction role UPDATE on text_cipher only (a column grant, never table-level UPDATE)", () => {
+    expect(SIGNED_SECTION).toContain(
+      'GRANT UPDATE ("text_cipher") ON "hearthnote_signed_section" TO chartwarden_destruction',
+    );
+    expect(SIGNED_SECTION).not.toMatch(
+      /GRANT [A-Z, ]*UPDATE[A-Z, ]* ON "hearthnote_signed_section" TO chartwarden_destruction/,
+    );
+  });
+
+  it("ties the output to the row's own encounter and the siting pair to the encounter's", () => {
+    expect(SIGNED_SECTION).toContain("o.encounter_id = NEW.encounter_id");
+    expect(SIGNED_SECTION).toContain("e.provider_entity_id IS NOT DISTINCT FROM NEW.provider_entity_id");
+    expect(SIGNED_SECTION).toContain("e.location_id IS NOT DISTINCT FROM NEW.location_id");
   });
 
   it("has no default on part2_derived (the writer decides, fail closed) and no amends column yet", () => {
@@ -121,6 +157,32 @@ describe("visit_note_draft_policy", () => {
     expect(POLICY).toContain(`CHECK ("enabled" = ("enabled_at" IS NOT NULL))`);
     const names = getTableConfig(schema.visitNoteDraftPolicies).checks.map((c) => c.name);
     expect(names).toEqual(["visit_note_draft_policy_enabled_at_check"]);
+  });
+});
+
+describe("migration 1521: the signed narrative is frozen", () => {
+  it("stays an expand (arch:migration-compat reads this header)", () => {
+    expect(FROZEN.startsWith("-- compat: expand")).toBe(true);
+  });
+
+  it("is a BEFORE UPDATE trigger on hearthnote_assembled_output that guards the three ciphers", () => {
+    expect(FROZEN).toMatch(
+      /CREATE TRIGGER "trg_hearthnote_assembled_output_frozen_after_sign"\s+BEFORE UPDATE ON "hearthnote_assembled_output"/,
+    );
+    for (const column of ["layer1_cipher", "layer2_cipher", "final_cipher"]) {
+      expect(FROZEN).toContain(`NEW.${column} IS NOT DISTINCT FROM OLD.${column}`);
+    }
+  });
+
+  it("freezes at signed, cosign_pending and cosigned and fails closed on an unreadable parent", () => {
+    expect(FROZEN).toContain("v_status IS NULL OR v_status IN ('signed', 'cosign_pending', 'cosigned')");
+    expect(FROZEN).toContain("ERRCODE = 'restrict_violation'");
+  });
+
+  it("exempts only a non-superuser member of chartwarden_destruction writing the shred sentinel", () => {
+    expect(FROZEN).toContain("pg_has_role(current_user, 'chartwarden_destruction', 'MEMBER')");
+    expect(FROZEN).toContain("r.rolsuper");
+    expect(FROZEN).toContain("NEW.final_cipher = ''");
   });
 });
 

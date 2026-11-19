@@ -226,7 +226,7 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     action: "m8.encounter.draft_section_resolved",
     moduleOwner: "m8",
     defaultRetentionClass: "compliance",
-    description: "A clinician confirmed or deselected one drafted section of a visit note (encounterId, sectionId, resolution = confirmed | deselected, edited = the section carried the clinician's own text, contentHash and corpusVersion the resolution is bound to, sourceRefs = the ids and kinds of the section's sources, carePlanElementsLinked / carePlanElementsRemoved counts; severity info; ids, enums and counts only, never text; the only place a deselection that leaves the section empty is recorded; ADR-0114 VN-D7 / VN-D8). Part 2 eligible: the sources can be SUD-derived.",
+    description: "A clinician confirmed or deselected one drafted section of a visit note (encounterId, sectionId, resolution = confirmed | deselected, edited = the section carried the clinician's own text, corpusVersion the resolution is bound to, part2Derived = the compiler's verdict on the section, sourceRefs = the ids and kinds of the section's sources (omitted when part2Derived), carePlanElementsLinked / carePlanElementsRemoved counts; severity info; ids, enums and counts only, never text and never a content hash; the only place a deselection that leaves the section empty is recorded; ADR-0114 VN-D7 / VN-D8). Part 2 eligible: a part2Derived section is filed under compliance_42cfr_part2 (the emitter selects the class per event; the default stays compliance).",
     denylistCategories: [],
     isPartTwoEligible: true,
   },
