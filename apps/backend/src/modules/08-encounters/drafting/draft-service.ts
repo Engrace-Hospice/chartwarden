@@ -13,6 +13,7 @@ import type { DraftEncounterRow, DraftUnit, RunInOrg } from "./draft-store";
 import { type DraftSectionView, type DraftView, draftView } from "./draft-view";
 import type { DraftPorts, DraftSeamPorts } from "./ports";
 import { resolveSection } from "./resolve-section";
+import { serialSeams } from "./serial-seams";
 
 /** The authenticated caller of a draft route, from the server-assembled session. */
 export interface DraftCaller {
@@ -62,7 +63,8 @@ async function loadOr404(
 
 export function createDraftService(deps: DraftServiceDeps): DraftService {
   const clock = deps.now ?? (() => new Date());
-  const seams = deps.seams ?? defaultDraftPorts;
+  // One request's source reads take turns (serial-seams.ts): each opens a pooled transaction beside the request's own.
+  const seams = (): DraftSeamPorts => serialSeams((deps.seams ?? defaultDraftPorts)());
   return {
     async getDraft(caller, encounterId) {
       const now = clock();

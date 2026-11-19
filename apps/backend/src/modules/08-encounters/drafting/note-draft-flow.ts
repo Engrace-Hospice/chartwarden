@@ -14,6 +14,7 @@ import { finalNoteOf } from "./final-note";
 import { type NoteDraft, readNoteDraft } from "./note-draft";
 import { isVisitNoteDraftEnabled } from "./policy-service";
 import type { DraftEncounter, DraftSeamPorts, DraftViewer } from "./ports";
+import { serialSeams } from "./serial-seams";
 import { pinAndSealSignedNote } from "./signed-sections";
 
 /** What the flow needs of an encounter row: the draft's projection and the siting the sealed rows copy. */
@@ -45,7 +46,7 @@ export function createNoteDraftFlow(deps: NoteDraftFlowDeps): NoteDraftFlow {
       const store = createDbDraftStore(tx, { now, freeTextCipher: deps.freeTextCipher });
       return readNoteDraft(
         { enabled: () => isVisitNoteDraftEnabled(tx, encounter.organizationId), store },
-        deps.seams(),
+        serialSeams(deps.seams()),
         encounter,
         viewer,
         now,
