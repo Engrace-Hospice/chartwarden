@@ -31,11 +31,10 @@ import {
   readableValidation,
   transportFeedback,
 } from "./compose-feedback";
-import { ComposerCarePlanPicker } from "./composer-care-plan-picker";
-import { ComposerScoreTrend } from "./composer-score-trend";
-import { STATE_LABEL, confirmedSectionIds, describeIssues, draftGateRefusal } from "./draft-model";
+import { gateRefusalWords } from "./compose-gate-refusal";
+import { ComposerDraftRail, ComposerDraftStrip } from "./composer-draft-chrome";
+import { STATE_LABEL, confirmedSectionIds } from "./draft-model";
 import { DraftSectionPanel } from "./draft-section-panel";
-import { DraftSummary, DraftUnavailable } from "./draft-summary";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
@@ -352,18 +351,11 @@ export function EncounterCompose(): JSX.Element {
         // The save changed what the draft is built from and the gate may have named drafted sections: one re-read shows what the
         // server holds now. (A finalize that succeeds reloads the whole note below, and the draft with it.)
         void noteDraft.reload();
-        const gate = draftGateRefusal(res.details);
+        const gate = gateRefusalWords(res.details, headingOfSection);
         if (gate) {
-          // The gate named drafted sections: say which and why, beside the draft strip. It lists every failure at once; the drafted
-          // sections are named below, the first other one is repeated here.
-          refuse(describeIssues(gate.issues, headingOfSection));
-          const alsoNeeded =
-            gate.others.length > 0 ? ` Also: ${readableValidation(gate.others, "")}` : "";
-          setFeedback({
-            tone: "error",
-            title: "Drafted sections need your review",
-            message: `The note was not finalized. Confirm or deselect the sections listed under the progress summary, then finalize again.${alsoNeeded}`,
-          });
+          // The gate named drafted sections: say which and why, beside the draft strip.
+          refuse(gate.refusal);
+          setFeedback(gate.feedback);
           return;
         }
         setFeedback(feedbackFor(res));
@@ -590,20 +582,13 @@ export function EncounterCompose(): JSX.Element {
               </section>
             )}
 
-            {noteDraft.load.status === "unavailable" ? (
-              <DraftUnavailable
-                retrying={noteDraft.refreshing}
-                onRetry={() => void noteDraft.reload()}
-              />
-            ) : null}
-            {pending ? (
-              <DraftSummary
-                draft={pending}
-                headingOf={headingOfSection}
-                onOpenSection={openFromSummary}
-                refusal={refusal}
-              />
-            ) : null}
+            <ComposerDraftStrip
+              noteDraft={noteDraft}
+              pending={pending}
+              headingOf={headingOfSection}
+              onOpenSection={openFromSummary}
+              refusal={refusal}
+            />
 
             {vitalsOpen ? (
               <VitalsPanel
@@ -903,19 +888,13 @@ export function EncounterCompose(): JSX.Element {
                 </section>
 
                 {drafted ? (
-                  <div className="wx-draft-rail">
-                    <ComposerScoreTrend
-                      patientId={encounter.patientId}
-                      serviceDate={encounter.serviceDate}
-                      visitTime={drafted.asOf}
-                    />
-                    <ComposerCarePlanPicker
-                      encounter={encounter}
-                      editable={editable}
-                      revision={carePlanRevision}
-                      onChanged={() => void noteDraft.reload()}
-                    />
-                  </div>
+                  <ComposerDraftRail
+                    encounter={encounter}
+                    editable={editable}
+                    drafted={drafted}
+                    carePlanRevision={carePlanRevision}
+                    onLinksChanged={() => void noteDraft.reload()}
+                  />
                 ) : null}
               </aside>
             </div>
