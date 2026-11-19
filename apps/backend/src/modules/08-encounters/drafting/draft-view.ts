@@ -4,7 +4,7 @@
 // built from (VN-D5 "each shown with its origin"), never an id. `part2Derived` is the compiler's fail-closed flag (VN-D13): the text of
 // a section is whatever the seams returned for THIS viewer, so another author's unredacted content never reaches it (VN-D10).
 import type { DraftSection, DraftSourceKind } from "@chartwarden/hearthnote";
-import type { ComputedDraft } from "./compute";
+import type { DraftOverview } from "./compute";
 import type { DraftEncounter } from "./ports";
 import { type ConfirmationRecord, type SectionStateName, sectionStates } from "./section-state";
 
@@ -58,7 +58,7 @@ export function sectionView(section: DraftSection, state: SectionStateName): Dra
 
 export function draftView(
   encounter: DraftEncounter,
-  computed: ComputedDraft,
+  computed: DraftOverview,
   confirmations: readonly ConfirmationRecord[],
 ): DraftView {
   const states = new Map(

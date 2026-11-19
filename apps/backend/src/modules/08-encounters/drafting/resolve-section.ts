@@ -14,7 +14,7 @@
 import type { DraftSection, DraftedSection } from "@chartwarden/hearthnote";
 import { EncounterStateError } from "../lifecycle/errors";
 import { isCarePlanRef } from "./care-plan-refs";
-import { computeDraft } from "./compute";
+import { computeDraftOverview } from "./compute";
 import type { DraftEncounterRow, DraftResolvedEvent, DraftStore } from "./draft-store";
 import { type DraftSectionView, sectionView } from "./draft-view";
 import type { DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
@@ -62,7 +62,7 @@ export async function resolveSection(
 ): Promise<ResolveSectionOutcome> {
   const { encounter, viewer, sectionId, resolution, now } = input;
   const ports: DraftPorts = { ...seams, ...store };
-  const before = await computeDraft(ports, encounter, viewer, now);
+  const before = await computeDraftOverview(ports, encounter, viewer, now);
   const seen = findSection(before.draft.sections, sectionId);
   if (seen === undefined) {
     throw new EncounterStateError(
@@ -103,7 +103,10 @@ export async function resolveSection(
     // The removal changed what the section says: bind the deselection to what REMAINS, recomputed inside the same transaction.
     const after =
       removed > 0
-        ? findSection((await computeDraft(ports, encounter, viewer, now)).draft.sections, sectionId)
+        ? findSection(
+            (await computeDraftOverview(ports, encounter, viewer, now)).draft.sections,
+            sectionId,
+          )
         : seen;
     bound = after?.state === "drafted" ? after : null;
   }

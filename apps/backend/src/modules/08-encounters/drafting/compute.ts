@@ -13,6 +13,8 @@ import {
   HearthnoteAssemblyError,
   type SelectionState,
   compileDraft,
+  emptyDraft,
+  templateHasDraftedSection,
 } from "@chartwarden/hearthnote";
 import { EncounterStateError, type M8ErrorCode } from "../lifecycle/errors";
 import { readDraftInputs } from "./inputs";
@@ -20,14 +22,18 @@ import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
 import { draftUnavailable, guarded } from "./unavailable";
 import { visitAsOf } from "./visit-time";
 
-export interface ComputedDraft {
+/** What a draft view needs: the draft, the instant it describes and the template. */
+export interface DraftOverview {
   readonly draft: Draft;
-  /** The clinician's stored selections and the slots that render them, as the draft was compiled from them (the signed note is built from the same read). */
-  readonly selection: SelectionState;
-  readonly context: AssemblyContext;
   /** The visit time the draft describes the patient at (ISO-8601, UTC). */
   readonly asOf: string;
   readonly templateKey: string;
+}
+
+export interface ComputedDraft extends DraftOverview {
+  /** The clinician's stored selections and the slots that render them, as the draft was compiled from them (the signed note is built from the same read). */
+  readonly selection: SelectionState;
+  readonly context: AssemblyContext;
 }
 
 /** The §2.7 code each assembly failure maps to: the same table the selections routes apply. */
@@ -54,9 +60,10 @@ function zoneReadOnce(ports: DraftPorts): DraftPorts {
   };
 }
 
-function compile(inputs: DraftInputs): Draft {
+/** Run a hearthnote draft step, mapping its typed failures to the codes the M8 routes answer with. */
+function mapped<T>(step: () => T): T {
   try {
-    return compileDraft(inputs, { sha256Hex });
+    return step();
   } catch (cause) {
     if (cause instanceof HearthnoteAssemblyError) {
       throw new EncounterStateError(ASSEMBLY_ERROR_CODE[cause.code], cause.message, undefined, {
@@ -67,6 +74,8 @@ function compile(inputs: DraftInputs): Draft {
     throw cause;
   }
 }
+
+const compile = (inputs: DraftInputs): Draft => mapped(() => compileDraft(inputs, { sha256Hex }));
 
 /**
  * Compute the draft of `encounter` for `viewer` as of the visit time. Throws `EncounterStateError`
@@ -99,4 +108,24 @@ export async function computeDraft(
     asOf,
     templateKey: draft.templateKey,
   };
+}
+
+/**
+ * The draft the routes show: `computeDraft` for a template the corpus drafts, otherwise every section empty (`not_drafted`) with no
+ * source read, no stored selection read and no zone read. `asOf` is then `now`: nothing is described as of a visit time, and `now` is the
+ * ceiling the visit time never passes. The same predicate (`templateHasDraftedSection`) keeps the gate and sign out of the draft entirely
+ * (`readNoteDraft`). A pair with no template is refused as `computeDraft` refuses it.
+ */
+export async function computeDraftOverview(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  now: Date,
+): Promise<DraftOverview> {
+  if (templateHasDraftedSection(encounter.encounterType, encounter.discipline)) {
+    return computeDraft(ports, encounter, viewer, now);
+  }
+  const asOf = now.toISOString();
+  const draft = mapped(() => emptyDraft(encounter.encounterType, encounter.discipline, asOf));
+  return { draft, asOf, templateKey: draft.templateKey };
 }

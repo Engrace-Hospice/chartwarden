@@ -7,7 +7,7 @@
 import type { AuditContext } from "@chartwarden/audit";
 import { NotFoundError } from "@chartwarden/types";
 import { checkMutableForEdit } from "../lifecycle/validation";
-import { computeDraft } from "./compute";
+import { computeDraftOverview } from "./compute";
 import { defaultDraftPorts } from "./default-ports";
 import type { DraftEncounterRow, DraftUnit, RunInOrg } from "./draft-store";
 import { type DraftSectionView, type DraftView, draftView } from "./draft-view";
@@ -72,7 +72,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
           const encounter = await loadOr404(unit, encounterId, false);
           const ports: DraftPorts = { ...seams(), ...unit.store };
           const viewer = { roles: caller.roles, membershipId: caller.membershipId };
-          const computed = await computeDraft(ports, encounter, viewer, now);
+          const computed = await computeDraftOverview(ports, encounter, viewer, now);
           return draftView(encounter, computed, await unit.store.confirmations(encounter.id));
         },
       );
