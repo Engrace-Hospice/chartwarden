@@ -1348,6 +1348,31 @@ controls:
       owner: clinical-platform
       review_by: 2027-04-30
 
+  - id: CW-AC-49
+    title: >-
+      The per-tenant switch for the visit-note draft and its sign gate (ADR-0114 VN-D17) is a step-up-gated, audited act held by the tenant-level owners. PUT /api/v1/encounters/draft-policy requires encounter.draft_policy_admin (director_of_nursing, don, org_admin, administrator, and superadmin through the full catalog; never clinical_supervisor, clinical_lead or a field role), a fresh step-up and a human (non-AI) actor, and writes visit_note_draft_policy (one row per organization, RLS enabled and FORCEd, no DELETE for the application role) plus an explicit warn-severity m8.encounter.draft_policy_changed event with the previous and new value. An absent row is off, and enabling is refused 409 CORPUS_REVIEW_PENDING until the platform phrase corpus has had its named clinical review (VN-D14); disabling is always allowed.
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)(ii)(B)"]
+    soc2: ["CC6.1", "CC6.3", "CC7.2"]
+    status: partial
+    evidence:
+      - script: test:m8:visit-note-drafting:live
+      - ci: "M8 visit-note drafting"
+      - file: packages/auth/src/roles/visit-note-draft-grants.ts
+      - file: apps/backend/__tests__/visit-note-draft-grants.test.ts
+      - file: apps/backend/__tests__/visit-note-draft-routes.test.ts
+      - file: apps/backend/__tests__/visit-note-draft-policy-service.test.ts
+      - file: apps/backend/__tests__/visit-note-draft-migration-pins.test.ts
+      - file: packages/db/migrations/1519_m8_visit_note_draft_policy.sql
+      - file: packages/db/migrations/1520_m8_visit_note_draft_permissions.sql
+      - file: apps/backend/src/modules/08-encounters/routes/drafting-routes.ts
+      - file: apps/backend/src/modules/08-encounters/drafting/policy-service.ts
+      - file: packages/audit/src/actions/m8.ts
+    gap:
+      reason: >-
+        This row covers the switch only. The draft and the sign gate it controls (the draft_sections_resolved check, stale-confirmation rejection) are built in later pull requests of the same slice and get their own evidence here when they land; until then switching a tenant on changes nothing a clinician sees. The DON and the tenant administrators hold the key with step-up and a warn-severity audit event but no second person and no alert (CW-MON-01 is a gap), the same posture as the closure policy (CW-AC-48). The corpus review state is a constant in code (CORPUS_CLINICAL_REVIEW), approved by a deliberate edit in its own commit, not a record with an approver and a date, and the switch reads it at write time only: a tenant already on stays on if the constant were ever reverted to pending.
+      owner: clinical-platform
+      review_by: 2027-04-30
+
   - id: CW-AC-42
     title: >-
       The tenant's own skip of an onboarding step removes the operator's check on that step, so it is itself a control. POST /api/v1/tenant/onboarding/:taskId/skip requires onboarding.manage_own, the literal org_admin role (the ABAC predicate tenant_org_admin_role, and the service's owner rule), a fresh step-up, a human (non-AI) actor, an Idempotency-Key and a rationale of 8 to 2000 characters, cleaned and screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). It settles only MAC credentials, payer enrollment and DoseSpot kickoff, in the strict step order; any other step, sample data, go-live and a step an operator added included, is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE before the step's owner rule and the order are judged. The skip is reversible by re-opening the step (refused while a go-live attestation is pending; the re-open keeps who skipped, when and the rationale in the task's history) and is recorded in the task's completion evidence with the actor kind tenant, the member, the user and the rationale. The tenant's skip revokes a pending go-live attestation in the same transaction; an operator's skip and the system's clearinghouse skip do not. The three steps are gating, so an open one already rules a pending attestation out and the revocation is a guarantee the wizard does not normally reach. The rationale is free text and is copied into the tenant's audit trail: the onboarding_task row-audit trigger (audit_phi_write_onboarding_task, migration 0053, audit_scrub with an empty denylist) copies the whole completion evidence into audit_event before and after, with retention class compliance, append-only, readable in that organization by holders of audit.read; for an operator's skip the same row also names the operator's user and membership. The text is screened for SSN and MBI shapes only, which is best effort; the same exposure already exists for evidence notes, blocker reasons and operator skips. The rationale is also held in the idempotency record's response body until it expires after 24 hours and is swept hourly and, after a re-open, in the task's re-open history; no log line, outbox event, error message or 422 carries it. The platform API's view of the tenant's wizard lists the skip (skippedBy tenant, with the rationale) and the admin console's step evidence card says who skipped the step (the organization, ChartWarden operations or the system), for the go-live approver, who still evaluates every go-live guard. Nothing machine-checks that a skip is true: the approver's review is the check. The route is on the not-yet-live organization's allowlist (CW-AC-16).
