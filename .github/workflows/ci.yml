@@ -302,6 +302,8 @@ jobs:
           # ADR-0113 — the visit-note closure clock as chartwarden_app: policy/override RLS and append-only grants, the evaluator + gate
           # boundaries, the partial-index plans, the alert sweep over the real emitter, the m17.visit.started stamp consumer, the board.
           - { name: "M8 note closure", scripts: "test:m8:note-closure:live" }
+          # §3.6 — the encounter eraser as a chartwarden_destruction login: every root kind tombstoned past its CHECKs, text scrubbed, rerun a no-op.
+          - { name: "M8 encounter eraser", scripts: "test:m8:eraser:live" }
           - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
           # M36 WP 3.2 - LatestAssessmentProvider.linkSummary, as the NOBYPASSRLS app role.
           - { name: "M9 link summary seam", scripts: "test:m9:link-summary:live" }

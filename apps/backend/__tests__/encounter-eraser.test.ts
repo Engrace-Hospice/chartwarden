@@ -12,6 +12,7 @@ import {
 } from "../src/bootstrap/erasers/registry";
 import { buildServer } from "../src/bootstrap/index";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import { ENCOUNTER_ERASED_REASON } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
   eraseEncounterRecord,
   createInMemoryEncounterEraseStore as makeEraseStore,
@@ -44,6 +45,12 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
     const { store } = makeEraseStore({ signatures: 2, vitals: 1 });
     expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(3);
     expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(0);
+  });
+
+  it("the tombstone placeholder clears the longest reason-length CHECK floor (the live suite proves the CHECKs themselves)", () => {
+    // encounter_administrative_override_consistency wants 100 characters; a shorter placeholder would make every
+    // destruction of a root with that tier roll back on a real database (the in-memory store has no CHECKs).
+    expect(ENCOUNTER_ERASED_REASON.length).toBeGreaterThanOrEqual(100);
   });
 
   it("registers over the deny-stub; the boot hook makes validateErasers() pass for the data class", async () => {
