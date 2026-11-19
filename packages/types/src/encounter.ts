@@ -105,7 +105,7 @@ export const MODALITY_CONFIRMATION_DISCIPLINES: readonly EncounterDiscipline[] =
 export type EncounterTimeSource = "evv" | "clinician";
 
 /** Which signature slot an `encounter_signature` row fills (mirrors `signature_kind`). */
-export type SignatureKind = "primary" | "cosignature" | "addendum";
+export type SignatureKind = "primary" | "cosignature" | "addendum" | "addendum_cosignature";
 
 /** The step-up method used to authenticate a sign (mirrors `signature_method`, D13). */
 export type SignatureMethod = "passkey" | "biometric" | "password_plus_otp";
@@ -263,6 +263,7 @@ export const M8_EVENT_NAMES = [
   "m8.encounter.cosigned",
   "m8.encounter.addendum_signed",
   "m8.encounter.section_amended",
+  "m8.encounter.addendum_cosigned",
   "m8.encounter.cosignature_routed",
   "m8.encounter.cosignature_overdue",
   "m8.encounter.cosignature_escalated",

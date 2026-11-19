@@ -1313,7 +1313,12 @@ export const lateEntryTier = pgEnum("late_entry_tier", [
 ]);
 
 /** `signature_kind` — which signature slot an `encounter_signature` row fills (§3.3). */
-export const signatureKind = pgEnum("signature_kind", ["primary", "cosignature", "addendum"]);
+export const signatureKind = pgEnum("signature_kind", [
+  "primary",
+  "cosignature",
+  "addendum",
+  "addendum_cosignature", // 1524: the cosignature of an amending addendum's request (ADR-0114 VN-D30)
+]);
 
 /** `signature_method` — the step-up method used to authenticate a sign (§3.3 / D13). */
 export const signatureMethod = pgEnum("signature_method", [
