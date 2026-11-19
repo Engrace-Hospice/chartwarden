@@ -297,7 +297,6 @@ function cosignatureRoutes(service: EncounterRouteService, todayOf: () => string
         handler: async (request: FastifyRequest) => {
           const { organizationId, roles } = membershipActorOf(request);
           const { encounterId, addendumId } = subjectOf(request);
-          parse(AttestationSchema, request.body); // validates the attestation-confirmed shape
           return service.cosignSign(organizationId, encounterId, signingActorOf(request), {
             isQualifiedRn: isRn(roles),
             at: todayOf(),
@@ -315,10 +314,9 @@ function cosignatureRoutes(service: EncounterRouteService, todayOf: () => string
             STEP_UP("encounter.cosign_supervisor_release"),
           ],
         },
-        handler: async (request: FastifyRequest) => {
+        handler: async (request: FastifyRequest, body: { readonly reason: string }) => {
           const { organizationId, userId, roles } = membershipActorOf(request);
           const { encounterId, addendumId } = subjectOf(request);
-          const body = parse(SupervisorReleaseSchema, request.body);
           return service.supervisorRelease(organizationId, encounterId, {
             isSupervisor: isSupervisor(roles),
             reason: body.reason,
@@ -872,12 +870,16 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/sign",
     cosign.note.sign.options,
-    cosign.note.sign.handler,
+    async (request) => {
+      parse(AttestationSchema, request.body); // validates the attestation-confirmed shape
+      return cosign.note.sign.handler(request);
+    },
   );
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/supervisor-release",
     cosign.note.release.options,
-    cosign.note.release.handler,
+    async (request) =>
+      cosign.note.release.handler(request, parse(SupervisorReleaseSchema, request.body)),
   );
   app.get(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/cosignature",
@@ -892,12 +894,16 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   app.post(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/sign",
     cosign.addendum.sign.options,
-    cosign.addendum.sign.handler,
+    async (request) => {
+      parse(AttestationSchema, request.body); // validates the attestation-confirmed shape
+      return cosign.addendum.sign.handler(request);
+    },
   );
   app.post(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/supervisor-release",
     cosign.addendum.release.options,
-    cosign.addendum.release.handler,
+    async (request) =>
+      cosign.addendum.release.handler(request, parse(SupervisorReleaseSchema, request.body)),
   );
 
   // 22 — create addendum draft on a signed encounter.
