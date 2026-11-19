@@ -1713,9 +1713,8 @@
 }
 .wx-note-withheld > strong {
   color: var(--color-on-surface);
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.8125rem;
+  font-weight: 650;
 }
 .wx-note-history > summary {
   cursor: pointer;
