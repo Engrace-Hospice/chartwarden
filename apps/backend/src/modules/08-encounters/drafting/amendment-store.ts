@@ -8,10 +8,9 @@
 //                  signed event and an amendment has no consumer for a changed one, so linking and unlinking are no-ops here.
 //   * sealed rows  at sign, one `hearthnote_signed_section` row per amended section, against the addendum's own assembled output.
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { EncounterStateError } from "../lifecycle/errors";
 import type { AmendedSection } from "./amendment-note";
-import type { SectionVersionFlag } from "./amendment-part2";
 import { sha256Hex } from "./compute";
 import type { ConfirmationWrite, DraftStore } from "./draft-store";
 import type { ConfirmationRecord } from "./section-state";
@@ -26,11 +25,6 @@ export interface OriginalSection {
   readonly id: string;
   readonly sectionId: string;
   readonly position: number;
-  /**
-   * The ORIGINAL row is 42 CFR Part 2 derived. Not what guards an amendment: that is the LATEST version's flag (`part2SectionsAmong`, with
-   * `amendmentFlagsOf`), since a section whose original was not Part 2 may have been amended into one.
-   */
-  readonly part2Derived: boolean;
 }
 
 /** The addendum an amendment belongs to, with the siting the satellite rows copy. */
@@ -55,32 +49,39 @@ export async function originalSectionsOf(
     .limit(1);
   if (pin === undefined) return [];
   return tx
-    .select({
-      id: SIGNED.id,
-      sectionId: SIGNED.sectionId,
-      position: SIGNED.position,
-      part2Derived: SIGNED.part2Derived,
-    })
+    .select({ id: SIGNED.id, sectionId: SIGNED.sectionId, position: SIGNED.position })
     .from(SIGNED)
     .where(and(eq(SIGNED.assembledOutputId, pin.id), isNull(SIGNED.addendumId)))
     .orderBy(asc(SIGNED.position));
 }
 
 /**
- * The signed amendment rows of the encounter, oldest addendum first (the order of their signing, which the parent's row lock serialises): each
- * section's id and Part 2 flag. With the originals they decide whose Part 2 disclosure a section needs: the LATEST version's flag, not the
- * original's (`part2SectionsAmong`). Rows exist only for a signed addendum, so a sign in progress never sees its own.
+ * Whether the note holds Part 2 content in ANY section at ANY version: its pin is `part2_derived`, or any sealed row is (an original row of the
+ * latest pin, or a signed amendment row of any addendum). One answer for the whole note, so who may amend it never depends on which section is
+ * named (`assertMayAmendPart2`), and it is the same rule the viewer's reads apply (`withheldSectionIds`). Rows exist only for a signed
+ * addendum, so a sign in progress never sees its own.
  */
-export async function amendmentFlagsOf(
-  tx: DbClient,
-  encounterId: string,
-): Promise<readonly SectionVersionFlag[]> {
-  return tx
-    .select({ sectionId: SIGNED.sectionId, part2Derived: SIGNED.part2Derived })
+export async function noteHasPart2Version(tx: DbClient, encounterId: string): Promise<boolean> {
+  const [pin] = await tx
+    .select({ id: OUT.id, part2Derived: OUT.part2Derived })
+    .from(OUT)
+    .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
+    .orderBy(desc(OUT.createdAt))
+    .limit(1);
+  if (pin === undefined) return false;
+  if (pin.part2Derived) return true;
+  const [flagged] = await tx
+    .select({ id: SIGNED.id })
     .from(SIGNED)
-    .innerJoin(ADDENDUM, eq(ADDENDUM.id, SIGNED.addendumId))
-    .where(and(eq(SIGNED.encounterId, encounterId), isNotNull(SIGNED.addendumId)))
-    .orderBy(asc(ADDENDUM.signedAt), asc(ADDENDUM.id), asc(SIGNED.position));
+    .where(
+      and(
+        eq(SIGNED.encounterId, encounterId),
+        eq(SIGNED.part2Derived, true),
+        or(eq(SIGNED.assembledOutputId, pin.id), isNotNull(SIGNED.addendumId)),
+      ),
+    )
+    .limit(1);
+  return flagged !== undefined;
 }
 
 /** Names the sections an addendum amends (the addendum is a draft: the guard trigger refuses naming after that). */

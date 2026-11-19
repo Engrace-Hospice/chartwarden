@@ -13,13 +13,13 @@ import { NotFoundError } from "@chartwarden/types";
 import type { HearthnoteEnvelopeCipher } from "../hearthnote-crypto";
 import { EncounterStateError } from "../lifecycle/errors";
 import { type AmendedSection, amendedSectionsOf, restrictToNamed } from "./amendment-note";
-import { assertMayAmendPart2, part2SectionsAmong } from "./amendment-part2";
+import { assertMayAmendPart2 } from "./amendment-part2";
 import {
   type AmendingAddendum,
-  amendmentFlagsOf,
   createAmendmentDraftStore,
   nameSections,
   namedSectionIds,
+  noteHasPart2Version,
   originalSectionsOf,
   writeAmendmentRows,
 } from "./amendment-store";
@@ -49,8 +49,9 @@ export interface PreparedAmendment {
 
 export interface AmendmentFlow {
   /**
-   * `author` is who is naming (the session's roles and membership): a section whose LATEST signed version is Part 2 derived needs an author with Part 2 disclosure
-   * (422 `AMENDMENT_PART2_NOT_ENTITLED`; a verdict that cannot be decided is 503 `DRAFT_UNAVAILABLE`).
+   * `author` is who is naming (the session's roles and membership): a note that holds Part 2 content in any section at any version needs an author
+   * with Part 2 disclosure to name ANY section (422 `AMENDMENT_PART2_NOT_ENTITLED`, the same answer whichever section is named; a verdict that
+   * cannot be decided is 503 `DRAFT_UNAVAILABLE`).
    */
   name(
     tx: DbClient,
@@ -102,11 +103,7 @@ export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
         );
       }
       await assertMayAmendPart2({
-        part2Sections: part2SectionsAmong(
-          originals,
-          await amendmentFlagsOf(tx, addendum.encounterId),
-          sectionIds,
-        ),
+        noteHasPart2: await noteHasPart2Version(tx, addendum.encounterId),
         entitled: () => part2Entitled(deps, addendum, author),
         unavailable: (cause) => draftUnavailable("the Part 2 disclosure check", cause),
       });
@@ -118,11 +115,7 @@ export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
       if (named.length === 0) return null;
       // Again at sign: the verdict can change between naming and sign, and the signer is who confirmed the redraft.
       await assertMayAmendPart2({
-        part2Sections: part2SectionsAmong(
-          await originalSectionsOf(tx, parent.id),
-          await amendmentFlagsOf(tx, parent.id),
-          named,
-        ),
+        noteHasPart2: await noteHasPart2Version(tx, parent.id),
         entitled: () => part2Entitled(deps, parent, viewer),
         unavailable: (cause) =>
           new EncounterStateError(
