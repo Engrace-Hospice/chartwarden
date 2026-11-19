@@ -5,10 +5,11 @@
 // this is the note's drafted-section panel and hook, not a copy of them. Confirmed, the section is amended when the addendum signs;
 // deselected (or nothing to redraft), it amends nothing and stays as signed: each section says which. The hook's owner (the addendum row)
 // also holds the Sign button back while a section is unresolved, so this only shows the state.
-import { Button, InlineAlert } from "@chartwarden/ui";
+import { InlineAlert } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { amendedSectionNote } from "./amendment-model";
 import { DraftSectionPanel } from "./draft-section-panel";
+import { RetryButton } from "./retry-button";
 import { humanizeSection } from "./sign-draft-notice";
 import type { NoteDraft } from "./use-note-draft";
 
@@ -18,6 +19,8 @@ const UNAVAILABLE_TEXT = "The amended sections could not be read. Nothing was ch
 
 export interface AmendmentReviewProps {
   readonly addendumId: string;
+  /** When the addendum was opened, as the row shows it: a note can carry several amendments of one section, and each landmark names its own. */
+  readonly opened: string;
   /** The sections the addendum names, in the order the clinician chose them. */
   readonly sectionIds: readonly string[];
   readonly draft: NoteDraft;
@@ -25,6 +28,7 @@ export interface AmendmentReviewProps {
 
 export function AmendmentReview({
   addendumId,
+  opened,
   sectionIds,
   draft,
 }: AmendmentReviewProps): JSX.Element {
@@ -42,14 +46,7 @@ export function AmendmentReview({
           <>
             <InlineAlert tone="warning">{UNAVAILABLE_TEXT}</InlineAlert>
             <div>
-              <Button
-                tone="secondary"
-                size="sm"
-                loading={refreshing}
-                onClick={() => void draft.reload()}
-              >
-                Try again
-              </Button>
+              <RetryButton retrying={refreshing} onRetry={() => void draft.reload()} />
             </div>
           </>
         );
@@ -65,7 +62,7 @@ export function AmendmentReview({
                     <DraftSectionPanel
                       idPrefix={idPrefix}
                       amending
-                      label={`${name}: redrafted from the record`}
+                      label={`${name}: redrafted from the record (addendum opened ${opened})`}
                       section={section}
                       note={notes[sectionId] ?? amendedSectionNote(section.state)}
                       busy={busySectionId === sectionId}
@@ -86,7 +83,7 @@ export function AmendmentReview({
   })();
 
   return (
-    <section className="wx-amend" aria-label="Amended sections">
+    <section className="wx-amend" aria-label={`Amended sections, addendum opened ${opened}`}>
       {body}
     </section>
   );

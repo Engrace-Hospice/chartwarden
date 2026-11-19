@@ -65,12 +65,19 @@ describe("AmendSectionsPicker", () => {
       await user.click(screen.getByRole("checkbox", { name: `Section ${i}` }));
     }
     const thirteenth = screen.getByRole("checkbox", { name: "Section 13" });
-    expect(thirteenth).toBeDisabled();
+    // Not `disabled`: a disabled box cannot be focused, so its reason would never be read. It says why, and does nothing.
+    expect(thirteenth).toHaveAttribute("aria-disabled", "true");
+    expect(thirteenth).not.toBeDisabled();
+    expect(thirteenth).toHaveAccessibleDescription(/at most 12 sections/i);
     expect(screen.getByText("12 of 12 chosen")).toBeInTheDocument();
-    expect(screen.getByText(/at most 12 sections/i)).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Section 1" })).toBeEnabled();
+    await user.click(thirteenth);
+    expect(thirteenth).not.toBeChecked();
+    expect(screen.getByText("12 of 12 chosen")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Section 1" })).not.toHaveAttribute(
+      "aria-disabled",
+    );
     await user.click(screen.getByRole("checkbox", { name: "Section 1" }));
-    expect(thirteenth).toBeEnabled();
+    expect(thirteenth).not.toHaveAttribute("aria-disabled");
   });
 
   it("shows a withheld section but cannot choose it, and says why", () => {

@@ -9,6 +9,7 @@ import { humanizeSection } from "./sign-draft-notice";
 import { type AmendableSection, WITHHELD_LABEL } from "./signed-note-model";
 
 const HINT_ID = "amend-sections-hint";
+const LIMIT_ID = "amend-sections-limit";
 const WITHHELD_REASON = `${WITHHELD_LABEL}: protected by 42 CFR Part 2, your access does not include it`;
 
 export interface AmendSectionsPickerProps {
@@ -25,10 +26,13 @@ export function AmendSectionsPicker({
   disabled = false,
 }: AmendSectionsPickerProps): JSX.Element {
   const atLimit = chosen.length >= MAX_AMENDED_SECTIONS;
-  const toggle = (sectionId: string): void =>
+  const toggle = (sectionId: string): void => {
+    // A box past the limit says why (aria-describedby) and does nothing; a chosen one can always be unchosen.
+    if (atLimit && !chosen.includes(sectionId)) return;
     onChange(
       chosen.includes(sectionId) ? chosen.filter((id) => id !== sectionId) : [...chosen, sectionId],
     );
+  };
 
   return (
     <fieldset className="wx-form-stack wx-fieldset-reset" aria-describedby={HINT_ID}>
@@ -41,13 +45,16 @@ export function AmendSectionsPicker({
       {sections.map(({ sectionId, selectable }) => {
         const inputId = `amend-section-${sectionId}`;
         const isChosen = chosen.includes(sectionId);
+        const pastLimit = atLimit && !isChosen;
         return (
           <div key={sectionId} className="wx-action-check">
             <input
               id={inputId}
               type="checkbox"
               checked={isChosen}
-              disabled={disabled || !selectable || (atLimit && !isChosen)}
+              disabled={disabled || !selectable}
+              aria-disabled={pastLimit || undefined}
+              aria-describedby={pastLimit ? LIMIT_ID : undefined}
               onChange={() => toggle(sectionId)}
             />
             <label htmlFor={inputId}>
@@ -61,7 +68,7 @@ export function AmendSectionsPicker({
         {chosen.length} of {MAX_AMENDED_SECTIONS} chosen
       </output>
       {atLimit ? (
-        <p className="wx-row-sub">
+        <p id={LIMIT_ID} className="wx-row-sub">
           At most {MAX_AMENDED_SECTIONS} sections can be amended in one addendum.
         </p>
       ) : null}

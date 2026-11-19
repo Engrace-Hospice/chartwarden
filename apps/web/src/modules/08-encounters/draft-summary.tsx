@@ -7,6 +7,7 @@ import { Button, InlineAlert } from "@chartwarden/ui";
 import type { JSX, ReactNode } from "react";
 import type { DraftView } from "./draft-api";
 import { STATE_LABEL, reviewCounts } from "./draft-model";
+import { RetryButton } from "./retry-button";
 
 function DraftStrip({ children }: { readonly children: ReactNode }): JSX.Element {
   return (
@@ -30,9 +31,7 @@ export function DraftUnavailable({ retrying, onRetry }: DraftUnavailableProps): 
         note cannot be finalized until the draft can be read.
       </InlineAlert>
       <div>
-        <Button tone="secondary" size="sm" loading={retrying} onClick={onRetry}>
-          Try again
-        </Button>
+        <RetryButton retrying={retrying} onRetry={onRetry} />
       </div>
     </DraftStrip>
   );

@@ -111,7 +111,7 @@ function mount(
 }
 
 const row = () => screen.getByLabelText("Addendum add-1");
-const review = async () => within(await screen.findByRole("region", { name: "Amended sections" }));
+const review = async () => within(await screen.findByRole("region", { name: /^Amended sections/ }));
 const draftReads = (GET: ReturnType<typeof mount>["GET"]) =>
   GET.mock.calls.filter(([path]) => path === DRAFT_PATH).length;
 
@@ -133,7 +133,7 @@ describe("the amended sections of an addendum", () => {
       { ...amending, id: "add-2", amendsSectionIds: undefined },
     ]);
     expect(GET.mock.calls.filter(([p]) => p === DRAFT_PATH)).toHaveLength(0);
-    expect(screen.queryByRole("region", { name: "Amended sections" })).toBeNull();
+    expect(screen.queryByRole("region", { name: /^Amended sections/ })).toBeNull();
   });
 
   it("confirms a section against the hash and corpus version it showed", async () => {
@@ -293,6 +293,26 @@ describe("when the amended sections cannot be shown", () => {
   });
 });
 
+describe("two addenda amending the same section", () => {
+  it("name their review regions and their sections apart, by when each addendum was opened", async () => {
+    mount([amending, { ...amending, id: "add-2", createdAt: "2026-10-03T09:30:00Z" }]);
+    const regions = await screen.findAllByRole("region", { name: /^Amended sections/ });
+    expect(regions).toHaveLength(2);
+    expect(new Set(regions.map((r) => r.getAttribute("aria-label"))).size).toBe(2);
+    expect(regions[0]?.getAttribute("aria-label")).toContain("2026-10-01 10:00");
+    expect(regions[1]?.getAttribute("aria-label")).toContain("2026-10-03 09:30");
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("heading", { name: /^Pain: redrafted from the record/ }),
+      ).toHaveLength(2),
+    );
+    const titles = screen
+      .getAllByRole("heading", { name: /^Pain: redrafted from the record/ })
+      .map((h) => h.textContent);
+    expect(new Set(titles).size).toBe(2);
+  });
+});
+
 describe("a refused sign", () => {
   async function signRefused(error: { status: number; code: string; details?: unknown }) {
     const user = userEvent.setup();
@@ -426,7 +446,7 @@ describe("a signed amendment", () => {
     expect(within(row()).getByText("Pain, Plan")).toBeInTheDocument();
     expect(within(row()).getByText("Cosignature of this amendment")).toBeInTheDocument();
     expect(within(row()).getByText("Cosigned")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Amended sections" })).toBeNull();
+    expect(screen.queryByRole("region", { name: /^Amended sections/ })).toBeNull();
     expect(draftReads(GET)).toBe(0);
   });
 

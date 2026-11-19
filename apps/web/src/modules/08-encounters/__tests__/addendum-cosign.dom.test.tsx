@@ -88,7 +88,7 @@ function mount(
 
 const row = (id = "add-1") => screen.getByLabelText(`Addendum ${id}`);
 const panel = (id = "add-1") =>
-  within(row(id)).queryByRole("region", { name: "Cosign this amendment" });
+  within(row(id)).queryByRole("region", { name: /^Cosign this amendment/ });
 const reads = (GET: ReturnType<typeof mount>["GET"]) =>
   GET.mock.calls.filter(([path]) => path === BASE).length;
 
@@ -273,7 +273,7 @@ describe("who the cosigner's panel is offered to", () => {
       { ...pending, id: "a-null", cosignStatus: null },
       { ...pending, id: "a-done", cosignStatus: "cosigned" },
     ]);
-    expect(screen.queryByRole("region", { name: "Cosign this amendment" })).toBeNull();
+    expect(screen.queryByRole("region", { name: /^Cosign this amendment/ })).toBeNull();
     expect(reads(GET)).toBe(0);
   });
 
@@ -298,6 +298,22 @@ describe("when the request cannot be read", () => {
   });
 });
 
+describe("two amendments pending on one note", () => {
+  it("name their panels apart, by when each was opened", async () => {
+    mount([pending, { ...pending, id: "add-2", createdAt: "2026-10-03T09:30:00Z" }]);
+    const first = await within(row("add-1")).findByRole("region", {
+      name: /^Cosign this amendment/,
+    });
+    const second = await within(row("add-2")).findByRole("region", {
+      name: /^Cosign this amendment/,
+    });
+    const names = [first, second].map((region) => region.getAttribute("aria-label"));
+    expect(new Set(names).size).toBe(2);
+    expect(names[0]).toContain("2026-10-01 10:00");
+    expect(names[1]).toContain("2026-10-03 09:30");
+  });
+});
+
 describe("reaching an amendment's panel from the cosignature queue", () => {
   let scrollIntoView: ReturnType<typeof vi.fn>;
   beforeEach(() => {
@@ -314,7 +330,7 @@ describe("reaching an amendment's panel from the cosignature queue", () => {
       at: "/patients/patient-1/encounters/enc-1#addendum-cosign-add-2",
     });
     const target = await within(row("add-2")).findByRole("region", {
-      name: "Cosign this amendment",
+      name: /^Cosign this amendment/,
     });
     expect(target.id).toBe("addendum-cosign-add-2");
     await waitFor(() => expect(document.activeElement).toBe(target));
@@ -325,7 +341,7 @@ describe("reaching an amendment's panel from the cosignature queue", () => {
 
   it("moves nothing when the page is opened without an anchor", async () => {
     mount([pending]);
-    await within(row()).findByRole("region", { name: "Cosign this amendment" });
+    await within(row()).findByRole("region", { name: /^Cosign this amendment/ });
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 });

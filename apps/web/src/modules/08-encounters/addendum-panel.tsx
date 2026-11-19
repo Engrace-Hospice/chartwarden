@@ -307,7 +307,12 @@ function AddendumItem({
         ]}
       />
       {reviewing ? (
-        <AmendmentReview addendumId={a.id} sectionIds={amends} draft={amendment} />
+        <AmendmentReview
+          addendumId={a.id}
+          opened={shortStamp(a.createdAt)}
+          sectionIds={amends}
+          draft={amendment}
+        />
       ) : null}
       {awaitingCosign ? (
         <AddendumCosign

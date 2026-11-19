@@ -21,6 +21,7 @@ import {
   cosignRequestWords,
 } from "./cosign-model";
 import { humanizeSection } from "./sign-draft-notice";
+import { shortStamp } from "./signed-note-model";
 import { useCosignCeremony } from "./use-cosign-ceremony";
 import { useIsMounted } from "./use-is-mounted";
 
@@ -94,7 +95,14 @@ export function AddendumCosign({
   const amended = (addendum.amendsSectionIds ?? []).map(humanizeSection).join(", ");
 
   return (
-    <section id={anchorId} ref={panel} tabIndex={-1} aria-label="Cosign this amendment" style={box}>
+    // Named by when the addendum was opened (a note can carry several amendments, and a landmark name must tell them apart).
+    <section
+      id={anchorId}
+      ref={panel}
+      tabIndex={-1}
+      aria-label={`Cosign this amendment, opened ${shortStamp(addendum.createdAt)}`}
+      style={box}
+    >
       {ability.refusal !== null ? <p style={metaText}>{ability.refusal}</p> : null}
       {mayWork && request.state === "loading" ? (
         <p style={metaText}>Reading the cosignature request…</p>

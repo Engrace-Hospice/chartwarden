@@ -925,7 +925,11 @@ describe("a draft that is being re-read", () => {
     await ready();
     await screen.findByText(/pre-drafted text could not be loaded/);
     await user.click(screen.getByRole("button", { name: "Try again" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Try again/ })).toBeDisabled());
+    // Not `disabled`: the button keeps keyboard focus while the read is out.
+    const working = screen.getByRole("button", { name: /Try again/ });
+    await waitFor(() => expect(working).toHaveAttribute("aria-disabled", "true"));
+    expect(working).not.toBeDisabled();
+    expect(working).toHaveFocus();
     retry.open();
     // The strip that said the draft could not be read gives way to the one that counts the drafted sections.
     expect(await screen.findByText(/drafted sections are resolved/)).toBeInTheDocument();
