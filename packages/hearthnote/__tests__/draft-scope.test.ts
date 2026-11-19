@@ -9,8 +9,8 @@ import {
 } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
-  HearthnoteAssemblyError,
   type DraftInputs,
+  HearthnoteAssemblyError,
   compileDraft,
   draftedSectionIds,
   emptyDraft,
@@ -22,9 +22,9 @@ import { AS_OF, DEPS, baseInputs } from "./_draft-fixtures";
 
 type Pair = readonly [EncounterType, EncounterDiscipline];
 
-const LEGAL_PAIRS: readonly Pair[] = (Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]).flatMap(
-  (type) => ENCOUNTER_DISCIPLINE_RULES[type].map((discipline): Pair => [type, discipline]),
-);
+const LEGAL_PAIRS: readonly Pair[] = (
+  Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]
+).flatMap((type) => ENCOUNTER_DISCIPLINE_RULES[type].map((discipline): Pair => [type, discipline]));
 
 /** Every source filled in and nothing selected: what the compiler would draft for the pair if the corpus allowed it. */
 function maximalInputs([type, discipline]: Pair): DraftInputs {
@@ -70,7 +70,9 @@ describe("the templates the corpus drafts", () => {
     for (const pair of LEGAL_PAIRS) {
       const [type, discipline] = pair;
       const key = templateKey(type, discipline);
-      expect(draftedIdsOf(pair).sort(), key).toEqual([...draftedSectionIds(type, discipline)].sort());
+      expect([...draftedIdsOf(pair)].sort(), key).toEqual(
+        [...draftedSectionIds(type, discipline)].sort(),
+      );
       expect(draftedIdsOf(pair).length > 0, key).toBe(templateHasDraftedSection(type, discipline));
     }
   });

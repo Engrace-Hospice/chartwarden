@@ -31,10 +31,7 @@ export function draftedSectionIds(
   return new Set(
     template.sections
       .map((section) => section.id)
-      .filter((id) => {
-        const phrases = DRAFT_SECTION_PHRASES[id];
-        return phrases !== undefined && phrases.every((code) => tagged.has(code));
-      }),
+      .filter((id) => DRAFT_SECTION_PHRASES[id]?.every((code) => tagged.has(code)) ?? false),
   );
 }
 

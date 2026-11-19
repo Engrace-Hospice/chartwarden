@@ -202,7 +202,10 @@ function vitalsSentences(v: VitalsDraftInput): readonly string[] {
     }
     if (v.temperatureUnit !== undefined) {
       sentences.push(
-        sentence(VITAL_CODES.temp, { temperature, temperature_unit: v.temperatureUnit.toUpperCase() }),
+        sentence(VITAL_CODES.temp, {
+          temperature,
+          temperature_unit: v.temperatureUnit.toUpperCase(),
+        }),
       );
     }
   }
@@ -226,7 +229,10 @@ function goalGroups(carePlan: CarePlanDraftInput | null): readonly SourceGroup[]
     const text =
       progress.length === 0
         ? sentence(CARE_PLAN_CODES.goalListed, { goal_text: goalText })
-        : sentence(CARE_PLAN_CODES.goalProgress, { goal_text: goalText, progress_statement: progress });
+        : sentence(CARE_PLAN_CODES.goalProgress, {
+            goal_text: goalText,
+            progress_statement: progress,
+          });
     return group("care_plan_goal", goal, [text]);
   });
 }
