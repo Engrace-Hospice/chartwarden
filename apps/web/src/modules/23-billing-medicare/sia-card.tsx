@@ -180,6 +180,9 @@ export function SiaCard({
   sia,
   patientId,
 }: { sia: SiaPricing | null; patientId?: string }): JSX.Element {
+  // The per-visit table (six columns, the reason text wraps) needs the whole pricing row: sharing it with the per-diem card
+  // left the table wider than the card, so the Result and Why columns sat out of view behind a hidden horizontal scroll.
+  const hasVisitTable = sia !== null && sia.basis === "units_v2" && sia.visits.length > 0;
   return (
     <Card
       aria-labelledby={TITLE_ID}
@@ -188,7 +191,7 @@ export function SiaCard({
         flexDirection: "column",
         gap: "0.75rem",
         minWidth: "16rem",
-        flex: "1 1 16rem",
+        flex: hasVisitTable ? "1 1 100%" : "1 1 16rem",
       }}
     >
       <h3
