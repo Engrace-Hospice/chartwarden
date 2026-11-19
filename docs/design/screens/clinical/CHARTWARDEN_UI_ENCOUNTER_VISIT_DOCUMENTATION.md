@@ -129,8 +129,11 @@ the API sent no structured view at all.
 - **Amended sections.** A section whose latest version is an amendment shows an **Amended** badge with the
   date of that version and a **Version history (N versions)** disclosure: the original and every amendment,
   oldest first, each with its kind, date and author (the membership id, as the page shows authors), the
-  current one marked **Current**; a withheld version is the same labelled block. A section amended but with
-  no history in the response says "Earlier versions are not available."
+  current one marked **Current**; a withheld version is the same labelled block. An amendment whose cosignature
+  is not settled says so beside its kind in words (**Pending cosignature**, **Cosigned**, **Released by a
+  supervisor**; nothing for the original, or when none was required), a withheld amendment's included: it is a
+  status, never the section's text. A section amended but with no history in the response says "Earlier
+  versions are not available."
 - **Cannot be decided.** When the server cannot decide what the viewer may read (503 `NOTE_VIEW_UNAVAILABLE`),
   the note view, on the encounter record and in the composer of a finalized note, is an announced error
   state, "The note cannot be shown right now", with **Try again**; never an empty or partial note, and never
@@ -169,7 +172,9 @@ per section.
   leaves the sign to the server. A signed amendment says "Addendum signed. N sections amended." and, when the
   note needed a cosigner, "A cosignature was requested for this amendment."
 - **Cosignature.** When the API sends the status of the cosignature request opened for the amendment, the
-  addendum shows **Cosignature of this amendment** with it; nothing is drawn when it sends none.
+  addendum shows **Cosignature of this amendment** with it in words (**Pending cosignature**, **Cosigned**,
+  **Released by a supervisor**); nothing is drawn when none was required or the API sends none. Working that
+  request is "Cosigning an Amendment" below.
 - **Refusals, each with a next step.** Opening: 404 (the draft switch is off; offers the free addendum and
   names Admin, Visit-note Draft), 422 `UNKNOWN_TEMPLATE_SECTION` (reload and choose again), 422
   `AMENDMENT_PART2_NOT_ENTITLED` (ask a colleague whose access includes it). Resolving a section: 409
@@ -179,6 +184,54 @@ per section.
   back on, then sign again); 503 `COMPLIANCE_GATE_UNAVAILABLE` (nothing changed; try again); 422
   `NO_ELIGIBLE_COSIGNER` (nothing changed; a supervisor assigns a case manager); 422
   `AMENDMENT_PART2_NOT_ENTITLED`.
+
+---
+
+## Cosigning an Amendment (ADR-0114 VN-D30, S1 PR E4)
+
+An amending addendum of a note that needed a cosigner opens its **own cosignature request**, worked like the
+note's: the same acknowledge, sign and supervisor-release steps, permissions, step-up and error codes, against
+the amendment's own routes (`.../addenda/{addendumId}/cosignature`). Signing it leaves the note's status as it
+is; an amendment never re-opens billing.
+
+- **Where.** On the amendment in the Addenda rail, a signed amending addendum whose cosignature is **Pending
+  cosignature** (or **Released by a supervisor**, which an RN still has to sign) shows a **Cosign this
+  amendment** region under its status rows. The region has an anchor, `#addendum-cosign-<addendumId>`: opened
+  from the cosignature queue, the page scrolls to it and moves focus to it.
+- **Offered only to a viewer who may act.** Acknowledge and sign are offered to a viewer with cosign access who
+  wrote neither the note nor the amendment (no self-cosign); the supervisor release, to one with the supervisor
+  release permission. Anyone else is told why in words, in place of the steps: "You wrote this amendment, so
+  you cannot cosign it. An RN who wrote neither the note nor this amendment has to cosign it."; "You wrote the
+  note this amendment belongs to, so you cannot cosign it. ..."; "Your role cannot cosign. ...". When the
+  session's permissions are not known nothing is offered and nothing is claimed. The server still judges every
+  step; a refusal it sends is worded in the dialog.
+- **The steps follow the request's state** (the note's request alike), read from the amendment's own request and
+  said in words beside them: routed offers **Acknowledge cosignature** ("Waiting for the cosigner to acknowledge it."); acknowledged,
+  escalated (24h) and released offer **Sign cosignature**; locked at the 48-hour cap offers **Supervisor
+  release** ("A supervisor must release it before the cosigner can sign."). A request that cannot be read says
+  "The cosignature request could not be read right now. Reload the page to try again." and offers no step.
+  The cosigner is pointed to the amended sections' **Version history** to review them first; the panel shows
+  section names and the author's reason, never any section text, so a Part 2 section is never rendered there.
+- **The ceremony** is the note's, written once (acknowledge: "This does not sign it."; sign: the attestation
+  tick, "I attest I have reviewed this amendment to the signed documentation and concur as the qualifying
+  cosigner.", step-up from the session; release: a reason of at least 40 characters, counted beside the field).
+  After a step lands the request and the page are read again: after the sign the amendment reads **Cosigned**
+  and the region steps aside.
+- **Refusals, each with what happened and the next step** (the same sentences for the note's ceremony): 409
+  `ILLEGAL_TRANSITION` (someone else moved the request on; nothing was changed; reload); 409
+  `COSIGNATURE_LOCKED` (locked at the 48-hour cap; a supervisor releases it first); step-up needed (403
+  `STEP_UP_REQUIRED`, 412 `STEP_UP_AUTH_REQUIRED`: a fresh re-authentication is needed, with a **Re-authenticate**
+  link to `/step-up` beside it, and the dialog stays open so a typed reason is not lost); 403 (only an RN with
+  cosign access who wrote neither the note nor the amendment can acknowledge or sign; only a clinical
+  supervisor or the director of nursing can release); 404 (the request could not be found; reload); any other
+  409 (it changed meanwhile; reload); 401 goes to sign-in; a request that never answered says the server could
+  not be reached and to reload to see whether it went through.
+- **The cosignature queue** lists both kinds. A **Cosigning** column says **Note** or **Amendment** ("to a
+  signed note"); an amendment's row shows its request status (Routed, Acknowledged, Escalated, ...) where a
+  note's shows its encounter status, and counts the 12h / 24h / 48h clock from when the amendment was routed,
+  not from the note's signature. **Review** opens the encounter, for an amendment at that addendum's cosign
+  panel. Rows are keyed by subject and id, so one encounter holding a note's request and an amendment's lists
+  both. An entry with no `cosign` (an older server) is a note, exactly as before.
 
 ---
 
@@ -242,6 +295,8 @@ The Sign action is blocked until all are satisfied — surface them as a checkli
 
 - LPN/CHHA notes auto-enter `Cosign Pending` and route to the assigned RN; soft alert at
   12h, escalation at 24h, hard-cap lock at 48h (supervisor may release with reason).
+- The queue and the acknowledge / sign / release ceremony serve both a note's request and an amendment's
+  ("Cosigning an Amendment" above).
 - `Significant Late Entry` requires supervisor override + step-up; `Administrative
   Override` requires director permission + extended reason; both stamp a banner on the
   rendered PDF.
