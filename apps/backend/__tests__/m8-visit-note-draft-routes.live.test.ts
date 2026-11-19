@@ -18,17 +18,24 @@
  *      AFTER the removal), and a re-open that does not bring the elements back.
  *   6. The switch and tenancy: a tenant with the switch off gets 404 on both routes and writes nothing; another tenant's encounter is a
  *      404 through the routes and the service, and none of its rows move; a signed encounter refuses a resolution.
+ *   7. PR C2b2, the gate and sign through the real encounter service (real AES-256-GCM envelopes, real RLS): check 13 at finalize (an unresolved
+ *      section, a stale confirmation, a draft that cannot be computed, a resolved note that pins the confirmed text); at sign the signer's own
+ *      recomputed draft (409 DRAFT_SECTION_STALE, a note finalized before the switch was on, Part 2 redaction that differs from the confirming
+ *      viewer's), one sealed row per section equal to `final_cipher` and append-only, a deselected section that adds nothing, a failed seal that
+ *      fails the sign as one, a switched-off tenant that is untouched, and tenant isolation.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m8:visit-note-draft-routes:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1. Never point this at the shared Docker cluster.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   M3_INTRINSIC_PREDICATES,
   createInMemoryEffectivePermissionStore,
+  createInMemorySessionContextStore,
   createPredicateRegistry,
+  createSessionContextResolver,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -37,22 +44,31 @@ import {
 } from "@chartwarden/auth";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { registerSeam } from "../src/bootstrap/seams/registry";
 import { createDbDraftStore } from "../src/modules/08-encounters/drafting/db-draft-store";
 import { createDbRunInOrg } from "../src/modules/08-encounters/drafting/db-draft-unit";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
 import { putDraftPolicy } from "../src/modules/08-encounters/drafting/policy-service";
 import type { DraftEncounter } from "../src/modules/08-encounters/drafting/ports";
-import type { HearthnoteEnvelopeCipher } from "../src/modules/08-encounters/hearthnote-crypto";
+import type {
+  HearthnoteCiphers,
+  HearthnoteEnvelopeCipher,
+} from "../src/modules/08-encounters/hearthnote-crypto";
 import {
   buildEncounterAbacPredicates,
   createDbEncounterAbacResolver,
+  createDbEncounterRouteService,
+  createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
 import { registerDraftSectionRoutes } from "../src/modules/08-encounters/routes/draft-section-routes";
+import { assembleSelections } from "../src/modules/08-encounters/routes/service";
 import { carePlan, change, fakePorts } from "./_encounter-draft-fixtures";
+import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -66,6 +82,7 @@ const PREVIOUS_VISIT_AT = "2026-01-09T04:59:59.999Z";
 const APPROVED = { reviewer: "ADA", status: "approved" } as const;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+const ORG_C = "33333333-3333-3333-3333-333333333333";
 const GOAL = "aaaaaaaa-0000-4000-8000-000000000001";
 const INTERVENTION = "aaaaaaaa-0000-4000-8000-000000000002";
 const OWN_TEXT = "Own words about the plan for synthetic patient.";
@@ -106,7 +123,7 @@ describe.skipIf(!DB_URL)(
     let admin: Client;
     let handle: ReturnType<typeof createDbClient>;
     let app: FastifyInstance;
-    const orgs = {} as Record<"A" | "B", OrgFixture>;
+    const orgs = {} as Record<"A" | "B" | "C", OrgFixture>;
     let counter = 0;
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -1173,6 +1190,623 @@ describe.skipIf(!DB_URL)(
         expect(
           await auditEvents(ORG_A, "m8.encounter.draft_section_resolved", f.encounterId),
         ).toEqual([]);
+      });
+    });
+
+    // ===============================================================================================================
+    // 7. the gate and sign (PR C2b2): check 13 at finalize, the signer's own draft at sign, the signed note's text and its sealed rows
+    // ===============================================================================================================
+    describe("7. gate check 13 and sign: resolved, stale, uncomputable, sealed", () => {
+      /** Org-local 2026-01-16, the day after SERVICE_DATE: the note is on time (no late-entry tier) and the visit time is the end of 2026-01-15 in New York. */
+      const LIVE_NOW = new Date("2026-01-16T17:00:00.000Z");
+      /** The REAL AES-256-GCM envelopes over a fixed test DEK (not a reversible stand-in): the sealed rows are opened with them. */
+      const TEST_DEK = { version: "test-v1", key: Buffer.alloc(32, 9) };
+      const CIPHERS = createHearthnoteCiphers({
+        dekForOrg: async () => TEST_DEK,
+        dekForOrgVersion: async (_org: string, version: string) => ({
+          version,
+          key: TEST_DEK.key,
+        }),
+      });
+      /** The same ciphers with a narrative seal that can be made to fail: the sign must then leave nothing behind. */
+      let sealFails = false;
+      const FLAKY_CIPHERS: HearthnoteCiphers = {
+        freeText: CIPHERS.freeText,
+        narrative: {
+          open: CIPHERS.narrative.open,
+          seal: async (org, text) => {
+            if (sealFails) throw new Error("the key ring is unreachable");
+            return CIPHERS.narrative.seal(org, text);
+          },
+        },
+      };
+      const SESSIONS = {
+        A: "70000000-0000-4000-8000-00000000000a",
+        B: "70000000-0000-4000-8000-00000000000b",
+        C: "70000000-0000-4000-8000-00000000000c",
+      } as const;
+      const UNSIGNED_CHANGES_SINCE = "2026-01-12T16:00:00.000Z";
+
+      /** What the faked sources answer for the next call: a care plan (goal -> plan, intervention -> interventions) and one medication change. */
+      const liveSeams = (over: Parameters<typeof fakePorts>[0] = {}) =>
+        fakePorts({
+          carePlanAsOf: async (patientId) =>
+            carePlan({
+              patientId: patientId as never,
+              goals: [
+                {
+                  goalId: GOAL,
+                  problemId: "problem-1",
+                  text: "Pain controlled at an acceptable level",
+                  source: "clinician",
+                  status: "active",
+                } as never,
+              ],
+              interventions: [
+                {
+                  interventionId: INTERVENTION,
+                  problemId: "problem-1",
+                  scopeText: "Repositioning schedule review",
+                  frequencyText: "each visit",
+                  discipline: "rn",
+                  status: "active",
+                } as never,
+              ],
+            }),
+          medicationChangesBetween: async () => [
+            change("started", UNSIGNED_CHANGES_SINCE, { id: "order-a" }),
+          ],
+          part2DisclosureAllowed: async ({ viewer }) => viewer.roles.includes("part2"),
+          ...over,
+        });
+      let currentSeams = liveSeams();
+      const serviceFor = (ciphers: HearthnoteCiphers = CIPHERS) =>
+        createDbEncounterRouteService(
+          handle.db,
+          undefined,
+          ciphers,
+          () => LIVE_NOW,
+          () => currentSeams,
+        );
+      let svc: ReturnType<typeof serviceFor>;
+      let flakySvc: ReturnType<typeof serviceFor>;
+      /** The draft routes' service over the SAME real ciphers and seams: how a clinician resolves sections. */
+      let draftService: ReturnType<typeof createDraftService>;
+
+      const requireSelections = requiredSectionSelections("routine_visit", "rn");
+      const viewerOf = (member: Member, roles: readonly string[] = ["rn"]) => ({
+        roles,
+        membershipId: member.membershipId,
+      });
+      const actorOf = (
+        org: OrgFixture,
+        key: keyof typeof SESSIONS,
+        roles: readonly string[] = ["rn"],
+      ) => ({
+        membershipId: org.author.membershipId,
+        sessionId: SESSIONS[key],
+        userId: org.author.userId,
+        roles,
+      });
+      const SIGN_ARGS = { at: SERVICE_DATE as never, visitModality: "in_person" as const };
+
+      const callerOf = (org: OrgFixture, roles: readonly string[] = ["rn"]) => ({
+        organizationId: org.orgId,
+        userId: org.author.userId,
+        roles,
+        membershipId: org.author.membershipId,
+      });
+      const auditOf = (org: OrgFixture) => ({
+        organizationId: org.orgId,
+        userId: org.author.userId,
+        actorKind: "user" as const,
+        correlationId: "draft-sign-live",
+      });
+
+      /** A draft encounter documented to the gate's floor (the required sections and vitals), with a previous signed visit so a medication change is drafted. */
+      async function prepared(org: OrgFixture = orgs.A, withPrevious = true) {
+        const f = withPrevious ? await seedDraftWithPrevious(org) : await seedEncounter(org);
+        await svc.updateSelections(
+          org.orgId,
+          f.encounterId,
+          0,
+          requireSelections,
+          org.author.membershipId,
+        );
+        const vitals = requiredVitalsCapture("routine_visit", "rn");
+        if (vitals)
+          await svc.captureVitals(org.orgId, f.encounterId, vitals, org.author.membershipId);
+        return f;
+      }
+
+      /** Confirm (or deselect) every drafted section that is not resolved against what the viewer sees now, as the draft routes would. */
+      async function resolveAll(
+        org: OrgFixture,
+        f: EncounterFixture,
+        how: Record<string, "confirmed" | "deselected"> = {},
+        roles: readonly string[] = ["rn"],
+      ) {
+        const draft = await draftService.getDraft(callerOf(org, roles), f.encounterId);
+        for (const section of draft.sections) {
+          if (section.contentHash === null || section.corpusVersion === null) continue;
+          if (section.state === "confirmed" || section.state === "deselected") continue;
+          await draftService.resolveSection(
+            { ...callerOf(org, roles), membershipId: org.author.membershipId },
+            f.encounterId,
+            section.sectionId,
+            {
+              resolution: how[section.sectionId] ?? "confirmed",
+              contentHash: section.contentHash,
+              corpusVersion: section.corpusVersion,
+            },
+            auditOf(org),
+          );
+        }
+      }
+
+      const finalize = (org: OrgFixture, f: EncounterFixture, roles: readonly string[] = ["rn"]) =>
+        svc.finalize(org.orgId, f.encounterId, SERVICE_DATE as never, {
+          viewer: viewerOf(org.author, roles),
+        });
+      const statusOf = async (f: EncounterFixture) =>
+        one(
+          await rows<{ status: string }>("SELECT status FROM encounter WHERE id = $1", [
+            f.encounterId,
+          ]),
+        ).status;
+      const outputsOf = (f: EncounterFixture) =>
+        rows<{ id: string; kind: string; layer1_cipher: string; final_cipher: string }>(
+          "SELECT id::text, kind, layer1_cipher, final_cipher FROM hearthnote_assembled_output WHERE encounter_id = $1 ORDER BY created_at",
+          [f.encounterId],
+        );
+      const signedRowsOf = (f: EncounterFixture) =>
+        rows<{
+          id: string;
+          organization_id: string;
+          assembled_output_id: string;
+          section_id: string;
+          position: number;
+          text_cipher: string;
+          content_hash: string;
+          part2_derived: boolean;
+          source_refs: { kind: string; id: string }[];
+        }>(
+          `SELECT id::text, organization_id::text, assembled_output_id::text, section_id, position, text_cipher, content_hash, part2_derived, source_refs
+           FROM hearthnote_signed_section WHERE encounter_id = $1 ORDER BY position`,
+          [f.encounterId],
+        );
+      const signaturesOf = (f: EncounterFixture) =>
+        rows<{ id: string }>("SELECT id::text FROM encounter_signature WHERE encounter_id = $1", [
+          f.encounterId,
+        ]);
+      const open = (orgId: string, cipher: string) => CIPHERS.narrative.open(orgId, cipher);
+      const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+      /** What Layer 1 alone makes of the clinician's selections: a tenant with the draft off, or nothing drafted, signs exactly this. */
+      const layer1Text = () =>
+        assembleSelections("routine_visit", "rn", SERVICE_DATE, requireSelections.sections);
+      const detailsOf = (error: unknown) =>
+        ((error as { details?: { field?: string; code: string }[] }).details ?? []).map((d) => [
+          d.field,
+          d.code,
+        ]);
+
+      beforeAll(async () => {
+        orgs.C = await seedOrg(ORG_C, "c");
+        const sessions = createInMemorySessionContextStore(
+          (["A", "B", "C"] as const).map((key) => ({
+            sessionClass: "staff" as const,
+            portalAccountId: null,
+            sessionPatientId: null,
+            sessionId: SESSIONS[key],
+            userId: orgs[key].author.userId,
+            membershipId: orgs[key].author.membershipId,
+            organizationId: orgs[key].orgId,
+            roles: [],
+            providerEntityIds: [],
+            locationIds: [],
+            lastStepUpAt: new Date(),
+            lastStepUpFactor: "webauthn" as const,
+          })),
+        );
+        registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));
+        registerSeam("CarePlanReader", { isReviewOverdue: async () => null } as never);
+        // The admission a sign validates (M6's reader is proven by its own suite): active since before the service date, the encounter's own patient.
+        registerSeam("AdmissionStatusReader", {
+          getAdmissionSummary: async (organizationId: string, admissionId: string) => ({
+            admissionId,
+            organizationId,
+            patientId: one(
+              await rows<{ patient_id: string }>(
+                "SELECT patient_id::text FROM encounter WHERE admission_id = $1 LIMIT 1",
+                [admissionId],
+              ),
+            ).patient_id,
+            providerEntityId: null,
+            status: "active",
+            admissionAt: "2025-12-01",
+            activatedAt: "2025-12-01",
+            dischargedAt: null,
+            currentElectionPeriodId: null,
+            currentLevelOfCare: null,
+          }),
+        } as never);
+        svc = serviceFor();
+        flakySvc = serviceFor(FLAKY_CIPHERS);
+        draftService = createDraftService({
+          runInOrg: createDbRunInOrg(handle.db, CIPHERS),
+          seams: () => currentSeams,
+          now: () => LIVE_NOW,
+        });
+      }, 120_000);
+
+      beforeEach(() => {
+        currentSeams = liveSeams();
+        sealFails = false;
+      });
+
+      describe("the gate (finalize preview)", () => {
+        it("refuses to finalize while a drafted section is unresolved, naming each, and writes nothing", async () => {
+          const f = await prepared();
+          const error = await finalize(orgs.A, f).catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "COMPLIANCE_GATE_FAILED", statusCode: 422 });
+          expect(detailsOf(error)).toEqual(
+            expect.arrayContaining([
+              ["interventions", "DRAFT_SECTION_UNRESOLVED"],
+              ["plan", "DRAFT_SECTION_UNRESOLVED"],
+            ]),
+          );
+          expect(await statusOf(f)).toBe("draft");
+          expect(await outputsOf(f)).toEqual([]);
+        });
+
+        it("refuses a section whose confirmation no longer matches what it shows: DRAFT_SECTION_STALE", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          // The clinician adds words of their own to the confirmed `plan`: the section's content hash moves under the confirmation.
+          const version = (await svc.getEncounter(ORG_A, f.encounterId)).version;
+          await svc.updateSelections(
+            ORG_A,
+            f.encounterId,
+            version,
+            {
+              sections: requireSelections.sections.map((s) =>
+                s.sectionId === "plan" ? { ...s, freeText: OWN_TEXT } : s,
+              ),
+            },
+            orgs.A.author.membershipId,
+          );
+          const error = await finalize(orgs.A, f).catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "COMPLIANCE_GATE_FAILED", statusCode: 422 });
+          expect(detailsOf(error)).toEqual(
+            expect.arrayContaining([["plan", "DRAFT_SECTION_STALE"]]),
+          );
+          expect(await statusOf(f)).toBe("draft");
+        });
+
+        it("a draft that cannot be computed is COMPLIANCE_GATE_UNAVAILABLE, never a pass", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          currentSeams = liveSeams({
+            carePlanAsOf: async () => {
+              throw new Error("synthetic upstream outage");
+            },
+          });
+          const error = await finalize(orgs.A, f).catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "COMPLIANCE_GATE_UNAVAILABLE", statusCode: 503 });
+          expect((error as Error).message).not.toContain("synthetic upstream outage");
+          expect(await statusOf(f)).toBe("draft");
+          expect(await outputsOf(f)).toEqual([]);
+        });
+
+        it("passes once every drafted section is resolved, and pins the confirmed text, not Layer 1 alone", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          expect((await finalize(orgs.A, f)).status).toBe("finalized");
+          const [out] = await outputsOf(f);
+          const pinned = await open(ORG_A, one(out ? [out] : []).final_cipher);
+          expect(pinned).toContain("Pain controlled at an acceptable level");
+          expect(pinned).toContain("Repositioning schedule review");
+          expect(pinned).toContain("Morphine sulfate was started on 2026-01-12");
+          expect(pinned).not.toBe(layer1Text());
+        });
+      });
+
+      describe("sign seals the note", () => {
+        it("signs a resolved note, and the ordered sealed rows are exactly final_cipher", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          await finalize(orgs.A, f);
+          const signed = await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS);
+          expect(signed.status).toBe("signed");
+
+          const [out] = await outputsOf(f);
+          const rowsOfNote = await signedRowsOf(f);
+          expect(rowsOfNote.length).toBeGreaterThan(0);
+          const texts = await Promise.all(rowsOfNote.map((r) => open(ORG_A, r.text_cipher)));
+          // The invariant: the rows, unsealed and joined by the blank line that separates sections, ARE the legal text.
+          expect(texts.join("\n\n")).toBe(await open(ORG_A, one(out ? [out] : []).final_cipher));
+          expect(await open(ORG_A, one(out ? [out] : []).layer1_cipher)).toBe(texts.join("\n\n"));
+          expect(rowsOfNote.map((r) => r.position)).toEqual(rowsOfNote.map((_, i) => i));
+          // Every row belongs to this tenant and this encounter's pinned output, hashes the text it seals and holds ids and kinds only.
+          for (const [i, row] of rowsOfNote.entries()) {
+            expect(row.organization_id).toBe(ORG_A);
+            expect(row.assembled_output_id).toBe(one(out ? [out] : []).id);
+            expect(row.content_hash).toBe(sha256(texts[i] as string));
+            expect(row.text_cipher).not.toContain("Repositioning");
+            for (const ref of row.source_refs)
+              expect(Object.keys(ref).sort()).toEqual(["id", "kind"]);
+          }
+          const bySection = new Map(rowsOfNote.map((r) => [r.section_id, r]));
+          expect(bySection.get("plan")?.source_refs).toEqual([
+            { kind: "care_plan_goal", id: GOAL },
+          ]);
+          expect(bySection.get("interventions")?.source_refs).toEqual(
+            expect.arrayContaining([
+              { kind: "care_plan_intervention", id: INTERVENTION },
+              { kind: "medication_change", id: "order-a:started" },
+            ]),
+          );
+          expect(bySection.get("chief_concern")?.source_refs).toEqual([]);
+          expect(bySection.get("plan")?.part2_derived).toBe(false);
+          // The audit trail has the rows (scrubbed of the sealed text) and nothing of the note.
+          const trail = await auditEvents(ORG_A, "hearthnote_signed_section.insert");
+          expect(trail.length).toBeGreaterThanOrEqual(rowsOfNote.length);
+          const trailText = JSON.stringify(trail.map((e) => e.after));
+          for (const row of rowsOfNote) expect(trailText).not.toContain(row.text_cipher);
+          expect(trailText).not.toContain("Repositioning");
+        });
+
+        it("the application role can append the rows and nothing else: no UPDATE, no DELETE", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          await finalize(orgs.A, f);
+          await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS);
+          const refused = (sqlText: ReturnType<typeof sql>) =>
+            inOrg(orgs.A, (tx) => tx.execute(sqlText)).then(
+              () => "allowed",
+              (e: unknown) => JSON.stringify([String(e), String((e as Error).cause ?? "")]),
+            );
+          expect(
+            await refused(
+              sql`UPDATE hearthnote_signed_section SET part2_derived = true WHERE encounter_id = ${f.encounterId}`,
+            ),
+          ).toContain("permission denied");
+          expect(
+            await refused(
+              sql`DELETE FROM hearthnote_signed_section WHERE encounter_id = ${f.encounterId}`,
+            ),
+          ).toContain("permission denied");
+        });
+
+        it("a deselected section adds nothing to the signed note: its drafted sentences are in neither final_cipher nor a row", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f, { interventions: "deselected" });
+          await finalize(orgs.A, f);
+          await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS);
+          const [out] = await outputsOf(f);
+          const final = await open(ORG_A, one(out ? [out] : []).final_cipher);
+          expect(final).toContain("Pain controlled at an acceptable level"); // `plan` was confirmed
+          expect(final).not.toContain("Repositioning schedule review");
+          expect(final).not.toContain("Morphine sulfate");
+          const rowsOfNote = await signedRowsOf(f);
+          expect(rowsOfNote.map((r) => r.section_id)).not.toContain("interventions");
+          const texts = await Promise.all(rowsOfNote.map((r) => open(ORG_A, r.text_cipher)));
+          expect(texts.join("\n\n")).toBe(final);
+          // The deselection also kept the care plan untouched and the intervention unlinked from this note.
+          const links = await linksOf(f.encounterId);
+          expect(
+            links.filter((l) => l.intervention_id === INTERVENTION && l.removed_at === null),
+          ).toEqual([]);
+        });
+
+        it("refuses a stale draft at sign with 409 DRAFT_SECTION_STALE naming the section, and leaves the note finalized and unsealed", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          await finalize(orgs.A, f);
+          const pinnedAtFinalize = (await outputsOf(f))[0]?.final_cipher;
+          // A source moves between finalize and sign: another medication change lands in the window.
+          currentSeams = liveSeams({
+            medicationChangesBetween: async () => [
+              change("started", UNSIGNED_CHANGES_SINCE, { id: "order-a" }),
+              change("changed", "2026-01-13T16:00:00.000Z", {
+                id: "order-b",
+                drugName: "Lorazepam",
+              }),
+            ],
+          });
+          const error = await svc
+            .sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS)
+            .catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "DRAFT_SECTION_STALE", statusCode: 409 });
+          expect(detailsOf(error)).toEqual([["interventions", "DRAFT_SECTION_STALE"]]);
+          expect(await statusOf(f)).toBe("finalized");
+          expect(await signedRowsOf(f)).toEqual([]);
+          expect(await signaturesOf(f)).toEqual([]);
+          expect((await outputsOf(f))[0]?.final_cipher).toBe(pinnedAtFinalize);
+          // The remedy is the clinician's: resolve the changed section again, then the sign goes through against what is now confirmed.
+          await resolveAll(orgs.A, f);
+          expect(
+            (await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS)).status,
+          ).toBe("signed");
+          const [out] = await outputsOf(f);
+          const final = await open(ORG_A, one(out ? [out] : []).final_cipher);
+          expect(final).toContain("Lorazepam");
+          const texts = await Promise.all(
+            (await signedRowsOf(f)).map((r) => open(ORG_A, r.text_cipher)),
+          );
+          expect(texts.join("\n\n")).toBe(final);
+        });
+
+        it("a note finalized before the tenant switched the draft on cannot sign until its sections are resolved, then signs with the draft's text", async () => {
+          const f = await prepared(orgs.C); // org C has the switch off: finalize is today's finalize
+          await finalize(orgs.C, f);
+          const pinnedAtFinalize = await open(ORG_C, one(await outputsOf(f)).final_cipher);
+          expect(pinnedAtFinalize).toBe(layer1Text());
+          await inOrg(orgs.C, (tx) =>
+            putDraftPolicy(tx, {
+              organizationId: ORG_C,
+              enabled: true,
+              actorMembershipId: orgs.C.author.membershipId,
+              audit: auditOf(orgs.C),
+              corpusReview: APPROVED,
+            }),
+          );
+          const error = await svc
+            .sign(ORG_C, f.encounterId, actorOf(orgs.C, "C"), SIGN_ARGS)
+            .catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "DRAFT_SECTION_STALE", statusCode: 409 });
+          expect(detailsOf(error)).toEqual(
+            expect.arrayContaining([
+              ["interventions", "DRAFT_SECTION_UNRESOLVED"],
+              ["plan", "DRAFT_SECTION_UNRESOLVED"],
+            ]),
+          );
+          expect(await statusOf(f)).toBe("finalized");
+          await resolveAll(orgs.C, f);
+          expect(
+            (await svc.sign(ORG_C, f.encounterId, actorOf(orgs.C, "C"), SIGN_ARGS)).status,
+          ).toBe("signed");
+          const signedText = await open(ORG_C, one(await outputsOf(f)).final_cipher);
+          expect(signedText).not.toBe(pinnedAtFinalize);
+          expect(signedText).toContain("Pain controlled at an acceptable level");
+          const texts = await Promise.all(
+            (await signedRowsOf(f)).map((r) => open(ORG_C, r.text_cipher)),
+          );
+          expect(texts.join("\n\n")).toBe(signedText);
+        });
+
+        it("the signer's own draft decides: a confirmation the signer cannot see is refused, and with the Part 2 disclosure the same note signs", async () => {
+          currentSeams = liveSeams({
+            medicationChangesBetween: async () => [
+              change("started", UNSIGNED_CHANGES_SINCE, { id: "order-sud", isSudTreatment: true }),
+            ],
+          });
+          const f = await prepared();
+          // Confirmed by a viewer holding the Part 2 disclosure: the section shows the SUD-treatment medication change.
+          await resolveAll(orgs.A, f, {}, ["rn", "part2"]);
+          await finalize(orgs.A, f, ["rn", "part2"]);
+          const error = await svc
+            .sign(ORG_A, f.encounterId, actorOf(orgs.A, "A", ["rn"]), SIGN_ARGS)
+            .catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "DRAFT_SECTION_STALE", statusCode: 409 });
+          expect(detailsOf(error)).toEqual([["interventions", "DRAFT_SECTION_STALE"]]);
+          expect(await signedRowsOf(f)).toEqual([]);
+
+          const signed = await svc.sign(
+            ORG_A,
+            f.encounterId,
+            actorOf(orgs.A, "A", ["rn", "part2"]),
+            SIGN_ARGS,
+          );
+          expect(signed.status).toBe("signed");
+          const interventions = (await signedRowsOf(f)).find(
+            (r) => r.section_id === "interventions",
+          );
+          expect(interventions?.part2_derived).toBe(true);
+        });
+
+        it("a seal that fails fails the sign as one: still finalized, no rows, no signature, the pin untouched", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          await finalize(orgs.A, f);
+          const pinnedAtFinalize = (await outputsOf(f))[0]?.final_cipher;
+          sealFails = true;
+          const error = await flakySvc
+            .sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS)
+            .catch((e: unknown) => e);
+          expect(error).toMatchObject({ code: "HEARTHNOTE_CIPHER_UNBOUND", statusCode: 503 });
+          expect(await statusOf(f)).toBe("finalized");
+          expect(await signedRowsOf(f)).toEqual([]);
+          expect(await signaturesOf(f)).toEqual([]);
+          expect((await outputsOf(f))[0]?.final_cipher).toBe(pinnedAtFinalize);
+          sealFails = false;
+          expect(
+            (await flakySvc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS)).status,
+          ).toBe("signed");
+          expect((await signedRowsOf(f)).length).toBeGreaterThan(0);
+        });
+
+        it("a switched-on tenant with nothing to draft signs exactly what Layer 1 makes of the selections, sealed row by row", async () => {
+          currentSeams = liveSeams({
+            carePlanAsOf: async () => null,
+            medicationChangesBetween: async () => [],
+          });
+          const f = await prepared(orgs.A, false);
+          expect((await finalize(orgs.A, f)).status).toBe("finalized");
+          expect(
+            (await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS)).status,
+          ).toBe("signed");
+          const [out] = await outputsOf(f);
+          expect(await open(ORG_A, one(out ? [out] : []).final_cipher)).toBe(layer1Text());
+          const texts = await Promise.all(
+            (await signedRowsOf(f)).map((r) => open(ORG_A, r.text_cipher)),
+          );
+          expect(texts.join("\n\n")).toBe(layer1Text());
+          expect(await confirmationsOf(f.encounterId)).toEqual([]);
+        });
+      });
+
+      describe("the switch off, and tenancy", () => {
+        it("a tenant with the switch off finalizes and signs exactly as before: no confirmation asked, no source read, no sealed row", async () => {
+          const reads = liveSeams();
+          currentSeams = reads;
+          const f = await prepared(orgs.B);
+          expect((await finalize(orgs.B, f)).status).toBe("finalized");
+          expect(
+            (await svc.sign(ORG_B, f.encounterId, actorOf(orgs.B, "B"), SIGN_ARGS)).status,
+          ).toBe("signed");
+          const [out] = await outputsOf(f);
+          expect(await open(ORG_B, one(out ? [out] : []).final_cipher)).toBe(layer1Text());
+          expect(await signedRowsOf(f)).toEqual([]);
+          expect(await confirmationsOf(f.encounterId)).toEqual([]);
+          expect(reads.carePlanAsOf).not.toHaveBeenCalled();
+          expect(reads.medicationChangesBetween).not.toHaveBeenCalled();
+          expect(reads.part2DisclosureAllowed).not.toHaveBeenCalled();
+        });
+
+        it("another tenant cannot see, sign or write the rows", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          await finalize(orgs.A, f);
+          await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS);
+          const rowsOfNote = await signedRowsOf(f);
+          expect(rowsOfNote.length).toBeGreaterThan(0);
+          // RLS: org B's connection sees none of org A's rows or confirmations.
+          expect(
+            await inOrg(
+              orgs.B,
+              async (tx) =>
+                (
+                  await tx.execute(
+                    sql`SELECT id FROM hearthnote_signed_section WHERE encounter_id = ${f.encounterId}`,
+                  )
+                ).rows.length,
+            ),
+          ).toBe(0);
+          expect(
+            await inOrg(
+              orgs.B,
+              async (tx) =>
+                (
+                  await tx.execute(
+                    sql`SELECT id FROM encounter_draft_confirmation WHERE encounter_id = ${f.encounterId}`,
+                  )
+                ).rows.length,
+            ),
+          ).toBe(0);
+          // Org B cannot sign org A's encounter (the encounter is not there for it) ...
+          await expect(
+            svc.sign(ORG_B, f.encounterId, actorOf(orgs.B, "B"), SIGN_ARGS),
+          ).rejects.toMatchObject({ statusCode: 404 });
+          // ... and cannot write a row into org A, whoever it names.
+          await expect(
+            inOrg(orgs.B, (tx) =>
+              tx.execute(sql`INSERT INTO hearthnote_signed_section (organization_id, encounter_id, assembled_output_id, section_id, position, text_cipher, content_hash, part2_derived)
+                VALUES (${ORG_A}, ${f.encounterId}, ${rowsOfNote[0]?.assembled_output_id}, 'plan_copy', 99, 'x', ${"0".repeat(64)}, false)`),
+            ),
+          ).rejects.toBeDefined();
+          expect((await signedRowsOf(f)).map((r) => r.section_id)).not.toContain("plan_copy");
+        });
       });
     });
   },
