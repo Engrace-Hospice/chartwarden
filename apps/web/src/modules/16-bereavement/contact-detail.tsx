@@ -17,6 +17,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -70,7 +71,6 @@ import {
   touchpointLabel,
 } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Field,
@@ -83,13 +83,7 @@ import {
   TextField,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   useActionStatus,
 } from "./bereavement-ui";
 import { ContactMemorialInvitationsCard } from "./contact-memorial-invitations-card";
@@ -302,21 +296,12 @@ function ContactForPlan({
                 : ""}
               . The nightly check only proposes this; nothing changes until a counselor confirms.
             </span>
-            <button
-              type="button"
-              style={primaryButtonStyle}
-              onClick={() => setCeremony("unreachable")}
-            >
+            <Button tone="primary" type="button" onClick={() => setCeremony("unreachable")}>
               Mark unreachable
-            </button>
-            <button
-              type="button"
-              style={ghostButtonStyle}
-              disabled={keepTryingBusy}
-              onClick={keepTrying}
-            >
+            </Button>
+            <Button tone="secondary" type="button" disabled={keepTryingBusy} onClick={keepTrying}>
               {keepTryingBusy ? "Saving…" : "Keep trying"}
-            </button>
+            </Button>
           </div>
           {keepTryingError ? <ErrorText>{keepTryingError}</ErrorText> : null}
         </Notice>
@@ -331,9 +316,11 @@ function ContactForPlan({
         </Notice>
       ) : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Survivor"
-        actions={
+        action={
           <StatusPill
             label={humanize(contact.status)}
             tone={toneOf(CONTACT_STATUS_TONE, contact.status)}
@@ -373,33 +360,33 @@ function ContactForPlan({
           />
           <Field label="Version" value={contact.version} />
         </SummaryGrid>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Email, phone and mailing address are envelope-encrypted at rest and are not returned on
           this read surface — the allowed CHANNELS are, because those drive what may be sent.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title="Outreach preferences">
-        <span style={mutedStyle}>
+      <Panel stack headingLevel={3} title="Outreach preferences">
+        <span className="wx-text-muted">
           {contact.allowedOutreachKinds.length === 0
             ? "No channels are allowed. No scheduled touchpoint can be delivered to this survivor."
             : contact.allowedOutreachKinds.map(outreachKindLabel).join(" · ")}
         </span>
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("channels")}>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("channels")}>
             Edit channels
-          </button>
+          </Button>
         </div>
-      </Card>
+      </Panel>
 
-      <Card title="Care plan">
+      <Panel stack headingLevel={3} title="Care plan">
         <CarePlanGoals
           contact={contact}
           onSaved={() => acted("Care goals saved.")}
           onStale={() => void load()}
         />
         <ContactSchedule schedule={schedule} onRetry={() => void load()} />
-      </Card>
+      </Panel>
 
       {/* ADR-0109 D10 — touchpoints and program activities (mailings, sessions); renders nothing for a reader the server refuses. */}
       <ProgramActivityCard contactId={contactId} refreshKey={timelineTick} />
@@ -407,50 +394,45 @@ function ContactForPlan({
       <ContactSupportGroupsCard contactId={contactId} />
       <ContactMemorialInvitationsCard contactId={contactId} />
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {contact.status === "proposed" ? (
-            <button type="button" style={primaryButtonStyle} onClick={() => setCeremony("confirm")}>
+            <Button tone="primary" type="button" onClick={() => setCeremony("confirm")}>
               Confirm contact
-            </button>
+            </Button>
           ) : null}
           {contact.status === "active" ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("opt-out")}>
+            <Button tone="secondary" type="button" onClick={() => setCeremony("opt-out")}>
               Record opt-out
-            </button>
+            </Button>
           ) : null}
           {contact.status === "opted_out" ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("rescind")}>
+            <Button tone="secondary" type="button" onClick={() => setCeremony("rescind")}>
               Rescind opt-out
-            </button>
+            </Button>
           ) : null}
           {contact.status === "active" && !contact.mailingsAllowed ? (
-            <button
-              type="button"
-              style={ghostButtonStyle}
-              disabled={resumeBusy}
-              onClick={resumeMailings}
-            >
+            <Button tone="secondary" type="button" disabled={resumeBusy} onClick={resumeMailings}>
               {resumeBusy ? "Resuming…" : "Resume mailings"}
-            </button>
+            </Button>
           ) : null}
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("log")}>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("log")}>
             Log an ad-hoc contact
-          </button>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("unreachable")}>
+          </Button>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("unreachable")}>
             Mark unreachable
-          </button>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("deceased")}>
+          </Button>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("deceased")}>
             Mark deceased
-          </button>
+          </Button>
         </div>
         {resumeError ? <ErrorText>{resumeError}</ErrorText> : null}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Marking a survivor deceased is §2.3's only terminal state, so the verification source is
           required. Marking unreachable accepts the nightly three-strikes proposal — the machine
           enforces the threshold, so firing this early is refused rather than silently trusted.
         </span>
-      </Card>
+      </Panel>
 
       {ceremony === "confirm" ? (
         <ConfirmModal contact={contact} onClose={() => setCeremony(null)} onDone={refresh} />
@@ -510,7 +492,7 @@ function CarePlanGoals({
 
   if (recorded === undefined) {
     return (
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Care goals are not shown in your scope. A volunteer sees the contact's name and schedule,
         not the goals a counselor recorded with the family.
       </span>
@@ -548,7 +530,7 @@ function CarePlanGoals({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Up to three goals recorded with the family, in their words. They are sealed at rest and not
         shown to volunteers.
       </span>
@@ -561,30 +543,25 @@ function CarePlanGoals({
             maxLength={CARE_GOAL_MAX_CHARS}
             onChange={(v) => setGoals(goals.map((g, j) => (j === i ? v : g)))}
           />
-          <button
+          <Button
+            tone="secondary"
             type="button"
-            style={ghostButtonStyle}
             aria-label={`Remove care goal ${i + 1}`}
             onClick={() => setGoals(goals.filter((_, j) => j !== i))}
           >
             Remove
-          </button>
+          </Button>
         </div>
       ))}
       <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
         {goals.length < CARE_GOALS_MAX ? (
-          <button type="button" style={ghostButtonStyle} onClick={() => setGoals([...goals, ""])}>
+          <Button tone="secondary" type="button" onClick={() => setGoals([...goals, ""])}>
             Add goal
-          </button>
+          </Button>
         ) : null}
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy || blank || unchanged}
-          onClick={save}
-        >
+        <Button tone="primary" type="button" disabled={busy || blank || unchanged} onClick={save}>
           {busy ? "Saving…" : "Save care goals"}
-        </button>
+        </Button>
       </div>
       {error ? <ErrorText>{error}</ErrorText> : null}
     </div>
@@ -608,35 +585,35 @@ function ContactSchedule({
   }
   if (schedule.kind === "forbidden") {
     return (
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Your role does not include the touchpoint schedule, so it is not shown here.
       </span>
     );
   }
   const rows = schedule.rows;
   if (rows.length === 0) {
-    return <span style={mutedStyle}>No touchpoints are scheduled for this survivor.</span>;
+    return <span className="wx-text-muted">No touchpoints are scheduled for this survivor.</span>;
   }
   return (
-    <table style={tableStyle}>
+    <table>
       <thead>
         <tr>
-          <th style={th}>Touchpoint</th>
-          <th style={th}>Modality</th>
-          <th style={th}>Due</th>
-          <th style={th}>Status</th>
+          <th>Touchpoint</th>
+          <th>Modality</th>
+          <th>Due</th>
+          <th>Status</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((o) => (
-          <tr key={o.outreachId} style={rowLine}>
-            <td style={td}>{touchpointLabel(o)}</td>
-            <td style={td}>{outreachKindLabel(o.kind)}</td>
-            <td style={td}>
+          <tr key={o.outreachId}>
+            <td>{touchpointLabel(o)}</td>
+            <td>{outreachKindLabel(o.kind)}</td>
+            <td>
               {shortDate(o.dueAt)}
-              <div style={mutedStyle}>{dueLabel(o.dueAt)}</div>
+              <div className="wx-text-muted">{dueLabel(o.dueAt)}</div>
             </td>
-            <td style={td}>
+            <td>
               <StatusPill
                 label={humanize(o.status)}
                 tone={toneOf(OUTREACH_STATUS_TONE, o.status)}
@@ -684,9 +661,9 @@ function ConfirmModal({
       title="Confirm bereaved contact"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Confirming…" : "Confirm"}
-        </button>
+        </Button>
       }
     >
       <TextField
@@ -749,14 +726,14 @@ function OptOutModal({
       title={stopsMailings ? "Stop mailings" : "Record opt-out"}
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || (optOutKind === "channel_specific" && channelKinds.length === 0)}
           onClick={submit}
         >
           {busy ? "Recording…" : stopsMailings ? "Stop mailings" : "Record opt-out"}
-        </button>
+        </Button>
       }
     >
       {stopsMailings ? (
@@ -827,9 +804,9 @@ function RescindModal({
       title="Rescind opt-out"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Rescinding…" : "Rescind"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="info">
@@ -875,14 +852,14 @@ function DeceasedModal({
       title="Mark survivor deceased"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || !deceasedAt || deathSource.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Recording…" : "Mark deceased"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="warning">
@@ -946,9 +923,9 @@ function UnreachableModal({
       title="Mark survivor unreachable"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Recording…" : "Mark unreachable"}
-        </button>
+        </Button>
       }
     >
       <TextAreaField label="Note (optional)" value={note} onChange={setNote} />
@@ -996,9 +973,9 @@ function LogDirectModal({
       title="Log an ad-hoc contact"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Logging…" : "Log contact"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="info">
@@ -1078,9 +1055,9 @@ function ChannelsModal({
       title="Outreach preferences"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Saving…" : "Save"}
-        </button>
+        </Button>
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>

@@ -1,5 +1,4 @@
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 import type {
   CarePlanOverdueStatus,
   RelevantCarePlanElements,
@@ -12,7 +11,8 @@ import type {
 // concurrency: the three PATCH routes carry the read version in the `If-Match` header (NOT the body —
 // see ./concurrency.ts); the POST state-change routes carry it in the body as `ifVersion`.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+
+export { parse };
 
 // Slice ids are synthetic (`cp_1`); routes accept a loose id param. Cross-module ids (patientId) are
 // validated as uuids per §4.3.
@@ -425,16 +425,3 @@ type _Relevant = Conforms<
     readonly problems: ReadonlyArray<Omit<RelevantProblem, "sudRelated">>;
   }
 >;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

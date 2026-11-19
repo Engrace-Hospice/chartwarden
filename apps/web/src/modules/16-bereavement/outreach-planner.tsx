@@ -15,9 +15,11 @@
 // whole-plan or per-contact — so that is what this screen offers, and it says so rather than shipping a
 // drag affordance that would have to fabricate a per-row PATCH.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -56,7 +58,6 @@ import {
   toneOf,
 } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   FilterRow,
@@ -67,14 +68,7 @@ import {
   TextField,
   columnStyle,
   ghostButtonStyle,
-  linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./bereavement-ui";
 
 const STATUS_FILTERS = [
@@ -176,13 +170,13 @@ export function BereavementOutreachPlanner(): JSX.Element {
         title={<span style={pageTitleStyle}>Outreach planner</span>}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button
+            <Button
+              tone="secondary"
               type="button"
-              style={ghostButtonStyle}
               onClick={() => setCeremony({ kind: "regenerate" })}
             >
               Regenerate forward schedule
-            </button>
+            </Button>
             <Link to={`/bereavement/plans/${planId}`} style={ghostButtonStyle}>
               Back to plan
             </Link>
@@ -211,50 +205,50 @@ export function BereavementOutreachPlanner(): JSX.Element {
         />
       </FilterRow>
 
-      <Card title={`Touchpoints (${rows.length})`}>
+      <Panel stack headingLevel={3} title={`Touchpoints (${rows.length})`}>
         {rows.length === 0 ? (
-          <span style={mutedStyle}>No touchpoints match this filter.</span>
+          <span className="wx-text-muted">No touchpoints match this filter.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Due</th>
-                <th style={th}>Survivor</th>
-                <th style={th}>Kind</th>
-                <th style={th}>Mark</th>
-                <th style={th}>Status</th>
-                <th style={th}>Completed</th>
-                <th style={th}>Actions</th>
+                <th>Due</th>
+                <th>Survivor</th>
+                <th>Kind</th>
+                <th>Mark</th>
+                <th>Status</th>
+                <th>Completed</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((o) => {
                 const busy = busyId === o.outreachId;
                 return (
-                  <tr key={o.outreachId} style={rowLine}>
-                    <td style={td}>
+                  <tr key={o.outreachId}>
+                    <td>
                       {shortDate(o.dueAt)}
-                      <div style={mutedStyle}>{dueLabel(o.dueAt)}</div>
+                      <div className="wx-text-muted">{dueLabel(o.dueAt)}</div>
                     </td>
-                    <td style={td}>{nameOf(o.contactId)}</td>
-                    <td style={td}>{outreachKindLabel(o.kind)}</td>
-                    <td style={td}>
+                    <td>{nameOf(o.contactId)}</td>
+                    <td>{outreachKindLabel(o.kind)}</td>
+                    <td>
                       {cadenceMarkLabel(o.cadenceMark) ??
                         (o.anniversaryMark ? anniversaryMarkLabel(o.anniversaryMark) : "—")}
                     </td>
-                    <td style={td}>
+                    <td>
                       <StatusPill
                         label={humanize(o.status)}
                         tone={toneOf(OUTREACH_STATUS_TONE, o.status)}
                       />
                     </td>
-                    <td style={td}>{dateTime(o.completedAt)}</td>
-                    <td style={td}>
+                    <td>{dateTime(o.completedAt)}</td>
+                    <td>
                       <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
                         {o.status === "scheduled" ? (
-                          <button
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
                             disabled={busy}
                             onClick={() =>
                               inlineAction(
@@ -265,12 +259,12 @@ export function BereavementOutreachPlanner(): JSX.Element {
                             }
                           >
                             {busy ? "…" : "Start"}
-                          </button>
+                          </Button>
                         ) : null}
                         {o.status === "missed" ? (
-                          <button
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
                             disabled={busy}
                             onClick={() =>
                               inlineAction(
@@ -281,47 +275,49 @@ export function BereavementOutreachPlanner(): JSX.Element {
                             }
                           >
                             {busy ? "…" : "Late attempt"}
-                          </button>
+                          </Button>
                         ) : null}
                         {o.status === "in_progress" ? (
                           <>
-                            <button
+                            <Button
+                              tone="primary"
                               type="button"
-                              style={primaryButtonStyle}
                               onClick={() => setCeremony({ kind: "complete", row: o })}
                             >
                               Complete
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              tone="secondary"
                               type="button"
-                              style={ghostButtonStyle}
                               onClick={() => setCeremony({ kind: "decline", row: o })}
                             >
                               Declined
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              tone="secondary"
                               type="button"
-                              style={ghostButtonStyle}
                               onClick={() => setCeremony({ kind: "no-response", row: o })}
                             >
                               No response
-                            </button>
+                            </Button>
                           </>
                         ) : null}
                         {o.status === "scheduled" || o.status === "in_progress" ? (
-                          <button
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
                             onClick={() => setCeremony({ kind: "cancel", row: o })}
                           >
                             Cancel
-                          </button>
+                          </Button>
                         ) : null}
                         {o.renderedDocumentId ? (
-                          <span style={mutedStyle}>doc {shortId(o.renderedDocumentId)}</span>
+                          <span className="wx-text-muted">doc {shortId(o.renderedDocumentId)}</span>
                         ) : null}
                         {o.sourceEncounterId ? (
-                          <span style={mutedStyle}>encounter {shortId(o.sourceEncounterId)}</span>
+                          <span className="wx-text-muted">
+                            encounter {shortId(o.sourceEncounterId)}
+                          </span>
                         ) : null}
                       </div>
                     </td>
@@ -331,7 +327,7 @@ export function BereavementOutreachPlanner(): JSX.Element {
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
 
       {ceremony?.kind === "complete" ? (
         <CompleteModal
@@ -434,14 +430,14 @@ function CompleteModal({
       title={`Complete — ${outreachKindLabel(row.kind)}`}
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || (inPerson && sourceEncounterId.trim().length === 0)}
           onClick={submit}
         >
           {busy ? "Completing…" : "Complete"}
-        </button>
+        </Button>
       }
     >
       {inPerson ? (
@@ -527,9 +523,9 @@ function OutcomeModal({
       }
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Recording…" : "Record"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="info">
@@ -571,14 +567,14 @@ function CancelModal({
       title="Cancel touchpoint"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || reason.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Cancelling…" : "Cancel touchpoint"}
-        </button>
+        </Button>
       }
     >
       <TextAreaField label="Reason" value={reason} onChange={setReason} />
@@ -633,9 +629,9 @@ function RegenerateModal({
       title="Regenerate forward schedule"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Regenerating…" : "Regenerate"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="warning">
@@ -658,7 +654,7 @@ function RegenerateModal({
         value={fromAt}
         onChange={setFromAt}
       />
-      {summary ? <p style={mutedStyle}>{summary}</p> : null}
+      {summary ? <p className="wx-text-muted">{summary}</p> : null}
       {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );

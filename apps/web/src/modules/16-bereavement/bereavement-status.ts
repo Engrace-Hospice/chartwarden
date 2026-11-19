@@ -11,6 +11,17 @@
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
 import type { StatusTone } from "@chartwarden/ui";
+import {
+  dateTime,
+  daysUntil,
+  dueLabel,
+  humanize,
+  shortDate,
+  shortId,
+  toneOf,
+} from "../../shell/wire-format";
+
+export { toneOf, humanize, shortDate, dateTime, shortId, daysUntil, dueLabel };
 
 /** `bereavement_plan_status` (§3.2) — the §2.2 plan root. Every `closed_*` is terminal, so neutral: a
  *  completed 13-month program and an early close are both "done", and the CLOSURE REASON (not the status
@@ -91,21 +102,6 @@ export const CLOSURE_REASON_TONE: Record<string, StatusTone> = {
   family_legal_action: "error",
   other_early: "warning",
 };
-
-/** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
-export function toneOf(
-  map: Record<string, StatusTone>,
-  key: string | null | undefined,
-): StatusTone {
-  return key ? (map[key] ?? "neutral") : "neutral";
-}
-
-/** Title-case a snake/upper wire enum for display (`closed_early` → "Closed early"). */
-export function humanize(value: string | null | undefined): string {
-  if (!value) return "—";
-  const s = value.replace(/_/g, " ").toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 /** `bereavement_outreach_kind` → the counselor-facing label. */
 export function outreachKindLabel(kind: string | null | undefined): string {
@@ -390,42 +386,6 @@ export function redactionLabel(categories: readonly string[]): string | null {
           : humanize(c).toLowerCase(),
   );
   return `Some ${parts.join(" and ")} content is withheld from this view.`;
-}
-
-/** A short ISO-date label (YYYY-MM-DD) from an instant or date string. */
-export function shortDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 10);
-}
-
-/** A date + HH:MM label for an instant. */
-export function dateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  return `${value.slice(0, 10)} ${value.slice(11, 16)}`;
-}
-
-/** A short opaque id label for a PHI-adjacent identifier surfaced in a queue column. */
-export function shortId(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 8);
-}
-
-/** Whole days between now and an instant — negative when the instant has passed. */
-export function daysUntil(value: string | null | undefined, now = Date.now()): number | null {
-  if (!value) return null;
-  const ms = Date.parse(value);
-  if (Number.isNaN(ms)) return null;
-  return Math.floor((ms - now) / 86_400_000);
-}
-
-/** A relative-due label for the touchpoint planner and the 13-month window countdown. */
-export function dueLabel(value: string | null | undefined, now = Date.now()): string {
-  const days = daysUntil(value, now);
-  if (days === null) return "—";
-  if (days === 0) return "due today";
-  if (days > 0) return `in ${days} day${days === 1 ? "" : "s"}`;
-  const overdue = -days;
-  return `${overdue} day${overdue === 1 ? "" : "s"} overdue`;
 }
 
 /**

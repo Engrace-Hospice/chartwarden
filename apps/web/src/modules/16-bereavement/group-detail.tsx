@@ -9,6 +9,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -21,7 +22,6 @@ import { useSession } from "../../shell/session";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, shortDate, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Field,
   Modal,
@@ -29,7 +29,6 @@ import {
   columnStyle,
   dangerButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
   primaryButtonStyle,
   useActionStatus,
@@ -179,7 +178,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
         </div>
       ) : null}
 
-      <Card title="Details">
+      <Panel stack headingLevel={3} title="Details">
         {group.description ? <span>{group.description}</span> : null}
         <SummaryGrid>
           <Field label="Format" value={humanize(group.format)} />
@@ -207,12 +206,12 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
             />
           ) : null}
         </SummaryGrid>
-      </Card>
+      </Panel>
 
       {mayManage ? (
-        <Card title="Actions">
+        <Panel stack headingLevel={3} title="Actions">
           {!Object.values(offers).some(Boolean) ? (
-            <span style={mutedStyle}>No actions are available for this group.</span>
+            <span className="wx-text-muted">No actions are available for this group.</span>
           ) : (
             <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
               {offers.edit ? (
@@ -261,7 +260,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
             </div>
           )}
           {actionError && ceremony === null ? <ErrorText>{actionError}</ErrorText> : null}
-        </Card>
+        </Panel>
       ) : null}
 
       <GroupSessions
@@ -334,7 +333,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
             </button>
           }
         >
-          <span id={closeDescId} style={mutedStyle}>
+          <span id={closeDescId} className="wx-text-muted">
             {ceremony === "complete"
               ? "The group has finished. Its future scheduled sessions are cancelled and every enrolled family is withdrawn (the group ended). It cannot be reopened."
               : "The group will not run. Its future scheduled sessions are cancelled and every enrolled family is withdrawn. It cannot be reopened."}

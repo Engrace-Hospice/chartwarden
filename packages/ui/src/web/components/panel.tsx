@@ -17,6 +17,10 @@ export interface PanelProps {
   flush?: boolean;
   /** Tints the header + border for safety panels (Alerts & Safety). */
   tone?: "default" | "danger";
+  /** The title's heading level. A panel under a page `<h1>` and a section `<h2>` is an `<h3>`. Default 2. */
+  headingLevel?: 2 | 3 | 4;
+  /** Lay the body out as a column with a small gap, so a list of rows or fields needs no wrapper of its own. */
+  stack?: boolean;
   children: ReactNode;
   style?: CSSProperties;
   className?: string;
@@ -29,11 +33,14 @@ export function Panel({
   description,
   flush = false,
   tone = "default",
+  headingLevel = 2,
+  stack = false,
   children,
   style,
   className,
 }: PanelProps): JSX.Element {
   const danger = tone === "danger";
+  const Heading = `h${headingLevel}` as const;
   return (
     <section
       className={className ? `wx-panel ${className}` : "wx-panel"}
@@ -62,7 +69,7 @@ export function Panel({
           </span>
         ) : null}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h2
+          <Heading
             style={{
               margin: 0,
               fontFamily: t.fontSans,
@@ -73,7 +80,7 @@ export function Panel({
             }}
           >
             {title}
-          </h2>
+          </Heading>
           {description ? (
             <p style={{ margin: "0.125rem 0 0", fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
               {description}
@@ -89,7 +96,14 @@ export function Panel({
           </div>
         ) : null}
       </header>
-      <div style={{ padding: flush ? 0 : "0.25rem 1.125rem 1rem", flex: 1, minWidth: 0 }}>
+      <div
+        style={{
+          padding: flush ? 0 : "0.25rem 1.125rem 1rem",
+          flex: 1,
+          minWidth: 0,
+          ...(stack ? { display: "flex", flexDirection: "column", gap: t.space2 } : null),
+        }}
+      >
         {children}
       </div>
     </section>

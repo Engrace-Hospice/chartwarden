@@ -10,6 +10,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -22,7 +23,6 @@ import { useSession } from "../../shell/session";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, shortDate, toneOf } from "./bereavement-status";
 import {
-  Card,
   CountGrid,
   ErrorText,
   Field,
@@ -32,7 +32,6 @@ import {
   dangerButtonStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
   primaryButtonStyle,
   useActionStatus,
@@ -190,7 +189,7 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
         </div>
       ) : null}
 
-      <Card title="Summary">
+      <Panel stack headingLevel={3} title="Summary">
         <SummaryGrid>
           <Field label="Starts" value={dateTime(service.startsAt)} />
           <Field label="Ends" value={dateTime(service.endsAt)} />
@@ -220,25 +219,25 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
             { label: "Did not attend", value: counts.noShow },
           ]}
         />
-      </Card>
+      </Panel>
 
       {service.mailingRunId ? (
-        <Card title="Invitation mailing">
-          <span style={mutedStyle}>
+        <Panel stack headingLevel={3} title="Invitation mailing">
+          <span className="wx-text-muted">
             The printed invitation is a mailing run. Its wording is written there by staff: none is
             filled in for you.
           </span>
           <Link to={`/bereavement/mailings/runs/${service.mailingRunId}`} style={linkStyle}>
             Invitation mailing
           </Link>
-        </Card>
+        </Panel>
       ) : null}
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         {!mayManage ? (
-          <span style={mutedStyle}>Your role can view this service but not change it.</span>
+          <span className="wx-text-muted">Your role can view this service but not change it.</span>
         ) : !Object.values(offers).some(Boolean) ? (
-          <span style={mutedStyle}>No actions are available for this service.</span>
+          <span className="wx-text-muted">No actions are available for this service.</span>
         ) : (
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             {offers.edit ? (
@@ -264,7 +263,7 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
           </div>
         )}
         {actionError && !confirm ? <ErrorText>{actionError}</ErrorText> : null}
-      </Card>
+      </Panel>
 
       {mayManage ? (
         <MemorialInvitations
@@ -312,7 +311,7 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
             </button>
           }
         >
-          <span id={descId} style={mutedStyle}>
+          <span id={descId} className="wx-text-muted">
             {confirm.text}
           </span>
           {actionError ? <ErrorText>{actionError}</ErrorText> : null}

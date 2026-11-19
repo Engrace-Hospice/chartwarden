@@ -26,27 +26,37 @@
 // obligation as an outstanding fact rather than offering a button that would post it on her behalf, which
 // is the one thing §6 explicitly forbids.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
+import { FormModal } from "../../shell/form-modal";
 import {
+  NO_ANSWER,
+  RELOAD_THEN_RETRY,
   type SafetyIncidentCategory,
   type SafetyIncidentSeverity,
   type SafetyIncidentStateTransition,
   type SafetyIncidentView,
   errorMessage,
   getIncident,
+  isStaleVersion,
   oshaSignoff,
   patchIncident,
+  staleRefusalMessage,
   submitIncident,
   transitionIncident,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   DEFAULT_INCIDENT_TRANSITION,
@@ -64,12 +74,10 @@ import {
   shortId,
 } from "./safety-status";
 import {
-  Card,
   CheckboxField,
   CipherText,
   Field,
   IncidentStatePill,
-  Modal,
   Notice,
   SelectField,
   SeverityPill,
@@ -77,20 +85,24 @@ import {
   TextAreaField,
   TextField,
   Timeline,
-  columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
 } from "./safety-ui";
 
 type Ceremony = "none" | "edit" | "submit" | "transition" | "osha";
 
 const CLOSED_STATES = INCIDENT_CLOSED_STATES;
+const EDIT_FIRST = "Save or cancel the edit first";
 
+/** Keyed on the incident: another incident starts from scratch, so an open drawer and its drafts never follow the
+ *  route to a record they were not written for (Save would stamp `incident.version` of the NEW one). */
 export function IncidentDetailScreen(): JSX.Element {
+  const { incidentId = "" } = useParams();
+  return <IncidentDetailBody key={incidentId} />;
+}
+
+function IncidentDetailBody(): JSX.Element {
   const client = useApiClient();
   const { incidentId = "" } = useParams();
 
@@ -120,12 +132,27 @@ export function IncidentDetailScreen(): JSX.Element {
   const [oshaReason, setOshaReason] = useState("");
   const [stateCode, setStateCode] = useState("");
   const [windowHours, setWindowHours] = useState("24");
+  // A write's re-read can remove the opener the modal would hand focus back to (Submit only shows on a draft): the
+  // page takes focus then, instead of <body>.
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
 
+  // Only the newest read may write state: a slower earlier one (or a write's re-read) must not land on top of it.
+  const latestRead = useRef(0);
+  // An attempt in this dialog got no answer, so it may have landed: a later refusal can be THAT attempt's doing.
+  const lostReply = useRef(false);
   const load = useCallback(async () => {
+    const readId = ++latestRead.current;
     setLoading(true);
-    const res = await getIncident(client, incidentId);
-    if (res.error || !res.incident) {
-      setError(errorMessage(res.error, "That incident could not be read."));
+    // The client REJECTS on a network failure; `null` is that, and the newest read must always end `loading` and
+    // never leave the incident it last held standing as if it were current.
+    const res = await getIncident(client, incidentId).catch(() => null);
+    if (readId !== latestRead.current) return;
+    if (!res || res.error || !res.incident) {
+      setError(
+        res
+          ? errorMessage(res.error, "That incident could not be read.")
+          : "That incident could not be read: no answer came back. Check your connection, then retry.",
+      );
       setIncident(null);
     } else {
       setIncident(res.incident);
@@ -138,8 +165,81 @@ export function IncidentDetailScreen(): JSX.Element {
     void load();
   }, [load]);
 
+  // After a write was refused as stale: re-read the incident (the newest read wins) and show what the server holds.
+  // Only the stamp matters to the write; what was typed lives in its own state.
+  const rereadIncident = useCallback(async (): Promise<SafetyIncidentView | null> => {
+    const readId = ++latestRead.current;
+    const res = await getIncident(client, incidentId).catch(() => null);
+    if (readId !== latestRead.current || !res?.incident) return null;
+    setIncident(res.incident);
+    return res.incident;
+  }, [client, incidentId]);
+
+  // What a ceremony's write came back with: `null` when it landed, else the refusal to show. A stale refusal re-reads
+  // the incident first, so the next submit carries the current version and nothing typed is lost.
+  const refusalOf = useCallback(
+    async (
+      res: { error: unknown } | null,
+      subject: string,
+      fallback: string,
+      staleVersion: number,
+    ): Promise<string | null> => {
+      if (res && !res.error) return null;
+      if (!res) {
+        lostReply.current = true;
+        return NO_ANSWER;
+      }
+      if (!isStaleVersion(res.error)) return writeErrorMessage(res, fallback);
+      const fresh = await rereadIncident();
+      return staleRefusalMessage({
+        subject,
+        staleVersion,
+        freshVersion: fresh?.version ?? null,
+        lostReply: lostReply.current,
+        ifNotReread: RELOAD_THEN_RETRY,
+      });
+    },
+    [rereadIncident],
+  );
+
+  // Nothing typed or refused in a ceremony outlives it: a reason, a state code or a narrative is written fresh each
+  // time.
+  const resetDrafts = useCallback(() => {
+    setCategory("");
+    setSeverity("");
+    setLocationDescription("");
+    setNarrative("");
+    setWitnesses("");
+    setWcInitiated(false);
+    setWcReference("");
+    setFinalNarrative("");
+    setToState(DEFAULT_INCIDENT_TRANSITION);
+    setReason("");
+    setActionPlan("");
+    setOshaReportable(true);
+    setOshaReason("");
+    setStateCode("");
+    setWindowHours("24");
+    setModalError(null);
+    lostReply.current = false;
+  }, []);
+
+  const openCeremony = useCallback(
+    (next: Exclude<Ceremony, "none">) => {
+      resetDrafts();
+      setCeremony(next);
+    },
+    [resetDrafts],
+  );
+
+  const closeCeremony = useCallback(() => {
+    resetDrafts();
+    setCeremony("none");
+  }, [resetDrafts]);
+
   const openEdit = useCallback(() => {
-    if (!incident) return;
+    if (!incident || ceremony === "edit") return;
+    resetDrafts();
     setCategory(incident.category);
     setSeverity(incident.severity);
     setLocationDescription(incident.locationDescription ?? "");
@@ -149,10 +249,16 @@ export function IncidentDetailScreen(): JSX.Element {
     setWitnesses(incident.witnesses ?? "");
     setWcInitiated(incident.workersCompClaimInitiated);
     setWcReference(incident.workersCompClaimReference ?? "");
-    setModalError(null);
     setCeremony("edit");
-  }, [incident]);
+  }, [ceremony, incident, resetDrafts]);
 
+  // A write's success closes only the ceremony it submitted, never whichever one is open by then.
+  const closeIfStill = useCallback((submitted: Ceremony) => {
+    setCeremony((current) => (current === submitted ? "none" : current));
+  }, []);
+
+  // Every write below runs through `.catch(() => null)`: the client REJECTS on a network failure, and `saving` must
+  // reset on every path or the form can never be dismissed. `null` is that failure.
   const submitEdit = useCallback(async () => {
     if (!incident) return;
     setSaving(true);
@@ -166,17 +272,18 @@ export function IncidentDetailScreen(): JSX.Element {
       ...(witnesses.trim() ? { witnesses } : {}),
       workersCompClaimInitiated: wcInitiated,
       ...(wcReference.trim() ? { workersCompClaimReference: wcReference.trim() } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The edit was not saved."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The edit was not saved."));
       return;
     }
-    setCeremony("none");
+    closeIfStill("edit");
     await load();
   }, [
     category,
     client,
+    closeIfStill,
     incident,
     load,
     locationDescription,
@@ -197,16 +304,22 @@ export function IncidentDetailScreen(): JSX.Element {
       // agency on her own say-so.
       oshaReportable: incident.oshaReportable,
       ...(finalNarrative.trim() ? { finalNarrative } : {}),
-    });
+    }).catch(() => null);
+    const refusal = await refusalOf(
+      res,
+      "The submission",
+      "The incident was not submitted.",
+      incident.version,
+    );
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The incident was not submitted."));
+    if (refusal) {
+      setModalError(refusal);
       return;
     }
-    setCeremony("none");
+    closeIfStill("submit");
     setFinalNarrative("");
     await load();
-  }, [client, finalNarrative, incident, load]);
+  }, [client, closeIfStill, finalNarrative, incident, load, refusalOf]);
 
   const doTransition = useCallback(async () => {
     if (!incident) return;
@@ -217,17 +330,23 @@ export function IncidentDetailScreen(): JSX.Element {
       toState: toState as SafetyIncidentStateTransition,
       reason,
       ...(toState === "closed_with_action_plan" && actionPlan.trim() ? { actionPlan } : {}),
-    });
+    }).catch(() => null);
+    const refusal = await refusalOf(
+      res,
+      "The state change",
+      "The transition was refused.",
+      incident.version,
+    );
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The transition was refused."));
+    if (refusal) {
+      setModalError(refusal);
       return;
     }
-    setCeremony("none");
+    closeIfStill("transition");
     setReason("");
     setActionPlan("");
     await load();
-  }, [actionPlan, client, incident, load, reason, toState]);
+  }, [actionPlan, client, closeIfStill, incident, load, reason, refusalOf, toState]);
 
   const doOsha = useCallback(async () => {
     if (!incident) return;
@@ -238,18 +357,36 @@ export function IncidentDetailScreen(): JSX.Element {
       reason: oshaReason,
       stateCode: stateCode.trim().toUpperCase(),
       reportingWindowHours: Number(windowHours),
-    });
+    }).catch(() => null);
+    const refusal = await refusalOf(
+      res,
+      "The sign-off",
+      "The sign-off was refused.",
+      incident.version,
+    );
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The sign-off was refused."));
+    if (refusal) {
+      setModalError(refusal);
       return;
     }
-    setCeremony("none");
+    closeIfStill("osha");
     setOshaReason("");
     await load();
-  }, [client, incident, load, oshaReason, oshaReportable, stateCode, windowHours]);
+  }, [
+    client,
+    closeIfStill,
+    incident,
+    load,
+    oshaReason,
+    oshaReportable,
+    refusalOf,
+    stateCode,
+    windowHours,
+  ]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first read only: a refetch (Reload, a write's re-read) keeps the page, and so the opener
+  // the modal returns focus to, mounted.
+  if (loading && !incident) return <LoadingSpinner />;
   if (!incident)
     return (
       <EmptyState
@@ -258,6 +395,8 @@ export function IncidentDetailScreen(): JSX.Element {
       />
     );
 
+  // A ceremony opens with every draft cleared, so the open draft edit would be dropped without a word.
+  const editingDraft = ceremony === "edit";
   const isDraft = incident.lifecycleState === "draft";
   const isClosed = CLOSED_STATES.includes(incident.lifecycleState);
   const filedOnBehalf = incident.affectedClinicianMembershipId !== incident.reportedByMembershipId;
@@ -267,272 +406,302 @@ export function IncidentDetailScreen(): JSX.Element {
     label: `${h.fromState ? `${humanize(h.fromState)} → ` : ""}${humanize(h.toState)}`,
     at: dateTime(h.transitionedAt),
     by: h.transitionedByMembershipId ? shortId(h.transitionedByMembershipId) : "system",
-    detail: h.reason ? <span style={mutedStyle}>{h.reason}</span> : undefined,
+    detail: h.reason ? <span className="wx-text-muted">{h.reason}</span> : undefined,
   }));
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Incident {shortId(incident.id)}</span>}
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/safety/incidents" style={ghostButtonStyle}>
-              Back to ledger
-            </Link>
-            <button type="button" onClick={() => void load()} style={ghostButtonStyle}>
-              Reload
-            </button>
-          </div>
-        }
-      />
+    <>
+      <div className={`wx-list-drawer${ceremony === "edit" ? " has-drawer" : ""}`}>
+        <div
+          ref={focusRef}
+          tabIndex={-1}
+          className="wx-list-drawer-main wx-kit-column"
+          aria-busy={loading}
+          style={{ outline: "none" }}
+        >
+          <PageHeader
+            title={<span style={pageTitleStyle}>Incident {shortId(incident.id)}</span>}
+            actions={
+              <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+                <Link to="/safety/incidents" style={ghostButtonStyle}>
+                  Back to ledger
+                </Link>
+                <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
+                  Reload
+                </Button>
+              </div>
+            }
+          />
 
-      {reportableUnsigned ? (
-        <Notice tone="error" assertive>
-          <strong>Marked OSHA-reportable with no sign-off on record.</strong> A supervisor must sign
-          off before this incident can leave draft — the database refuses the combination outright,
-          so this is not a warning that can be worked around.
-        </Notice>
-      ) : null}
+          {reportableUnsigned ? (
+            <Notice tone="error" assertive>
+              <strong>Marked OSHA-reportable with no sign-off on record.</strong> A supervisor must
+              sign off before this incident can leave draft — the database refuses the combination
+              outright, so this is not a warning that can be worked around.
+            </Notice>
+          ) : null}
 
-      {filedOnBehalf && !isClosed ? (
-        <Notice tone="warning" live>
-          <strong>This incident was filed on the affected clinician's behalf.</strong> §6 requires
-          HER acknowledgment before it may close, and that acknowledgment cannot be coerced — if she
-          declines, the row stays under review and a compliance flag fires. There is no button here
-          to record it for her, deliberately: M20 publishes no route that would let one person post
-          another's acknowledgment.
-        </Notice>
-      ) : null}
+          {filedOnBehalf && !isClosed ? (
+            <Notice tone="warning" live>
+              <strong>This incident was filed on the affected clinician's behalf.</strong> §6
+              requires HER acknowledgment before it may close, and that acknowledgment cannot be
+              coerced — if she declines, the row stays under review and a compliance flag fires.
+              There is no button here to record it for her, deliberately: M20 publishes no route
+              that would let one person post another's acknowledgment.
+            </Notice>
+          ) : null}
 
-      <Card
-        title="Incident"
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            {isDraft ? (
-              <>
-                <button type="button" onClick={openEdit} style={ghostButtonStyle}>
-                  Edit draft
-                </button>
-                <button
+          <Panel
+            stack
+            headingLevel={3}
+            title="Incident"
+            action={
+              <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+                {isDraft ? (
+                  <>
+                    <Button tone="secondary" size="lg" type="button" onClick={openEdit}>
+                      Edit draft
+                    </Button>
+                    <Button
+                      tone="primary"
+                      size="lg"
+                      type="button"
+                      onClick={() => openCeremony("submit")}
+                      disabled={editingDraft}
+                      title={editingDraft ? EDIT_FIRST : undefined}
+                    >
+                      Submit for review
+                    </Button>
+                  </>
+                ) : null}
+                {!isDraft ? (
+                  <Button
+                    tone="secondary"
+                    size="lg"
+                    type="button"
+                    onClick={() => openCeremony("transition")}
+                    disabled={editingDraft}
+                    title={editingDraft ? EDIT_FIRST : undefined}
+                  >
+                    Change state
+                  </Button>
+                ) : null}
+                <Button
+                  tone="secondary"
+                  size="lg"
                   type="button"
                   onClick={() => {
-                    setModalError(null);
-                    setCeremony("submit");
+                    openCeremony("osha");
+                    setOshaReportable(!incident.oshaReportable);
                   }}
-                  style={primaryButtonStyle}
+                  disabled={isClosed || editingDraft}
+                  title={editingDraft ? EDIT_FIRST : undefined}
                 >
-                  Submit for review
-                </button>
-              </>
+                  OSHA sign-off
+                </Button>
+              </div>
+            }
+          >
+            <SummaryGrid>
+              <Field label="State" value={<IncidentStatePill state={incident.lifecycleState} />} />
+              <Field label="Category" value={incidentCategoryLabel(incident.category)} />
+              <Field label="Severity" value={<SeverityPill severity={incident.severity} />} />
+              <Field label="Occurred" value={dateTime(incident.occurredAt)} />
+              <Field label="Reported" value={dateTime(incident.reportedAt)} />
+              <Field
+                label="Affected clinician"
+                value={shortId(incident.affectedClinicianMembershipId)}
+                mono
+              />
+              <Field label="Reported by" value={shortId(incident.reportedByMembershipId)} mono />
+              <Field
+                label="Visit"
+                value={incident.visitId ? shortId(incident.visitId) : "None"}
+                mono={incident.visitId !== null}
+              />
+              <Field label="Submitted" value={dateTime(incident.submittedAt)} />
+              <Field label="Reviewed" value={dateTime(incident.reviewedAt)} />
+              <Field label="Closed" value={dateTime(incident.closedAt)} />
+              <Field label="Row version" value={String(incident.version)} mono />
+              <Field
+                label="OSHA-reportable"
+                value={
+                  incident.oshaReportable ? (
+                    <StatusPill
+                      label={incident.oshaReportableSignedOffAt ? "Yes — signed" : "Yes — UNSIGNED"}
+                      tone={incident.oshaReportableSignedOffAt ? "critical" : "error"}
+                    />
+                  ) : (
+                    "No"
+                  )
+                }
+              />
+              <Field
+                label="Signed off"
+                value={
+                  incident.oshaReportableSignedOffAt
+                    ? `${dateTime(incident.oshaReportableSignedOffAt)} · ${shortId(incident.oshaReportableSignedOffByMembershipId)}`
+                    : "—"
+                }
+              />
+              <Field
+                label="Workers' comp"
+                value={
+                  incident.workersCompClaimInitiated
+                    ? (incident.workersCompClaimReference ?? "Initiated")
+                    : "Not initiated"
+                }
+                mono={incident.workersCompClaimReference !== null}
+              />
+              <Field
+                label="Linked SOS"
+                value={
+                  incident.linkedSosAlertId ? (
+                    <Link to={`/safety/sos/${incident.linkedSosAlertId}`} style={linkStyle}>
+                      {shortId(incident.linkedSosAlertId)}
+                    </Link>
+                  ) : (
+                    "None"
+                  )
+                }
+              />
+            </SummaryGrid>
+            {incident.locationDescription ? (
+              <Field label="Where" value={incident.locationDescription} />
             ) : null}
-            {!isDraft ? (
-              <button
+            {incident.reopenReason ? (
+              <Notice tone="warning">
+                <strong>Reopened:</strong> {incident.reopenReason}
+              </Notice>
+            ) : null}
+          </Panel>
+
+          <Panel stack headingLevel={3} title="Narrative">
+            <CipherText value={incident.narrative} available={incident.narrativeAvailable} />
+          </Panel>
+
+          {incident.witnesses ? (
+            <Panel stack headingLevel={3} title="Witnesses">
+              <p style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
+                {incident.witnesses}
+              </p>
+            </Panel>
+          ) : null}
+
+          <Panel stack headingLevel={3} title="Action plan">
+            <CipherText
+              value={incident.actionPlan}
+              available={incident.actionPlanAvailable}
+              emptyLabel="No action plan — this incident has not been closed with one."
+            />
+          </Panel>
+
+          <Panel stack headingLevel={3} title="Lifecycle ledger">
+            {ledger.length === 0 ? (
+              <span className="wx-text-muted">
+                No transitions yet — this incident is still a draft.
+              </span>
+            ) : (
+              <Timeline entries={ledger} />
+            )}
+          </Panel>
+        </div>
+
+        {/* ── the draft editor is a drawer beside the incident ───────────────────────────────────────── */}
+
+        {ceremony === "edit" ? (
+          <FormDrawer
+            title="Edit this draft"
+            busy={saving}
+            onClose={closeCeremony}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
                 type="button"
-                onClick={() => {
-                  setToState(DEFAULT_INCIDENT_TRANSITION);
-                  setModalError(null);
-                  setCeremony("transition");
-                }}
-                style={ghostButtonStyle}
+                onClick={() => void submitEdit()}
+                disabled={saving || loading}
               >
-                Change state
-              </button>
+                {saving ? "Saving…" : "Save draft"}
+              </Button>
+            }
+          >
+            {!incident.narrativeAvailable ? (
+              <Notice tone="warning" assertive>
+                The stored narrative could not be decrypted for display, so the box below starts
+                empty. Leaving it empty keeps what is already stored; typing into it REPLACES text
+                you cannot see.
+              </Notice>
             ) : null}
-            <button
-              type="button"
-              onClick={() => {
-                setOshaReportable(!incident.oshaReportable);
-                setModalError(null);
-                setCeremony("osha");
-              }}
-              disabled={isClosed}
-              style={isClosed ? disabledButtonStyle : ghostButtonStyle}
-            >
-              OSHA sign-off
-            </button>
-          </div>
-        }
-      >
-        <SummaryGrid>
-          <Field label="State" value={<IncidentStatePill state={incident.lifecycleState} />} />
-          <Field label="Category" value={incidentCategoryLabel(incident.category)} />
-          <Field label="Severity" value={<SeverityPill severity={incident.severity} />} />
-          <Field label="Occurred" value={dateTime(incident.occurredAt)} />
-          <Field label="Reported" value={dateTime(incident.reportedAt)} />
-          <Field
-            label="Affected clinician"
-            value={shortId(incident.affectedClinicianMembershipId)}
-            mono
-          />
-          <Field label="Reported by" value={shortId(incident.reportedByMembershipId)} mono />
-          <Field
-            label="Visit"
-            value={incident.visitId ? shortId(incident.visitId) : "None"}
-            mono={incident.visitId !== null}
-          />
-          <Field label="Submitted" value={dateTime(incident.submittedAt)} />
-          <Field label="Reviewed" value={dateTime(incident.reviewedAt)} />
-          <Field label="Closed" value={dateTime(incident.closedAt)} />
-          <Field label="Row version" value={String(incident.version)} mono />
-          <Field
-            label="OSHA-reportable"
-            value={
-              incident.oshaReportable ? (
-                <StatusPill
-                  label={incident.oshaReportableSignedOffAt ? "Yes — signed" : "Yes — UNSIGNED"}
-                  tone={incident.oshaReportableSignedOffAt ? "critical" : "error"}
-                />
-              ) : (
-                "No"
-              )
-            }
-          />
-          <Field
-            label="Signed off"
-            value={
-              incident.oshaReportableSignedOffAt
-                ? `${dateTime(incident.oshaReportableSignedOffAt)} · ${shortId(incident.oshaReportableSignedOffByMembershipId)}`
-                : "—"
-            }
-          />
-          <Field
-            label="Workers' comp"
-            value={
-              incident.workersCompClaimInitiated
-                ? (incident.workersCompClaimReference ?? "Initiated")
-                : "Not initiated"
-            }
-            mono={incident.workersCompClaimReference !== null}
-          />
-          <Field
-            label="Linked SOS"
-            value={
-              incident.linkedSosAlertId ? (
-                <Link to={`/safety/sos/${incident.linkedSosAlertId}`} style={linkStyle}>
-                  {shortId(incident.linkedSosAlertId)}
-                </Link>
-              ) : (
-                "None"
-              )
-            }
-          />
-        </SummaryGrid>
-        {incident.locationDescription ? (
-          <Field label="Where" value={incident.locationDescription} />
+            <SelectField
+              label="Category"
+              value={category}
+              options={INCIDENT_CATEGORIES.map((v) => ({
+                value: v,
+                label: incidentCategoryLabel(v),
+              }))}
+              onChange={setCategory}
+            />
+            <SelectField
+              label="Severity"
+              value={severity}
+              options={INCIDENT_SEVERITIES.map((v) => ({ value: v, label: humanize(v) }))}
+              onChange={setSeverity}
+            />
+            <TextField
+              label="Where"
+              value={locationDescription}
+              onChange={setLocationDescription}
+            />
+            <TextAreaField
+              label="What happened"
+              value={narrative}
+              onChange={setNarrative}
+              rows={8}
+              minChars={INCIDENT_NARRATIVE_MIN_CHARS}
+              hint="Stored encrypted under the tenant key. Once submitted, this text is part of a record an insurer and a state agency may read."
+            />
+            <TextAreaField label="Witnesses" value={witnesses} onChange={setWitnesses} rows={3} />
+            <CheckboxField
+              label="A workers' compensation claim has been initiated"
+              checked={wcInitiated}
+              onChange={setWcInitiated}
+            />
+            {wcInitiated ? (
+              <TextField
+                label="Claim reference"
+                value={wcReference}
+                onChange={setWcReference}
+                mono
+              />
+            ) : null}
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
         ) : null}
-        {incident.reopenReason ? (
-          <Notice tone="warning">
-            <strong>Reopened:</strong> {incident.reopenReason}
-          </Notice>
-        ) : null}
-      </Card>
+      </div>
 
-      <Card title="Narrative">
-        <CipherText value={incident.narrative} available={incident.narrativeAvailable} />
-      </Card>
-
-      {incident.witnesses ? (
-        <Card title="Witnesses">
-          <p style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
-            {incident.witnesses}
-          </p>
-        </Card>
-      ) : null}
-
-      <Card title="Action plan">
-        <CipherText
-          value={incident.actionPlan}
-          available={incident.actionPlanAvailable}
-          emptyLabel="No action plan — this incident has not been closed with one."
-        />
-      </Card>
-
-      <Card title="Lifecycle ledger">
-        {ledger.length === 0 ? (
-          <span style={mutedStyle}>No transitions yet — this incident is still a draft.</span>
-        ) : (
-          <Timeline entries={ledger} />
-        )}
-      </Card>
-
-      {/* ── ceremonies ─────────────────────────────────────────────────────────────────────────────── */}
-
-      {ceremony === "edit" ? (
-        <Modal
-          title="Edit this draft"
-          onClose={() => setCeremony("none")}
-          footer={
-            <button
-              type="button"
-              onClick={() => void submitEdit()}
-              disabled={saving}
-              style={saving ? disabledButtonStyle : primaryButtonStyle}
-            >
-              {saving ? "Saving…" : "Save draft"}
-            </button>
-          }
-        >
-          {!incident.narrativeAvailable ? (
-            <Notice tone="warning" assertive>
-              The stored narrative could not be decrypted for display, so the box below starts
-              empty. Leaving it empty keeps what is already stored; typing into it REPLACES text you
-              cannot see.
-            </Notice>
-          ) : null}
-          <SelectField
-            label="Category"
-            value={category}
-            options={INCIDENT_CATEGORIES.map((v) => ({
-              value: v,
-              label: incidentCategoryLabel(v),
-            }))}
-            onChange={setCategory}
-          />
-          <SelectField
-            label="Severity"
-            value={severity}
-            options={INCIDENT_SEVERITIES.map((v) => ({ value: v, label: humanize(v) }))}
-            onChange={setSeverity}
-          />
-          <TextField label="Where" value={locationDescription} onChange={setLocationDescription} />
-          <TextAreaField
-            label="What happened"
-            value={narrative}
-            onChange={setNarrative}
-            rows={8}
-            minChars={INCIDENT_NARRATIVE_MIN_CHARS}
-            hint="Stored encrypted under the tenant key. Once submitted, this text is part of a record an insurer and a state agency may read."
-          />
-          <TextAreaField label="Witnesses" value={witnesses} onChange={setWitnesses} rows={3} />
-          <CheckboxField
-            label="A workers' compensation claim has been initiated"
-            checked={wcInitiated}
-            onChange={setWcInitiated}
-          />
-          {wcInitiated ? (
-            <TextField label="Claim reference" value={wcReference} onChange={setWcReference} mono />
-          ) : null}
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </Modal>
-      ) : null}
+      {/* ── ceremonies: attestations, sign-offs and state changes are modals (DESIGN.md §7.4) ──────── */}
 
       {ceremony === "submit" ? (
-        <Modal
+        <FormModal
           title="Submit this incident for review"
-          onClose={() => setCeremony("none")}
-          footer={
-            <button
+          busy={saving}
+          error={modalError}
+          onClose={closeCeremony}
+          save={
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void doSubmit()}
-              disabled={saving}
-              style={saving ? disabledButtonStyle : primaryButtonStyle}
+              disabled={saving || loading}
             >
               {saving ? "Submitting…" : "Submit"}
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">
@@ -546,44 +715,37 @@ export function IncidentDetailScreen(): JSX.Element {
             rows={5}
             hint="Optional. Appended to the record; it does not replace what you already wrote."
           />
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             This submission is filed as{" "}
             <strong>{incident.oshaReportable ? "OSHA-reportable" : "not OSHA-reportable"}</strong> —
             the flag this incident already carries. You cannot raise it here: D9 makes that a
             supervisor's step-up'd sign-off, precisely so a filing with a state agency is never made
             on the reporting clinician's own say-so.
           </span>
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </Modal>
+        </FormModal>
       ) : null}
 
       {ceremony === "transition" ? (
-        <Modal
+        <FormModal
           title="Change this incident's state"
-          onClose={() => setCeremony("none")}
-          footer={
-            <button
+          busy={saving}
+          error={modalError}
+          onClose={closeCeremony}
+          save={
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void doTransition()}
               disabled={
                 saving ||
+                loading ||
                 !meetsMinChars(reason, INCIDENT_TRANSITION_REASON_MIN_CHARS) ||
                 (toState === "closed_with_action_plan" && actionPlan.trim().length === 0)
-              }
-              style={
-                saving ||
-                !meetsMinChars(reason, INCIDENT_TRANSITION_REASON_MIN_CHARS) ||
-                (toState === "closed_with_action_plan" && actionPlan.trim().length === 0)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
               }
             >
               {saving ? "Recording…" : "Record transition"}
-            </button>
+            </Button>
           }
         >
           <SelectField
@@ -592,7 +754,7 @@ export function IncidentDetailScreen(): JSX.Element {
             options={INCIDENT_TRANSITION_STATES.map((v) => ({ value: v, label: humanize(v) }))}
             onChange={setToState}
           />
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             <code>draft</code> and <code>submitted</code> are absent from this list on purpose: each
             is reached by its own route, and a picker that offered <code>submitted</code> would let
             you un-submit — which is exactly the immutability point §2.2.3 puts there.
@@ -619,37 +781,28 @@ export function IncidentDetailScreen(): JSX.Element {
               second sign-off afterwards.
             </Notice>
           ) : null}
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </Modal>
+        </FormModal>
       ) : null}
 
       {ceremony === "osha" ? (
-        <Modal
+        <FormModal
           title="OSHA-equivalent sign-off"
-          onClose={() => setCeremony("none")}
-          footer={
-            <button
+          busy={saving}
+          error={modalError}
+          onClose={closeCeremony}
+          save={
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void doOsha()}
               disabled={
                 saving ||
+                loading ||
                 !meetsMinChars(oshaReason, OSHA_REASON_MIN_CHARS) ||
                 stateCode.trim().length !== 2 ||
                 !Number.isFinite(Number(windowHours)) ||
                 Number(windowHours) < 1
-              }
-              style={
-                saving ||
-                !meetsMinChars(oshaReason, OSHA_REASON_MIN_CHARS) ||
-                stateCode.trim().length !== 2 ||
-                !Number.isFinite(Number(windowHours)) ||
-                Number(windowHours) < 1
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
               }
             >
               {saving
@@ -657,7 +810,7 @@ export function IncidentDetailScreen(): JSX.Element {
                 : oshaReportable
                   ? "Sign off as reportable"
                   : "Sign off as NOT reportable"}
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning" assertive>
@@ -701,13 +854,8 @@ export function IncidentDetailScreen(): JSX.Element {
               stays honest.
             </Notice>
           ) : null}
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </Modal>
+        </FormModal>
       ) : null}
-    </div>
+    </>
   );
 }

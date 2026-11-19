@@ -18,6 +18,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -43,15 +44,12 @@ import {
   riskFactorLabel,
 } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Notice,
   SelectField,
   StatusLine,
   columnStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
 } from "./bereavement-ui";
 
 const SUD_KEY = "active_substance_use";
@@ -239,13 +237,13 @@ function PredeathForAdmission({ admissionId }: { admissionId: string | undefined
 
       {refreshError ? <ErrorText>{refreshError}</ErrorText> : null}
 
-      <Card title="Risk factors">
+      <Panel stack headingLevel={3} title="Risk factors">
         {!draft.exists ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Nothing has been recorded yet for this admission. Every factor starts as unknown.
           </span>
         ) : (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Last edited{draft.lastEditedAt ? ` ${dateTime(draft.lastEditedAt)}` : ""}
             {draft.lastEditedDiscipline
               ? ` by ${humanize(draft.lastEditedDiscipline).toLowerCase()}`
@@ -274,14 +272,14 @@ function PredeathForAdmission({ admissionId }: { admissionId: string | undefined
         </div>
         {editable ? (
           <div style={{ display: "flex", gap: t.space2, alignItems: "center", flexWrap: "wrap" }}>
-            <button type="button" style={primaryButtonStyle} disabled={busy} onClick={save}>
+            <Button tone="primary" type="button" disabled={busy} onClick={save}>
               {busy ? "Saving…" : "Save draft"}
-            </button>
+            </Button>
           </div>
         ) : null}
         <StatusLine message={statusMessage} tone={draft.locked ? "warning" : "success"} />
         {saveError ? <ErrorText>{saveError}</ErrorText> : null}
-      </Card>
+      </Panel>
     </div>
   );
 }

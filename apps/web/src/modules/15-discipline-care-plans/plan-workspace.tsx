@@ -2,6 +2,7 @@ import {
   Button,
   EmptyState,
   LoadingSpinner,
+  Panel,
   PatientWorkspaceLayout,
   StatusPill,
   t,
@@ -60,20 +61,13 @@ import {
   versionRowActions,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SummaryGrid,
   TableScroll,
-  alertStyle,
   columnStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   visuallyHidden,
 } from "./discipline-ui";
 import { SignVersionModal } from "./sign-version-modal";
@@ -238,7 +232,7 @@ export function DisciplinePlanWorkspace({
           >
             <div>
               <h1 style={pageTitleStyle}>{kindLabel(kind)}</h1>
-              <span style={mutedStyle}>{kindRegulation(kind)}</span>{" "}
+              <span className="wx-text-muted">{kindRegulation(kind)}</span>{" "}
               <StatusPill
                 label={humanize(plan.status)}
                 tone={toneOf(PLAN_STATUS_TONE, plan.status)}
@@ -260,44 +254,44 @@ export function DisciplinePlanWorkspace({
           {redaction ? <Notice tone="warning">{redaction}</Notice> : null}
           {renderNotice?.(plan)}
           {actionError ? (
-            <p role="alert" aria-live="assertive" style={alertStyle}>
+            <p role="alert" aria-live="assertive" className="wx-text-error">
               {actionError}
             </p>
           ) : null}
 
           {renderExtras?.(plan, load)}
 
-          <Card title="Goals" headingLevel={2}>
+          <Panel stack title="Goals" headingLevel={2}>
             {plan.goals.length === 0 ? (
-              <span style={mutedStyle}>No goals on this plan.</span>
+              <span className="wx-text-muted">No goals on this plan.</span>
             ) : (
               <TableScroll label="Goals table">
-                <table style={tableStyle}>
+                <table>
                   <thead>
                     <tr>
-                      <th style={th}>Goal</th>
-                      <th style={th}>Source</th>
-                      <th style={th}>Frequency</th>
-                      <th style={th}>Target</th>
-                      <th style={th}>Status</th>
+                      <th>Goal</th>
+                      <th>Source</th>
+                      <th>Frequency</th>
+                      <th>Target</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {plan.goals.map((g) => (
-                      <tr key={g.goalId} style={rowLine}>
-                        <td style={td}>
+                      <tr key={g.goalId}>
+                        <td>
                           {g.revisedText ?? g.originalText}
                           {g.revisedText ? (
-                            <div style={mutedStyle}>originally: {g.originalText}</div>
+                            <div className="wx-text-muted">originally: {g.originalText}</div>
                           ) : null}
                           {g.measurableOutcome ? (
-                            <div style={mutedStyle}>outcome: {g.measurableOutcome}</div>
+                            <div className="wx-text-muted">outcome: {g.measurableOutcome}</div>
                           ) : null}
                         </td>
-                        <td style={td}>{goalSourceLabel(g.source)}</td>
-                        <td style={td}>{g.frequencyText ?? "—"}</td>
-                        <td style={td}>{shortDate(g.targetAt)}</td>
-                        <td style={td}>
+                        <td>{goalSourceLabel(g.source)}</td>
+                        <td>{g.frequencyText ?? "—"}</td>
+                        <td>{shortDate(g.targetAt)}</td>
+                        <td>
                           <StatusPill
                             label={humanize(g.status)}
                             tone={toneOf(GOAL_STATUS_TONE, g.status)}
@@ -309,34 +303,36 @@ export function DisciplinePlanWorkspace({
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
 
-          <Card title="Interventions" headingLevel={2}>
+          <Panel stack title="Interventions" headingLevel={2}>
             {plan.interventions.length === 0 ? (
-              <span style={mutedStyle}>No interventions on this plan.</span>
+              <span className="wx-text-muted">No interventions on this plan.</span>
             ) : (
               <TableScroll label="Interventions table">
-                <table style={tableStyle}>
+                <table>
                   <thead>
                     <tr>
-                      <th style={th}>Scope</th>
-                      <th style={th}>Frequency</th>
-                      <th style={th}>Discipline</th>
-                      <th style={th}>Status</th>
+                      <th>Scope</th>
+                      <th>Frequency</th>
+                      <th>Discipline</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {plan.interventions.map((iv) => (
-                      <tr key={iv.interventionId} style={rowLine}>
-                        <td style={td}>
+                      <tr key={iv.interventionId}>
+                        <td>
                           {iv.scopeText}
                           {iv.discontinuationReason ? (
-                            <div style={mutedStyle}>discontinued: {iv.discontinuationReason}</div>
+                            <div className="wx-text-muted">
+                              discontinued: {iv.discontinuationReason}
+                            </div>
                           ) : null}
                         </td>
-                        <td style={td}>{iv.frequencyText}</td>
-                        <td style={td}>{humanize(iv.discipline)}</td>
-                        <td style={td}>
+                        <td>{iv.frequencyText}</td>
+                        <td>{humanize(iv.discipline)}</td>
+                        <td>
                           <StatusPill
                             label={humanize(iv.status)}
                             tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
@@ -348,40 +344,40 @@ export function DisciplinePlanWorkspace({
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
 
-          <Card title="Assessments" headingLevel={2}>
+          <Panel stack title="Assessments" headingLevel={2}>
             {plan.assessments.length === 0 ? (
-              <span style={mutedStyle}>No assessments captured on this plan.</span>
+              <span className="wx-text-muted">No assessments captured on this plan.</span>
             ) : (
               <TableScroll label="Assessments table">
-                <table style={tableStyle}>
+                <table>
                   <thead>
                     <tr>
-                      <th style={th}>Kind</th>
-                      <th style={th}>Captured</th>
-                      <th style={th}>Initial</th>
-                      <th style={th}>Signed</th>
-                      <th style={th}>Status</th>
-                      <th style={th}>
+                      <th>Kind</th>
+                      <th>Captured</th>
+                      <th>Initial</th>
+                      <th>Signed</th>
+                      <th>Status</th>
+                      <th>
                         <span style={visuallyHidden}>Actions</span>
                       </th>
                     </tr>
                   </thead>
                   <tbody>
                     {plan.assessments.map((a) => (
-                      <tr key={a.assessmentId} style={rowLine}>
-                        <td style={td}>{assessmentKindLabel(a.kind)}</td>
-                        <td style={td}>{dateTime(a.capturedAt)}</td>
-                        <td style={td}>{a.isInitial ? "Yes" : "—"}</td>
-                        <td style={td}>{dateTime(a.signedAt)}</td>
-                        <td style={td}>
+                      <tr key={a.assessmentId}>
+                        <td>{assessmentKindLabel(a.kind)}</td>
+                        <td>{dateTime(a.capturedAt)}</td>
+                        <td>{a.isInitial ? "Yes" : "—"}</td>
+                        <td>{dateTime(a.signedAt)}</td>
+                        <td>
                           <StatusPill
                             label={humanize(a.status)}
                             tone={toneOf(ASSESSMENT_STATUS_TONE, a.status)}
                           />
                         </td>
-                        <td style={td}>
+                        <td>
                           {permissions?.includes("discipline_assessment.author") ? (
                             <Link
                               to={disciplineAssessmentPath(
@@ -395,7 +391,7 @@ export function DisciplinePlanWorkspace({
                               Open assessment
                             </Link>
                           ) : (
-                            <span style={mutedStyle}>Read only</span>
+                            <span className="wx-text-muted">Read only</span>
                           )}
                         </td>
                       </tr>
@@ -404,12 +400,13 @@ export function DisciplinePlanWorkspace({
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
 
-          <Card
+          <Panel
+            stack
             title="Version chain"
             headingLevel={2}
-            actions={
+            action={
               openVersion &&
               ((openVersion.status === "draft" && canFinalize) ||
                 (openVersion.status === "in_review" && canSign)) ? (
@@ -446,18 +443,18 @@ export function DisciplinePlanWorkspace({
               <Field label="Plan row version" value={String(plan.version)} />
             </SummaryGrid>
             {plan.versions.length === 0 ? (
-              <span style={mutedStyle}>No versions yet.</span>
+              <span className="wx-text-muted">No versions yet.</span>
             ) : (
               <TableScroll label="Version chain table">
-                <table style={tableStyle}>
+                <table>
                   <thead>
                     <tr>
-                      <th style={th}>Version</th>
-                      <th style={th}>Kind</th>
-                      <th style={th}>Finalized</th>
-                      <th style={th}>Signed</th>
-                      <th style={th}>Status</th>
-                      <th style={th}>
+                      <th>Version</th>
+                      <th>Kind</th>
+                      <th>Finalized</th>
+                      <th>Signed</th>
+                      <th>Status</th>
+                      <th>
                         <span style={visuallyHidden}>Actions</span>
                       </th>
                     </tr>
@@ -466,18 +463,18 @@ export function DisciplinePlanWorkspace({
                     {plan.versions.map((v) => {
                       const actions = versionRowActions(kind, v, permissions);
                       return (
-                        <tr key={v.versionId} style={rowLine}>
-                          <td style={td}>v{v.sequence}</td>
-                          <td style={td}>{humanize(v.kind)}</td>
-                          <td style={td}>{dateTime(v.finalizedAt)}</td>
-                          <td style={td}>{dateTime(v.signedAt)}</td>
-                          <td style={td}>
+                        <tr key={v.versionId}>
+                          <td>v{v.sequence}</td>
+                          <td>{humanize(v.kind)}</td>
+                          <td>{dateTime(v.finalizedAt)}</td>
+                          <td>{dateTime(v.signedAt)}</td>
+                          <td>
                             <StatusPill
                               label={humanize(v.status)}
                               tone={toneOf(VERSION_STATUS_TONE, v.status)}
                             />
                           </td>
-                          <td style={td}>
+                          <td>
                             <div style={{ display: "flex", gap: t.space3 }}>
                               {actions.edit ? (
                                 <Link
@@ -504,7 +501,7 @@ export function DisciplinePlanWorkspace({
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
         </section>
       </div>
 

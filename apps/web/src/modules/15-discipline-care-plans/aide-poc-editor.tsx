@@ -1,7 +1,9 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   StickyFooterActions,
   t,
@@ -41,7 +43,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SelectField,
@@ -49,17 +50,10 @@ import {
   TableScroll,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   useUnsavedChangesWarning,
 } from "./discipline-ui";
 
@@ -264,12 +258,12 @@ export function AidePocEditor(): JSX.Element {
         </Notice>
       ) : null}
       {actionError ? (
-        <p role="alert" aria-live="assertive" style={alertStyle}>
+        <p role="alert" aria-live="assertive" className="wx-text-error">
           {actionError}
         </p>
       ) : null}
 
-      <Card title="Assignment">
+      <Panel stack headingLevel={3} title="Assignment">
         <SummaryGrid>
           <Field label="Assigned aide" value={shortId(plan.aideMembershipId)} mono />
           <Field label="Supervising RN" value={shortId(plan.supervisingRnMembershipId)} mono />
@@ -278,49 +272,49 @@ export function AidePocEditor(): JSX.Element {
             value={`${plan.supervisoryCadence?.cadenceDays ?? plan.supervisoryCadenceDaysOverride ?? 14} days`}
           />
         </SummaryGrid>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The aide and supervising RN bindings are set at bootstrap and moved by an IDG decision;
           they are not editable from this screen.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title="Aide tasks">
+      <Panel stack headingLevel={3} title="Aide tasks">
         {plan.interventions.length === 0 ? (
-          <span style={mutedStyle}>No tasks on this plan yet.</span>
+          <span className="wx-text-muted">No tasks on this plan yet.</span>
         ) : (
           <TableScroll label="Aide tasks table">
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Task</th>
-                  <th style={th}>Frequency</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>&nbsp;</th>
+                  <th>Task</th>
+                  <th>Frequency</th>
+                  <th>Status</th>
+                  <th>&nbsp;</th>
                 </tr>
               </thead>
               <tbody>
                 {plan.interventions.map((iv) => (
-                  <tr key={iv.interventionId} style={rowLine}>
-                    <td style={td}>{iv.scopeText}</td>
-                    <td style={td}>
+                  <tr key={iv.interventionId}>
+                    <td>{iv.scopeText}</td>
+                    <td>
                       {iv.frequencyText}
-                      <div style={mutedStyle}>{iv.frequencyValue}</div>
+                      <div className="wx-text-muted">{iv.frequencyValue}</div>
                     </td>
-                    <td style={td}>
+                    <td>
                       <StatusPill
                         label={humanize(iv.status)}
                         tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       {iv.status === "active" ? (
-                        <button
+                        <Button
+                          tone="secondary"
                           type="button"
-                          style={ghostButtonStyle}
                           onClick={() => void discontinueIntervention(iv)}
                         >
                           Discontinue
-                        </button>
+                        </Button>
                       ) : null}
                     </td>
                   </tr>
@@ -343,50 +337,50 @@ export function AidePocEditor(): JSX.Element {
             onChange={setFrequencyValue}
             placeholder="3/week"
           />
-          <button
+          <Button
+            tone="primary"
             type="button"
             disabled={!canAddIntervention}
-            style={{ ...primaryButtonStyle, opacity: canAddIntervention ? 1 : 0.5 }}
             onClick={() => void addIntervention()}
           >
             Add task
-          </button>
+          </Button>
         </div>
-      </Card>
+      </Panel>
 
-      <Card title="Goals">
+      <Panel stack headingLevel={3} title="Goals">
         {plan.goals.length === 0 ? (
-          <span style={mutedStyle}>No goals on this plan yet.</span>
+          <span className="wx-text-muted">No goals on this plan yet.</span>
         ) : (
           <TableScroll label="Aide goals table">
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Goal</th>
-                  <th style={th}>Source</th>
-                  <th style={th}>Target</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Change</th>
+                  <th>Goal</th>
+                  <th>Source</th>
+                  <th>Target</th>
+                  <th>Status</th>
+                  <th>Change</th>
                 </tr>
               </thead>
               <tbody>
                 {plan.goals.map((g) => (
-                  <tr key={g.goalId} style={rowLine}>
-                    <td style={td}>
+                  <tr key={g.goalId}>
+                    <td>
                       {g.revisedText ?? g.originalText}
                       {g.revisedText ? (
-                        <div style={mutedStyle}>originally: {g.originalText}</div>
+                        <div className="wx-text-muted">originally: {g.originalText}</div>
                       ) : null}
                     </td>
-                    <td style={td}>{goalSourceLabel(g.source)}</td>
-                    <td style={td}>{shortDate(g.targetAt)}</td>
-                    <td style={td}>
+                    <td>{goalSourceLabel(g.source)}</td>
+                    <td>{shortDate(g.targetAt)}</td>
+                    <td>
                       <StatusPill
                         label={humanize(g.status)}
                         tone={toneOf(GOAL_STATUS_TONE, g.status)}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <SelectField
                         label={`Status change for goal ${g.goalId.slice(0, 8)}`}
                         value=""
@@ -413,17 +407,14 @@ export function AidePocEditor(): JSX.Element {
             options={SOURCE_OPTIONS}
             onChange={setGoalSource}
           />
-          <button
+          <Button
+            tone="primary"
             type="button"
             disabled={goalText.trim() === "" || goalProblemId.trim() === ""}
-            style={{
-              ...primaryButtonStyle,
-              opacity: goalText.trim() === "" || goalProblemId.trim() === "" ? 0.5 : 1,
-            }}
             onClick={() => void addGoal()}
           >
             Add goal
-          </button>
+          </Button>
         </div>
         <TextAreaField
           label="Goal text"
@@ -432,11 +423,11 @@ export function AidePocEditor(): JSX.Element {
           rows={3}
           hint="Recorded verbatim as the goal's original text, which is immutable — later wording changes are recorded as revisions alongside it."
         />
-        <span id="goal-problem-hint" style={mutedStyle}>
+        <span id="goal-problem-hint" className="wx-text-muted">
           A discipline goal refines an IPOC problem owned by the interdisciplinary care plan (M7);
           the problem id comes from that plan.
         </span>
-      </Card>
+      </Panel>
 
       <StickyFooterActions>
         <Link

@@ -1,5 +1,4 @@
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/35-subscription/routes/subscription-typebox.ts — M35 (§4.4) wire contracts.
 //
 // TypeBox path-param / query / body request schemas for the §4.1 tenant + §4.2 admin routes AND the §4.4
@@ -12,8 +11,9 @@ import { ValidationError } from "@chartwarden/types";
 // VOCAB NOTE: the string-literal unions MIRROR the FROZEN `@chartwarden/db` pgEnum value lists
 // (packages/db/src/schema/subscription-billing/*) and the leaf `@chartwarden/types` unions; schema wins on
 // conflict. M35 carries NO PHI (§8.5); every money field is INTEGER CENTS.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import { type TSchema, Type } from "@sinclair/typebox";
+
+export { parse };
 
 const uuid = () => Type.String({ format: "uuid" });
 const isoNull = () => Type.Union([Type.String({ format: "date-time" }), Type.Null()]);
@@ -519,18 +519,3 @@ export const AdminUsageCurrentResponseDto = Type.Intersect([
   UsageCurrentResponseDto,
   Type.Object({ claimsBillingAddon: Type.Union([AddonUsageDto, Type.Null()]) }),
 ]);
-
-// ── validate helper ─────────────────────────────────────────────────────────────────────────────────────
-
-/** Convert + validate `raw` against `schema`; a failure throws M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

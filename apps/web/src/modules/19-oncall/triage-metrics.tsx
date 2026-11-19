@@ -32,6 +32,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
@@ -46,20 +47,7 @@ import {
   listTriageCalls,
 } from "./oncall-api";
 import { dateTime, dispositionLabel, durationLabel, humanize, shortId } from "./oncall-status";
-import {
-  Card,
-  FilterRow,
-  Notice,
-  SelectField,
-  ghostButtonStyle,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdNum,
-  th,
-  thNum,
-} from "./oncall-ui";
+import { FilterRow, Notice, SelectField, ghostButtonStyle, tdNum, thNum } from "./oncall-ui";
 
 const METRICS_PAGE = 100;
 
@@ -191,7 +179,7 @@ export function TriageMetricsScreen(): JSX.Element {
       }
       table={
         <div style={contentShellStyle}>
-          <Card title="Volume">
+          <Panel stack headingLevel={3} title="Volume">
             <div style={metricGridStyle}>
               <MetricTile label="Abandoned" value={abandoned} danger={abandoned > 0} />
               <MetricTile label="Machine-triggered" value={fromMachine} />
@@ -207,21 +195,23 @@ export function TriageMetricsScreen(): JSX.Element {
               <MetricTile label="Mean close" value={durationLabel(mean(toClose) ?? undefined)} />
               <MetricTile label="Red-flagged" value={withRedFlag} danger={withRedFlag > 0} />
             </div>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Machine-triggered calls are proactive contact the agency made because a system noticed
               something, not because a family rang.
             </span>
-          </Card>
+          </Panel>
 
-          <Card title="Disposition mix">
+          <Panel stack headingLevel={3} title="Disposition mix">
             {mix.length === 0 ? (
-              <span style={mutedStyle}>No call in this window carries a disposition yet.</span>
+              <span className="wx-text-muted">
+                No call in this window carries a disposition yet.
+              </span>
             ) : (
               <div style={{ width: "100%", overflowX: "auto" }}>
-                <table style={tableStyle}>
+                <table>
                   <thead>
                     <tr style={tableHeadRowStyle}>
-                      <th style={th}>Disposition</th>
+                      <th>Disposition</th>
                       <th style={thNum}>Calls</th>
                       <th style={thNum}>Share of dispositioned calls</th>
                     </tr>
@@ -230,8 +220,8 @@ export function TriageMetricsScreen(): JSX.Element {
                     {mix.map(([d, n]) => {
                       const total = mix.reduce((a, [, v]) => a + v, 0);
                       return (
-                        <tr key={d} style={rowLine}>
-                          <td style={td}>{dispositionLabel(d)}</td>
+                        <tr key={d}>
+                          <td>{dispositionLabel(d)}</td>
                           <td style={tdNum}>{n}</td>
                           <td style={tdNum}>
                             {total > 0 ? `${Math.round((n / total) * 100)}%` : "—"}
@@ -243,32 +233,32 @@ export function TriageMetricsScreen(): JSX.Element {
                 </table>
               </div>
             )}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               The share is of calls in this page that have a disposition, not of all calls.
             </span>
-          </Card>
+          </Panel>
 
-          <Card title="Coverage right now">
+          <Panel stack headingLevel={3} title="Coverage right now">
             {!current ? (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 The live coverage verdict could not be read. That is an outage, not a finding of "no
                 coverage".
               </span>
             ) : (
               <div style={{ width: "100%", overflowX: "auto" }}>
-                <table style={tableStyle}>
+                <table>
                   <thead>
                     <tr style={tableHeadRowStyle}>
-                      <th style={th}>Provider entity</th>
-                      <th style={th}>RN coverage</th>
+                      <th>Provider entity</th>
+                      <th>RN coverage</th>
                       <th style={thNum}>Covering actors</th>
                     </tr>
                   </thead>
                   <tbody>
                     {current.perProviderEntity.map((p) => (
-                      <tr key={p.providerEntityId} style={rowLine}>
-                        <td style={td}>{shortId(p.providerEntityId)}</td>
-                        <td style={td}>{p.rnCoverageGap ? "Gap — no RN" : "Covered"}</td>
+                      <tr key={p.providerEntityId}>
+                        <td>{shortId(p.providerEntityId)}</td>
+                        <td>{p.rnCoverageGap ? "Gap — no RN" : "Covered"}</td>
                         <td style={tdNum}>{p.actors.length}</td>
                       </tr>
                     ))}
@@ -276,37 +266,37 @@ export function TriageMetricsScreen(): JSX.Element {
                 </table>
               </div>
             )}
-            <span style={mutedStyle}>Read at {dateTime(current?.asOf)}.</span>
-          </Card>
+            <span className="wx-text-muted">Read at {dateTime(current?.asOf)}.</span>
+          </Panel>
 
-          <Card title="What is deliberately not on this page">
+          <Panel stack headingLevel={3} title="What is deliberately not on this page">
             <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.82rem", color: "inherit" }}>
-              <li style={mutedStyle}>
+              <li className="wx-text-muted">
                 <strong>Hospitalization-avoidance rate.</strong> The outcome lives in admission data
                 M19 does not read.
               </li>
-              <li style={mutedStyle}>
+              <li className="wx-text-muted">
                 <strong>After-hours visit-conversion rate.</strong> The conversion happens when
                 scheduling accepts the proposal.
               </li>
-              <li style={mutedStyle}>
+              <li className="wx-text-muted">
                 <strong>Late-checkout-to-triage conversion.</strong> The denominator belongs to the
                 visit verification module.
               </li>
-              <li style={mutedStyle}>
+              <li className="wx-text-muted">
                 <strong>Calls per shift / per clinician.</strong> The call list carries no
                 membership.
               </li>
-              <li style={mutedStyle}>
+              <li className="wx-text-muted">
                 <strong>AI suggestion-acceptance rate.</strong> It belongs to the AI-governance
                 channel that owns suggestion-vs-selection deltas.
               </li>
-              <li style={mutedStyle}>
+              <li className="wx-text-muted">
                 <strong>Escalation acknowledgement against SLA.</strong> No route resolves tenant
                 policy JSON to a per-row target.
               </li>
             </ul>
-          </Card>
+          </Panel>
         </div>
       }
       fullPageScroll

@@ -3,8 +3,8 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
-  t,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the IDG-DRIVEN REVISION REVIEW (§5.1 #14, Track B).
@@ -44,20 +44,13 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SummaryGrid,
   TableScroll,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./discipline-ui";
 
 export function IdgRevisionReview(): JSX.Element {
@@ -159,14 +152,16 @@ export function IdgRevisionReview(): JSX.Element {
         it.
       </Notice>
       {actionError ? (
-        <p role="alert" aria-live="assertive" style={alertStyle}>
+        <p role="alert" aria-live="assertive" className="wx-text-error">
           {actionError}
         </p>
       ) : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title={`Version ${version.sequence}`}
-        actions={
+        action={
           <StatusPill
             label={humanize(version.status)}
             tone={toneOf(VERSION_STATUS_TONE, version.status)}
@@ -189,46 +184,46 @@ export function IdgRevisionReview(): JSX.Element {
             Finalize revision
           </Button>
         ) : version.status === "draft" ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             You can review this draft, but finalizing requires the plan-finalize permission.
           </span>
         ) : (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             This revision is {humanize(version.status).toLowerCase()} — its snapshot is sealed.
             Signing happens on the plan view.
           </span>
         )}
         {normalizeSignerSet(version.requiredSignerSet).length > 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Quorum:{" "}
             {normalizeSignerSet(version.requiredSignerSet)
               .map((s) => `${humanize(s.role)}${s.isAcknowledgment ? " (ack)" : ""} ×${s.count}`)
               .join(" · ")}
           </span>
         ) : null}
-      </Card>
+      </Panel>
 
-      <Card title="Most recently authored goals">
+      <Panel stack headingLevel={3} title="Most recently authored goals">
         {recentGoals.length === 0 ? (
-          <span style={mutedStyle}>No goals on this plan.</span>
+          <span className="wx-text-muted">No goals on this plan.</span>
         ) : (
           <TableScroll label="Recently authored goals table">
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Goal</th>
-                  <th style={th}>Source</th>
-                  <th style={th}>Added</th>
-                  <th style={th}>Status</th>
+                  <th>Goal</th>
+                  <th>Source</th>
+                  <th>Added</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {recentGoals.map((g) => (
-                  <tr key={g.goalId} style={rowLine}>
-                    <td style={td}>{g.revisedText ?? g.originalText}</td>
-                    <td style={td}>{goalSourceLabel(g.source)}</td>
-                    <td style={td}>{dateTime(g.addedAt)}</td>
-                    <td style={td}>
+                  <tr key={g.goalId}>
+                    <td>{g.revisedText ?? g.originalText}</td>
+                    <td>{goalSourceLabel(g.source)}</td>
+                    <td>{dateTime(g.addedAt)}</td>
+                    <td>
                       <StatusPill
                         label={humanize(g.status)}
                         tone={toneOf(GOAL_STATUS_TONE, g.status)}
@@ -240,29 +235,29 @@ export function IdgRevisionReview(): JSX.Element {
             </table>
           </TableScroll>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Most recently authored interventions">
+      <Panel stack headingLevel={3} title="Most recently authored interventions">
         {recentInterventions.length === 0 ? (
-          <span style={mutedStyle}>No interventions on this plan.</span>
+          <span className="wx-text-muted">No interventions on this plan.</span>
         ) : (
           <TableScroll label="Recently authored interventions table">
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Scope</th>
-                  <th style={th}>Frequency</th>
-                  <th style={th}>Added</th>
-                  <th style={th}>Status</th>
+                  <th>Scope</th>
+                  <th>Frequency</th>
+                  <th>Added</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {recentInterventions.map((iv) => (
-                  <tr key={iv.interventionId} style={rowLine}>
-                    <td style={td}>{iv.scopeText}</td>
-                    <td style={td}>{iv.frequencyText}</td>
-                    <td style={td}>{dateTime(iv.addedAt)}</td>
-                    <td style={td}>
+                  <tr key={iv.interventionId}>
+                    <td>{iv.scopeText}</td>
+                    <td>{iv.frequencyText}</td>
+                    <td>{dateTime(iv.addedAt)}</td>
+                    <td>
                       <StatusPill
                         label={humanize(iv.status)}
                         tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
@@ -274,10 +269,10 @@ export function IdgRevisionReview(): JSX.Element {
             </table>
           </TableScroll>
         )}
-        <span style={{ ...mutedStyle, color: t.onSurfaceVariant }}>
+        <span className="wx-text-muted">
           Ordered by authorship time; the plan read carries no per-mutation IDG attribution.
         </span>
-      </Card>
+      </Panel>
     </div>
   );
 }

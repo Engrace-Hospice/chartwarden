@@ -2,6 +2,7 @@ import {
   Button,
   EmptyState,
   LoadingSpinner,
+  Panel,
   PatientWorkspaceLayout,
   StatusPill,
   t,
@@ -41,13 +42,11 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SummaryGrid,
   columnStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
 } from "./discipline-ui";
 
@@ -166,7 +165,7 @@ export function DisciplinePlansIndex(): JSX.Element {
             <h1 id="discipline-plans-title" style={pageTitleStyle}>
               Discipline plans
             </h1>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               The Aide, MSW, Spiritual and Volunteer plans of care for this patient.
             </span>
           </div>
@@ -193,11 +192,12 @@ export function DisciplinePlansIndex(): JSX.Element {
               const presentation = overviewPresentation(kind, plan);
               const versionIntent = plan ? openVersionIntent(plan) : null;
               return (
-                <Card
+                <Panel
+                  stack
                   key={kind}
                   title={kindLabel(kind)}
                   headingLevel={2}
-                  actions={
+                  action={
                     plan ? (
                       <StatusPill label={presentation.statusLabel} tone={presentation.statusTone} />
                     ) : (
@@ -205,7 +205,7 @@ export function DisciplinePlansIndex(): JSX.Element {
                     )
                   }
                 >
-                  <span style={mutedStyle}>{kindRegulation(kind)}</span>
+                  <span className="wx-text-muted">{kindRegulation(kind)}</span>
                   {plan ? (
                     <>
                       <SummaryGrid>
@@ -305,10 +305,10 @@ export function DisciplinePlansIndex(): JSX.Element {
                   ) : (
                     <div style={columnStyle}>
                       <Field label="Next action" value={presentation.nextAction} />
-                      <span style={mutedStyle}>{presentation.description}</span>
+                      <span className="wx-text-muted">{presentation.description}</span>
                     </div>
                   )}
-                </Card>
+                </Panel>
               );
             })}
           </div>

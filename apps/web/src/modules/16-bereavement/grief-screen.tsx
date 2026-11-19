@@ -15,9 +15,11 @@
 // arithmetic the counselor would otherwise do on paper, and only the total crosses the wire. The threshold
 // prompt below is an ADVISORY: the tier promotion to `complicated` is the server's, driven by route 18.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -35,7 +37,6 @@ import {
 } from "./bereavement-api";
 import { CONTACT_STATUS_TONE, humanize, shortId, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Field,
   Modal,
@@ -47,13 +48,7 @@ import {
   TextField,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./bereavement-ui";
 
 /**
@@ -141,9 +136,11 @@ export function BereavementGriefScreen(): JSX.Element {
         }
       />
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Survivor"
-        actions={
+        action={
           <StatusPill
             label={humanize(contact.status)}
             tone={toneOf(CONTACT_STATUS_TONE, contact.status)}
@@ -155,29 +152,31 @@ export function BereavementGriefScreen(): JSX.Element {
           <Field label="Current tier" value={<RiskTierPill tier={contact.currentRiskTier} />} />
           <Field label="Version" value={contact.version} />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="PG-13 (bereavement-adapted)"
-        actions={
+        action={
           <StatusPill
             label={`Total ${total} / 52`}
             tone={met ? "error" : total >= PG13_THRESHOLD - 6 ? "warning" : "success"}
           />
         }
       >
-        <table style={tableStyle}>
+        <table>
           <thead>
             <tr>
-              <th style={th}>Item</th>
-              <th style={th}>Response</th>
+              <th>Item</th>
+              <th>Response</th>
             </tr>
           </thead>
           <tbody>
             {PG13_ITEMS.map((item, i) => (
-              <tr key={item} style={rowLine}>
-                <td style={td}>{item}</td>
-                <td style={td}>
+              <tr key={item}>
+                <td>{item}</td>
+                <td>
                   <SelectField
                     label={item}
                     value={String(responses[i])}
@@ -191,13 +190,13 @@ export function BereavementGriefScreen(): JSX.Element {
             ))}
           </tbody>
         </table>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Scored on this screen and sent as a total: the route records `pg13Score`, and Module 16
           keeps no per-item store, so nothing here pretends the individual responses are retained.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title="IPGR (optional)">
+      <Panel stack headingLevel={3} title="IPGR (optional)">
         <TextField
           label="IPGR total (0–200)"
           type="number"
@@ -205,10 +204,10 @@ export function BereavementGriefScreen(): JSX.Element {
           onChange={setIpgr}
           describedBy="ipgr-hint"
         />
-        <span id="ipgr-hint" style={mutedStyle}>
+        <span id="ipgr-hint" className="wx-text-muted">
           Recorded alongside the PG-13 total when a second instrument was administered.
         </span>
-      </Card>
+      </Panel>
 
       {met ? (
         <Notice tone="error" live>
@@ -219,21 +218,21 @@ export function BereavementGriefScreen(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card title="Outcome">
+      <Panel stack headingLevel={3} title="Outcome">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("refer")}>
+          <Button tone="secondary" type="button" onClick={() => setCeremony("refer")}>
             Log an external referral (program continues)
-          </button>
-          <button type="button" style={primaryButtonStyle} onClick={() => setCeremony("escalate")}>
+          </Button>
+          <Button tone="primary" type="button" onClick={() => setCeremony("escalate")}>
             Escalate — complicated grief
-          </button>
+          </Button>
         </div>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Escalating ends the bereavement program for this survivor and routes them to the named
           external resource; a referral leaves the program running. They are separate records
           because they are separate clinical facts.
         </span>
-      </Card>
+      </Panel>
 
       {ceremony === "refer" ? (
         <ReferralModal
@@ -295,14 +294,14 @@ function ReferralModal({
       title="Log an external grief-resource referral"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || externalResourceId.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Recording…" : "Log referral"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="info">
@@ -369,14 +368,14 @@ function EscalateModal({
       title="Escalate — complicated grief"
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || externalResourceId.trim().length === 0}
           onClick={submit}
         >
           {busy ? "Escalating…" : "Escalate"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="warning">

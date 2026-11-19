@@ -15,24 +15,19 @@
 // THE READ IS DELIBERATE, NOT AUTOMATIC. Loading the screen does not decrypt: the button below does. A
 // screen that decrypted on mount would write an access row every time somebody mis-clicked a link, and an
 // audit trail of accidents is one nobody can read for intent.
-import { EmptyState, PageHeader, useApiClient } from "@chartwarden/ui";
+import { Button, EmptyState, PageHeader, Panel, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { type TriageTranscriptView, errorMessage, getTranscript } from "./oncall-api";
 import { dateTime, shortId } from "./oncall-status";
 import {
-  Card,
   Field,
   Notice,
   SummaryGrid,
-  alertStyle,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
 } from "./oncall-ui";
 
 /** The verbatim block. A caller's own words are rendered as pre-wrapped text, never parsed or linkified:
@@ -89,54 +84,55 @@ export function TriageTranscriptScreen(): JSX.Element {
       </Notice>
 
       {!transcript ? (
-        <Card title="Decrypt">
-          <span style={mutedStyle}>
+        <Panel stack headingLevel={3} title="Decrypt">
+          <span className="wx-text-muted">
             The caller's own words and the call transcript are stored encrypted under the per-tenant
             key envelope. Nothing is decrypted until you ask.
           </span>
           <div>
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
               disabled={busy}
               onClick={() => void decrypt()}
             >
               {busy ? "Decrypting…" : "Decrypt the transcript"}
-            </button>
+            </Button>
           </div>
-          {error ? <p style={alertStyle}>{error}</p> : null}
-        </Card>
+          {error ? <p className="wx-text-error">{error}</p> : null}
+        </Panel>
       ) : (
         <>
-          <Card title="Decrypted">
+          <Panel stack headingLevel={3} title="Decrypted">
             <SummaryGrid>
               <Field label="Call" value={shortId(transcript.triageCallId)} mono />
               <Field label="Decrypted at" value={dateTime(transcript.decryptedAt)} />
             </SummaryGrid>
-          </Card>
+          </Panel>
 
-          <Card title="Caller's own words">
+          <Panel stack headingLevel={3} title="Caller's own words">
             {transcript.callerQuote ? (
               <p style={verbatimStyle}>{transcript.callerQuote}</p>
             ) : (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 No caller quote was captured on this call. That is an absence of a recording, not a
                 redaction — this route returns the plaintext or nothing.
               </span>
             )}
-          </Card>
+          </Panel>
 
-          <Card title="Transcript">
+          <Panel stack headingLevel={3} title="Transcript">
             {transcript.transcript ? (
               <p style={verbatimStyle}>{transcript.transcript}</p>
             ) : (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 This call carries no transcript. Phase 1 captures no call AUDIO at all (D14) — there
                 is no storage and no transcription pipeline anywhere in M19 — so a transcript exists
                 only where one was typed.
               </span>
             )}
-          </Card>
+          </Panel>
         </>
       )}
     </div>

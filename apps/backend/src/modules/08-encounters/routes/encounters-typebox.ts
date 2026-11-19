@@ -1,17 +1,12 @@
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import {
-  CHART_PROMOTION_REJECT_REASONS,
-  ENCOUNTER_VISIT_MODALITIES,
-  ValidationError,
-} from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
+import { CHART_PROMOTION_REJECT_REASONS, ENCOUNTER_VISIT_MODALITIES } from "@chartwarden/types";
 // apps/backend/src/modules/08-encounters/routes/encounters-typebox.ts — M8-T09 TypeBox route schemas
 // (§4.2). Named `encounters-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
 // mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
 // VALIDATION_FAILED envelope. Schemas mirror §4.2 (abbreviated where the spec spells out only the
 // consequential routes). Optimistic concurrency rides the `If-Match` header (NOT the body); the sign
 // routes carry the client's step-up timestamp (verified server-side ≤ 5 min stale, §2.7 D13).
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import { type Static, Type } from "@sinclair/typebox";
 import type {
   CreatedEncounter as ServiceCreatedEncounter,
   EncounterView as ServiceEncounterView,
@@ -19,6 +14,8 @@ import type {
   EncounterRouteService as ServiceRouteApi,
   VitalsResult as ServiceVitalsResult,
 } from "./service";
+
+export { parse };
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -764,16 +761,3 @@ type _AddendumSelectionsView = Conforms<
   Static<typeof SelectionsViewResponseSchema>,
   Ret<"getAddendumSelections">
 >;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

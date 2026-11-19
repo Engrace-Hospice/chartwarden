@@ -17,9 +17,11 @@
 // dates, and the catalog list — filtered to include retired rows — IS the history. A second, prettier
 // rendering of the same rows on this page would be a second answer to "which version was in force".
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -50,7 +52,6 @@ import {
   tierLabel,
 } from "./oncall-status";
 import {
-  Card,
   CheckboxField,
   Field,
   Modal,
@@ -58,18 +59,10 @@ import {
   SelectField,
   SummaryGrid,
   TextField,
-  alertStyle,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./oncall-ui";
 
@@ -208,16 +201,17 @@ export function TriageProtocolDetailScreen(): JSX.Element {
               <StatusPill label="✓ Platform floor — read-only" tone="critical" />
             ) : (
               <>
-                <button
+                <Button
+                  tone="secondary"
+                  size="lg"
                   type="button"
-                  style={ghostButtonStyle}
                   onClick={() => setEditingHeader(true)}
                 >
                   Edit
-                </button>
-                <button type="button" style={ghostButtonStyle} onClick={() => setAdding(true)}>
+                </Button>
+                <Button tone="secondary" size="lg" type="button" onClick={() => setAdding(true)}>
                   Add a question
-                </button>
+                </Button>
               </>
             )}
             <Link to="/triage/protocols" style={ghostButtonStyle}>
@@ -247,7 +241,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card title="Protocol">
+      <Panel stack headingLevel={3} title="Protocol">
         <SummaryGrid>
           <Field label="Key" value={protocol.key} mono />
           <Field label="SNOMED" value={protocol.snomedCode} mono />
@@ -261,51 +255,50 @@ export function TriageProtocolDetailScreen(): JSX.Element {
           />
           <Field label="Sort order" value={String(protocol.sortOrder)} />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
-      <Card title="Questions">
+      <Panel stack headingLevel={3} title="Questions">
         {questions.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             This protocol has no questions. A protocol with no questions can be pinned to a call but
             has no walk — add at least one before it is used at 2 a.m.
           </span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
                 <th style={thNum}>#</th>
-                <th style={th}>Prompt</th>
-                <th style={th}>Answer type</th>
-                <th style={th}>Required</th>
-                <th style={th}>Red flag</th>
-                <th style={th}>Predicate</th>
-                <th style={th}>Locked</th>
-                <th style={th}>Action</th>
+                <th>Prompt</th>
+                <th>Answer type</th>
+                <th>Required</th>
+                <th>Red flag</th>
+                <th>Predicate</th>
+                <th>Locked</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {questions.map((q) => (
-                <tr key={q.id} style={rowLine}>
+                <tr key={q.id}>
                   <td style={tdNum}>{q.questionOrder}</td>
-                  <td style={td}>{q.prompt}</td>
-                  <td style={td}>{humanize(q.answerType)}</td>
-                  <td style={td}>{q.required ? "Yes" : "No"}</td>
-                  <td style={td}>
+                  <td>{q.prompt}</td>
+                  <td>{humanize(q.answerType)}</td>
+                  <td>{q.required ? "Yes" : "No"}</td>
+                  <td>
                     {q.isRedFlagQuestion ? <StatusPill label="Red flag" tone="error" /> : "—"}
                   </td>
-                  <td style={td}>
-                    {q.isRedFlagQuestion ? redFlagMatchLabel(q.redFlagMatch) : "—"}
-                  </td>
-                  <td style={td}>
+                  <td>{q.isRedFlagQuestion ? redFlagMatchLabel(q.redFlagMatch) : "—"}</td>
+                  <td>
                     {q.isSystemLocked ? <StatusPill label="System locked" tone="critical" /> : "—"}
                   </td>
-                  <td style={td}>
+                  <td>
                     {q.isSystemLocked || isPlatform ? (
-                      <span style={mutedStyle}>not editable</span>
+                      <span className="wx-text-muted">not editable</span>
                     ) : (
-                      <button
+                      <Button
+                        tone="secondary"
+                        size="lg"
                         type="button"
-                        style={busy ? disabledButtonStyle : ghostButtonStyle}
                         disabled={busy}
                         onClick={() =>
                           void run(
@@ -315,7 +308,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                         }
                       >
                         {q.required ? "Make optional" : "Make required"}
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>
@@ -323,25 +316,26 @@ export function TriageProtocolDetailScreen(): JSX.Element {
             </tbody>
           </table>
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           A question's order, prompt, answer type and predicate are set when it is added. The one
           in-place toggle offered here is required/optional, because it is the only edit that cannot
           change what a red-flag predicate is evaluated against — changing the answer type of an
           answered question would leave existing answers in a column the new predicate never reads.
         </span>
-      </Card>
+      </Panel>
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       {editingHeader ? (
         <Modal
           title="Edit the protocol"
           onClose={() => setEditingHeader(false)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || label.trim().length < 3}
-              style={busy || label.trim().length < 3 ? disabledButtonStyle : primaryButtonStyle}
               onClick={() =>
                 void run(
                   () =>
@@ -356,7 +350,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
               }
             >
               Save
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">This write needs a recent step-up.</Notice>
@@ -382,10 +376,11 @@ export function TriageProtocolDetailScreen(): JSX.Element {
           title="Add a question"
           onClose={() => setAdding(false)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={!canAdd}
-              style={canAdd ? primaryButtonStyle : disabledButtonStyle}
               title={
                 canAdd
                   ? undefined
@@ -416,7 +411,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
               }
             >
               Add
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">This write needs a recent step-up.</Notice>
@@ -479,7 +474,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                   onChange={setArmValues}
                 />
               ) : null}
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 Only the predicate arms this answer type can carry are offered — a predicate
                 evaluated against a column the question does not write would never fire, which is
                 the one way a red-flag question can fail silently.

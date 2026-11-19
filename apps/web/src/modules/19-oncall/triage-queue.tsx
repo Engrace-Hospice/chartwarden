@@ -295,31 +295,31 @@ export function TriageQueueScreen(): JSX.Element {
           </div>
         ) : (
           <div style={tableWrapStyle}>
-            <table style={tableStyle}>
+            <table className="tabular-nums">
               <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "13%" }}>Call</th>
-                  <th style={{ ...thStyle, width: "17%" }}>State</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Patient</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Caller</th>
-                  <th style={{ ...thStyle, width: "15%" }}>Protocol</th>
-                  <th style={{ ...thStyle, width: "13%" }}>Signals</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Open</th>
+                <tr>
+                  <th style={{ width: "13%" }}>Call</th>
+                  <th style={{ width: "17%" }}>State</th>
+                  <th style={{ width: "14%" }}>Patient</th>
+                  <th style={{ width: "16%" }}>Caller</th>
+                  <th style={{ width: "15%" }}>Protocol</th>
+                  <th style={{ width: "13%" }}>Signals</th>
+                  <th style={{ width: "12%" }}>Open</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleCalls.map((call) => (
-                  <tr key={call.id} style={rowStyle}>
-                    <td style={tdStyle}>
+                  <tr key={call.id}>
+                    <td>
                       <Link to={`/triage/calls/${call.id}`} style={callLinkStyle}>
                         {shortId(call.id)}
                       </Link>
                       <div style={subtleTextStyle}>{dateTime(call.openedAt)}</div>
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <CallStatePill state={call.state} />
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       {call.patientId ? (
                         <code className="wx-data-md" style={codeStyle}>
                           {shortId(call.patientId)}
@@ -328,13 +328,13 @@ export function TriageQueueScreen(): JSX.Element {
                         <span style={subtleTextStyle}>Not identified</span>
                       )}
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <div style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
                         {humanize(call.callerKind)}
                       </div>
                       <div style={subtleTextStyle}>{humanize(call.inboundChannel)}</div>
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <div style={{ color: "var(--color-on-surface)" }}>
                         {call.protocolLabel ?? "—"}
                       </div>
@@ -342,7 +342,7 @@ export function TriageQueueScreen(): JSX.Element {
                         {call.disposition ? dispositionLabel(call.disposition) : "No disposition"}
                       </div>
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <div style={signalStackStyle}>
                         <StatusPill
                           label={humanize(call.source)}
@@ -356,9 +356,7 @@ export function TriageQueueScreen(): JSX.Element {
                         ) : null}
                       </div>
                     </td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                      {call.closedAt ? "—" : durationLabel(minutesSince(call.openedAt))}
-                    </td>
+                    <td>{call.closedAt ? "—" : durationLabel(minutesSince(call.openedAt))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -401,49 +399,10 @@ const toolbarStyle: CSSProperties = {
   gap: "0.5rem",
 };
 
-const searchBoxStyle: CSSProperties = {
-  position: "relative",
-  display: "flex",
-  alignItems: "center",
-  minWidth: "min(100%, 20rem)",
-  color: "var(--color-on-surface-variant)",
-};
-
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
   padding: "0 1.5rem 1.5rem",
-};
-
-const tableStyle: CSSProperties = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.875rem",
-  fontVariantNumeric: "tabular-nums",
-};
-
-const headerRowStyle: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-
-const thStyle: CSSProperties = {
-  padding: "0.75rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-
-const tdStyle: CSSProperties = {
-  padding: "0.875rem 1rem",
-  verticalAlign: "middle",
-  color: "var(--color-on-surface-variant)",
-};
-
-const rowStyle: CSSProperties = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 
 const signalStackStyle: CSSProperties = {

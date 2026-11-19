@@ -3,6 +3,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   WorkQueueLayout,
   t,
@@ -28,7 +29,6 @@ import { MembershipLookupField, ProviderEntityLookupField } from "../../shell/en
 import { type HourRatioView, errorMessage, getHourRatio, writeHeaders } from "./discipline-api";
 import { RATIO_STATUS_TONE, hours, humanize, pct, toneOf } from "./discipline-status";
 import {
-  Card,
   Field,
   FilterRow,
   Modal,
@@ -37,10 +37,6 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
-  ghostButtonStyle,
-  mutedStyle,
-  primaryButtonStyle,
 } from "./discipline-ui";
 
 /** The §7.6 bands, stated on the page so the color is never the only signal (Hard Rule §10.10). */
@@ -150,9 +146,11 @@ export function VolunteerHourRatio(): JSX.Element {
             </div>
           ) : (
             <div style={contentStyle}>
-              <Card
+              <Panel
+                stack
+                headingLevel={3}
                 title="418.78(e) ratio"
-                actions={
+                action={
                   <StatusPill
                     label={humanize(ratio.status)}
                     tone={toneOf(RATIO_STATUS_TONE, ratio.status)}
@@ -185,13 +183,13 @@ export function VolunteerHourRatio(): JSX.Element {
                   <Field label="Fiscal year" value={String(ratio.fiscalYear)} />
                   <Field label="Provider entity" value={ratio.providerEntityId} mono />
                 </SummaryGrid>
-              </Card>
+              </Panel>
             </div>
           )
         }
         detail={
           <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
-            <Card title="Bands">
+            <Panel stack headingLevel={3} title="Bands">
               {BANDS.map((b) => (
                 <div
                   key={b.label}
@@ -203,21 +201,21 @@ export function VolunteerHourRatio(): JSX.Element {
                   }}
                 >
                   <StatusPill label={b.label} tone={b.tone} />
-                  <span style={mutedStyle}>{b.detail}</span>
+                  <span className="wx-text-muted">{b.detail}</span>
                 </div>
               ))}
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 An unavailable ratio never pages: alerting on a missing denominator would train the
                 recipients to ignore a real breach.
               </span>
-            </Card>
-            <Card title="Numerator sources">
-              <span style={mutedStyle}>
+            </Panel>
+            <Panel stack headingLevel={3} title="Numerator sources">
+              <span className="wx-text-muted">
                 Signed volunteer visits are ledgered nightly; administrative volunteer time is its
                 own typed source; a manual adjustment is the audited correction path and is the only
                 entry that may carry negative minutes.
               </span>
-            </Card>
+            </Panel>
           </div>
         }
         fullPageScroll
@@ -296,14 +294,9 @@ function HourAdjustmentModal({
       title="Log volunteer hour adjustment"
       onClose={onClose}
       footer={
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={!canSubmit}
-          style={{ ...primaryButtonStyle, opacity: canSubmit ? 1 : 0.5 }}
-        >
+        <Button tone="primary" type="button" onClick={() => void submit()} disabled={!canSubmit}>
           {busy ? "Recording…" : "Record adjustment"}
-        </button>
+        </Button>
       }
     >
       <ProviderEntityLookupField label="Provider entity" value={pe} onChange={setPe} />
@@ -328,9 +321,9 @@ function HourAdjustmentModal({
         hint="Required. The adjustment is attributed to your membership on the ledger."
       />
       {!validMinutes && durationMinutes !== "" ? (
-        <p style={alertStyle}>Enter a non-zero whole number of minutes.</p>
+        <p className="wx-text-error">Enter a non-zero whole number of minutes.</p>
       ) : null}
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <p className="wx-text-error">{error}</p> : null}
     </Modal>
   );
 }

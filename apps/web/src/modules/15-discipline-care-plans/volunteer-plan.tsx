@@ -1,4 +1,4 @@
-import { StatusPill, t, useApiClient } from "@chartwarden/ui";
+import { Button, Panel, StatusPill, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the VOLUNTEER PLAN VIEW + ASSIGNMENT MODAL (§5.1 #9/#10).
 //
 // The 42 CFR §418.78 surface over the shared plan spine, plus the coordinator's assignment ledger and the
@@ -31,21 +31,7 @@ import {
   shortId,
   toneOf,
 } from "./discipline-status";
-import {
-  Card,
-  Modal,
-  Notice,
-  TextAreaField,
-  TextField,
-  alertStyle,
-  ghostButtonStyle,
-  mutedStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
-} from "./discipline-ui";
+import { Modal, Notice, TextAreaField, TextField } from "./discipline-ui";
 import { DisciplinePlanWorkspace } from "./plan-workspace";
 
 /** §8.6 — the documented-override floor the pure guard enforces server-side. */
@@ -136,14 +122,9 @@ function AssignmentModal({
       title="Assign volunteer"
       onClose={onClose}
       footer={
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={!canSubmit}
-          style={{ ...primaryButtonStyle, opacity: canSubmit ? 1 : 0.5 }}
-        >
+        <Button tone="primary" type="button" onClick={() => void submit()} disabled={!canSubmit}>
           {busy ? "Assigning…" : needsOverride ? "Assign with override" : "Assign"}
-        </button>
+        </Button>
       }
     >
       <MembershipLookupField
@@ -199,7 +180,7 @@ function AssignmentModal({
           />
         </>
       ) : null}
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <p className="wx-text-error">{error}</p> : null}
     </Modal>
   );
 }
@@ -240,53 +221,55 @@ function AssignmentLedger({
 
   return (
     <>
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Volunteer assignments"
-        actions={
-          <button type="button" style={ghostButtonStyle} onClick={() => setOpen(true)}>
+        action={
+          <Button tone="secondary" type="button" onClick={() => setOpen(true)}>
             Assign volunteer
-          </button>
+          </Button>
         }
       >
-        {error ? <p style={alertStyle}>{error}</p> : null}
+        {error ? <p className="wx-text-error">{error}</p> : null}
         {plan.volunteerAssignments.length === 0 ? (
-          <span style={mutedStyle}>No active volunteer assignments.</span>
+          <span className="wx-text-muted">No active volunteer assignments.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Volunteer</th>
-                <th style={th}>Activities</th>
-                <th style={th}>Window</th>
-                <th style={th}>Acknowledged</th>
-                <th style={th}>State</th>
-                <th style={th}>&nbsp;</th>
+                <th>Volunteer</th>
+                <th>Activities</th>
+                <th>Window</th>
+                <th>Acknowledged</th>
+                <th>State</th>
+                <th>&nbsp;</th>
               </tr>
             </thead>
             <tbody>
               {plan.volunteerAssignments.map((a) => (
-                <tr key={a.assignmentId} style={rowLine}>
-                  <td style={td}>{shortId(a.volunteerMembershipId)}</td>
-                  <td style={td}>{a.activities.join(", ")}</td>
-                  <td style={td}>
+                <tr key={a.assignmentId}>
+                  <td>{shortId(a.volunteerMembershipId)}</td>
+                  <td>{a.activities.join(", ")}</td>
+                  <td>
                     {shortDate(a.startsAt)} → {a.endsAt ? shortDate(a.endsAt) : "open"}
                   </td>
-                  <td style={td}>{dateTime(a.coordinatorAcknowledgedAt)}</td>
-                  <td style={td}>
+                  <td>{dateTime(a.coordinatorAcknowledgedAt)}</td>
+                  <td>
                     <StatusPill
                       label={a.inactivatedAt ? "Inactive" : "Active"}
                       tone={a.inactivatedAt ? "neutral" : "success"}
                     />
                     {a.inactivationReason ? (
-                      <div style={mutedStyle}>{a.inactivationReason}</div>
+                      <div className="wx-text-muted">{a.inactivationReason}</div>
                     ) : null}
                   </td>
-                  <td style={td}>
+                  <td>
                     <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
                       {a.coordinatorAcknowledgedAt ? null : (
-                        <button
+                        <Button
+                          tone="secondary"
                           type="button"
-                          style={ghostButtonStyle}
                           onClick={() =>
                             void patch(
                               a,
@@ -296,12 +279,12 @@ function AssignmentLedger({
                           }
                         >
                           Acknowledge
-                        </button>
+                        </Button>
                       )}
                       {a.inactivatedAt ? (
-                        <button
+                        <Button
+                          tone="secondary"
                           type="button"
-                          style={ghostButtonStyle}
                           onClick={() =>
                             void patch(
                               a,
@@ -311,18 +294,18 @@ function AssignmentLedger({
                           }
                         >
                           Reactivate
-                        </button>
+                        </Button>
                       ) : (
-                        <button
+                        <Button
+                          tone="secondary"
                           type="button"
-                          style={ghostButtonStyle}
                           onClick={() => {
                             setReason("");
                             setInactivating(a);
                           }}
                         >
                           Inactivate
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </td>
@@ -331,7 +314,7 @@ function AssignmentLedger({
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
 
       {open ? (
         <AssignmentModal
@@ -349,10 +332,10 @@ function AssignmentLedger({
           title="Inactivate assignment"
           onClose={() => setInactivating(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={reason.trim().length === 0}
-              style={{ ...primaryButtonStyle, opacity: reason.trim().length === 0 ? 0.5 : 1 }}
               onClick={() => {
                 void patch(
                   inactivating,
@@ -364,7 +347,7 @@ function AssignmentLedger({
               }}
             >
               Inactivate
-            </button>
+            </Button>
           }
         >
           <TextAreaField

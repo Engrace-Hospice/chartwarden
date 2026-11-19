@@ -21,6 +21,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -31,20 +32,14 @@ import { Link, useParams } from "react-router-dom";
 import { type PerpetualLogView, errorMessage, getPerpetualLog } from "./supplies-api";
 import { LOG_KIND_TONE, dateTime, humanize, shortDate, shortId, toneOf } from "./supplies-status";
 import {
-  Card,
   Field,
   Notice,
   SchedulePill,
   SummaryGrid,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdQty,
-  th,
   thNum,
 } from "./supplies-ui";
 
@@ -123,32 +118,34 @@ export function ComfortKitPerpetualLog(): JSX.Element {
         rather than as an edit to the entry it corrects.
       </Notice>
 
-      <Card title="Kit">
+      <Panel stack headingLevel={3} title="Kit">
         <SummaryGrid>
           <Field label="Dispatch" value={shortId(log.dispatchId)} mono />
           <Field label="Kit serial" value={log.kitSerialNumber} mono />
           <Field label="Dispatched" value={dateTime(log.dispatchedAt)} />
           <Field label="Dispatched by" value={shortId(log.dispatchedByMembershipId)} mono />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
       {log.lines.length === 0 ? (
-        <Card title="Lines">
-          <span style={mutedStyle}>
+        <Panel stack headingLevel={3} title="Lines">
+          <span className="wx-text-muted">
             This kit carries no lot-tracked line. Only medications with a lot number enter the
             perpetual log; a non-controlled, non-lot-tracked item has no §1304 obligation.
           </span>
-        </Card>
+        </Panel>
       ) : null}
 
       {log.lines.map((line) => {
         const mismatches = balanceChecks(line.entries);
         const anyMismatch = mismatches.some(Boolean);
         return (
-          <Card
+          <Panel
+            stack
+            headingLevel={3}
             key={line.dispatchedContentId}
             title={line.drugName}
-            actions={
+            action={
               <div style={{ display: "flex", gap: t.space2, alignItems: "center" }}>
                 {anyMismatch ? <StatusPill label="Balance disagreement" tone="error" /> : null}
                 <SchedulePill
@@ -178,27 +175,27 @@ export function ComfortKitPerpetualLog(): JSX.Element {
             ) : null}
 
             {line.entries.length === 0 ? (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 No movement has been recorded against this lot beyond the dispatch itself.
               </span>
             ) : (
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>Occurred</th>
-                    <th style={th}>Transaction</th>
+                    <th>Occurred</th>
+                    <th>Transaction</th>
                     <th style={thNum}>Delta</th>
                     <th style={thNum}>Balance (recorded)</th>
-                    <th style={th}>Recorded by</th>
-                    <th style={th}>Witness</th>
-                    <th style={th}>Source</th>
+                    <th>Recorded by</th>
+                    <th>Witness</th>
+                    <th>Source</th>
                   </tr>
                 </thead>
                 <tbody>
                   {line.entries.map((e, i) => (
-                    <tr key={`${e.occurredAt}-${e.sourceReference ?? i}`} style={rowLine}>
-                      <td style={td}>{dateTime(e.occurredAt)}</td>
-                      <td style={td}>
+                    <tr key={`${e.occurredAt}-${e.sourceReference ?? i}`}>
+                      <td>{dateTime(e.occurredAt)}</td>
+                      <td>
                         <StatusPill
                           label={humanize(e.transactionKind)}
                           tone={toneOf(LOG_KIND_TONE, e.transactionKind)}
@@ -210,26 +207,22 @@ export function ComfortKitPerpetualLog(): JSX.Element {
                       <td style={tdQty}>
                         {e.balanceAfterQuantity}
                         {mismatches[i] ? (
-                          <div style={{ ...mutedStyle, color: t.error }}>
+                          <div className="wx-text-error" style={{ fontSize: "0.8rem" }}>
                             disagrees with running sum
                           </div>
                         ) : null}
                       </td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>
-                        {shortId(e.recordedByMembershipId)}
-                      </td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>
+                      <td className="wx-data-md">{shortId(e.recordedByMembershipId)}</td>
+                      <td className="wx-data-md">
                         {e.witnessMembershipId ? shortId(e.witnessMembershipId) : "—"}
                       </td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>
-                        {shortId(e.sourceReference)}
-                      </td>
+                      <td className="wx-data-md">{shortId(e.sourceReference)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
-          </Card>
+          </Panel>
         );
       })}
     </div>

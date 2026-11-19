@@ -1,12 +1,13 @@
 // apps/web/src/modules/21-supplies — the shared Lantern presentation atoms every M21 screen reuses
 // (Track B / ADR-0030, §5 / DESIGN.md §6.7). Extracted so the ten screens share ONE No-Line table
-// vocabulary, one card, one field and one modal chrome instead of re-declaring them per file (the M15
-// discipline-ui.tsx / M16 bereavement-ui.tsx precedent — each web slice owns its own atoms, because
-// apps/web/src/modules/* may not import a sibling module).
+// vocabulary and one set of fields instead of re-declaring them per file. Panels, text fields, drawers and the
+// table chrome are the kit's (`Panel`, `src/shell/value-fields`, `src/shell/form-drawer`); this file keeps what the kit
+// has no atom for. Each web slice owns its own (the M15 discipline-ui.tsx / M16 bereavement-ui.tsx / M19 oncall-ui.tsx
+// precedent), because apps/web/src/modules/* may not import a sibling module.
 //
 // Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens` stays green and the twilight dark
 // mode is automatic.
-import { Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
+import { Button, StatusPill, t } from "@chartwarden/ui";
 import type { StatusTone } from "@chartwarden/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import {
@@ -19,64 +20,12 @@ import {
 } from "./supplies-status";
 
 // ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
-export const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.85rem",
-};
-export const th: CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  textAlign: "left",
-  fontSize: "0.7rem",
-  fontWeight: 600,
-  color: t.onSurfaceVariant,
-};
-export const thNum: CSSProperties = { ...th, textAlign: "right" };
-export const td: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  color: t.onSurface,
-  verticalAlign: "top",
-};
-export const tdMono: CSSProperties = { ...td, fontFamily: t.fontMono };
-export const tdNum: CSSProperties = {
-  ...td,
-  textAlign: "right",
-  fontVariantNumeric: "tabular-nums",
-};
+export const thNum: CSSProperties = { textAlign: "right" };
+export const tdNum: CSSProperties = { textAlign: "right", fontVariantNumeric: "tabular-nums" };
 /** A quantity cell — mono AND tabular, because a DEA count is read column-wise against another count. */
 export const tdQty: CSSProperties = { ...tdNum, fontFamily: t.fontMono };
-export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
-/** Screen-reader-only text — keeps a control labelled without occupying visual space (§16 WCAG AA). */
-export const visuallyHidden: CSSProperties = {
-  position: "absolute",
-  width: "1px",
-  height: "1px",
-  padding: 0,
-  margin: "-1px",
-  overflow: "hidden",
-  clip: "rect(0 0 0 0)",
-  whiteSpace: "nowrap",
-  border: 0,
-};
-
-// ── card + section chrome ──────────────────────────────────────────────────────────────────────────────
-export const cardStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: t.space2,
-  background: t.surfaceLowest,
-  border: `1px solid ${t.cardBorder}`,
-  borderRadius: t.radiusLg,
-  padding: `${t.space4} ${t.space5}`,
-};
-export const cardTitleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontSans,
-  fontSize: "1rem",
-  fontWeight: 600,
-  color: t.onSurface,
-};
+// ── page chrome ────────────────────────────────────────────────────────────────────────────────────────
 export const pageTitleStyle: CSSProperties = {
   // Matches PageHeader's own title (the redesign's bold sans heading).
   margin: 0,
@@ -87,14 +36,12 @@ export const pageTitleStyle: CSSProperties = {
   lineHeight: 1.2,
   color: t.onSurface,
 };
-export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
-export const alertStyle: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.error };
+const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
 export const linkStyle: CSSProperties = {
   fontSize: "0.8rem",
   color: t.primary,
   textDecoration: "none",
 };
-export const linkMonoStyle: CSSProperties = { ...linkStyle, fontFamily: t.fontMono };
 export const columnStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -104,7 +51,7 @@ export const columnStyle: CSSProperties = {
 };
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
-export const selectStyle: CSSProperties = {
+const selectStyle: CSSProperties = {
   minHeight: "2.5rem",
   padding: "0 0.75rem",
   borderRadius: t.radiusMd,
@@ -121,31 +68,6 @@ export const inputNarrowStyle: CSSProperties = {
   fontFamily: t.fontMono,
   textAlign: "right",
 };
-export const textareaStyle: CSSProperties = {
-  width: "100%",
-  padding: "0.5rem 0.6rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.85rem",
-  fontFamily: "inherit",
-  resize: "vertical",
-};
-export const primaryButtonStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  minHeight: "2.5rem",
-  padding: "0 1rem",
-  borderRadius: t.radiusMd,
-  border: "none",
-  cursor: "pointer",
-  background: t.primary,
-  color: t.onPrimary,
-  fontSize: "0.875rem",
-  fontWeight: 600,
-};
 export const ghostButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -160,20 +82,6 @@ export const ghostButtonStyle: CSSProperties = {
   fontSize: "0.875rem",
   fontWeight: 600,
   textDecoration: "none",
-};
-export const disabledButtonStyle: CSSProperties = {
-  ...ghostButtonStyle,
-  cursor: "not-allowed",
-  opacity: 0.5,
-};
-
-// ── modal chrome (the §5 ceremonies: assign vendor, transition, reconcile, write off, observe) ─────────
-export const modalTitleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontDisplay,
-  fontSize: "1.1rem",
-  fontWeight: 500,
-  color: t.onSurface,
 };
 
 /** A label/value pair — the summary-grid and card atom (mono for identifiers). */
@@ -198,30 +106,6 @@ export function Field({
   );
 }
 
-/** A titled card — the aside/panel atom. */
-export function Card({
-  title,
-  actions,
-  children,
-}: { title: string; actions?: ReactNode; children: ReactNode }): JSX.Element {
-  return (
-    <section style={cardStyle}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: t.space3,
-        }}
-      >
-        <h3 style={cardTitleStyle}>{title}</h3>
-        {actions}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 /** An auto-fitting label/value grid — the detail header atom. */
 export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element {
   return (
@@ -237,43 +121,58 @@ export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element 
   );
 }
 
+/** The title of an opener held back while a form is open: opening another step would silently drop what was typed. */
+export const FORM_OPEN_FIRST = "Save or cancel this form first";
+
+/** A failed read. `attempt` counts consecutive failures, so an identical repeat failure is a new message. */
+export interface LoadError {
+  message: string;
+  attempt: number;
+}
+
+/** The error after one more failed read: the alert stays up between retries, and a repeat is announced again. */
+export function nextLoadError(previous: LoadError | null, message: string): LoadError {
+  return { message, attempt: (previous?.attempt ?? 0) + 1 };
+}
+
+/** A failed read, announced, with the way to try again (a list that cannot be refreshed offers nothing else). It
+ *  stays mounted while the retry runs, so Reload keeps keyboard focus: the button is `aria-disabled` (still
+ *  focusable, clicks ignored), not `disabled`. A new attempt re-keys the message so a repeat failure is re-announced. */
+export function LoadFailure({
+  error,
+  reloading,
+  onReload,
+}: { error: LoadError; reloading: boolean; onReload: () => void }): JSX.Element {
+  return (
+    <div
+      role="alert"
+      style={{ display: "flex", alignItems: "center", gap: t.space3, flexWrap: "wrap" }}
+    >
+      <span key={error.attempt} className="wx-text-error">
+        {error.message}
+      </span>
+      <Button
+        tone="secondary"
+        type="button"
+        aria-disabled={reloading}
+        style={reloading ? { opacity: 0.72, cursor: "not-allowed" } : undefined}
+        onClick={() => {
+          if (!reloading) onReload();
+        }}
+      >
+        Reload
+      </Button>
+    </div>
+  );
+}
+
 /** A horizontal filter row — the §5 queue filter bar. */
 export function FilterRow({ children }: { children: ReactNode }): JSX.Element {
   return <div className="wx-filter-panel">{children}</div>;
 }
 
-/** A labelled <select> for the filter row / a modal field. */
-export function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  onChange: (v: string) => void;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--color-on-surface)" }}>
-        {label}
-      </span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="wx-select"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
+// The kit-backed string-valued fields (label, hint and focus wiring live in the shared adapter).
+export { SelectField, TextAreaField, TextField } from "../../shell/value-fields";
 
 /** Turn a wire-enum list into `SelectField` options via a labeller. */
 export function enumOptions(
@@ -281,75 +180,6 @@ export function enumOptions(
   label: (v: string) => string = humanize,
 ): { value: string; label: string }[] {
   return values.map((v) => ({ value: v, label: label(v) }));
-}
-
-/** A labelled text/number/date input. */
-export function TextField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  describedBy,
-  mono,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: "text" | "number" | "date" | "datetime-local" | "email" | "tel";
-  placeholder?: string;
-  describedBy?: string;
-  mono?: boolean;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <input
-        aria-label={label}
-        aria-describedby={describedBy}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        style={mono ? { ...inputStyle, fontFamily: t.fontMono } : inputStyle}
-      />
-    </label>
-  );
-}
-
-/** A labelled multi-line field — narrative / attestation / reason capture. */
-export function TextAreaField({
-  label,
-  value,
-  onChange,
-  rows = 4,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  rows?: number;
-  hint?: string;
-}): JSX.Element {
-  const hintId = hint ? `${label.replace(/\W+/g, "-").toLowerCase()}-hint` : undefined;
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <textarea
-        aria-label={label}
-        aria-describedby={hintId}
-        value={value}
-        rows={rows}
-        onChange={(e) => onChange(e.target.value)}
-        style={textareaStyle}
-      />
-      {hint ? (
-        <span id={hintId} style={mutedStyle}>
-          {hint}
-        </span>
-      ) : null}
-    </label>
-  );
 }
 
 /** A labelled checkbox — the boolean capture atom. */
@@ -376,36 +206,6 @@ export function CheckboxField({
       />
       {label}
     </label>
-  );
-}
-
-/** The §5 modal shell — backdrop + dialog + footer actions. Every M21 ceremony reuses it. Delegates
- * to `@chartwarden/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
- * trap/restore, keeping this call-site's `{title, onClose, footer, children}` shape unchanged. */
-export function Modal({
-  title,
-  onClose,
-  footer,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  footer: ReactNode;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <SharedModal open onClose={onClose} ariaLabel={title} width="34rem">
-      <div style={{ display: "flex", flexDirection: "column", gap: t.space4, padding: t.space5 }}>
-        <h2 style={modalTitleStyle}>{title}</h2>
-        {children}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
-          <button type="button" onClick={onClose} style={ghostButtonStyle}>
-            Cancel
-          </button>
-          {footer}
-        </div>
-      </div>
-    </SharedModal>
   );
 }
 

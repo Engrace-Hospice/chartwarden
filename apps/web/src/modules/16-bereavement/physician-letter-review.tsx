@@ -9,7 +9,14 @@
 // list (a session whose permission list is stale) hides it too: no heading, no empty state, no hint that letters exist. Any other failure is
 // said plainly, with a retry. Approval and decline carry the version the list READ in `If-Match`; a 409/404 means another reviewer moved
 // first, which is said and the list reloaded. A reload keeps the list on screen: only the first load shows a placeholder.
-import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import {
+  Button,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -25,21 +32,13 @@ import {
 } from "./bereavement-api";
 import { countLabel, shortDate, shortId } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Modal,
   Notice,
   SelectField,
   TextAreaField,
   TextField,
-  ghostButtonStyle,
   linkStyle,
-  mutedStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   useActionStatus,
   visuallyHidden,
 } from "./bereavement-ui";
@@ -138,7 +137,9 @@ export function PhysicianLetterReview(): JSX.Element | null {
     load.kind === "error" ? load.message : load.kind === "ready" ? load.refreshError : undefined;
   return (
     <>
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title={
           load.kind === "ready"
             ? `Physician condolence letters awaiting review (${countLabel(letters.length, load.hasMore)})`
@@ -159,21 +160,21 @@ export function PhysicianLetterReview(): JSX.Element | null {
         {load.kind === "loading" ? <LoadingSpinner label="Loading physician letters" /> : null}
         {load.kind === "ready" ? (
           <>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Each letter goes to the patient's attending clinician inside the agency. Nothing is
               sent until you approve it.
             </span>
             {letters.length === 0 ? (
-              <span style={mutedStyle}>No letters are waiting for review.</span>
+              <span className="wx-text-muted">No letters are waiting for review.</span>
             ) : (
-              <table style={tableStyle} aria-label="Physician letters awaiting review">
+              <table aria-label="Physician letters awaiting review">
                 <thead>
                   <tr>
-                    <th style={th}>Plan</th>
-                    <th style={th}>Age</th>
-                    <th style={th}>Due</th>
-                    <th style={th}>Attending</th>
-                    <th style={th}>
+                    <th>Plan</th>
+                    <th>Age</th>
+                    <th>Due</th>
+                    <th>Attending</th>
+                    <th>
                       <span style={visuallyHidden}>Review</span>
                     </th>
                   </tr>
@@ -182,43 +183,43 @@ export function PhysicianLetterReview(): JSX.Element | null {
                   {letters.map((letter) => {
                     const badge = ageBadge(letter, now);
                     return (
-                      <tr key={letter.letterId} style={rowLine}>
-                        <td style={td}>
+                      <tr key={letter.letterId}>
+                        <td>
                           <Link to={`/bereavement/plans/${letter.planId}`} style={linkStyle}>
                             {shortId(letter.planId)}
                           </Link>
                         </td>
-                        <td style={td}>
+                        <td>
                           <StatusPill
                             label={badge.label}
                             tone={badge.overdue ? "warning" : "neutral"}
                           />
                         </td>
-                        <td style={td}>{shortDate(letter.dueAt)}</td>
-                        <td style={td}>
+                        <td>{shortDate(letter.dueAt)}</td>
+                        <td>
                           {letter.attendingUserId ? (
                             shortId(letter.attendingUserId)
                           ) : (
-                            <span style={mutedStyle}>None resolved</span>
+                            <span className="wx-text-muted">None resolved</span>
                           )}
                         </td>
-                        <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
-                          <button
+                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                          <Button
+                            tone="primary"
                             type="button"
-                            style={primaryButtonStyle}
                             aria-label={`Approve the letter for plan ${shortId(letter.planId)}`}
                             onClick={() => setAction({ letter, mode: "approve" })}
                           >
                             Approve
-                          </button>{" "}
-                          <button
+                          </Button>{" "}
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
                             aria-label={`Decline the letter for plan ${shortId(letter.planId)}`}
                             onClick={() => setAction({ letter, mode: "decline" })}
                           >
                             Decline
-                          </button>
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -228,7 +229,7 @@ export function PhysicianLetterReview(): JSX.Element | null {
             )}
           </>
         ) : null}
-      </Card>
+      </Panel>
 
       {action?.mode === "approve" ? (
         <ApproveModal
@@ -372,17 +373,17 @@ function ApproveModal({
       busy={busy}
       dirty={note !== "" || attendingUserId !== ""}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || noteTooLong || recipientMissing}
           onClick={submit}
         >
           {busy ? "Approving…" : "Approve letter"}
-        </button>
+        </Button>
       }
     >
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Plan {shortId(letter.planId)} · read at version {letter.version}. Approving sends the letter
         to Module 22 to be rendered; a letter someone else already decided is refused.
       </span>
@@ -395,7 +396,7 @@ function ApproveModal({
             Choose the clinician inside the agency who should receive the letter.
           </Notice>
           {loadingClinicians ? (
-            <span style={mutedStyle}>Loading the agency's clinicians…</span>
+            <span className="wx-text-muted">Loading the agency's clinicians…</span>
           ) : clinicians !== null ? (
             <SelectField
               label="Internal clinician"
@@ -416,7 +417,7 @@ function ApproveModal({
           )}
         </>
       ) : (
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Addressed to the attending clinician on the care team ({shortId(letter.attendingUserId)}).
         </span>
       )}
@@ -478,17 +479,17 @@ function DeclineModal({
       busy={busy}
       dirty={reason !== ""}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || reasonLength < DECLINE_REASON_MIN}
           onClick={submit}
         >
           {busy ? "Declining…" : "Decline letter"}
-        </button>
+        </Button>
       }
     >
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Plan {shortId(letter.planId)} · read at version {letter.version}. A declined letter is not
         sent and is not reopened.
       </span>

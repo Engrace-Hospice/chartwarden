@@ -1,43 +1,22 @@
 // apps/web/src/modules/16-bereavement — the shared Lantern presentation atoms every M16 screen reuses
-// (Track B / ADR-0030, §5 / DESIGN.md §6.7). Extracted so the eleven screens share ONE No-Line table
-// vocabulary, one card, one field and one modal chrome instead of re-declaring them per file (the M15
-// discipline-ui.tsx / M24 medicaid-ui.tsx precedent — each web slice owns its own atoms, because
-// apps/web/src/modules/* may not import a sibling module).
+// (Track B / ADR-0030, §5). Cards, fields and tables come from the kit now (`Panel`, the value-field adapters
+// re-exported below, the base table chrome and the `wx-*` text classes); what remains here is the modal chrome
+// and a few layout constants (the M15 discipline-ui.tsx / M24 medicaid-ui.tsx precedent — each web slice owns
+// its own atoms, because apps/web/src/modules/* may not import a sibling module).
 //
 // Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens` stays green and the twilight dark
 // mode is automatic.
-import { Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
+import { Button, Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
 import type { StatusTone } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
+import { FormDrawer } from "../../shell/form-drawer";
 import { RISK_TIER_GLYPH, RISK_TIER_TONE, humanize, toneOf } from "./bereavement-status";
 
-// ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
-export const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.85rem",
-};
-export const th: CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  textAlign: "left",
-  fontSize: "0.7rem",
-  fontWeight: 600,
-  color: t.onSurfaceVariant,
-};
-export const thNum: CSSProperties = { ...th, textAlign: "right" };
-export const td: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  color: t.onSurface,
-  verticalAlign: "top",
-};
-export const tdMono: CSSProperties = { ...td, fontFamily: t.fontMono };
-export const tdNum: CSSProperties = {
-  ...td,
-  textAlign: "right",
-  fontVariantNumeric: "tabular-nums",
-};
-export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
+// ── numeric table cells: the table's own chrome (padding, hairlines, header weight) is the kit's; a number
+// column only right-aligns and sets tabular figures ───────────────────────────────────────────────────
+export const thNum: CSSProperties = { textAlign: "right" };
+export const tdNum: CSSProperties = { textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
 /** Screen-reader-only text — keeps a control labelled without occupying visual space (§16 WCAG AA). */
 export const visuallyHidden: CSSProperties = {
@@ -52,23 +31,7 @@ export const visuallyHidden: CSSProperties = {
   border: 0,
 };
 
-// ── card + section chrome ──────────────────────────────────────────────────────────────────────────────
-export const cardStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: t.space2,
-  background: t.surfaceLowest,
-  border: `1px solid ${t.cardBorder}`,
-  borderRadius: t.radiusLg,
-  padding: `${t.space4} ${t.space5}`,
-};
-export const cardTitleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontSans,
-  fontSize: "1rem",
-  fontWeight: 600,
-  color: t.onSurface,
-};
+// ── section chrome ─────────────────────────────────────────────────────────────────────────────────────
 export const pageTitleStyle: CSSProperties = {
   // Matches PageHeader's own title (the redesign's bold sans heading).
   margin: 0,
@@ -79,14 +42,7 @@ export const pageTitleStyle: CSSProperties = {
   lineHeight: 1.2,
   color: t.onSurface,
 };
-export const sectionTitleStyle: CSSProperties = {
-  margin: `0 0 ${t.space2}`,
-  fontFamily: t.fontDisplay,
-  fontSize: "1rem",
-  fontWeight: 500,
-  color: t.onSurface,
-};
-export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
+const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
 const alertStyle: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.error };
 
 /** The shared error line. `role="alert"` so a failure that appears after a click is announced, not just painted red. */
@@ -102,7 +58,6 @@ export const linkStyle: CSSProperties = {
   color: t.primary,
   textDecoration: "none",
 };
-export const linkMonoStyle: CSSProperties = { ...linkStyle, fontFamily: t.fontMono };
 export const columnStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -120,27 +75,6 @@ export const plainFieldset: CSSProperties = {
 };
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
-export const selectStyle: CSSProperties = {
-  minHeight: "2.5rem",
-  padding: "0 0.75rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.8125rem",
-};
-export const inputStyle: CSSProperties = { ...selectStyle, minWidth: "9rem" };
-export const textareaStyle: CSSProperties = {
-  width: "100%",
-  padding: "0.5rem 0.6rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.85rem",
-  fontFamily: "inherit",
-  resize: "vertical",
-};
 export const primaryButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -213,30 +147,6 @@ export function Field({
   );
 }
 
-/** A titled card — the aside/panel atom. */
-export function Card({
-  title,
-  actions,
-  children,
-}: { title: string; actions?: ReactNode; children: ReactNode }): JSX.Element {
-  return (
-    <section style={cardStyle}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: t.space3,
-        }}
-      >
-        <h3 style={cardTitleStyle}>{title}</h3>
-        {actions}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 /** An auto-fitting label/value grid — the detail header atom. */
 export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element {
   return (
@@ -257,111 +167,8 @@ export function FilterRow({ children }: { children: ReactNode }): JSX.Element {
   return <div className="wx-filter-panel">{children}</div>;
 }
 
-/** A labelled <select> for the filter row / a modal field. */
-export function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  onChange: (v: string) => void;
-  disabled?: boolean;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--color-on-surface)" }}>
-        {label}
-      </span>
-      <select
-        aria-label={label}
-        disabled={disabled}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="wx-select"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-/** A labelled text/number/date input. */
-export function TextField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  describedBy,
-  maxLength,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: "text" | "number" | "date" | "datetime-local" | "email" | "tel";
-  placeholder?: string;
-  describedBy?: string;
-  maxLength?: number;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <input
-        aria-label={label}
-        aria-describedby={describedBy}
-        type={type}
-        value={value}
-        maxLength={maxLength}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        style={inputStyle}
-      />
-    </label>
-  );
-}
-
-/** A labelled multi-line field — narrative / attestation / reason capture. */
-export function TextAreaField({
-  label,
-  value,
-  onChange,
-  rows = 4,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  rows?: number;
-  hint?: string;
-}): JSX.Element {
-  const hintId = hint ? `${label.replace(/\W+/g, "-").toLowerCase()}-hint` : undefined;
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <textarea
-        aria-label={label}
-        aria-describedby={hintId}
-        value={value}
-        rows={rows}
-        onChange={(e) => onChange(e.target.value)}
-        style={textareaStyle}
-      />
-      {hint ? (
-        <span id={hintId} style={mutedStyle}>
-          {hint}
-        </span>
-      ) : null}
-    </label>
-  );
-}
+// The text, select and textarea fields are the kit's, behind string-valued `onChange(value)` adapters.
+export { SelectField, TextAreaField, TextField } from "../../shell/value-fields";
 
 /** A labelled checkbox — the boolean capture atom (roster seeding, "did the contact respond"). */
 export function CheckboxField({
@@ -434,18 +241,44 @@ export function Modal({
         <h2 style={modalTitleStyle}>{title}</h2>
         {children}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={busy ? disabledButtonStyle : ghostButtonStyle}
-          >
+          <Button tone="secondary" type="button" onClick={onClose} disabled={busy}>
             {cancelLabel}
-          </button>
+          </Button>
           {footer}
         </div>
       </div>
     </SharedModal>
+  );
+}
+
+/** One form, two shells: a dialog over the page (a record's own detail page) or a drawer beside the list (the list screen). */
+export function FormShell({
+  presentation,
+  title,
+  busy,
+  onClose,
+  save,
+  error,
+  children,
+}: {
+  presentation: "modal" | "drawer";
+  title: string;
+  busy: boolean;
+  onClose: () => void;
+  save: ReactNode;
+  /** A failed write's refusal: after the fields in the dialog, announced in the drawer beside Save in the drawer. */
+  error?: string | null;
+  children: ReactNode;
+}): JSX.Element {
+  return presentation === "modal" ? (
+    <Modal title={title} onClose={onClose} busy={busy} dirty footer={save}>
+      {children}
+      {error ? <ErrorText>{error}</ErrorText> : null}
+    </Modal>
+  ) : (
+    <FormDrawer title={title} busy={busy} onClose={onClose} save={save} error={error}>
+      {children}
+    </FormDrawer>
   );
 }
 

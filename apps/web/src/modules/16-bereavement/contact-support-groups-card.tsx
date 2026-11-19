@@ -5,7 +5,14 @@
 // server renders nothing either. Enrolling picks from the OPEN groups; a withdrawal records why (the family asked, or staff removed them).
 // Every write carries one Idempotency-Key per attempt; a stale refusal (409: full, closed, already enrolled or withdrawn) closes the dialog,
 // is said in the panel and the list is read again; any other failure is said in the dialog, which stays open.
-import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import {
+  Button,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useId, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -13,18 +20,10 @@ import { useSession } from "../../shell/session";
 import { errorMessage, isStaleWrite } from "./bereavement-api";
 import { humanize, shortDate, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Modal,
   SelectField,
-  dangerButtonStyle,
   linkStyle,
-  mutedStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   useActionStatus,
   visuallyHidden,
 } from "./bereavement-ui";
@@ -63,9 +62,11 @@ function SupportGroupsPanel({ contactId }: { contactId: string }): JSX.Element |
   const failure = state.kind === "error" ? state.message : state.notice;
   const enrolledIds = new Set(rows.filter((r) => r.status === "enrolled").map((r) => r.groupId));
   return (
-    <Card
+    <Panel
+      stack
+      headingLevel={3}
       title="Support groups"
-      actions={
+      action={
         <Button size="sm" tone="secondary" onClick={() => setEnrolling(true)}>
           Enroll in a group
         </Button>
@@ -81,42 +82,42 @@ function SupportGroupsPanel({ contactId }: { contactId: string }): JSX.Element |
         </div>
       ) : null}
       {state.kind === "ready" && rows.length === 0 ? (
-        <span style={mutedStyle}>This family is not in any support group.</span>
+        <span className="wx-text-muted">This family is not in any support group.</span>
       ) : null}
       {rows.length > 0 ? (
-        <table style={tableStyle} aria-label="Support group enrollments">
+        <table aria-label="Support group enrollments">
           <thead>
             <tr>
-              <th style={th}>Group</th>
-              <th style={th}>Group status</th>
-              <th style={th}>Enrollment</th>
-              <th style={th}>Since</th>
-              <th style={th}>
+              <th>Group</th>
+              <th>Group status</th>
+              <th>Enrollment</th>
+              <th>Since</th>
+              <th>
                 <span style={visuallyHidden}>Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.enrollmentId} style={rowLine}>
-                <td style={td}>
+              <tr key={row.enrollmentId}>
+                <td>
                   <Link to={`/bereavement/groups/${row.groupId}`} style={linkStyle}>
                     {row.groupName}
                   </Link>
                 </td>
-                <td style={td}>
+                <td>
                   <StatusPill
                     label={humanize(row.groupStatus)}
                     tone={toneOf(GROUP_STATUS_TONE, row.groupStatus)}
                   />
                 </td>
-                <td style={td}>
+                <td>
                   {row.status === "enrolled"
                     ? "Enrolled"
                     : `Withdrawn (${humanize(row.withdrawnReason)})`}
                 </td>
-                <td style={td}>{shortDate(row.withdrawnAt ?? row.enrolledAt)}</td>
-                <td style={td}>
+                <td>{shortDate(row.withdrawnAt ?? row.enrolledAt)}</td>
+                <td>
                   {row.status === "enrolled" ? (
                     <Button size="sm" tone="secondary" onClick={() => setWithdrawing(row)}>
                       Withdraw
@@ -161,7 +162,7 @@ function SupportGroupsPanel({ contactId }: { contactId: string }): JSX.Element |
           }}
         />
       ) : null}
-    </Card>
+    </Panel>
   );
 }
 
@@ -218,23 +219,23 @@ function EnrollModal({
       onClose={onClose}
       busy={busy}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || !chosen}
           onClick={() => void submit()}
         >
           {busy ? "Enrolling…" : "Enroll"}
-        </button>
+        </Button>
       }
     >
       {state.kind === "loading" ? <LoadingSpinner label="Loading open groups" /> : null}
       {state.kind === "error" ? <ErrorText>{state.message}</ErrorText> : null}
       {state.kind === "hidden" ? (
-        <span style={mutedStyle}>You cannot see the support groups.</span>
+        <span className="wx-text-muted">You cannot see the support groups.</span>
       ) : null}
       {state.kind === "ready" && groups.length === 0 ? (
-        <span style={mutedStyle}>No open group is available for this family.</span>
+        <span className="wx-text-muted">No open group is available for this family.</span>
       ) : null}
       {groups.length > 0 ? (
         <SelectField
@@ -303,17 +304,12 @@ function WithdrawModal({
       describedBy={descId}
       cancelLabel="Keep enrolled"
       footer={
-        <button
-          type="button"
-          style={dangerButtonStyle}
-          disabled={busy}
-          onClick={() => void submit()}
-        >
+        <Button tone="danger" type="button" disabled={busy} onClick={() => void submit()}>
           {busy ? "Withdrawing…" : "Withdraw"}
-        </button>
+        </Button>
       }
     >
-      <span id={descId} style={mutedStyle}>
+      <span id={descId} className="wx-text-muted">
         The family leaves {enrollment.groupName} and is no longer on its roster. Choose why below.
       </span>
       <SelectField

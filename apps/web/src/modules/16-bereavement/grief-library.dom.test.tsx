@@ -8,10 +8,32 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { GriefLibrary } from "./grief-library";
+import {
+  libraryUrl,
+  registerLibraryItem,
+  setLibraryStatus,
+  uploadLibraryDocument,
+} from "./programs-api";
+
+// Pass-through spies: every call reaches the real helper unless a test queues one rejection (the helpers report a lost
+// connection as a result, so a throw is the unexpected case the screens must still survive).
+vi.mock("./programs-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./programs-api")>();
+  return {
+    ...actual,
+    libraryUrl: vi.fn(actual.libraryUrl),
+    setLibraryStatus: vi.fn(actual.setLibraryStatus),
+    registerLibraryItem: vi.fn(actual.registerLibraryItem),
+    uploadLibraryDocument: vi.fn(actual.uploadLibraryDocument),
+  };
+});
 
 const ITEM_ID = "11111111-1111-4111-8111-111111111111";
 const DOC_ID = "22222222-2222-4222-8222-222222222222";
 const UPLOAD_ID = "33333333-3333-4333-8333-333333333333";
+const ITEM_B_ID = "44444444-4444-4444-8444-444444444444";
+const TITLE_A = "When grief comes in waves";
+const TITLE_B = "Walking through the first year";
 const MANAGE = ["bereavement.library.read", "bereavement.library.manage"];
 const LIBRARY = "/api/v1/bereavement/library";
 
@@ -33,6 +55,8 @@ const item = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const itemB = () => item({ itemId: ITEM_B_ID, title: TITLE_B, sortOrder: 2 });
+
 interface Req {
   method: string;
   path: string;
@@ -41,9 +65,9 @@ interface Req {
   ifMatch: string | null;
   idempotencyKey: string | null;
 }
-type Reply = { status: number; body?: unknown };
+type Reply = { status: number; body?: unknown } | "reject";
 
-function mount(handler: (req: Req) => Reply, permissions: string[] = MANAGE) {
+function mount(handler: (req: Req) => Reply | Promise<Reply>, permissions: string[] = MANAGE) {
   const calls: Req[] = [];
   const stub = async (input: RequestInfo | URL): Promise<Response> => {
     const req = input as Request;
@@ -58,7 +82,8 @@ function mount(handler: (req: Req) => Reply, permissions: string[] = MANAGE) {
       idempotencyKey: req.headers.get("idempotency-key"),
     };
     calls.push(recorded);
-    const reply = handler(recorded);
+    const reply = await handler(recorded);
+    if (reply === "reject") throw new TypeError("network down");
     return new Response(JSON.stringify(reply.body ?? {}), {
       status: reply.status,
       headers: { "content-type": "application/json" },
@@ -200,6 +225,39 @@ describe("grief library — writes", () => {
     expect(
       await screen.findByRole("button", { name: "Republish When grief comes in waves" }),
     ).toBeTruthy();
+  });
+
+  it("opens Edit as a drawer beside the list, not a dialog over it", async () => {
+    mount(() => ok([item()]));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
+    expect(await screen.findByRole("complementary", { name: "Edit library item" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps one form drawer open at a time, and each swap starts the new form clean", async () => {
+    mount(() => ok([item(), itemB()]));
+    const editDrawer = () => screen.getAllByRole("complementary", { name: "Edit library item" });
+    const titleValue = () => (screen.getByLabelText("Title") as HTMLInputElement).value;
+
+    // Edit A -> Edit B: B's own fields, none of A's typed text, and one drawer.
+    fireEvent.click(await screen.findByRole("button", { name: `Edit ${TITLE_A}` }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Typed over A" } });
+    fireEvent.click(screen.getByRole("button", { name: `Edit ${TITLE_B}` }));
+    await waitFor(() => expect(titleValue()).toBe(TITLE_B));
+    expect(editDrawer()).toHaveLength(1);
+
+    // Edit -> Upload: the edit drawer is replaced.
+    fireEvent.click(screen.getByRole("button", { name: "Upload item" }));
+    expect(
+      await screen.findByRole("complementary", { name: "Upload a library item" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: "Edit library item" })).toBeNull();
+
+    // Upload -> Edit: the upload drawer is replaced, by the item's own details.
+    fireEvent.click(screen.getByRole("button", { name: `Edit ${TITLE_A}` }));
+    await waitFor(() => expect(titleValue()).toBe(TITLE_A));
+    expect(screen.queryByRole("complementary", { name: "Upload a library item" })).toBeNull();
+    expect(editDrawer()).toHaveLength(1);
   });
 
   it("edits with a PATCH carrying If-Match", async () => {
@@ -412,7 +470,7 @@ describe("grief library — review fixes", () => {
     );
   });
 
-  it("a stale edit closes the dialog, reloads the library and says why", async () => {
+  it("a stale edit closes the drawer, reloads the library and says why", async () => {
     let reads = 0;
     mount((req) => {
       if (req.method === "PATCH")
@@ -421,21 +479,25 @@ describe("grief library — review fixes", () => {
       return ok([item()]);
     });
     fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }));
+    fireEvent.click(
+      within(screen.getByRole("complementary", { name: "Edit library item" })).getByRole("button", {
+        name: "Save",
+      }),
+    );
     expect(await screen.findByText(/This item changed while you were editing it/)).toBeTruthy();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Edit library item" })).toBeNull();
     await waitFor(() => expect(reads).toBe(2));
   });
 
   it("refuses a transcript id that is not a valid id before sending", async () => {
     const { calls } = mount(() => ok([item()]));
     fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText(/Transcript document id/), {
+    const drawer = screen.getByRole("complementary", { name: "Edit library item" });
+    fireEvent.change(within(drawer).getByLabelText(/Transcript document id/), {
       target: { value: "not-an-id" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toContain("not a valid id");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("not a valid id");
     expect(calls.some((c) => c.method === "PATCH")).toBe(false);
   });
 
@@ -517,7 +579,7 @@ describe("grief library — review fixes", () => {
 
 describe("grief library — round 3", () => {
   /** Start an upload whose PUT hangs until aborted; answers the reservation and its release. */
-  const startHangingUpload = async () => {
+  const startHangingUpload = async (rows: unknown[] = []) => {
     vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValue(
       new Uint8Array(32).fill(0xab).buffer,
     );
@@ -545,7 +607,7 @@ describe("grief library — round 3", () => {
           }
         : req.method === "DELETE"
           ? { status: 204 }
-          : ok([]),
+          : ok(rows),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
     const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
@@ -574,6 +636,25 @@ describe("grief library — round 3", () => {
     await waitFor(() => expect(released(calls)).toBe(true));
     expect(calls.some((c) => c.method === "POST" && c.path === LIBRARY)).toBe(false);
     expect(calls.some((c) => c.path.endsWith("/complete"))).toBe(false);
+  });
+
+  it("while the file is sent the page's Upload item and Edit are inert and the drawer cannot be dismissed", async () => {
+    await startHangingUpload([item()]);
+    const drawer = screen.getByRole("complementary", { name: "Upload a library item" });
+
+    for (const name of ["Upload item", `Edit ${TITLE_A}`]) {
+      expect(screen.getByRole("button", { name }).closest("[inert]")).not.toBeNull();
+    }
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "Upload a library item" })).toBeTruthy();
+    // Cancel upload is the drawer's own way out and stays live.
+    expect(
+      within(drawer).getByRole("button", { name: "Cancel upload" }).closest("[inert]"),
+    ).toBeNull();
   });
 
   it.each([409, 404])("a %i on a status change closes the confirm dialog", async (status) => {
@@ -618,7 +699,216 @@ describe("grief library — round 3", () => {
     );
     expect(await screen.findByText("no preview")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Edit When grief comes in waves" }));
-    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(await screen.findByRole("complementary", { name: "Edit library item" })).toBeTruthy();
     expect(screen.queryByText("no preview")).toBeNull();
+  });
+});
+
+describe("grief library — writes in flight and failed writes", () => {
+  const inertNow = (name: string) => screen.getByRole("button", { name }).closest("[inert]");
+  const titleValue = () => (screen.getByLabelText("Title") as HTMLInputElement).value;
+
+  it("a save in flight keeps the page inert, and finishing it closes only its own drawer", async () => {
+    let finish: (reply: Reply) => void = () => undefined;
+    const { calls } = mount((req) =>
+      req.method === "PATCH"
+        ? new Promise<Reply>((resolve) => {
+            finish = resolve;
+          })
+        : ok([item(), itemB()]),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: `Edit ${TITLE_A}` }));
+    const drawer = screen.getByRole("complementary", { name: "Edit library item" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+
+    for (const name of ["Upload item", `Edit ${TITLE_A}`, `Edit ${TITLE_B}`]) {
+      expect(inertNow(name)).not.toBeNull();
+    }
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "Edit library item" })).toBeTruthy();
+
+    // Defence in depth: jsdom does not stop a click on an inert control, so force Edit B through. A's save finishing must not
+    // close B's drawer.
+    fireEvent.click(screen.getByRole("button", { name: `Edit ${TITLE_B}` }));
+    await waitFor(() => expect(titleValue()).toBe(TITLE_B));
+    finish(ok(item({ version: 4 })));
+    expect(await screen.findByText(`${TITLE_A} was saved.`)).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "Edit library item" })).toBeTruthy();
+    expect(titleValue()).toBe(TITLE_B);
+  });
+
+  it("an upload's registration finishing closes only the upload drawer, not a form opened since", async () => {
+    vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValue(
+      new Uint8Array(32).fill(0xab).buffer,
+    );
+    vi.stubGlobal("fetch", async () => new Response(null, { status: 200 }));
+    let finish: (reply: Reply) => void = () => undefined;
+    const { calls } = mount((req) => {
+      if (req.path === "/api/v1/document-uploads")
+        return {
+          status: 201,
+          body: {
+            uploadId: UPLOAD_ID,
+            uploadUrl: "https://store.example/put",
+            requiredHeaders: {},
+            expiresAt: "2099-01-01T00:00:00.000Z",
+          },
+        };
+      if (req.path.endsWith("/complete")) return ok({ documentId: DOC_ID });
+      if (req.method === "POST" && req.path === LIBRARY)
+        return new Promise<Reply>((resolve) => {
+          finish = resolve;
+        });
+      return ok([item()]);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
+    const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(8) });
+    fireEvent.change(screen.getByLabelText(/^File/), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Holiday guide" } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === "POST" && c.path === LIBRARY)).toBe(true),
+    );
+    // Registering is part of the write: the page stays inert through it too.
+    expect(inertNow("Upload item")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: `Edit ${TITLE_A}` }));
+    await screen.findByRole("complementary", { name: "Edit library item" });
+    finish(ok(item({ itemId: ITEM_B_ID, title: "Holiday guide" })));
+    expect(
+      await screen.findByText("Holiday guide was added to the library as a draft."),
+    ).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "Edit library item" })).toBeTruthy();
+  });
+
+  it("a save that rejects on a network failure ends in the drawer, which is live and dismissable again", async () => {
+    mount((req) => (req.method === "PATCH" ? "reject" : ok([item()])));
+    fireEvent.click(await screen.findByRole("button", { name: `Edit ${TITLE_A}` }));
+    const drawer = screen.getByRole("complementary", { name: "Edit library item" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("connection dropped");
+    expect(
+      (within(drawer).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(document.querySelector("[inert]")).toBeNull();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Edit library item" })).toBeNull(),
+    );
+  });
+
+  /** Mount with a reservation and completion that succeed and `register` answering the registration; press Upload. */
+  const uploadWith = async (register: () => Reply | Promise<Reply>) => {
+    vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValue(
+      new Uint8Array(32).fill(0xab).buffer,
+    );
+    vi.stubGlobal("fetch", async () => new Response(null, { status: 200 }));
+    const { calls } = mount((req) => {
+      if (req.path === "/api/v1/document-uploads")
+        return {
+          status: 201,
+          body: {
+            uploadId: UPLOAD_ID,
+            uploadUrl: "https://store.example/put",
+            requiredHeaders: {},
+            expiresAt: "2099-01-01T00:00:00.000Z",
+          },
+        };
+      if (req.path.endsWith("/complete")) return ok({ documentId: DOC_ID });
+      if (req.method === "POST" && req.path === LIBRARY) return register();
+      return ok([]);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
+    const drawer = screen.getByRole("complementary", { name: "Upload a library item" });
+    const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(8) });
+    fireEvent.change(within(drawer).getByLabelText(/^File/), { target: { files: [file] } });
+    fireEvent.change(within(drawer).getByLabelText("Title"), { target: { value: "Guide" } });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload" }));
+    return { drawer, calls };
+  };
+  const expectLiveAndDismissable = async (drawer: HTMLElement): Promise<void> => {
+    expect(
+      (within(drawer).getByRole("button", { name: "Upload" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(document.querySelector("[inert]")).toBeNull();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Upload a library item" })).toBeNull(),
+    );
+  };
+
+  it("an upload whose registration gets no answer says the file uploaded and to check the library", async () => {
+    const { drawer } = await uploadWith(() => "reject");
+    const message = (await within(drawer).findByRole("alert")).textContent ?? "";
+    expect(message).toContain("The file uploaded");
+    expect(message).toContain("Check the library for it before retrying");
+    expect(message).not.toContain("could not be uploaded");
+    await expectLiveAndDismissable(drawer);
+  });
+
+  it("an unexpected failure after the file uploaded says so, and the retry registers without sending the file again", async () => {
+    vi.mocked(registerLibraryItem).mockRejectedValueOnce(new TypeError("boom"));
+    const { drawer, calls } = await uploadWith(() => ok(item({ title: "Guide" })));
+    const message = (await within(drawer).findByRole("alert")).textContent ?? "";
+    expect(message).toContain("The file uploaded");
+    expect(message).not.toContain("connection");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Upload" }));
+    expect(await screen.findByText("Guide was added to the library as a draft.")).toBeTruthy();
+    expect(calls.filter((c) => c.path === "/api/v1/document-uploads")).toHaveLength(1);
+  });
+
+  it("an unexpected failure while sending the file says it could not be uploaded, without blaming the connection", async () => {
+    vi.mocked(uploadLibraryDocument).mockRejectedValueOnce(new RangeError("bad"));
+    const { drawer } = await uploadWith(() => ok(item()));
+    const message = (await within(drawer).findByRole("alert")).textContent ?? "";
+    expect(message).toContain("The file could not be uploaded, so nothing was added");
+    expect(message).not.toContain("connection");
+    expect(message).not.toContain("The file uploaded");
+    await expectLiveAndDismissable(drawer);
+  });
+});
+
+describe("grief library — a row action that throws", () => {
+  it("a rejected preview says so and the next row action still runs", async () => {
+    vi.mocked(libraryUrl).mockRejectedValueOnce(new TypeError("boom"));
+    mount((req) =>
+      req.path.endsWith("/url")
+        ? ok({
+            itemId: ITEM_ID,
+            url: "https://files.example/t.pdf",
+            expiresAt: "2099-01-01T00:00:00.000Z",
+          })
+        : ok([item()]),
+    );
+    const preview = await screen.findByRole("button", { name: `Preview ${TITLE_A}` });
+    fireEvent.click(preview);
+    expect((await screen.findByRole("alert")).textContent).toContain("did not finish");
+    await waitFor(() => expect((preview as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(preview);
+    expect(await screen.findByRole("link", { name: "Open preview" })).toBeTruthy();
+  });
+
+  it("a rejected status change says so in its dialog and the retry goes through", async () => {
+    vi.mocked(setLibraryStatus).mockRejectedValueOnce(new TypeError("boom"));
+    mount((req) =>
+      req.method === "POST" ? ok(item({ status: "published", version: 4 })) : ok([item()]),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: `Publish ${TITLE_A}` }));
+    const dialog = await screen.findByRole("alertdialog");
+    const confirm = within(dialog).getByRole("button", { name: "Yes, publish it" });
+    fireEvent.click(confirm);
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("did not finish");
+    await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(confirm);
+    expect(await screen.findByText(`${TITLE_A} is now published.`)).toBeTruthy();
   });
 });

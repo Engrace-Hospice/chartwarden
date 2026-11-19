@@ -6,7 +6,7 @@
 // fail and the instruction to call emergency services must not depend on them. The PSAP administrative line
 // below it is supplementary, labelled with who verified it and when, and is only ever a number a human reads
 // and dials - the platform never dials a PSAP.
-import { t, useApiClient } from "@chartwarden/ui";
+import { Panel, t, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import {
@@ -17,7 +17,7 @@ import {
   getSosTerminus,
 } from "./safety-api";
 import { dateTime } from "./safety-status";
-import { Card, Notice, linkStyle, mutedStyle } from "./safety-ui";
+import { Notice, linkStyle, mutedStyle } from "./safety-ui";
 import { describeTerminus } from "./terminus-status";
 
 /** The ledger moves every 15 s while the alert is unanswered; refresh at the same cadence. */
@@ -52,7 +52,7 @@ export function TerminusPanel({ sosAlertId }: { sosAlertId: string }): JSX.Eleme
   const lines = describeTerminus(terminus?.actions ?? []);
 
   return (
-    <Card title="Emergency terminus">
+    <Panel stack headingLevel={3} title="Emergency terminus">
       <Notice tone="error" assertive>
         <strong>{psap?.emergencyLine ?? STATIC_EMERGENCY_LINE}</strong> This alert has gone
         unanswered through every escalation tier. The lines below are supplementary; they do not
@@ -75,7 +75,7 @@ export function TerminusPanel({ sosAlertId }: { sosAlertId: string }): JSX.Eleme
                 </a>
               </>
             ) : null}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               {" "}
               · last verified {dateTime(psap.psap.verifiedAt)}
               {psap.psap.stale ? " (OVERDUE for re-verification: confirm by voice)" : ""}
@@ -107,6 +107,6 @@ export function TerminusPanel({ sosAlertId }: { sosAlertId: string }): JSX.Eleme
           </Notice>
         </div>
       ) : null}
-    </Card>
+    </Panel>
   );
 }

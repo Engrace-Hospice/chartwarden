@@ -17,9 +17,11 @@
 //     is offered; a server that has the flag off simply returns a deterministic-only row, which this
 //     screen reports rather than pretending a narrative was suppressed for another reason.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -61,7 +63,6 @@ import {
   toneOf,
 } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Field,
@@ -74,14 +75,8 @@ import {
   TextAreaField,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
   useActionStatus,
 } from "./bereavement-ui";
@@ -192,9 +187,9 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
         title={<span style={pageTitleStyle}>Bereavement risk</span>}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button type="button" style={primaryButtonStyle} onClick={() => setRecomputeOpen(true)}>
+            <Button tone="primary" type="button" onClick={() => setRecomputeOpen(true)}>
               Recompute
-            </button>
+            </Button>
             <Link to={`/bereavement/plans/${planId}`} style={ghostButtonStyle}>
               Back to plan
             </Link>
@@ -239,7 +234,12 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
       </FilterRow>
 
       {latest ? (
-        <Card title="Most recent score" actions={<RiskTierPill tier={latest.tier} />}>
+        <Panel
+          stack
+          headingLevel={3}
+          title="Most recent score"
+          action={<RiskTierPill tier={latest.tier} />}
+        >
           <SummaryGrid>
             <Field label="Scope" value={nameOf(latest.contactId)} />
             <Field label="Assessed" value={dateTime(latest.assessedAt)} />
@@ -281,23 +281,25 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
           {latest.factors ? (
             <FactorTable factors={latest.factors} />
           ) : (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               The factor vector is not disclosed to you on this row. That is a confidentiality gate,
               not an empty rubric.
             </span>
           )}
-        </Card>
+        </Panel>
       ) : (
-        <Card title="Most recent score">
-          <span style={mutedStyle}>
+        <Panel stack headingLevel={3} title="Most recent score">
+          <span className="wx-text-muted">
             No risk score has been computed for this plan yet. The rubric runs on the survivors'
             factors plus what Modules 9 and 15 publish; recomputing it here appends the first ledger
             row.
           </span>
-        </Card>
+        </Panel>
       )}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title={
           tasks === null || tasksWithheld
             ? "Assessment checkpoints"
@@ -305,56 +307,56 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
         }
       >
         {tasks === null ? (
-          <span style={mutedStyle}>The assessment checkpoints could not be loaded.</span>
+          <span className="wx-text-muted">The assessment checkpoints could not be loaded.</span>
         ) : tasksWithheld ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Assessment checkpoints are not shown in your scope — they hold clinical risk content.
           </span>
         ) : tasks.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No assessment checkpoints are scheduled. Each survivor gets an initial assessment at day
             28 and a midpoint reassessment at day 180.
           </span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Survivor</th>
-                <th style={th}>Checkpoint</th>
-                <th style={th}>Due</th>
-                <th style={th}>Status</th>
-                <th style={th}>Action</th>
+                <th>Survivor</th>
+                <th>Checkpoint</th>
+                <th>Due</th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {tasks.map((task) => (
-                <tr key={task.taskId} style={rowLine}>
-                  <td style={td}>{nameOf(task.contactId)}</td>
-                  <td style={td}>{assessmentTaskKindLabel(task.taskKind)}</td>
-                  <td style={td}>
+                <tr key={task.taskId}>
+                  <td>{nameOf(task.contactId)}</td>
+                  <td>{assessmentTaskKindLabel(task.taskKind)}</td>
+                  <td>
                     {shortDate(task.dueAt)}
-                    <div style={mutedStyle}>
+                    <div className="wx-text-muted">
                       {task.status === "completed"
                         ? `completed ${shortDate(task.completedAt)}`
                         : dueLabel(task.dueAt)}
                     </div>
                   </td>
-                  <td style={td}>
+                  <td>
                     <StatusPill
                       label={humanize(task.status)}
                       tone={toneOf(ASSESSMENT_TASK_STATUS_TONE, task.status)}
                     />
                   </td>
-                  <td style={td}>
+                  <td>
                     {task.status === "scheduled" || task.status === "missed" ? (
-                      <button
+                      <Button
+                        tone="secondary"
                         type="button"
-                        style={ghostButtonStyle}
                         aria-label={`Complete assessment: ${assessmentTaskKindLabel(task.taskKind)} for ${nameOf(task.contactId)}`}
                         onClick={() => setCompleting(task)}
                       >
                         Complete assessment
-                      </button>
+                      </Button>
                     ) : (
                       "—"
                     )}
@@ -364,56 +366,62 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
             </tbody>
           </table>
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           A checkpoint is completed only by a score a clinician records here; the automatic initial
           score at plan opening does not complete one. A missed checkpoint can still be completed
           late.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title={`Score ledger (${countLabel(scores.length, scoresHasMore)})`}>
+      <Panel
+        stack
+        headingLevel={3}
+        title={`Score ledger (${countLabel(scores.length, scoresHasMore)})`}
+      >
         {scores.length === 0 ? (
-          <span style={mutedStyle}>The append-only ledger is empty.</span>
+          <span className="wx-text-muted">The append-only ledger is empty.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Assessed</th>
-                <th style={th}>Scope</th>
-                <th style={th}>Tier</th>
-                <th style={th}>Rubric tier</th>
+                <th>Assessed</th>
+                <th>Scope</th>
+                <th>Tier</th>
+                <th>Rubric tier</th>
                 <th style={thNum}>Score</th>
-                <th style={th}>Completeness</th>
-                <th style={th}>Confidence</th>
-                <th style={th}>Kind</th>
+                <th>Completeness</th>
+                <th>Confidence</th>
+                <th>Kind</th>
               </tr>
             </thead>
             <tbody>
               {scores.map((s) => (
-                <tr key={s.scoreId} style={rowLine}>
-                  <td style={td}>{dateTime(s.assessedAt)}</td>
-                  <td style={td}>{nameOf(s.contactId)}</td>
-                  <td style={td}>
+                <tr key={s.scoreId}>
+                  <td>{dateTime(s.assessedAt)}</td>
+                  <td>{nameOf(s.contactId)}</td>
+                  <td>
                     <RiskTierPill tier={s.tier} />
                   </td>
-                  <td style={td}>
+                  <td>
                     <RiskTierPill tier={s.deterministicTier} />
                   </td>
                   <td style={tdNum}>{scoreLabel(s.ruleScore)}</td>
-                  <td style={td}>
+                  <td>
                     <StatusPill
                       label={humanize(s.dataCompleteness)}
                       tone={toneOf(DATA_COMPLETENESS_TONE, s.dataCompleteness)}
                     />
                   </td>
-                  <td style={td}>
+                  <td>
                     <StatusPill
                       label={s.confidenceBand}
                       tone={toneOf(CONFIDENCE_BAND_TONE, s.confidenceBand)}
                     />
-                    {s.evidenceDegraded ? <div style={mutedStyle}>evidence degraded</div> : null}
+                    {s.evidenceDegraded ? (
+                      <div className="wx-text-muted">evidence degraded</div>
+                    ) : null}
                   </td>
-                  <td style={td}>
+                  <td>
                     {humanize(s.scoreKind)}
                     {draft?.carriedScoreId === s.scoreId ? (
                       <div>
@@ -426,11 +434,11 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
             </tbody>
           </table>
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The ledger is append-only — the database refuses UPDATE on a score row outright. A
           correction is a new row, never an edit.
         </span>
-      </Card>
+      </Panel>
 
       {completing ? (
         <CompleteAssessmentModal
@@ -465,20 +473,20 @@ function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Elemen
 function FactorTable({ factors }: { factors: Record<string, boolean | "unknown"> }): JSX.Element {
   const rows = RISK_FACTOR_KEYS.filter((k) => k in factors);
   return (
-    <table style={tableStyle}>
+    <table>
       <thead>
         <tr>
-          <th style={th}>Factor</th>
-          <th style={th}>Observation</th>
+          <th>Factor</th>
+          <th>Observation</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((k) => {
           const v = factors[k];
           return (
-            <tr key={k} style={rowLine}>
-              <td style={td}>{riskFactorLabel(k)}</td>
-              <td style={td}>
+            <tr key={k}>
+              <td>{riskFactorLabel(k)}</td>
+              <td>
                 {v === "unknown" ? (
                   <StatusPill label="Unknown" tone="neutral" />
                 ) : v ? (
@@ -546,14 +554,9 @@ function RecomputeModal({
       title="Recompute bereavement risk"
       onClose={onClose}
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy || overrideIncomplete}
-          onClick={submit}
-        >
+        <Button tone="primary" type="button" disabled={busy || overrideIncomplete} onClick={submit}>
           {busy ? "Recomputing…" : "Recompute"}
-        </button>
+        </Button>
       }
     >
       <SelectField
@@ -594,7 +597,7 @@ function RecomputeModal({
           ))}
         </>
       ) : (
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Without supplied observations the rubric reads what Modules 9 and 15 publish. A source
           that is unreadable yields `unknown`, not `absent`.
         </span>
@@ -605,7 +608,7 @@ function RecomputeModal({
         checked={requestAugmentation}
         onChange={setRequestAugmentation}
       />
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         The narrative requires the platform's full-AI capability. With it off, the server returns a
         deterministic-only row — the rubric itself never depends on AI.
       </span>

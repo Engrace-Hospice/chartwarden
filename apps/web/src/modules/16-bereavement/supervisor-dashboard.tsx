@@ -39,7 +39,6 @@ import {
   SummaryGrid,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
 } from "./bereavement-ui";
 
 type MetricCategory = "all" | "plans" | "touchpoints" | "risk" | "closures";
@@ -487,7 +486,7 @@ function MetricDrawerContent({
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
         <span style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>{row.segment}</span>
-        <span style={mutedStyle}>{row.detail}</span>
+        <span className="wx-text-muted">{row.detail}</span>
       </div>
 
       <div
@@ -514,7 +513,7 @@ function MetricDrawerContent({
         />
       </div>
 
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         The CoP rate is displayed from the raw count pair so downstream HQRP surfaces can apply
         small-N suppression consistently.
       </span>

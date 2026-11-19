@@ -12,16 +12,21 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormModal } from "../../shell/form-modal";
 import {
   type ActiveSosView,
+  NO_ANSWER,
   type SafetySosAcknowledgeOutcome,
+  type SafetySosAlertView,
   acknowledgeSos,
   errorMessage,
   getSosAlert,
+  isStaleVersion,
   listActiveSos,
+  staleRefusalMessage,
 } from "./safety-api";
 import {
   ACKNOWLEDGMENT_OUTCOMES,
@@ -33,17 +38,10 @@ import {
   meetsMinChars,
   minutesSince,
   shortId,
+  sosAlreadySettled,
+  sosSettledMessage,
 } from "./safety-status";
-import {
-  Modal,
-  Notice,
-  SelectField,
-  SosStatePill,
-  TextAreaField,
-  TextField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { Notice, SelectField, SosStatePill, TextAreaField, TextField } from "./safety-ui";
 
 const POLL_MS = 15_000;
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -65,11 +63,17 @@ export function ActiveSosScreen(): JSX.Element {
 
   const [ackFor, setAckFor] = useState<{ id: string; who: string; version: number } | null>(null);
   const [ackOpening, setAckOpening] = useState<string | null>(null);
+  // A failed open (the re-read of the alert before its form). Apart from `error`, which is the board's own read.
+  const [openError, setOpenError] = useState<string | null>(null);
   const [actionTaken, setActionTaken] = useState("");
   const [outcome, setOutcome] = useState(DEFAULT_ACK_OUTCOME);
   const [phoneMasked, setPhoneMasked] = useState("");
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  // The re-read after a stale refusal showed the alert no longer needs this acknowledgment: nothing is left to submit.
+  const [nothingToSubmit, setNothingToSubmit] = useState(false);
+  // An attempt in this dialog got no answer, so it may have landed: a later refusal can be THAT attempt's doing.
+  const lostReply = useRef(false);
 
   const load = useCallback(
     async (background = false) => {
@@ -101,10 +105,17 @@ export function ActiveSosScreen(): JSX.Element {
     async (id: string, who: string) => {
       setAckOpening(id);
       setModalError(null);
-      const res = await getSosAlert(client, id);
+      setNothingToSubmit(false);
+      lostReply.current = false;
+      setOpenError(null);
+      const res = await getSosAlert(client, id).catch(() => null);
       setAckOpening(null);
-      if (res.error || !res.alert) {
-        setError(errorMessage(res.error, "That alert could not be opened."));
+      if (!res || res.error || !res.alert) {
+        setOpenError(
+          res
+            ? errorMessage(res.error, "That alert could not be opened.")
+            : "That alert could not be opened: no answer came back. Check your connection, then retry.",
+        );
         return;
       }
       setActionTaken("");
@@ -115,21 +126,72 @@ export function ActiveSosScreen(): JSX.Element {
     [client],
   );
 
+  // Nothing typed or refused in the form outlives it: an account is written fresh each time.
+  const closeAck = useCallback(() => {
+    setAckFor(null);
+    setActionTaken("");
+    setOutcome(DEFAULT_ACK_OUTCOME);
+    setPhoneMasked("");
+    setModalError(null);
+    setNothingToSubmit(false);
+    lostReply.current = false;
+  }, []);
+
   const submitAck = useCallback(async () => {
     if (!ackFor) return;
+    const target = ackFor;
     setSaving(true);
     setModalError(null);
-    const res = await acknowledgeSos(client, ackFor.id, ackFor.version, {
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
+    const res = await acknowledgeSos(client, target.id, target.version, {
       actionTaken,
       outcome: outcome as SafetySosAcknowledgeOutcome,
       ...(phoneMasked.trim() ? { outreachPhoneNumberMasked: phoneMasked.trim() } : {}),
-    });
+    }).catch(() => null);
+    if (!res) lostReply.current = true;
+    // The alert moved while the responder typed (the poll and escalation bump its version), or an earlier attempt's
+    // lost reply had landed: re-read it now and refresh ONLY the stamp, so what was typed is kept and the next submit
+    // carries the current version.
+    let fresh: SafetySosAlertView | null = null;
+    const stale = res !== null && isStaleVersion(res.error);
+    if (stale) {
+      const reread = await getSosAlert(client, target.id).catch(() => null);
+      fresh = reread?.alert ?? null;
+      if (fresh) {
+        const { version } = fresh;
+        setAckFor((current) => (current?.id === target.id ? { ...current, version } : current));
+      }
+    }
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The acknowledgment was not recorded."));
+    if (!res || res.error) {
+      // Names the alert: a failure must never read as another alert's.
+      const subject = `The acknowledgment for ${target.who}`;
+      const settled = fresh !== null && sosAlreadySettled("acknowledge", fresh);
+      if (settled) setNothingToSubmit(true);
+      setModalError(
+        !res
+          ? `${subject} was not confirmed. ${NO_ANSWER}`
+          : fresh && settled
+            ? sosSettledMessage(
+                "acknowledge",
+                `The alert for ${target.who}`,
+                fresh,
+                lostReply.current,
+              )
+            : stale
+              ? staleRefusalMessage({
+                  subject,
+                  staleVersion: target.version,
+                  freshVersion: fresh?.version ?? null,
+                  lostReply: lostReply.current,
+                  ifNotReread: "Cancel and open it again.",
+                })
+              : `${subject} was not recorded. ${errorMessage(res.error, "")}`.trim(),
+      );
       return;
     }
-    setAckFor(null);
+    // Close only the form that was submitted; another alert's form may be open by now.
+    setAckFor((current) => (current?.id === target.id ? null : current));
     await load(true);
   }, [ackFor, actionTaken, client, load, outcome, phoneMasked]);
 
@@ -233,6 +295,11 @@ export function ActiveSosScreen(): JSX.Element {
                 received at {dateTime(active.fetchedAt)}.
               </Notice>
             ) : null}
+            {openError ? (
+              <Notice tone="error" assertive>
+                {openError}
+              </Notice>
+            ) : null}
             {orderedAlerts.length === 0 ? (
               <Notice tone="success" live>
                 <strong>No SOS is open</strong> as of {dateTime(active.fetchedAt)}. The read
@@ -333,37 +400,37 @@ export function ActiveSosScreen(): JSX.Element {
             </div>
           ) : (
             <div style={tableWrapStyle}>
-              <table style={tableStyle}>
+              <table>
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "20%" }}>Clinician</th>
-                    <th style={{ ...thStyle, width: "18%" }}>Alert</th>
-                    <th style={{ ...thStyle, width: "18%" }}>State</th>
-                    <th style={{ ...thStyle, width: "16%" }}>Raised</th>
-                    <th style={{ ...thStyle, width: "12%" }}>Open for</th>
-                    <th style={{ ...thStyle, width: "10%" }}>Ack</th>
-                    <th style={{ ...thStyle, width: "6%", textAlign: "right" }}>Action</th>
+                  <tr>
+                    <th style={{ width: "20%" }}>Clinician</th>
+                    <th style={{ width: "18%" }}>Alert</th>
+                    <th style={{ width: "18%" }}>State</th>
+                    <th style={{ width: "16%" }}>Raised</th>
+                    <th style={{ width: "12%" }}>Open for</th>
+                    <th style={{ width: "10%" }}>Ack</th>
+                    <th style={{ width: "6%", textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pagedAlerts.map((alert) => (
-                    <tr key={alert.id} style={rowStyle}>
-                      <td style={tdStyle}>{alert.postedByFirstName}</td>
-                      <td style={tdStyle}>
+                    <tr key={alert.id}>
+                      <td>{alert.postedByFirstName}</td>
+                      <td>
                         <Link to={`/safety/sos/${alert.id}`} style={linkStyle}>
                           {shortId(alert.id)}
                         </Link>
                       </td>
-                      <td style={tdStyle}>
+                      <td>
                         <SosStatePill state={alert.lifecycleState} />
                       </td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>
                         {dateTime(alert.postedAt)}
                       </td>
-                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>
                         {durationLabel(alert.minutesOpen ?? minutesSince(alert.postedAt))}
                       </td>
-                      <td style={tdStyle}>
+                      <td>
                         {alert.acknowledgedAt ? (
                           <span style={secondaryTextStyle}>{dateTime(alert.acknowledgedAt)}</span>
                         ) : (
@@ -372,11 +439,11 @@ export function ActiveSosScreen(): JSX.Element {
                           </span>
                         )}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <td style={{ textAlign: "right" }}>
                         <Button
                           size="sm"
                           tone="secondary"
-                          disabled={ackOpening === alert.id}
+                          disabled={ackOpening !== null}
                           onClick={() => void openAck(alert.id, alert.postedByFirstName)}
                         >
                           {ackOpening === alert.id ? "Opening..." : "Acknowledge"}
@@ -403,24 +470,25 @@ export function ActiveSosScreen(): JSX.Element {
         }
         fullPageScroll
       />
-
       {ackFor ? (
-        <Modal
+        <FormModal
+          key={ackFor.id}
           title={`Acknowledge ${ackFor.who}'s SOS`}
-          onClose={() => setAckFor(null)}
-          footer={
-            <button
+          busy={saving}
+          error={modalError}
+          onClose={closeAck}
+          save={
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void submitAck()}
-              disabled={saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)}
-              style={
-                saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
+              disabled={
+                saving || nothingToSubmit || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
               }
             >
               {saving ? "Recording..." : "Record acknowledgment"}
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">
@@ -448,16 +516,12 @@ export function ActiveSosScreen(): JSX.Element {
             placeholder="***-***-4417"
             hint="Masked on purpose. Leave blank if you did not call."
           />
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
           <span style={secondaryTextStyle}>
-            This acknowledgment is stamped against version {ackFor.version} of the alert, read when
-            this dialog opened.
+            This acknowledgment is stamped against version {ackFor.version} of the alert. If the
+            alert changes while you type and the server refuses it, the version is re-read for you
+            and what you typed is kept.
           </span>
-        </Modal>
+        </FormModal>
       ) : null}
     </>
   );
@@ -517,30 +581,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
 };
 const secondaryTextStyle = {
   color: "var(--color-on-surface-variant)",

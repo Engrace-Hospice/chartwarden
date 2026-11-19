@@ -26,17 +26,23 @@
 // which of the two it will produce — rather than making a supervisor at 3 a.m. choose between two buttons
 // whose difference is invisible until afterwards.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { FormModal } from "../../shell/form-modal";
 import {
+  NO_ANSWER,
+  RELOAD_THEN_RETRY,
   type SafetySosAcknowledgeOutcome,
   type SafetySosAlertView,
   type SafetySosResolveOutcome,
@@ -45,7 +51,10 @@ import {
   errorMessage,
   getLocationStream,
   getSosAlert,
+  isStaleVersion,
   resolveSos,
+  staleRefusalMessage,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   ACKNOWLEDGMENT_OUTCOMES,
@@ -62,14 +71,14 @@ import {
   meetsMinChars,
   minutesSince,
   shortId,
+  sosAlreadySettled,
+  sosSettledMessage,
   sosStateLabel,
 } from "./safety-status";
 import {
-  Card,
   CheckboxField,
   CipherText,
   Field,
-  Modal,
   Notice,
   SelectField,
   SosStatePill,
@@ -77,25 +86,22 @@ import {
   TextAreaField,
   Timeline,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdMono,
-  tdNum,
-  th,
-  thNum,
 } from "./safety-ui";
 import { TerminusPanel } from "./terminus-panel";
 
 type Ceremony = "none" | "acknowledge" | "resolve" | "coordinates";
 
+/** Keyed on the alert: another alert starts from scratch, so a revealed stream, an open ceremony and its drafts never
+ *  follow the route to a record they were not for. */
 export function SosDetailScreen(): JSX.Element {
+  const { sosAlertId = "" } = useParams();
+  return <SosDetailBody key={sosAlertId} />;
+}
+
+function SosDetailBody(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { sosAlertId = "" } = useParams();
@@ -118,12 +124,28 @@ export function SosDetailScreen(): JSX.Element {
   const [accessReason, setAccessReason] = useState("");
   const [stream, setStream] = useState<SosLocationStreamPage | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
+  // The re-read after a stale refusal showed the alert no longer needs this write: nothing is left to submit.
+  const [nothingToSubmit, setNothingToSubmit] = useState(false);
+  // An attempt in this dialog got no answer, so it may have landed: a later refusal can be THAT attempt's doing.
+  const lostReply = useRef(false);
+  // A write's re-read can remove the opener the modal would hand focus back to (Acknowledge goes once somebody has,
+  // Resolve once the alert is closed): the page takes focus then, instead of <body>.
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
 
+  // Only the newest read may write state: a slower earlier one (or a write's post-reload) must not land on top of it.
+  const latestRead = useRef(0);
   const load = useCallback(async () => {
+    const readId = ++latestRead.current;
     setLoading(true);
-    const res = await getSosAlert(client, sosAlertId);
-    if (res.error || !res.alert) {
-      setError(errorMessage(res.error, "That alert could not be read."));
+    // The client REJECTS on a network failure; `null` is that, and the newest read must always end `loading`.
+    const res = await getSosAlert(client, sosAlertId).catch(() => null);
+    if (readId !== latestRead.current) return;
+    if (!res || res.error || !res.alert) {
+      setError(
+        res
+          ? errorMessage(res.error, "That alert could not be read.")
+          : "That alert could not be read: no answer came back. Check your connection, then retry.",
+      );
       setAlert(null);
     } else {
       setAlert(res.alert);
@@ -136,11 +158,50 @@ export function SosDetailScreen(): JSX.Element {
     void load();
   }, [load]);
 
-  const closeCeremony = useCallback(() => {
-    setCeremony("none");
+  // After a write was refused as stale: re-read the alert (the newest read wins, so a slower one cannot land on top)
+  // and show what the server holds. Only the stamp matters to the write; what was typed lives in its own state.
+  const rereadAlert = useCallback(async (): Promise<SafetySosAlertView | null> => {
+    const readId = ++latestRead.current;
+    const res = await getSosAlert(client, sosAlertId).catch(() => null);
+    if (readId !== latestRead.current || !res?.alert) return null;
+    setAlert(res.alert);
+    return res.alert;
+  }, [client, sosAlertId]);
+
+  // Nothing typed or refused in a ceremony outlives it: an audit reason or an account is written fresh each time.
+  const resetDrafts = useCallback(() => {
+    setActionTaken("");
+    setAckOutcome(DEFAULT_ACK_OUTCOME);
+    setNarrative("");
+    setOutcome(DEFAULT_SOS_OUTCOME);
+    setOpenIncident(false);
+    setAccessReason("");
+    setStreamError(null);
     setModalError(null);
+    setNothingToSubmit(false);
+    lostReply.current = false;
   }, []);
 
+  const openCeremony = useCallback(
+    (next: Exclude<Ceremony, "none">) => {
+      resetDrafts();
+      setCeremony(next);
+    },
+    [resetDrafts],
+  );
+
+  const closeCeremony = useCallback(() => {
+    resetDrafts();
+    setCeremony("none");
+  }, [resetDrafts]);
+
+  // A write's success closes only the ceremony it submitted, never whichever one is open by then.
+  const closeIfStill = useCallback((submitted: Ceremony) => {
+    setCeremony((current) => (current === submitted ? "none" : current));
+  }, []);
+
+  // Every write below runs through `.catch(() => null)`: the client REJECTS on a network failure, and `saving` must
+  // reset on every path or the dialog can never be dismissed. `null` is that failure.
   const submitAck = useCallback(async () => {
     if (!alert) return;
     setSaving(true);
@@ -149,16 +210,36 @@ export function SosDetailScreen(): JSX.Element {
       actionTaken,
       // `ackOutcome` is always one of the closed vocabulary the SelectField below offers.
       outcome: ackOutcome as SafetySosAcknowledgeOutcome,
-    });
+    }).catch(() => null);
+    if (!res) lostReply.current = true;
+    const stale = res !== null && isStaleVersion(res.error);
+    const fresh = stale ? await rereadAlert() : null;
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The acknowledgment was not recorded."));
+    if (!res || res.error) {
+      const settled = fresh !== null && sosAlreadySettled("acknowledge", fresh);
+      if (settled) setNothingToSubmit(true);
+      setModalError(
+        !res
+          ? NO_ANSWER
+          : fresh && settled
+            ? sosSettledMessage("acknowledge", "This alert", fresh, lostReply.current)
+            : stale
+              ? staleRefusalMessage({
+                  subject: "The acknowledgment",
+                  staleVersion: alert.version,
+                  freshVersion: fresh?.version ?? null,
+                  lostReply: lostReply.current,
+                  ifNotReread: RELOAD_THEN_RETRY,
+                })
+              : writeErrorMessage(res, "The acknowledgment was not recorded."),
+      );
       return;
     }
-    closeCeremony();
+    closeIfStill("acknowledge");
     setActionTaken("");
+    setAckOutcome(DEFAULT_ACK_OUTCOME);
     await load();
-  }, [ackOutcome, actionTaken, alert, client, closeCeremony, load]);
+  }, [ackOutcome, actionTaken, alert, client, closeIfStill, load, rereadAlert]);
 
   const submitResolve = useCallback(async () => {
     if (!alert) return;
@@ -169,18 +250,39 @@ export function SosDetailScreen(): JSX.Element {
       // `outcome` is always one of the closed vocabulary the SelectField below offers.
       outcome: outcome as SafetySosResolveOutcome,
       openIncidentFromOutcome: openIncident,
-    });
+    }).catch(() => null);
+    if (!res) lostReply.current = true;
+    const stale = res !== null && isStaleVersion(res.error);
+    const fresh = stale ? await rereadAlert() : null;
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The alert was not closed."));
+    if (!res || res.error) {
+      const settled = fresh !== null && sosAlreadySettled("resolve", fresh);
+      if (settled) setNothingToSubmit(true);
+      setModalError(
+        !res
+          ? NO_ANSWER
+          : fresh && settled
+            ? sosSettledMessage("resolve", "This alert", fresh, lostReply.current)
+            : stale
+              ? staleRefusalMessage({
+                  subject: "The closure",
+                  staleVersion: alert.version,
+                  freshVersion: fresh?.version ?? null,
+                  lostReply: lostReply.current,
+                  ifNotReread: RELOAD_THEN_RETRY,
+                })
+              : writeErrorMessage(res, "The alert was not closed."),
+      );
       return;
     }
-    closeCeremony();
+    closeIfStill("resolve");
     setNarrative("");
+    setOutcome(DEFAULT_SOS_OUTCOME);
+    setOpenIncident(false);
     // The write may have produced an incident; the reload is what tells us its id, so the CTA below can
     // link to a real row rather than to one this screen assumed into existence.
     await load();
-  }, [alert, client, closeCeremony, load, narrative, openIncident, outcome]);
+  }, [alert, client, closeIfStill, load, narrative, openIncident, outcome, rereadAlert]);
 
   /** The D6 reveal. See rule 2 in the module header: the banner precedes the request, never the result. */
   const revealCoordinates = useCallback(async () => {
@@ -189,22 +291,27 @@ export function SosDetailScreen(): JSX.Element {
     setStreamError(null);
     const res = await getLocationStream(client, alert.id, {
       ...(accessReason.trim() ? { accessReason: accessReason.trim() } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error || !res.stream) {
+    if (!res || res.error || !res.stream) {
       setStreamError(
-        errorMessage(
-          res.error,
-          "The coordinate stream was refused. Nothing was decrypted and nothing was disclosed.",
-        ),
+        res
+          ? errorMessage(
+              res.error,
+              "The coordinate stream was refused. Nothing was decrypted and nothing was disclosed.",
+            )
+          : "No answer came back, so no coordinates were shown. Check your connection, then retry.",
       );
       return;
     }
     setStream(res.stream);
-    closeCeremony();
-  }, [accessReason, alert, client, closeCeremony]);
+    setAccessReason("");
+    closeIfStill("coordinates");
+  }, [accessReason, alert, client, closeIfStill]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first read only: a refetch (Reload, a write's re-read) keeps the page, and so the opener
+  // the modal returns focus to, mounted.
+  if (loading && !alert) return <LoadingSpinner />;
   if (!alert)
     return (
       <EmptyState
@@ -228,7 +335,13 @@ export function SosDetailScreen(): JSX.Element {
   }));
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      className="wx-kit-column"
+      aria-busy={loading}
+      style={{ ...columnStyle, outline: "none" }}
+    >
       <PageHeader
         title={<span style={pageTitleStyle}>SOS {shortId(alert.id)}</span>}
         actions={
@@ -236,9 +349,9 @@ export function SosDetailScreen(): JSX.Element {
             <Link to="/safety/sos" style={ghostButtonStyle}>
               Back to active SOS
             </Link>
-            <button type="button" onClick={() => void load()} style={ghostButtonStyle}>
+            <Button tone="secondary" size="lg" type="button" onClick={() => void load()}>
               Reload
-            </button>
+            </Button>
           </div>
         }
       />
@@ -273,27 +386,31 @@ export function SosDetailScreen(): JSX.Element {
         <TerminusPanel sosAlertId={alert.id} />
       ) : null}
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Alert"
-        actions={
+        action={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             {canAcknowledge ? (
-              <button
+              <Button
+                tone="primary"
+                size="lg"
                 type="button"
-                onClick={() => setCeremony("acknowledge")}
-                style={primaryButtonStyle}
+                onClick={() => openCeremony("acknowledge")}
               >
                 Acknowledge
-              </button>
+              </Button>
             ) : null}
             {canResolve ? (
-              <button
+              <Button
+                tone="primary"
+                size="lg"
                 type="button"
-                onClick={() => setCeremony("resolve")}
-                style={primaryButtonStyle}
+                onClick={() => openCeremony("resolve")}
               >
                 Resolve
-              </button>
+              </Button>
             ) : null}
           </div>
         }
@@ -331,23 +448,23 @@ export function SosDetailScreen(): JSX.Element {
             failed press.
           </Notice>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Lifecycle ledger">
+      <Panel stack headingLevel={3} title="Lifecycle ledger">
         {ledger.length === 0 ? (
-          <span style={mutedStyle}>No transitions recorded yet.</span>
+          <span className="wx-text-muted">No transitions recorded yet.</span>
         ) : (
           <Timeline entries={ledger} />
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Every row is one <code>safety_sos_alert_state_history</code> entry, in order, with the
           membership that caused it or "system" for a worker. This is the ledger a deposition reads
           end to end; it is append-only in the database, so nothing here can be tidied up after the
           fact.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title="Who answered">
+      <Panel stack headingLevel={3} title="Who answered">
         {alert.acknowledgments.length === 0 ? (
           <Notice tone={isOpen ? "error" : "warning"} live>
             <strong>Nobody has signed on to this alert.</strong>{" "}
@@ -356,30 +473,30 @@ export function SosDetailScreen(): JSX.Element {
               : "This alert reached a terminal state without an acknowledgment — that is worth a look."}
           </Notice>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Responder</th>
-                <th style={th}>At</th>
-                <th style={th}>Outcome</th>
-                <th style={th}>What was done</th>
+                <th>Responder</th>
+                <th>At</th>
+                <th>Outcome</th>
+                <th>What was done</th>
               </tr>
             </thead>
             <tbody>
               {alert.acknowledgments.map((a) => (
-                <tr key={a.id} style={rowLine}>
-                  <td style={tdMono}>{shortId(a.acknowledgedByMembershipId)}</td>
-                  <td style={td}>{dateTime(a.acknowledgedAt)}</td>
-                  <td style={td}>{a.outcome ? humanize(a.outcome) : "—"}</td>
-                  <td style={td}>{a.actionTaken}</td>
+                <tr key={a.id}>
+                  <td className="wx-data-md">{shortId(a.acknowledgedByMembershipId)}</td>
+                  <td>{dateTime(a.acknowledgedAt)}</td>
+                  <td>{a.outcome ? humanize(a.outcome) : "—"}</td>
+                  <td>{a.actionTaken}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Resolution">
+      <Panel stack headingLevel={3} title="Resolution">
         <CipherText
           value={alert.resolutionNarrative}
           available={alert.resolutionNarrativeAvailable}
@@ -391,34 +508,34 @@ export function SosDetailScreen(): JSX.Element {
           </Link>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <span style={mutedStyle}>No incident is linked to this alert.</span>
-            <button
+            <span className="wx-text-muted">No incident is linked to this alert.</span>
+            <Button
+              tone="secondary"
+              size="lg"
               type="button"
               onClick={() => navigate(`/safety/incidents/new?sosAlertId=${alert.id}`)}
-              style={ghostButtonStyle}
             >
               Open an incident from this alert
-            </button>
+            </Button>
           </div>
         )}
-      </Card>
+      </Panel>
 
       {/* ── the D6 coordinate boundary ─────────────────────────────────────────────────────────────── */}
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Location stream"
-        actions={
+        action={
           stream === null ? (
-            <button
+            <Button
+              tone="secondary"
+              size="lg"
               type="button"
-              onClick={() => {
-                setAccessReason("");
-                setStreamError(null);
-                setCeremony("coordinates");
-              }}
-              style={ghostButtonStyle}
+              onClick={() => openCeremony("coordinates")}
             >
               Request coordinate access
-            </button>
+            </Button>
           ) : null
         }
       >
@@ -431,13 +548,8 @@ export function SosDetailScreen(): JSX.Element {
               who raised this alert can see that access on her own consent surface. Ask for it only
               when you need it.
             </Notice>
-            {streamError ? (
-              <Notice tone="error" assertive>
-                {streamError}
-              </Notice>
-            ) : null}
             {alert.coordinatesCaptured ? null : (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 This alert carries no press-time coordinate, so a stream read will most likely
                 return nothing even if you are entitled to it.
               </span>
@@ -450,66 +562,76 @@ export function SosDetailScreen(): JSX.Element {
               {stream.auditWarningBanner}
             </Notice>
             {stream.samples.length === 0 ? (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 No samples were recorded for this alert. Continuous streaming requires BOTH the
                 tenant's opt-in and this clinician's own consent (D6); absent either, the press-time
                 coordinate is all that exists and it is not part of this stream.
               </span>
             ) : (
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>Sampled</th>
-                    <th style={thNum}>Latitude</th>
-                    <th style={thNum}>Longitude</th>
-                    <th style={thNum}>Accuracy (m)</th>
+                    <th>Sampled</th>
+                    <th style={{ textAlign: "right" }}>Latitude</th>
+                    <th style={{ textAlign: "right" }}>Longitude</th>
+                    <th style={{ textAlign: "right" }}>Accuracy (m)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stream.samples.map((s) => (
-                    <tr key={s.id} style={rowLine}>
-                      <td style={td}>{dateTime(s.sampledAt)}</td>
-                      <td style={tdNum}>{s.latitude.toFixed(5)}</td>
-                      <td style={tdNum}>{s.longitude.toFixed(5)}</td>
-                      <td style={tdNum}>{s.accuracyM}</td>
+                    <tr key={s.id}>
+                      <td>{dateTime(s.sampledAt)}</td>
+                      <td className="tabular-nums" style={{ textAlign: "right" }}>
+                        {s.latitude.toFixed(5)}
+                      </td>
+                      <td className="tabular-nums" style={{ textAlign: "right" }}>
+                        {s.longitude.toFixed(5)}
+                      </td>
+                      <td className="tabular-nums" style={{ textAlign: "right" }}>
+                        {s.accuracyM}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
             {stream.has_more ? (
-              <span style={mutedStyle}>
+              <span className="wx-text-muted">
                 More samples exist beyond this page. Paging fetches them through the same audited
                 route — each page is another disclosure, which is why this screen does not page
                 automatically.
               </span>
             ) : null}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Coordinates are rendered as numbers rather than plotted. A map tile request would send
               this clinician's position to a third-party tile server, which is a disclosure nobody
               consented to and one this module has no agreement covering.
             </span>
           </>
         )}
-      </Card>
+      </Panel>
 
       {ceremony === "acknowledge" ? (
-        <Modal
+        <FormModal
           title="Acknowledge this SOS"
+          busy={saving}
+          error={modalError}
           onClose={closeCeremony}
-          footer={
-            <button
+          save={
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void submitAck()}
-              disabled={saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)}
-              style={
-                saving || !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
+              disabled={
+                saving ||
+                loading ||
+                nothingToSubmit ||
+                !meetsMinChars(actionTaken, ACK_ACTION_TAKEN_MIN_CHARS)
               }
             >
               {saving ? "Recording…" : "Record acknowledgment"}
-            </button>
+            </Button>
           }
         >
           <TextAreaField
@@ -526,27 +648,26 @@ export function SosDetailScreen(): JSX.Element {
             options={ACKNOWLEDGMENT_OUTCOMES.map((v) => ({ value: v, label: humanize(v) }))}
             onChange={setAckOutcome}
           />
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </Modal>
+        </FormModal>
       ) : null}
 
       {ceremony === "resolve" ? (
-        <Modal
+        <FormModal
           title="Resolve this SOS"
+          busy={saving}
+          error={modalError}
           onClose={closeCeremony}
-          footer={
-            <button
+          save={
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void submitResolve()}
-              disabled={saving || !meetsMinChars(narrative, SOS_RESOLUTION_MIN_CHARS)}
-              style={
-                saving || !meetsMinChars(narrative, SOS_RESOLUTION_MIN_CHARS)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
+              disabled={
+                saving ||
+                loading ||
+                nothingToSubmit ||
+                !meetsMinChars(narrative, SOS_RESOLUTION_MIN_CHARS)
               }
             >
               {saving
@@ -554,7 +675,7 @@ export function SosDetailScreen(): JSX.Element {
                 : openIncident
                   ? "Close and open an incident"
                   : "Close this alert"}
-            </button>
+            </Button>
           }
         >
           <TextAreaField
@@ -576,42 +697,35 @@ export function SosDetailScreen(): JSX.Element {
             checked={openIncident}
             onChange={setOpenIncident}
           />
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             The checkbox chooses between two <em>different</em> terminal states, not between two
             ways of saying the same thing: unticked closes the alert as <strong>resolved</strong>
             {"; "}
             ticked closes it as <strong>incident opened</strong> and creates the incident the
             workers-comp timeline hangs off. Neither can be undone from here.
           </span>
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </Modal>
+        </FormModal>
       ) : null}
 
       {ceremony === "coordinates" ? (
-        <Modal
+        <FormModal
           title="Read this clinician's coordinates"
+          busy={saving}
+          error={streamError}
           onClose={closeCeremony}
-          footer={
-            <button
+          save={
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               onClick={() => void revealCoordinates()}
               disabled={
                 saving ||
                 (reasonRequired && !meetsMinChars(accessReason, COORD_ACCESS_REASON_MIN_CHARS))
               }
-              style={
-                saving ||
-                (reasonRequired && !meetsMinChars(accessReason, COORD_ACCESS_REASON_MIN_CHARS))
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
             >
               {saving ? "Requesting…" : "I understand — show the coordinates"}
-            </button>
+            </Button>
           }
         >
           {/* SC 3.3.1 error prevention, adapted for a privacy-sensitive READ: the consequence is stated
@@ -632,18 +746,13 @@ export function SosDetailScreen(): JSX.Element {
               hint="Required by §6 once an alert is no longer active. The text is stored with the audit entry and is what she will read."
             />
           ) : (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               This alert is still active, so no written reason is required — you are responding to
               it right now, and the predicate that let you open this page is the gate. The audit
               entry is written either way.
             </span>
           )}
-          {streamError ? (
-            <Notice tone="error" assertive>
-              {streamError}
-            </Notice>
-          ) : null}
-        </Modal>
+        </FormModal>
       ) : null}
     </div>
   );

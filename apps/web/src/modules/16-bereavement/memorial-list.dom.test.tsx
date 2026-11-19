@@ -40,14 +40,17 @@ interface Req {
   body: unknown;
   idempotencyKey: string | null;
 }
-type Reply = { status: number; body?: unknown };
+type Reply = { status: number; body?: unknown } | "reject";
 
 function NewServiceProbe(): JSX.Element {
   const { serviceId } = useParams();
   return <p>Opened service {serviceId}</p>;
 }
 
-function mount(handler: (req: Req) => Reply, permissions = ["bereavement.memorial.rsvp"]) {
+function mount(
+  handler: (req: Req) => Reply | Promise<Reply>,
+  permissions = ["bereavement.memorial.rsvp"],
+) {
   const calls: Req[] = [];
   const stub = async (input: RequestInfo | URL): Promise<Response> => {
     const req = input as Request;
@@ -59,7 +62,8 @@ function mount(handler: (req: Req) => Reply, permissions = ["bereavement.memoria
       idempotencyKey: req.headers.get("idempotency-key"),
     };
     calls.push(recorded);
-    const reply = handler(recorded);
+    const reply = await handler(recorded);
+    if (reply === "reject") throw new TypeError("network down");
     return new Response(JSON.stringify(reply.body ?? {}), {
       status: reply.status,
       headers: { "content-type": "application/json" },
@@ -127,6 +131,26 @@ describe("memorial services list", () => {
     expect(screen.queryByRole("button", { name: "New memorial service" })).toBeNull();
   });
 
+  it("opens the form as a drawer beside the list, not a dialog over it", async () => {
+    mount(() => page([service()]), MANAGE);
+    fireEvent.click(await screen.findByRole("button", { name: "New memorial service" }));
+    expect(await screen.findByRole("complementary", { name: "New memorial service" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The list stays on the page while the form is open.
+    expect(screen.getByRole("table", { name: "Memorial services" })).toBeTruthy();
+  });
+
+  it("closes the drawer from Cancel without sending anything", async () => {
+    const { calls } = mount(() => page([]), MANAGE);
+    fireEvent.click(await screen.findByRole("button", { name: "New memorial service" }));
+    const drawer = await screen.findByRole("complementary", { name: "New memorial service" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New memorial service" })).toBeNull(),
+    );
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
   it("creates a service with an Idempotency-Key and opens it", async () => {
     const created = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const { calls } = mount(
@@ -163,5 +187,70 @@ describe("memorial services list", () => {
       joinUrl: null,
       inviteWindowMonths: 13,
     });
+  });
+});
+
+describe("memorial services list — a create in flight, and a create that fails", () => {
+  const fillNewService = (): void => {
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Winter candle lighting" },
+    });
+    fireEvent.change(screen.getByLabelText("Starts"), { target: { value: "2026-12-10T18:00" } });
+    fireEvent.change(screen.getByLabelText("Ends"), { target: { value: "2026-12-10T19:30" } });
+  };
+
+  it("keeps the drawer open and the list inert until the POST lands, then opens the new service", async () => {
+    const created = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    let finish: (reply: Reply) => void = () => undefined;
+    const { calls } = mount(
+      (req) =>
+        req.method === "POST"
+          ? new Promise<Reply>((resolve) => {
+              finish = resolve;
+            })
+          : page([service()]),
+      MANAGE,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "New memorial service" }));
+    const drawer = await screen.findByRole("complementary", { name: "New memorial service" });
+    fillNewService();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+
+    expect(
+      screen.getByRole("link", { name: "Autumn remembrance evening" }).closest("[inert]"),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "New memorial service" }).closest("[inert]"),
+    ).not.toBeNull();
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    expect(screen.getByRole("complementary", { name: "New memorial service" })).toBeTruthy();
+
+    finish({
+      status: 200,
+      body: { ...service({ serviceId: created, status: "draft" }), joinUrl: null },
+    });
+    expect(await screen.findByText(`Opened service ${created}`)).toBeTruthy();
+  });
+
+  it("a POST that rejects on a network failure ends in the drawer, which is live and dismissable again", async () => {
+    mount((req) => (req.method === "POST" ? "reject" : page([service()])), MANAGE);
+    fireEvent.click(await screen.findByRole("button", { name: "New memorial service" }));
+    const drawer = await screen.findByRole("complementary", { name: "New memorial service" });
+    fillNewService();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("connection dropped");
+    expect(
+      (within(drawer).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(document.querySelector("[inert]")).toBeNull();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "New memorial service" })).toBeNull(),
+    );
   });
 });

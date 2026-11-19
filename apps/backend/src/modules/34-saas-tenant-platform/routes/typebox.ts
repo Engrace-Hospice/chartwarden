@@ -1,5 +1,4 @@
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/typebox.ts — M34 shared TypeBox route schemas
 // (§4.2). Named `typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox
 // import for a Drizzle one (the M22 `documents-typebox.ts` precedent). Every other M34 route file
@@ -8,8 +7,9 @@ import { ValidationError } from "@chartwarden/types";
 // `Value` → M1's VALIDATION_FAILED envelope. Schemas mirror §4.1–4.2 (the consequential route bodies the
 // spec spells out; representative where it abbreviates). Org binding is server-side (`request.context` /
 // `withOrgContext` / `withPlatformContext`), NEVER the body — no schema below carries an `organizationId`.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import { type TSchema, Type } from "@sinclair/typebox";
+
+export { parse };
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -275,16 +275,3 @@ export const AcceptInvitationAckSchema = Type.Object({
   accepted: Type.Literal(true),
   email: Type.String({ format: "email" }),
 });
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

@@ -52,7 +52,7 @@ export function Button({
       {...props}
       type={type}
       disabled={unavailable}
-      aria-busy={loading || undefined}
+      aria-busy={loading || props["aria-busy"]}
       className={`wx-button wx-button-${tone}`}
       style={{
         display: "inline-flex",

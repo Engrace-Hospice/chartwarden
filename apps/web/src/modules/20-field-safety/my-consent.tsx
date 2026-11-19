@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormModal } from "../../shell/form-modal";
 import {
   type SafetyConsentPurpose,
   type SafetyConsentView,
@@ -21,6 +22,7 @@ import {
   getConsents,
   grantConsent,
   revokeConsent,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   CONSENT_PURPOSES,
@@ -30,14 +32,7 @@ import {
   humanize,
   toneOf,
 } from "./safety-status";
-import {
-  Modal,
-  Notice,
-  TextAreaField,
-  TextField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { Notice, TextAreaField, TextField } from "./safety-ui";
 
 const CONSENT_TEXT: Record<string, string> = {
   sos_coordinates:
@@ -83,20 +78,36 @@ export function MyConsentScreen(): JSX.Element {
     void load();
   }, [load]);
 
+  // Nothing typed or refused in a form outlives it (a contact's details and a withdrawal's reason included).
+  const closeGrant = useCallback(() => {
+    setGranting(null);
+    setContactName("");
+    setContactPhone("");
+    setContactRelationship("");
+    setModalError(null);
+  }, []);
+
+  const closeRevoke = useCallback(() => {
+    setRevoking(null);
+    setRevokeReason("");
+    setModalError(null);
+  }, []);
+
   const doGrant = useCallback(async () => {
     if (!granting) return;
-    setSaving(true);
+    const purpose = granting;
+    const text = CONSENT_TEXT[purpose];
     setModalError(null);
-    const text = CONSENT_TEXT[granting];
     if (!text) {
-      setSaving(false);
       setModalError("No consent wording is defined for that purpose, so nothing was sent.");
       return;
     }
+    setSaving(true);
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
     const res = await grantConsent(client, {
-      purpose: granting as NonNullable<SafetyConsentPurpose>,
+      purpose: purpose as NonNullable<SafetyConsentPurpose>,
       acknowledgmentTextSnapshot: text,
-      ...(granting === "emergency_contact_call"
+      ...(purpose === "emergency_contact_call"
         ? {
             contact: {
               name: contactName.trim(),
@@ -105,13 +116,14 @@ export function MyConsentScreen(): JSX.Element {
             },
           }
         : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "Your consent was not recorded."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "Your consent was not recorded."));
       return;
     }
-    setGranting(null);
+    // Close only the form that was submitted, never another purpose's.
+    setGranting((current) => (current === purpose ? null : current));
     setContactName("");
     setContactPhone("");
     setContactRelationship("");
@@ -120,18 +132,19 @@ export function MyConsentScreen(): JSX.Element {
 
   const doRevoke = useCallback(async () => {
     if (!revoking) return;
+    const purpose = revoking;
     setSaving(true);
     setModalError(null);
     const res = await revokeConsent(client, {
-      purpose: revoking as NonNullable<SafetyConsentPurpose>,
+      purpose: purpose as NonNullable<SafetyConsentPurpose>,
       ...(revokeReason.trim() ? { reason: revokeReason.trim() } : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "Your withdrawal was not recorded."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "Your withdrawal was not recorded."));
       return;
     }
-    setRevoking(null);
+    setRevoking((current) => (current === purpose ? null : current));
     setRevokeReason("");
     await load();
   }, [client, load, revokeReason, revoking]);
@@ -158,186 +171,185 @@ export function MyConsentScreen(): JSX.Element {
   }
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="My Safety Consent"
-          actions={
-            <div style={actionGroupStyle}>
-              <Link to="/me/safety" style={linkButtonStyle}>
-                My safety
-              </Link>
-              <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
-                Refresh
-              </Button>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="My Safety Consent"
+            actions={
+              <div style={actionGroupStyle}>
+                <Link to="/me/safety" style={linkButtonStyle}>
+                  My safety
+                </Link>
+                <Button
+                  type="button"
+                  tone="secondary"
+                  onClick={() => void load()}
+                  loading={loading}
+                >
+                  Refresh
+                </Button>
+              </div>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              {asOf ? `Read at ${dateTime(asOf)}.` : "Consent settings scoped to your own account."}
             </div>
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            <Notice tone="info" live>
+              These consents are separate. Refusing all three does not disable SOS; the alert is
+              still raised and responders are told location is unknown.
+            </Notice>
+            {error ? (
+              <Notice tone="warning" live>
+                {error}
+              </Notice>
+            ) : null}
+          </div>
+        }
+        table={
+          <div style={contentStyle}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: "24%" }}>Purpose</th>
+                  <th style={{ width: "13%" }}>Status</th>
+                  <th style={{ width: "15%" }}>Given</th>
+                  <th style={{ width: "15%" }}>Withdrawn</th>
+                  <th style={{ width: "15%" }}>Expires</th>
+                  <th style={{ width: "10%" }}>Contact</th>
+                  <th style={{ width: "8%", textAlign: "right" }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {CONSENT_PURPOSES.map((purpose) => {
+                  const consent = byPurpose.get(purpose);
+                  return (
+                    <ConsentRow
+                      key={purpose}
+                      purpose={purpose}
+                      consent={consent}
+                      onGrant={() => {
+                        setModalError(null);
+                        setContactName("");
+                        setContactPhone("");
+                        setContactRelationship("");
+                        setGranting(purpose);
+                      }}
+                      onRevoke={() => {
+                        setRevokeReason("");
+                        setModalError(null);
+                        setRevoking(purpose);
+                      }}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+
+            <section style={sectionStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Consent wording</span>
+                <strong>Current text shown before a grant</strong>
+              </div>
+              <div style={wordingGridStyle}>
+                {CONSENT_PURPOSES.map((purpose) => (
+                  <details key={purpose} style={detailsStyle}>
+                    <summary style={summaryStyle}>{consentPurposeLabel(purpose)}</summary>
+                    <p style={paragraphStyle}>{CONSENT_TEXT[purpose]}</p>
+                  </details>
+                ))}
+              </div>
+            </section>
+
+            <div role="note" style={noteStyle}>
+              <StatusPill label="Audit gap" tone="neutral" />
+              <span>
+                Coordinate reads are logged, but M20 does not yet expose a self-service read route
+                for that audit list. This page names the gap instead of showing an empty list.
+              </span>
+            </div>
+          </div>
+        }
+        fullPageScroll
+      />
+      {granting ? (
+        <FormModal
+          key={`grant:${granting}`}
+          title={consentPurposeLabel(granting)}
+          busy={saving}
+          error={modalError}
+          onClose={closeGrant}
+          save={
+            <Button
+              tone="primary"
+              size="lg"
+              type="button"
+              onClick={() => void doGrant()}
+              disabled={
+                saving ||
+                (granting === "emergency_contact_call" &&
+                  (contactName.trim().length === 0 || contactPhone.trim().length === 0))
+              }
+            >
+              {saving ? "Recording..." : "I consent"}
+            </Button>
           }
         >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            {asOf ? `Read at ${dateTime(asOf)}.` : "Consent settings scoped to your own account."}
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          <Notice tone="info" live>
-            These consents are separate. Refusing all three does not disable SOS; the alert is still
-            raised and responders are told location is unknown.
-          </Notice>
-          {error ? (
-            <Notice tone="warning" live>
-              {error}
-            </Notice>
-          ) : null}
-        </div>
-      }
-      table={
-        <div style={contentStyle}>
-          <table style={tableStyle}>
-            <thead>
-              <tr style={headerRowStyle}>
-                <th style={{ ...thStyle, width: "24%" }}>Purpose</th>
-                <th style={{ ...thStyle, width: "13%" }}>Status</th>
-                <th style={{ ...thStyle, width: "15%" }}>Given</th>
-                <th style={{ ...thStyle, width: "15%" }}>Withdrawn</th>
-                <th style={{ ...thStyle, width: "15%" }}>Expires</th>
-                <th style={{ ...thStyle, width: "10%" }}>Contact</th>
-                <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {CONSENT_PURPOSES.map((purpose) => {
-                const consent = byPurpose.get(purpose);
-                return (
-                  <ConsentRow
-                    key={purpose}
-                    purpose={purpose}
-                    consent={consent}
-                    onGrant={() => {
-                      setModalError(null);
-                      setGranting(purpose);
-                    }}
-                    onRevoke={() => {
-                      setRevokeReason("");
-                      setModalError(null);
-                      setRevoking(purpose);
-                    }}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
-
-          <section style={sectionStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Consent wording</span>
-              <strong>Current text shown before a grant</strong>
-            </div>
-            <div style={wordingGridStyle}>
-              {CONSENT_PURPOSES.map((purpose) => (
-                <details key={purpose} style={detailsStyle}>
-                  <summary style={summaryStyle}>{consentPurposeLabel(purpose)}</summary>
-                  <p style={paragraphStyle}>{CONSENT_TEXT[purpose]}</p>
-                </details>
-              ))}
-            </div>
-          </section>
-
-          <div role="note" style={noteStyle}>
-            <StatusPill label="Audit gap" tone="neutral" />
-            <span>
-              Coordinate reads are logged, but M20 does not yet expose a self-service read route for
-              that audit list. This page names the gap instead of showing an empty list.
-            </span>
-          </div>
-
-          {granting ? (
-            <Modal
-              title={consentPurposeLabel(granting)}
-              onClose={() => setGranting(null)}
-              footer={
-                <button
-                  type="button"
-                  onClick={() => void doGrant()}
-                  disabled={
-                    saving ||
-                    (granting === "emergency_contact_call" &&
-                      (contactName.trim().length === 0 || contactPhone.trim().length === 0))
-                  }
-                  style={
-                    saving ||
-                    (granting === "emergency_contact_call" &&
-                      (contactName.trim().length === 0 || contactPhone.trim().length === 0))
-                      ? disabledButtonStyle
-                      : primaryButtonStyle
-                  }
-                >
-                  {saving ? "Recording..." : "I consent"}
-                </button>
-              }
-            >
-              <p style={paragraphStyle}>{CONSENT_TEXT[granting]}</p>
-              {granting === "emergency_contact_call" ? (
-                <>
-                  <TextField label="Their name" value={contactName} onChange={setContactName} />
-                  <TextField
-                    label="Their phone number"
-                    value={contactPhone}
-                    onChange={setContactPhone}
-                    type="tel"
-                    hint="Enter a full number with area code (no extension). Stored encrypted. It is not shown back on any screen."
-                  />
-                  <TextField
-                    label="Relationship to you (optional)"
-                    value={contactRelationship}
-                    onChange={setContactRelationship}
-                  />
-                </>
-              ) : null}
-              <Notice tone="info">
-                The words above are stored with your consent exactly as written.
-              </Notice>
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
-
-          {revoking ? (
-            <Modal
-              title={`Withdraw: ${consentPurposeLabel(revoking)}`}
-              onClose={() => setRevoking(null)}
-              footer={
-                <button
-                  type="button"
-                  onClick={() => void doRevoke()}
-                  disabled={saving}
-                  style={saving ? disabledButtonStyle : primaryButtonStyle}
-                >
-                  {saving ? "Recording..." : "Withdraw my consent"}
-                </button>
-              }
-            >
-              <Notice tone="info">{withdrawalCopy(revoking)}</Notice>
-              <TextAreaField
-                label="Reason (optional)"
-                value={revokeReason}
-                onChange={setRevokeReason}
-                rows={3}
+          <p style={paragraphStyle}>{CONSENT_TEXT[granting]}</p>
+          {granting === "emergency_contact_call" ? (
+            <>
+              <TextField label="Their name" value={contactName} onChange={setContactName} />
+              <TextField
+                label="Their phone number"
+                value={contactPhone}
+                onChange={setContactPhone}
+                type="tel"
+                hint="Enter a full number with area code (no extension). Stored encrypted. It is not shown back on any screen."
               />
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
+              <TextField
+                label="Relationship to you (optional)"
+                value={contactRelationship}
+                onChange={setContactRelationship}
+              />
+            </>
           ) : null}
-        </div>
-      }
-      fullPageScroll
-    />
+          <Notice tone="info">
+            The words above are stored with your consent exactly as written.
+          </Notice>
+        </FormModal>
+      ) : revoking ? (
+        <FormModal
+          key={`revoke:${revoking}`}
+          title={`Withdraw: ${consentPurposeLabel(revoking)}`}
+          busy={saving}
+          error={modalError}
+          onClose={closeRevoke}
+          save={
+            <Button
+              tone="primary"
+              size="lg"
+              type="button"
+              onClick={() => void doRevoke()}
+              disabled={saving}
+            >
+              {saving ? "Recording..." : "Withdraw my consent"}
+            </Button>
+          }
+        >
+          <Notice tone="info">{withdrawalCopy(revoking)}</Notice>
+          <TextAreaField
+            label="Reason (optional)"
+            value={revokeReason}
+            onChange={setRevokeReason}
+            rows={3}
+          />
+        </FormModal>
+      ) : null}
+    </>
   );
 }
 
@@ -354,9 +366,9 @@ function ConsentRow({
 }): JSX.Element {
   const granted = consent?.status === "granted";
   return (
-    <tr style={rowStyle}>
-      <td style={tdStyle}>{consentPurposeLabel(purpose)}</td>
-      <td style={tdStyle}>
+    <tr>
+      <td>{consentPurposeLabel(purpose)}</td>
+      <td>
         {consent ? (
           <StatusPill
             label={humanize(consent.status)}
@@ -366,13 +378,13 @@ function ConsentRow({
           <StatusPill label="Not asked" tone="neutral" />
         )}
       </td>
-      <td style={tdStyle}>{consent ? dateTime(consent.grantedAt) : "-"}</td>
-      <td style={tdStyle}>{consent ? dateTime(consent.revokedAt) : "-"}</td>
-      <td style={tdStyle}>{consent?.expiresAt ? dateTime(consent.expiresAt) : "No expiry"}</td>
-      <td style={tdStyle}>
+      <td>{consent ? dateTime(consent.grantedAt) : "-"}</td>
+      <td>{consent ? dateTime(consent.revokedAt) : "-"}</td>
+      <td>{consent?.expiresAt ? dateTime(consent.expiresAt) : "No expiry"}</td>
+      <td>
         {purpose === "emergency_contact_call" ? (consent?.contactOnFile ? "On file" : "None") : "-"}
       </td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td style={{ textAlign: "right" }}>
         <Button
           size="sm"
           tone={granted ? "tertiary" : "primary"}
@@ -440,30 +452,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
 };
 const wordingGridStyle = {
   display: "grid",

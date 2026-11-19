@@ -12,9 +12,11 @@
 // would have had to call a route that does not exist, or misuse the early-close path — which would record
 // a curtailed obligation as a fulfilled one on the survey record.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -47,7 +49,6 @@ import {
   toneOf,
 } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Field,
@@ -59,9 +60,7 @@ import {
   TextField,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
 } from "./bereavement-ui";
 
 /** M16's oversight roles (`BEREAVEMENT_OVERSIGHT_ROLES`): the readers the closure route sends the discharge summary's id to. */
@@ -85,7 +84,7 @@ function DischargeSummaryLink({ documentId }: { documentId: string | null }): JS
   if (documentId === null) {
     const oversight = session?.roles?.some((role) => OVERSIGHT_ROLES.includes(role)) ?? false;
     return oversight ? (
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         The internal discharge summary has not been rendered yet. Module 22 renders it after the
         plan closes.
       </span>
@@ -93,7 +92,7 @@ function DischargeSummaryLink({ documentId }: { documentId: string | null }): JS
   }
   if (!session?.permissions?.includes(DOCUMENT_HISTORY_PERMISSION)) {
     return (
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         The internal discharge summary has been rendered, but your role cannot open the document
         history it is read from.
       </span>
@@ -179,7 +178,7 @@ export function BereavementCloseoutView(): JSX.Element {
         </Notice>
       )}
 
-      <Card title="Program">
+      <Panel stack headingLevel={3} title="Program">
         <SummaryGrid>
           <Field label="Death date" value={shortDate(plan.deathDate)} />
           <Field label="Window ends" value={shortDate(plan.windowEndsAt)} />
@@ -189,12 +188,14 @@ export function BereavementCloseoutView(): JSX.Element {
           <Field label="Active survivors" value={plan.stats.contactsActiveCount} />
           <Field label="Opted out" value={plan.stats.contactsOptedOutCount} />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
       {closure ? (
-        <Card
+        <Panel
+          stack
+          headingLevel={3}
           title="Closure record"
-          actions={
+          action={
             <StatusPill
               label={humanize(closure.reason)}
               tone={toneOf(CLOSURE_REASON_TONE, closure.reason)}
@@ -221,46 +222,46 @@ export function BereavementCloseoutView(): JSX.Element {
           </SummaryGrid>
           <DischargeSummaryLink documentId={closure.dischargeSummaryDocumentId} />
           {closure.reason === "thirteen_month_completion" ? (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               The 13-month obligation was met in full. Every other closure reason ended the program
               early or by cascade, which is why the reason — not merely the closed status — is what
               a surveyor reads.
             </span>
           ) : null}
-        </Card>
+        </Panel>
       ) : (
-        <Card title="Closure record">
-          <span style={mutedStyle}>
+        <Panel stack headingLevel={3} title="Closure record">
+          <span className="wx-text-muted">
             No closure record exists yet. It is written when the plan closes — by the month-13 job
             for a completed program, or by the cosigned early-close path.
           </span>
-        </Card>
+        </Panel>
       )}
 
-      <Card title="Final contact">
+      <Panel stack headingLevel={3} title="Final contact">
         {activeContacts.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No survivors on this plan are still active, so there is no final contact to compose.
           </span>
         ) : (
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             {activeContacts.map((c) => (
-              <button
+              <Button
+                tone="secondary"
                 key={c.contactId}
                 type="button"
-                style={ghostButtonStyle}
                 onClick={() => setComposing(c.contactId)}
               >
                 Compose for {c.displayName}
-              </button>
+              </Button>
             ))}
           </div>
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The closeout letter is rendered by Module 22 from the document artifact this contact log
           references. Attach the rendered document id when it exists.
         </span>
-      </Card>
+      </Panel>
 
       {composing ? (
         <FinalContactModal
@@ -319,9 +320,9 @@ function FinalContactModal({
       title={`Final contact — ${name}`}
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy} onClick={submit}>
           {busy ? "Recording…" : "Record final contact"}
-        </button>
+        </Button>
       }
     >
       <SelectField

@@ -1,6 +1,5 @@
-import "@chartwarden/shared/route-kit";
 import { VOID_REASON_MIN_LENGTH } from "@chartwarden/emar";
-import { ValidationError } from "@chartwarden/types";
+import { parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/13-emar/routes/emar-typebox.ts — M13-T08 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` →
@@ -11,7 +10,6 @@ import { ValidationError } from "@chartwarden/types";
 // key on the ORDER's class from M12's `getAdministrationContext`, and a body value that disagrees with it is
 // refused (422 MED_CLASS_MISMATCH).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   AdministrationPolicyView as ServiceAdministrationPolicyView,
   AdministrationView as ServiceAdministrationView,
@@ -23,6 +21,8 @@ import type {
   ScheduledDoseView as ServiceScheduledDoseView,
   WorksheetView as ServiceWorksheetView,
 } from "./service";
+
+export { parse };
 
 /** Literal-union helper — a response enum field mirrors the §3.2 pgEnum union (not a bare `Type.String()`,
  * which the M30 read-DTO lesson flagged as a "silent lie" that lets the wire vocab drift from the view). */
@@ -462,16 +462,3 @@ type _OfflineSyncResponse = Conforms<
   Static<typeof OfflineSyncResponseSchema>,
   Awaited<ReturnType<ServiceEmarRouteService["offlineSync"]>>
 >;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

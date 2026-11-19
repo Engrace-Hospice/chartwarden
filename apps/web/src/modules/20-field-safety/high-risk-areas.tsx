@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SafetyHighRiskAreaView,
   type SafetyHighRiskCategory,
@@ -23,6 +24,7 @@ import {
   errorMessage,
   listHighRiskAreas,
   patchHighRiskArea,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   DEFAULT_HIGH_RISK_AREA_POLICY,
@@ -36,15 +38,7 @@ import {
   toInstant,
   toneOf,
 } from "./safety-status";
-import {
-  Modal,
-  Notice,
-  SelectField,
-  TextAreaField,
-  TextField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { Notice, SelectField, TextAreaField, TextField } from "./safety-ui";
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -121,7 +115,21 @@ export function HighRiskAreasScreen(): JSX.Element {
     void load();
   }, [load]);
 
+  // Nothing typed or refused in the form outlives it.
+  const closeEditor = useCallback(() => {
+    setEditing(null);
+    setRiskCategory(DEFAULT_HIGH_RISK_CATEGORY);
+    setAdvisoryMessage("");
+    setRingText("");
+    setAreaPolicy(DEFAULT_HIGH_RISK_AREA_POLICY);
+    setEffectiveFrom("");
+    setEffectiveTo("");
+    setModalError(null);
+  }, []);
+
   const openNew = useCallback(() => {
+    // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
+    if (editing === "new") return;
     setRiskCategory(DEFAULT_HIGH_RISK_CATEGORY);
     setAdvisoryMessage("");
     setRingText("");
@@ -130,18 +138,23 @@ export function HighRiskAreasScreen(): JSX.Element {
     setEffectiveTo("");
     setModalError(null);
     setEditing("new");
-  }, []);
+  }, [editing]);
 
-  const openEdit = useCallback((area: SafetyHighRiskAreaView) => {
-    setRiskCategory(area.riskCategory);
-    setAdvisoryMessage(area.advisoryMessage);
-    setRingText(ringsToText(area.polygon));
-    setAreaPolicy(area.policyForVisitsToArea);
-    setEffectiveFrom("");
-    setEffectiveTo("");
-    setModalError(null);
-    setEditing(area);
-  }, []);
+  const openEdit = useCallback(
+    (area: SafetyHighRiskAreaView) => {
+      // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
+      if (editing !== null && editing !== "new" && editing.id === area.id) return;
+      setRiskCategory(area.riskCategory);
+      setAdvisoryMessage(area.advisoryMessage);
+      setRingText(ringsToText(area.polygon));
+      setAreaPolicy(area.policyForVisitsToArea);
+      setEffectiveFrom("");
+      setEffectiveTo("");
+      setModalError(null);
+      setEditing(area);
+    },
+    [editing],
+  );
 
   const save = useCallback(async () => {
     const parsed = parseRings(ringText);
@@ -149,31 +162,34 @@ export function HighRiskAreasScreen(): JSX.Element {
       setModalError(parsed.error);
       return;
     }
+    const submitted = editing;
     setSaving(true);
     setModalError(null);
-    const res =
-      editing === "new"
-        ? await createHighRiskArea(client, {
-            riskCategory: riskCategory as SafetyHighRiskCategory,
-            advisoryMessage: advisoryMessage.trim(),
-            polygon: parsed.rings,
-            policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
-            ...(effectiveFrom ? { effectiveFrom: toInstant(effectiveFrom) } : {}),
-            ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
-          })
-        : await patchHighRiskArea(client, (editing as SafetyHighRiskAreaView).id, {
-            riskCategory: riskCategory as SafetyHighRiskCategory,
-            advisoryMessage: advisoryMessage.trim(),
-            polygon: parsed.rings,
-            policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
-            ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
-          });
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
+    const res = await (editing === "new"
+      ? createHighRiskArea(client, {
+          riskCategory: riskCategory as SafetyHighRiskCategory,
+          advisoryMessage: advisoryMessage.trim(),
+          polygon: parsed.rings,
+          policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
+          ...(effectiveFrom ? { effectiveFrom: toInstant(effectiveFrom) } : {}),
+          ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
+        })
+      : patchHighRiskArea(client, (editing as SafetyHighRiskAreaView).id, {
+          riskCategory: riskCategory as SafetyHighRiskCategory,
+          advisoryMessage: advisoryMessage.trim(),
+          polygon: parsed.rings,
+          policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
+          ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
+        })
+    ).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The area was not saved."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The area was not saved."));
       return;
     }
-    setEditing(null);
+    // Close only the form that was submitted, never another area's.
+    setEditing((current) => (current === submitted ? null : current));
     await load();
   }, [
     advisoryMessage,
@@ -296,16 +312,16 @@ export function HighRiskAreasScreen(): JSX.Element {
             </div>
           ) : (
             <>
-              <table style={tableStyle}>
+              <table>
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "15%" }}>Category</th>
-                    <th style={{ ...thStyle, width: "28%" }}>Clinician advisory</th>
-                    <th style={{ ...thStyle, width: "17%" }}>Visit policy</th>
-                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Rings</th>
-                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Points</th>
-                    <th style={{ ...thStyle, width: "16%" }}>In force</th>
-                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Action</th>
+                  <tr>
+                    <th style={{ width: "15%" }}>Category</th>
+                    <th style={{ width: "28%" }}>Clinician advisory</th>
+                    <th style={{ width: "17%" }}>Visit policy</th>
+                    <th style={{ width: "8%", textAlign: "right" }}>Rings</th>
+                    <th style={{ width: "8%", textAlign: "right" }}>Points</th>
+                    <th style={{ width: "16%" }}>In force</th>
+                    <th style={{ width: "8%", textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -335,87 +351,88 @@ export function HighRiskAreasScreen(): JSX.Element {
               coordinates and validated again by the server.
             </span>
           </div>
-          {editing !== null ? (
-            <Modal
-              title={editing === "new" ? "Draw a high-risk area" : "Edit this area"}
-              onClose={() => setEditing(null)}
-              footer={
-                <button
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={
-                    saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
-                  }
-                  style={
-                    saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
-                      ? disabledButtonStyle
-                      : primaryButtonStyle
-                  }
-                >
-                  {saving ? "Saving..." : editing === "new" ? "Create area" : "Save changes"}
-                </button>
-              }
-            >
-              <SelectField
-                label="Category"
-                value={riskCategory}
-                options={HIGH_RISK_CATEGORIES.map((value) => ({ value, label: humanize(value) }))}
-                onChange={setRiskCategory}
-              />
-              <TextField
-                label="Advisory message (<=200 characters)"
-                value={advisoryMessage}
-                onChange={setAdvisoryMessage}
-                hint="This exact sentence is what a clinician reads on the pre-visit card."
-              />
-              <TextAreaField
-                label="Polygon rings"
-                value={ringText}
-                onChange={setRingText}
-                rows={6}
-                hint="One ring per line; each ring is space-separated lon,lat pairs, at least four points, and the last point must repeat the first."
-              />
-              <SelectField
-                label="Visit policy for this area"
-                value={areaPolicy}
-                options={HIGH_RISK_AREA_POLICIES.map((value) => ({
-                  value,
-                  label: humanize(value),
-                }))}
-                onChange={setAreaPolicy}
-              />
-              {areaPolicy === "requires_buddy_visit" ? (
-                <Notice tone="warning">
-                  This raises a flag for scheduling. It does not pair anybody and it does not stop a
-                  solo visit.
-                </Notice>
-              ) : null}
-              {editing === "new" ? (
-                <TextField
-                  label="Effective from"
-                  value={effectiveFrom}
-                  onChange={setEffectiveFrom}
-                  type="datetime-local"
-                  hint="Leave blank for now."
-                />
-              ) : null}
-              <TextField
-                label="Effective to"
-                value={effectiveTo}
-                onChange={setEffectiveTo}
-                type="datetime-local"
-                hint="Retiring an area is an end date, never a delete."
-              />
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
         </div>
       }
       fullPageScroll
+      detail={
+        editing !== null ? (
+          <FormDrawer
+            key={editing === "new" ? "new" : editing.id}
+            title={editing === "new" ? "Draw a high-risk area" : "Edit this area"}
+            busy={saving}
+            onClose={closeEditor}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void save()}
+                disabled={
+                  saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
+                }
+              >
+                {saving ? "Saving..." : editing === "new" ? "Create area" : "Save changes"}
+              </Button>
+            }
+          >
+            <SelectField
+              label="Category"
+              value={riskCategory}
+              options={HIGH_RISK_CATEGORIES.map((value) => ({ value, label: humanize(value) }))}
+              onChange={setRiskCategory}
+            />
+            <TextField
+              label="Advisory message (<=200 characters)"
+              value={advisoryMessage}
+              onChange={setAdvisoryMessage}
+              hint="This exact sentence is what a clinician reads on the pre-visit card."
+            />
+            <TextAreaField
+              label="Polygon rings"
+              value={ringText}
+              onChange={setRingText}
+              rows={6}
+              hint="One ring per line; each ring is space-separated lon,lat pairs, at least four points, and the last point must repeat the first."
+            />
+            <SelectField
+              label="Visit policy for this area"
+              value={areaPolicy}
+              options={HIGH_RISK_AREA_POLICIES.map((value) => ({
+                value,
+                label: humanize(value),
+              }))}
+              onChange={setAreaPolicy}
+            />
+            {areaPolicy === "requires_buddy_visit" ? (
+              <Notice tone="warning">
+                This raises a flag for scheduling. It does not pair anybody and it does not stop a
+                solo visit.
+              </Notice>
+            ) : null}
+            {editing === "new" ? (
+              <TextField
+                label="Effective from"
+                value={effectiveFrom}
+                onChange={setEffectiveFrom}
+                type="datetime-local"
+                hint="Leave blank for now."
+              />
+            ) : null}
+            <TextField
+              label="Effective to"
+              value={effectiveTo}
+              onChange={setEffectiveTo}
+              type="datetime-local"
+              hint="Retiring an area is an end date, never a delete."
+            />
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : undefined
+      }
     />
   );
 }
@@ -431,8 +448,8 @@ function HighRiskAreaRow({
 }): JSX.Element {
   const retired = row.effectiveTo !== null && Date.parse(row.effectiveTo) <= Date.now();
   return (
-    <tr style={rowStyle}>
-      <td style={tdStyle}>
+    <tr>
+      <td>
         <div style={primaryCellStyle}>
           <StatusPill
             label={humanize(row.riskCategory)}
@@ -443,11 +460,15 @@ function HighRiskAreaRow({
           </code>
         </div>
       </td>
-      <td style={tdStyle}>{row.advisoryMessage}</td>
-      <td style={tdStyle}>{humanize(row.policyForVisitsToArea)}</td>
-      <td style={tdNumStyle}>{row.polygon.length}</td>
-      <td style={tdNumStyle}>{row.polygon.reduce((total, ring) => total + ring.length, 0)}</td>
-      <td style={tdStyle}>
+      <td>{row.advisoryMessage}</td>
+      <td>{humanize(row.policyForVisitsToArea)}</td>
+      <td className="tabular-nums" style={{ textAlign: "right" }}>
+        {row.polygon.length}
+      </td>
+      <td className="tabular-nums" style={{ textAlign: "right" }}>
+        {row.polygon.reduce((total, ring) => total + ring.length, 0)}
+      </td>
+      <td>
         <div style={primaryCellStyle}>
           <span>{dateTime(row.effectiveFrom)}</span>
           <span style={secondaryTextStyle}>
@@ -456,7 +477,7 @@ function HighRiskAreaRow({
           {retired ? <StatusPill label="Retired" tone="neutral" /> : null}
         </div>
       </td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td style={{ textAlign: "right" }}>
         <div style={actionCellStyle}>
           <Button size="sm" tone="secondary" onClick={() => onEdit(row)}>
             Edit
@@ -532,35 +553,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
-};
-const tdNumStyle = {
-  ...tdStyle,
-  textAlign: "right" as const,
-  fontVariantNumeric: "tabular-nums",
 };
 const primaryCellStyle = {
   display: "flex",

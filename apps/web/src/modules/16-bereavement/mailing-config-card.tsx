@@ -6,7 +6,7 @@
 // discards the unsaved edits, so it is never done for the reader. While the write is in flight every control is inert and the
 // button shows it; an unsaved edit is flagged, can be discarded, and the browser warns before the tab is closed over it. The card reports
 // "unsaved" or "saving" to the settings page, which holds the one in-app navigation blocker (a router supports one blocker at a time).
-import { Button, StatusPill, t, useAttemptKey } from "@chartwarden/ui";
+import { Button, Panel, StatusPill, t, useAttemptKey } from "@chartwarden/ui";
 import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -18,15 +18,7 @@ import {
   putMailingConfig,
 } from "./bereavement-api";
 import { humanize } from "./bereavement-status";
-import {
-  Card,
-  CheckboxField,
-  ErrorText,
-  Notice,
-  TextField,
-  mutedStyle,
-  visuallyHidden,
-} from "./bereavement-ui";
+import { CheckboxField, ErrorText, Notice, TextField, visuallyHidden } from "./bereavement-ui";
 import { buildBody, draftOf, sameDraft } from "./mailing-config-draft";
 import { MailingContentEditor } from "./mailing-content-editor";
 import {
@@ -127,16 +119,18 @@ export function MailingConfigCard({
 
   return (
     <section aria-label={`${label} settings`}>
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title={label}
-        actions={
+        action={
           <StatusPill
             label={!config.configured ? "Not configured" : config.enabled ? "Enabled" : "Disabled"}
             tone={config.configured && config.enabled ? "success" : "neutral"}
           />
         }
       >
-        <span style={mutedStyle}>{MAILING_WHEN_HINT[config.mailingKey]}</span>
+        <span className="wx-text-muted">{MAILING_WHEN_HINT[config.mailingKey]}</span>
         <fieldset
           disabled={busy || readOnly}
           aria-busy={busy}
@@ -162,7 +156,7 @@ export function MailingConfigCard({
             value={draft.leadDays}
             onChange={(leadDays) => setDraft({ ...draft, leadDays })}
           />
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             The draft run opens this many days before the mailing's date ({LEAD_DAYS_MIN} to{" "}
             {LEAD_DAYS_MAX}).
           </span>
@@ -254,7 +248,7 @@ export function MailingConfigCard({
             ) : null}
           </div>
         )}
-      </Card>
+      </Panel>
     </section>
   );
 }

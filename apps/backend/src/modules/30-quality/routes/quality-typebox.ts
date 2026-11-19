@@ -14,10 +14,8 @@
 // they differ — incident severity is `minor|moderate|severe|critical` (not the spec's
 // `mild|…|sentinel`) and the measure period kind is `rolling_12m_to_quarter|…|cap_year_overlay` (not the
 // spec's `rolling_12mo|…|cms_reference_period`). Architecture/schema wins on conflict.
-import { Uuid, pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { Uuid, pageQuery, parse } from "@chartwarden/shared/route-kit";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { MAX_PAGE_SIZE } from "./pagination";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
@@ -403,21 +401,6 @@ export const UpdateInfectionOutbreakBodySchema = Type.Object({
   status: lit(OUTBREAK_STATUS),
   resolutionNote: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
 });
-
-// ── parse helper ────────────────────────────────────────────────────────────────────────────────────────
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope (M33 `parse`). */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}
 
 // ── §4.1 RESPONSE DTOs ─────────────────────────────────────────────────────────────────────────
 //
@@ -934,6 +917,8 @@ import type {
   SraCycleDetailView,
   SraCycleView,
 } from "./read-service";
+
+export { parse };
 
 /** Asserts `T` (what the schema publishes) is assignable to `V` (what the service returns). */
 type Conforms<T extends V, V> = T;

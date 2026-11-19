@@ -27,6 +27,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   linkLifetimeMs,
   safeMintedUrl,
@@ -54,7 +55,6 @@ import {
 } from "./bereavement-api";
 import { dateTime, humanize, shortDate, toneOf } from "./bereavement-status";
 import {
-  Card,
   CountGrid,
   ErrorText,
   Field,
@@ -62,11 +62,8 @@ import {
   Notice,
   SummaryGrid,
   columnStyle,
-  dangerButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   useActionStatus,
 } from "./bereavement-ui";
 import { useLoaded } from "./mailing-load";
@@ -457,7 +454,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
         </Notice>
       ) : null}
 
-      <Card title="Summary">
+      <Panel stack headingLevel={3} title="Summary">
         <SummaryGrid>
           <Field label="Mailing" value={mailingLabel(run.mailingKey)} />
           <Field label="For" value={shortDate(run.scheduledFor)} />
@@ -475,9 +472,9 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             { label: "Left out after printing", value: counts.excludedAfterRender },
           ]}
         />
-      </Card>
+      </Panel>
 
-      <Card title="Wording">
+      <Panel stack headingLevel={3} title="Wording">
         {hasWording ? (
           <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
             <strong>{wording.title || "(no title)"}</strong>
@@ -491,18 +488,20 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             {wording.signoff ? <span>{wording.signoff}</span> : null}
           </div>
         ) : (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No wording has been written for this run. Nothing is filled in for you: write a title
             and at least one paragraph before generating.
           </span>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         {noActions ? (
-          <span style={mutedStyle}>Your role can view this run but not change or send it.</span>
+          <span className="wx-text-muted">
+            Your role can view this run but not change or send it.
+          </span>
         ) : !Object.values(offers).some(Boolean) ? (
-          <span style={mutedStyle}>No actions are available for this run.</span>
+          <span className="wx-text-muted">No actions are available for this run.</span>
         ) : (
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap", alignItems: "center" }}>
             {offers.edit ? (
@@ -561,7 +560,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           </div>
         )}
         {offers.generate && !wordingComplete ? (
-          <span id={reasonId} style={mutedStyle}>
+          <span id={reasonId} className="wx-text-muted">
             Generate is unavailable until the wording has a title and at least one paragraph.
           </span>
         ) : null}
@@ -580,14 +579,14 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             >
               Open batch
             </a>{" "}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               (opens in a new tab and is removed from this page once used; it expires at{" "}
               {dateTime(batchLink.expiresAt)})
             </span>
           </span>
         ) : null}
         {actionError && !confirmOpen ? <ErrorText>{actionError}</ErrorText> : null}
-      </Card>
+      </Panel>
 
       <MailingRunItems runId={run.runId} refreshKey={`${run.status}:${run.version}`} />
 
@@ -617,14 +616,14 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           describedBy={regenerateDescId}
           cancelLabel="Keep this batch"
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
-              style={primaryButtonStyle}
               disabled={busy !== null || !canRegenerate(run.status)}
               onClick={() => void generate()}
             >
               {busy === "generate" ? "Regenerating…" : "Regenerate batch"}
-            </button>
+            </Button>
           }
         >
           <span id={regenerateDescId}>
@@ -643,17 +642,17 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           role="alertdialog"
           describedBy={confirmDescId}
           footer={
-            <button
+            <Button
+              tone="primary"
               type="button"
-              style={primaryButtonStyle}
               disabled={busy !== null || !canConfirmMailed(run.status)}
               onClick={() => void confirmMailed()}
             >
               {busy === "confirm" ? "Confirming…" : "Confirm mailed"}
-            </button>
+            </Button>
           }
         >
-          <span id={confirmDescId} style={mutedStyle}>
+          <span id={confirmDescId} className="wx-text-muted">
             Confirming records that the printed letters went out. Each of the {counts.included}{" "}
             {counts.included === 1 ? "family" : "families"} in the batch gets this mailing logged on
             their contact as a program activity; it does not count as a touchpoint.
@@ -676,17 +675,17 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           describedBy={cancelDescId}
           cancelLabel="Keep run"
           footer={
-            <button
+            <Button
+              tone="danger"
               type="button"
-              style={dangerButtonStyle}
               disabled={busy !== null}
               onClick={() => void cancel()}
             >
               {busy === "cancel" ? "Cancelling…" : "Yes, cancel this run"}
-            </button>
+            </Button>
           }
         >
-          <span id={cancelDescId} style={mutedStyle}>
+          <span id={cancelDescId} className="wx-text-muted">
             A cancelled run is not generated, printed or logged, and it cannot be reopened. Nothing
             is recorded on any family's contact.
           </span>

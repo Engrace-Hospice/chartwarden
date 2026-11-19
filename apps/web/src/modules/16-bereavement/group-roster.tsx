@@ -2,23 +2,12 @@
 // session holding `bereavement.group.run` (oversight, the staff facilitator, or a volunteer facilitator who passes the 418.78 gates): without
 // the key it is never requested, and a 403 renders nothing. A volunteer gets the reduced projection: no relationship and no plan, shown as
 // "Not shown to you", never guessed.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, Panel, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { humanize } from "./bereavement-status";
-import {
-  Card,
-  ErrorText,
-  linkStyle,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdNum,
-  th,
-  thNum,
-} from "./bereavement-ui";
+import { ErrorText, linkStyle, tdNum, thNum } from "./bereavement-ui";
 import { type Loaded, useLoaded } from "./mailing-load";
 import { type GroupRoster, getRoster } from "./programs-api";
 
@@ -47,7 +36,7 @@ export function GroupRosterCard({
   const failure = state.kind === "error" ? state.message : state.notice;
   const entries = state.kind === "ready" ? state.data.entries : [];
   return (
-    <Card title="Roster">
+    <Panel stack headingLevel={3} title="Roster">
       {failure ? (
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           <ErrorText>{failure}</ErrorText>
@@ -57,22 +46,22 @@ export function GroupRosterCard({
         </div>
       ) : null}
       {state.kind === "ready" && entries.length === 0 ? (
-        <span style={mutedStyle}>No family is enrolled in this group yet.</span>
+        <span className="wx-text-muted">No family is enrolled in this group yet.</span>
       ) : null}
       {entries.length > 0 ? (
-        <table style={tableStyle} aria-label="Group roster">
+        <table aria-label="Group roster">
           <thead>
             <tr>
-              <th style={th}>Name</th>
-              <th style={th}>Relationship</th>
-              <th style={th}>Enrollment</th>
+              <th>Name</th>
+              <th>Relationship</th>
+              <th>Enrollment</th>
               <th style={thNum}>Sessions attended</th>
             </tr>
           </thead>
           <tbody>
             {entries.map((entry) => (
-              <tr key={entry.contactId} style={rowLine}>
-                <td style={td}>
+              <tr key={entry.contactId}>
+                <td>
                   {entry.planId ? (
                     <Link
                       to={`/bereavement/plans/${entry.planId}/contacts/${entry.contactId}`}
@@ -84,14 +73,16 @@ export function GroupRosterCard({
                     entry.displayName
                   )}
                 </td>
-                <td style={td}>
+                <td>
                   {entry.relationshipCode ? (
                     humanize(entry.relationshipCode)
                   ) : (
-                    <span style={{ ...mutedStyle, fontStyle: "italic" }}>Not shown to you</span>
+                    <span className="wx-text-muted" style={{ fontStyle: "italic" }}>
+                      Not shown to you
+                    </span>
                   )}
                 </td>
-                <td style={td}>
+                <td>
                   <StatusPill
                     label={humanize(entry.enrollmentStatus)}
                     tone={entry.enrollmentStatus === "enrolled" ? "success" : "neutral"}
@@ -103,6 +94,6 @@ export function GroupRosterCard({
           </tbody>
         </table>
       ) : null}
-    </Card>
+    </Panel>
   );
 }

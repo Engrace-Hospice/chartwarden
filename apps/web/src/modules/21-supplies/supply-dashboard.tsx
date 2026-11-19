@@ -22,6 +22,7 @@ import {
   ErrorState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   type ReadStatus,
   StatusPill,
   settleRead,
@@ -62,7 +63,6 @@ import {
   toneOf,
 } from "./supplies-status";
 import {
-  Card,
   CountGrid,
   FilterRow,
   Notice,
@@ -71,14 +71,9 @@ import {
   columnStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
   tdQty,
-  th,
   thNum,
 } from "./supplies-ui";
 
@@ -213,7 +208,7 @@ export function SupplyTeamDashboard(): JSX.Element {
       className="wx-kit-column"
       style={{ ...columnStyle, outline: "none", opacity: loading ? 0.6 : 1 }}
     >
-      {loading ? <span style={mutedStyle}>Refreshing…</span> : null}
+      {loading ? <span className="wx-text-muted">Refreshing…</span> : null}
       <PageHeader
         title={<span style={pageTitleStyle}>Supply team</span>}
         actions={
@@ -239,7 +234,7 @@ export function SupplyTeamDashboard(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card title="Queue">
+      <Panel stack headingLevel={3} title="Queue">
         <CountGrid
           entries={[
             { label: "Awaiting vendor", value: count(reqStatus, pendingVendor) },
@@ -253,54 +248,54 @@ export function SupplyTeamDashboard(): JSX.Element {
             { label: "Shelf critical / empty", value: count(parStatus, criticalShelf) },
           ]}
         />
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           "In-transit late" and "undeliverable" are not shown: `supply_request` carries no
           expected-delivery window and `m21_supply_request_status` has no undeliverable value, so
           both would have to be invented. The age-in-status column below is the real signal.
         </span>
-      </Card>
+      </Panel>
 
       <FilterRow>
         <SelectField label="Kind" value={kind} options={KIND_FILTERS} onChange={setKind} />
         <SelectField label="Status" value={status} options={STATUS_FILTERS} onChange={setStatus} />
       </FilterRow>
 
-      <Card title="Action queue">
+      <Panel stack headingLevel={3} title="Action queue">
         <ReadPanel
           status={reqStatus}
           subject="the supply worklist"
           onRetry={loading ? undefined : () => void load()}
         >
           {requests.length === 0 ? (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Nothing needs supply-team action in this view — every open request has a vendor and is
               moving.
             </span>
           ) : (
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Request</th>
-                  <th style={th}>Kind</th>
-                  <th style={th}>Patient</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Vendor</th>
-                  <th style={th}>Tracking</th>
+                  <th>Request</th>
+                  <th>Kind</th>
+                  <th>Patient</th>
+                  <th>Status</th>
+                  <th>Vendor</th>
+                  <th>Tracking</th>
                   <th style={thNum}>Age (days)</th>
-                  <th style={th}>Requested</th>
+                  <th>Requested</th>
                 </tr>
               </thead>
               <tbody>
                 {requests.map((r) => (
-                  <tr key={r.supplyRequestId} style={rowLine}>
-                    <td style={td}>
+                  <tr key={r.supplyRequestId}>
+                    <td>
                       <Link to={`/supplies/requests/${r.supplyRequestId}`} style={linkStyle}>
                         {shortId(r.supplyRequestId)}
                       </Link>
                     </td>
-                    <td style={td}>{requestKindLabel(r.kind)}</td>
-                    <td style={td}>{shortId(r.patientId)}</td>
-                    <td style={td}>
+                    <td>{requestKindLabel(r.kind)}</td>
+                    <td>{shortId(r.patientId)}</td>
+                    <td>
                       <span className="wx-coverage-cell">
                         <StatusPill
                           label={humanize(r.status)}
@@ -309,23 +304,23 @@ export function SupplyTeamDashboard(): JSX.Element {
                         <HospiceCoverageBadge coverage={r.hospiceCoverage} />
                       </span>
                     </td>
-                    <td style={td}>{shortId(r.assignedVendorId)}</td>
-                    <td style={td}>
-                      {r.trackingNumber ? `${r.carrier ?? "—"} · ${r.trackingNumber}` : "—"}
-                    </td>
+                    <td>{shortId(r.assignedVendorId)}</td>
+                    <td>{r.trackingNumber ? `${r.carrier ?? "—"} · ${r.trackingNumber}` : "—"}</td>
                     <td style={tdNum}>{ageInDays(r.createdAt)}</td>
-                    <td style={td}>{shortDate(r.createdAt)}</td>
+                    <td>{shortDate(r.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
         </ReadPanel>
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Par stock below watermark"
-        actions={
+        action={
           <Link to="/supplies/par-stock" style={linkStyle}>
             Open par admin
           </Link>
@@ -337,26 +332,28 @@ export function SupplyTeamDashboard(): JSX.Element {
           onRetry={loading ? undefined : () => void load()}
         >
           {sortedPar.length === 0 ? (
-            <span style={mutedStyle}>Every active shelf row is at or above its reorder point.</span>
+            <span className="wx-text-muted">
+              Every active shelf row is at or above its reorder point.
+            </span>
           ) : (
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Item</th>
-                  <th style={th}>Location</th>
-                  <th style={th}>Band</th>
+                  <th>Item</th>
+                  <th>Location</th>
+                  <th>Band</th>
                   <th style={thNum}>On hand</th>
                   <th style={thNum}>Reorder point</th>
                   <th style={thNum}>Safety stock</th>
-                  <th style={th}>Last counted</th>
+                  <th>Last counted</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedPar.map((p) => (
-                  <tr key={p.parStockId} style={rowLine}>
-                    <td style={td}>{p.skuName}</td>
-                    <td style={td}>{shortId(p.locationId)}</td>
-                    <td style={td}>
+                  <tr key={p.parStockId}>
+                    <td>{p.skuName}</td>
+                    <td>{shortId(p.locationId)}</td>
+                    <td>
                       <ParSeverityPill severity={p.severity} />
                     </td>
                     <td style={tdQty}>
@@ -364,20 +361,22 @@ export function SupplyTeamDashboard(): JSX.Element {
                     </td>
                     <td style={tdQty}>{p.reorderPoint}</td>
                     <td style={tdQty}>{p.minSafetyStock}</td>
-                    <td style={td}>{shortDate(p.lastParReviewAt)}</td>
+                    <td>{shortDate(p.lastParReviewAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
         </ReadPanel>
-      </Card>
+      </Panel>
 
       {/* §4.1 publishes no standalone list SCREEN for returns or dispatches — the dashboard IS the index
           for both, which is why these two panels carry the whole open set rather than a preview. */}
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Comfort-kit returns awaiting reconciliation"
-        actions={
+        action={
           overdueReturns > 0 ? (
             <StatusPill label={`${overdueReturns} overdue`} tone="error" />
           ) : undefined
@@ -389,53 +388,55 @@ export function SupplyTeamDashboard(): JSX.Element {
           onRetry={loading ? undefined : () => void load()}
         >
           {openReturns.length === 0 ? (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               No comfort-kit return is open. A return row is created when the obligation ARISES (the
               patient died, the kit must come back) — long before anything is physically counted.
             </span>
           ) : (
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Return</th>
-                  <th style={th}>State</th>
-                  <th style={th}>Patient</th>
-                  <th style={th}>Due</th>
+                  <th>Return</th>
+                  <th>State</th>
+                  <th>Patient</th>
+                  <th>Due</th>
                   <th style={thNum}>Days overdue</th>
-                  <th style={th}>Controlled</th>
+                  <th>Controlled</th>
                 </tr>
               </thead>
               <tbody>
                 {openReturns.map((r) => (
-                  <tr key={r.returnId} style={rowLine}>
-                    <td style={td}>
+                  <tr key={r.returnId}>
+                    <td>
                       <Link to={`/supplies/returns/${r.returnId}`} style={linkStyle}>
                         {shortId(r.returnId)}
                       </Link>
                     </td>
-                    <td style={td}>
+                    <td>
                       <StatusPill
                         label={humanize(r.state)}
                         tone={toneOf(RETURN_STATE_TONE, r.state)}
                       />
                     </td>
-                    <td style={td}>{shortId(r.patientId)}</td>
-                    <td style={td}>
+                    <td>{shortId(r.patientId)}</td>
+                    <td>
                       {shortDate(r.returnDueAt)} · {dueLabel(r.returnDueAt)}
                     </td>
                     <td style={tdNum}>{r.daysOverdue}</td>
-                    <td style={td}>{r.containsControlledSubstance ? "Yes" : "No"}</td>
+                    <td>{r.containsControlledSubstance ? "Yes" : "No"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
         </ReadPanel>
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Comfort kits in the field"
-        actions={
+        action={
           <Link to="/supplies/dispatches/new" style={linkStyle}>
             Dispatch a kit
           </Link>
@@ -447,55 +448,55 @@ export function SupplyTeamDashboard(): JSX.Element {
           onRetry={loading ? undefined : () => void load()}
         >
           {dispatches.length === 0 ? (
-            <span style={mutedStyle}>No comfort kit has been dispatched.</span>
+            <span className="wx-text-muted">No comfort kit has been dispatched.</span>
           ) : (
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Dispatch</th>
-                  <th style={th}>Kit serial</th>
-                  <th style={th}>Patient</th>
-                  <th style={th}>Site</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Dispatched</th>
-                  <th style={th}>Controlled</th>
+                  <th>Dispatch</th>
+                  <th>Kit serial</th>
+                  <th>Patient</th>
+                  <th>Site</th>
+                  <th>Status</th>
+                  <th>Dispatched</th>
+                  <th>Controlled</th>
                 </tr>
               </thead>
               <tbody>
                 {dispatches.map((d) => (
-                  <tr key={d.dispatchId} style={rowLine}>
-                    <td style={td}>
+                  <tr key={d.dispatchId}>
+                    <td>
                       <Link to={`/supplies/dispatches/${d.dispatchId}`} style={linkStyle}>
                         {shortId(d.dispatchId)}
                       </Link>
                     </td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{d.kitSerialNumber}</td>
-                    <td style={td}>{shortId(d.patientId)}</td>
-                    <td style={td}>{deploymentSiteLabel(d.deploymentSite)}</td>
-                    <td style={td}>
+                    <td className="wx-data-md">{d.kitSerialNumber}</td>
+                    <td>{shortId(d.patientId)}</td>
+                    <td>{deploymentSiteLabel(d.deploymentSite)}</td>
+                    <td>
                       <StatusPill
                         label={humanize(d.dispatchStatus)}
                         tone={toneOf(DISPATCH_STATUS_TONE, d.dispatchStatus)}
                       />
                     </td>
-                    <td style={td}>{shortDate(d.dispatchedAt)}</td>
-                    <td style={td}>{d.containsControlledSubstance ? "Yes" : "No"}</td>
+                    <td>{shortDate(d.dispatchedAt)}</td>
+                    <td>{d.containsControlledSubstance ? "Yes" : "No"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
         </ReadPanel>
-      </Card>
+      </Panel>
 
-      <Card title="Reconciled with discrepancy">
+      <Panel stack headingLevel={3} title="Reconciled with discrepancy">
         {dispStatus !== "ok" ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Not shown: the dispatch list could not be read. See the "Comfort kits in the field"
             panel above.
           </span>
         ) : discrepancies.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No dispatch in this page closed with an unexplained controlled-substance shortfall.
           </span>
         ) : (
@@ -505,28 +506,28 @@ export function SupplyTeamDashboard(): JSX.Element {
               investigation and the M36 high-severity alert. This list is the DISPATCH tail, not the
               investigation record — that lives in the compliance surface that owns it.
             </Notice>
-            <table style={tableStyle}>
+            <table>
               <thead>
                 <tr>
-                  <th style={th}>Dispatch</th>
-                  <th style={th}>Kit serial</th>
-                  <th style={th}>Patient</th>
-                  <th style={th}>Dispatched</th>
-                  <th style={th}>Status</th>
+                  <th>Dispatch</th>
+                  <th>Kit serial</th>
+                  <th>Patient</th>
+                  <th>Dispatched</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {discrepancies.map((d) => (
-                  <tr key={d.dispatchId} style={rowLine}>
-                    <td style={td}>
+                  <tr key={d.dispatchId}>
+                    <td>
                       <Link to={`/supplies/dispatches/${d.dispatchId}`} style={linkStyle}>
                         {shortId(d.dispatchId)}
                       </Link>
                     </td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{d.kitSerialNumber}</td>
-                    <td style={td}>{shortId(d.patientId)}</td>
-                    <td style={td}>{shortDate(d.dispatchedAt)}</td>
-                    <td style={td}>
+                    <td className="wx-data-md">{d.kitSerialNumber}</td>
+                    <td>{shortId(d.patientId)}</td>
+                    <td>{shortDate(d.dispatchedAt)}</td>
+                    <td>
                       <StatusPill label="Discrepancy" tone="error" />
                     </td>
                   </tr>
@@ -535,7 +536,7 @@ export function SupplyTeamDashboard(): JSX.Element {
             </table>
           </>
         )}
-      </Card>
+      </Panel>
     </div>
   );
 }

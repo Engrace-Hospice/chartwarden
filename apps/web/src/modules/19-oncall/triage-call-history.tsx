@@ -13,7 +13,14 @@
 // re-implemented here — the §3.6 denylist and the §8.2 redaction happen in SQL, and the response's
 // `redactedCategories` marker (rendered below) is how the omission is disclosed. A second, client-side
 // stripping pass would be a second copy of a rule the server already owns, and the one that drifts.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  Panel,
+  StatusPill,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -36,7 +43,6 @@ import {
 } from "./oncall-status";
 import {
   CallStatePill,
-  Card,
   Field,
   Notice,
   RedactionNotice,
@@ -45,12 +51,7 @@ import {
   Timeline,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./oncall-ui";
 
 export function TriageCallHistoryScreen(): JSX.Element {
@@ -107,7 +108,7 @@ export function TriageCallHistoryScreen(): JSX.Element {
 
       {staff ? <RedactionNotice categories={staff.redactedCategories} /> : null}
 
-      <Card title="Call">
+      <Panel stack headingLevel={3} title="Call">
         <SummaryGrid>
           <Field label="State" value={<CallStatePill state={call.state} />} />
           <Field label="Opened" value={dateTime(call.openedAt)} />
@@ -159,16 +160,16 @@ export function TriageCallHistoryScreen(): JSX.Element {
             />
           ) : null}
         </SummaryGrid>
-      </Card>
+      </Panel>
 
-      <Card title="State timeline">
+      <Panel stack headingLevel={3} title="State timeline">
         {!staff ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             The state narrative is a staff-projection field. The vendor projection does not declare
             it.
           </span>
         ) : staff.stateHistory.length === 0 ? (
-          <span style={mutedStyle}>No transition has been recorded.</span>
+          <span className="wx-text-muted">No transition has been recorded.</span>
         ) : (
           <Timeline
             entries={staff.stateHistory.map((h) => ({
@@ -182,37 +183,39 @@ export function TriageCallHistoryScreen(): JSX.Element {
             }))}
           />
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Answers">
+      <Panel stack headingLevel={3} title="Answers">
         {answers.length === 0 ? (
-          <span style={mutedStyle}>No answer was recorded on this call.</span>
+          <span className="wx-text-muted">No answer was recorded on this call.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>#</th>
-                <th style={th}>Question</th>
-                <th style={th}>Answer</th>
-                <th style={th}>Red flag</th>
-                <th style={th}>Recorded</th>
-                <th style={th}>By</th>
+                <th>#</th>
+                <th>Question</th>
+                <th>Answer</th>
+                <th>Red flag</th>
+                <th>Recorded</th>
+                <th>By</th>
               </tr>
             </thead>
             <tbody>
               {answers.map((a) => (
-                <tr key={a.id} style={rowLine}>
-                  <td style={td}>{a.questionOrder}</td>
-                  <td style={td}>
+                <tr key={a.id}>
+                  <td>{a.questionOrder}</td>
+                  <td>
                     {a.prompt}
                     {a.correctionOfAnswerId ? (
                       <>
                         <br />
-                        <span style={mutedStyle}>corrects {shortId(a.correctionOfAnswerId)}</span>
+                        <span className="wx-text-muted">
+                          corrects {shortId(a.correctionOfAnswerId)}
+                        </span>
                       </>
                     ) : null}
                   </td>
-                  <td style={td}>
+                  <td>
                     {a.valueBool !== null
                       ? a.valueBool
                         ? "Yes"
@@ -221,66 +224,64 @@ export function TriageCallHistoryScreen(): JSX.Element {
                         ? String(a.valueInt)
                         : (a.valueText ?? "—")}
                   </td>
-                  <td style={td}>
-                    {a.redFlagHit ? <StatusPill label="Red flag" tone="error" /> : "—"}
-                  </td>
-                  <td style={td}>{dateTime(a.answeredAt)}</td>
-                  <td style={td}>{shortId(a.answeredByMembershipId)}</td>
+                  <td>{a.redFlagHit ? <StatusPill label="Red flag" tone="error" /> : "—"}</td>
+                  <td>{dateTime(a.answeredAt)}</td>
+                  <td>{shortId(a.answeredByMembershipId)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Corrections are ROWS, not edits (§2.2.3). A "no" later corrected to "yes" leaves both
           rows, which is what a suppression investigation reads — and why the original is never
           overwritten.
         </span>
-      </Card>
+      </Panel>
 
-      <Card title="Escalations">
+      <Panel stack headingLevel={3} title="Escalations">
         {call.escalations.length === 0 ? (
-          <span style={mutedStyle}>No escalation was raised on this call.</span>
+          <span className="wx-text-muted">No escalation was raised on this call.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Tier</th>
-                <th style={th}>Trigger</th>
-                <th style={th}>State</th>
-                <th style={th}>Mandatory</th>
-                <th style={th}>Raised</th>
-                <th style={th}>Acknowledged</th>
-                <th style={th}>Resolved</th>
-                <th style={th}>Resolved by</th>
+                <th>Tier</th>
+                <th>Trigger</th>
+                <th>State</th>
+                <th>Mandatory</th>
+                <th>Raised</th>
+                <th>Acknowledged</th>
+                <th>Resolved</th>
+                <th>Resolved by</th>
               </tr>
             </thead>
             <tbody>
               {call.escalations.map((e) => (
-                <tr key={e.id} style={rowLine}>
-                  <td style={td}>
+                <tr key={e.id}>
+                  <td>
                     <TierPill tier={e.tier} />
                   </td>
-                  <td style={td}>{humanize(e.triggerKind)}</td>
-                  <td style={td}>
+                  <td>{humanize(e.triggerKind)}</td>
+                  <td>
                     <StatusPill
                       label={humanize(e.state)}
                       tone={toneOf(ESCALATION_STATE_TONE, e.state)}
                     />
                   </td>
-                  <td style={td}>
+                  <td>
                     {e.mandatory ? <StatusPill label="Platform floor" tone="critical" /> : "—"}
                   </td>
-                  <td style={td}>{dateTime(e.escalatedAt)}</td>
-                  <td style={td}>{dateTime(e.acknowledgedAt)}</td>
-                  <td style={td}>{dateTime(e.resolvedAt)}</td>
-                  <td style={td}>{shortId(e.resolvedByMembershipId)}</td>
+                  <td>{dateTime(e.escalatedAt)}</td>
+                  <td>{dateTime(e.acknowledgedAt)}</td>
+                  <td>{dateTime(e.resolvedAt)}</td>
+                  <td>{shortId(e.resolvedByMembershipId)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
     </div>
   );
 }

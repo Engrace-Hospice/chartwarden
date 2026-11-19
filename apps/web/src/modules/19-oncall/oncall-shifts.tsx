@@ -5,7 +5,6 @@ import {
   EmptyState,
   Glyph,
   LoadingSpinner,
-  Modal,
   PageHeader,
   StatusPill,
   WorkQueueLayout,
@@ -15,6 +14,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { ProviderEntityLookupField } from "../../shell/entity-lookups";
+import { FormDrawer } from "../../shell/form-drawer";
+import { SelectField, TextField } from "../../shell/value-fields";
+import { runDrawerWrite } from "./drawer-write";
 import {
   type CurrentOnCallView,
   type OnCallActor,
@@ -40,6 +42,7 @@ import {
   toInstant,
   toneOf,
 } from "./oncall-status";
+import { Notice } from "./oncall-ui";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHIFT_PAGE = 200;
@@ -173,30 +176,53 @@ export function OnCallShiftsScreen(): JSX.Element {
     (isExternal ? UUID_RE.test(externalActorId) : UUID_RE.test(primaryMembership)) &&
     !busy;
 
-  async function commitCreate(): Promise<void> {
-    setBusy(true);
+  // Every open and every close starts the form from scratch (times freshly defaulted): a saved or abandoned draft
+  // must not sit behind the next "Add shift", where one click would file the same shift again.
+  const resetCreateForm = (): void => {
+    setProviderEntityId("");
+    setStartsAt(nowLocalInput());
+    setEndsAt(nowLocalInput(12 * 60));
+    setNewDiscipline(DEFAULT_SHIFT_DISCIPLINE);
+    setPrimaryMembership("");
+    setBackupMembership("");
+    setExternalActorId("");
+    setExternalActorLabel("");
     setActionError(null);
-    const res = await createShift(client, {
-      providerEntityId,
-      shiftStartsAt: toInstant(startsAt),
-      shiftEndsAt: toInstant(endsAt),
-      discipline: newDiscipline as ShiftDiscipline,
-      ...(isExternal
-        ? {
-            externalActorId,
-            ...(externalActorLabel ? { externalActorLabel } : {}),
-          }
-        : {
-            primaryOnCallMembershipId: primaryMembership,
-            ...(UUID_RE.test(backupMembership) ? { backupMembershipId: backupMembership } : {}),
-          }),
-    });
-    setBusy(false);
-    if (res.error) {
-      setActionError(errorMessage(res.error, "The shift could not be created."));
-      return;
-    }
+  };
+  const openCreate = (): void => {
+    // Already open: another click on an opener must not wipe what is being typed.
+    if (creating) return;
+    resetCreateForm();
+    setCreating(true);
+  };
+  const closeCreate = (): void => {
+    resetCreateForm();
     setCreating(false);
+  };
+
+  async function commitCreate(): Promise<void> {
+    const saved = await runDrawerWrite(
+      { setBusy, setError: setActionError },
+      () =>
+        createShift(client, {
+          providerEntityId,
+          shiftStartsAt: toInstant(startsAt),
+          shiftEndsAt: toInstant(endsAt),
+          discipline: newDiscipline as ShiftDiscipline,
+          ...(isExternal
+            ? {
+                externalActorId,
+                ...(externalActorLabel ? { externalActorLabel } : {}),
+              }
+            : {
+                primaryOnCallMembershipId: primaryMembership,
+                ...(UUID_RE.test(backupMembership) ? { backupMembershipId: backupMembership } : {}),
+              }),
+        }),
+      "The shift could not be created.",
+    );
+    if (!saved) return;
+    closeCreate();
     await load();
   }
 
@@ -211,288 +237,281 @@ export function OnCallShiftsScreen(): JSX.Element {
   };
 
   return (
-    <>
-      <WorkQueueLayout
-        header={
-          <PageHeader
-            title="On-call roster"
-            actions={
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                <Button tone="primary" onClick={() => setCreating(true)}>
-                  Add shift
-                </Button>
-                <Link to="/triage/policy" style={linkButtonStyle}>
-                  On-call policy
-                </Link>
-              </div>
-            }
-          >
-            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-              Prove per-provider coverage and manage the scheduled on-call windows.
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="On-call roster"
+          actions={
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <Button tone="primary" onClick={openCreate}>
+                Add shift
+              </Button>
+              <Link to="/triage/policy" style={linkButtonStyle}>
+                On-call policy
+              </Link>
             </div>
-          </PageHeader>
-        }
-        filters={
-          <div style={filterShellStyle}>
-            {gapEntities.length > 0 ? (
-              <div role="alert" style={errorBannerStyle}>
-                <Glyph name="alert" size={16} />
-                <span>
-                  {gapEntities.length} provider entit
-                  {gapEntities.length === 1 ? "y has" : "ies have"} no RN covering right now.
-                </span>
-              </div>
-            ) : current ? (
-              <output style={successBannerStyle}>
-                <Glyph name="check-circle" size={16} />
-                <span>
-                  Every provider entity in scope has RN coverage as of {dateTime(current.asOf)}.
-                </span>
-              </output>
-            ) : (
-              <output style={warningBannerStyle}>
-                <Glyph name="alert" size={16} />
-                <span>The live coverage verdict could not be read.</span>
-              </output>
-            )}
-            {actionError ? (
-              <div role="alert" style={errorBannerStyle}>
-                <Glyph name="alert" size={16} />
-                <span>{actionError}</span>
-              </div>
-            ) : null}
-            {error ? (
-              <div role="alert" style={errorBannerStyle}>
-                <Glyph name="alert" size={16} />
-                <span>{error}</span>
-              </div>
-            ) : null}
-            <div style={coveragePanelStyle}>
-              {(current?.perProviderEntity ?? []).map((entity) => {
-                const actors = asOnCallActors(entity.actors);
-                return (
-                  <div key={entity.providerEntityId} style={coverageRowStyle}>
-                    <div style={{ minWidth: 0 }}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(entity.providerEntityId)}
-                      </code>
-                      <div style={subtleTextStyle}>
-                        {actors.length > 0
-                          ? actors.map(actorLabel).join(" · ")
-                          : "No covering actor"}
-                      </div>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Prove per-provider coverage and manage the scheduled on-call windows.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {gapEntities.length > 0 ? (
+            <div role="alert" style={errorBannerStyle}>
+              <Glyph name="alert" size={16} />
+              <span>
+                {gapEntities.length} provider entit
+                {gapEntities.length === 1 ? "y has" : "ies have"} no RN covering right now.
+              </span>
+            </div>
+          ) : current ? (
+            <output style={successBannerStyle}>
+              <Glyph name="check-circle" size={16} />
+              <span>
+                Every provider entity in scope has RN coverage as of {dateTime(current.asOf)}.
+              </span>
+            </output>
+          ) : (
+            <output style={warningBannerStyle}>
+              <Glyph name="alert" size={16} />
+              <span>The live coverage verdict could not be read.</span>
+            </output>
+          )}
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <Glyph name="alert" size={16} />
+              <span>{error}</span>
+            </div>
+          ) : null}
+          <div style={coveragePanelStyle}>
+            {(current?.perProviderEntity ?? []).map((entity) => {
+              const actors = asOnCallActors(entity.actors);
+              return (
+                <div key={entity.providerEntityId} style={coverageRowStyle}>
+                  <div style={{ minWidth: 0 }}>
+                    <code className="wx-data-md" style={codeStyle}>
+                      {shortId(entity.providerEntityId)}
+                    </code>
+                    <div style={subtleTextStyle}>
+                      {actors.length > 0 ? actors.map(actorLabel).join(" · ") : "No covering actor"}
                     </div>
-                    <StatusPill
-                      label={entity.rnCoverageGap ? "Gap" : "Covered"}
-                      tone={entity.rnCoverageGap ? "error" : "success"}
-                    />
                   </div>
-                );
-              })}
-            </div>
-            <div style={toolbarStyle}>
-              <label className="wx-search-field">
-                <Glyph name="search" size={16} />
-                <input
-                  type="search"
-                  placeholder="Search shift, provider, actor, discipline..."
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  aria-label="Search on-call shifts"
-                />
-              </label>
-              <label className="wx-filter-field">
-                <span>Discipline</span>
-                <select
-                  className="wx-select"
-                  value={discipline}
-                  onChange={(event) => setDiscipline(event.target.value)}
-                  aria-label="Filter shifts by discipline"
+                  <StatusPill
+                    label={entity.rnCoverageGap ? "Gap" : "Covered"}
+                    tone={entity.rnCoverageGap ? "error" : "success"}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div style={toolbarStyle}>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
+              <input
+                type="search"
+                placeholder="Search shift, provider, actor, discipline..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                aria-label="Search on-call shifts"
+              />
+            </label>
+            <label className="wx-filter-field">
+              <span>Discipline</span>
+              <select
+                className="wx-select"
+                value={discipline}
+                onChange={(event) => setDiscipline(event.target.value)}
+                aria-label="Filter shifts by discipline"
+              >
+                {DISCIPLINE_FILTERS.map((option) => (
+                  <option key={option.value || "all"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Status</span>
+              <select
+                className="wx-select"
+                value={status}
+                onChange={(event) => setStatus(event.target.value as StatusFilter)}
+                aria-label="Filter shifts by status"
+              >
+                <option value="all">All</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Source</span>
+              <select
+                className="wx-select"
+                value={coverage}
+                onChange={(event) => setCoverage(event.target.value as CoverageFilter)}
+                aria-label="Filter shifts by coverage source"
+              >
+                <option value="all">All</option>
+                <option value="internal">Internal</option>
+                <option value="external">External</option>
+                <option value="m17">M17 synced</option>
+              </select>
+            </label>
+            {hasActiveFilters ? (
+              <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      }
+      table={
+        loading ? (
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
+        ) : visibleShifts.length === 0 ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title={hasActiveFilters ? "No matching shifts" : "No shifts scheduled"}
+              description={
+                hasActiveFilters
+                  ? "Adjust the search or clear filters to return to the loaded roster."
+                  : "Add a shift, or let the M17 roster sync fill the schedule."
+              }
+              action={
+                hasActiveFilters ? (
+                  <Button tone="secondary" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                ) : (
+                  <Button tone="primary" size="sm" onClick={openCreate}>
+                    Add shift
+                  </Button>
+                )
+              }
+            />
+          </div>
+        ) : (
+          <div style={tableWrapStyle}>
+            <table className="tabular-nums">
+              <thead>
+                <tr>
+                  <th style={{ width: "12%" }}>Shift</th>
+                  <th style={{ width: "14%" }}>Provider</th>
+                  <th style={{ width: "20%" }}>Window</th>
+                  <th style={{ width: "13%" }}>Discipline</th>
+                  <th style={{ width: "15%" }}>Primary</th>
+                  <th style={{ width: "12%" }}>Source</th>
+                  <th style={{ width: "14%" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleShifts.map((shift) => (
+                  <tr key={shift.id}>
+                    <td>
+                      <Link to={`/triage/shifts/${shift.id}`} style={callLinkStyle}>
+                        {shortId(shift.id)}
+                      </Link>
+                    </td>
+                    <td>
+                      <code className="wx-data-md" style={codeStyle}>
+                        {shortId(shift.providerEntityId)}
+                      </code>
+                    </td>
+                    <td>
+                      <div style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+                        {shortDate(shift.shiftStartsAt)} {clockTime(shift.shiftStartsAt)}
+                      </div>
+                      <div style={subtleTextStyle}>
+                        to{" "}
+                        {shortDate(shift.shiftEndsAt) === shortDate(shift.shiftStartsAt)
+                          ? clockTime(shift.shiftEndsAt)
+                          : `${shortDate(shift.shiftEndsAt)} ${clockTime(shift.shiftEndsAt)}`}
+                      </div>
+                    </td>
+                    <td>{disciplineLabel(shift.discipline)}</td>
+                    <td>
+                      {shift.externalActorId
+                        ? (shift.externalActorLabel ?? "External vendor")
+                        : shortId(shift.primaryOnCallMembershipId)}
+                      {shift.backupMembershipId ? (
+                        <div style={subtleTextStyle}>
+                          Backup {shortId(shift.backupMembershipId)}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>{sourceLabel(shift)}</td>
+                    <td>
+                      <StatusPill
+                        label={humanize(shift.status)}
+                        tone={toneOf(SHIFT_STATUS_TONE, shift.status)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={footerStyle}>
+              <span style={subtleTextStyle}>
+                Showing {visibleShifts.length} of {shifts.length} loaded shifts
+                {truncated ? " · more available" : ""}.
+              </span>
+              {nextCursor ? (
+                <Button
+                  size="sm"
+                  tone="secondary"
+                  onClick={() => void load(nextCursor)}
+                  disabled={loadingMore}
                 >
-                  {DISCIPLINE_FILTERS.map((option) => (
-                    <option key={option.value || "all"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="wx-filter-field">
-                <span>Status</span>
-                <select
-                  className="wx-select"
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value as StatusFilter)}
-                  aria-label="Filter shifts by status"
-                >
-                  <option value="all">All</option>
-                  <option value="scheduled">Scheduled</option>
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </label>
-              <label className="wx-filter-field">
-                <span>Source</span>
-                <select
-                  className="wx-select"
-                  value={coverage}
-                  onChange={(event) => setCoverage(event.target.value as CoverageFilter)}
-                  aria-label="Filter shifts by coverage source"
-                >
-                  <option value="all">All</option>
-                  <option value="internal">Internal</option>
-                  <option value="external">External</option>
-                  <option value="m17">M17 synced</option>
-                </select>
-              </label>
-              {hasActiveFilters ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
+                  {loadingMore ? "Loading..." : "Load more"}
                 </Button>
               ) : null}
             </div>
           </div>
-        }
-        table={
-          loading ? (
-            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-              <LoadingSpinner />
-            </div>
-          ) : visibleShifts.length === 0 ? (
-            <div style={{ padding: "2rem 1.5rem" }}>
-              <EmptyState
-                title={hasActiveFilters ? "No matching shifts" : "No shifts scheduled"}
-                description={
-                  hasActiveFilters
-                    ? "Adjust the search or clear filters to return to the loaded roster."
-                    : "Add a shift, or let the M17 roster sync fill the schedule."
-                }
-                action={
-                  hasActiveFilters ? (
-                    <Button tone="secondary" size="sm" onClick={clearFilters}>
-                      Clear filters
-                    </Button>
-                  ) : (
-                    <Button tone="primary" size="sm" onClick={() => setCreating(true)}>
-                      Add shift
-                    </Button>
-                  )
-                }
-              />
-            </div>
-          ) : (
-            <div style={tableWrapStyle}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "12%" }}>Shift</th>
-                    <th style={{ ...thStyle, width: "14%" }}>Provider</th>
-                    <th style={{ ...thStyle, width: "20%" }}>Window</th>
-                    <th style={{ ...thStyle, width: "13%" }}>Discipline</th>
-                    <th style={{ ...thStyle, width: "15%" }}>Primary</th>
-                    <th style={{ ...thStyle, width: "12%" }}>Source</th>
-                    <th style={{ ...thStyle, width: "14%" }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleShifts.map((shift) => (
-                    <tr key={shift.id} style={rowStyle}>
-                      <td style={tdStyle}>
-                        <Link to={`/triage/shifts/${shift.id}`} style={callLinkStyle}>
-                          {shortId(shift.id)}
-                        </Link>
-                      </td>
-                      <td style={tdStyle}>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(shift.providerEntityId)}
-                        </code>
-                      </td>
-                      <td style={tdStyle}>
-                        <div style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
-                          {shortDate(shift.shiftStartsAt)} {clockTime(shift.shiftStartsAt)}
-                        </div>
-                        <div style={subtleTextStyle}>
-                          to{" "}
-                          {shortDate(shift.shiftEndsAt) === shortDate(shift.shiftStartsAt)
-                            ? clockTime(shift.shiftEndsAt)
-                            : `${shortDate(shift.shiftEndsAt)} ${clockTime(shift.shiftEndsAt)}`}
-                        </div>
-                      </td>
-                      <td style={tdStyle}>{disciplineLabel(shift.discipline)}</td>
-                      <td style={tdStyle}>
-                        {shift.externalActorId
-                          ? (shift.externalActorLabel ?? "External vendor")
-                          : shortId(shift.primaryOnCallMembershipId)}
-                        {shift.backupMembershipId ? (
-                          <div style={subtleTextStyle}>
-                            Backup {shortId(shift.backupMembershipId)}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td style={tdStyle}>{sourceLabel(shift)}</td>
-                      <td style={tdStyle}>
-                        <StatusPill
-                          label={humanize(shift.status)}
-                          tone={toneOf(SHIFT_STATUS_TONE, shift.status)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div style={footerStyle}>
-                <span style={subtleTextStyle}>
-                  Showing {visibleShifts.length} of {shifts.length} loaded shifts
-                  {truncated ? " · more available" : ""}.
-                </span>
-                {nextCursor ? (
-                  <Button
-                    size="sm"
-                    tone="secondary"
-                    onClick={() => void load(nextCursor)}
-                    disabled={loadingMore}
-                  >
-                    {loadingMore ? "Loading..." : "Load more"}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          )
-        }
-        fullPageScroll
-      />
-
-      {creating ? (
-        <CreateShiftModal
-          busy={busy}
-          canCreate={canCreate}
-          isExternal={isExternal}
-          providerEntityId={providerEntityId}
-          startsAt={startsAt}
-          endsAt={endsAt}
-          discipline={newDiscipline}
-          primaryMembership={primaryMembership}
-          backupMembership={backupMembership}
-          externalActorId={externalActorId}
-          externalActorLabel={externalActorLabel}
-          onProviderEntityIdChange={setProviderEntityId}
-          onStartsAtChange={setStartsAt}
-          onEndsAtChange={setEndsAt}
-          onDisciplineChange={setNewDiscipline}
-          onPrimaryMembershipChange={setPrimaryMembership}
-          onBackupMembershipChange={setBackupMembership}
-          onExternalActorIdChange={setExternalActorId}
-          onExternalActorLabelChange={setExternalActorLabel}
-          onClose={() => setCreating(false)}
-          onSubmit={() => void commitCreate()}
-        />
-      ) : null}
-    </>
+        )
+      }
+      fullPageScroll
+      detail={
+        creating ? (
+          <CreateShiftDrawer
+            busy={busy}
+            error={actionError}
+            canCreate={canCreate}
+            isExternal={isExternal}
+            providerEntityId={providerEntityId}
+            startsAt={startsAt}
+            endsAt={endsAt}
+            discipline={newDiscipline}
+            primaryMembership={primaryMembership}
+            backupMembership={backupMembership}
+            externalActorId={externalActorId}
+            externalActorLabel={externalActorLabel}
+            onProviderEntityIdChange={setProviderEntityId}
+            onStartsAtChange={setStartsAt}
+            onEndsAtChange={setEndsAt}
+            onDisciplineChange={setNewDiscipline}
+            onPrimaryMembershipChange={setPrimaryMembership}
+            onBackupMembershipChange={setBackupMembership}
+            onExternalActorIdChange={setExternalActorId}
+            onExternalActorLabelChange={setExternalActorLabel}
+            onClose={closeCreate}
+            onSubmit={() => void commitCreate()}
+          />
+        ) : undefined
+      }
+    />
   );
 }
 
-function CreateShiftModal({
+function CreateShiftDrawer({
   busy,
+  error,
   canCreate,
   isExternal,
   providerEntityId,
@@ -515,6 +534,7 @@ function CreateShiftModal({
   onSubmit,
 }: {
   busy: boolean;
+  error: string | null;
   canCreate: boolean;
   isExternal: boolean;
   providerEntityId: string;
@@ -537,116 +557,69 @@ function CreateShiftModal({
   onSubmit: () => void;
 }): JSX.Element {
   return (
-    <Modal open onClose={onClose} ariaLabel="Add on-call shift" width="38rem">
-      <div style={modalBodyStyle}>
-        <h2 style={modalTitleStyle}>Add an on-call shift</h2>
-        <output style={infoBannerStyle}>
-          <Glyph name="info" size={16} />
-          <span>The policy snapshot is pinned by the server when the shift activates.</span>
-        </output>
-        <div style={fieldGridStyle}>
-          <ProviderEntityLookupField
-            label="Provider entity"
-            value={providerEntityId}
-            onChange={onProviderEntityIdChange}
-            appearance="modal"
-          />
-          <TextField
-            label="Starts at"
-            value={startsAt}
-            onChange={onStartsAtChange}
-            type="datetime-local"
-          />
-          <TextField
-            label="Ends at"
-            value={endsAt}
-            onChange={onEndsAtChange}
-            type="datetime-local"
-          />
-          <label style={fieldStyle}>
-            <span style={labelStyle}>Discipline</span>
-            <select
-              value={discipline}
-              onChange={(event) => onDisciplineChange(event.target.value)}
-              style={inputStyle}
-            >
-              {SHIFT_DISCIPLINES.map((value) => (
-                <option key={value} value={value}>
-                  {disciplineLabel(value)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {isExternal ? (
-            <>
-              <TextField
-                label="External vendor id"
-                value={externalActorId}
-                onChange={onExternalActorIdChange}
-                mono
-              />
-              <TextField
-                label="Vendor-side label"
-                value={externalActorLabel}
-                onChange={onExternalActorLabelChange}
-              />
-            </>
-          ) : (
-            <>
-              <TextField
-                label="Primary membership id"
-                value={primaryMembership}
-                onChange={onPrimaryMembershipChange}
-                mono
-              />
-              <TextField
-                label="Backup membership id"
-                value={backupMembership}
-                onChange={onBackupMembershipChange}
-                mono
-              />
-            </>
-          )}
-        </div>
-        <div style={modalFooterStyle}>
-          <Button type="button" tone="tertiary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" tone="primary" disabled={!canCreate} onClick={onSubmit}>
-            {busy ? "Creating..." : "Create shift"}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  mono,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: "text" | "datetime-local";
-  mono?: boolean;
-}): JSX.Element {
-  return (
-    <label style={fieldStyle}>
-      <span style={labelStyle}>{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        style={{
-          ...inputStyle,
-          ...(mono ? { fontFamily: "var(--font-mono)" } : {}),
-        }}
+    <FormDrawer
+      title="Add an on-call shift"
+      busy={busy}
+      onClose={onClose}
+      error={error}
+      save={
+        <Button type="button" tone="primary" disabled={!canCreate} onClick={onSubmit}>
+          {busy ? "Creating..." : "Create shift"}
+        </Button>
+      }
+    >
+      <Notice tone="info">
+        The policy snapshot is pinned by the server when the shift activates.
+      </Notice>
+      <ProviderEntityLookupField
+        label="Provider entity"
+        value={providerEntityId}
+        onChange={onProviderEntityIdChange}
       />
-    </label>
+      <TextField
+        label="Starts at"
+        value={startsAt}
+        onChange={onStartsAtChange}
+        type="datetime-local"
+      />
+      <TextField label="Ends at" value={endsAt} onChange={onEndsAtChange} type="datetime-local" />
+      <SelectField
+        label="Discipline"
+        value={discipline}
+        onChange={onDisciplineChange}
+        options={SHIFT_DISCIPLINES.map((value) => ({ value, label: disciplineLabel(value) }))}
+      />
+      {isExternal ? (
+        <>
+          <TextField
+            label="External vendor id"
+            value={externalActorId}
+            onChange={onExternalActorIdChange}
+            mono
+          />
+          <TextField
+            label="Vendor-side label"
+            value={externalActorLabel}
+            onChange={onExternalActorLabelChange}
+          />
+        </>
+      ) : (
+        <>
+          <TextField
+            label="Primary membership id"
+            value={primaryMembership}
+            onChange={onPrimaryMembershipChange}
+            mono
+          />
+          <TextField
+            label="Backup membership id"
+            value={backupMembership}
+            onChange={onBackupMembershipChange}
+            mono
+          />
+        </>
+      )}
+    </FormDrawer>
   );
 }
 
@@ -680,47 +653,10 @@ const coverageRowStyle: CSSProperties = {
   background: "var(--color-surface-low)",
 };
 
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
   padding: "0 1.5rem 1.5rem",
-};
-
-const tableStyle: CSSProperties = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.875rem",
-  fontVariantNumeric: "tabular-nums",
-};
-
-const headerRowStyle: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-
-const thStyle: CSSProperties = {
-  padding: "0.75rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-
-const tdStyle: CSSProperties = {
-  padding: "0.875rem 1rem",
-  verticalAlign: "middle",
-  color: "var(--color-on-surface-variant)",
-};
-
-const rowStyle: CSSProperties = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 
 const footerStyle: CSSProperties = {
@@ -770,13 +706,6 @@ const bannerBaseStyle: CSSProperties = {
   gap: "0.5rem",
 };
 
-const infoBannerStyle: CSSProperties = {
-  ...bannerBaseStyle,
-  background: "var(--color-primary-tint)",
-  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
-  color: "var(--color-on-surface)",
-};
-
 const successBannerStyle: CSSProperties = {
   ...bannerBaseStyle,
   background: "color-mix(in srgb, var(--color-success) 10%, transparent)",
@@ -796,53 +725,4 @@ const errorBannerStyle: CSSProperties = {
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
   color: "var(--color-error)",
-};
-
-const modalBodyStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "1rem",
-  padding: "1.25rem",
-};
-
-const modalTitleStyle: CSSProperties = {
-  margin: 0,
-  color: "var(--color-on-surface)",
-  fontSize: "1rem",
-  fontWeight: 650,
-};
-
-const fieldGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
-  gap: "0.875rem",
-};
-
-const fieldStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.35rem",
-};
-
-const labelStyle: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.75rem",
-  fontWeight: 650,
-};
-
-const inputStyle: CSSProperties = {
-  width: "100%",
-  minHeight: "2.35rem",
-  padding: "0.5rem 0.65rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
-  background: "var(--color-surface-low)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
-};
-
-const modalFooterStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "flex-end",
-  gap: "0.5rem",
 };

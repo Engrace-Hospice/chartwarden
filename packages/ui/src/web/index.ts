@@ -75,6 +75,8 @@ export type {
 export { NavLink } from "./components/nav-link";
 export { CountBadge, FlagChip, InfoRows, Panel } from "./components/panel";
 export type { InfoRow, PanelProps } from "./components/panel";
+export { Drawer } from "./components/drawer";
+export type { DrawerProps } from "./components/drawer";
 export type { NavLinkProps } from "./components/nav-link";
 export {
   StepUpCard,

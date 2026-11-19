@@ -247,6 +247,60 @@ export function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/** A refusal because the `If-Match` version a write carried is no longer the row's (§2.5): the row changed since it was
+ *  read. 409 `STALE_LIFECYCLE_STATE` from the lifecycle layer; a bare 409 `CONFLICT` reads the same to the client. */
+const STALE_VERSION_CODES = new Set(["STALE_LIFECYCLE_STATE", "CONFLICT"]);
+export function isStaleVersion(error: unknown): boolean {
+  const code = (error as { error?: { code?: string } } | null)?.error?.code;
+  return code !== undefined && STALE_VERSION_CODES.has(code);
+}
+
+/** What to do when a stale refusal could not be re-read, on the screens where the page (not opening a dialog) re-reads. */
+export const RELOAD_THEN_RETRY = "Cancel and Reload the page, then try again.";
+
+/**
+ * The words for a write the server refused as stale (a 409 on its `If-Match` version), after the row was re-read
+ * (`freshVersion`, `null` when the re-read failed). Only what is KNOWN is said:
+ *  - a version that moved proves the record changed; one that did NOT move proves nothing did, whatever the cause of the
+ *    conflict, and that an earlier attempt which got no answer (`lostReply`) was not recorded either (it would have bumped
+ *    the version);
+ *  - when the re-read failed nothing is known about why, and `ifNotReread` says how to recover for THIS screen (only some
+ *    screens re-read when a dialog opens).
+ */
+export function staleRefusalMessage(args: {
+  subject: string;
+  staleVersion: number;
+  freshVersion: number | null;
+  lostReply: boolean;
+  ifNotReread: string;
+}): string {
+  const { subject, staleVersion, freshVersion, lostReply, ifNotReread } = args;
+  const unchanged = freshVersion === staleVersion;
+  const head =
+    lostReply && !unchanged
+      ? `${subject} was refused, and an earlier attempt got no answer and may have been recorded.`
+      : `${subject} was not recorded.`;
+  if (freshVersion === null)
+    return `${head} The server refused it as conflicting with the record's current state, and the record could not be re-read to see why. ${ifNotReread}`;
+  if (unchanged)
+    return `${head} The server reported a conflict, but the record is still at version ${freshVersion}; what you typed is kept.`;
+  return `${head} The record changed while you were working; it was re-read (now version ${freshVersion}) and what you typed is kept. Submit again if it is still needed.`;
+}
+
+/**
+ * `client.POST/PUT/PATCH/DELETE` REJECT on a network failure instead of returning `{ error }`. A write handler runs
+ * its call through `.catch(() => null)` so that failure reaches the handler as `null` (and `saving` is reset on
+ * every path); this is the sentence for it. Nothing came back, so the write may have landed: the copy says so rather
+ * than claiming "not recorded".
+ */
+export const NO_ANSWER =
+  "No answer came back; it may not have been recorded. Check your connection, then retry.";
+
+/** The refusal to show for a write: the server's own words, or {@link NO_ANSWER} when the request threw (`null`). */
+export function writeErrorMessage(res: { error: unknown } | null, fallback: string): string {
+  return res ? errorMessage(res.error, fallback) : NO_ANSWER;
+}
+
 // ── reads ──────────────────────────────────────────────────────────────────────────────────────────────
 
 /** §4.1 row 26 — the supervisor live-awareness board. NO coordinates on this DTO (D6). */

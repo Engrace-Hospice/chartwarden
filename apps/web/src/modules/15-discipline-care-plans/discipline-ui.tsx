@@ -1,38 +1,11 @@
-// apps/web/src/modules/15-discipline-care-plans — the shared Lantern presentation atoms every M15 screen
-// reuses (Track B / ADR-0030, §5 / DESIGN.md §6.7). Extracted so the thirteen screens share ONE No-Line
-// table vocabulary, one card, one field and one modal chrome instead of re-declaring them per file (the
-// M24 medicaid-ui.tsx precedent). Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens`
-// stays green and the twilight dark mode is automatic.
-import { Modal as SharedModal, t } from "@chartwarden/ui";
+// apps/web/src/modules/15-discipline-care-plans — the presentation atoms every M15 screen still shares
+// (Track B / ADR-0030, §5). Cards, fields and tables come from the kit now (`Panel`, the value-field
+// adapters re-exported below, the base table chrome and `wx-*` text classes); what remains here is the
+// modal chrome and a few layout constants. Zero raw hex — `t.*` / CSS-var tokens only, so
+// `arch:design-tokens` stays green and the twilight dark mode is automatic.
+import { Button, Modal as SharedModal, t } from "@chartwarden/ui";
 import { useEffect } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-
-// ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
-export const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.85rem",
-};
-export const th: CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  textAlign: "left",
-  fontSize: "0.7rem",
-  fontWeight: 600,
-  color: t.onSurfaceVariant,
-};
-export const thNum: CSSProperties = { ...th, textAlign: "right" };
-export const td: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  color: t.onSurface,
-  verticalAlign: "top",
-};
-export const tdMono: CSSProperties = { ...td, fontFamily: t.fontMono };
-export const tdNum: CSSProperties = {
-  ...td,
-  textAlign: "right",
-  fontVariantNumeric: "tabular-nums",
-};
-export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
 /**
  * Keeps clinical tables usable at narrow widths without forcing the whole patient workspace to overflow.
@@ -83,22 +56,6 @@ export function useUnsavedChangesWarning(dirty: boolean): () => boolean {
 }
 
 // ── card + section chrome ──────────────────────────────────────────────────────────────────────────────
-export const cardStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: t.space2,
-  background: t.surfaceLowest,
-  border: `1px solid ${t.cardBorder}`,
-  borderRadius: t.radiusLg,
-  padding: `${t.space4} ${t.space5}`,
-};
-export const cardTitleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontSans,
-  fontSize: "1rem",
-  fontWeight: 600,
-  color: t.onSurface,
-};
 export const pageTitleStyle: CSSProperties = {
   // Matches PageHeader's own title (the redesign's bold sans heading).
   margin: 0,
@@ -109,21 +66,11 @@ export const pageTitleStyle: CSSProperties = {
   lineHeight: 1.2,
   color: t.onSurface,
 };
-export const sectionTitleStyle: CSSProperties = {
-  margin: `0 0 ${t.space2}`,
-  fontFamily: t.fontDisplay,
-  fontSize: "1rem",
-  fontWeight: 500,
-  color: t.onSurface,
-};
-export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
-export const alertStyle: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.error };
 export const linkStyle: CSSProperties = {
   fontSize: "0.8rem",
   color: t.primary,
   textDecoration: "none",
 };
-export const linkMonoStyle: CSSProperties = { ...linkStyle, fontFamily: t.fontMono };
 export const columnStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -133,41 +80,6 @@ export const columnStyle: CSSProperties = {
 };
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
-export const selectStyle: CSSProperties = {
-  minHeight: "2.5rem",
-  padding: "0 0.75rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.8125rem",
-};
-export const inputStyle: CSSProperties = { ...selectStyle, minWidth: "9rem" };
-export const textareaStyle: CSSProperties = {
-  width: "100%",
-  padding: "0.5rem 0.6rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.cardBorder}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.85rem",
-  fontFamily: "inherit",
-  resize: "vertical",
-};
-export const primaryButtonStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  minHeight: "2.5rem",
-  padding: "0 1rem",
-  borderRadius: t.radiusMd,
-  border: "none",
-  cursor: "pointer",
-  background: t.primary,
-  color: t.onPrimary,
-  fontSize: "0.875rem",
-  fontWeight: 600,
-};
 export const ghostButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -182,11 +94,6 @@ export const ghostButtonStyle: CSSProperties = {
   fontSize: "0.875rem",
   fontWeight: 600,
   textDecoration: "none",
-};
-export const disabledButtonStyle: CSSProperties = {
-  ...ghostButtonStyle,
-  cursor: "not-allowed",
-  opacity: 0.5,
 };
 
 // ── modal chrome (the §5.1 modals: sign, supervisory visit, volunteer assignment, gate) ────────────────
@@ -220,37 +127,6 @@ export function Field({
   );
 }
 
-/** A titled card — the aside/panel atom. */
-export function Card({
-  title,
-  actions,
-  children,
-  headingLevel = 3,
-}: {
-  title: string;
-  actions?: ReactNode;
-  children: ReactNode;
-  headingLevel?: 2 | 3;
-}): JSX.Element {
-  const Heading = headingLevel === 2 ? "h2" : "h3";
-  return (
-    <section style={cardStyle}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: t.space3,
-        }}
-      >
-        <Heading style={cardTitleStyle}>{title}</Heading>
-        {actions}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 /** An auto-fitting label/value grid — the detail header atom. */
 export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element {
   return (
@@ -271,105 +147,8 @@ export function FilterRow({ children }: { children: ReactNode }): JSX.Element {
   return <div className="wx-filter-panel">{children}</div>;
 }
 
-/** A labelled <select> for the filter row / a modal field. */
-export function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  onChange: (v: string) => void;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--color-on-surface)" }}>
-        {label}
-      </span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="wx-select"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-/** A labelled text/number/date input. */
-export function TextField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  describedBy,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: "text" | "number" | "date" | "datetime-local";
-  placeholder?: string;
-  describedBy?: string;
-}): JSX.Element {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <input
-        aria-label={label}
-        aria-describedby={describedBy}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        style={inputStyle}
-      />
-    </label>
-  );
-}
-
-/** A labelled multi-line field — narrative / attestation / reason capture. */
-export function TextAreaField({
-  label,
-  value,
-  onChange,
-  rows = 4,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  rows?: number;
-  hint?: string;
-}): JSX.Element {
-  const hintId = hint ? `${label.replace(/\W+/g, "-").toLowerCase()}-hint` : undefined;
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <textarea
-        aria-label={label}
-        aria-describedby={hintId}
-        value={value}
-        rows={rows}
-        onChange={(e) => onChange(e.target.value)}
-        style={textareaStyle}
-      />
-      {hint ? (
-        <span id={hintId} style={mutedStyle}>
-          {hint}
-        </span>
-      ) : null}
-    </label>
-  );
-}
+// The labelled controls are the kit's, behind the string-valued `onChange(value)` these screens use.
+export { SelectField, TextAreaField, TextField } from "../../shell/value-fields";
 
 /** The §5.1 modal shell — backdrop + dialog + footer actions. Every M15 ceremony reuses it. Delegates
  * to `@chartwarden/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
@@ -399,14 +178,9 @@ export function Modal({
         <h2 style={modalTitleStyle}>{title}</h2>
         {children}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={closeDisabled}
-            style={closeDisabled ? disabledButtonStyle : ghostButtonStyle}
-          >
+          <Button tone="secondary" type="button" onClick={onClose} disabled={closeDisabled}>
             Cancel
-          </button>
+          </Button>
           {footer}
         </div>
       </div>

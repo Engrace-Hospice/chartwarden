@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SafetyCheckInStatus,
   type SafetyCheckInView,
@@ -23,6 +24,7 @@ import {
   errorMessage,
   getCheckIn,
   getMyDay,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   AMENDMENT_REASON_MIN_CHARS,
@@ -34,15 +36,7 @@ import {
   meetsMinChars,
   shortId,
 } from "./safety-status";
-import {
-  CheckInStatusPill,
-  Modal,
-  Notice,
-  SelectField,
-  TextAreaField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { CheckInStatusPill, Notice, SelectField, TextAreaField } from "./safety-ui";
 
 const HISTORY_DAYS = 90;
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -83,6 +77,8 @@ export function MyCheckInsScreen(): JSX.Element {
 
   const openAmend = useCallback(
     async (row: SafetyCheckInView) => {
+      // Already open (the drawer is not modal while idle): opening again must not wipe the reason typed.
+      if (amending?.id === row.id) return;
       setChecking(row.id);
       setGraceClosed(null);
       setModalError(null);
@@ -101,24 +97,36 @@ export function MyCheckInsScreen(): JSX.Element {
       setReason("");
       setAmending(res.checkIn);
     },
-    [client],
+    [amending, client],
   );
+
+  // Nothing typed or refused in the form outlives it: a correction's reason is written fresh each time.
+  const closeAmend = useCallback(() => {
+    setAmending(null);
+    setStatus("ok");
+    setNote("");
+    setReason("");
+    setModalError(null);
+  }, []);
 
   const submitAmend = useCallback(async () => {
     if (!amending) return;
+    const submittedId = amending.id;
     setSaving(true);
     setModalError(null);
-    const res = await amendCheckIn(client, amending.id, {
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
+    const res = await amendCheckIn(client, submittedId, {
       status: status as SafetyCheckInStatus,
       ...(status !== "ok" ? { concernNote: note } : {}),
       amendmentReason: reason,
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The amendment was not recorded."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The amendment was not recorded."));
       return;
     }
-    setAmending(null);
+    // Close only the form that was submitted, never another check-in's.
+    setAmending((current) => (current?.id === submittedId ? null : current));
     await load();
   }, [amending, client, load, note, reason, status]);
 
@@ -203,16 +211,16 @@ export function MyCheckInsScreen(): JSX.Element {
             </div>
           ) : (
             <>
-              <table style={tableStyle}>
+              <table>
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "17%" }}>Posted</th>
-                    <th style={{ ...thStyle, width: "13%" }}>Kind</th>
-                    <th style={{ ...thStyle, width: "14%" }}>You said</th>
-                    <th style={{ ...thStyle, width: "22%" }}>Your note</th>
-                    <th style={{ ...thStyle, width: "12%" }}>Visit</th>
-                    <th style={{ ...thStyle, width: "14%" }}>Standing</th>
-                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Action</th>
+                  <tr>
+                    <th style={{ width: "17%" }}>Posted</th>
+                    <th style={{ width: "13%" }}>Kind</th>
+                    <th style={{ width: "14%" }}>You said</th>
+                    <th style={{ width: "22%" }}>Your note</th>
+                    <th style={{ width: "12%" }}>Visit</th>
+                    <th style={{ width: "14%" }}>Standing</th>
+                    <th style={{ width: "8%", textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -248,62 +256,67 @@ export function MyCheckInsScreen(): JSX.Element {
               first posted.
             </span>
           </div>
-          {amending ? (
-            <Modal
-              title="Amend this check-in"
-              onClose={() => setAmending(null)}
-              footer={
-                <button
-                  type="button"
-                  onClick={() => void submitAmend()}
-                  disabled={saving || !canSave}
-                  style={saving || !canSave ? disabledButtonStyle : primaryButtonStyle}
-                >
-                  {saving ? "Recording..." : "Record correction"}
-                </button>
-              }
-            >
-              <Notice tone="info">
-                Amendable until <strong>{dateTime(amending.amendableUntil)}</strong>. This writes a
-                new check-in that supersedes the one from {dateTime(amending.postedAt)}.
-              </Notice>
-              <SelectField
-                label="What you meant to say"
-                value={status}
-                options={[
-                  { value: "ok", label: checkInStatusLabel("ok") },
-                  { value: "concerned_continue", label: checkInStatusLabel("concerned_continue") },
-                  { value: "concerned_stop", label: checkInStatusLabel("concerned_stop") },
-                ]}
-                onChange={setStatus}
-              />
-              {noteOwed ? (
-                <TextAreaField
-                  label="Your note"
-                  value={note}
-                  onChange={setNote}
-                  rows={4}
-                  minChars={CONCERN_NOTE_MIN_CHARS}
-                />
-              ) : null}
-              <TextAreaField
-                label="Why the correction?"
-                value={reason}
-                onChange={setReason}
-                rows={3}
-                minChars={AMENDMENT_REASON_MIN_CHARS}
-                hint="A short reason for the audit trail."
-              />
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
         </div>
       }
       fullPageScroll
+      detail={
+        amending ? (
+          <FormDrawer
+            key={amending.id}
+            title="Amend this check-in"
+            busy={saving}
+            onClose={closeAmend}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void submitAmend()}
+                disabled={saving || !canSave}
+              >
+                {saving ? "Recording..." : "Record correction"}
+              </Button>
+            }
+          >
+            <Notice tone="info">
+              Amendable until <strong>{dateTime(amending.amendableUntil)}</strong>. This writes a
+              new check-in that supersedes the one from {dateTime(amending.postedAt)}.
+            </Notice>
+            <SelectField
+              label="What you meant to say"
+              value={status}
+              options={[
+                { value: "ok", label: checkInStatusLabel("ok") },
+                { value: "concerned_continue", label: checkInStatusLabel("concerned_continue") },
+                { value: "concerned_stop", label: checkInStatusLabel("concerned_stop") },
+              ]}
+              onChange={setStatus}
+            />
+            {noteOwed ? (
+              <TextAreaField
+                label="Your note"
+                value={note}
+                onChange={setNote}
+                rows={4}
+                minChars={CONCERN_NOTE_MIN_CHARS}
+              />
+            ) : null}
+            <TextAreaField
+              label="Why the correction?"
+              value={reason}
+              onChange={setReason}
+              rows={3}
+              minChars={AMENDMENT_REASON_MIN_CHARS}
+              hint="A short reason for the audit trail."
+            />
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : undefined
+      }
     />
   );
 }
@@ -320,15 +333,15 @@ function CheckInRow({
   onAmend: (row: SafetyCheckInView) => Promise<void>;
 }): JSX.Element {
   return (
-    <tr style={rowStyle}>
-      <td style={tdStyle}>{dateTime(row.postedAt)}</td>
-      <td style={tdStyle}>{humanize(row.kind)}</td>
-      <td style={tdStyle}>
+    <tr>
+      <td>{dateTime(row.postedAt)}</td>
+      <td>{humanize(row.kind)}</td>
+      <td>
         <CheckInStatusPill status={row.status} />
       </td>
-      <td style={tdStyle}>{row.concernNote ?? <span style={secondaryTextStyle}>-</span>}</td>
-      <td style={tdMonoStyle}>{row.visitId ? shortId(row.visitId) : "-"}</td>
-      <td style={tdStyle}>
+      <td>{row.concernNote ?? <span style={secondaryTextStyle}>-</span>}</td>
+      <td className="wx-data-md">{row.visitId ? shortId(row.visitId) : "-"}</td>
+      <td>
         <div style={primaryCellStyle}>
           {row.supersededAt ? (
             <>
@@ -349,7 +362,7 @@ function CheckInRow({
           {row.isPartOfSosBracket ? <StatusPill label="Around SOS" tone="critical" /> : null}
         </div>
       </td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td style={{ textAlign: "right" }}>
         {row.supersededAt ? (
           <span style={secondaryTextStyle}>Superseded</span>
         ) : (
@@ -397,34 +410,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
-};
-const tdMonoStyle = {
-  ...tdStyle,
-  fontFamily: "var(--font-mono)",
 };
 const primaryCellStyle = {
   display: "flex",

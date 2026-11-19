@@ -304,22 +304,22 @@ export function EscalationInboxScreen(): JSX.Element {
             </div>
           ) : (
             <div style={tableWrapStyle}>
-              <table style={tableStyle}>
+              <table className="tabular-nums">
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "18%" }}>Tier</th>
-                    <th style={{ ...thStyle, width: "15%" }}>Trigger</th>
-                    <th style={{ ...thStyle, width: "14%" }}>State</th>
-                    <th style={{ ...thStyle, width: "13%" }}>Call</th>
-                    <th style={{ ...thStyle, width: "14%" }}>Patient</th>
-                    <th style={{ ...thStyle, width: "12%" }}>Open</th>
-                    <th style={{ ...thStyle, width: "14%" }}>Action</th>
+                  <tr>
+                    <th style={{ width: "18%" }}>Tier</th>
+                    <th style={{ width: "15%" }}>Trigger</th>
+                    <th style={{ width: "14%" }}>State</th>
+                    <th style={{ width: "13%" }}>Call</th>
+                    <th style={{ width: "14%" }}>Patient</th>
+                    <th style={{ width: "12%" }}>Open</th>
+                    <th style={{ width: "14%" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleRows.map((row) => (
-                    <tr key={row.id} style={rowStyle}>
-                      <td style={tdStyle}>
+                    <tr key={row.id}>
+                      <td>
                         <div style={pillStackStyle}>
                           <TierPill tier={row.tier} />
                           {row.mandatory ? (
@@ -327,8 +327,8 @@ export function EscalationInboxScreen(): JSX.Element {
                           ) : null}
                         </div>
                       </td>
-                      <td style={tdStyle}>{humanize(row.triggerKind)}</td>
-                      <td style={tdStyle}>
+                      <td>{humanize(row.triggerKind)}</td>
+                      <td>
                         <div style={pillStackStyle}>
                           <StatusPill
                             label={humanize(row.state)}
@@ -337,13 +337,13 @@ export function EscalationInboxScreen(): JSX.Element {
                           <CallStatePill state={row.callState} />
                         </div>
                       </td>
-                      <td style={tdStyle}>
+                      <td>
                         <Link to={`/triage/calls/${row.triageCallId}`} style={callLinkStyle}>
                           {shortId(row.triageCallId)}
                         </Link>
                         <div style={subtleTextStyle}>{dateTime(row.escalatedAt)}</div>
                       </td>
-                      <td style={tdStyle}>
+                      <td>
                         {row.patientId ? (
                           <code className="wx-data-md" style={codeStyle}>
                             {shortId(row.patientId)}
@@ -352,12 +352,8 @@ export function EscalationInboxScreen(): JSX.Element {
                           <span style={subtleTextStyle}>Not identified</span>
                         )}
                       </td>
-                      <td
-                        style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 650 }}
-                      >
-                        {durationLabel(row.minutesOpen)}
-                      </td>
-                      <td style={tdStyle}>
+                      <td style={{ fontWeight: 650 }}>{durationLabel(row.minutesOpen)}</td>
+                      <td>
                         <div style={actionStackStyle}>
                           {row.state === "open" ? (
                             <Button
@@ -494,47 +490,10 @@ const toolbarStyle: CSSProperties = {
   gap: "0.5rem",
 };
 
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
   padding: "0 1.5rem 1.5rem",
-};
-
-const tableStyle: CSSProperties = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.875rem",
-  fontVariantNumeric: "tabular-nums",
-};
-
-const headerRowStyle: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-
-const thStyle: CSSProperties = {
-  padding: "0.75rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-
-const tdStyle: CSSProperties = {
-  padding: "0.875rem 1rem",
-  verticalAlign: "middle",
-  color: "var(--color-on-surface-variant)",
-};
-
-const rowStyle: CSSProperties = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 
 const pillStackStyle: CSSProperties = {

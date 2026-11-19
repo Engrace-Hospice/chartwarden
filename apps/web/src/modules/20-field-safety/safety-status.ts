@@ -14,7 +14,10 @@
 // error≈breached/failed · critical(gold)≈reserved irreversible/safety · neutral≈inert/terminal.
 import type { StatusTone } from "@chartwarden/ui";
 import { toLocalInput } from "@chartwarden/ui";
+import { dateTime, humanize, shortDate, shortId, toneOf } from "../../shell/wire-format";
 import type { SafetyConsentPurpose, SafetySubscriptionAlertKind } from "./safety-api";
+
+export { toneOf, humanize, shortDate, dateTime, shortId };
 
 /**
  * `safety_sos_lifecycle_state` (§2.2.2).
@@ -62,6 +65,44 @@ export const SOS_OPEN_STATES: readonly string[] = [
   "emergency_terminus",
   "resolving",
 ];
+
+/** The states an alert is POSITIVELY known to be finished in. Deliberately not "everything not in
+ *  {@link SOS_OPEN_STATES}": a state this mirror does not know reads as not-closed, so a stale refusal never leaves a
+ *  responder locked out of a write because the client list is behind the server's. */
+export const SOS_CLOSED_STATES: readonly string[] = [
+  "resolved",
+  "cancelled_in_window",
+  "incident_opened",
+];
+
+/** The part of a re-read alert that says whether a write refused as stale still has anything left to do. */
+type SettledAlert = { acknowledgedAt: string | null; lifecycleState: string };
+
+/** After a stale refusal and a re-read: has the alert POSITIVELY moved past what this write was for? An acknowledgment
+ *  is moot once somebody acknowledged or the alert closed; a resolution once the alert closed. Anything not known to be
+ *  settled (an unfamiliar state included) is not. */
+export function sosAlreadySettled(act: "acknowledge" | "resolve", fresh: SettledAlert): boolean {
+  return (
+    SOS_CLOSED_STATES.includes(fresh.lifecycleState) ||
+    (act === "acknowledge" && fresh.acknowledgedAt !== null)
+  );
+}
+
+/** What to say then (call only when {@link sosAlreadySettled}). `lostReply`: an earlier attempt in the same dialog got
+ *  no answer, so it may be the one that landed. */
+export function sosSettledMessage(
+  act: "acknowledge" | "resolve",
+  alertName: string,
+  fresh: SettledAlert,
+  lostReply: boolean,
+): string {
+  const landed = lostReply
+    ? " If your earlier attempt got no answer, it may be the one that landed."
+    : "";
+  if (SOS_CLOSED_STATES.includes(fresh.lifecycleState))
+    return `${alertName} is no longer open (${sosStateLabel(fresh.lifecycleState)}), so there is nothing to ${act}.${landed}`;
+  return `${alertName} was already acknowledged at ${dateTime(fresh.acknowledgedAt)}.${landed} There is nothing to submit.`;
+}
 
 /** Every `safety_sos_lifecycle_state` value. */
 export const SOS_STATES: readonly string[] = [
@@ -398,21 +439,6 @@ export const POLICY_EDIT_REASON_MIN_CHARS = 30;
 /** §6's post-SOS coordinate escalation narrative. */
 export const COORD_ACCESS_REASON_MIN_CHARS = 40;
 
-/** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
-export function toneOf(
-  map: Record<string, StatusTone>,
-  key: string | null | undefined,
-): StatusTone {
-  return key ? (map[key] ?? "neutral") : "neutral";
-}
-
-/** Title-case a snake/upper wire enum for display (`escalation_tier_2` → "Escalation tier 2"). */
-export function humanize(value: string | null | undefined): string {
-  if (!value) return "—";
-  const s = value.replace(/_/g, " ").toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 /** A lifecycle state → the sentence a supervisor recognises at 3 a.m. */
 export function sosStateLabel(state: string | null | undefined): string {
   switch (state) {
@@ -522,29 +548,10 @@ export function coverageGapLabel(reason: string | null | undefined): string {
   }
 }
 
-/** A short ISO-date label (YYYY-MM-DD) from an instant or date string. */
-export function shortDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 10);
-}
-
-/** A date + HH:MM label for an instant — the grain a safety timeline is read at. */
-export function dateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  return `${value.slice(0, 10)} ${value.slice(11, 16)}`;
-}
-
 /** HH:MM alone — a column whose date is the row's own context. */
 export function clockTime(value: string | null | undefined): string {
   if (!value) return "—";
   return value.slice(11, 16);
-}
-
-/** A short opaque id label for a queue column. The full id is never truncated in a LINK TARGET — only in
- *  what a human reads. */
-export function shortId(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 8);
 }
 
 /** Whole minutes SINCE an instant (0 when the instant is in the future). The SOS board sorts on it and

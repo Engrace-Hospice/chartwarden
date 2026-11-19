@@ -11,6 +11,17 @@
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible ceremony · neutral≈inert/terminal.
 import type { StatusTone } from "@chartwarden/ui";
+import {
+  dateTime,
+  daysUntil,
+  dueLabel,
+  humanize,
+  shortDate,
+  shortId,
+  toneOf,
+} from "../../shell/wire-format";
+
+export { toneOf, humanize, shortDate, dateTime, shortId, daysUntil, dueLabel };
 
 /** `discipline_plan_status` (enums.ts §3.2) — the §2.2.1 plan-root lifecycle. */
 export const PLAN_STATUS_TONE: Record<string, StatusTone> = {
@@ -85,21 +96,6 @@ export const RATIO_STATUS_TONE: Record<string, StatusTone> = {
   red: "error",
   unavailable: "neutral",
 };
-
-/** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
-export function toneOf(
-  map: Record<string, StatusTone>,
-  key: string | null | undefined,
-): StatusTone {
-  return key ? (map[key] ?? "neutral") : "neutral";
-}
-
-/** Title-case a snake/upper wire enum for display (`gate_engaged` → "Gate engaged"). */
-export function humanize(value: string | null | undefined): string {
-  if (!value) return "—";
-  const s = value.replace(/_/g, " ").toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 /** `discipline_goal_source` → the label shown in the goals tables and the Aide POC editor's Source select. */
 const GOAL_SOURCE_LABELS: Record<string, string> = {
@@ -202,42 +198,6 @@ export function redactionLabel(categories: readonly string[]): string | null {
     c === "sud" ? "substance-use disorder" : c === "family_violence" ? "family violence" : c,
   );
   return `Some ${parts.join(" and ")} content is withheld from this view.`;
-}
-
-/** A short ISO-date label (YYYY-MM-DD) from an instant or date string. */
-export function shortDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 10);
-}
-
-/** A date + HH:MM label for an instant (the supervisory / signature ledgers). */
-export function dateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  return `${value.slice(0, 10)} ${value.slice(11, 16)}`;
-}
-
-/** A short opaque id label for a PHI-adjacent identifier surfaced in a queue column. */
-export function shortId(value: string | null | undefined): string {
-  if (!value) return "—";
-  return value.slice(0, 8);
-}
-
-/** Whole days between now and an instant — negative when the instant has passed. */
-export function daysUntil(value: string | null | undefined, now = Date.now()): number | null {
-  if (!value) return null;
-  const ms = Date.parse(value);
-  if (Number.isNaN(ms)) return null;
-  return Math.floor((ms - now) / 86_400_000);
-}
-
-/** A relative-due label for the §7.1 next-due banner and the gate `valid_until` countdown. */
-export function dueLabel(value: string | null | undefined, now = Date.now()): string {
-  const days = daysUntil(value, now);
-  if (days === null) return "—";
-  if (days === 0) return "due today";
-  if (days > 0) return `in ${days} day${days === 1 ? "" : "s"}`;
-  const overdue = -days;
-  return `${overdue} day${overdue === 1 ? "" : "s"} overdue`;
 }
 
 /** Minutes → an hours label for the 418.78(e) ledger (`5400` → "90.0 h"). */

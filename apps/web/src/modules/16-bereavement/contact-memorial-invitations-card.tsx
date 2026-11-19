@@ -5,24 +5,24 @@
 // renders, and a 403 renders nothing either. An answer can be recorded only while the service is published (afterwards the RSVP is closed).
 // The write carries one Idempotency-Key per attempt; the row is replaced by the server's answer. A refusal (409: closed, full) is said in
 // place and the list is read again.
-import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import {
+  Button,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
 import { errorMessage, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
 import {
-  Card,
   ErrorText,
   Modal,
   SelectField,
   TextField,
-  mutedStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   useActionStatus,
   visuallyHidden,
 } from "./bereavement-ui";
@@ -64,7 +64,7 @@ function InvitationsPanel({ contactId }: { contactId: string }): JSX.Element | n
   const rows = state.kind === "ready" ? state.data : [];
   const failure = state.kind === "error" ? state.message : state.notice;
   return (
-    <Card title="Memorial invitations">
+    <Panel stack headingLevel={3} title="Memorial invitations">
       {region}
       {failure ? (
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
@@ -75,40 +75,42 @@ function InvitationsPanel({ contactId }: { contactId: string }): JSX.Element | n
         </div>
       ) : null}
       {state.kind === "ready" && rows.length === 0 ? (
-        <span style={mutedStyle}>This family has not been invited to a memorial service.</span>
+        <span className="wx-text-muted">
+          This family has not been invited to a memorial service.
+        </span>
       ) : null}
       {rows.length > 0 ? (
-        <table style={tableStyle} aria-label="Memorial invitations">
+        <table aria-label="Memorial invitations">
           <thead>
             <tr>
-              <th style={th}>Service</th>
-              <th style={th}>When</th>
-              <th style={th}>Answer</th>
-              <th style={th}>Guests</th>
-              <th style={th}>Recorded</th>
-              <th style={th}>
+              <th>Service</th>
+              <th>When</th>
+              <th>Answer</th>
+              <th>Guests</th>
+              <th>Recorded</th>
+              <th>
                 <span style={visuallyHidden}>Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.invitationId} style={rowLine}>
-                <td style={td}>{row.serviceTitle}</td>
-                <td style={td}>{dateTime(row.startsAt)}</td>
-                <td style={td}>
+              <tr key={row.invitationId}>
+                <td>{row.serviceTitle}</td>
+                <td>{dateTime(row.startsAt)}</td>
+                <td>
                   <StatusPill
                     label={invitationLabel(row.status)}
                     tone={toneOf(INVITATION_STATUS_TONE, row.status)}
                   />
                 </td>
-                <td style={td}>{row.guests}</td>
-                <td style={td}>
+                <td>{row.guests}</td>
+                <td>
                   {row.rsvpAt
                     ? `${dateTime(row.rsvpAt)} (${row.rsvpSource === "portal" ? "family portal" : humanize(row.rsvpSource)})`
                     : "—"}
                 </td>
-                <td style={td}>
+                <td>
                   {row.serviceStatus === "published" ? (
                     <Button size="sm" tone="secondary" onClick={() => setAnswering(row)}>
                       Record phone RSVP
@@ -133,7 +135,7 @@ function InvitationsPanel({ contactId }: { contactId: string }): JSX.Element | n
           }}
         />
       ) : null}
-    </Card>
+    </Panel>
   );
 }
 
@@ -200,17 +202,17 @@ function RsvpModal({
       onClose={onClose}
       busy={busy}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={busy || !guestsValid}
           onClick={() => void submit()}
         >
           {busy ? "Saving…" : "Save RSVP"}
-        </button>
+        </Button>
       }
     >
-      <span style={mutedStyle}>Record the answer the family gave by phone.</span>
+      <span className="wx-text-muted">Record the answer the family gave by phone.</span>
       <SelectField
         label="Answer"
         value={response}

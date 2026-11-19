@@ -10,7 +10,7 @@
 //     read (404: not on the care team, no such admission) leaves every factor `unknown` and claims nothing.
 //  3. THE MIDPOINT ASKS ABOUT DELAYED GRIEF. The clinician must answer; "yes" makes the PG-13 total required, because a
 //     delayed-grief concern is exactly what the screen substantiates (a total of 25+ promotes the tier to complicated).
-import { useApiClient } from "@chartwarden/ui";
+import { Button, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import {
@@ -27,15 +27,7 @@ import {
   riskFactorLabel,
   shortDate,
 } from "./bereavement-status";
-import {
-  ErrorText,
-  Modal,
-  Notice,
-  SelectField,
-  TextField,
-  mutedStyle,
-  primaryButtonStyle,
-} from "./bereavement-ui";
+import { ErrorText, Modal, Notice, SelectField, TextField } from "./bereavement-ui";
 
 const PG13_MAX = 52;
 /** The server's promotion threshold (ADR-0109 / D8): a PG-13 total at or above it is a positive complicated-grief screen. */
@@ -119,12 +111,12 @@ export function CompleteAssessmentModal({
       title={midpoint ? "Complete midpoint reassessment" : "Complete initial assessment"}
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy || !ready} onClick={submit}>
+        <Button tone="primary" type="button" disabled={busy || !ready} onClick={submit}>
           {busy ? "Recording…" : "Complete assessment"}
-        </button>
+        </Button>
       }
     >
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         {assessmentTaskKindLabel(task.taskKind)} for {contactName}, due {shortDate(task.dueAt)}.
         This appends a risk score and completes the checkpoint; a stated factor can raise a derived
         one and never lowers it.

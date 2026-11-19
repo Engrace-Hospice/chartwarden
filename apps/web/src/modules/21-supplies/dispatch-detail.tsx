@@ -14,9 +14,11 @@
 // its own permission key (`comfort_kit.perpetual_log.read`) and its own screen: a supply coordinator who may
 // dispatch must not thereby acquire the ledger a diversion investigation reads.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   nowLocalInput,
   t,
@@ -25,6 +27,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { FormModal } from "../../shell/form-modal";
 import {
   type DispatchDetail as Dispatch,
   createReturn,
@@ -42,68 +45,83 @@ import {
   toneOf,
 } from "./supplies-status";
 import {
-  Card,
   Field,
-  Modal,
   Notice,
   SchedulePill,
   SummaryGrid,
   TextAreaField,
   TextField,
   Timeline,
-  alertStyle,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdQty,
-  th,
   thNum,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
+import { useSettledFocus } from "./use-settled-focus";
+import { useWrite } from "./use-write";
 
 type Ceremony = "deploy" | "return" | null;
+
+const LOAD_FAILURE = "This comfort-kit dispatch could not be loaded.";
 
 function toInstant(local: string): string {
   const ms = Date.parse(local);
   return Number.isNaN(ms) ? new Date().toISOString() : new Date(ms).toISOString();
 }
 
+/** The route's screen. Keyed by the dispatch, so moving to another dispatch (Back / Forward) starts a fresh screen: the
+ *  open step, its typed fields and its stamp never follow the responder onto another record. */
 export function ComfortKitDispatchDetail(): JSX.Element {
-  const client = useApiClient();
   const { dispatchId } = useParams<{ dispatchId: string }>();
+  return <DispatchBody key={dispatchId} dispatchId={dispatchId} />;
+}
+
+function DispatchBody({ dispatchId }: { dispatchId: string | undefined }): JSX.Element {
+  const client = useApiClient();
   const [dispatch, setDispatch] = useState<Dispatch | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, run: runWrite } = useWrite();
+  const startRead = useLatestRead();
+  const focusRef = useSettledFocus<HTMLDivElement>(loading);
   const [when, setWhen] = useState(nowLocalInput);
   const [returnReason, setReturnReason] = useState("");
 
   const load = useCallback(async () => {
-    if (!dispatchId) return;
-    setLoading(true);
-    setError(null);
-    const { dispatch: d, error: err } = await getDispatch(client, dispatchId);
-    if (err) {
-      setError(errorMessage(err, "This comfort-kit dispatch could not be loaded."));
+    const isLatest = startRead();
+    if (!dispatchId) {
       setLoading(false);
       return;
     }
-    setDispatch(d);
-    setLoading(false);
-  }, [client, dispatchId]);
+    setLoading(true);
+    setError(null);
+    try {
+      const { dispatch: d, error: err } = await getDispatch(client, dispatchId);
+      if (!isLatest()) return;
+      if (err) {
+        setError(errorMessage(err, LOAD_FAILURE));
+        return;
+      }
+      setDispatch(d);
+    } catch {
+      // A rejected read (no reply) must not leave the page on its spinner for good.
+      if (isLatest()) setError(LOAD_FAILURE);
+    } finally {
+      if (isLatest()) setLoading(false);
+    }
+  }, [client, dispatchId, startRead]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
+  // The spinner is for the first read only. A refetch after a write keeps the page mounted, so the opener that launched
+  // the step is still there for the modal to hand focus back to.
+  if (loading && !dispatch) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!dispatch || !dispatchId)
     return (
@@ -117,9 +135,36 @@ export function ComfortKitDispatchDetail(): JSX.Element {
   const canReturn = ["deployed_at_patient", "partially_returned"].includes(dispatch.dispatchStatus);
   const controlled = dispatch.contents.filter((c) => c.isControlledSubstance);
 
+  /** Both steps' fields back to their start. A step is an attestation, so nothing typed for it — or left behind by a
+   *  Cancel — may reach the next open: a leftover return reason would arm a write the responder did not just
+   *  write. The deployment time is a custody timestamp, so it starts at the moment the step is opened. */
+  const resetDrafts = () => {
+    setWhen(nowLocalInput());
+    setReturnReason("");
+  };
+
   const close = () => {
+    resetDrafts();
     setCeremony(null);
     setActionError(null);
+  };
+
+  const openCeremony = (next: Exclude<Ceremony, null>) => {
+    resetDrafts();
+    setActionError(null);
+    setCeremony(next);
+  };
+
+  /** Run a write, then reload. A refusal (or a rejected request) stays in the modal, beside Save. */
+  const run = async (fn: () => Promise<{ error: unknown }>, failure: string) => {
+    setActionError(null);
+    const failed = await runWrite(fn, failure);
+    if (failed) {
+      setActionError(failed);
+      return;
+    }
+    close();
+    void load();
   };
 
   const timeline = [
@@ -138,7 +183,13 @@ export function ComfortKitDispatchDetail(): JSX.Element {
   ].filter((e): e is { label: string; at: string; by: string } => e !== null);
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      className="wx-kit-column"
+      aria-busy={loading}
+      style={{ ...columnStyle, outline: "none" }}
+    >
       <PageHeader
         title={<span style={pageTitleStyle}>Comfort kit {dispatch.kitSerialNumber}</span>}
         actions={
@@ -169,11 +220,11 @@ export function ComfortKitDispatchDetail(): JSX.Element {
         </Notice>
       ) : null}
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
-
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Dispatch"
-        actions={
+        action={
           <StatusPill
             label={humanize(dispatch.dispatchStatus)}
             tone={toneOf(DISPATCH_STATUS_TONE, dispatch.dispatchStatus)}
@@ -204,7 +255,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
         </SummaryGrid>
         {dispatch.specialHandlingNotes ? (
           <div>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Special handling notes (D13 — audit-denylisted free text)
             </span>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
@@ -212,11 +263,13 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             </p>
           </div>
         ) : null}
-      </Card>
+      </Panel>
 
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Contents"
-        actions={
+        action={
           controlled.length > 0 ? (
             <StatusPill label={`${controlled.length} controlled line(s)`} tone="warning" />
           ) : (
@@ -224,32 +277,32 @@ export function ComfortKitDispatchDetail(): JSX.Element {
           )
         }
       >
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           What physically left the hub. These quantities are the DEA outbound record — every return
           count is subtracted from them, and they are never edited: a correction is a new
           reconciliation row.
         </span>
-        <table style={tableStyle}>
+        <table>
           <thead>
             <tr>
-              <th style={th}>Medication</th>
-              <th style={th}>Schedule</th>
+              <th>Medication</th>
+              <th>Schedule</th>
               <th style={thNum}>Dispatched</th>
-              <th style={th}>Lot</th>
-              <th style={th}>Expires</th>
-              <th style={th}>Prescription</th>
+              <th>Lot</th>
+              <th>Expires</th>
+              <th>Prescription</th>
             </tr>
           </thead>
           <tbody>
             {dispatch.contents.map((c) => (
-              <tr key={c.dispatchedContentId} style={rowLine}>
-                <td style={td}>
+              <tr key={c.dispatchedContentId}>
+                <td>
                   {c.drugName}
-                  <div style={mutedStyle}>
+                  <div className="wx-text-muted">
                     {c.strength} · {c.dosageForm} · {c.routeOfAdministration}
                   </div>
                 </td>
-                <td style={td}>
+                <td>
                   <SchedulePill
                     schedule={c.controlledSubstanceSchedule}
                     isControlled={c.isControlledSubstance}
@@ -258,9 +311,9 @@ export function ComfortKitDispatchDetail(): JSX.Element {
                 <td style={tdQty}>
                   {c.dispatchedQuantity} {c.dispatchedUnit}
                 </td>
-                <td style={{ ...td, fontFamily: t.fontMono }}>{c.lotNumber ?? "—"}</td>
-                <td style={td}>{shortDate(c.expirationDate)}</td>
-                <td style={{ ...td, fontFamily: t.fontMono }}>
+                <td className="wx-data-md">{c.lotNumber ?? "—"}</td>
+                <td>{shortDate(c.expirationDate)}</td>
+                <td className="wx-data-md">
                   {/* Null on an IPU stock kit, which has no per-patient prescription behind it. */}
                   {c.medicationOrderId ? shortId(c.medicationOrderId) : "stock kit"}
                 </td>
@@ -268,29 +321,30 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             ))}
           </tbody>
         </table>
-      </Card>
+      </Panel>
 
-      <Card title="Chain of custody">
-        <span style={mutedStyle}>
+      <Panel stack headingLevel={3} title="Chain of custody">
+        <span className="wx-text-muted">
           The dispatch's own custody stamps. The per-lot ledger is the DEA perpetual log, behind its
           own permission.
         </span>
         <Timeline entries={timeline} />
-      </Card>
+      </Panel>
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button
+          <Button
+            tone="secondary"
             type="button"
             disabled={!canDeploy}
             title={canDeploy ? undefined : "Only a kit still marked dispatched can be deployed."}
             aria-disabled={!canDeploy}
-            style={canDeploy ? ghostButtonStyle : disabledButtonStyle}
-            onClick={canDeploy ? () => setCeremony("deploy") : undefined}
+            onClick={canDeploy ? () => openCeremony("deploy") : undefined}
           >
             Mark deployed at patient
-          </button>
-          <button
+          </Button>
+          <Button
+            tone="secondary"
             type="button"
             disabled={!canReturn}
             title={
@@ -299,49 +353,40 @@ export function ComfortKitDispatchDetail(): JSX.Element {
                 : "A return opens once the kit is at the patient, and only while something is still out."
             }
             aria-disabled={!canReturn}
-            style={canReturn ? ghostButtonStyle : disabledButtonStyle}
-            onClick={canReturn ? () => setCeremony("return") : undefined}
+            onClick={canReturn ? () => openCeremony("return") : undefined}
           >
             Initiate return
-          </button>
+          </Button>
         </div>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Reconciliation is not an action here. The physical count, its witness and the disposal
           record live on the return record, which is a different authority from dispatching.
         </span>
-      </Card>
+      </Panel>
 
       {ceremony === "deploy" ? (
-        <Modal
+        <FormModal
           title="Mark deployed at patient"
+          busy={busy}
+          error={actionError}
           onClose={close}
-          footer={
-            <button
+          save={
+            <Button
+              tone="primary"
               type="button"
-              disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
-              onClick={async () => {
-                setBusy(true);
-                setActionError(null);
-                const { error: err } = await deployAtPatient(
-                  client,
-                  dispatchId,
-                  dispatch.updatedAt,
-                  {
-                    deployedAt: toInstant(when),
-                  },
-                );
-                setBusy(false);
-                if (err) {
-                  setActionError(errorMessage(err, "The deployment could not be recorded."));
-                  return;
-                }
-                close();
-                void load();
-              }}
+              disabled={busy || loading}
+              onClick={() =>
+                void run(
+                  () =>
+                    deployAtPatient(client, dispatchId, dispatch.updatedAt, {
+                      deployedAt: toInstant(when),
+                    }),
+                  "The deployment could not be recorded.",
+                )
+              }
             >
               Mark deployed
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">
@@ -349,36 +394,28 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             carries the whole manifest, so M13 never has to read back into this module.
           </Notice>
           <TextField label="Deployed at" value={when} onChange={setWhen} type="datetime-local" />
-        </Modal>
+        </FormModal>
       ) : null}
-
       {ceremony === "return" ? (
-        <Modal
+        <FormModal
           title="Open the return obligation"
+          busy={busy}
+          error={actionError}
           onClose={close}
-          footer={
-            <button
+          save={
+            <Button
+              tone="primary"
               type="button"
-              disabled={busy || returnReason.trim() === ""}
-              style={busy || returnReason.trim() === "" ? disabledButtonStyle : primaryButtonStyle}
-              onClick={async () => {
-                setBusy(true);
-                setActionError(null);
-                const { error: err } = await createReturn(client, {
-                  dispatchId,
-                  returnReason: returnReason.trim(),
-                });
-                setBusy(false);
-                if (err) {
-                  setActionError(errorMessage(err, "The return could not be opened."));
-                  return;
-                }
-                close();
-                void load();
-              }}
+              disabled={busy || loading || returnReason.trim() === ""}
+              onClick={() =>
+                void run(
+                  () => createReturn(client, { dispatchId, returnReason: returnReason.trim() }),
+                  "The return could not be opened.",
+                )
+              }
             >
               Open return
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">
@@ -392,7 +429,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
             onChange={setReturnReason}
             rows={3}
           />
-        </Modal>
+        </FormModal>
       ) : null}
     </div>
   );

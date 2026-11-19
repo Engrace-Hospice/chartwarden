@@ -8,13 +8,21 @@ import {
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  TableScroll,
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { type SafetyPolicyView, errorMessage, getPolicy, patchPolicy } from "./safety-api";
+import { FormDrawer } from "../../shell/form-drawer";
+import {
+  type SafetyPolicyView,
+  errorMessage,
+  getPolicy,
+  patchPolicy,
+  writeErrorMessage,
+} from "./safety-api";
 import {
   INCIDENT_CATEGORIES,
   POLICY_EDIT_REASON_MIN_CHARS,
@@ -30,13 +38,10 @@ import {
 import {
   CheckboxField,
   ChipMultiSelect,
-  Modal,
   Notice,
   SelectField,
   TextAreaField,
   TextField,
-  disabledButtonStyle,
-  primaryButtonStyle,
 } from "./safety-ui";
 
 /**
@@ -104,12 +109,21 @@ export function SafetyPolicyScreen(): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
+  // Only the latest read may write state: a slower earlier read (a replay, then Back to current) must not land on top.
+  const latestRead = useRef(0);
   const load = useCallback(
     async (at?: string) => {
+      const readId = ++latestRead.current;
       setLoading(true);
-      const res = await getPolicy(client, at);
-      if (res.error || !res.policy) {
-        setError(errorMessage(res.error, "The safety policy could not be read."));
+      // The client REJECTS on a network failure; `null` is that, and `loading` must not stay true.
+      const res = await getPolicy(client, at).catch(() => null);
+      if (readId !== latestRead.current) return;
+      if (!res || res.error || !res.policy) {
+        setError(
+          res
+            ? errorMessage(res.error, "The safety policy could not be read.")
+            : "The safety policy could not be read: no answer came back. Check your connection, then retry.",
+        );
         setPolicy(null);
       } else {
         setPolicy(res.policy);
@@ -120,12 +134,17 @@ export function SafetyPolicyScreen(): JSX.Element {
     [client],
   );
 
+  // Edit and Save act on the version this screen HOLDS, not on the replay toggle: the toggle flips before its read
+  // lands, so `policy` can still be a past version. Only the version still in force, with no read outstanding.
+  const editable = policy !== null && !historical && !loading && policy.effectiveTo === null;
+
   useEffect(() => {
     void load();
   }, [load]);
 
   const openEditor = useCallback(() => {
-    if (!policy) return;
+    // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
+    if (!policy || !editable || editing) return;
     const next: Record<string, string> = {};
     for (const k of Object.keys(BANDS)) next[k] = String(policy[k as keyof SafetyPolicyView] ?? "");
     setDraft(next);
@@ -138,10 +157,17 @@ export function SafetyPolicyScreen(): JSX.Element {
     setEditReason("");
     setModalError(null);
     setEditing(true);
-  }, [policy]);
+  }, [editable, editing, policy]);
+
+  const closeEditor = useCallback(() => {
+    setEditing(false);
+    setEditReason("");
+    setModalError(null);
+  }, []);
 
   const save = useCallback(async () => {
-    if (!policy) return;
+    // A past version (a replay, or a read still landing) would still be saved as a new CURRENT version from this draft.
+    if (!policy || !editable) return;
     setSaving(true);
     setModalError(null);
     const body: Record<string, unknown> = { editReason };
@@ -157,17 +183,18 @@ export function SafetyPolicyScreen(): JSX.Element {
       body.afterHoursStartHour = Math.trunc(Number(afterHoursStart));
     if (afterHoursEnd.trim() !== "") body.afterHoursEndHour = Math.trunc(Number(afterHoursEnd));
 
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
     const res = await patchPolicy(
       client,
       null,
       body as Record<string, unknown> & { editReason: string },
-    );
+    ).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The policy was not changed."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The policy was not changed."));
       return;
     }
-    setEditing(false);
+    closeEditor();
     await load(historical && asOf ? toInstant(asOf) : undefined);
   }, [
     afterHoursEnd,
@@ -176,7 +203,9 @@ export function SafetyPolicyScreen(): JSX.Element {
     autoFlag,
     biometric,
     client,
+    closeEditor,
     draft,
+    editable,
     editReason,
     historical,
     load,
@@ -208,16 +237,14 @@ export function SafetyPolicyScreen(): JSX.Element {
     const band = BANDS[key];
     const value = policy[key as keyof SafetyPolicyView] as number;
     return (
-      <tr key={key} style={rowStyle}>
-        <td style={tdStyle}>{label}</td>
-        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-          {value}
-        </td>
-        <td style={tdStyle}>{unit}</td>
-        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+      <tr key={key}>
+        <td>{label}</td>
+        <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{value}</td>
+        <td>{unit}</td>
+        <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
           {band ? `${band[0]}-${band[1]}` : "-"}
         </td>
-        <td style={tdStyle}>
+        <td>
           {unit === "seconds"
             ? secondsLabel(value)
             : unit === "hours"
@@ -238,7 +265,7 @@ export function SafetyPolicyScreen(): JSX.Element {
               <Link to="/safety" style={linkButtonStyle}>
                 Safety board
               </Link>
-              <Button type="button" tone="primary" onClick={openEditor} disabled={historical}>
+              <Button type="button" tone="primary" onClick={openEditor} disabled={!editable}>
                 Edit policy
               </Button>
             </div>
@@ -274,6 +301,7 @@ export function SafetyPolicyScreen(): JSX.Element {
                 onChange={(event) => setAsOf(event.target.value)}
                 aria-label="Read the policy as it stood at"
                 style={inputStyle}
+                disabled={editing}
               />
               <Button
                 size="sm"
@@ -282,13 +310,15 @@ export function SafetyPolicyScreen(): JSX.Element {
                   setHistorical(true);
                   void load(toInstant(asOf));
                 }}
-                disabled={asOf.trim() === ""}
+                // The editor's draft is of the current version: a replay under it would leave Save writing it.
+                disabled={editing || asOf.trim() === ""}
               >
                 Time-travel
               </Button>
               <Button
                 size="sm"
                 tone="tertiary"
+                disabled={editing}
                 onClick={() => {
                   setHistorical(false);
                   setAsOf("");
@@ -390,104 +420,105 @@ export function SafetyPolicyScreen(): JSX.Element {
               determination separately.
             </span>
           </section>
-
-          {editing ? (
-            <Modal
-              title="Edit the safety policy"
-              onClose={() => setEditing(false)}
-              footer={
-                <button
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)}
-                  style={
-                    saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)
-                      ? disabledButtonStyle
-                      : primaryButtonStyle
-                  }
-                >
-                  {saving ? "Saving..." : "Save new version"}
-                </button>
-              }
-            >
-              <Notice tone="warning" assertive>
-                This writes a new policy version. Existing alerts and incidents keep the thresholds
-                that were active when they happened.
-              </Notice>
-              {[...CADENCE_KNOBS, ...OVERDUE_KNOBS, ...SOS_KNOBS].map(([k, label, unit]) => {
-                const band = BANDS[k];
-                return (
-                  <TextField
-                    key={k}
-                    label={`${label} (${unit})`}
-                    value={draft[k] ?? ""}
-                    onChange={(value) => setDraft((current) => ({ ...current, [k]: value }))}
-                    type="number"
-                    hint={
-                      band
-                        ? `Platform band: ${band[0]}-${band[1]}. Leave blank to keep the current value.`
-                        : undefined
-                    }
-                  />
-                );
-              })}
-              <CheckboxField
-                label="Cancelling an SOS requires a biometric check (D5)"
-                checked={biometric}
-                onChange={setBiometric}
-              />
-              <CheckboxField
-                label="Allow continuous location streaming during an active SOS (D6)"
-                checked={streamEnabled}
-                onChange={setStreamEnabled}
-              />
-              <SelectField
-                label="Default supervisor subscription model (D8)"
-                value={model}
-                options={SUBSCRIPTION_MODELS.map((value) => ({
-                  value,
-                  label: humanize(value),
-                }))}
-                onChange={setModel}
-              />
-              <TextField
-                label="After-hours starts at (hour, 0-23)"
-                value={afterHoursStart}
-                onChange={setAfterHoursStart}
-                type="number"
-              />
-              <TextField
-                label="After-hours ends at (hour, 0-23)"
-                value={afterHoursEnd}
-                onChange={setAfterHoursEnd}
-                type="number"
-                hint="Inside this window an SOS also pages M19's on-call actors in parallel with safety supervisors."
-              />
-              <ChipMultiSelect
-                label="Auto-flag these categories as OSHA-reportable candidates"
-                values={INCIDENT_CATEGORIES}
-                selected={autoFlag}
-                onChange={setAutoFlag}
-                labeller={incidentCategoryLabel}
-              />
-              <TextAreaField
-                label="Why are you changing this?"
-                value={editReason}
-                onChange={setEditReason}
-                rows={4}
-                minChars={POLICY_EDIT_REASON_MIN_CHARS}
-                hint="This reason is written with the new policy version."
-              />
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
         </div>
       }
       fullPageScroll
+      detail={
+        editing ? (
+          <FormDrawer
+            title="Edit the safety policy"
+            busy={saving}
+            onClose={closeEditor}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void save()}
+                disabled={
+                  saving || !editable || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)
+                }
+              >
+                {saving ? "Saving..." : "Save new version"}
+              </Button>
+            }
+          >
+            <Notice tone="warning" assertive>
+              This writes a new policy version. Existing alerts and incidents keep the thresholds
+              that were active when they happened.
+            </Notice>
+            {[...CADENCE_KNOBS, ...OVERDUE_KNOBS, ...SOS_KNOBS].map(([k, label, unit]) => {
+              const band = BANDS[k];
+              return (
+                <TextField
+                  key={k}
+                  label={`${label} (${unit})`}
+                  value={draft[k] ?? ""}
+                  onChange={(value) => setDraft((current) => ({ ...current, [k]: value }))}
+                  type="number"
+                  hint={
+                    band
+                      ? `Platform band: ${band[0]}-${band[1]}. Leave blank to keep the current value.`
+                      : undefined
+                  }
+                />
+              );
+            })}
+            <CheckboxField
+              label="Cancelling an SOS requires a biometric check (D5)"
+              checked={biometric}
+              onChange={setBiometric}
+            />
+            <CheckboxField
+              label="Allow continuous location streaming during an active SOS (D6)"
+              checked={streamEnabled}
+              onChange={setStreamEnabled}
+            />
+            <SelectField
+              label="Default supervisor subscription model (D8)"
+              value={model}
+              options={SUBSCRIPTION_MODELS.map((value) => ({
+                value,
+                label: humanize(value),
+              }))}
+              onChange={setModel}
+            />
+            <TextField
+              label="After-hours starts at (hour, 0-23)"
+              value={afterHoursStart}
+              onChange={setAfterHoursStart}
+              type="number"
+            />
+            <TextField
+              label="After-hours ends at (hour, 0-23)"
+              value={afterHoursEnd}
+              onChange={setAfterHoursEnd}
+              type="number"
+              hint="Inside this window an SOS also pages M19's on-call actors in parallel with safety supervisors."
+            />
+            <ChipMultiSelect
+              label="Auto-flag these categories as OSHA-reportable candidates"
+              values={INCIDENT_CATEGORIES}
+              selected={autoFlag}
+              onChange={setAutoFlag}
+              labeller={incidentCategoryLabel}
+            />
+            <TextAreaField
+              label="Why are you changing this?"
+              value={editReason}
+              onChange={setEditReason}
+              rows={4}
+              minChars={POLICY_EDIT_REASON_MIN_CHARS}
+              hint="This reason is written with the new policy version."
+            />
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : undefined
+      }
     />
   );
 }
@@ -513,24 +544,23 @@ function PolicyTable({
           <strong>{title}</strong>
         </div>
       </div>
-      <table style={tableStyle}>
-        <thead>
-          <tr style={headerRowStyle}>
-            {columns.map((column, index) => (
-              <th
-                key={column}
-                style={{
-                  ...thStyle,
-                  textAlign: index === 1 || index === 3 ? "right" : "left",
-                }}
-              >
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
+      <TableScroll>
+        <table className="wx-list-table wx-list-table-static">
+          <thead>
+            <tr>
+              {columns.map((column, index) => (
+                <th
+                  key={column}
+                  style={{ textAlign: index === 1 || index === 3 ? "right" : "left" }}
+                >
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>{children}</tbody>
+        </table>
+      </TableScroll>
       {note ? <span style={secondaryTextStyle}>{note}</span> : null}
     </section>
   );
@@ -640,29 +670,6 @@ const detailLabelStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.7rem",
   fontWeight: 650,
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
 };
 const secondaryTextStyle = {
   color: "var(--color-on-surface-variant)",

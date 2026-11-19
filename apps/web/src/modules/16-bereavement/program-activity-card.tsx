@@ -8,7 +8,7 @@
 // A bereavement volunteer sees WHEN each touchpoint happened and its kind but never its outcome (what was said on a call is clinical):
 // the field is absent from the response, and that is shown as "Not shown to you", never as a guess. A 403 renders nothing; any other
 // failure is announced and keeps the entries on screen; "Load more" appends.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, Panel, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef } from "react";
 import type { JSX } from "react";
 import {
@@ -17,7 +17,7 @@ import {
   listContactTimeline,
 } from "./bereavement-api";
 import { dateTime, outreachKindLabel, redactionLabel } from "./bereavement-status";
-import { Card, ErrorText, mutedStyle, rowLine, tableStyle, td, th } from "./bereavement-ui";
+import { ErrorText } from "./bereavement-ui";
 import { usePagedList } from "./mailing-load";
 import { activityLabel, timelineOutcomeLabel } from "./mailing-status";
 
@@ -71,8 +71,8 @@ export function ProgramActivityCard({
   const redaction =
     state.kind === "ready" ? redactionLabel(state.last.redactedCategories ?? []) : null;
   return (
-    <Card title="Program activity">
-      <span style={mutedStyle}>
+    <Panel stack headingLevel={3} title="Program activity">
+      <span className="wx-text-muted">
         Touchpoints and program activities such as mailings, newest first. A program activity is not
         a touchpoint: it does not count toward the outreach schedule.
       </span>
@@ -85,35 +85,35 @@ export function ProgramActivityCard({
         </div>
       ) : null}
       {state.kind === "ready" && rows.length === 0 ? (
-        <span style={mutedStyle}>Nothing has been recorded for this survivor yet.</span>
+        <span className="wx-text-muted">Nothing has been recorded for this survivor yet.</span>
       ) : null}
       {rows.length > 0 ? (
-        <table style={tableStyle} aria-label="Program activity timeline" aria-busy={busy}>
+        <table aria-label="Program activity timeline" aria-busy={busy}>
           <thead>
             <tr>
-              <th style={th}>When</th>
-              <th style={th}>Type</th>
-              <th style={th}>What</th>
-              <th style={th}>Outcome</th>
+              <th>When</th>
+              <th>Type</th>
+              <th>What</th>
+              <th>Outcome</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((entry) => {
               const withheld = entry.outcome === undefined;
               return (
-                <tr key={entry.entryId} style={rowLine}>
-                  <td style={td}>{dateTime(entry.at)}</td>
-                  <td style={td}>
+                <tr key={entry.entryId}>
+                  <td>{dateTime(entry.at)}</td>
+                  <td>
                     {entry.source === "program_activity" ? (
                       <StatusPill label="Program activity" tone="progress" />
                     ) : (
                       <StatusPill label="Touchpoint" tone="neutral" />
                     )}
                   </td>
-                  <td style={td}>{entryLabel(entry)}</td>
-                  <td style={td}>
+                  <td>{entryLabel(entry)}</td>
+                  <td>
                     {withheld ? (
-                      <span style={{ ...mutedStyle, fontStyle: "italic" }}>
+                      <span className="wx-text-muted" style={{ fontStyle: "italic" }}>
                         {timelineOutcomeLabel(entry)}
                       </span>
                     ) : (
@@ -126,7 +126,7 @@ export function ProgramActivityCard({
           </tbody>
         </table>
       ) : null}
-      {redaction ? <span style={mutedStyle}>{redaction}</span> : null}
+      {redaction ? <span className="wx-text-muted">{redaction}</span> : null}
       {hasMore ? (
         <div>
           <Button size="sm" tone="secondary" loading={busy} onClick={() => void loadMore()}>
@@ -134,6 +134,6 @@ export function ProgramActivityCard({
           </Button>
         </div>
       ) : null}
-    </Card>
+    </Panel>
   );
 }

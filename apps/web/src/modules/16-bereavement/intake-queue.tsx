@@ -57,8 +57,6 @@ import {
   TextField,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
-  primaryButtonStyle,
 } from "./bereavement-ui";
 import { PhysicianLetterReview } from "./physician-letter-review";
 
@@ -442,7 +440,7 @@ function IntakeTable({
                     {shortId(p.planId)}
                   </Link>
                   {p.externalSourceCosignPending ? (
-                    <span style={mutedStyle}>Pending medical-director cosign</span>
+                    <span className="wx-text-muted">Pending medical-director cosign</span>
                   ) : null}
                 </div>
               </td>
@@ -592,17 +590,12 @@ function AssignModal({
       title={kind === "counselor" ? "Assign bereavement counselor" : "Assign bereavement volunteer"}
       onClose={onClose}
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy || !userId}
-          onClick={submit}
-        >
+        <Button tone="primary" type="button" disabled={busy || !userId} onClick={submit}>
           {busy ? "Assigning…" : "Assign"}
-        </button>
+        </Button>
       }
     >
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         Plan {shortId(planId)} · read at version {version}. The assignment is applied with
         `If-Match`; if the plan moved under you the server answers 409 STALE_VERSION and nothing is
         written.

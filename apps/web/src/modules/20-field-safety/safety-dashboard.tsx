@@ -311,16 +311,16 @@ export function SafetyDashboardScreen(): JSX.Element {
           </div>
         ) : (
           <div style={tableWrapStyle}>
-            <table style={tableStyle}>
+            <table>
               <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "18%" }}>Clinician</th>
-                  <th style={{ ...thStyle, width: "17%" }}>Visit</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Check-in</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Next due</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Overdue</th>
-                  <th style={{ ...thStyle, width: "13%" }}>Last heard</th>
-                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Flags</th>
+                <tr>
+                  <th style={{ width: "18%" }}>Clinician</th>
+                  <th style={{ width: "17%" }}>Visit</th>
+                  <th style={{ width: "16%" }}>Check-in</th>
+                  <th style={{ width: "14%" }}>Next due</th>
+                  <th style={{ width: "12%" }}>Overdue</th>
+                  <th style={{ width: "13%" }}>Last heard</th>
+                  <th style={{ width: "10%", textAlign: "right" }}>Flags</th>
                 </tr>
               </thead>
               <tbody>
@@ -351,8 +351,8 @@ export function SafetyDashboardScreen(): JSX.Element {
 
 function SafetyRow({ row }: { row: SafetyClinicianStatusView }): JSX.Element {
   return (
-    <tr style={rowStyle}>
-      <td style={tdStyle}>
+    <tr>
+      <td>
         <div style={primaryCellStyle}>
           <span style={primaryTextStyle}>{row.displayName}</span>
           <code className="wx-data-md" style={codeStyle}>
@@ -360,7 +360,7 @@ function SafetyRow({ row }: { row: SafetyClinicianStatusView }): JSX.Element {
           </code>
         </div>
       </td>
-      <td style={tdStyle}>
+      <td>
         {row.currentVisitId ? (
           <div style={primaryCellStyle}>
             <code className="wx-data-md" style={codeStyle}>
@@ -374,7 +374,7 @@ function SafetyRow({ row }: { row: SafetyClinicianStatusView }): JSX.Element {
           <span style={secondaryTextStyle}>Not on a visit</span>
         )}
       </td>
-      <td style={tdStyle}>
+      <td>
         {row.lastCheckInStatus ? (
           <CheckInStatusPill status={row.lastCheckInStatus} />
         ) : (
@@ -384,13 +384,11 @@ function SafetyRow({ row }: { row: SafetyClinicianStatusView }): JSX.Element {
           <div style={secondaryTextStyle}>{dateTime(row.lastCheckInAt)}</div>
         ) : null}
       </td>
-      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-        {dateTime(row.nextExpectedCheckInAt)}
-      </td>
-      <td style={tdStyle}>
+      <td style={{ fontVariantNumeric: "tabular-nums" }}>{dateTime(row.nextExpectedCheckInAt)}</td>
+      <td>
         <OverduePill state={row.overdueState} />
       </td>
-      <td style={tdStyle}>
+      <td>
         {row.lastKnownLocation ? (
           <div style={primaryCellStyle}>
             <span>{locationSourceLabel(row.lastKnownLocation.source)}</span>
@@ -408,7 +406,7 @@ function SafetyRow({ row }: { row: SafetyClinicianStatusView }): JSX.Element {
           <span style={secondaryTextStyle}>No position on record</span>
         )}
       </td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td style={{ textAlign: "right" }}>
         <div style={flagWrapStyle}>
           {row.activeSosAlert ? (
             <Link to={`/safety/sos/${row.activeSosAlert.id}`} style={{ textDecoration: "none" }}>
@@ -500,30 +498,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
 };
 const primaryCellStyle = {
   display: "flex",

@@ -1,16 +1,16 @@
-import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageLimit, pageQuery, parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/05-patient/routes/patient-typebox.ts — M5-T09 TypeBox route schemas
 // (§4.2, §4.4). Named `patient-typebox` (NOT `*schema*`) so the table-ownership import heuristic
 // never mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
 // VALIDATION_FAILED envelope.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import { type Static, Type } from "@sinclair/typebox";
 import type {
   AdmitResult as ServiceAdmitResult,
   AmendmentView as ServiceAmendmentView,
 } from "./service";
 import { PATIENT_PAYER_VOID_REASONS } from "./service";
+
+export { parse };
 
 const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
 const PAYER_COVERAGE_KINDS = [
@@ -405,15 +405,3 @@ type _AddAddress = Conforms<
   { readonly addressId: string; readonly cascadeEmitted: "m5.patient.address_changed" }
 >;
 type _Amendment = Conforms<Static<typeof AmendmentResponseSchema>, ServiceAmendmentView>;
-
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

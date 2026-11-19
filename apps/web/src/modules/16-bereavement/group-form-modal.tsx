@@ -3,19 +3,17 @@
 // Create carries an `Idempotency-Key`; an edit also carries the group version the page READ in `If-Match`. A 409/404 on an edit means the
 // group moved under the reader: the dialog closes and the page reloads and says why. While a group is open its schedule (recurrence) is fixed:
 // only a draft's schedule can change, and a drop-in group has none. The format itself is chosen once, at creation.
-import { useApiClient, useAttemptKey } from "@chartwarden/ui";
+import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import {
   CheckboxField,
-  ErrorText,
-  Modal,
+  FormShell,
   SelectField,
   TextAreaField,
   TextField,
   plainFieldset,
-  primaryButtonStyle,
 } from "./bereavement-ui";
 import { intOrNull, isHttpsUrl, isUuid, orNull } from "./program-status";
 import {
@@ -87,19 +85,32 @@ function recurrenceOf(r: Draft["recurrence"]): GroupRecurrence | string {
   return { firstDate: r.firstDate, startTime: r.startTime, durationMinutes, intervalWeeks, count };
 }
 
-export function GroupFormModal({
-  group,
-  onClose,
-  onSaved,
-  onStale,
-}: {
+interface GroupFormProps {
   /** null creates a new draft group. */
   group: Group | null;
   onClose: () => void;
   onSaved: (group: Group) => void;
-  /** An edit was refused because the group moved: the page closes this dialog, says `message` and reloads. */
+  /** An edit was refused because the group moved: the page closes this form, says `message` and reloads. */
   onStale?: (message: string) => void;
-}): JSX.Element {
+}
+
+/** The form as a dialog over the page: the group's own detail page. */
+export const GroupFormModal = (props: GroupFormProps): JSX.Element => (
+  <GroupForm {...props} presentation="modal" />
+);
+
+/** The same form as a drawer beside the list: the support-groups list screen. */
+export const GroupFormDrawer = (props: GroupFormProps): JSX.Element => (
+  <GroupForm {...props} presentation="drawer" />
+);
+
+function GroupForm({
+  group,
+  onClose,
+  onSaved,
+  onStale,
+  presentation,
+}: GroupFormProps & { presentation: "modal" | "drawer" }): JSX.Element {
   const client = useApiClient();
   const [draft, setDraft] = useState<Draft>(() => draftOf(group));
   // The link as the reader saw it when the dialog OPENED: a late reload of `group` (now without the plaintext link) must not read as "changed".
@@ -190,20 +201,16 @@ export function GroupFormModal({
   };
 
   return (
-    <Modal
+    <FormShell
+      presentation={presentation}
       title={group === null ? "New support group" : "Edit support group"}
       onClose={onClose}
       busy={busy}
-      dirty
-      footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy}
-          onClick={() => void save()}
-        >
+      error={error}
+      save={
+        <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : group === null ? "Create draft group" : "Save changes"}
-        </button>
+        </Button>
       }
     >
       <fieldset disabled={busy} style={plainFieldset}>
@@ -239,15 +246,12 @@ export function GroupFormModal({
               value={draft.recurrence.firstDate}
               onChange={(v) => setRec("firstDate", v)}
             />
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-              <span style={{ fontSize: "0.7rem" }}>Start time</span>
-              <input
-                aria-label="Start time"
-                type="time"
-                value={draft.recurrence.startTime}
-                onChange={(e) => setRec("startTime", e.target.value)}
-              />
-            </label>
+            <TextField
+              label="Start time"
+              type="time"
+              value={draft.recurrence.startTime}
+              onChange={(v) => setRec("startTime", v)}
+            />
             <TextField
               label="Duration (minutes)"
               type="number"
@@ -315,7 +319,6 @@ export function GroupFormModal({
           onChange={(v) => set("joinUrl", v)}
         />
       </fieldset>
-      {error ? <ErrorText>{error}</ErrorText> : null}
-    </Modal>
+    </FormShell>
   );
 }

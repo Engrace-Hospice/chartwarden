@@ -20,16 +20,20 @@
 // overlay rows as first-class entries (they are what `localSkuCode` marks), and M21 publishes no
 // "extensions of this canonical SKU" read to hang a drawer on.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SupplyItemSkuClass,
   type SupplyItemView,
@@ -40,28 +44,23 @@ import {
 } from "./supplies-api";
 import { SKU_CLASSES, shortDate } from "./supplies-status";
 import {
-  Card,
   CheckboxField,
   FilterRow,
-  Modal,
+  type LoadError,
+  LoadFailure,
   Notice,
   SelectField,
   TextField,
-  alertStyle,
-  columnStyle,
-  disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
-  mutedStyle,
+  nextLoadError,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
+import { useWrite } from "./use-write";
 
 const PAGE = 200;
+const LOAD_FAILURE = "The supply catalog could not be loaded.";
 
 /** A tri-state clinical flag: `true` / `false` / not yet classified. The third is not the second. */
 function triState(value: boolean | null): JSX.Element {
@@ -92,42 +91,70 @@ export function SupplyItemCatalog(): JSX.Element {
   const [includeRetired, setIncludeRetired] = useState(false);
   const [items, setItems] = useState<SupplyItemView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [error, setError] = useState<LoadError | null>(null);
+  // Every write on this screen is the drawer's, so its refusal shows in the drawer.
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, run: runWrite } = useWrite();
+  const startRead = useLatestRead();
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [editing, setEditing] = useState<SupplyItemView | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<TenantItemDraft>(EMPTY_TENANT_ITEM);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const { page, error: err } = await listSupplyItems(client, {
-      limit: PAGE,
-      ...(query.trim() ? { q: query.trim() } : {}),
-      // `skuClass` is always "" or one of the catalog's SKU classes — the SelectField below offers no
-      // other value.
-      ...(skuClass ? { skuClass: skuClass as SupplyItemSkuClass } : {}),
-      ...(includeRetired ? { includeRetired: true } : {}),
-    });
-    if (err) {
-      setError(errorMessage(err, "The supply catalog could not be loaded."));
-      setLoading(false);
-      return;
-    }
-    setItems(page?.data ?? []);
-    setLoading(false);
-  }, [client, query, skuClass, includeRetired]);
+  // `keepRowsOnFailure` is for a refresh after a write (or a retry): the rows on screen still match the filter. A read
+  // for a CHANGED filter that fails clears them, so a stale list never sits under a filter it does not match.
+  const load = useCallback(
+    async (keepRowsOnFailure = false) => {
+      const isLatest = startRead();
+      setLoading(true);
+      try {
+        const { page, error: err } = await listSupplyItems(client, {
+          limit: PAGE,
+          ...(query.trim() ? { q: query.trim() } : {}),
+          // `skuClass` is always "" or one of the catalog's SKU classes — the SelectField below offers no
+          // other value.
+          ...(skuClass ? { skuClass: skuClass as SupplyItemSkuClass } : {}),
+          ...(includeRetired ? { includeRetired: true } : {}),
+        });
+        if (!isLatest()) return;
+        if (err) {
+          setError((previous) => nextLoadError(previous, errorMessage(err, LOAD_FAILURE)));
+          if (!keepRowsOnFailure) setItems([]);
+          return;
+        }
+        setItems(page?.data ?? []);
+        setLoadedOnce(true);
+        setError(null);
+      } catch {
+        if (isLatest()) {
+          setError((previous) => nextLoadError(previous, LOAD_FAILURE));
+          if (!keepRowsOnFailure) setItems([]);
+        }
+      } finally {
+        if (isLatest()) setLoading(false);
+      }
+    },
+    [client, query, skuClass, includeRetired, startRead],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  // The spinner is for the first load only. A reload (a search keystroke, a save) keeps the page and any open drawer
+  // mounted, with the previous rows showing, so the drawer's typed text, focus and opener survive it.
+  if (loading && !loadedOnce) return <LoadingSpinner />;
+  // A failed FIRST load has nothing to show. A failed reload keeps the page (and any open drawer) and says so inline.
+  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error.message} />;
+
+  const closeDrawer = () => {
+    setCreating(false);
+    setEditing(null);
+    setActionError(null);
+  };
 
   const save = async () => {
-    setBusy(true);
     setActionError(null);
     const body = {
       name: draft.name.trim(),
@@ -136,191 +163,217 @@ export function SupplyItemCatalog(): JSX.Element {
       isBillable: draft.isBillable,
       isActive: draft.isActive,
     };
-    const { error: err } = editing
-      ? await updateTenantSupplyItem(client, editing.supplyItemId, body)
-      : await createTenantSupplyItem(client, body);
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, "The tenant item could not be saved."));
+    const failed = await runWrite(
+      () =>
+        editing
+          ? updateTenantSupplyItem(client, editing.supplyItemId, body)
+          : createTenantSupplyItem(client, body),
+      "The tenant item could not be saved.",
+    );
+    if (failed) {
+      setActionError(failed);
       return;
     }
-    setEditing(null);
-    setCreating(false);
-    void load();
+    closeDrawer();
+    void load(true);
   };
 
+  // A read that failed and left nothing to show is not an empty catalog: say "not loaded", never "none match".
+  const unread = error !== null && items.length === 0;
   const platform = items.filter((i) => i.isPlatform);
   const overlay = items.filter((i) => !i.isPlatform);
   const ready =
     draft.name.trim() !== "" && draft.localSkuCode.trim() !== "" && draft.defaultUnit.trim() !== "";
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Supply catalog</span>}
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              style={primaryButtonStyle}
-              onClick={() => {
-                setDraft(EMPTY_TENANT_ITEM);
-                setEditing(null);
-                setCreating(true);
-                setActionError(null);
-              }}
-            >
-              New tenant item
-            </button>
-            <Link to="/supplies" style={ghostButtonStyle}>
-              Back to queue
-            </Link>
-          </div>
-        }
-      />
-
-      <Notice tone="info">
-        The platform catalog is rewritten wholesale by the annual HCPCS loader and cannot be edited
-        from a tenant session — the permission refuses it and the database write policy refuses it
-        again. Your agency's own shelf items live in the overlay below, and never carry a HCPCS
-        code.
-      </Notice>
-
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
-
-      <FilterRow>
-        <TextField label="Search name or HCPCS" value={query} onChange={setQuery} />
-        <SelectField
-          label="SKU class"
-          value={skuClass}
-          options={[{ value: "", label: "all classes" }, ...enumOptions(SKU_CLASSES, (c) => c)]}
-          onChange={setSkuClass}
+    <div className={`wx-list-drawer${creating || editing ? " has-drawer" : ""}`}>
+      <div
+        ref={focusRef}
+        tabIndex={-1}
+        className="wx-list-drawer-main wx-kit-column"
+        aria-busy={loading}
+        style={{ outline: "none" }}
+      >
+        <PageHeader
+          title={<span style={pageTitleStyle}>Supply catalog</span>}
+          actions={
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              <Button
+                tone="primary"
+                type="button"
+                onClick={() => {
+                  setDraft(EMPTY_TENANT_ITEM);
+                  setEditing(null);
+                  setCreating(true);
+                  setActionError(null);
+                }}
+              >
+                New tenant item
+              </Button>
+              <Link to="/supplies" style={ghostButtonStyle}>
+                Back to queue
+              </Link>
+            </div>
+          }
         />
-        <CheckboxField
-          label="Include retired items"
-          checked={includeRetired}
-          onChange={setIncludeRetired}
-        />
-      </FilterRow>
 
-      <Card title={`Platform catalog (${platform.length})`}>
-        {platform.length === 0 ? (
-          <span style={mutedStyle}>No canonical SKU matches this search.</span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Name</th>
-                <th style={th}>HCPCS</th>
-                <th style={th}>Class</th>
-                <th style={th}>Unit</th>
-                <th style={th}>Billable</th>
-                <th style={th}>Controlled</th>
-                <th style={th}>Lot tracked</th>
-                <th style={th}>Expiry tracked</th>
-                <th style={th}>Effective</th>
-              </tr>
-            </thead>
-            <tbody>
-              {platform.map((i) => (
-                <tr key={i.supplyItemId} style={rowLine}>
-                  <td style={td}>
-                    {i.name}
-                    {i.isActive ? null : <div style={mutedStyle}>retired</div>}
-                  </td>
-                  <td style={{ ...td, fontFamily: t.fontMono }}>{i.hcpcs ?? "—"}</td>
-                  <td style={td}>{i.skuClass}</td>
-                  <td style={td}>{i.defaultUnit}</td>
-                  <td style={td}>{i.isBillable ? "Yes" : "No"}</td>
-                  <td style={td}>{triState(i.isControlledSubstance)}</td>
-                  <td style={td}>{triState(i.requiresLotTracking)}</td>
-                  <td style={td}>{triState(i.requiresExpirationTracking)}</td>
-                  <td style={td}>
-                    {shortDate(i.effectiveFrom)}
-                    {i.effectiveTo ? ` → ${shortDate(i.effectiveTo)}` : ""}
-                  </td>
+        {error ? (
+          <LoadFailure error={error} reloading={loading} onReload={() => void load(true)} />
+        ) : null}
+
+        <Notice tone="info">
+          The platform catalog is rewritten wholesale by the annual HCPCS loader and cannot be
+          edited from a tenant session — the permission refuses it and the database write policy
+          refuses it again. Your agency's own shelf items live in the overlay below, and never carry
+          a HCPCS code.
+        </Notice>
+
+        <FilterRow>
+          <TextField label="Search name or HCPCS" value={query} onChange={setQuery} />
+          <SelectField
+            label="SKU class"
+            value={skuClass}
+            options={[{ value: "", label: "all classes" }, ...enumOptions(SKU_CLASSES, (c) => c)]}
+            onChange={setSkuClass}
+          />
+          <CheckboxField
+            label="Include retired items"
+            checked={includeRetired}
+            onChange={setIncludeRetired}
+          />
+        </FilterRow>
+
+        <Panel
+          stack
+          headingLevel={3}
+          title={unread ? "Platform catalog" : `Platform catalog (${platform.length})`}
+        >
+          {unread ? (
+            <span className="wx-text-muted">Not loaded.</span>
+          ) : platform.length === 0 ? (
+            <span className="wx-text-muted">No canonical SKU matches this search.</span>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>HCPCS</th>
+                  <th>Class</th>
+                  <th>Unit</th>
+                  <th>Billable</th>
+                  <th>Controlled</th>
+                  <th>Lot tracked</th>
+                  <th>Expiry tracked</th>
+                  <th>Effective</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <span style={mutedStyle}>
-          "Unclassified" is not "No". A SKU the loader has not yet classified is treated as needing
-          a decision before a controlled dispatch, not as safe.
-        </span>
-      </Card>
-
-      <Card title={`Tenant overlay (${overlay.length})`}>
-        {overlay.length === 0 ? (
-          <span style={mutedStyle}>
-            Your agency has no local shelf items. These are the non-billable things that will never
-            have a HCPCS code.
+              </thead>
+              <tbody>
+                {platform.map((i) => (
+                  <tr key={i.supplyItemId}>
+                    <td>
+                      {i.name}
+                      {i.isActive ? null : <div className="wx-text-muted">retired</div>}
+                    </td>
+                    <td className="wx-data-md">{i.hcpcs ?? "—"}</td>
+                    <td>{i.skuClass}</td>
+                    <td>{i.defaultUnit}</td>
+                    <td>{i.isBillable ? "Yes" : "No"}</td>
+                    <td>{triState(i.isControlledSubstance)}</td>
+                    <td>{triState(i.requiresLotTracking)}</td>
+                    <td>{triState(i.requiresExpirationTracking)}</td>
+                    <td>
+                      {shortDate(i.effectiveFrom)}
+                      {i.effectiveTo ? ` → ${shortDate(i.effectiveTo)}` : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <span className="wx-text-muted">
+            "Unclassified" is not "No". A SKU the loader has not yet classified is treated as
+            needing a decision before a controlled dispatch, not as safe.
           </span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Name</th>
-                <th style={th}>Local SKU</th>
-                <th style={th}>Unit</th>
-                <th style={th}>Billable</th>
-                <th style={th}>Active</th>
-                <th style={th}>Updated</th>
-                <th style={th} />
-              </tr>
-            </thead>
-            <tbody>
-              {overlay.map((i) => (
-                <tr key={i.supplyItemId} style={rowLine}>
-                  <td style={td}>{i.name}</td>
-                  <td style={{ ...td, fontFamily: t.fontMono }}>{i.localSkuCode ?? "—"}</td>
-                  <td style={td}>{i.defaultUnit}</td>
-                  <td style={td}>{i.isBillable ? "Yes" : "No"}</td>
-                  <td style={td}>{i.isActive ? "Yes" : "No"}</td>
-                  <td style={td}>{shortDate(i.updatedAt)}</td>
-                  <td style={td}>
-                    <button
-                      type="button"
-                      style={ghostButtonStyle}
-                      onClick={() => {
-                        setEditing(i);
-                        setCreating(false);
-                        setActionError(null);
-                        setDraft({
-                          name: i.name,
-                          localSkuCode: i.localSkuCode ?? "",
-                          defaultUnit: i.defaultUnit,
-                          isBillable: i.isBillable,
-                          isActive: i.isActive,
-                        });
-                      }}
-                    >
-                      Edit
-                    </button>
-                  </td>
+        </Panel>
+
+        <Panel
+          stack
+          headingLevel={3}
+          title={unread ? "Tenant overlay" : `Tenant overlay (${overlay.length})`}
+        >
+          {unread ? (
+            <span className="wx-text-muted">Not loaded.</span>
+          ) : overlay.length === 0 ? (
+            <span className="wx-text-muted">
+              Your agency has no local shelf items. These are the non-billable things that will
+              never have a HCPCS code.
+            </span>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Local SKU</th>
+                  <th>Unit</th>
+                  <th>Billable</th>
+                  <th>Active</th>
+                  <th>Updated</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+              </thead>
+              <tbody>
+                {overlay.map((i) => (
+                  <tr key={i.supplyItemId}>
+                    <td>{i.name}</td>
+                    <td className="wx-data-md">{i.localSkuCode ?? "—"}</td>
+                    <td>{i.defaultUnit}</td>
+                    <td>{i.isBillable ? "Yes" : "No"}</td>
+                    <td>{i.isActive ? "Yes" : "No"}</td>
+                    <td>{shortDate(i.updatedAt)}</td>
+                    <td>
+                      <Button
+                        tone="secondary"
+                        type="button"
+                        onClick={() => {
+                          setEditing(i);
+                          setCreating(false);
+                          setActionError(null);
+                          setDraft({
+                            name: i.name,
+                            localSkuCode: i.localSkuCode ?? "",
+                            defaultUnit: i.defaultUnit,
+                            isBillable: i.isBillable,
+                            isActive: i.isActive,
+                          });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+      </div>
 
       {creating || editing ? (
-        <Modal
+        <FormDrawer
+          key={editing ? editing.supplyItemId : "new"}
           title={editing ? "Edit tenant item" : "New tenant item"}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
-          footer={
-            <button
+          busy={busy}
+          error={actionError}
+          onClose={closeDrawer}
+          save={
+            <Button
+              tone="primary"
               type="button"
               disabled={!ready || busy}
-              style={!ready || busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={() => void save()}
             >
               Save item
-            </button>
+            </Button>
           }
         >
           <TextField
@@ -353,7 +406,7 @@ export function SupplyItemCatalog(): JSX.Element {
             An overlay item is agency-local by construction: it has no HCPCS code and defaults to
             non-billable, because a billable line needs a code the platform catalog owns.
           </Notice>
-        </Modal>
+        </FormDrawer>
       ) : null}
     </div>
   );

@@ -18,9 +18,7 @@ import {
   Modal,
   Notice,
   columnStyle,
-  dangerButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
   useActionStatus,
 } from "./bereavement-ui";
@@ -103,7 +101,7 @@ export function MailingSettings(): JSX.Element | null {
           </Link>
         }
       />
-      <span style={mutedStyle}>
+      <span className="wx-text-muted">
         A run is drafted automatically before each enabled mailing's date. The wording here is what
         a new run starts with; each run's wording can still be edited before it is generated.
       </span>
@@ -118,9 +116,9 @@ export function MailingSettings(): JSX.Element | null {
           cancelLabel="Stay on this page"
           onClose={() => blocker.reset()}
           footer={
-            <button type="button" style={dangerButtonStyle} onClick={() => blocker.proceed()}>
+            <Button tone="danger" type="button" onClick={() => blocker.proceed()}>
               {saving ? "Leave anyway" : "Leave without saving"}
-            </button>
+            </Button>
           }
         >
           <span id={leaveDescId}>

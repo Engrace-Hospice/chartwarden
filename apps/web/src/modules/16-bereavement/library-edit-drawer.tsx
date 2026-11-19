@@ -1,22 +1,16 @@
 // apps/web/src/modules/16-bereavement — edit one grief-library item's details (ADR-0109 D10, route 79). The version the page READ goes in
 // `If-Match`; a 409/404 closes the dialog, and the page reloads and says why. The document itself is never replaced here: upload a new
-// item instead.
-import { useApiClient, useAttemptKey } from "@chartwarden/ui";
+// item instead. The write goes through `send`, which never rejects (a dropped connection is an error result), so `busy` always ends.
+import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
+import { FormDrawer } from "../../shell/form-drawer";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
-import {
-  ErrorText,
-  Modal,
-  SelectField,
-  TextAreaField,
-  TextField,
-  primaryButtonStyle,
-} from "./bereavement-ui";
+import { SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, isUuid, orNull } from "./program-status";
 import { type LibraryCategory, type LibraryItem, updateLibraryItem } from "./programs-api";
 
-export function LibraryEditModal({
+export function LibraryEditDrawer({
   item,
   onClose,
   onSaved,
@@ -79,20 +73,15 @@ export function LibraryEditModal({
   };
 
   return (
-    <Modal
+    <FormDrawer
       title="Edit library item"
       onClose={onClose}
       busy={busy}
-      dirty
-      footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy}
-          onClick={() => void save()}
-        >
+      error={error}
+      save={
+        <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : "Save"}
-        </button>
+        </Button>
       }
     >
       <TextField label="Title" value={title} onChange={setTitle} maxLength={200} />
@@ -109,7 +98,6 @@ export function LibraryEditModal({
         value={transcript}
         onChange={setTranscript}
       />
-      {error ? <ErrorText>{error}</ErrorText> : null}
-    </Modal>
+    </FormDrawer>
   );
 }

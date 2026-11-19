@@ -1,18 +1,11 @@
 // apps/web/src/modules/16-bereavement — the memorial-service form (ADR-0109 D10, routes 68 / 70), shared by "New memorial service" (no
 // version: a create) and "Edit" (the version the page READ goes in `If-Match`). One Idempotency-Key per attempt; a lost response retries
 // under the same key. Nothing here writes invitation wording: that is the invitation mailing run's, written by staff on its own page.
-import { useApiClient, useAttemptKey } from "@chartwarden/ui";
+import { Button, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
-import {
-  ErrorText,
-  Modal,
-  SelectField,
-  TextAreaField,
-  TextField,
-  primaryButtonStyle,
-} from "./bereavement-ui";
+import { FormShell, SelectField, TextAreaField, TextField } from "./bereavement-ui";
 import { intOrNull, isHttpsUrl, isoToLocal, localToIso, orNull } from "./program-status";
 import { type Memorial, type MemorialBody, createMemorial, updateMemorial } from "./programs-api";
 
@@ -75,19 +68,32 @@ function toBody(d: Draft, keepJoinUrl: boolean): MemorialBody | string {
   };
 }
 
-export function MemorialFormModal({
-  service,
-  onClose,
-  onSaved,
-  onStale,
-}: {
+interface MemorialFormProps {
   /** null: create a new service; otherwise edit this one at the version read. */
   service: Memorial | null;
   onClose: () => void;
   onSaved: (saved: Memorial) => void;
-  /** An edit was refused because the service moved: the page closes this dialog, says `message` and reloads. */
+  /** An edit was refused because the service moved: the page closes this form, says `message` and reloads. */
   onStale?: (message: string) => void;
-}): JSX.Element {
+}
+
+/** The form as a dialog over the page: the service's own detail page. */
+export const MemorialFormModal = (props: MemorialFormProps): JSX.Element => (
+  <MemorialForm {...props} presentation="modal" />
+);
+
+/** The same form as a drawer beside the list: the memorial services list screen. */
+export const MemorialFormDrawer = (props: MemorialFormProps): JSX.Element => (
+  <MemorialForm {...props} presentation="drawer" />
+);
+
+function MemorialForm({
+  service,
+  onClose,
+  onSaved,
+  onStale,
+  presentation,
+}: MemorialFormProps & { presentation: "modal" | "drawer" }): JSX.Element {
   const client = useApiClient();
   const keys = useAttemptKey();
   const [draft, setDraft] = useState<Draft>(() => draftOf(service));
@@ -131,20 +137,16 @@ export function MemorialFormModal({
   };
 
   return (
-    <Modal
+    <FormShell
+      presentation={presentation}
       title={service ? "Edit memorial service" : "New memorial service"}
       onClose={onClose}
       busy={busy}
-      dirty
-      footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy}
-          onClick={() => void save()}
-        >
+      error={error}
+      save={
+        <Button tone="primary" type="button" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : "Save"}
-        </button>
+        </Button>
       }
     >
       <TextField label="Title" value={draft.title} onChange={set("title")} maxLength={200} />
@@ -180,7 +182,6 @@ export function MemorialFormModal({
         value={draft.inviteWindowMonths}
         onChange={set("inviteWindowMonths")}
       />
-      {error ? <ErrorText>{error}</ErrorText> : null}
-    </Modal>
+    </FormShell>
   );
 }

@@ -311,32 +311,32 @@ export function IncidentLedgerScreen(): JSX.Element {
           </div>
         ) : (
           <div style={tableWrapStyle}>
-            <table style={tableStyle}>
+            <table>
               <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "15%" }}>Occurred</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Category</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Severity</th>
-                  <th style={{ ...thStyle, width: "15%" }}>State</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Affected</th>
-                  <th style={{ ...thStyle, width: "14%" }}>OSHA</th>
-                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Incident</th>
+                <tr>
+                  <th style={{ width: "15%" }}>Occurred</th>
+                  <th style={{ width: "18%" }}>Category</th>
+                  <th style={{ width: "12%" }}>Severity</th>
+                  <th style={{ width: "15%" }}>State</th>
+                  <th style={{ width: "16%" }}>Affected</th>
+                  <th style={{ width: "14%" }}>OSHA</th>
+                  <th style={{ width: "10%", textAlign: "right" }}>Incident</th>
                 </tr>
               </thead>
               <tbody>
                 {pagedRows.map((row) => (
-                  <tr key={row.id} style={rowStyle}>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                  <tr key={row.id}>
+                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
                       {dateTime(row.occurredAt)}
                     </td>
-                    <td style={tdStyle}>{incidentCategoryLabel(row.category)}</td>
-                    <td style={tdStyle}>
+                    <td>{incidentCategoryLabel(row.category)}</td>
+                    <td>
                       <SeverityPill severity={row.severity} />
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <IncidentStatePill state={row.lifecycleState} />
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <div style={primaryCellStyle}>
                         <code className="wx-data-md" style={codeStyle}>
                           {shortId(row.affectedClinicianMembershipId)}
@@ -346,7 +346,7 @@ export function IncidentLedgerScreen(): JSX.Element {
                         ) : null}
                       </div>
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       {row.oshaReportable ? (
                         <StatusPill
                           label={
@@ -360,7 +360,7 @@ export function IncidentLedgerScreen(): JSX.Element {
                         <span style={secondaryTextStyle}>No</span>
                       )}
                     </td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                    <td style={{ textAlign: "right" }}>
                       <Link to={`/safety/incidents/${row.id}`} style={linkStyle}>
                         {shortId(row.id)}
                       </Link>
@@ -471,30 +471,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
 };
 const primaryCellStyle = {
   display: "flex",

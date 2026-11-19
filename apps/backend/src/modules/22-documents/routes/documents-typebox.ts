@@ -4,11 +4,9 @@
 // envelope. Schemas mirror §4.2 (abbreviated where the spec spells out only the consequential routes).
 // Optimistic concurrency / idempotency ride headers (NOT the body); the signed-URL request carries a
 // `purpose` (the §164.528 access-purpose) + optional tighter TTL (clamped to the 300s floor server-side).
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 import type { ExtractionReviewStatus } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type { CursorPage as ServiceCursorPage } from "./pagination";
 import type {
   DocumentView as ServiceDocumentView,
@@ -18,6 +16,8 @@ import type {
   VersionView as ServiceVersionView,
 } from "./service";
 import type { MintedSignedUrl as ServiceMintedSignedUrl } from "./signed-url-service";
+
+export { parse };
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -721,16 +721,3 @@ type _FormFill = Conforms<
   { readonly id: string; readonly status: string }
 >;
 type _SignedUrl = Conforms<Static<typeof SignedUrlResponseSchema>, ServiceMintedSignedUrl>;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

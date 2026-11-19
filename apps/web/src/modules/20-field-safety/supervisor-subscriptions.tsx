@@ -21,6 +21,7 @@ import {
   MembershipLookupField,
   ProviderEntityLookupField,
 } from "../../shell/entity-lookups";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type SafetySubscriptionAlertKind,
   type SafetySubscriptionScopeKind,
@@ -29,6 +30,7 @@ import {
   deleteSubscription,
   errorMessage,
   listSubscriptions,
+  writeErrorMessage,
 } from "./safety-api";
 import {
   ALERT_KINDS,
@@ -42,14 +44,7 @@ import {
   shortId,
   toneOf,
 } from "./safety-status";
-import {
-  ChipMultiSelect,
-  Modal,
-  Notice,
-  SelectField,
-  disabledButtonStyle,
-  primaryButtonStyle,
-} from "./safety-ui";
+import { ChipMultiSelect, Notice, SelectField } from "./safety-ui";
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -80,6 +75,25 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
   const [gaps, setGaps] = useState<{ clinicianMembershipId: string; reason: string }[] | null>(
     null,
   );
+
+  // The form starts empty each time it opens, and nothing picked or refused in it outlives it.
+  const resetForm = useCallback(() => {
+    setSupervisor("");
+    setScopeKind(DEFAULT_SUBSCRIPTION_SCOPE_KIND);
+    setClinician("");
+    setLocationId("");
+    setProviderEntityId("");
+    setLocationEntityId("");
+    setAlertKinds([...ALERT_KINDS]);
+    setForwarding(false);
+    setForwardTo("");
+    setModalError(null);
+  }, []);
+
+  const closeForm = useCallback(() => {
+    resetForm();
+    setAdding(false);
+  }, [resetForm]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +127,7 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
   const add = useCallback(async () => {
     setSaving(true);
     setModalError(null);
+    // The client REJECTS on a network failure; `null` is that, and `saving` is reset either way.
     const res = await createSubscription(client, {
       supervisorMembershipId: supervisor.trim(),
       scopeKind: scopeKind as SafetySubscriptionScopeKind,
@@ -129,18 +144,19 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
       ...(forwarding && forwardTo.trim()
         ? { vacationForwardToMembershipId: forwardTo.trim() }
         : {}),
-    });
+    }).catch(() => null);
     setSaving(false);
-    if (res.error) {
-      setModalError(errorMessage(res.error, "The subscription was not created."));
+    if (!res || res.error) {
+      setModalError(writeErrorMessage(res, "The subscription was not created."));
       return;
     }
-    setAdding(false);
+    closeForm();
     await load();
   }, [
     alertKinds,
     client,
     clinician,
+    closeForm,
     forwardTo,
     forwarding,
     load,
@@ -209,7 +225,9 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
                 type="button"
                 tone="primary"
                 onClick={() => {
-                  setModalError(null);
+                  // Already open (the drawer is not modal while idle): opening again must not wipe the draft.
+                  if (adding) return;
+                  resetForm();
                   setAdding(true);
                 }}
               >
@@ -288,16 +306,16 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
             </div>
           ) : (
             <>
-              <table style={tableStyle}>
+              <table>
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "15%" }}>Supervisor</th>
-                    <th style={{ ...thStyle, width: "13%" }}>Scope</th>
-                    <th style={{ ...thStyle, width: "18%" }}>Covers</th>
-                    <th style={{ ...thStyle, width: "22%" }}>Alert kinds</th>
-                    <th style={{ ...thStyle, width: "14%" }}>Forwarding</th>
-                    <th style={{ ...thStyle, width: "11%" }}>Added</th>
-                    <th style={{ ...thStyle, width: "7%", textAlign: "right" }}>Action</th>
+                  <tr>
+                    <th style={{ width: "15%" }}>Supervisor</th>
+                    <th style={{ width: "13%" }}>Scope</th>
+                    <th style={{ width: "18%" }}>Covers</th>
+                    <th style={{ width: "22%" }}>Alert kinds</th>
+                    <th style={{ width: "14%" }}>Forwarding</th>
+                    <th style={{ width: "11%" }}>Added</th>
+                    <th style={{ width: "7%", textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -327,132 +345,117 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
               The server reports coverage gaps when a row is deactivated.
             </span>
           </div>
-          {adding ? (
-            <Modal
-              title="Add a subscription"
-              onClose={() => setAdding(false)}
-              footer={
-                <button
-                  type="button"
-                  onClick={() => void add()}
-                  disabled={
-                    saving ||
-                    supervisor.trim().length === 0 ||
-                    alertKinds.length === 0 ||
-                    !selectorFilled ||
-                    (forwarding && forwardTo.trim().length === 0)
-                  }
-                  style={
-                    saving ||
-                    supervisor.trim().length === 0 ||
-                    alertKinds.length === 0 ||
-                    !selectorFilled ||
-                    (forwarding && forwardTo.trim().length === 0)
-                      ? disabledButtonStyle
-                      : primaryButtonStyle
-                  }
-                >
-                  {saving ? "Adding..." : "Add subscription"}
-                </button>
-              }
-            >
-              <MembershipLookupField
-                label="Supervisor"
-                value={supervisor}
-                onChange={setSupervisor}
-                appearance="modal"
-              />
-              <SelectField
-                label="Scope"
-                value={scopeKind}
-                options={SUBSCRIPTION_SCOPE_KINDS.map((value) => ({
-                  value,
-                  label: humanize(value),
-                }))}
-                onChange={setScopeKind}
-              />
-              {selector === "clinician" ? (
-                <MembershipLookupField
-                  label="Clinician"
-                  value={clinician}
-                  onChange={setClinician}
-                  appearance="modal"
-                  hint="A supervisor may not subscribe to herself."
-                />
-              ) : null}
-              {selector === "location" ? (
-                <>
-                  <ProviderEntityLookupField
-                    label="Provider entity"
-                    value={locationEntityId}
-                    onChange={(id) => {
-                      setLocationEntityId(id);
-                      setLocationId("");
-                    }}
-                    appearance="modal"
-                  />
-                  <LocationLookupField
-                    label="Location"
-                    value={locationId}
-                    providerEntityId={locationEntityId}
-                    onChange={setLocationId}
-                    appearance="modal"
-                  />
-                </>
-              ) : null}
-              {selector === "providerEntity" ? (
-                <ProviderEntityLookupField
-                  label="Provider entity"
-                  value={providerEntityId}
-                  onChange={setProviderEntityId}
-                  appearance="modal"
-                />
-              ) : null}
-              {selector === null ? (
-                <span style={secondaryTextStyle}>
-                  A role-scoped row needs no selector; it covers every clinician the role reaches.
-                </span>
-              ) : null}
-              <ChipMultiSelect
-                label="Page this supervisor for"
-                values={ALERT_KINDS}
-                selected={alertKinds}
-                onChange={setAlertKinds}
-              />
-              {!alertKinds.includes("sos") ? (
-                <Notice tone="warning">
-                  This row will not page for SOS. Make sure another subscription covers those
-                  alerts.
-                </Notice>
-              ) : null}
-              <SelectField
-                label="Is this a vacation forward?"
-                value={forwarding ? "yes" : "no"}
-                options={[
-                  { value: "no", label: "No" },
-                  { value: "yes", label: "Yes - send pages elsewhere" },
-                ]}
-                onChange={(value) => setForwarding(value === "yes")}
-              />
-              {forwarding ? (
-                <MembershipLookupField
-                  label="Forward to"
-                  value={forwardTo}
-                  onChange={setForwardTo}
-                  appearance="modal"
-                  hint="Cannot be the same supervisor."
-                />
-              ) : null}
-              {modalError ? (
-                <Notice tone="error" assertive>
-                  {modalError}
-                </Notice>
-              ) : null}
-            </Modal>
-          ) : null}
         </div>
       }
       fullPageScroll
+      detail={
+        adding ? (
+          <FormDrawer
+            title="Add a subscription"
+            busy={saving}
+            onClose={closeForm}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                onClick={() => void add()}
+                disabled={
+                  saving ||
+                  supervisor.trim().length === 0 ||
+                  alertKinds.length === 0 ||
+                  !selectorFilled ||
+                  (forwarding && forwardTo.trim().length === 0)
+                }
+              >
+                {saving ? "Adding..." : "Add subscription"}
+              </Button>
+            }
+          >
+            <MembershipLookupField label="Supervisor" value={supervisor} onChange={setSupervisor} />
+            <SelectField
+              label="Scope"
+              value={scopeKind}
+              options={SUBSCRIPTION_SCOPE_KINDS.map((value) => ({
+                value,
+                label: humanize(value),
+              }))}
+              onChange={setScopeKind}
+            />
+            {selector === "clinician" ? (
+              <MembershipLookupField
+                label="Clinician"
+                value={clinician}
+                onChange={setClinician}
+                hint="A supervisor may not subscribe to herself."
+              />
+            ) : null}
+            {selector === "location" ? (
+              <>
+                <ProviderEntityLookupField
+                  label="Provider entity"
+                  value={locationEntityId}
+                  onChange={(id) => {
+                    setLocationEntityId(id);
+                    setLocationId("");
+                  }}
+                />
+                <LocationLookupField
+                  label="Location"
+                  value={locationId}
+                  providerEntityId={locationEntityId}
+                  onChange={setLocationId}
+                />
+              </>
+            ) : null}
+            {selector === "providerEntity" ? (
+              <ProviderEntityLookupField
+                label="Provider entity"
+                value={providerEntityId}
+                onChange={setProviderEntityId}
+              />
+            ) : null}
+            {selector === null ? (
+              <span style={secondaryTextStyle}>
+                A role-scoped row needs no selector; it covers every clinician the role reaches.
+              </span>
+            ) : null}
+            <ChipMultiSelect
+              label="Page this supervisor for"
+              values={ALERT_KINDS}
+              selected={alertKinds}
+              onChange={setAlertKinds}
+            />
+            {!alertKinds.includes("sos") ? (
+              <Notice tone="warning">
+                This row will not page for SOS. Make sure another subscription covers those alerts.
+              </Notice>
+            ) : null}
+            <SelectField
+              label="Is this a vacation forward?"
+              value={forwarding ? "yes" : "no"}
+              options={[
+                { value: "no", label: "No" },
+                { value: "yes", label: "Yes - send pages elsewhere" },
+              ]}
+              onChange={(value) => setForwarding(value === "yes")}
+            />
+            {forwarding ? (
+              <MembershipLookupField
+                label="Forward to"
+                value={forwardTo}
+                onChange={setForwardTo}
+                hint="Cannot be the same supervisor."
+              />
+            ) : null}
+            {modalError ? (
+              <Notice tone="error" assertive>
+                {modalError}
+              </Notice>
+            ) : null}
+          </FormDrawer>
+        ) : undefined
+      }
     />
   );
 }
@@ -502,11 +505,11 @@ function SubscriptionRow({
   onRemove: (id: string) => Promise<void>;
 }): JSX.Element {
   return (
-    <tr style={rowStyle}>
-      <td style={tdMonoStyle}>{shortId(row.supervisorMembershipId)}</td>
-      <td style={tdStyle}>{humanize(row.scopeKind)}</td>
-      <td style={tdMonoStyle}>{scopeTarget(row)}</td>
-      <td style={tdStyle}>
+    <tr>
+      <td className="wx-data-md">{shortId(row.supervisorMembershipId)}</td>
+      <td>{humanize(row.scopeKind)}</td>
+      <td className="wx-data-md">{scopeTarget(row)}</td>
+      <td>
         <div style={chipListStyle}>
           {row.alertKinds.map((kind) => (
             <StatusPill
@@ -517,7 +520,7 @@ function SubscriptionRow({
           ))}
         </div>
       </td>
-      <td style={tdStyle}>
+      <td>
         {row.isVacationForwarding ? (
           <div style={primaryCellStyle}>
             <StatusPill label="Forwarded" tone="warning" />
@@ -531,8 +534,8 @@ function SubscriptionRow({
           <span style={secondaryTextStyle}>-</span>
         )}
       </td>
-      <td style={tdStyle}>{dateTime(row.createdAt)}</td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td>{dateTime(row.createdAt)}</td>
+      <td style={{ textAlign: "right" }}>
         <Button size="sm" tone="tertiary" onClick={() => void onRemove(row.id)}>
           Deactivate
         </Button>
@@ -601,34 +604,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
-};
-const tdMonoStyle = {
-  ...tdStyle,
-  fontFamily: "var(--font-mono)",
 };
 const primaryCellStyle = {
   display: "flex",

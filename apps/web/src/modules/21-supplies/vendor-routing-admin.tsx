@@ -16,16 +16,20 @@
 //   • "Delete" RETIRES. `is_active = false`, `effective_to = now`; the row survives because every historical
 //     `routing_rule_resolved_jsonb` names its id. The verb stays DELETE because §4.1's table says so.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type PharmacyDispatchMode,
   type VendorRoutingFulfillmentMode,
@@ -49,29 +53,24 @@ import {
   shortId,
 } from "./supplies-status";
 import {
-  Card,
   CheckboxField,
   FilterRow,
-  Modal,
+  type LoadError,
+  LoadFailure,
   Notice,
   SelectField,
   TextField,
-  alertStyle,
-  columnStyle,
-  disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
-  mutedStyle,
+  nextLoadError,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
   thNum,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
+import { useWrite } from "./use-write";
 
 const PAGE = 200;
+const LOAD_FAILURE = "The vendor routing rules could not be loaded.";
 
 /** The rule editor's fields. `assignedVendorId` is nullable, not absent-or-uuid: on the three non-vendor
  *  modes a null vendor is CORRECT, not an unresolved routing failure (§3.1.5's CHECK). */
@@ -101,37 +100,64 @@ export function VendorRoutingAdmin(): JSX.Element {
   const [includeRetired, setIncludeRetired] = useState(false);
   const [rules, setRules] = useState<VendorRoutingRuleView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [error, setError] = useState<LoadError | null>(null);
+  // A refusal of the rule drawer shows in the drawer; retiring a rule from its row has no drawer, so its own refusal
+  // shows on the page. The two writes keep separate busy flags: a Retire must not mark the open drawer busy (inert
+  // page, no Cancel), though the drawer's own Save waits for it.
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [retireError, setRetireError] = useState<string | null>(null);
+  const { busy, run: runWrite } = useWrite();
+  const { busy: inlineBusy, run: runInline } = useWrite();
+  const startRead = useLatestRead();
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [editing, setEditing] = useState<VendorRoutingRuleView | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<RuleDraft>(EMPTY_DRAFT);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const { page, error: err } = await listVendorRoutingRules(client, {
-      limit: PAGE,
-      // `scopeFilter` is always "" or one of the closed scope-kind vocabulary the SelectField below offers.
-      ...(scopeFilter ? { scopeKind: scopeFilter as VendorRoutingScopeKind } : {}),
-      ...(includeRetired ? { includeRetired: true } : {}),
-    });
-    if (err) {
-      setError(errorMessage(err, "The vendor routing rules could not be loaded."));
-      setLoading(false);
-      return;
-    }
-    setRules(page?.data ?? []);
-    setLoading(false);
-  }, [client, scopeFilter, includeRetired]);
+  // `keepRowsOnFailure` is for a refresh after a write (or a retry): the rows on screen still match the filter. A read
+  // for a CHANGED filter that fails clears them, so a stale list never sits under a filter it does not match.
+  const load = useCallback(
+    async (keepRowsOnFailure = false) => {
+      const isLatest = startRead();
+      setLoading(true);
+      try {
+        const { page, error: err } = await listVendorRoutingRules(client, {
+          limit: PAGE,
+          // `scopeFilter` is always "" or one of the closed scope-kind vocabulary the SelectField below offers.
+          ...(scopeFilter ? { scopeKind: scopeFilter as VendorRoutingScopeKind } : {}),
+          ...(includeRetired ? { includeRetired: true } : {}),
+        });
+        if (!isLatest()) return;
+        if (err) {
+          setError((previous) => nextLoadError(previous, errorMessage(err, LOAD_FAILURE)));
+          if (!keepRowsOnFailure) setRules([]);
+          return;
+        }
+        setRules(page?.data ?? []);
+        setLoadedOnce(true);
+        setError(null);
+      } catch {
+        if (isLatest()) {
+          setError((previous) => nextLoadError(previous, LOAD_FAILURE));
+          if (!keepRowsOnFailure) setRules([]);
+        }
+      } finally {
+        if (isLatest()) setLoading(false);
+      }
+    },
+    [client, scopeFilter, includeRetired, startRead],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  // The spinner is for the first load only. A reload (a filter change, a save) keeps the page and any open drawer
+  // mounted, with the previous rules showing, so the drawer's typed text, focus and opener survive it.
+  if (loading && !loadedOnce) return <LoadingSpinner />;
+  // A failed FIRST load has nothing to show. A failed reload keeps the page (and any open drawer) and says so inline.
+  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error.message} />;
 
   // `draft.scopeKind`/`assignedFulfillmentMode`/`defaultPharmacyDispatchMode` are always one of the
   // closed vocabularies the SelectFields below offer.
@@ -152,33 +178,45 @@ export function VendorRoutingAdmin(): JSX.Element {
       : {}),
   });
 
-  const save = async () => {
-    setBusy(true);
+  const closeDrawer = () => {
+    setCreating(false);
+    setEditing(null);
     setActionError(null);
-    const { error: err } = editing
-      ? await updateVendorRoutingRule(client, editing.ruleId, body())
-      : await createVendorRoutingRule(client, body());
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, "The routing rule could not be saved."));
+    setRetireError(null);
+  };
+
+  const save = async () => {
+    setActionError(null);
+    const failed = await runWrite(
+      () =>
+        editing
+          ? updateVendorRoutingRule(client, editing.ruleId, body())
+          : createVendorRoutingRule(client, body()),
+      "The routing rule could not be saved.",
+    );
+    if (failed) {
+      setActionError(failed);
       return;
     }
-    setEditing(null);
-    setCreating(false);
-    void load();
+    closeDrawer();
+    void load(true);
   };
 
   const retire = async (rule: VendorRoutingRuleView) => {
-    setBusy(true);
-    setActionError(null);
-    const { error: err } = await retireVendorRoutingRule(client, rule.ruleId);
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, "The rule could not be retired."));
+    setRetireError(null);
+    const failed = await runInline(
+      () => retireVendorRoutingRule(client, rule.ruleId),
+      "The rule could not be retired.",
+    );
+    if (failed) {
+      setRetireError(failed);
       return;
     }
-    void load();
+    void load(true);
   };
+
+  // A read that failed and left nothing to show is not an unconfigured ladder: say "not loaded", never "no rule".
+  const unread = error !== null && rules.length === 0;
 
   // Group by scope so the ladder reads top-down, most specific first. The ROUTING_SCOPES order IS the
   // precedence order and must not be re-sorted.
@@ -190,179 +228,202 @@ export function VendorRoutingAdmin(): JSX.Element {
   })).filter((g) => g.rows.length > 0 || scopeFilter === "" || scopeFilter === g.scope);
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Vendor routing</span>}
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              style={primaryButtonStyle}
-              onClick={() => {
-                setDraft(EMPTY_DRAFT);
-                setEditing(null);
-                setCreating(true);
-                setActionError(null);
-              }}
-            >
-              New rule
-            </button>
-            <Link to="/supplies" style={ghostButtonStyle}>
-              Back to queue
-            </Link>
-          </div>
-        }
-      />
-
-      <Notice tone="info">
-        Resolution is deterministic: the most specific matching scope wins (SKU, then Location, then
-        tenant, then platform), and inside a scope the lowest priority number wins. There is no
-        fallback list — the ladder resolves to exactly one rule, so "why this vendor" has exactly
-        one answer.
-      </Notice>
-
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
-
-      <FilterRow>
-        <SelectField
-          label="Scope"
-          value={scopeFilter}
-          options={[{ value: "", label: "all scopes" }, ...enumOptions(ROUTING_SCOPES)]}
-          onChange={setScopeFilter}
-        />
-        <CheckboxField
-          label="Include retired rules"
-          checked={includeRetired}
-          onChange={setIncludeRetired}
-        />
-      </FilterRow>
-
-      {byScope.map(({ scope, rows }) => (
-        <Card
-          key={scope}
-          title={`${humanize(scope)} scope`}
+    <div className={`wx-list-drawer${creating || editing ? " has-drawer" : ""}`}>
+      <div
+        ref={focusRef}
+        tabIndex={-1}
+        className="wx-list-drawer-main wx-kit-column"
+        aria-busy={loading}
+        style={{ outline: "none" }}
+      >
+        <PageHeader
+          title={<span style={pageTitleStyle}>Vendor routing</span>}
           actions={
-            scope === "platform" ? <StatusPill label="Read-only" tone="neutral" /> : undefined
+            <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+              <Button
+                tone="primary"
+                type="button"
+                onClick={() => {
+                  setDraft(EMPTY_DRAFT);
+                  setEditing(null);
+                  setCreating(true);
+                  setActionError(null);
+                  setRetireError(null);
+                }}
+              >
+                New rule
+              </Button>
+              <Link to="/supplies" style={ghostButtonStyle}>
+                Back to queue
+              </Link>
+            </div>
           }
-        >
-          {scope === "platform" ? (
-            <span style={mutedStyle}>
-              Platform rules are the floor every tenant reads and none may write. A tenant cannot
-              author one: the request schema omits the scope and the database write policy would
-              refuse it anyway.
-            </span>
-          ) : null}
-          {rows.length === 0 ? (
-            <span style={mutedStyle}>
-              {scope === "tenant"
-                ? "No tenant default is configured. Boot validation refuses a tenant with no tenant-scope rule — a request with nothing to resolve against cannot be routed."
-                : "No rule at this scope."}
-            </span>
-          ) : (
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={th}>Rule</th>
-                  <th style={th}>Target</th>
-                  <th style={th}>SKU pattern</th>
-                  <th style={th}>Vendor</th>
-                  <th style={th}>Fulfillment</th>
-                  <th style={thNum}>Priority</th>
-                  <th style={th}>Effective</th>
-                  <th style={th}>State</th>
-                  <th style={th} />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.ruleId} style={rowLine}>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.ruleId)}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.scopeId)}</td>
-                    <td style={td}>{r.skuClassPattern ?? "any"}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>
-                      {r.assignedVendorId ? shortId(r.assignedVendorId) : "internal hub"}
-                    </td>
-                    <td style={td}>
-                      {humanize(r.assignedFulfillmentMode)}
-                      {r.defaultPharmacyDispatchMode ? (
-                        <div style={mutedStyle}>{humanize(r.defaultPharmacyDispatchMode)}</div>
-                      ) : null}
-                    </td>
-                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      {r.precedencePriority}
-                    </td>
-                    <td style={td}>
-                      {shortDate(r.effectiveFrom)}
-                      {r.effectiveTo ? ` → ${shortDate(r.effectiveTo)}` : ""}
-                    </td>
-                    <td style={td}>
-                      <StatusPill
-                        label={r.isActive ? "Active" : "Retired"}
-                        tone={r.isActive ? "success" : "neutral"}
-                      />
-                    </td>
-                    <td style={td}>
-                      {r.isPlatform ? (
-                        <span style={mutedStyle}>platform</span>
-                      ) : (
-                        <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            style={ghostButtonStyle}
-                            onClick={() => {
-                              setEditing(r);
-                              setCreating(false);
-                              setActionError(null);
-                              setDraft({
-                                scopeKind: r.scopeKind,
-                                scopeId: r.scopeId ?? "",
-                                skuClassPattern: r.skuClassPattern ?? "",
-                                assignedVendorId: r.assignedVendorId ?? "",
-                                assignedFulfillmentMode: r.assignedFulfillmentMode,
-                                defaultPharmacyDispatchMode: r.defaultPharmacyDispatchMode ?? "",
-                                precedencePriority: String(r.precedencePriority),
-                              });
-                            }}
-                          >
-                            Edit
-                          </button>
-                          {r.isActive ? (
-                            <button
-                              type="button"
-                              disabled={busy}
-                              style={busy ? disabledButtonStyle : ghostButtonStyle}
-                              onClick={() => void retire(r)}
-                            >
-                              Retire
-                            </button>
-                          ) : null}
-                        </div>
-                      )}
-                    </td>
+        />
+
+        <Notice tone="info">
+          Resolution is deterministic: the most specific matching scope wins (SKU, then Location,
+          then tenant, then platform), and inside a scope the lowest priority number wins. There is
+          no fallback list — the ladder resolves to exactly one rule, so "why this vendor" has
+          exactly one answer.
+        </Notice>
+
+        {error ? (
+          <LoadFailure error={error} reloading={loading} onReload={() => void load(true)} />
+        ) : null}
+        {retireError ? (
+          <p className="wx-text-error" role="alert">
+            {retireError}
+          </p>
+        ) : null}
+
+        <FilterRow>
+          <SelectField
+            label="Scope"
+            value={scopeFilter}
+            options={[{ value: "", label: "all scopes" }, ...enumOptions(ROUTING_SCOPES)]}
+            onChange={setScopeFilter}
+          />
+          <CheckboxField
+            label="Include retired rules"
+            checked={includeRetired}
+            onChange={setIncludeRetired}
+          />
+        </FilterRow>
+
+        {byScope.map(({ scope, rows }) => (
+          <Panel
+            stack
+            headingLevel={3}
+            key={scope}
+            title={`${humanize(scope)} scope`}
+            action={
+              scope === "platform" ? <StatusPill label="Read-only" tone="neutral" /> : undefined
+            }
+          >
+            {scope === "platform" ? (
+              <span className="wx-text-muted">
+                Platform rules are the floor every tenant reads and none may write. A tenant cannot
+                author one: the request schema omits the scope and the database write policy would
+                refuse it anyway.
+              </span>
+            ) : null}
+            {unread ? (
+              <span className="wx-text-muted">Not loaded.</span>
+            ) : rows.length === 0 ? (
+              <span className="wx-text-muted">
+                {scope === "tenant"
+                  ? "No tenant default is configured. Boot validation refuses a tenant with no tenant-scope rule — a request with nothing to resolve against cannot be routed."
+                  : "No rule at this scope."}
+              </span>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rule</th>
+                    <th>Target</th>
+                    <th>SKU pattern</th>
+                    <th>Vendor</th>
+                    <th>Fulfillment</th>
+                    <th style={thNum}>Priority</th>
+                    <th>Effective</th>
+                    <th>State</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
-      ))}
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.ruleId}>
+                      <td className="wx-data-md">{shortId(r.ruleId)}</td>
+                      <td className="wx-data-md">{shortId(r.scopeId)}</td>
+                      <td>{r.skuClassPattern ?? "any"}</td>
+                      <td className="wx-data-md">
+                        {r.assignedVendorId ? shortId(r.assignedVendorId) : "internal hub"}
+                      </td>
+                      <td>
+                        {humanize(r.assignedFulfillmentMode)}
+                        {r.defaultPharmacyDispatchMode ? (
+                          <div className="wx-text-muted">
+                            {humanize(r.defaultPharmacyDispatchMode)}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {r.precedencePriority}
+                      </td>
+                      <td>
+                        {shortDate(r.effectiveFrom)}
+                        {r.effectiveTo ? ` → ${shortDate(r.effectiveTo)}` : ""}
+                      </td>
+                      <td>
+                        <StatusPill
+                          label={r.isActive ? "Active" : "Retired"}
+                          tone={r.isActive ? "success" : "neutral"}
+                        />
+                      </td>
+                      <td>
+                        {r.isPlatform ? (
+                          <span className="wx-text-muted">platform</span>
+                        ) : (
+                          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+                            <Button
+                              tone="secondary"
+                              type="button"
+                              onClick={() => {
+                                setEditing(r);
+                                setCreating(false);
+                                setActionError(null);
+                                setRetireError(null);
+                                setDraft({
+                                  scopeKind: r.scopeKind,
+                                  scopeId: r.scopeId ?? "",
+                                  skuClassPattern: r.skuClassPattern ?? "",
+                                  assignedVendorId: r.assignedVendorId ?? "",
+                                  assignedFulfillmentMode: r.assignedFulfillmentMode,
+                                  defaultPharmacyDispatchMode: r.defaultPharmacyDispatchMode ?? "",
+                                  precedencePriority: String(r.precedencePriority),
+                                });
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            {r.isActive ? (
+                              <Button
+                                tone="secondary"
+                                type="button"
+                                disabled={inlineBusy}
+                                onClick={() => void retire(r)}
+                              >
+                                Retire
+                              </Button>
+                            ) : null}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+        ))}
+      </div>
 
       {creating || editing ? (
-        <Modal
+        <FormDrawer
+          key={editing ? editing.ruleId : "new"}
           title={editing ? "Edit routing rule" : "New routing rule"}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
-          footer={
-            <button
+          busy={busy}
+          error={actionError}
+          onClose={closeDrawer}
+          save={
+            <Button
+              tone="primary"
               type="button"
-              disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
+              disabled={busy || inlineBusy}
               onClick={() => void save()}
             >
               Save rule
-            </button>
+            </Button>
           }
         >
           <SelectField
@@ -419,7 +480,7 @@ export function VendorRoutingAdmin(): JSX.Element {
             onChange={(v) => setDraft({ ...draft, precedencePriority: v })}
             type="number"
           />
-        </Modal>
+        </FormDrawer>
       ) : null}
     </div>
   );

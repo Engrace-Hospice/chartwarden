@@ -1,8 +1,10 @@
 import {
+  Button,
   DerivedBadge,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   PatientWorkspaceLayout,
   StatusPill,
   t,
@@ -46,20 +48,12 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   SummaryGrid,
   TableScroll,
-  alertStyle,
   columnStyle,
-  ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./discipline-ui";
 
 /** Top-level key diff between two sealed snapshots — added / removed / changed. */
@@ -179,60 +173,60 @@ export function DisciplineVersionHistory(): JSX.Element {
           />
 
           {detailError ? (
-            <p role="alert" aria-live="assertive" style={alertStyle}>
+            <p role="alert" aria-live="assertive" className="wx-text-error">
               {detailError}
             </p>
           ) : null}
 
-          <Card title="Versions" headingLevel={2}>
+          <Panel stack title="Versions" headingLevel={2}>
             {rows.length === 0 ? (
-              <span style={mutedStyle}>This plan has no versions yet.</span>
+              <span className="wx-text-muted">This plan has no versions yet.</span>
             ) : (
               <TableScroll label="Plan versions table">
-                <table style={tableStyle}>
+                <table>
                   <thead>
                     <tr>
-                      <th style={th}>Version</th>
-                      <th style={th}>Kind</th>
-                      <th style={th}>IDG meeting</th>
-                      <th style={th}>Finalized</th>
-                      <th style={th}>Signed</th>
-                      <th style={th}>Superseded</th>
-                      <th style={th}>Status</th>
-                      <th style={th}>&nbsp;</th>
+                      <th>Version</th>
+                      <th>Kind</th>
+                      <th>IDG meeting</th>
+                      <th>Finalized</th>
+                      <th>Signed</th>
+                      <th>Superseded</th>
+                      <th>Status</th>
+                      <th>&nbsp;</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((v) => (
-                      <tr key={v.versionId} style={rowLine}>
-                        <td style={td}>v{v.sequence}</td>
-                        <td style={td}>{humanize(v.kind)}</td>
-                        <td style={td}>{shortId(v.idgMeetingId)}</td>
-                        <td style={td}>{dateTime(v.finalizedAt)}</td>
-                        <td style={td}>{dateTime(v.signedAt)}</td>
-                        <td style={td}>{dateTime(v.supersededAt)}</td>
-                        <td style={td}>
+                      <tr key={v.versionId}>
+                        <td>v{v.sequence}</td>
+                        <td>{humanize(v.kind)}</td>
+                        <td>{shortId(v.idgMeetingId)}</td>
+                        <td>{dateTime(v.finalizedAt)}</td>
+                        <td>{dateTime(v.signedAt)}</td>
+                        <td>{dateTime(v.supersededAt)}</td>
+                        <td>
                           <StatusPill
                             label={humanize(v.status)}
                             tone={toneOf(VERSION_STATUS_TONE, v.status)}
                           />
                         </td>
-                        <td style={td}>
+                        <td>
                           <div style={{ display: "flex", gap: t.space2 }}>
-                            <button
+                            <Button
+                              tone="secondary"
                               type="button"
-                              style={ghostButtonStyle}
                               onClick={() => void open(v.versionId, "selected")}
                             >
                               Open
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              tone="secondary"
                               type="button"
-                              style={ghostButtonStyle}
                               onClick={() => void open(v.versionId, "compare")}
                             >
                               Compare against
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -241,10 +235,10 @@ export function DisciplineVersionHistory(): JSX.Element {
                 </table>
               </TableScroll>
             )}
-          </Card>
+          </Panel>
 
           {selected ? (
-            <Card title={`Version ${selected.sequence} — sealed snapshot`} headingLevel={2}>
+            <Panel stack title={`Version ${selected.sequence} — sealed snapshot`} headingLevel={2}>
               <SummaryGrid>
                 <Field label="Status" value={humanize(selected.status)} />
                 <Field label="Finalized" value={dateTime(selected.finalizedAt)} />
@@ -261,7 +255,7 @@ export function DisciplineVersionHistory(): JSX.Element {
                 Required signer set (frozen at finalize)
               </h3>
               {normalizeSignerSet(selected.requiredSignerSet).length === 0 ? (
-                <span style={mutedStyle}>
+                <span className="wx-text-muted">
                   No quorum is recorded on this version — a discharge version is sealed by the
                   system actor and carries none.
                 </span>
@@ -289,25 +283,25 @@ export function DisciplineVersionHistory(): JSX.Element {
                 Signatures collected
               </h3>
               {selected.signatures.length === 0 ? (
-                <span style={mutedStyle}>No signature collected yet.</span>
+                <span className="wx-text-muted">No signature collected yet.</span>
               ) : (
                 <TableScroll label="Collected signatures table">
-                  <table style={tableStyle}>
+                  <table>
                     <thead>
                       <tr>
-                        <th style={th}>Signer</th>
-                        <th style={th}>Role</th>
-                        <th style={th}>Kind</th>
-                        <th style={th}>Signed</th>
+                        <th>Signer</th>
+                        <th>Role</th>
+                        <th>Kind</th>
+                        <th>Signed</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selected.signatures.map((s) => (
-                        <tr key={s.signatureId} style={rowLine}>
-                          <td style={td}>{shortId(s.signerMembershipId)}</td>
-                          <td style={td}>{humanize(s.signerRole)}</td>
-                          <td style={td}>{s.isAcknowledgment ? "Acknowledgment" : "Signature"}</td>
-                          <td style={td}>{dateTime(s.signedAt)}</td>
+                        <tr key={s.signatureId}>
+                          <td>{shortId(s.signerMembershipId)}</td>
+                          <td>{humanize(s.signerRole)}</td>
+                          <td>{s.isAcknowledgment ? "Acknowledgment" : "Signature"}</td>
+                          <td>{dateTime(s.signedAt)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -343,35 +337,35 @@ export function DisciplineVersionHistory(): JSX.Element {
               >
                 {JSON.stringify(selected.stateSnapshot ?? {}, null, 2)}
               </pre>
-            </Card>
+            </Panel>
           ) : null}
 
           {selected && compare ? (
-            <Card title={`Diff — v${compare.sequence} → v${selected.sequence}`} headingLevel={2}>
+            <Panel
+              stack
+              title={`Diff — v${compare.sequence} → v${selected.sequence}`}
+              headingLevel={2}
+            >
               {diff.length === 0 ? (
-                <span style={mutedStyle}>
+                <span className="wx-text-muted">
                   The two sealed snapshots are identical at the top level.
                 </span>
               ) : (
                 <TableScroll label="Version comparison table">
-                  <table style={tableStyle}>
+                  <table>
                     <thead>
                       <tr>
-                        <th style={th}>Field</th>
-                        <th style={th}>v{compare.sequence}</th>
-                        <th style={th}>v{selected.sequence}</th>
+                        <th>Field</th>
+                        <th>v{compare.sequence}</th>
+                        <th>v{selected.sequence}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {diff.map((d) => (
-                        <tr key={d.key} style={rowLine}>
-                          <td style={{ ...td, fontFamily: t.fontMono }}>{d.key}</td>
-                          <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>
-                            {d.before}
-                          </td>
-                          <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>
-                            {d.after}
-                          </td>
+                        <tr key={d.key}>
+                          <td className="wx-data-md">{d.key}</td>
+                          <td className="wx-data-md">{d.before}</td>
+                          <td className="wx-data-md">{d.after}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -384,7 +378,7 @@ export function DisciplineVersionHistory(): JSX.Element {
               >
                 Clear comparison by reloading
               </Link>
-            </Card>
+            </Panel>
           ) : null}
         </section>
       </div>

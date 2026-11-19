@@ -20,18 +20,12 @@ import {
   ErrorText,
   FilterRow,
   SelectField,
-  columnStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./bereavement-ui";
-import { GroupFormModal } from "./group-form-modal";
+import { GroupFormDrawer } from "./group-form-modal";
 import { usePagedList } from "./mailing-load";
 import {
   GROUP_MANAGE_PERMISSION,
@@ -71,97 +65,101 @@ export function SupportGroups(): JSX.Element | null {
   const failure = state.kind === "error" ? state.message : state.notice;
   const busy = state.kind === "ready" && state.busy;
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Support groups</span>}
-        actions={mayManage ? <Button onClick={() => setCreating(true)}>New group</Button> : null}
-      />
-      <span style={mutedStyle}>
-        Grief support groups the agency runs for bereaved families. Open a group to manage its
-        sessions, its roster and attendance.
-      </span>
-      <FilterRow>
-        <SelectField
-          label="Status"
-          value={status}
-          onChange={(next) => setStatus(next as GroupStatus | typeof ALL_STATUSES)}
-          options={[
-            { value: ALL_STATUSES, label: "All statuses" },
-            ...GROUP_STATUSES.map((s) => ({ value: s, label: humanize(s) })),
-          ]}
+    <div className={`wx-list-drawer${creating ? " has-drawer" : ""}`}>
+      <div className="wx-list-drawer-main">
+        <PageHeader
+          title={<span style={pageTitleStyle}>Support groups</span>}
+          actions={mayManage ? <Button onClick={() => setCreating(true)}>New group</Button> : null}
         />
-      </FilterRow>
-      {failure ? (
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          <ErrorText>{failure}</ErrorText>
-          <Button size="sm" tone="secondary" loading={busy} onClick={() => void reload()}>
-            Try again
-          </Button>
-        </div>
-      ) : null}
-      {state.kind === "ready" && rows.length === 0 ? (
-        <EmptyState
-          title="No support groups"
-          description={
-            status === ALL_STATUSES
-              ? "No support group has been set up yet."
-              : "No group has this status. Choose another status."
-          }
-        />
-      ) : null}
-      {rows.length > 0 ? (
-        <>
-          <table style={tableStyle} aria-label="Support groups" aria-busy={busy}>
-            <thead>
-              <tr>
-                <th style={th}>Group</th>
-                <th style={th}>Status</th>
-                <th style={th}>Format</th>
-                <th style={th}>Modality</th>
-                <th style={thNum}>Enrolled</th>
-                <th style={th}>Next session</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((group) => (
-                <tr key={group.groupId} style={rowLine}>
-                  <td style={td}>
-                    <Link to={`/bereavement/groups/${group.groupId}`} style={linkStyle}>
-                      {group.name}
-                    </Link>
-                  </td>
-                  <td style={td}>
-                    <StatusPill
-                      label={humanize(group.status)}
-                      tone={toneOf(GROUP_STATUS_TONE, group.status)}
-                    />
-                  </td>
-                  <td style={td}>{humanize(group.format)}</td>
-                  <td style={td}>{humanize(group.modality)}</td>
-                  <td style={tdNum}>
-                    {group.capacity === null
-                      ? group.enrolledCount
-                      : `${group.enrolledCount} / ${group.capacity}`}
-                  </td>
-                  <td style={td}>{dateTime(group.nextSessionAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-            <span style={mutedStyle}>
-              {countLabel(rows.length, state.kind === "ready" && state.hasMore)} groups shown
-            </span>
-            {state.kind === "ready" && state.hasMore ? (
-              <Button size="sm" tone="secondary" loading={busy} onClick={() => void loadMore()}>
-                Load more
-              </Button>
-            ) : null}
+        <span className="wx-text-muted">
+          Grief support groups the agency runs for bereaved families. Open a group to manage its
+          sessions, its roster and attendance.
+        </span>
+        <FilterRow>
+          <SelectField
+            label="Status"
+            value={status}
+            onChange={(next) => setStatus(next as GroupStatus | typeof ALL_STATUSES)}
+            options={[
+              { value: ALL_STATUSES, label: "All statuses" },
+              ...GROUP_STATUSES.map((s) => ({ value: s, label: humanize(s) })),
+            ]}
+          />
+        </FilterRow>
+        {failure ? (
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <ErrorText>{failure}</ErrorText>
+            <Button size="sm" tone="secondary" loading={busy} onClick={() => void reload()}>
+              Try again
+            </Button>
           </div>
-        </>
-      ) : null}
+        ) : null}
+        {state.kind === "ready" && rows.length === 0 ? (
+          <EmptyState
+            title="No support groups"
+            description={
+              status === ALL_STATUSES
+                ? "No support group has been set up yet."
+                : "No group has this status. Choose another status."
+            }
+          />
+        ) : null}
+        {rows.length > 0 ? (
+          <>
+            <table aria-label="Support groups" aria-busy={busy}>
+              <thead>
+                <tr>
+                  <th>Group</th>
+                  <th>Status</th>
+                  <th>Format</th>
+                  <th>Modality</th>
+                  <th style={thNum}>Enrolled</th>
+                  <th>Next session</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((group) => (
+                  <tr key={group.groupId}>
+                    <td>
+                      <Link to={`/bereavement/groups/${group.groupId}`} style={linkStyle}>
+                        {group.name}
+                      </Link>
+                    </td>
+                    <td>
+                      <StatusPill
+                        label={humanize(group.status)}
+                        tone={toneOf(GROUP_STATUS_TONE, group.status)}
+                      />
+                    </td>
+                    <td>{humanize(group.format)}</td>
+                    <td>{humanize(group.modality)}</td>
+                    <td style={tdNum}>
+                      {group.capacity === null
+                        ? group.enrolledCount
+                        : `${group.enrolledCount} / ${group.capacity}`}
+                    </td>
+                    <td>{dateTime(group.nextSessionAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div
+              style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}
+            >
+              <span className="wx-text-muted">
+                {countLabel(rows.length, state.kind === "ready" && state.hasMore)} groups shown
+              </span>
+              {state.kind === "ready" && state.hasMore ? (
+                <Button size="sm" tone="secondary" loading={busy} onClick={() => void loadMore()}>
+                  Load more
+                </Button>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+      </div>
       {creating ? (
-        <GroupFormModal
+        <GroupFormDrawer
           group={null}
           onClose={() => setCreating(false)}
           onSaved={(group) => navigate(`/bereavement/groups/${group.groupId}`)}

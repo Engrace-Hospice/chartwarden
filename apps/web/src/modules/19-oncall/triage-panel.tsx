@@ -32,9 +32,11 @@
 // from a second module's data would be a second, unaudited PHI path.
 import {
   AiSuggestionCard,
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -87,7 +89,6 @@ import {
 } from "./oncall-status";
 import {
   CallStatePill,
-  Card,
   Field,
   Modal,
   Notice,
@@ -98,19 +99,11 @@ import {
   TextField,
   TierPill,
   Timeline,
-  alertStyle,
   columnStyle,
-  disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./oncall-ui";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -439,7 +432,7 @@ export function TriageCallPanel(): JSX.Element {
       ) : null}
 
       {/* ── the call header ─────────────────────────────────────────────────────────────────────────── */}
-      <Card title="Call">
+      <Panel stack headingLevel={3} title="Call">
         <SummaryGrid>
           <Field label="State" value={<CallStatePill state={call.state} />} />
           <Field label="Opened" value={dateTime(call.openedAt)} />
@@ -482,14 +475,20 @@ export function TriageCallPanel(): JSX.Element {
         ) : null}
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {staff && !staff.patientId ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("identify")}>
+            <Button
+              tone="secondary"
+              size="lg"
+              type="button"
+              onClick={() => setCeremony("identify")}
+            >
               Identify the patient
-            </button>
+            </Button>
           ) : null}
           {call.state === "awaiting_callback" ? (
-            <button
+            <Button
+              tone="secondary"
+              size="lg"
               type="button"
-              style={ghostButtonStyle}
               onClick={() =>
                 void run(
                   () => resumeAfterCallback(client, triageCallId, version),
@@ -498,24 +497,29 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Resume the walk
-            </button>
+            </Button>
           ) : (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("callback")}>
+            <Button
+              tone="secondary"
+              size="lg"
+              type="button"
+              onClick={() => setCeremony("callback")}
+            >
               Park on a callback
-            </button>
+            </Button>
           )}
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("escalate")}>
+          <Button tone="secondary" size="lg" type="button" onClick={() => setCeremony("escalate")}>
             Escalate
-          </button>
-          <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("abandon")}>
+          </Button>
+          <Button tone="secondary" size="lg" type="button" onClick={() => setCeremony("abandon")}>
             Caller disconnected
-          </button>
+          </Button>
         </div>
-      </Card>
+      </Panel>
 
       {/* ── D11 / D12 advisory block (§8.6) ─────────────────────────────────────────────────────────── */}
       {staff ? (
-        <Card title="Advisory (AI)">
+        <Panel stack headingLevel={3} title="Advisory (AI)">
           {staff.suggestedProtocolId || staff.hospitalizationRiskBand ? (
             <AiSuggestionCard
               model="M32 clinical copilot"
@@ -545,19 +549,21 @@ export function TriageCallPanel(): JSX.Element {
               </div>
             </AiSuggestionCard>
           ) : (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               No AI advisory is available for this call — either the tenant opted out on the on-call
               policy, or the M32 capability is deny-stubbed pending Part-A `ai.full`. The panel is
               fully functional without it; an absent advisory is not a missing answer.
             </span>
           )}
-        </Card>
+        </Panel>
       ) : null}
 
       {/* ── the protocol walk (D4 / D5) ─────────────────────────────────────────────────────────────── */}
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Protocol"
-        actions={
+        action={
           protocol ? (
             <Link to={`/triage/protocols/${protocol.id}`} style={linkStyle}>
               Open the catalog entry
@@ -567,17 +573,18 @@ export function TriageCallPanel(): JSX.Element {
       >
         {!call.selectedProtocolId ? (
           <>
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               No protocol is pinned. Pinning one FREEZES its version onto this call: a catalog edit
               published mid-call does not switch the questions under you.
             </span>
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
-              style={primaryButtonStyle}
               onClick={() => setCeremony("apply-protocol")}
             >
               Apply a protocol
-            </button>
+            </Button>
           </>
         ) : (
           <>
@@ -598,14 +605,14 @@ export function TriageCallPanel(): JSX.Element {
             </SummaryGrid>
 
             {call.answers.length > 0 ? (
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>#</th>
-                    <th style={th}>Question</th>
-                    <th style={th}>Answer</th>
-                    <th style={th}>Red flag</th>
-                    <th style={th}>Recorded</th>
+                    <th>#</th>
+                    <th>Question</th>
+                    <th>Answer</th>
+                    <th>Red flag</th>
+                    <th>Recorded</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -616,14 +623,14 @@ export function TriageCallPanel(): JSX.Element {
                         a.answeredAt.localeCompare(b.answeredAt),
                     )
                     .map((a) => (
-                      <tr key={a.id} style={rowLine}>
-                        <td style={td}>{a.questionOrder}</td>
-                        <td style={td}>
+                      <tr key={a.id}>
+                        <td>{a.questionOrder}</td>
+                        <td>
                           {a.prompt}
                           {a.correctionOfAnswerId ? (
                             <>
                               <br />
-                              <span style={mutedStyle}>
+                              <span className="wx-text-muted">
                                 correction of {shortId(a.correctionOfAnswerId)} — the original row
                                 is kept, because a "no" later corrected to "yes" means the call HAD
                                 a red flag
@@ -631,7 +638,7 @@ export function TriageCallPanel(): JSX.Element {
                             </>
                           ) : null}
                         </td>
-                        <td style={td}>
+                        <td>
                           {a.valueBool !== null
                             ? a.valueBool
                               ? "Yes"
@@ -640,10 +647,8 @@ export function TriageCallPanel(): JSX.Element {
                               ? String(a.valueInt)
                               : (a.valueText ?? "—")}
                         </td>
-                        <td style={td}>
-                          {a.redFlagHit ? <StatusPill label="Red flag" tone="error" /> : "—"}
-                        </td>
-                        <td style={td}>{dateTime(a.answeredAt)}</td>
+                        <td>{a.redFlagHit ? <StatusPill label="Red flag" tone="error" /> : "—"}</td>
+                        <td>{dateTime(a.answeredAt)}</td>
                       </tr>
                     ))}
                 </tbody>
@@ -697,16 +702,17 @@ export function TriageCallPanel(): JSX.Element {
                   />
                 )}
                 <div>
-                  <button
+                  <Button
+                    tone="primary"
+                    size="lg"
                     type="button"
-                    style={busy ? disabledButtonStyle : primaryButtonStyle}
                     disabled={busy}
                     onClick={() => void submitAnswer()}
                   >
                     Record the answer
-                  </button>
+                  </Button>
                 </div>
-                <span style={mutedStyle}>
+                <span className="wx-text-muted">
                   The server decides which question comes next and evaluates the red-flag predicate
                   in the same transaction as the answer. There is no way to skip ahead from here, by
                   design.
@@ -714,16 +720,17 @@ export function TriageCallPanel(): JSX.Element {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
-                <span style={mutedStyle}>
+                <span className="wx-text-muted">
                   {answered.size > 0
                     ? "The server's cursor has reached the end of the walk."
                     : "No question is outstanding."}
                 </span>
                 {call.state === "protocol_in_progress" ? (
                   <div>
-                    <button
+                    <Button
+                      tone="primary"
+                      size="lg"
                       type="button"
-                      style={busy ? disabledButtonStyle : primaryButtonStyle}
                       disabled={busy}
                       onClick={() =>
                         void run(
@@ -733,20 +740,20 @@ export function TriageCallPanel(): JSX.Element {
                       }
                     >
                       Complete the protocol
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
               </div>
             )}
           </>
         )}
-      </Card>
+      </Panel>
 
       {/* ── D15 medication context ──────────────────────────────────────────────────────────────────── */}
       {staff ? (
-        <Card title="Medications & refills (read-only)">
+        <Panel stack headingLevel={3} title="Medications & refills (read-only)">
           {!activeMedications || !pendingRefills ? (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               No medication context was loaded for this call — it is fetched once the caller is
               resolved to a served person.
             </span>
@@ -759,24 +766,26 @@ export function TriageCallPanel(): JSX.Element {
                   clinician authorizes against a chart they believe is empty.
                 </Notice>
               ) : activeMedications.items.length === 0 ? (
-                <span style={mutedStyle}>No active medications are on file for this patient.</span>
+                <span className="wx-text-muted">
+                  No active medications are on file for this patient.
+                </span>
               ) : (
-                <table style={tableStyle}>
+                <table>
                   <thead>
                     <tr>
-                      <th style={th}>Medication</th>
-                      <th style={th}>Route</th>
-                      <th style={th}>PRN</th>
-                      <th style={th}>Controlled</th>
+                      <th>Medication</th>
+                      <th>Route</th>
+                      <th>PRN</th>
+                      <th>Controlled</th>
                     </tr>
                   </thead>
                   <tbody>
                     {activeMedications.items.map((m) => (
-                      <tr key={m.medicationOrderId} style={rowLine}>
-                        <td style={td}>{m.display}</td>
-                        <td style={td}>{m.route}</td>
-                        <td style={td}>{m.asNeeded ? "PRN" : "—"}</td>
-                        <td style={td}>
+                      <tr key={m.medicationOrderId}>
+                        <td>{m.display}</td>
+                        <td>{m.route}</td>
+                        <td>{m.asNeeded ? "PRN" : "—"}</td>
+                        <td>
                           {m.isControlledSubstance ? (
                             <StatusPill label={m.deaSchedule ?? "Controlled"} tone="critical" />
                           ) : (
@@ -802,7 +811,7 @@ export function TriageCallPanel(): JSX.Element {
                   half-up; the two slices are reported separately for exactly that reason.
                 </Notice>
               ) : (
-                <span style={mutedStyle}>
+                <span className="wx-text-muted">
                   {pendingRefills.items.length} pending refill
                   {pendingRefills.items.length === 1 ? "" : "s"} on file. M19 reads M12 and never
                   writes it: an authorization taken on this call becomes the PRN disposition, and
@@ -811,66 +820,68 @@ export function TriageCallPanel(): JSX.Element {
               )}
             </>
           )}
-        </Card>
+        </Panel>
       ) : null}
 
       {/* ── escalations (D7) ────────────────────────────────────────────────────────────────────────── */}
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="Escalations"
-        actions={
+        action={
           <Link to="/triage/escalations" style={linkStyle}>
             Escalation inbox
           </Link>
         }
       >
         {call.escalations.length === 0 ? (
-          <span style={mutedStyle}>No escalation has been raised on this call.</span>
+          <span className="wx-text-muted">No escalation has been raised on this call.</span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Tier</th>
-                <th style={th}>Trigger</th>
-                <th style={th}>State</th>
-                <th style={th}>Mandatory</th>
-                <th style={th}>Raised</th>
-                <th style={th}>Acknowledged</th>
+                <th>Tier</th>
+                <th>Trigger</th>
+                <th>State</th>
+                <th>Mandatory</th>
+                <th>Raised</th>
+                <th>Acknowledged</th>
               </tr>
             </thead>
             <tbody>
               {call.escalations.map((e) => (
-                <tr key={e.id} style={rowLine}>
-                  <td style={td}>
+                <tr key={e.id}>
+                  <td>
                     <TierPill tier={e.tier} />
                   </td>
-                  <td style={td}>{humanize(e.triggerKind)}</td>
-                  <td style={td}>
+                  <td>{humanize(e.triggerKind)}</td>
+                  <td>
                     <StatusPill
                       label={humanize(e.state)}
                       tone={toneOf(ESCALATION_STATE_TONE, e.state)}
                     />
                   </td>
-                  <td style={td}>
+                  <td>
                     {e.mandatory ? <StatusPill label="Platform floor" tone="critical" /> : "—"}
                   </td>
-                  <td style={td}>{dateTime(e.escalatedAt)}</td>
-                  <td style={td}>{dateTime(e.acknowledgedAt)}</td>
+                  <td>{dateTime(e.escalatedAt)}</td>
+                  <td>{dateTime(e.acknowledgedAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
         {openMandatory.length > 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             A mandatory row may only reach `resolved` through an explicit write by the escalated
             party, on the escalation inbox. Closing the call does not clear it — the whole point is
             that the agency can prove a named human answered.
           </span>
         ) : null}
-      </Card>
+      </Panel>
 
       {/* ── disposition + documentation (D6 / D8) ───────────────────────────────────────────────────── */}
-      <Card title="Disposition">
+      <Panel stack headingLevel={3} title="Disposition">
         {staff?.disposition ? (
           <SummaryGrid>
             <Field label="Selected" value={dispositionLabel(staff.disposition)} />
@@ -886,20 +897,17 @@ export function TriageCallPanel(): JSX.Element {
             ) : null}
           </SummaryGrid>
         ) : (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No disposition selected. Your selector below carries exactly the set the server
             evaluated for you — {call.permittedDispositions.length} of the eight. A disposition
             outside it is refused server-side, not merely hidden here.
           </span>
         )}
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button
+          <Button
+            tone="primary"
+            size="lg"
             type="button"
-            style={
-              blocked || call.permittedDispositions.length === 0
-                ? disabledButtonStyle
-                : primaryButtonStyle
-            }
             disabled={blocked || call.permittedDispositions.length === 0}
             title={
               blocked
@@ -914,14 +922,19 @@ export function TriageCallPanel(): JSX.Element {
             }}
           >
             Select a disposition
-          </button>
+          </Button>
           {call.state === "disposition_pending" || call.state === "documented_pending_encounter" ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("document")}>
+            <Button
+              tone="secondary"
+              size="lg"
+              type="button"
+              onClick={() => setCeremony("document")}
+            >
               Create the encounter
-            </button>
+            </Button>
           ) : null}
         </div>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Creating the encounter does NOT close the call: the record advances when the encounter is
           SIGNED, which is the `m8.encounter.signed` consumer's transition, not this button's.
           §5.1's verbal-order button is absent for a related reason — a verbal order is M11's write
@@ -929,13 +942,13 @@ export function TriageCallPanel(): JSX.Element {
           one. Record the order in M11, then select the verbal-order disposition here with the id
           M11 returned.
         </span>
-      </Card>
+      </Panel>
 
       {/* ── state narrative ─────────────────────────────────────────────────────────────────────────── */}
       {staff ? (
-        <Card title="State history">
+        <Panel stack headingLevel={3} title="State history">
           {staff.stateHistory.length === 0 ? (
-            <span style={mutedStyle}>No transition has been recorded yet.</span>
+            <span className="wx-text-muted">No transition has been recorded yet.</span>
           ) : (
             <Timeline
               entries={staff.stateHistory.map((h) => ({
@@ -949,10 +962,10 @@ export function TriageCallPanel(): JSX.Element {
               }))}
             />
           )}
-        </Card>
+        </Panel>
       ) : null}
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       {/* ── ceremonies ──────────────────────────────────────────────────────────────────────────────── */}
       {ceremony === "identify" ? (
@@ -960,14 +973,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Identify the patient"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || !UUID_RE.test(patientId) || !UUID_RE.test(admissionId)}
-              style={
-                busy || !UUID_RE.test(patientId) || !UUID_RE.test(admissionId)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () => identifyPatient(client, triageCallId, version, { patientId, admissionId }),
@@ -976,10 +986,10 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Link
-            </button>
+            </Button>
           }
         >
-          <p style={mutedStyle}>
+          <p className="wx-text-muted">
             Both ids are required: M8's encounter creator needs patient AND admission NOT NULL, so a
             call carrying only one of the two can never be documented.
           </p>
@@ -1007,19 +1017,14 @@ export function TriageCallPanel(): JSX.Element {
           title="Apply a protocol"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={
                 busy ||
                 !protocolChoice ||
                 (overrideNeedsReason && overrideReason.trim().length < AI_OVERRIDE_REASON_MIN_CHARS)
-              }
-              style={
-                busy ||
-                !protocolChoice ||
-                (overrideNeedsReason && overrideReason.trim().length < AI_OVERRIDE_REASON_MIN_CHARS)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
               }
               onClick={() =>
                 void run(
@@ -1033,7 +1038,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Apply
-            </button>
+            </Button>
           }
         >
           <SelectField
@@ -1064,13 +1069,13 @@ export function TriageCallPanel(): JSX.Element {
               hint="The suggestion was at or above the governance floor, so the override is recorded to the AI-governance audit channel with your reason."
             />
           ) : (
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               No override reason is required here. Below the governance floor a reason is not
               demanded — that is deliberate: demanding a justification for ignoring a low-confidence
               guess is how a governance field becomes a field everyone types "n/a" into.
             </span>
           )}
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             Applying a protocol whose catalog row demands it writes the mandatory escalation in the
             SAME transaction. A platform-floor protocol carries ✓ and cannot be edited by the
             tenant.
@@ -1083,12 +1088,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Park on a callback"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || callbackReason.trim().length < 20}
-              style={
-                busy || callbackReason.trim().length < 20 ? disabledButtonStyle : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () =>
@@ -1103,7 +1107,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Park
-            </button>
+            </Button>
           }
         >
           <TextAreaField
@@ -1127,14 +1131,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Escalate"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || escalationReason.trim().length < 30}
-              style={
-                busy || escalationReason.trim().length < 30
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () =>
@@ -1150,7 +1151,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Raise the page
-            </button>
+            </Button>
           }
         >
           <SelectField
@@ -1189,10 +1190,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Create the encounter"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy}
-              style={busy ? disabledButtonStyle : primaryButtonStyle}
               onClick={() =>
                 void run(
                   () =>
@@ -1204,10 +1206,10 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Create
-            </button>
+            </Button>
           }
         >
-          <p style={mutedStyle}>
+          <p className="wx-text-muted">
             This invokes M8's encounter creator — the only path from M19 to a clinical record. The
             call does not reach `documented` here; it advances when the encounter is SIGNED.
           </p>
@@ -1225,12 +1227,11 @@ export function TriageCallPanel(): JSX.Element {
           title="The caller disconnected"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || abandonReason.trim().length < 1}
-              style={
-                busy || abandonReason.trim().length < 1 ? disabledButtonStyle : primaryButtonStyle
-              }
               onClick={() =>
                 void run(
                   () =>
@@ -1243,7 +1244,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Mark abandoned
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">
@@ -1270,10 +1271,11 @@ export function TriageCallPanel(): JSX.Element {
           title="Select a disposition"
           onClose={() => setCeremony(null)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || !dispositionData}
-              style={busy || !dispositionData ? disabledButtonStyle : primaryButtonStyle}
               title={
                 dispositionData ? undefined : "This disposition's required fields are not complete."
               }
@@ -1287,7 +1289,7 @@ export function TriageCallPanel(): JSX.Element {
               }
             >
               Commit
-            </button>
+            </Button>
           }
         >
           {/* §5.4 — a radio-group, keyboard-navigable, `aria-required`. The set is the SERVER's. */}

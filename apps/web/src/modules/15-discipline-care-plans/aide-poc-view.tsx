@@ -1,4 +1,12 @@
-import { StatusPill, localInputToIso, nowLocalInput, t, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  Panel,
+  StatusPill,
+  localInputToIso,
+  nowLocalInput,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the AIDE POC VIEW + SUPERVISORY MODAL (§5.1 #2 / #5).
 //
 // The 42 CFR §418.76(h) surface: the current Aide Plan of Care over the shared plan spine, plus the two
@@ -29,7 +37,6 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Modal,
   Notice,
@@ -37,14 +44,6 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
-  ghostButtonStyle,
-  mutedStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./discipline-ui";
 import { DisciplinePlanWorkspace } from "./plan-workspace";
 
@@ -124,14 +123,9 @@ function SupervisoryVisitModal({
       title="Record supervisory visit"
       onClose={onClose}
       footer={
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={!canSubmit}
-          style={{ ...primaryButtonStyle, opacity: canSubmit ? 1 : 0.5 }}
-        >
+        <Button tone="primary" type="button" onClick={() => void submit()} disabled={!canSubmit}>
           {busy ? "Recording…" : "Record attestation"}
-        </button>
+        </Button>
       }
     >
       <TextField label="Aide membership id" value={aideMembershipId} onChange={setAide} />
@@ -195,7 +189,7 @@ function SupervisoryVisitModal({
           re-arm the 14-day clock.
         </Notice>
       ) : null}
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <p className="wx-text-error">{error}</p> : null}
     </Modal>
   );
 }
@@ -239,12 +233,14 @@ function SupervisoryLedger({
 
   return (
     <>
-      <Card
+      <Panel
+        stack
+        headingLevel={3}
         title="RN supervisory attestations"
-        actions={
-          <button type="button" style={ghostButtonStyle} onClick={() => setOpen(true)}>
+        action={
+          <Button tone="secondary" type="button" onClick={() => setOpen(true)}>
             Record supervisory visit
-          </button>
+          </Button>
         }
       >
         <SummaryGrid>
@@ -261,52 +257,52 @@ function SupervisoryLedger({
             }
           />
         </SummaryGrid>
-        {error ? <p style={alertStyle}>{error}</p> : null}
+        {error ? <p className="wx-text-error">{error}</p> : null}
         {visits.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             No supervisory attestation recorded yet. The first one arms the 14-day cadence.
           </span>
         ) : (
-          <table style={tableStyle}>
+          <table>
             <thead>
               <tr>
-                <th style={th}>Supervised</th>
-                <th style={th}>Mode</th>
-                <th style={th}>Performance</th>
-                <th style={th}>Source</th>
-                <th style={th}>Next due</th>
-                <th style={th}>Signed</th>
-                <th style={th}>&nbsp;</th>
+                <th>Supervised</th>
+                <th>Mode</th>
+                <th>Performance</th>
+                <th>Source</th>
+                <th>Next due</th>
+                <th>Signed</th>
+                <th>&nbsp;</th>
               </tr>
             </thead>
             <tbody>
               {visits.map((v) => (
-                <tr key={v.supervisoryVisitId} style={rowLine}>
-                  <td style={td}>{dateTime(v.supervisoryAt)}</td>
-                  <td style={td}>{attestationModeLabel(v.attestationMode)}</td>
-                  <td style={td}>
+                <tr key={v.supervisoryVisitId}>
+                  <td>{dateTime(v.supervisoryAt)}</td>
+                  <td>{attestationModeLabel(v.attestationMode)}</td>
+                  <td>
                     <StatusPill
                       label={v.aidePerformanceSatisfactory ? "Satisfactory" : "Corrective action"}
                       tone={v.aidePerformanceSatisfactory ? "success" : "warning"}
                     />
                     {v.correctiveActions ? (
-                      <div style={mutedStyle}>{v.correctiveActions}</div>
+                      <div className="wx-text-muted">{v.correctiveActions}</div>
                     ) : null}
                   </td>
-                  <td style={td}>
+                  <td>
                     {v.sourceEncounterId ? (
                       shortId(v.sourceEncounterId)
                     ) : (
-                      <span style={mutedStyle}>phone only — clock not re-armed</span>
+                      <span className="wx-text-muted">phone only — clock not re-armed</span>
                     )}
                   </td>
-                  <td style={td}>{dateTime(v.nextDueAt)}</td>
-                  <td style={td}>{dateTime(v.signedAt)}</td>
-                  <td style={td}>
+                  <td>{dateTime(v.nextDueAt)}</td>
+                  <td>{dateTime(v.signedAt)}</td>
+                  <td>
                     {v.signedAt ? null : (
-                      <button type="button" style={ghostButtonStyle} onClick={() => void sign(v)}>
+                      <Button tone="secondary" type="button" onClick={() => void sign(v)}>
                         Sign
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>
@@ -314,7 +310,7 @@ function SupervisoryLedger({
             </tbody>
           </table>
         )}
-      </Card>
+      </Panel>
       {open ? (
         <SupervisoryVisitModal
           plan={plan}

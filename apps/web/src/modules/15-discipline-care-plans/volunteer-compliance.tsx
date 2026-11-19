@@ -26,6 +26,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { MembershipLookupField } from "../../shell/entity-lookups";
+import { FormDrawer } from "../../shell/form-drawer";
 import { type GateView, errorMessage, listGates, writeHeaders } from "./discipline-api";
 import {
   FAILING_GATE_STATUSES,
@@ -37,23 +38,7 @@ import {
   shortId,
   toneOf,
 } from "./discipline-status";
-import {
-  FilterRow,
-  Modal,
-  Notice,
-  SelectField,
-  TextAreaField,
-  TextField,
-  alertStyle,
-  ghostButtonStyle,
-  mutedStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdMono,
-  th,
-} from "./discipline-ui";
+import { FilterRow, Modal, Notice, SelectField, TextAreaField, TextField } from "./discipline-ui";
 
 /** `volunteer_gate_kind` (enums.ts §3.2) — the seven 418.78 postures. */
 const GATE_KINDS = [
@@ -78,6 +63,24 @@ const EXPIRY_OPTIONS = [
   { value: "30", label: "Expiring within 30 days" },
 ];
 const PAGE_SIZE = 25;
+/** A write whose fetch rejected: the answer, if any, never arrived. The retry is safe (the client keeps its idempotency key). */
+const NO_ANSWER =
+  "No answer came back; it may not have been recorded. Check your connection, then retry.";
+
+/**
+ * `call`'s response, or null when no answer came back (the client rejects on a network failure). Only the request sits inside the
+ * catch: a throw from building the body or reading the answer is a bug, and must not be reported as a dropped connection.
+ */
+async function awaitAnswer<T>(call: () => Promise<T>): Promise<T | null> {
+  try {
+    return await call();
+  } catch {
+    return null;
+  }
+}
+
+/** The one form drawer beside the grid: record a new gate or correct a row's. Opening one replaces the other. */
+type GateForm = { readonly kind: "new" } | { readonly kind: "edit"; readonly gate: GateView };
 
 export function VolunteerComplianceGates(): JSX.Element {
   const client = useApiClient();
@@ -91,9 +94,7 @@ export function VolunteerComplianceGates(): JSX.Element {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<GateView | null>(null);
+  const [form, setForm] = useState<GateForm | null>(null);
   const [revoking, setRevoking] = useState<GateView | null>(null);
 
   const load = useCallback(async () => {
@@ -163,6 +164,30 @@ export function VolunteerComplianceGates(): JSX.Element {
   const blockedVolunteers = new Set(failing.map((g) => g.volunteerMembershipId));
   const drifted = rows.filter((g) => g.storedStatus !== g.effectiveStatus);
 
+  // Record / correct a gate opens in the detail rail (a drawer), above the alerts, not over the page.
+  const closeForm = () => setForm(null);
+  const gateSaved = () => {
+    closeForm();
+    void load();
+  };
+  const formDrawer =
+    form === null ? null : form.kind === "new" ? (
+      <GateFormDrawer
+        key="new"
+        title="Record compliance gate"
+        onClose={closeForm}
+        onSaved={gateSaved}
+      />
+    ) : (
+      <GateFormDrawer
+        key={form.gate.gateId}
+        title={`Correct ${gateKindLabel(form.gate.gateKind)}`}
+        gate={form.gate}
+        onClose={closeForm}
+        onSaved={gateSaved}
+      />
+    );
+
   return (
     <>
       <WorkQueueLayout
@@ -179,7 +204,7 @@ export function VolunteerComplianceGates(): JSX.Element {
                 >
                   Refresh
                 </Button>
-                <Button type="button" onClick={() => setCreating(true)}>
+                <Button type="button" onClick={() => setForm({ kind: "new" })}>
                   Record gate
                 </Button>
               </div>
@@ -229,67 +254,62 @@ export function VolunteerComplianceGates(): JSX.Element {
             </div>
           ) : (
             <div style={tableWrapStyle}>
-              {actionError ? <p style={alertStyle}>{actionError}</p> : null}
-              <table style={tableStyle}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={th}>Volunteer</th>
-                    <th style={th}>Gate</th>
-                    <th style={th}>Valid from</th>
-                    <th style={th}>Valid until</th>
-                    <th style={th}>Evidence</th>
-                    <th style={th}>Status</th>
-                    <th style={th}>&nbsp;</th>
+                    <th>Volunteer</th>
+                    <th>Gate</th>
+                    <th>Valid from</th>
+                    <th>Valid until</th>
+                    <th>Evidence</th>
+                    <th>Status</th>
+                    <th>&nbsp;</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((g) => (
-                    <tr key={g.gateId} style={rowLine}>
-                      <td style={tdMono}>{shortId(g.volunteerMembershipId)}</td>
-                      <td style={td}>{gateKindLabel(g.gateKind)}</td>
-                      <td style={td}>{shortDate(g.validFrom)}</td>
-                      <td style={td}>
+                    <tr key={g.gateId}>
+                      <td className="wx-data-md">{shortId(g.volunteerMembershipId)}</td>
+                      <td>{gateKindLabel(g.gateKind)}</td>
+                      <td>{shortDate(g.validFrom)}</td>
+                      <td>
                         {g.validUntil ? (
                           <>
                             {shortDate(g.validUntil)}
-                            <div style={mutedStyle}>{dueLabel(g.validUntil)}</div>
+                            <div className="wx-text-muted">{dueLabel(g.validUntil)}</div>
                           </>
                         ) : (
-                          <span style={mutedStyle}>no expiry</span>
+                          <span className="wx-text-muted">no expiry</span>
                         )}
                       </td>
-                      <td style={tdMono}>{shortId(g.sourceDocumentId)}</td>
-                      <td style={td}>
+                      <td className="wx-data-md">{shortId(g.sourceDocumentId)}</td>
+                      <td>
                         <StatusPill
                           label={humanize(g.effectiveStatus)}
                           tone={toneOf(GATE_STATUS_TONE, g.effectiveStatus)}
                         />
                         {g.storedStatus !== g.effectiveStatus ? (
-                          <div style={mutedStyle}>
+                          <div className="wx-text-muted">
                             last written as {humanize(g.storedStatus).toLowerCase()}
                           </div>
                         ) : null}
                         {g.revokedAt ? (
-                          <div style={mutedStyle}>revoked {shortDate(g.revokedAt)}</div>
+                          <div className="wx-text-muted">revoked {shortDate(g.revokedAt)}</div>
                         ) : null}
                       </td>
-                      <td style={td}>
+                      <td>
                         <div style={{ display: "flex", gap: t.space2 }}>
-                          <button
+                          <Button
+                            tone="secondary"
                             type="button"
-                            style={ghostButtonStyle}
-                            onClick={() => setEditing(g)}
+                            onClick={() => setForm({ kind: "edit", gate: g })}
                           >
                             Correct
-                          </button>
+                          </Button>
                           {g.revokedAt ? null : (
-                            <button
-                              type="button"
-                              style={ghostButtonStyle}
-                              onClick={() => setRevoking(g)}
-                            >
+                            <Button tone="secondary" type="button" onClick={() => setRevoking(g)}>
                               Revoke
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -311,6 +331,7 @@ export function VolunteerComplianceGates(): JSX.Element {
         }
         detail={
           <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
+            {formDrawer}
             <Notice tone={failing.length > 0 ? "error" : "success"}>
               {failing.length === 0
                 ? "Every gate on this page is satisfied or approaching expiry — no volunteer is blocked by the currently loaded rows."
@@ -329,7 +350,7 @@ export function VolunteerComplianceGates(): JSX.Element {
                 window — is the one the scheduler enforces.
               </Notice>
             ) : null}
-            <span style={mutedStyle}>
+            <span className="wx-text-muted">
               Alerts fire at 30 / 14 / 7 / 1 days before expiry. `Expiring soon` warns; it does not
               block.
             </span>
@@ -337,31 +358,6 @@ export function VolunteerComplianceGates(): JSX.Element {
         }
         fullPageScroll
       />
-
-      {creating ? (
-        <GateFormModal
-          title="Record compliance gate"
-          onClose={() => setCreating(false)}
-          onSaved={() => {
-            setCreating(false);
-            void load();
-          }}
-          onError={setActionError}
-        />
-      ) : null}
-
-      {editing ? (
-        <GateFormModal
-          title={`Correct ${gateKindLabel(editing.gateKind)}`}
-          gate={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            void load();
-          }}
-          onError={setActionError}
-        />
-      ) : null}
 
       {revoking ? (
         <RevokeGateModal
@@ -378,18 +374,16 @@ export function VolunteerComplianceGates(): JSX.Element {
 }
 
 /** Routes 20 / 21 — record a new gate, or correct a recorded one's window / evidence. */
-function GateFormModal({
+function GateFormDrawer({
   title,
   gate,
   onClose,
   onSaved,
-  onError,
 }: {
   title: string;
   gate?: GateView;
   onClose: () => void;
   onSaved: () => void;
-  onError: (message: string | null) => void;
 }): JSX.Element {
   const client = useApiClient();
   const [volunteerMembershipId, setVolunteer] = useState(gate?.volunteerMembershipId ?? "");
@@ -407,51 +401,63 @@ function GateFormModal({
   async function submit(): Promise<void> {
     setBusy(true);
     setError(null);
-    onError(null);
-    const common = {
-      validUntil: validUntil === "" ? null : new Date(validUntil).toISOString(),
-      sourceDocumentId: sourceDocumentId.trim() === "" ? null : sourceDocumentId.trim(),
-      ...(notes.trim() === "" ? {} : { notes }),
-    };
-    const res = editingExisting
-      ? await client.PATCH("/api/v1/volunteer-compliance-gates/{gateId}", {
-          params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
-          body: common,
-        } as never)
-      : await client.POST("/api/v1/volunteer-compliance-gates", {
-          params: { header: writeHeaders() },
-          body: {
+    let saved = false;
+    try {
+      const common = {
+        validUntil: validUntil === "" ? null : new Date(validUntil).toISOString(),
+        sourceDocumentId: sourceDocumentId.trim() === "" ? null : sourceDocumentId.trim(),
+        ...(notes.trim() === "" ? {} : { notes }),
+      };
+      const created = editingExisting
+        ? null
+        : {
             volunteerMembershipId,
             gateKind,
             validFrom: new Date(validFrom).toISOString(),
             ...common,
-          },
-        } as never);
-    setBusy(false);
-    if (res.error) {
-      setError(errorMessage(res.error, "The gate could not be saved."));
-      return;
+          };
+      const res = await awaitAnswer(() =>
+        editingExisting
+          ? client.PATCH("/api/v1/volunteer-compliance-gates/{gateId}", {
+              params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
+              body: common,
+            } as never)
+          : client.POST("/api/v1/volunteer-compliance-gates", {
+              params: { header: writeHeaders() },
+              body: created,
+            } as never),
+      );
+      if (res === null) setError(NO_ANSWER);
+      else if (res.error) setError(errorMessage(res.error, "The gate could not be saved."));
+      else saved = true;
+    } catch {
+      // Not a lost connection (that is `NO_ANSWER` above): the request was never built, or its answer could not be read.
+      setError("The gate could not be saved.");
+    } finally {
+      setBusy(false);
     }
-    onSaved();
+    if (saved) onSaved();
   }
 
   return (
-    <Modal
+    <FormDrawer
       title={title}
+      busy={busy}
       onClose={onClose}
-      footer={
-        <button
+      error={error}
+      save={
+        <Button
+          tone="primary"
           type="button"
           onClick={() => void submit()}
           disabled={!canSubmit || busy}
-          style={{ ...primaryButtonStyle, opacity: canSubmit && !busy ? 1 : 0.5 }}
         >
           {busy ? "Saving…" : "Save gate"}
-        </button>
+        </Button>
       }
     >
       {editingExisting ? (
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           A correction changes the validity window and the evidence only. The volunteer and gate
           kind identify the row and cannot be re-pointed — record a new gate instead.
         </span>
@@ -477,8 +483,7 @@ function GateFormModal({
       />
       <TextField label="Source document id" value={sourceDocumentId} onChange={setSourceDocument} />
       <TextAreaField label="Notes" value={notes} onChange={setNotes} rows={2} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
-    </Modal>
+    </FormDrawer>
   );
 }
 
@@ -496,16 +501,23 @@ function RevokeGateModal({
   async function submit(): Promise<void> {
     setBusy(true);
     setError(null);
-    const res = await client.POST("/api/v1/volunteer-compliance-gates/{gateId}/revoke", {
-      params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
-      body: { revokedReason },
-    } as never);
-    setBusy(false);
-    if (res.error) {
-      setError(errorMessage(res.error, "The gate could not be revoked."));
-      return;
+    let revoked = false;
+    try {
+      const res = await awaitAnswer(() =>
+        client.POST("/api/v1/volunteer-compliance-gates/{gateId}/revoke", {
+          params: { path: { gateId: gate.gateId }, header: writeHeaders(gate.version) },
+          body: { revokedReason },
+        } as never),
+      );
+      if (res === null) setError(NO_ANSWER);
+      else if (res.error) setError(errorMessage(res.error, "The gate could not be revoked."));
+      else revoked = true;
+    } catch {
+      setError("The gate could not be revoked.");
+    } finally {
+      setBusy(false);
     }
-    onSaved();
+    if (revoked) onSaved();
   }
 
   return (
@@ -513,14 +525,14 @@ function RevokeGateModal({
       title={`Revoke ${gateKindLabel(gate.gateKind)}`}
       onClose={onClose}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
           onClick={() => void submit()}
           disabled={revokedReason.trim() === "" || busy}
-          style={{ ...primaryButtonStyle, opacity: revokedReason.trim() === "" || busy ? 0.5 : 1 }}
         >
           {busy ? "Revoking…" : "Revoke gate"}
-        </button>
+        </Button>
       }
     >
       <Notice tone="error">
@@ -534,7 +546,7 @@ function RevokeGateModal({
         rows={3}
         hint="Stored on the gate and carried into the expiry cascade audit."
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <p className="wx-text-error">{error}</p> : null}
     </Modal>
   );
 }

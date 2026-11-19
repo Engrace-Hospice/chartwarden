@@ -1,4 +1,4 @@
-import { StatusPill, t, useApiClient } from "@chartwarden/ui";
+import { Button, StatusPill, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the PLAN VERSION SIGN CEREMONY (§5.1 #4, Track B).
 //
 // One slot of the D11 quorum that was SEALED when the version was finalized. Two server contracts the
@@ -20,15 +20,7 @@ import {
   writeHeaders,
 } from "./discipline-api";
 import { humanize } from "./discipline-status";
-import {
-  Modal,
-  TextAreaField,
-  TextField,
-  alertStyle,
-  mutedStyle,
-  primaryButtonStyle,
-  useUnsavedChangesWarning,
-} from "./discipline-ui";
+import { Modal, TextAreaField, TextField, useUnsavedChangesWarning } from "./discipline-ui";
 
 /** How many of a role's required slots are already filled (an acknowledgment fills only an ack slot). */
 function collectedFor(slot: RequiredSignerSlot, signatures: readonly SignatureView[]): number {
@@ -94,23 +86,18 @@ export function SignVersionModal({
       }}
       closeDisabled={busy}
       footer={
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={!canSubmit}
-          style={{ ...primaryButtonStyle, opacity: canSubmit ? 1 : 0.5 }}
-        >
+        <Button tone="primary" type="button" onClick={() => void submit()} disabled={!canSubmit}>
           {busy ? "Signing…" : isAcknowledgment ? "Acknowledge" : "Sign"}
-        </button>
+        </Button>
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           The required signer set was sealed when this version was finalized; it cannot be widened
           here.
         </span>
         {requiredSignerSet.length === 0 ? (
-          <span style={mutedStyle}>
+          <span className="wx-text-muted">
             This version carries no readable signer quorum. Record your role below — the server
             validates it against the sealed set.
           </span>
@@ -169,7 +156,7 @@ export function SignVersionModal({
         hint="At least 10 characters. The attestation text is stored verbatim on the signature row."
       />
       {error ? (
-        <p role="alert" aria-live="assertive" style={alertStyle}>
+        <p role="alert" aria-live="assertive" className="wx-text-error">
           {error}
         </p>
       ) : null}

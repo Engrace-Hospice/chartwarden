@@ -1,5 +1,4 @@
-import { pageQuery } from "@chartwarden/shared/route-kit";
-import { ValidationError } from "@chartwarden/types";
+import { pageQuery, parse } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox.ts — M34 (§4.2).
 //
 // TypeBox request/response schemas for the TENANT-scoped route surface (§4.1 "Tenant-scoped routes"):
@@ -11,7 +10,6 @@ import { ValidationError } from "@chartwarden/types";
 // route plugins, not by these body schemas. Read responses mirror the `service.ts` view DTOs so the
 // generated client types the Phase-3 tenant screens (the M22 read-surface enrichment pattern).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import type {
   BaaRecordView as ServiceBaaRecordView,
   DownloadUrlView as ServiceDownloadUrlView,
@@ -21,6 +19,8 @@ import type {
   TenantSupportSessionEventView as ServiceTenantSupportSessionEventView,
   TenantSupportSessionView as ServiceTenantSupportSessionView,
 } from "./service";
+
+export { parse };
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -290,16 +290,3 @@ type _Dsar = Conforms<Static<typeof DsarExportJobViewSchema>, ServiceDsarExportJ
 type _TenantExport = Conforms<Static<typeof TenantExportJobViewSchema>, ServiceTenantExportJobView>;
 type _Baa = Conforms<Static<typeof BaaRecordViewSchema>, ServiceBaaRecordView>;
 type _Download = Conforms<Static<typeof DownloadUrlViewSchema>, ServiceDownloadUrlView>;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}

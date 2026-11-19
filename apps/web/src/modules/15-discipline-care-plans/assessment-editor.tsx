@@ -1,7 +1,9 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   isoToLocalInput,
   localInputToIso,
@@ -43,19 +45,15 @@ import {
   toneOf,
 } from "./discipline-status";
 import {
-  Card,
   Field,
   Notice,
   SelectField,
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
   useUnsavedChangesWarning,
 } from "./discipline-ui";
 
@@ -298,15 +296,17 @@ export function AssessmentEditor(): JSX.Element {
       />
 
       {actionError ? (
-        <p role="alert" aria-live="assertive" style={alertStyle}>
+        <p role="alert" aria-live="assertive" className="wx-text-error">
           {actionError}
         </p>
       ) : null}
 
       {assessment ? (
-        <Card
+        <Panel
+          stack
+          headingLevel={3}
           title="Record"
-          actions={
+          action={
             <StatusPill
               label={humanize(assessment.status)}
               tone={toneOf(ASSESSMENT_STATUS_TONE, assessment.status)}
@@ -338,10 +338,14 @@ export function AssessmentEditor(): JSX.Element {
               . Colleagues without the matching consent do not receive it at all.
             </Notice>
           ) : null}
-        </Card>
+        </Panel>
       ) : null}
 
-      <Card title={creating ? "New assessment" : signed ? "Content (signed record)" : "Content"}>
+      <Panel
+        stack
+        headingLevel={3}
+        title={creating ? "New assessment" : signed ? "Content (signed record)" : "Content"}
+      >
         {creating ? (
           <>
             <div
@@ -395,7 +399,7 @@ export function AssessmentEditor(): JSX.Element {
           rows={14}
           hint="Validated against this kind's schema on the server; a validation failure is reported field by field."
         />
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           {signed
             ? "This record is signed. Editing it means recording an amendment — the signed row stays on the record."
             : "A draft assessment can be re-captured until it is signed."}
@@ -403,19 +407,19 @@ export function AssessmentEditor(): JSX.Element {
 
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {creating ? (
-            <button type="button" style={primaryButtonStyle} onClick={() => void create()}>
+            <Button tone="primary" type="button" onClick={() => void create()}>
               Capture assessment
-            </button>
+            </Button>
           ) : null}
           {assessment && assessment.status === "draft" ? (
-            <button type="button" style={primaryButtonStyle} onClick={() => void sign(assessment)}>
+            <Button tone="primary" type="button" onClick={() => void sign(assessment)}>
               Sign assessment
-            </button>
+            </Button>
           ) : null}
           {assessment && signed ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => setAmending(true)}>
+            <Button tone="secondary" type="button" onClick={() => setAmending(true)}>
               Amend
-            </button>
+            </Button>
           ) : null}
         </div>
 
@@ -428,17 +432,17 @@ export function AssessmentEditor(): JSX.Element {
               rows={3}
               hint="Required. The amendment is a new row that supersedes this one; neither is deleted."
             />
-            <button
+            <Button
+              tone="primary"
               type="button"
               disabled={amendReason.trim() === ""}
-              style={{ ...primaryButtonStyle, opacity: amendReason.trim() === "" ? 0.5 : 1 }}
               onClick={() => void amend(assessment)}
             >
               Record amendment
-            </button>
+            </Button>
           </>
         ) : null}
-      </Card>
+      </Panel>
     </div>
   );
 }

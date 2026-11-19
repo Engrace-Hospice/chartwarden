@@ -1,0 +1,280 @@
+// @vitest-environment jsdom
+// Drawing or editing a high-risk area is a multi-field form on a registry screen, so it opens as a drawer in the detail
+// rail beside the registry (the redesign's pattern), not as a dialog over it. Cancel closes it and sends nothing.
+import type { ApiClient } from "@chartwarden/ui";
+import { ApiClientProvider } from "@chartwarden/ui";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { HighRiskAreasScreen } from "./high-risk-areas";
+import type { SafetyHighRiskAreaView } from "./safety-api";
+
+afterEach(cleanup);
+
+const area: SafetyHighRiskAreaView = {
+  id: "11111111-1111-4111-8111-111111111111",
+  riskCategory: "documented_prior_incident",
+  advisoryMessage: "Two assaults reported on this block in the last year.",
+  polygon: [
+    [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 0],
+    ],
+  ],
+  policyForVisitsToArea: "advisory_only",
+  effectiveFrom: "2026-01-01T00:00:00.000Z",
+  effectiveTo: null,
+  createdByMembershipId: null,
+};
+
+const ok = (data: unknown) => ({
+  data,
+  error: undefined,
+  response: new Response(null, { status: 200 }),
+});
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+
+function mount(opts: { post?: () => Promise<unknown> } = {}): {
+  post: ReturnType<typeof vi.fn>;
+  patch: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+} {
+  const post = vi.fn(opts.post ?? (async () => ok({})));
+  const patch = vi.fn(async () => ok({}));
+  const get = vi.fn(async () => ok({ data: [area], next_cursor: null, has_more: false }));
+  const client = { GET: get, POST: post, PATCH: patch } as unknown as ApiClient;
+  render(
+    <MemoryRouter>
+      <ApiClientProvider client={client}>
+        <HighRiskAreasScreen />
+      </ApiClientProvider>
+    </MemoryRouter>,
+  );
+  return { post, patch, get };
+}
+
+const drawerNamed = (name: string) => screen.findByRole("complementary", { name });
+
+describe("high-risk areas — draw and edit an area", () => {
+  it("opens Draw area as a drawer beside the registry, not a dialog over it", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    expect(within(drawer).getByLabelText("Advisory message (<=200 characters)")).toBeTruthy();
+    expect(within(drawer).queryByLabelText("Effective from")).not.toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The registry stays on the page while the form is open.
+    expect(screen.getByRole("table")).toBeTruthy();
+  });
+
+  it("opens Edit with the area's own values, and no start date to change", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const drawer = await drawerNamed("Edit this area");
+    expect(
+      (within(drawer).getByLabelText("Advisory message (<=200 characters)") as HTMLInputElement)
+        .value,
+    ).toBe(area.advisoryMessage);
+    expect(within(drawer).queryByLabelText("Effective from")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("closes from Cancel without saving anything", async () => {
+    const { post, patch } = mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Draw a high-risk area" })).toBeNull(),
+    );
+    expect(post).not.toHaveBeenCalled();
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it("keeps Create area disabled until an advisory and a ring are entered", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    const create = within(drawer).getByRole("button", { name: "Create area" }) as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Loose dogs near the east entrance." },
+    });
+    expect(create.disabled).toBe(true);
+    fireEvent.change(within(drawer).getByLabelText("Polygon rings"), {
+      target: { value: "0,0 1,0 1,1 0,0" },
+    });
+    expect(create.disabled).toBe(false);
+  });
+
+  it("files the new area and closes the drawer", async () => {
+    const { post } = mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Loose dogs near the east entrance." },
+    });
+    fireEvent.change(within(drawer).getByLabelText("Polygon rings"), {
+      target: { value: "0,0 1,0 1,1 0,0" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Create area" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Draw a high-risk area" })).toBeNull(),
+    );
+  });
+
+  it("keeps the drawer open and says why when the rings are not a closed polygon", async () => {
+    const { post } = mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Loose dogs near the east entrance." },
+    });
+    fireEvent.change(within(drawer).getByLabelText("Polygon rings"), {
+      target: { value: "0,0 1,0 1,1 2,2" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Create area" }));
+    expect(await within(drawer).findByRole("alert")).toBeTruthy();
+    expect(post).not.toHaveBeenCalled();
+    expect(screen.getByRole("complementary", { name: "Draw a high-risk area" })).toBeTruthy();
+  });
+});
+
+describe("high-risk areas — a write in flight and a write that fails", () => {
+  const isInert = (el: HTMLElement): boolean => el.closest("[inert]") !== null;
+  const draw = async (): Promise<HTMLElement> => {
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Loose dogs near the east entrance." },
+    });
+    fireEvent.change(within(drawer).getByLabelText("Polygon rings"), {
+      target: { value: "0,0 1,0 1,1 0,0" },
+    });
+    return drawer;
+  };
+  const create = (drawer: HTMLElement): void => {
+    fireEvent.click(within(drawer).getByRole("button", { name: "Create area" }));
+  };
+
+  it("makes the page inert while the area is being saved, then live again", async () => {
+    const write = deferred<unknown>();
+    mount({ post: () => write.promise });
+    const drawer = await draw();
+    const edit = screen.getByRole("button", { name: "Edit" });
+    create(drawer);
+    await waitFor(() => expect(isInert(edit)).toBe(true));
+    expect(isInert(screen.getByRole("button", { name: "Retire" }))).toBe(true);
+    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(true);
+    expect(isInert(screen.getByRole("link", { name: "Safety board" }))).toBe(true);
+    expect(isInert(drawer)).toBe(false);
+    write.resolve(ok({}));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Draw a high-risk area" })).toBeNull(),
+    );
+    expect(isInert(edit)).toBe(false);
+  });
+
+  it("leaves another form open when an earlier save lands", async () => {
+    const write = deferred<unknown>();
+    const { get } = mount({ post: () => write.promise });
+    create(await draw());
+    // A browser blocks this click (the page is inert); jsdom delivers it, so the guard is what is tested.
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await drawerNamed("Edit this area");
+    const readsBefore = get.mock.calls.length;
+    write.resolve(ok({}));
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(readsBefore));
+    expect(await drawerNamed("Edit this area")).toBeTruthy();
+  });
+
+  it("recovers when the save is rejected by the network", async () => {
+    mount({
+      post: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const drawer = await draw();
+    create(drawer);
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("No answer came back");
+    expect(
+      (within(drawer).getByRole("button", { name: "Create area" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (within(drawer).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(isInert(screen.getByRole("button", { name: "Refresh" }))).toBe(false);
+  });
+});
+
+describe("high-risk areas — nothing outlives a dismissed form", () => {
+  it("reopens empty and without the last failure", async () => {
+    mount({
+      post: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Loose dogs near the east entrance." },
+    });
+    fireEvent.change(within(drawer).getByLabelText("Polygon rings"), {
+      target: { value: "0,0 1,0 1,1 0,0" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Create area" }));
+    await within(drawer).findByText(/No answer came back/);
+    fireEvent.click(within(drawer).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Draw a high-risk area" })).toBeNull(),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const again = await drawerNamed("Draw a high-risk area");
+    expect(
+      (within(again).getByLabelText("Advisory message (<=200 characters)") as HTMLInputElement)
+        .value,
+    ).toBe("");
+    expect((within(again).getByLabelText("Polygon rings") as HTMLTextAreaElement).value).toBe("");
+    expect(within(again).queryByText(/No answer came back/)).toBeNull();
+  });
+});
+
+describe("high-risk areas — opening a form that is already open", () => {
+  it("keeps the draft when Draw area is clicked again", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Draw area" }));
+    const drawer = await drawerNamed("Draw a high-risk area");
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Loose dogs near the east entrance." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Draw area" }));
+    expect(
+      (within(drawer).getByLabelText("Advisory message (<=200 characters)") as HTMLInputElement)
+        .value,
+    ).toBe("Loose dogs near the east entrance.");
+  });
+
+  it("keeps the edit when the same area's Edit is clicked again", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const drawer = await drawerNamed("Edit this area");
+    fireEvent.change(within(drawer).getByLabelText("Advisory message (<=200 characters)"), {
+      target: { value: "Edited advisory for the east block." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(
+      (within(drawer).getByLabelText("Advisory message (<=200 characters)") as HTMLInputElement)
+        .value,
+    ).toBe("Edited advisory for the east block.");
+  });
+});

@@ -7,7 +7,9 @@ import { Value } from "@sinclair/typebox/value";
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
+    // The FIRST error only: spreading the iterator builds one error object per offending element, which for an
+    // oversized array in a request body is millions of them on the shared event loop.
+    const first = Value.Errors(schema, converted).First();
     const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
     throw new ValidationError("request validation failed", [
       { field, code: "INVALID", message: first?.message ?? "invalid request" },

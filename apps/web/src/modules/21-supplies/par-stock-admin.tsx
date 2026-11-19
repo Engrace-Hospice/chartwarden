@@ -17,10 +17,20 @@
 // not what changed since the last count, and an adjustment-shaped form drifts from the shelf every time a
 // count is missed. The server derives the delta and runs it through the §2.7 rule, so a count that would
 // drive the shelf negative is a typed refusal rather than a silent clamp.
-import { EmptyState, LoadingSpinner, PageHeader, t, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  Panel,
+  t,
+  useApiClient,
+  useReloadFocus,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
 import {
   type ParStockView,
   errorMessage,
@@ -30,32 +40,27 @@ import {
 } from "./supplies-api";
 import { PAR_SEVERITY_RANK, dateTime, shortId } from "./supplies-status";
 import {
-  Card,
   CheckboxField,
   FilterRow,
-  Modal,
+  type LoadError,
+  LoadFailure,
   Notice,
   ParSeverityPill,
   SelectField,
   TextAreaField,
   TextField,
-  alertStyle,
-  columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   inputNarrowStyle,
-  mutedStyle,
+  nextLoadError,
   pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdQty,
-  th,
   thNum,
 } from "./supplies-ui";
+import { useLatestRead } from "./use-latest-read";
+import { useWrite } from "./use-write";
 
 const PAGE = 200;
+const LOAD_FAILURE = "The par shelf could not be loaded.";
 
 const SEVERITY_FILTERS = [
   { value: "", label: "all bands" },
@@ -79,9 +84,17 @@ export function ParStockAdmin(): JSX.Element {
   const [belowOnly, setBelowOnly] = useState(false);
   const [rows, setRows] = useState<ParStockView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [error, setError] = useState<LoadError | null>(null);
+  // A refusal of the count drawer shows in the drawer; an inline threshold edit has no drawer, so its own refusal
+  // shows on the page. The two writes keep separate busy flags: an inline save must not mark the open drawer busy
+  // (inert page, no Cancel), though the drawer's own Save waits for it.
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const { busy, run: runWrite } = useWrite();
+  const { busy: inlineBusy, run: runInline } = useWrite();
+  const startRead = useLatestRead();
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<ThresholdDraft>({
     reorderPoint: "",
@@ -92,32 +105,53 @@ export function ParStockAdmin(): JSX.Element {
   const [observedQuantity, setObservedQuantity] = useState("");
   const [observationNote, setObservationNote] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const { page, error: err } = await listParStock(client, {
-      limit: PAGE,
-      ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
-      ...(belowOnly ? { belowThresholdOnly: true } : {}),
-    });
-    if (err) {
-      setError(errorMessage(err, "The par shelf could not be loaded."));
-      setLoading(false);
-      return;
-    }
-    setRows(page?.data ?? []);
-    setLoading(false);
-  }, [client, locationId, belowOnly]);
+  // `keepRowsOnFailure` is for a refresh after a write (or a retry): the rows on screen still match the filter. A read
+  // for a CHANGED filter that fails clears them, so a stale list never sits under a filter it does not match.
+  const load = useCallback(
+    async (keepRowsOnFailure = false) => {
+      const isLatest = startRead();
+      setLoading(true);
+      try {
+        const { page, error: err } = await listParStock(client, {
+          limit: PAGE,
+          ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
+          ...(belowOnly ? { belowThresholdOnly: true } : {}),
+        });
+        if (!isLatest()) return;
+        if (err) {
+          setError((previous) => nextLoadError(previous, errorMessage(err, LOAD_FAILURE)));
+          if (!keepRowsOnFailure) setRows([]);
+          return;
+        }
+        setRows(page?.data ?? []);
+        setLoadedOnce(true);
+        setError(null);
+      } catch {
+        if (isLatest()) {
+          setError((previous) => nextLoadError(previous, LOAD_FAILURE));
+          if (!keepRowsOnFailure) setRows([]);
+        }
+      } finally {
+        if (isLatest()) setLoading(false);
+      }
+    },
+    [client, locationId, belowOnly, startRead],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  // The spinner is for the first load only. A reload (a filter keystroke, a save) keeps the page and any open drawer
+  // mounted, with the previous rows showing, so the drawer's typed text, focus and opener survive it.
+  if (loading && !loadedOnce) return <LoadingSpinner />;
+  // A failed FIRST load has nothing to show. A failed reload keeps the page (and any open drawer) and says so inline.
+  if (error && !loadedOnce) return <EmptyState title="Unavailable" description={error.message} />;
 
   // The band filter is applied CLIENT-side because §4.1 publishes no `severity` query param — only the
   // coarser `belowThresholdOnly`. Narrowing a fetched page is honest; inventing a server filter is not.
+  // A read that failed and left nothing to show is not an empty shelf: say "not loaded", never "no row matches".
+  const unread = error !== null && rows.length === 0;
   const visible = (severity ? rows.filter((r) => r.severity === severity) : rows)
     .slice()
     .sort(
@@ -128,7 +162,7 @@ export function ParStockAdmin(): JSX.Element {
 
   const startEdit = (row: ParStockView) => {
     setEditing(row.parStockId);
-    setActionError(null);
+    setEditError(null);
     setDraft({
       reorderPoint: row.reorderPoint,
       reorderQuantity: row.reorderQuantity,
@@ -137,218 +171,251 @@ export function ParStockAdmin(): JSX.Element {
   };
 
   const saveEdit = async (row: ParStockView) => {
-    setBusy(true);
-    setActionError(null);
-    const { error: err } = await updateParStock(client, row.parStockId, row.updatedAt, {
-      reorderPoint: draft.reorderPoint.trim(),
-      reorderQuantity: draft.reorderQuantity.trim(),
-      minSafetyStock: draft.minSafetyStock.trim(),
-    });
-    setBusy(false);
-    if (err) {
-      setActionError(errorMessage(err, "The thresholds could not be saved."));
+    setEditError(null);
+    const failed = await runInline(
+      () =>
+        updateParStock(client, row.parStockId, row.updatedAt, {
+          reorderPoint: draft.reorderPoint.trim(),
+          reorderQuantity: draft.reorderQuantity.trim(),
+          minSafetyStock: draft.minSafetyStock.trim(),
+        }),
+      "The thresholds could not be saved.",
+    );
+    if (failed) {
+      setEditError(failed);
       return;
     }
     setEditing(null);
-    void load();
+    void load(true);
+  };
+
+  const closeObserving = () => {
+    setObserving(null);
+    setActionError(null);
+    setEditError(null);
+  };
+
+  const saveObservation = async (row: ParStockView) => {
+    setActionError(null);
+    const failed = await runWrite(
+      () =>
+        observeParStock(client, {
+          parStockId: row.parStockId,
+          observedQuantity: observedQuantity.trim(),
+          ...(observationNote.trim() ? { reorderNotes: observationNote.trim() } : {}),
+        }),
+      "The count could not be recorded.",
+    );
+    if (failed) {
+      setActionError(failed);
+      return;
+    }
+    closeObserving();
+    void load(true);
   };
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Par stock</span>}
-        actions={
-          <Link to="/supplies" style={ghostButtonStyle}>
-            Back to queue
-          </Link>
-        }
-      />
-
-      <Notice tone="info">
-        The band on each row is DERIVED at read time from the current quantity and the thresholds
-        beside it — it is never stored. A stored band goes stale the moment a threshold is edited,
-        and the screen reading it would show a green shelf that is actually empty.
-      </Notice>
-
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
-
-      <FilterRow>
-        <TextField label="Location id" value={locationId} onChange={setLocationId} mono />
-        <SelectField
-          label="Band"
-          value={severity}
-          options={SEVERITY_FILTERS}
-          onChange={setSeverity}
+    <div className={`wx-list-drawer${observing ? " has-drawer" : ""}`}>
+      <div
+        ref={focusRef}
+        tabIndex={-1}
+        className="wx-list-drawer-main wx-kit-column"
+        aria-busy={loading}
+        style={{ outline: "none" }}
+      >
+        <PageHeader
+          title={<span style={pageTitleStyle}>Par stock</span>}
+          actions={
+            <Link to="/supplies" style={ghostButtonStyle}>
+              Back to queue
+            </Link>
+          }
         />
-        <CheckboxField
-          label="Only rows at or below the reorder point"
-          checked={belowOnly}
-          onChange={setBelowOnly}
-        />
-      </FilterRow>
 
-      <Card title={`Shelf (${visible.length})`}>
-        {visible.length === 0 ? (
-          <span style={mutedStyle}>
-            No par row matches. A Location with no par rows has no monitored shelf — the nightly par
-            monitor has nothing to raise for it.
-          </span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Item</th>
-                <th style={th}>Location</th>
-                <th style={th}>Band</th>
-                <th style={thNum}>On hand</th>
-                <th style={thNum}>Reorder point</th>
-                <th style={thNum}>Reorder qty</th>
-                <th style={thNum}>Safety stock</th>
-                <th style={th}>Last counted</th>
-                <th style={th} />
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((row) => {
-                const isEditing = editing === row.parStockId;
-                return (
-                  <tr key={row.parStockId} style={rowLine}>
-                    <td style={td}>
-                      {row.skuName}
-                      <div style={mutedStyle}>
-                        {row.skuId ? "platform SKU" : "tenant item"} · {row.unit}
-                        {row.isActive ? "" : " · inactive"}
-                      </div>
-                    </td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(row.locationId)}</td>
-                    <td style={td}>
-                      <ParSeverityPill severity={row.severity} />
-                    </td>
-                    <td style={tdQty}>{row.currentQuantity}</td>
-                    <td style={isEditing ? td : tdQty}>
-                      {isEditing ? (
-                        <input
-                          aria-label={`Reorder point for ${row.skuName}`}
-                          value={draft.reorderPoint}
-                          onChange={(e) => setDraft({ ...draft, reorderPoint: e.target.value })}
-                          style={inputNarrowStyle}
-                        />
-                      ) : (
-                        row.reorderPoint
-                      )}
-                    </td>
-                    <td style={isEditing ? td : tdQty}>
-                      {isEditing ? (
-                        <input
-                          aria-label={`Reorder quantity for ${row.skuName}`}
-                          value={draft.reorderQuantity}
-                          onChange={(e) => setDraft({ ...draft, reorderQuantity: e.target.value })}
-                          style={inputNarrowStyle}
-                        />
-                      ) : (
-                        row.reorderQuantity
-                      )}
-                    </td>
-                    <td style={isEditing ? td : tdQty}>
-                      {isEditing ? (
-                        <input
-                          aria-label={`Safety stock for ${row.skuName}`}
-                          value={draft.minSafetyStock}
-                          onChange={(e) => setDraft({ ...draft, minSafetyStock: e.target.value })}
-                          style={inputNarrowStyle}
-                        />
-                      ) : (
-                        row.minSafetyStock
-                      )}
-                    </td>
-                    <td style={td}>{dateTime(row.lastParReviewAt)}</td>
-                    <td style={td}>
-                      <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+        <Notice tone="info">
+          The band on each row is DERIVED at read time from the current quantity and the thresholds
+          beside it — it is never stored. A stored band goes stale the moment a threshold is edited,
+          and the screen reading it would show a green shelf that is actually empty.
+        </Notice>
+
+        {error ? (
+          <LoadFailure error={error} reloading={loading} onReload={() => void load(true)} />
+        ) : null}
+        {editError ? (
+          <p className="wx-text-error" role="alert">
+            {editError}
+          </p>
+        ) : null}
+
+        <FilterRow>
+          <TextField label="Location id" value={locationId} onChange={setLocationId} mono />
+          <SelectField
+            label="Band"
+            value={severity}
+            options={SEVERITY_FILTERS}
+            onChange={setSeverity}
+          />
+          <CheckboxField
+            label="Only rows at or below the reorder point"
+            checked={belowOnly}
+            onChange={setBelowOnly}
+          />
+        </FilterRow>
+
+        <Panel stack headingLevel={3} title={unread ? "Shelf" : `Shelf (${visible.length})`}>
+          {unread ? (
+            <span className="wx-text-muted">Not loaded.</span>
+          ) : visible.length === 0 ? (
+            <span className="wx-text-muted">
+              No par row matches. A Location with no par rows has no monitored shelf — the nightly
+              par monitor has nothing to raise for it.
+            </span>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Location</th>
+                  <th>Band</th>
+                  <th style={thNum}>On hand</th>
+                  <th style={thNum}>Reorder point</th>
+                  <th style={thNum}>Reorder qty</th>
+                  <th style={thNum}>Safety stock</th>
+                  <th>Last counted</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((row) => {
+                  const isEditing = editing === row.parStockId;
+                  return (
+                    <tr key={row.parStockId}>
+                      <td>
+                        {row.skuName}
+                        <div className="wx-text-muted">
+                          {row.skuId ? "platform SKU" : "tenant item"} · {row.unit}
+                          {row.isActive ? "" : " · inactive"}
+                        </div>
+                      </td>
+                      <td className="wx-data-md">{shortId(row.locationId)}</td>
+                      <td>
+                        <ParSeverityPill severity={row.severity} />
+                      </td>
+                      <td style={tdQty}>{row.currentQuantity}</td>
+                      <td style={isEditing ? undefined : tdQty}>
                         {isEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              style={busy ? disabledButtonStyle : primaryButtonStyle}
-                              onClick={() => void saveEdit(row)}
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              style={ghostButtonStyle}
-                              onClick={() => setEditing(null)}
-                            >
-                              Cancel
-                            </button>
-                          </>
+                          <input
+                            aria-label={`Reorder point for ${row.skuName}`}
+                            value={draft.reorderPoint}
+                            onChange={(e) => setDraft({ ...draft, reorderPoint: e.target.value })}
+                            style={inputNarrowStyle}
+                          />
                         ) : (
-                          <>
-                            <button
-                              type="button"
-                              style={ghostButtonStyle}
-                              onClick={() => startEdit(row)}
-                            >
-                              Edit thresholds
-                            </button>
-                            <button
-                              type="button"
-                              style={ghostButtonStyle}
-                              onClick={() => {
-                                setObserving(row);
-                                setObservedQuantity(row.currentQuantity);
-                                setObservationNote("");
-                                setActionError(null);
-                              }}
-                            >
-                              Record count
-                            </button>
-                          </>
+                          row.reorderPoint
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-        <span style={mutedStyle}>
-          The band filter narrows the page you fetched — M21 publishes no per-band query parameter,
-          only the coarser "below reorder point".
-        </span>
-      </Card>
+                      </td>
+                      <td style={isEditing ? undefined : tdQty}>
+                        {isEditing ? (
+                          <input
+                            aria-label={`Reorder quantity for ${row.skuName}`}
+                            value={draft.reorderQuantity}
+                            onChange={(e) =>
+                              setDraft({ ...draft, reorderQuantity: e.target.value })
+                            }
+                            style={inputNarrowStyle}
+                          />
+                        ) : (
+                          row.reorderQuantity
+                        )}
+                      </td>
+                      <td style={isEditing ? undefined : tdQty}>
+                        {isEditing ? (
+                          <input
+                            aria-label={`Safety stock for ${row.skuName}`}
+                            value={draft.minSafetyStock}
+                            onChange={(e) => setDraft({ ...draft, minSafetyStock: e.target.value })}
+                            style={inputNarrowStyle}
+                          />
+                        ) : (
+                          row.minSafetyStock
+                        )}
+                      </td>
+                      <td>{dateTime(row.lastParReviewAt)}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+                          {isEditing ? (
+                            <>
+                              <Button
+                                tone="primary"
+                                type="button"
+                                disabled={inlineBusy || loading}
+                                onClick={() => void saveEdit(row)}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                tone="secondary"
+                                type="button"
+                                onClick={() => {
+                                  setEditing(null);
+                                  setEditError(null);
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button tone="secondary" type="button" onClick={() => startEdit(row)}>
+                                Edit thresholds
+                              </Button>
+                              <Button
+                                tone="secondary"
+                                type="button"
+                                onClick={() => {
+                                  setObserving(row);
+                                  setObservedQuantity(row.currentQuantity);
+                                  setObservationNote("");
+                                  setActionError(null);
+                                  setEditError(null);
+                                }}
+                              >
+                                {/* The ellipsis marks the opener: the open drawer's save button carries the plain name. */}
+                                Record count…
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+          <span className="wx-text-muted">
+            The band filter narrows the page you fetched — M21 publishes no per-band query
+            parameter, only the coarser "below reorder point".
+          </span>
+        </Panel>
+      </div>
 
       {observing ? (
-        <Modal
+        <FormDrawer
+          key={observing.parStockId}
           title={`Record an on-hand count — ${observing.skuName}`}
-          onClose={() => setObserving(null)}
-          footer={
-            <button
+          busy={busy}
+          error={actionError}
+          onClose={closeObserving}
+          save={
+            <Button
+              tone="primary"
               type="button"
-              disabled={busy || observedQuantity.trim() === ""}
-              style={
-                busy || observedQuantity.trim() === "" ? disabledButtonStyle : primaryButtonStyle
-              }
-              onClick={async () => {
-                setBusy(true);
-                setActionError(null);
-                const { error: err } = await observeParStock(client, {
-                  parStockId: observing.parStockId,
-                  observedQuantity: observedQuantity.trim(),
-                  ...(observationNote.trim() ? { reorderNotes: observationNote.trim() } : {}),
-                });
-                setBusy(false);
-                if (err) {
-                  setActionError(errorMessage(err, "The count could not be recorded."));
-                  return;
-                }
-                setObserving(null);
-                void load();
-              }}
+              disabled={busy || inlineBusy || observedQuantity.trim() === ""}
+              onClick={() => void saveObservation(observing)}
             >
               Record count
-            </button>
+            </Button>
           }
         >
           <Notice tone="info">
@@ -369,7 +436,7 @@ export function ParStockAdmin(): JSX.Element {
             rows={3}
             hint="Audit-denylisted free text. §5.7's photo capture is not built — the observation carries no document column to write a URI to."
           />
-        </Modal>
+        </FormDrawer>
       ) : null}
     </div>
   );

@@ -3,26 +3,25 @@
 // The schedule, oldest first. `bereavement.group.manage` adds a session and cancels a scheduled one (the cancel carries that session's
 // version in `If-Match`); `bereavement.group.run` records who came, and only once a session has started (the server refuses earlier). Every
 // write carries one `Idempotency-Key` per attempt; a refused stale write closes its dialog, reloads the sessions and says why.
-import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
+import {
+  Button,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleVersion, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
 import {
-  Card,
   CheckboxField,
   ErrorText,
   Modal,
   TextField,
-  dangerButtonStyle,
-  mutedStyle,
   plainFieldset,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
   visuallyHidden,
 } from "./bereavement-ui";
@@ -98,9 +97,11 @@ export function GroupSessions({
   };
 
   return (
-    <Card
+    <Panel
+      stack
+      headingLevel={3}
       title="Sessions"
-      actions={
+      action={
         mayAdd ? (
           <Button size="sm" tone="secondary" onClick={() => setCeremony({ kind: "add" })}>
             Add session
@@ -117,36 +118,36 @@ export function GroupSessions({
         </div>
       ) : null}
       {state.kind === "ready" && sessions.length === 0 ? (
-        <span style={mutedStyle}>No session is scheduled.</span>
+        <span className="wx-text-muted">No session is scheduled.</span>
       ) : null}
       {sessions.length > 0 ? (
-        <table style={tableStyle} aria-label="Group sessions">
+        <table aria-label="Group sessions">
           <thead>
             <tr>
               <th style={thNum}>No.</th>
-              <th style={th}>Starts</th>
-              <th style={th}>Ends</th>
-              <th style={th}>Status</th>
+              <th>Starts</th>
+              <th>Ends</th>
+              <th>Status</th>
               <th style={thNum}>Attendees</th>
-              <th style={th}>
+              <th>
                 <span style={visuallyHidden}>Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {sessions.map((session) => (
-              <tr key={session.sessionId} style={rowLine}>
+              <tr key={session.sessionId}>
                 <td style={tdNum}>{session.sessionNo}</td>
-                <td style={td}>{dateTime(session.startsAt)}</td>
-                <td style={td}>{dateTime(session.endsAt)}</td>
-                <td style={td}>
+                <td>{dateTime(session.startsAt)}</td>
+                <td>{dateTime(session.endsAt)}</td>
+                <td>
                   <StatusPill
                     label={humanize(session.status)}
                     tone={toneOf(SESSION_STATUS_TONE, session.status)}
                   />
                 </td>
                 <td style={tdNum}>{session.attendeeCount}</td>
-                <td style={td}>
+                <td>
                   <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                     {mayRun && sessionStarted(session) ? (
                       <Button
@@ -213,7 +214,7 @@ export function GroupSessions({
           }}
         />
       ) : null}
-    </Card>
+    </Panel>
   );
 }
 
@@ -288,14 +289,9 @@ function AddSessionModal({
       busy={write.busy}
       dirty={starts !== "" || ends !== ""}
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={write.busy}
-          onClick={() => void save()}
-        >
+        <Button tone="primary" type="button" disabled={write.busy} onClick={() => void save()}>
           {write.busy ? "Adding…" : "Add session"}
-        </button>
+        </Button>
       }
     >
       <fieldset disabled={write.busy} style={plainFieldset}>
@@ -333,17 +329,12 @@ function CancelSessionModal({
       describedBy={descId}
       cancelLabel="Keep session"
       footer={
-        <button
-          type="button"
-          style={dangerButtonStyle}
-          disabled={write.busy}
-          onClick={() => void confirm()}
-        >
+        <Button tone="danger" type="button" disabled={write.busy} onClick={() => void confirm()}>
           {write.busy ? "Cancelling…" : "Yes, cancel this session"}
-        </button>
+        </Button>
       }
     >
-      <span id={descId} style={mutedStyle}>
+      <span id={descId} className="wx-text-muted">
         The session on {dateTime(session.startsAt)} will not take place. A cancelled session cannot
         be restored; add a new one instead.
       </span>
@@ -402,23 +393,23 @@ function AttendanceModal({
       busy={write.busy}
       dirty={picked.size > 0}
       footer={
-        <button
+        <Button
+          tone="primary"
           type="button"
-          style={primaryButtonStyle}
           disabled={write.busy || picked.size === 0}
           onClick={() => void save()}
         >
           {write.busy ? "Recording…" : "Record attendance"}
-        </button>
+        </Button>
       }
     >
       {enrolled.length === 0 ? (
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           No enrolled family to mark. Enroll families from their contact page.
         </span>
       ) : (
         <fieldset disabled={write.busy} style={{ ...plainFieldset, gap: "0.4rem" }}>
-          <legend style={mutedStyle}>Who came to this session?</legend>
+          <legend className="wx-text-muted">Who came to this session?</legend>
           {enrolled.map((entry) => (
             <CheckboxField
               key={entry.contactId}

@@ -249,15 +249,15 @@ export function CheckInLedgerScreen(): JSX.Element {
             </div>
           ) : (
             <>
-              <table style={tableStyle}>
+              <table>
                 <thead>
-                  <tr style={headerRowStyle}>
-                    <th style={{ ...thStyle, width: "22%" }}>Clinician</th>
-                    <th style={{ ...thStyle, width: "18%" }}>Last check-in</th>
-                    <th style={{ ...thStyle, width: "16%" }}>Status</th>
-                    <th style={{ ...thStyle, width: "18%" }}>Next expected</th>
-                    <th style={{ ...thStyle, width: "12%" }}>Rung</th>
-                    <th style={{ ...thStyle, width: "14%", textAlign: "right" }}>Currently</th>
+                  <tr>
+                    <th style={{ width: "22%" }}>Clinician</th>
+                    <th style={{ width: "18%" }}>Last check-in</th>
+                    <th style={{ width: "16%" }}>Status</th>
+                    <th style={{ width: "18%" }}>Next expected</th>
+                    <th style={{ width: "12%" }}>Rung</th>
+                    <th style={{ width: "14%", textAlign: "right" }}>Currently</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -297,8 +297,8 @@ export function CheckInLedgerScreen(): JSX.Element {
 
 function CheckInSnapshotRow({ row }: { row: SafetyClinicianStatusView }): JSX.Element {
   return (
-    <tr style={rowStyle}>
-      <td style={tdStyle}>
+    <tr>
+      <td>
         <div style={primaryCellStyle}>
           <span style={primaryTextStyle}>{row.displayName}</span>
           <code className="wx-data-md" style={codeStyle}>
@@ -306,7 +306,7 @@ function CheckInSnapshotRow({ row }: { row: SafetyClinicianStatusView }): JSX.El
           </code>
         </div>
       </td>
-      <td style={tdStyle}>
+      <td>
         {row.lastCheckInAt ? (
           <div style={primaryCellStyle}>
             <span>{dateTime(row.lastCheckInAt)}</span>
@@ -318,20 +318,18 @@ function CheckInSnapshotRow({ row }: { row: SafetyClinicianStatusView }): JSX.El
           <span style={secondaryTextStyle}>None on record</span>
         )}
       </td>
-      <td style={tdStyle}>
+      <td>
         {row.lastCheckInStatus ? (
           <CheckInStatusPill status={row.lastCheckInStatus} />
         ) : (
           <span style={secondaryTextStyle}>—</span>
         )}
       </td>
-      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-        {dateTime(row.nextExpectedCheckInAt)}
-      </td>
-      <td style={tdStyle}>
+      <td style={{ fontVariantNumeric: "tabular-nums" }}>{dateTime(row.nextExpectedCheckInAt)}</td>
+      <td>
         <OverduePill state={row.overdueState} />
       </td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>
+      <td style={{ textAlign: "right" }}>
         {row.activeSosAlert ? (
           <Link to={`/safety/sos/${row.activeSosAlert.id}`} style={{ textDecoration: "none" }}>
             <StatusPill label="Active SOS" tone="critical" />
@@ -516,30 +514,6 @@ const tableWrapStyle = {
   width: "100%",
   overflowX: "auto" as const,
   padding: "0 1.5rem 1.5rem 1.5rem",
-};
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
 };
 const primaryCellStyle = {
   display: "flex",

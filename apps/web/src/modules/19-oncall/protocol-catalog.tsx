@@ -21,6 +21,7 @@
 //     switches the questions under a call already walking. That is the real mechanism and the screen says
 //     so instead of implying a publish button exists.
 import {
+  Button,
   CodeSearchInput,
   EmptyState,
   Glyph,
@@ -28,12 +29,13 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
-  t,
   useApiClient,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
+import { FormDrawer } from "../../shell/form-drawer";
+import { runDrawerWrite } from "./drawer-write";
 import {
   type EscalationTier,
   type ShiftDiscipline,
@@ -52,27 +54,14 @@ import {
   tierLabel,
 } from "./oncall-status";
 import {
-  Card,
   CheckboxField,
-  CountGrid,
-  FilterRow,
-  Modal,
   Notice,
   SelectField,
   TextField,
-  alertStyle,
-  columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
   linkStyle,
-  mutedStyle,
-  pageTitleStyle,
   primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
   tdNum,
-  th,
   thNum,
 } from "./oncall-ui";
 
@@ -145,268 +134,275 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
 
   const canCreate = KEY_RE.test(key) && label.trim().length >= 3 && SNOMED_RE.test(snomed) && !busy;
 
-  async function commitCreate(): Promise<void> {
-    setBusy(true);
-    setActionError(null);
-    const res = await createProtocol(client, {
-      key,
-      chiefComplaintLabel: label,
-      snomedCode: snomed,
-      // `required`/`tier` are always one of SHIFT_DISCIPLINES / ESCALATION_TIERS — the SelectFields below
-      // offer no other value.
-      disciplineRequired: required as ShiftDiscipline,
-      requiresMandatoryEscalation: mandatory,
-      ...(mandatory ? { mandatoryEscalationTier: tier as EscalationTier } : {}),
-    });
-    setBusy(false);
-    if (res.error) {
-      setActionError(errorMessage(res.error, "The protocol could not be created."));
-      return;
-    }
-    setCreating(false);
+  // Every open and every close starts the form from scratch: a saved or abandoned draft (the "always escalates" flag
+  // included) must not ride into the next protocol authored.
+  const resetCreateForm = (): void => {
     setKey("");
     setLabel("");
     setSnomed("");
+    setRequired(DEFAULT_SHIFT_DISCIPLINE);
+    setMandatory(false);
+    setTier(DEFAULT_ESCALATION_TIER);
+    setActionError(null);
+  };
+  const openCreate = (): void => {
+    // Already open: another click on the opener must not wipe what is being typed.
+    if (creating) return;
+    resetCreateForm();
+    setCreating(true);
+  };
+  const closeCreate = (): void => {
+    resetCreateForm();
+    setCreating(false);
+  };
+
+  async function commitCreate(): Promise<void> {
+    const saved = await runDrawerWrite(
+      { setBusy, setError: setActionError },
+      () =>
+        createProtocol(client, {
+          key,
+          chiefComplaintLabel: label,
+          snomedCode: snomed,
+          // `required`/`tier` are always one of SHIFT_DISCIPLINES / ESCALATION_TIERS — the SelectFields below
+          // offer no other value.
+          disciplineRequired: required as ShiftDiscipline,
+          requiresMandatoryEscalation: mandatory,
+          ...(mandatory ? { mandatoryEscalationTier: tier as EscalationTier } : {}),
+        }),
+      "The protocol could not be created.",
+    );
+    if (!saved) return;
+    closeCreate();
     await load();
   }
 
   return (
-    <>
-      <WorkQueueLayout
-        header={
-          <PageHeader
-            title="Triage protocols"
-            actions={
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  style={primaryButtonCompactStyle}
-                  onClick={() => setCreating(true)}
-                >
-                  Author a protocol
-                </button>
-                <Link to="/triage/policy" style={linkButtonStyle}>
-                  On-call policy
-                </Link>
-              </div>
-            }
-          >
-            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-              Maintain protocol templates, platform-floor coverage, and mandatory escalation rules.
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="Triage protocols"
+          actions={
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button type="button" style={primaryButtonCompactStyle} onClick={openCreate}>
+                Author a protocol
+              </button>
+              <Link to="/triage/policy" style={linkButtonStyle}>
+                On-call policy
+              </Link>
             </div>
-          </PageHeader>
-        }
-        filters={
-          <div style={filterShellStyle}>
-            <Notice tone="info">
-              The platform floor ships with the product and is read-only to every tenant role. You
-              may add your own protocols and you may make them stricter than the floor; you cannot
-              make the floor weaker.
-            </Notice>
-            {truncated ? (
-              <output style={infoBannerStyle}>
-                <Glyph name="info" size={16} />
-                <span>
-                  More than {CATALOG_PAGE} protocols match; the KPI counts above use the fetched
-                  page.
-                </span>
-              </output>
-            ) : null}
-            {actionError ? (
-              <div role="alert" style={errorBannerStyle}>
-                <Glyph name="alert" size={16} />
-                <span>{actionError}</span>
-              </div>
-            ) : null}
-            <div style={toolbarStyle}>
-              <label className="wx-filter-field">
-                <span>Discipline</span>
-                <select
-                  className="wx-select"
-                  value={discipline}
-                  onChange={(event) => setDiscipline(event.target.value)}
-                  aria-label="Filter protocols by required discipline"
-                >
-                  {DISCIPLINE_FILTERS.map((option) => (
-                    <option key={option.value || "all-disciplines"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="wx-filter-field">
-                <span>Show</span>
-                <select
-                  className="wx-select"
-                  value={scope}
-                  onChange={(event) => setScope(event.target.value)}
-                  aria-label="Filter protocols by effective status"
-                >
-                  {EFFECTIVE_FILTERS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="wx-search-field">
-                <Glyph name="search" size={16} />
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search protocol, key, or complaint..."
-                  aria-label="Search triage protocols"
-                />
-              </label>
-            </div>
-          </div>
-        }
-        table={
-          <div style={tableShellStyle}>
-            {sorted.length === 0 ? (
-              <div style={emptyShellStyle}>
-                <EmptyState
-                  title="No matching protocols"
-                  description="Adjust the filters or search text to broaden the catalog view."
-                />
-              </div>
-            ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr style={tableHeadRowStyle}>
-                    <th style={th}>Chief complaint</th>
-                    <th style={th}>Key</th>
-                    <th style={th}>SNOMED</th>
-                    <th style={th}>Discipline</th>
-                    <th style={th}>Layer</th>
-                    <th style={th}>Mandatory escalation</th>
-                    <th style={thNum}>Questions</th>
-                    <th style={th}>Version</th>
-                    <th style={th}>Effective</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((p) => (
-                    <tr key={p.id} style={rowLine}>
-                      <td style={td}>
-                        <Link to={`/triage/protocols/${p.id}`} style={linkStyle}>
-                          {p.chiefComplaintLabel}
-                        </Link>
-                      </td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>{p.key}</td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>{p.snomedCode}</td>
-                      <td style={td}>{disciplineLabel(p.disciplineRequired)}</td>
-                      <td style={td}>
-                        {p.organizationId === null ? (
-                          <StatusPill label="Platform floor" tone="critical" />
-                        ) : (
-                          <StatusPill label="Tenant" tone="progress" />
-                        )}
-                      </td>
-                      <td style={td}>
-                        {p.requiresMandatoryEscalation ? (
-                          <StatusPill
-                            label={
-                              p.mandatoryEscalationTier
-                                ? tierLabel(p.mandatoryEscalationTier)
-                                : "Yes"
-                            }
-                            tone="error"
-                          />
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td style={tdNum}>{p.questions.length}</td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>{p.version}</td>
-                      <td style={td}>
-                        {shortDate(p.effectiveFrom)}
-                        {p.effectiveTo ? ` → ${shortDate(p.effectiveTo)}` : ""}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <div style={tableFootnoteStyle}>
-              Versioning here is by effective date, not by a draft/publish workflow: there is no
-              draft state on a protocol row. A call freezes its protocol version when the protocol
-              is applied.
-            </div>
-          </div>
-        }
-        fullPageScroll
-      />
-
-      {creating ? (
-        <Modal
-          title="Author a tenant protocol"
-          onClose={() => setCreating(false)}
-          footer={
-            <button
-              type="button"
-              disabled={!canCreate}
-              style={canCreate ? primaryButtonStyle : disabledButtonStyle}
-              title={
-                canCreate
-                  ? undefined
-                  : "A lowercase key, a label of at least 3 characters and a 6–18 digit SNOMED code are required."
-              }
-              onClick={() => void commitCreate()}
-            >
-              Create
-            </button>
           }
         >
-          <Notice tone="warning">
-            This write needs a recent step-up. It creates a TENANT protocol — there is no way to
-            mint a platform-floor row from here, and the "system locked" flag is not a field,
-            because accepting it and ignoring it would leave you believing you had authored a
-            protected question.
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Maintain protocol templates, platform-floor coverage, and mandatory escalation rules.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          <Notice tone="info">
+            The platform floor ships with the product and is read-only to every tenant role. You may
+            add your own protocols and you may make them stricter than the floor; you cannot make
+            the floor weaker.
           </Notice>
-          <TextField
-            label="Key"
-            value={key}
-            onChange={setKey}
-            mono
-            hint="Lowercase letters, digits and underscores — the stable identifier, not the display label."
-          />
-          <TextField label="Chief complaint label" value={label} onChange={setLabel} />
-          <CodeSearchInput
-            label="SNOMED code"
-            system="snomed"
-            value={snomed}
-            onChange={(code) => setSnomed(code)}
-            required
-            hint="6–18 digits, validated by pattern here and by the terminology service at write."
-          />
-          <SelectField
-            label="Discipline required"
-            value={required}
-            options={SHIFT_DISCIPLINES.map((d) => ({ value: d, label: disciplineLabel(d) }))}
-            onChange={setRequired}
-          />
-          <CheckboxField
-            label="This protocol always escalates"
-            checked={mandatory}
-            onChange={setMandatory}
-          />
-          {mandatory ? (
-            <SelectField
-              label="Escalation tier"
-              value={tier}
-              options={ESCALATION_TIERS.map((x) => ({ value: x, label: tierLabel(x) }))}
-              onChange={setTier}
-            />
+          {truncated ? (
+            <output style={infoBannerStyle}>
+              <Glyph name="info" size={16} />
+              <span>
+                More than {CATALOG_PAGE} protocols match; the KPI counts above use the fetched page.
+              </span>
+            </output>
           ) : null}
-          <span style={mutedStyle}>
-            Questions are added on the protocol's own page after it exists — including the red-flag
-            predicate that decides whether an answer raises an escalation.
-          </span>
-        </Modal>
-      ) : null}
-    </>
+          <div style={toolbarStyle}>
+            <label className="wx-filter-field">
+              <span>Discipline</span>
+              <select
+                className="wx-select"
+                value={discipline}
+                onChange={(event) => setDiscipline(event.target.value)}
+                aria-label="Filter protocols by required discipline"
+              >
+                {DISCIPLINE_FILTERS.map((option) => (
+                  <option key={option.value || "all-disciplines"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Show</span>
+              <select
+                className="wx-select"
+                value={scope}
+                onChange={(event) => setScope(event.target.value)}
+                aria-label="Filter protocols by effective status"
+              >
+                {EFFECTIVE_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search protocol, key, or complaint..."
+                aria-label="Search triage protocols"
+              />
+            </label>
+          </div>
+        </div>
+      }
+      table={
+        <div style={tableShellStyle}>
+          {sorted.length === 0 ? (
+            <div style={emptyShellStyle}>
+              <EmptyState
+                title="No matching protocols"
+                description="Adjust the filters or search text to broaden the catalog view."
+              />
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Chief complaint</th>
+                  <th>Key</th>
+                  <th>SNOMED</th>
+                  <th>Discipline</th>
+                  <th>Layer</th>
+                  <th>Mandatory escalation</th>
+                  <th style={thNum}>Questions</th>
+                  <th>Version</th>
+                  <th>Effective</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <Link to={`/triage/protocols/${p.id}`} style={linkStyle}>
+                        {p.chiefComplaintLabel}
+                      </Link>
+                    </td>
+                    <td className="wx-data-md">{p.key}</td>
+                    <td className="wx-data-md">{p.snomedCode}</td>
+                    <td>{disciplineLabel(p.disciplineRequired)}</td>
+                    <td>
+                      {p.organizationId === null ? (
+                        <StatusPill label="Platform floor" tone="critical" />
+                      ) : (
+                        <StatusPill label="Tenant" tone="progress" />
+                      )}
+                    </td>
+                    <td>
+                      {p.requiresMandatoryEscalation ? (
+                        <StatusPill
+                          label={
+                            p.mandatoryEscalationTier ? tierLabel(p.mandatoryEscalationTier) : "Yes"
+                          }
+                          tone="error"
+                        />
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td style={tdNum}>{p.questions.length}</td>
+                    <td className="wx-data-md">{p.version}</td>
+                    <td>
+                      {shortDate(p.effectiveFrom)}
+                      {p.effectiveTo ? ` → ${shortDate(p.effectiveTo)}` : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div style={tableFootnoteStyle}>
+            Versioning here is by effective date, not by a draft/publish workflow: there is no draft
+            state on a protocol row. A call freezes its protocol version when the protocol is
+            applied.
+          </div>
+        </div>
+      }
+      fullPageScroll
+      detail={
+        creating ? (
+          <FormDrawer
+            title="Author a tenant protocol"
+            busy={busy}
+            onClose={closeCreate}
+            error={actionError}
+            save={
+              <Button
+                tone="primary"
+                size="lg"
+                type="button"
+                disabled={!canCreate}
+                title={
+                  canCreate
+                    ? undefined
+                    : "A lowercase key, a label of at least 3 characters and a 6–18 digit SNOMED code are required."
+                }
+                onClick={() => void commitCreate()}
+              >
+                Create
+              </Button>
+            }
+          >
+            <Notice tone="warning">
+              This write needs a recent step-up. It creates a TENANT protocol — there is no way to
+              mint a platform-floor row from here, and the "system locked" flag is not a field,
+              because accepting it and ignoring it would leave you believing you had authored a
+              protected question.
+            </Notice>
+            <TextField
+              label="Key"
+              value={key}
+              onChange={setKey}
+              mono
+              hint="Lowercase letters, digits and underscores — the stable identifier, not the display label."
+            />
+            <TextField label="Chief complaint label" value={label} onChange={setLabel} />
+            <CodeSearchInput
+              label="SNOMED code"
+              system="snomed"
+              value={snomed}
+              onChange={(code) => setSnomed(code)}
+              required
+              hint="6–18 digits, validated by pattern here and by the terminology service at write."
+            />
+            <SelectField
+              label="Discipline required"
+              value={required}
+              options={SHIFT_DISCIPLINES.map((d) => ({ value: d, label: disciplineLabel(d) }))}
+              onChange={setRequired}
+            />
+            <CheckboxField
+              label="This protocol always escalates"
+              checked={mandatory}
+              onChange={setMandatory}
+            />
+            {mandatory ? (
+              <SelectField
+                label="Escalation tier"
+                value={tier}
+                options={ESCALATION_TIERS.map((x) => ({ value: x, label: tierLabel(x) }))}
+                onChange={setTier}
+              />
+            ) : null}
+            <span className="wx-text-muted">
+              Questions are added on the protocol's own page after it exists — including the
+              red-flag predicate that decides whether an answer raises an escalation.
+            </span>
+          </FormDrawer>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -424,26 +420,10 @@ const toolbarStyle: CSSProperties = {
   gap: "0.5rem",
 };
 
-const selectControlStyle: CSSProperties = {
-  minHeight: "2.25rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
-  background: "var(--color-surface-low)",
-  color: "var(--color-on-surface)",
-  cursor: "pointer",
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.65rem",
-};
-
 const tableShellStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
   padding: "0 1.5rem 1.5rem",
-};
-
-const tableHeadRowStyle: CSSProperties = {
-  background: "var(--color-surface-low)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
 };
 
 const tableFootnoteStyle: CSSProperties = {
@@ -465,18 +445,6 @@ const infoBannerStyle: CSSProperties = {
   border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
   background: "var(--color-primary-tint)",
   color: "var(--color-on-surface)",
-  fontSize: "0.85rem",
-};
-
-const errorBannerStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  color: "var(--color-error)",
   fontSize: "0.85rem",
 };
 

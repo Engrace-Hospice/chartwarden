@@ -18,9 +18,11 @@
 // §5.1's "handoff notes" field is not built — `on_call_shift` has no such column and M19 publishes no
 // route that would carry one. A note box that discarded what was typed is worse than no note box.
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  Panel,
   StatusPill,
   t,
   useApiClient,
@@ -48,20 +50,15 @@ import {
   toneOf,
 } from "./oncall-status";
 import {
-  Card,
   Field,
   Modal,
   Notice,
   SummaryGrid,
   TextAreaField,
   Timeline,
-  alertStyle,
   columnStyle,
-  disabledButtonStyle,
   ghostButtonStyle,
-  mutedStyle,
   pageTitleStyle,
-  primaryButtonStyle,
 } from "./oncall-ui";
 
 const SHIFT_PAGE = 200;
@@ -167,7 +164,7 @@ export function OnCallShiftDetailScreen(): JSX.Element {
         </Notice>
       ) : null}
 
-      <Card title="Shift">
+      <Panel stack headingLevel={3} title="Shift">
         <SummaryGrid>
           <Field label="Provider entity" value={shortId(shift.providerEntityId)} mono />
           <Field label="Discipline" value={disciplineLabel(shift.discipline)} />
@@ -207,18 +204,19 @@ export function OnCallShiftDetailScreen(): JSX.Element {
           />
           <Field label="Version (If-Match)" value={String(shift.version)} mono />
         </SummaryGrid>
-      </Card>
+      </Panel>
 
-      <Card title="Window">
+      <Panel stack headingLevel={3} title="Window">
         <Timeline entries={timeline} />
-      </Card>
+      </Panel>
 
-      <Card title="Actions">
+      <Panel stack headingLevel={3} title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-          <button
+          <Button
+            tone="primary"
+            size="lg"
             type="button"
             disabled={!canOpen}
-            style={canOpen ? primaryButtonStyle : disabledButtonStyle}
             title={canOpen ? undefined : "Only a scheduled shift can be opened."}
             onClick={() =>
               void run(
@@ -228,11 +226,12 @@ export function OnCallShiftDetailScreen(): JSX.Element {
             }
           >
             Go on shift
-          </button>
-          <button
+          </Button>
+          <Button
+            tone="secondary"
+            size="lg"
             type="button"
             disabled={!canClose}
-            style={canClose ? ghostButtonStyle : disabledButtonStyle}
             title={canClose ? undefined : "Only an active shift can be closed."}
             onClick={() =>
               void run(
@@ -242,35 +241,37 @@ export function OnCallShiftDetailScreen(): JSX.Element {
             }
           >
             Come off shift
-          </button>
-          <button
+          </Button>
+          <Button
+            tone="secondary"
+            size="lg"
             type="button"
             disabled={!canCancel}
-            style={canCancel ? ghostButtonStyle : disabledButtonStyle}
             title={canCancel ? undefined : "Only a scheduled shift can be cancelled."}
             onClick={() => setCancelling(true)}
           >
             Cancel the shift
-          </button>
+          </Button>
         </div>
-        <span style={mutedStyle}>
+        <span className="wx-text-muted">
           Going on shift adds this clinician to the on-call messaging channel and makes them the
           recipient the after-hours safety path resolves. Coming off removes them — messages sent
           during their tenure stay attributed to them.
         </span>
-      </Card>
+      </Panel>
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <p className="wx-text-error">{actionError}</p> : null}
 
       {cancelling ? (
         <Modal
           title="Cancel this shift"
           onClose={() => setCancelling(false)}
           footer={
-            <button
+            <Button
+              tone="primary"
+              size="lg"
               type="button"
               disabled={busy || reason.trim().length < 1}
-              style={busy || reason.trim().length < 1 ? disabledButtonStyle : primaryButtonStyle}
               onClick={() =>
                 void run(
                   () => cancelShift(client, shift.id, shift.version, { reason }),
@@ -279,7 +280,7 @@ export function OnCallShiftDetailScreen(): JSX.Element {
               }
             >
               Cancel the shift
-            </button>
+            </Button>
           }
         >
           <Notice tone="warning">
