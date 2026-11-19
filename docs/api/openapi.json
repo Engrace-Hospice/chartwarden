@@ -150852,6 +150852,364 @@
         }
       }
     },
+    "/api/v1/encounters/{encounterId}/draft": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdDraft",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The visit-note draft for the calling viewer, computed fresh as of the visit time (the end of the service date in the organization's zone, capped at now): every template section with its `state` (not_drafted | unresolved | confirmed | deselected | needs_reconfirmation), the drafted `text`, the `contentHash` and `corpusVersion` a confirmation binds to, the fail-closed `part2Derived` flag and the kinds of record it was built from (`origins`; source ids are kept in the audit trail only). 42 CFR Part 2 content is redacted for this viewer by the sources themselves. 404 when the tenant has the draft switched off; 503 DRAFT_UNAVAILABLE when a source cannot be read; encounter.read",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "encounterId",
+                    "patientId",
+                    "templateKey",
+                    "asOf",
+                    "sections"
+                  ],
+                  "properties": {
+                    "encounterId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "asOf": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "sectionId",
+                          "state",
+                          "text",
+                          "contentHash",
+                          "corpusVersion",
+                          "part2Derived",
+                          "origins"
+                        ],
+                        "properties": {
+                          "sectionId": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "not_drafted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unresolved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "confirmed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "deselected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "needs_reconfirmation",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "text": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "contentHash": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "corpusVersion": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "part2Derived": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "origins": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "care_plan_goal",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "care_plan_intervention",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "scale_reading",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "vitals",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_change",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/draft/sections/{sectionId}": {
+      "put": {
+        "operationId": "putApiV1EncountersByEncounterIdDraftSectionsBySectionId",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Confirm or deselect one drafted section against the content the clinician saw (`contentHash` and `corpusVersion` from the draft). The server recomputes the draft for the same viewer and answers 409 DRAFT_SECTION_STALE when either no longer matches. Confirming links the section's care-plan goals and interventions to the encounter; deselecting removes them from it (a note never changes the care plan), so a deselected section is bound to what remains and a section left empty reads not_drafted. Idempotent. Only on an encounter that is not signed, cosigned or voided; same permission and ABAC as the selections save (encounter.author, caseload, author or supervisor); AI principals refused; 404 when the tenant has the draft switched off. Answers the section's new state",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sectionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sectionId",
+                    "state",
+                    "text",
+                    "contentHash",
+                    "corpusVersion",
+                    "part2Derived",
+                    "origins"
+                  ],
+                  "properties": {
+                    "sectionId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "not_drafted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unresolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "confirmed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "deselected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "needs_reconfirmation",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "text": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contentHash": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "corpusVersion": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "part2Derived": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "origins": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "care_plan_goal",
+                            "type": "string"
+                          },
+                          {
+                            "const": "care_plan_intervention",
+                            "type": "string"
+                          },
+                          {
+                            "const": "scale_reading",
+                            "type": "string"
+                          },
+                          {
+                            "const": "vitals",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_change",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resolution",
+                  "contentHash",
+                  "corpusVersion"
+                ],
+                "properties": {
+                  "resolution": {
+                    "anyOf": [
+                      {
+                        "const": "confirmed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "deselected",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "contentHash": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "corpusVersion": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/encounters/{encounterId}/evv-reconcile": {
       "post": {
         "operationId": "postApiV1EncountersByEncounterIdEvvreconcile",

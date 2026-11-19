@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2092,
-    "coveredRoutes": 2092,
-    "directRoutesReferenced": 1895
+    "routes": 2094,
+    "coveredRoutes": 2094,
+    "directRoutesReferenced": 1897
   },
   "modules": [
     {
@@ -193,21 +193,23 @@
     },
     {
       "module": "08-encounters",
-      "routes": 48,
+      "routes": 50,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/encounter-authoring.test.ts",
+        "apps/backend/__tests__/encounter-draft-routes.test.ts",
         "apps/backend/__tests__/encounter-routes.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m36-promotions.live.test.ts",
         "apps/backend/__tests__/m8-chart-promotion.test.ts",
         "apps/backend/__tests__/m8-encounter-addenda-read.live.test.ts",
         "apps/backend/__tests__/m8-note-closure.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-draft-routes.live.test.ts",
         "apps/backend/__tests__/note-closure-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts",
         "apps/backend/__tests__/visit-note-draft-routes.test.ts"
       ],
-      "directRoutesReferenced": 46
+      "directRoutesReferenced": 48
     },
     {
       "module": "09-assessments",

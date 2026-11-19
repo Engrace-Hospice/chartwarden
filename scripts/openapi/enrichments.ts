@@ -2159,7 +2159,12 @@ import {
   OverdueNotesResponseSchema as M8OverdueNotesResponseSchema,
   PutClosurePolicySchema as M8PutClosurePolicySchema,
 } from "../../apps/backend/src/modules/08-encounters/routes/closure-typebox";
-// ADR-0114 visit-note draft switch (M8).
+// ADR-0114 visit-note draft (M8): the per-tenant switch, then the draft and its section resolution.
+import {
+  DraftResponseSchema as M8DraftResponseSchema,
+  DraftSectionResponseSchema as M8DraftSectionResponseSchema,
+  ResolveSectionSchema as M8ResolveSectionSchema,
+} from "../../apps/backend/src/modules/08-encounters/routes/draft-section-typebox";
 import {
   DraftPolicyResponseSchema as M8DraftPolicyResponseSchema,
   PutDraftPolicySchema as M8PutDraftPolicySchema,
@@ -5822,6 +5827,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Switch the tenant's visit-note draft and its sign gate on or off (needs a fresh step-up; encounter.draft_policy_admin). Enabling is refused with 409 CORPUS_REVIEW_PENDING while the phrase corpus has not had its clinical review; disabling is always allowed. Every write records an m8.encounter.draft_policy_changed audit event (previous and new value)",
     body: M8PutDraftPolicySchema,
     response: M8DraftPolicyResponseSchema,
+  },
+  // ADR-0114 PR C2b1 - the draft itself. Both answer 404 for a tenant with the switch off and for another tenant's encounter.
+  "GET /api/v1/encounters/:encounterId/draft": {
+    summary:
+      "The visit-note draft for the calling viewer, computed fresh as of the visit time (the end of the service date in the organization's zone, capped at now): every template section with its `state` (not_drafted | unresolved | confirmed | deselected | needs_reconfirmation), the drafted `text`, the `contentHash` and `corpusVersion` a confirmation binds to, the fail-closed `part2Derived` flag and the kinds of record it was built from (`origins`; source ids are kept in the audit trail only). 42 CFR Part 2 content is redacted for this viewer by the sources themselves. 404 when the tenant has the draft switched off; 503 DRAFT_UNAVAILABLE when a source cannot be read; encounter.read",
+    response: M8DraftResponseSchema,
+  },
+  "PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId": {
+    summary:
+      "Confirm or deselect one drafted section against the content the clinician saw (`contentHash` and `corpusVersion` from the draft). The server recomputes the draft for the same viewer and answers 409 DRAFT_SECTION_STALE when either no longer matches. Confirming links the section's care-plan goals and interventions to the encounter; deselecting removes them from it (a note never changes the care plan), so a deselected section is bound to what remains and a section left empty reads not_drafted. Idempotent. Only on an encounter that is not signed, cosigned or voided; same permission and ABAC as the selections save (encounter.author, caseload, author or supervisor); AI principals refused; 404 when the tenant has the draft switched off. Answers the section's new state",
+    body: M8ResolveSectionSchema,
+    response: M8DraftSectionResponseSchema,
   },
 });
 

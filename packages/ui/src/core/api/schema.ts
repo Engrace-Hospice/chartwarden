@@ -11822,6 +11822,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The visit-note draft for the calling viewer, computed fresh as of the visit time (the end of the service date in the organization's zone, capped at now): every template section with its `state` (not_drafted | unresolved | confirmed | deselected | needs_reconfirmation), the drafted `text`, the `contentHash` and `corpusVersion` a confirmation binds to, the fail-closed `part2Derived` flag and the kinds of record it was built from (`origins`; source ids are kept in the audit trail only). 42 CFR Part 2 content is redacted for this viewer by the sources themselves. 404 when the tenant has the draft switched off; 503 DRAFT_UNAVAILABLE when a source cannot be read; encounter.read */
+        get: operations["getApiV1EncountersByEncounterIdDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/draft/sections/{sectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Confirm or deselect one drafted section against the content the clinician saw (`contentHash` and `corpusVersion` from the draft). The server recomputes the draft for the same viewer and answers 409 DRAFT_SECTION_STALE when either no longer matches. Confirming links the section's care-plan goals and interventions to the encounter; deselecting removes them from it (a note never changes the care plan), so a deselected section is bound to what remains and a section left empty reads not_drafted. Idempotent. Only on an encounter that is not signed, cosigned or voided; same permission and ABAC as the selections save (encounter.author, caseload, author or supervisor); AI principals refused; 404 when the tenant has the draft switched off. Answers the section's new state */
+        put: operations["putApiV1EncountersByEncounterIdDraftSectionsBySectionId"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/evv-reconcile": {
         parameters: {
             query?: never;
@@ -67356,6 +67390,86 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: "pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        encounterId: string;
+                        patientId: string;
+                        templateKey: string;
+                        /** Format: date-time */
+                        asOf: string;
+                        sections: {
+                            sectionId: string;
+                            state: "not_drafted" | "unresolved" | "confirmed" | "deselected" | "needs_reconfirmation";
+                            text: string | null;
+                            contentHash: string | null;
+                            corpusVersion: string | null;
+                            part2Derived: boolean | null;
+                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change")[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersByEncounterIdDraftSectionsBySectionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                sectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    resolution: "confirmed" | "deselected";
+                    contentHash: string;
+                    corpusVersion: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sectionId: string;
+                        state: "not_drafted" | "unresolved" | "confirmed" | "deselected" | "needs_reconfirmation";
+                        text: string | null;
+                        contentHash: string | null;
+                        corpusVersion: string | null;
+                        part2Derived: boolean | null;
+                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change")[];
                     };
                 };
             };
