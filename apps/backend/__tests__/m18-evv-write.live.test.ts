@@ -14,13 +14,25 @@
  * `evv_event` is RANGE-partitioned → the throwaway superuser DB needs `max_locks_per_transaction` raised. For a
  * local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  createInMemoryEffectivePermissionStore,
+  createInMemorySessionContextStore,
+  createSessionContextResolver,
+  registerEffectivePermissionResolver,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import { runWithRequestContext } from "@chartwarden/tenancy";
+import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   type EvvCoordsFault,
   EvvCoordsKeyUnboundError,
@@ -30,6 +42,7 @@ import {
   clinicianCapture,
   createDbEvvBackend,
   createDrizzleEvvSeamStore,
+  registerEvvRoutes,
   systemCapture,
 } from "../src/modules/18-evv/index";
 
@@ -49,12 +62,28 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 
-type Seed = { pe: string; location: string; member: string; device: string };
+type Seed = { pe: string; location: string; user: string; member: string; device: string };
+
+const CORRECTION_SESSION_FRESH = "m18-write-correction-fresh";
+const CORRECTION_SESSION_STALE = "m18-write-correction-stale";
+
+function headerAuth(request: FastifyRequest): void {
+  const userId = request.headers["x-test-user"];
+  const organizationId = request.headers["x-test-org"];
+  const membershipId = request.headers["x-test-membership"];
+  const sessionId = request.headers["x-test-session"];
+  if (typeof userId !== "string" || typeof organizationId !== "string") return;
+  request.context.userId = userId;
+  request.context.organizationId = organizationId;
+  request.context.attributes.membershipId = typeof membershipId === "string" ? membershipId : "";
+  if (typeof sessionId === "string") request.context.attributes.sessionId = sessionId;
+}
 
 describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEvvBackend>;
+  let app: ReturnType<typeof buildServer>;
   const coordsFaults: EvvCoordsFault[] = [];
   // Same DB, default (OFF) device-attestation flag — the production configuration.
   let svcAttestationOff: ReturnType<typeof createDbEvvBackend>;
@@ -212,7 +241,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
          VALUES ($1,'tenant',150,50, now()::date, $2)`,
         [org, member],
       );
-      seeded[org] = { pe, location, member, device };
+      seeded[org] = { pe, location, user, member, device };
     }
     await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
@@ -237,11 +266,77 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       coordsCipher,
     });
     svcUnbound = createDbEvvBackend(handle.db, outbox, { addressCoordinate });
+
+    const actor = seeded[ORG_A];
+    resetAuthorizationContract();
+    resetRbacEngine();
+    __resetSeamsForTest();
+    registerEffectivePermissionResolver(
+      createInMemoryEffectivePermissionStore([
+        {
+          orgId: ORG_A,
+          userId: actor.user,
+          grants: [
+            {
+              roleKey: "seed",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: ["evv.correct_record"],
+            },
+          ],
+        },
+      ]).store,
+    );
+    const sessionBase = {
+      userId: actor.user,
+      membershipId: actor.member,
+      organizationId: ORG_A,
+      roles: ["clinical_supervisor"],
+      providerEntityIds: [actor.pe],
+      locationIds: [actor.location],
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
+    } as const;
+    registerSeam(
+      "SessionContextResolver",
+      createSessionContextResolver(
+        createInMemorySessionContextStore([
+          {
+            ...sessionBase,
+            sessionId: CORRECTION_SESSION_FRESH,
+            lastStepUpAt: new Date(Date.now() - 30_000),
+            lastStepUpFactor: "totp",
+          },
+          {
+            ...sessionBase,
+            sessionId: CORRECTION_SESSION_STALE,
+            lastStepUpAt: new Date(Date.now() - 86_400_000),
+            lastStepUpFactor: "totp",
+          },
+        ]).store,
+      ),
+    );
+    app = buildServer({
+      db: handle.db,
+      authenticate: headerAuth,
+      security: { rateLimitEnabled: false },
+    });
+    registerEvvRoutes(app, {
+      service: svc,
+      deviceAttestationEnforced: true,
+      assertMayStartVisit: async () => undefined,
+    });
+    await app.ready();
   }, 180_000);
 
   afterAll(async () => {
+    await app?.close();
     await handle?.close();
     if (admin) await admin.end();
+    resetAuthorizationContract();
+    resetRbacEngine();
+    __resetSeamsForTest();
   });
 
   it("device self-register → approve; emits device_pending_approval + device_approved", async () => {
@@ -874,6 +969,119 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   // Every assertion here reads a COLUMN, because the defect was never visible in a return value: the
   // routes validated a justification, the service returned the same view either way, and the column the
   // schema built to hold it stayed NULL.
+
+  it("the production correction route requires real step-up, persists provenance, audits, and conflicts on replay", async () => {
+    const { user, member, device } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    const original = await svc.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      {
+        visitId: visit,
+        coords: ADDRESS_BASELINE,
+        accuracyM: 4.5,
+        capturedAt: new Date().toISOString(),
+      },
+      SYSTEM_FIXTURE,
+    );
+    const correctionReason =
+      "The handset clock was forty minutes fast; aligned to the signed visit note arrival time.";
+    const payload = {
+      newEvent: {
+        visitId: visit,
+        serviceTypeCode: "routine_visit",
+        capturedAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+        coords: ADDRESS_BASELINE,
+        accuracyM: 4.5,
+        evvDeviceId: device,
+      },
+      correctionReason,
+    };
+    const headers = (sessionId: string) => ({
+      "x-test-user": user,
+      "x-test-org": ORG_A,
+      "x-test-membership": member,
+      "x-test-session": sessionId,
+      "idempotency-key": randomUUID(),
+    });
+
+    const stale = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/events/${original.eventId}/correct`,
+      headers: headers(CORRECTION_SESSION_STALE),
+      payload,
+    });
+    expect(stale.statusCode).toBe(403);
+    expect(
+      (
+        await admin.query(
+          "SELECT superseded_at FROM evv_event WHERE organization_id=$1 AND id=$2",
+          [ORG_A, original.eventId],
+        )
+      ).rows[0].superseded_at,
+    ).toBeNull();
+
+    const correctedResponse = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/events/${original.eventId}/correct`,
+      headers: headers(CORRECTION_SESSION_FRESH),
+      payload,
+    });
+    expect(correctedResponse.statusCode).toBe(200);
+    const correctedId = correctedResponse.json<{ eventId: string }>().eventId;
+    const provenance = (
+      await admin.query(
+        `SELECT original.superseded_by_event_id::text,
+                replacement.replaces_event_id::text,
+                replacement.correction_reason
+           FROM evv_event original
+           JOIN evv_event replacement ON replacement.id=$3
+          WHERE original.organization_id=$1 AND original.id=$2`,
+        [ORG_A, original.eventId, correctedId],
+      )
+    ).rows[0];
+    expect(provenance).toMatchObject({
+      superseded_by_event_id: correctedId,
+      replaces_event_id: original.eventId,
+      correction_reason: correctionReason,
+    });
+
+    const correctionEnvelope = (
+      await admin.query<{ payload: Record<string, unknown> }>(
+        `SELECT payload FROM outbox_event
+          WHERE organization_id=$1 AND aggregate_id=$2 AND event_type='m18.evv.event_corrected'`,
+        [ORG_A, correctedId],
+      )
+    ).rows[0]?.payload;
+    expect(correctionEnvelope).toMatchObject({
+      supersededEventId: original.eventId,
+      newEventId: correctedId,
+      correctedByMembershipId: member,
+      correctionReason,
+    });
+
+    const writeAudit = (
+      await admin.query<{ event_type: string; after: unknown }>(
+        `SELECT event_type, after FROM audit_event
+          WHERE organization_id=$1 AND resource_id IN ($2,$3)
+            AND event_type IN ('evv_event.insert','evv_event.update')
+          ORDER BY created_at`,
+        [ORG_A, original.eventId, correctedId],
+      )
+    ).rows;
+    expect(writeAudit.some((row) => row.event_type === "evv_event.update")).toBe(true);
+    expect(writeAudit.some((row) => row.event_type === "evv_event.insert")).toBe(true);
+    expect(JSON.stringify(writeAudit)).not.toContain(correctionReason);
+
+    const replay = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/events/${original.eventId}/correct`,
+      headers: headers(CORRECTION_SESSION_FRESH),
+      payload,
+    });
+    expect(replay.statusCode).toBe(409);
+  });
 
   it("correction-of-record: supersedes the original, links back, and records why", async () => {
     const { member } = seeded[ORG_A];

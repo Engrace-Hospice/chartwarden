@@ -275,6 +275,16 @@ Use fictional test data. Adapt expected behavior to actual contracts and applica
 
 Do not merge large cross-domain changes in one PR. If a backend safety defect is discovered, propose a separate narrow fix with proof, migration impact and approval.
 
+### PR-2 live correction proof — 2026-11-19
+
+The production correction endpoint passes a private-PostgreSQL journey under the NOBYPASSRLS
+application role. A session with stale server-side step-up is denied before the event is changed; a
+fresh session supersedes the original and persists the replacement link and correction reason; replaying
+the original returns the server-owned conflict. The real catalog-validating outbox attributes the action
+to the acting membership, and the M4 insert/update audit rows exist with the correction reason scrubbed.
+The updated write lifecycle suite passes 29/29. This proof does not replace an authenticated browser
+journey through the correction dialog.
+
 ### PR-3 implementation note — 2026-11-19
 
 The submission queue now explicitly says that configuration readiness is unavailable because the

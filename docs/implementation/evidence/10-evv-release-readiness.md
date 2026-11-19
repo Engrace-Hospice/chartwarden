@@ -44,7 +44,7 @@ offline storage was introduced by these commits.
 | EVV web module DOM suite | Passed after updating the terminal-submission assertion to retain read-only evidence while withholding mutations. |
 | PR-3 behavior tests | Passed empty-state truthfulness, rejection evidence, accepted-vs-paid language, keyboard interaction, and automated WCAG A/AA checks. |
 | Aggregator injected-route contract | Passed evidence projection and rejection-evidence clearing on resubmit. |
-| M18 private PostgreSQL live suites | Owner-run evidence passed the read/RLS, write lifecycle, worker/tenant-scope, and DEK rotation/audit suites against fresh databases in an isolated `chartwarden-postgres:dev` container. The updated read suite passed 5/5, including the production aggregator route's evidence projection, cross-tenant exclusion, and actor-attributed list-read audit event under the NOBYPASSRLS application role. |
+| M18 private PostgreSQL live suites | Owner-run evidence passed the read/RLS, write lifecycle, worker/tenant-scope, and DEK rotation/audit suites against fresh databases in an isolated `chartwarden-postgres:dev` container. The updated read suite passed 5/5, including the production aggregator route's evidence projection, cross-tenant exclusion, and actor-attributed list-read audit event under the NOBYPASSRLS application role. The updated write suite passed 29/29, including the production correction route's stale-step-up denial, successful immutable supersession, scrubbed M4 audit rows, outbox membership attribution, and replay conflict. |
 | OpenAPI and generated client | Regenerated and check-clean. |
 | EVV documentation corpus | Check-clean. |
 | PR-1 browser sweep | Six EVV screens were checked at 375, 768, and 1440 px without horizontal overflow or automated axe violations. No screenshot artifact was retained. |
@@ -79,9 +79,9 @@ must not be simulated by pointing production at an unverified endpoint.
 
 | Area | Current posture | Gate to close |
 |---|---|---|
-| Supervisor web slices | Locally verified; no migration. | Fresh review, authenticated Docker journey, live tenant-boundary proof, and retained screenshots. |
+| Supervisor web slices | Locally verified; no migration; focused application-role tenant-boundary proofs pass. | Fresh review, authenticated Docker journey, and retained screenshots. |
 | Aggregator evidence | Authorized audited list read; additive fields; M18 workers pass; the production route projection, cross-tenant exclusion, and read-audit persistence pass live under the application role. | Authenticated Docker browser journey and retained release screenshots. |
-| Correction workflow | Uses the existing server permission, ABAC, step-up, and immutable provenance path; the live write suite proves supersession, reason persistence, RLS, and append-only behavior. | Route-level step-up/conflict/audit proof and authenticated browser journey. |
+| Correction workflow | Uses the existing server permission, ABAC, step-up, and immutable provenance path; the production route passes live stale/fresh step-up, supersession, reason persistence, scrubbed audit, outbox attribution, and replay-conflict proof. | Authenticated Docker browser journey and retained release screenshots. |
 | React Native/Expo online capture | Source exists in `chartwarden-mobile`; release NO-GO. | Physical-device and authenticated backend matrix on the pinned contract/build. |
 | Offline v2 queue | Encrypted design and default-off source exist; release NO-GO. | SQLCipher/device security, identity isolation, replay, recovery, and retention evidence. |
 | Sandata | Fail-closed adapter and fake transport tests exist; release NO-GO. | Named state/provider, executed agreement, approved secrets, synthetic sandbox conformance, and rollback drill. |
