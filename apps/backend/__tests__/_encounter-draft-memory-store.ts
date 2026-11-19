@@ -11,6 +11,7 @@ import {
   removedElementIdsOf,
 } from "../src/modules/08-encounters/drafting/care-plan-refs";
 import type {
+  AmendmentRef,
   ConfirmationWrite,
   DraftEncounterRow,
   DraftResolvedEvent,
@@ -107,6 +108,8 @@ export function memoryDraftStore(options: MemoryStoreOptions = {}) {
 }
 
 export interface MemoryUnitOptions extends MemoryStoreOptions {
+  /** The addendum the amendment routes find on the encounter (default: none). Its resolutions are kept apart from the note's. */
+  readonly amendment?: AmendmentRef;
   readonly enabled?: boolean;
   /** `null` is an absent encounter; undefined is the default draft encounter. */
   readonly encounter?: DraftEncounterRow | null;
@@ -118,7 +121,24 @@ export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
   const events: DraftResolvedEvent[] = [];
   const encounterCalls: { id: string; forUpdate: boolean }[] = [];
   const found = options.encounter === undefined ? draftEncounterRow() : options.encounter;
+  const amendmentSaved = new Map<string, ConfirmationWrite>();
+  const amendmentStore: DraftStore = {
+    ...store,
+    confirmations: async () => [...amendmentSaved.values()],
+    saveConfirmation: async (write) => {
+      amendmentSaved.set(write.sectionId, write);
+    },
+    linkCarePlan: async () => 0,
+    removeCarePlan: async () => 0,
+  };
   const unit: DraftUnit = {
+    amendment: async (encounterId, addendumId) =>
+      options.amendment !== undefined &&
+      options.amendment.id === addendumId &&
+      found?.id === encounterId
+        ? options.amendment
+        : null,
+    amendmentStore: () => amendmentStore,
     enabled: async () => options.enabled ?? true,
     encounter: async (id, forUpdate) => {
       encounterCalls.push({ id, forUpdate });
@@ -134,5 +154,5 @@ export function memoryRunInOrg(options: MemoryUnitOptions = {}) {
     scopes.push(scope);
     return fn(unit);
   };
-  return { runInOrg, store, links, saved, events, encounterCalls, scopes, unit };
+  return { runInOrg, store, links, saved, amendmentSaved, events, encounterCalls, scopes, unit };
 }

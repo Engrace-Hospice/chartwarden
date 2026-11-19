@@ -274,7 +274,7 @@ describe("GET /encounters/:encounterId/draft", () => {
     const declared: Record<string, unknown>[] = [];
     const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     app.addHook("onRoute", (route) => {
-      if (route.url.endsWith("/draft") && route.method === "GET") {
+      if (route.url === "/api/v1/encounters/:encounterId/draft" && route.method === "GET") {
         declared.push(route.config?.auditRead as unknown as Record<string, unknown>);
       }
     });
@@ -283,6 +283,24 @@ describe("GET /encounters/:encounterId/draft", () => {
     expect(declared[0]).toMatchObject({
       resourceKind: "encounter_draft",
       resourceIdParam: "encounterId",
+      patientIdPayloadPath: "patientId",
+    });
+    expect(declared[0]?.fields).toEqual(expect.arrayContaining(["text", "contentHash", "state"]));
+  });
+
+  it("the amendment draft read (VN-D30) declares its own read audit, against the addendum and attributed to the patient (names of fields only)", () => {
+    const declared: Record<string, unknown>[] = [];
+    const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+    app.addHook("onRoute", (route) => {
+      if (route.url.endsWith("/addenda/:addendumId/draft") && route.method === "GET") {
+        declared.push(route.config?.auditRead as unknown as Record<string, unknown>);
+      }
+    });
+    registerDraftSectionRoutes(app, { service: fakeService() as unknown as DraftService });
+    expect(declared).toHaveLength(1);
+    expect(declared[0]).toMatchObject({
+      resourceKind: "encounter_amendment_draft",
+      resourceIdParam: "addendumId",
       patientIdPayloadPath: "patientId",
     });
     expect(declared[0]?.fields).toEqual(expect.arrayContaining(["text", "contentHash", "state"]));
