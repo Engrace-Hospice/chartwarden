@@ -5,11 +5,13 @@
 // time, so Part 2 redaction is decided per request and one author's answer can never reach another.
 import { createHash } from "node:crypto";
 import {
+  type AssemblyContext,
   type AssemblyErrorCode,
   type Draft,
   DraftInputError,
   type DraftInputs,
   HearthnoteAssemblyError,
+  type SelectionState,
   compileDraft,
 } from "@chartwarden/hearthnote";
 import { EncounterStateError, type M8ErrorCode } from "../lifecycle/errors";
@@ -20,6 +22,9 @@ import { visitAsOf } from "./visit-time";
 
 export interface ComputedDraft {
   readonly draft: Draft;
+  /** The clinician's stored selections and the slots that render them, as the draft was compiled from them (the signed note is built from the same read). */
+  readonly selection: SelectionState;
+  readonly context: AssemblyContext;
   /** The visit time the draft describes the patient at (ISO-8601, UTC). */
   readonly asOf: string;
   readonly templateKey: string;
@@ -33,7 +38,8 @@ const ASSEMBLY_ERROR_CODE: Readonly<Record<AssemblyErrorCode, M8ErrorCode>> = {
   UNKNOWN_VOCAB_CODE: "UNKNOWN_VOCAB_CODE",
 };
 
-const sha256Hex = (canonical: string): string =>
+/** SHA-256 of the UTF-8 bytes as 64 lowercase hex characters: the draft's content hash and the sealed rows' hash. */
+export const sha256Hex = (canonical: string): string =>
   createHash("sha256").update(canonical, "utf8").digest("hex");
 
 /** Within one call the organization's zone is asked for once, though the visit time and the reads both need it. */
@@ -86,5 +92,11 @@ export async function computeDraft(
     guarded("the stored selections", () => call.loadSelection(encounter)),
   ]);
   const draft = compile({ ...sources, selection: stored.selection, context: stored.context });
-  return { draft, asOf, templateKey: draft.templateKey };
+  return {
+    draft,
+    selection: stored.selection,
+    context: stored.context,
+    asOf,
+    templateKey: draft.templateKey,
+  };
 }
