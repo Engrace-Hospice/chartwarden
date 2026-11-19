@@ -6,7 +6,6 @@
 import { createHash } from "node:crypto";
 import {
   type AssemblyContext,
-  type AssemblyErrorCode,
   type Draft,
   DraftInputError,
   type DraftInputs,
@@ -16,7 +15,7 @@ import {
   emptyDraft,
   templateHasDraftedSection,
 } from "@chartwarden/hearthnote";
-import { EncounterStateError, type M8ErrorCode } from "../lifecycle/errors";
+import { ASSEMBLY_ERROR_CODE, EncounterStateError } from "../lifecycle/errors";
 import { readDraftInputs } from "./inputs";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
 import { draftUnavailable, guarded } from "./unavailable";
@@ -35,14 +34,6 @@ export interface ComputedDraft extends DraftOverview {
   readonly selection: SelectionState;
   readonly context: AssemblyContext;
 }
-
-/** The §2.7 code each assembly failure maps to: the same table the selections routes apply. */
-const ASSEMBLY_ERROR_CODE: Readonly<Record<AssemblyErrorCode, M8ErrorCode>> = {
-  TEMPLATE_NOT_FOUND: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
-  TEMPLATE_KEY_MISMATCH: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
-  VOCAB_VERSION_MISMATCH: "VOCAB_VERSION_MISMATCH",
-  UNKNOWN_VOCAB_CODE: "UNKNOWN_VOCAB_CODE",
-};
 
 /** SHA-256 of the UTF-8 bytes as 64 lowercase hex characters: the draft's content hash and the sealed rows' hash. */
 export const sha256Hex = (canonical: string): string =>

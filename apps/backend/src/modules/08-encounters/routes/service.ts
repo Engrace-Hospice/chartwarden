@@ -70,7 +70,7 @@ import {
 import { type Layer2EnhanceOutcome, resolveLayer2Eligibility } from "../layer2";
 import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
 import { requiresCosignature, transitionEncounter } from "../lifecycle/encounter";
-import { EncounterStateError } from "../lifecycle/errors";
+import { ASSEMBLY_ERROR_CODE, EncounterStateError } from "../lifecycle/errors";
 import {
   checkEncounterDisciplinePair,
   checkMutableForEdit,
@@ -419,19 +419,6 @@ export function toSelectionState(
     })),
   };
 }
-
-/**
- * The §2.7 code each `HearthnoteAssemblyError` maps to. The package documents this mapping in its own
- * `AssemblyErrorCode` union ("mapped to HTTP by the M8 service in T09"); it was never written, because
- * nothing ever called `assemble`. `TEMPLATE_KEY_MISMATCH` cannot occur through these routes — the key is
- * server-derived from the encounter row — but it is mapped rather than left to fall through as a 500.
- */
-const ASSEMBLY_ERROR_CODE = {
-  TEMPLATE_NOT_FOUND: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
-  TEMPLATE_KEY_MISMATCH: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
-  VOCAB_VERSION_MISMATCH: "VOCAB_VERSION_MISMATCH",
-  UNKNOWN_VOCAB_CODE: "UNKNOWN_VOCAB_CODE",
-} as const;
 
 /**
  * Assemble the Layer-1 narrative for a selection tree, refusing anything that cannot become a note.

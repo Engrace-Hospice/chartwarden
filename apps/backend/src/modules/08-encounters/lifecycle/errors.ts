@@ -7,6 +7,7 @@
 // with the precise code + HTTP status the UI keys its message off, with no cross-module import edge. The
 // code→status mapping is the single source mirrored from §2.7; nothing transitions on a string match —
 // each code is an enumerated constant (the M6 state-machine convention).
+import type { AssemblyErrorCode } from "@chartwarden/hearthnote";
 import { ChartWardenError, type ErrorDetailType } from "@chartwarden/types";
 
 /** The full §2.7 + §2.3 machine-readable failure-code catalog → canonical HTTP status. */
@@ -91,6 +92,18 @@ export const M8_ERROR_STATUS = {
 
 /** A machine-readable M8 encounter-domain failure code (§2.7 / §2.3). */
 export type M8ErrorCode = keyof typeof M8_ERROR_STATUS;
+
+/**
+ * The §2.7 code each `HearthnoteAssemblyError` maps to: the one table the selections routes and the draft computation both apply.
+ * `TEMPLATE_KEY_MISMATCH` cannot occur through the routes (the key is server-derived from the encounter row), but it is mapped
+ * rather than left to fall through as a 500. Typed on the package's union, so a new assembly code fails the build until it is mapped.
+ */
+export const ASSEMBLY_ERROR_CODE: Readonly<Record<AssemblyErrorCode, M8ErrorCode>> = {
+  TEMPLATE_NOT_FOUND: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+  TEMPLATE_KEY_MISMATCH: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+  VOCAB_VERSION_MISMATCH: "VOCAB_VERSION_MISMATCH",
+  UNKNOWN_VOCAB_CODE: "UNKNOWN_VOCAB_CODE",
+};
 
 /**
  * A guard / validation failure in the M8 encounter domain. Carries the precise §2.7 `code` so the UI
