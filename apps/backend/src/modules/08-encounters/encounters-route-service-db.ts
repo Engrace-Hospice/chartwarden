@@ -1395,7 +1395,8 @@ export function createDbEncounterRouteService(
   /** The pinned (finalize-time or signed) narrative as `viewer` may see it (VN-D13: Part 2 sections withheld from a viewer without disclosure),
    *  or `null` when nothing is pinned yet or no DEK cipher is bound to open it. `final_cipher` is sealed under the tenant DEK (#122); never
    *  project it raw. With amendments (VN-D30) it is the CURRENT view, the latest signed text per section, and the history of each amended
-   *  section comes with it; without any it is the pin byte for byte and the history is `null`. */
+   *  section comes with it; without any it is the sealed sections joined (the pin's final text, by the invariant the rows keep), or the pin
+   *  itself when it has no sealed rows, and the history is `null`. */
   async function latestFinalPayload(
     t: DbClient,
     organizationId: string,
