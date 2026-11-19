@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 220,
-  "e2eReachedCount": 206,
-  "axeReachedCount": 206,
+  "totalStaticWebScreens": 222,
+  "e2eReachedCount": 208,
+  "axeReachedCount": 208,
   "zeroE2eCoverage": [
     {
       "id": "saas.help",
@@ -652,6 +652,14 @@
       "module": "23-billing-medicare",
       "path": "/admin/billing-audit",
       "permission": "billing.claim.read",
+      "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "encounter.closure-policy",
+      "module": "08-encounters",
+      "path": "/admin/closure-policy",
+      "permission": "encounter.closure_policy_admin",
       "e2eReached": true,
       "axeReached": true
     },
@@ -2388,6 +2396,14 @@
       "module": "08-encounters",
       "path": "/work/drafts",
       "permission": "encounter.author",
+      "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "encounter.overdue-notes",
+      "module": "08-encounters",
+      "path": "/work/overdue-notes",
+      "permission": "encounter.closure_override",
       "e2eReached": true,
       "axeReached": true
     }

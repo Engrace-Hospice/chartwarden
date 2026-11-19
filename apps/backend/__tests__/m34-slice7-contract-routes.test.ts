@@ -42,6 +42,7 @@ import {
 } from "../src/modules/34-saas-tenant-platform/index";
 import type { StepTemplate } from "../src/modules/34-saas-tenant-platform/onboarding/model";
 import type { OnboardingWizard } from "../src/modules/34-saas-tenant-platform/onboarding/wizard-service";
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 
 const PLATFORM_ORG = "99999999-9999-4999-8999-999999999999";
 const TENANT_ORG = "11111111-1111-4111-8111-111111111111";
@@ -136,6 +137,7 @@ const createdOrgAuthenticate = createSessionAuthenticate({
     }),
   }),
   organizationStage: { isConfined: async () => true },
+  noteClosureGate: liveNoteClosureGate,
 });
 
 function makeServer(

@@ -17,6 +17,18 @@ import { DOSESPOT_ALERT_RULES } from "./alert-rules-dosespot";
 
 export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 
+// The M8 cosignature alerts' audience: every supervisor role key M8 recognises. The canonical DON key is
+// `director_of_nursing` (packages/auth/src/roles/templates.ts); `don`/`clinical_lead` are the legacy
+// aliases. packages/messaging cannot import from apps/backend, so this is a literal copy of
+// SUPERVISOR_ROLE_KEYS (apps/backend/src/modules/08-encounters/supervisor-roles.ts) — keep them in step
+// (apps/backend/__tests__/m8-supervisor-role-keys-one-set.test.ts asserts they are equal).
+const M8_SUPERVISOR_ROLE_KEYS = [
+  "clinical_supervisor",
+  "director_of_nursing",
+  "don",
+  "clinical_lead",
+] as const;
+
 /**
  * The platform-default alert rules (§3.10). Each org's effective catalog is the union of these
  * rows plus its own overrides; cloning to per-org rows happens on first override edit. The three
@@ -1103,22 +1115,47 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // ADR-0113 D5 - the visit-note closure clock's three alert stages, which REPLACE the old `m8.encounter.unsigned` /
+  // `m8.encounter.documentation_late` rows (one alert stream: the `encounter.attention` sweep). `at_risk` (info, T-6h) and
+  // `overdue` (warn, T) go to the note's author only; `escalated` (warn, T+12h) goes to the author AND the supervisors of the
+  // note's provider entity, with the org-wide supervisors as the fallback when nobody is assigned to that entity or the draft has
+  // no site (so an escalation never has an empty audience). Never critical: documentation lateness is not a patient emergency.
+  // The payload names ids and instants only (packages/types M8_CLOSURE_ALERT_PAYLOADS).
   {
-    eventType: "m8.encounter.unsigned",
+    eventType: "m8.encounter.closure_at_risk",
     category: "clinical_routine",
-    severityFloor: "warn",
-    recipientResolver: "care_team",
-    resolverArgs: { patientIdPath: "patientId" },
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["authorUserId"] },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
   },
   {
-    eventType: "m8.encounter.documentation_late",
+    eventType: "m8.encounter.closure_overdue",
     category: "clinical_routine",
     severityFloor: "warn",
-    recipientResolver: "care_team",
-    resolverArgs: { patientIdPath: "patientId" },
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["authorUserId"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m8.encounter.closure_escalated",
+    // `administrative`, not `clinical_urgent`: the out-of-band sanitizer derives its push text from the category alone, and
+    // `clinical_urgent` reads "You have a new urgent request"; a late note is a documentation duty, not a patient emergency, so
+    // it gets the generic "new notification" line (the severity floor, warn, still carries the weight).
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: {
+      roleKeys: [],
+      userIdPaths: ["authorUserId"],
+      providerEntityIdPath: "providerEntityId",
+      providerEntityScopedRoleKeys: M8_SUPERVISOR_ROLE_KEYS,
+      providerEntityFallbackRoleKeys: M8_SUPERVISOR_ROLE_KEYS,
+    },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -1128,7 +1165,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_routine",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    resolverArgs: { roleKeys: M8_SUPERVISOR_ROLE_KEYS },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -1138,7 +1175,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    resolverArgs: { roleKeys: M8_SUPERVISOR_ROLE_KEYS },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -1148,7 +1185,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "warn",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    resolverArgs: { roleKeys: M8_SUPERVISOR_ROLE_KEYS },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -1158,7 +1195,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     category: "clinical_urgent",
     severityFloor: "critical",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["clinical_lead", "don"] },
+    resolverArgs: { roleKeys: M8_SUPERVISOR_ROLE_KEYS },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,

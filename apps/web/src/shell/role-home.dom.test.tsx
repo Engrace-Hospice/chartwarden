@@ -314,6 +314,7 @@ describe("RoleHome operational dashboard", () => {
 
     expect(await screen.findByText(/2 missed visits/i)).toBeTruthy();
   });
+
   it("labels today's visits with the shared purpose wording, not the raw enum", async () => {
     const soon = new Date(Date.now() + 60 * 60_000).toISOString();
     const visit = (id: string, patientId: string, visitPurpose: string) => ({
@@ -337,6 +338,81 @@ describe("RoleHome operational dashboard", () => {
     expect(screen.queryByText(/^Recert$/)).toBeNull();
     expect(screen.queryByText(/^F2f$/i)).toBeNull();
   });
+
+  it("takes a note task's due date from its closure deadline and leaves a legacy note undated", async () => {
+    const note = (id: string, encounterType: string, deadlineAt: string | null) => ({
+      id,
+      patientId: "p1",
+      encounterType,
+      closure: {
+        clockStartedAt: deadlineAt === null ? null : "2020-01-01T00:00:00.000Z",
+        deadlineAt,
+        stage: "ok",
+      },
+    });
+    const client = clientFor({
+      "/api/v1/encounters/my-drafts": {
+        encounters: [
+          note("n-late", "routine_visit", "2020-01-02T00:00:00.000Z"),
+          note("n-legacy", "admission_visit", null),
+        ],
+      },
+    });
+    renderHome(
+      { ...adminSession, permissions: ["encounter.read"], roles: ["rn"], isAdmin: false },
+      client,
+    );
+
+    const dated = (await screen.findByText("Finish routine visit note")).closest("li");
+    const legacy = (await screen.findByText("Finish admission visit note")).closest("li");
+    expect(dated?.textContent).toContain("Overdue");
+    expect(legacy?.textContent).not.toMatch(/Overdue|Due today|Tomorrow|In \d+ days/);
+  });
+
+  it("sends a draft note task to the composer and a finalized one to the read screen where it is signed", async () => {
+    const note = (id: string, encounterType: string, status: string) => ({
+      id,
+      patientId: "p1",
+      encounterType,
+      status,
+      closure: { clockStartedAt: "2020-01-01T00:00:00.000Z", deadlineAt: null, stage: "ok" },
+    });
+    const client = clientFor({
+      "/api/v1/encounters/my-drafts": {
+        encounters: [
+          note("n-draft", "routine_visit", "draft"),
+          note("n-final", "admission_visit", "finalized"),
+        ],
+      },
+    });
+    renderHome(
+      { ...adminSession, permissions: ["encounter.read"], roles: ["rn"], isAdmin: false },
+      client,
+    );
+
+    const hrefOf = async (title: string): Promise<string | null | undefined> =>
+      (await screen.findByText(title)).closest("a")?.getAttribute("href");
+    expect(await hrefOf("Finish routine visit note")).toBe(
+      "/patients/p1/encounters/n-draft/compose",
+    );
+    expect(await hrefOf("Finish admission visit note")).toBe("/patients/p1/encounters/n-final");
+  });
+
+  it("still lists a note task when the row carries no closure object, undated, instead of failing the whole card", async () => {
+    const client = clientFor({
+      "/api/v1/encounters/my-drafts": {
+        encounters: [{ id: "n-bare", patientId: "p1", encounterType: "routine_visit" }],
+      },
+    });
+    renderHome(
+      { ...adminSession, permissions: ["encounter.read"], roles: ["rn"], isAdmin: false },
+      client,
+    );
+
+    const task = (await screen.findByText("Finish routine visit note")).closest("li");
+    expect(task?.textContent).not.toMatch(/Overdue|Due today|Tomorrow|In \d+ days/);
+  });
+
   it("alerts a clinician to overdue and closing-soon certification windows", async () => {
     const win = (id: string, windowKind: string, state: string) => ({
       id,

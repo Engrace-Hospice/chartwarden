@@ -1316,6 +1316,68 @@ describe("GAP-028 — M8 author ABAC (is_author / is_author_or_supervisor / is_a
     expect(res.statusCode).toBe(403);
   });
 
+  it("ADR-0113: every authoring write hands the service the CALLER's membership id, so a supervisor's edit is never the author's", async () => {
+    const { app, backend } = makeServer();
+    const id = await draftBy(app, RN);
+    const spies = {
+      captureVitals: vi.spyOn(backend.service, "captureVitals"),
+      editVitals: vi.spyOn(backend.service, "editVitals"),
+      updateSelections: vi.spyOn(backend.service, "updateSelections"),
+      captureMileage: vi.spyOn(backend.service, "captureMileage"),
+      editMileage: vi.spyOn(backend.service, "editMileage"),
+    };
+    const mileage = {
+      odometerStart: 1,
+      odometerEnd: 5,
+      source: "manual_override",
+      manualOverrideReason: "route offline",
+    };
+    for (const [headers, caller] of [
+      [SUPERVISOR, "sup_1"],
+      [RN, "rn_1"],
+    ] as const) {
+      const vitals = await app.inject({
+        method: "POST",
+        url: `/api/v1/encounters/${id}/vitals`,
+        headers,
+        payload: VITALS_BODY,
+      });
+      const vitalsId = (vitals.json() as { vitalsId?: string }).vitalsId ?? "v-unknown";
+      await app.inject({
+        method: "PATCH",
+        url: `/api/v1/encounters/${id}/vitals/${vitalsId}`,
+        headers: { ...headers, "if-match": "0" },
+        payload: VITALS_BODY,
+      });
+      await app.inject({
+        method: "PATCH",
+        url: `/api/v1/encounters/${id}/selections`,
+        headers: { ...headers, "if-match": "0" },
+        payload: requiredSectionSelections("routine_visit", "rn"),
+      });
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/encounters/${id}/mileage`,
+        headers,
+        payload: mileage,
+      });
+      await app.inject({
+        method: "PATCH",
+        url: `/api/v1/encounters/${id}/mileage`,
+        headers: { ...headers, "if-match": "0" },
+        payload: mileage,
+      });
+      // The actor is the LAST argument of each write (index 3 for the three-argument writes, 4 for the others).
+      expect(spies.captureVitals.mock.lastCall?.[3], `captureVitals as ${caller}`).toBe(caller);
+      expect(spies.editVitals.mock.lastCall?.[4], `editVitals as ${caller}`).toBe(caller);
+      expect(spies.updateSelections.mock.lastCall?.[4], `updateSelections as ${caller}`).toBe(
+        caller,
+      );
+      expect(spies.captureMileage.mock.lastCall?.[3], `captureMileage as ${caller}`).toBe(caller);
+      expect(spies.editMileage.mock.lastCall?.[3], `editMileage as ${caller}`).toBe(caller);
+    }
+  });
+
   it("routes 4-7/9-14 read as 404 when the patient is outside the caller's caseload", async () => {
     const { app } = makeServer({
       isInCaseload: async (q) => q.userId === "rn_1",

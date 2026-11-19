@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import { useNoteClosure } from "../../shell/note-closure";
 import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assessments-api";
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
 import type { AddendumRow } from "./addenda-api";
@@ -276,6 +277,7 @@ export function EncounterRead(): JSX.Element {
   // comes from the session). One key and one first-attempt time per intent keeps a retry after a lost reply byte-identical.
   const releaseKeeper = useIdempotencyKeeper();
   const navigate = useNavigate();
+  const { refresh: refreshClosureStatus } = useNoteClosure();
 
   const { patientId, encounterId } = useParams<{
     patientId: string;
@@ -779,6 +781,9 @@ export function EncounterRead(): JSX.Element {
       closeCeremony();
 
       void load();
+      // Signing closes the note, so the server may have lifted the author's block: ask the banner's status again now instead of
+      // leaving "your access is limited" up until its next poll.
+      if (mode === "sign") refreshClosureStatus();
     },
     [
       encounterId,
@@ -791,6 +796,7 @@ export function EncounterRead(): JSX.Element {
       closeCeremony,
       load,
       clearFieldError,
+      refreshClosureStatus,
     ],
   );
 

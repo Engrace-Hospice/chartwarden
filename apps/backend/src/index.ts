@@ -196,9 +196,11 @@ import {
   mountMetricsRoute,
   registerBullMQQueueMetrics,
   registerHttpMetrics,
+  registerNoteClosureMetrics,
   registerOutboxMetrics,
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
+import { createNoteClosureGate } from "./bootstrap/note-closure-gate";
 import { createOrganizationStageReader } from "./bootstrap/onboarding-org-gate";
 import { createOpsNoticeClaims } from "./bootstrap/ops-notice-claims";
 import { buildDrizzleOrgProfilePort } from "./bootstrap/org-profile";
@@ -386,6 +388,7 @@ import {
   CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
+  CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
   EMERGENCY_ROUTE_RATE_LIMIT,
@@ -651,13 +654,17 @@ import {
   billableEncountersInRangeForOrg,
   buildM8VisitClosedConsumer,
   buildM8VisitPublishedConsumer,
+  buildM8VisitStartedNoteClockConsumer,
   buildM8WorkerDeps,
+  createDbClosurePolicyCache,
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
   createHearthnoteCiphers,
   encounterIdsForVisitsForOrg,
   encounterVisitIdsForOrg,
+  evaluateMemberClosure,
   mountEncounterRoutes,
+  registerClosureAlertCatalog,
   registerEncounterAbacPredicates,
   registerEncounterErasers,
   registerEncounterRoutes,
@@ -666,6 +673,7 @@ import {
   scheduleM8Jobs,
   signedEncounterNoteForOrg,
   signedEncounterSnapshotsInRangeForOrg,
+  withClosureAlertCatalog,
 } from "./modules/08-encounters/index";
 import { visitCountsByDisciplineForOrg } from "./modules/08-encounters/seams/visit-counts-by-discipline-for-org";
 import {
@@ -1915,6 +1923,7 @@ import {
   createBreakGlassReviewSweep,
   createBullmqTimerPort,
   createDbAckQueueStatsReader,
+  createDbAlertCorrelationReader,
   createDbMessagingProvider,
   createDbMessagingRouteService,
   createDlqAuditRecorder,
@@ -4329,6 +4338,40 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const organizationStage = dbHandle
     ? createOrganizationStageReader(readOrganizationStatus!)
     : undefined;
+  // ADR-0113 D6 - the visit-note closure gate. ONE policy cache serves the gate and `mountEncounterRoutes` (below), so a policy PUT
+  // invalidates what the gate reads. The gate runs the one shared evaluator inside the caller's org context; a failure is logged with
+  // the organization id only and the request is refused 503 (the gate fails closed; the one exception is a failed policy refresh for an
+  // organization whose last known mode was off / warn, read less than 55s ago (60s worst case), which is served instead).
+  const closurePolicyCache = dbHandle ? createDbClosurePolicyCache(dbHandle.db) : undefined;
+  // The refusal counter lives on the metrics registry built much later in boot (the outboxDispatcherRef forward-ref precedent):
+  // until it is registered a refusal is only logged.
+  let recordNoteClosureRefusals: (count: number) => void = () => {};
+  const noteClosureGate =
+    dbHandle && closurePolicyCache
+      ? createNoteClosureGate({
+          policyCache: closurePolicyCache,
+          evaluate: ({ organizationId, userId, membershipId, now, policy }) =>
+            withOrgContext(dbHandle.db, { organizationId, userId }, (tx) =>
+              evaluateMemberClosure(tx as unknown as DbClient, {
+                organizationId,
+                membershipId,
+                now,
+                policy,
+              }),
+            ),
+          // Throttled by the gate to one line per organization per 30s; `suppressed` counts the failures it swallowed since the last.
+          onFailure: ({ organizationId, error, servedStale, suppressed }) =>
+            app.log.error(
+              { err: error, organizationId, servedStale, suppressed },
+              "note-closure gate read failed",
+            ),
+          // The evidence that the control enforces: at most one line per organization per 30s, the organization id and a count only.
+          onRefusal: ({ organizationId, refused }) => {
+            app.log.info({ organizationId, refused }, "note-closure gate refused requests");
+            recordNoteClosureRefusals(refused);
+          },
+        })
+      : undefined;
   const tenantClearinghouse = dbHandle
     ? createTenantClearinghouseRuntime({
         db: dbHandle.db,
@@ -5776,6 +5819,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           }
           return organizationStage;
         })(),
+        // ADR-0113 D6 - a clinician past a visit note's block instant reaches only the closure allowlist (403 NOTE_CLOSURE_REQUIRED
+        // otherwise; 503 NOTE_CLOSURE_UNAVAILABLE when the status cannot be read). Required for the same reason as the stage reader.
+        noteClosureGate: (() => {
+          if (!noteClosureGate) {
+            throw new Error(
+              "the note-closure gate is unavailable: refusing to build the session authenticate hook without the visit-note closure gate",
+            );
+          }
+          return noteClosureGate;
+        })(),
         // TASK-013 — the M23 #39/#40 / M15 `/internal/...` system-principal routes' only path to
         // reachability. Unset (dev/no secret configured) → `systemCredential` is undefined and the
         // machine-credential branch never runs, exactly today's fail-closed posture.
@@ -6597,6 +6650,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             dbHandle.db,
             m8OutboxPublisher,
             createHearthnoteCiphers(getTenantKeyProvider()),
+            // ADR-0113 D6 - the SAME policy cache the closure gate reads, so a closure-policy PUT invalidates the gate's view.
+            {
+              ...(closurePolicyCache ? { policyCache: closurePolicyCache } : {}),
+              // ADR-0113 D7 - a refused override grant/revoke leaves a best-effort audit event; if THAT write fails, say so (error class only).
+              onDenialAuditFailure: (error) =>
+                app.log.warn(
+                  { errorClass: error instanceof Error ? error.name : typeof error },
+                  "closure override denial audit event could not be written",
+                ),
+              // ADR-0113 D7 - fail-open (an availability control): 10/min/user, 100/min/org on the override grant and revoke routes, which
+              // bounds the immutable denied-attempt audit rows one supervisor can add (fresh Idempotency-Keys defeat the replay cache).
+              overrideRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: CLOSURE_OVERRIDE_ROUTE_RATE_LIMIT,
+                keyPrefix: "m8-closure-override",
+              }),
+            },
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
           // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox. The M4 legal-hold read gates a
@@ -6715,6 +6785,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           );
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher, {
             deviceAttestationEnforced: evvDeviceAttestationEnforced,
+            // ADR-0113 D6 - the two offline-sync routes are allowlisted for check-OUT uploads, but a batch that carries a check-IN starts
+            // a visit, so the route asks the closure gate's policy+evaluator half (no allowlist) first. Absent gate = fail closed (500).
+            assertMayStartVisit: (actor) => {
+              if (!noteClosureGate) {
+                throw new Error(
+                  "the note-closure gate is unavailable: refusing an EVV offline batch that starts a visit",
+                );
+              }
+              return noteClosureGate.assertNotBlocked(actor);
+            },
             // GAP-133 — capture seals coords under the tenant DEK; no key bound ⇒ the capture is refused.
             coordsCipher: m18CoordsCipher(),
             // A coordinate the location list cannot open reads as null and is logged as an integrity fault.
@@ -9785,6 +9865,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     return [...measures, ...rows, ...financial];
   });
   registerHttpMetrics(app, metricsRegistry);
+  recordNoteClosureRefusals = registerNoteClosureMetrics(metricsRegistry).recordRefusals;
   const outboxMetrics = registerOutboxMetrics(metricsRegistry, {
     pendingDepth: outboxPendingDepth,
     oldestPendingAgeSeconds: outboxOldestPendingAgeSeconds,
@@ -12466,7 +12547,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       outbox: m8OutboxPublisher,
       activeOrgs: m8ActiveOrgs,
-      alerts: getSeam("AlertEmitter") as AlertEmitter,
+      // ADR-0113 D5 - M8's closure alert payloads are registered on the Foundation registry and asserted valid HERE, at boot, and every
+      // closure alert the workers emit is checked against that catalog first (other alert types pass through; the M14 alerts' shape).
+      alerts: withClosureAlertCatalog(
+        getSeam("AlertEmitter") as AlertEmitter,
+        registerClosureAlertCatalog(createAlertPayloadRegistry()),
+      ),
+      // ADR-0113 D5 - the closure sweep skips the alerts that already exist instead of re-emitting them every tick.
+      existingAlertCorrelations: createDbAlertCorrelationReader(dbHandle.db),
     });
     const m8Workers = registerM8CronWorkers(m8WorkerDeps);
     attachDlqAlertsToAll(m8Workers, "m8");
@@ -15137,6 +15225,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             db: dbHandle.db,
             outbox: m8OutboxPublisher,
           }),
+          // ADR-0113 — the visit-note closure clock starts at arrival: M8 stamps `encounter.clock_started_at` from the M17 visit start.
+          buildM8VisitStartedNoteClockConsumer({ db: dbHandle.db }),
           buildM17EncounterSignedConsumer({
             db: dbHandle.db,
             outbox: m17OutboxPublisher,

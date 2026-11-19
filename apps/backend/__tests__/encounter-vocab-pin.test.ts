@@ -101,9 +101,15 @@ describe("§2.7 D11 — the vocabulary version pin (#128)", () => {
     // A selections PATCH restamps the authored version, exactly as the Drizzle upsert restamps
     // `hearthnote_selection.template_version`.
     const current = await service.getEncounter(ORG, ENC);
-    await service.updateSelections(ORG, ENC, current?.version as number, {
-      sections: requiredSectionSelections("routine_visit", "rn").sections,
-    });
+    await service.updateSelections(
+      ORG,
+      ENC,
+      current?.version as number,
+      {
+        sections: requiredSectionSelections("routine_visit", "rn").sections,
+      },
+      null,
+    );
 
     await service.finalize(ORG, ENC, "2026-06-21T12:00:00.000Z");
     expect(inspect.vocabPinOf(ENC)).toBe(activeNarrativeVocabRelease(VOCAB_VERSION).id);

@@ -4,14 +4,18 @@
 // @chartwarden/types from T01); HearthNote Layer 1 (T05), cosignature workflow (T06), late-entry tiers
 // (T07), seams (T08), routes (T09) all compose over this pure core.
 import type { DbClient } from "@chartwarden/db";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predicates";
+import { createDbClosureRouteService } from "./closure/closure-route-service";
+import type { ClosurePolicyCache } from "./closure/policy-service";
 import {
   type EncounterWriteOutboxPort,
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
+import { registerClosureRoutes as _registerM8ClosureRoutes } from "./routes/closure-routes";
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
 
 /**
@@ -21,16 +25,50 @@ import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounter
  * every mutation emits its `m8.*` event on the passed transactional-outbox publisher (the composition
  * root binds M1's catalog-validating publisher pinned to caller-module `m8`). Replaces the in-memory
  * clinical-core scaffold mount for M8.
+ *
+ * ADR-0113: also mounts the visit-note closure routes (closure-status, overdue-notes, closure-overrides, closure-policy).
+ * `closure.policyCache` is the policy cache the request-time closure gate reads; pass the SAME instance to both so a policy PUT
+ * invalidates what the gate sees. Absent, the closure routes build their own (the gate would then lag a PUT by up to its TTL).
  */
 export function mountEncounterRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: EncounterWriteOutboxPort,
   ciphers?: HearthnoteCiphers,
+  closure?: {
+    readonly policyCache?: ClosurePolicyCache;
+    /** Reports (error class only) a refused grant/revoke whose denial audit event could not be written; see closure-route-service.ts. */
+    readonly onDenialAuditFailure?: (error: unknown) => void;
+    /**
+     * The per-actor limiter for the override grant and revoke routes (`createRouteRateLimit`, which the composition root builds over
+     * its rate-limit store; note-closure-gate-wiring.test.ts pins that it does). Absent, the two routes are unlimited: a mount that
+     * is not the composition root (a test) only.
+     */
+    readonly overrideRateLimit?: PreHandler;
+  },
 ): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
   _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox, ciphers) });
+  _registerM8ClosureRoutes(app, {
+    overrideRateLimit: closure?.overrideRateLimit ?? (async () => {}),
+    service: createDbClosureRouteService({
+      db,
+      ...(closure?.policyCache ? { policyCache: closure.policyCache } : {}),
+      ...(closure?.onDenialAuditFailure
+        ? { onDenialAuditFailure: closure.onDenialAuditFailure }
+        : {}),
+    }),
+  });
 }
+
+// ADR-0113 — the visit-note closure clock: the pure clock, the tenant policy (+ its cache), the supervisor override, the shared
+// evaluator the gate / banner / board call, and the route service.
+export * from "./closure/index";
+export {
+  type ClosureRouteDeps,
+  CLOSURE_OVERRIDE_STEP_UP_KEY,
+  registerClosureRoutes,
+} from "./routes/closure-routes";
 
 export * from "./lifecycle/index";
 // #121 — the §2.6 Layer-3 compliance gate + the register of what each of its twelve checks is today.
@@ -114,6 +152,7 @@ export {
   type M8VisitClosedOutboxPort,
   buildM8VisitClosedConsumer,
 } from "./outbox-consumers/m17-visit-closed";
+export { buildM8VisitStartedNoteClockConsumer } from "./outbox-consumers/m17-visit-started-note-clock";
 export {
   buildM8WorkerDeps,
   registerM8CronWorkers,

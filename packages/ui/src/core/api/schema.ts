@@ -12047,6 +12047,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/closure-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Grant a supervisor override that lifts the closure BLOCK for one clinician for 1-24 hours (default 4). Needs a fresh step-up. The reason (40 to 500 characters) is free text: it is screened and refused with a 422 VALIDATION_FAILED (details[0].field `reason`, details[0].code EVIDENCE_LOOKS_LIKE_PHI, nothing written, the text never echoed) when it looks like an SSN or Medicare number; it is stored on the override row and carried, as `context.justification`, in the `m8.encounter.closure_override_granted` audit event, and no route returns it. Refused, checked in this order, with 403 FORBIDDEN for an override of oneself (before anything is read), 403 NOTE_CLOSURE_GRANTOR_BLOCKED when the granting supervisor has a note of their own past its block instant (judged with any override they hold ignored: close your own overdue notes first; only a genuinely clear supervisor releases others), and 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED (message: There is nothing for you to lift for this clinician right now.) when there is nothing for the caller to lift: the clinician has no open note, is clear, warn-only or already overridden, or has an oldest open note outside the caller's sites (a note with no site is in scope for every supervisor; org-wide roles see every site). That is ONE answer for all of them, so a site-scoped supervisor learns nothing about a clinician outside their sites. The 409 is not replayed under the Idempotency-Key (it depends on the clinician's state at that instant); the 403 NOTE_CLOSURE_GRANTOR_BLOCKED normally IS, because the refused attempt commits a best-effort m8.encounter.closure_override_denied audit event (ids only), so retry with a new Idempotency-Key after closing your own notes. Grants and revokes share one limit of 10 requests a minute per user and 100 a minute per organization (429 RATE_LIMITED, Retry-After 60) */
+        post: operations["postApiV1EncountersClosureoverrides"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/closure-overrides/{overrideId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a closure override early (idempotent; needs a fresh step-up). The grant row is never deleted and a revoked grant can never be un-revoked. The response is the stored grant plus `remainingActiveUntil`: the latest expiry of any OTHER active override for the same clinician (another supervisor's grant keeps them unblocked), or null when the revoke re-blocks them. Only the supervisor who granted the override, or a caller whose scope is org-wide, may revoke it: anyone else is refused 403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE. The first revoke writes an `m8.encounter.closure_override_revoked` audit event (ids and instants, never the reason); a repeat writes none. Counted in the same limit as the grant route (10 a minute per user, 100 a minute per organization; 429 RATE_LIMITED, Retry-After 60) */
+        post: operations["postApiV1EncountersClosureoverridesByOverrideIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/closure-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's visit-note closure policy (mode off | warn | block, threshold hours; an unset tenant is warn / 24) */
+        get: operations["getApiV1EncountersClosurepolicy"];
+        /** Set the tenant's visit-note closure policy. Moving to block stamps enforce_from = now server-side so notes already overdue get a fresh window */
+        put: operations["putApiV1EncountersClosurepolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/closure-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own visit-note closure position (mode, stage, deadline, the oldest open clocked note, the count overdue) — the shell banner polls it. `patientId` and `encounterStatus` (draft | finalized) describe that oldest note, null exactly when `encounterId` is null, so the banner can link it without a read-audited `GET /encounters/{encounterId}`. Not read-audited (the caller's own position; opaque ids and an enum, no patient content) */
+        get: operations["getApiV1EncountersClosurestatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/cosignature-queue": {
         parameters: {
             query?: never;
@@ -12071,8 +12140,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The caller's open draft encounters */
+        /** My notes: the caller's open encounters (draft and finalized: a note is closed only once signed), each with its visit-note closure clock (`closure.clockStartedAt`, `deadlineAt`, `stage`; a legacy note with no clock has null instants and stage ok). Nearest deadline first, legacy last */
         get: operations["getApiV1EncountersMydrafts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/overdue-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Supervisor board: at-risk, overdue and escalated clocked open notes, oldest first (org-wide scope sees every site; otherwise the caller's sites plus any note with no site; encounter.closure_override). Read-audited as a multi-patient read: one `encounter.viewed` event per distinct patient on the page; an empty page writes none */
+        get: operations["getApiV1EncountersOverduenotes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -67940,6 +68026,182 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1EncountersClosureoverrides: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    subjectMembershipId: string;
+                    reason: string;
+                    hours?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        subjectMembershipId: string;
+                        grantedByMembershipId: string;
+                        obligationKind: string;
+                        /** Format: date-time */
+                        grantedAt: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        revokedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersClosureoverridesByOverrideIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                overrideId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        subjectMembershipId: string;
+                        grantedByMembershipId: string;
+                        obligationKind: string;
+                        /** Format: date-time */
+                        grantedAt: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        revokedAt: string | null;
+                        remainingActiveUntil: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersClosurepolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        obligationKind: "visit_note";
+                        mode: "off" | "warn" | "block";
+                        thresholdHours: number;
+                        enforceFrom: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersClosurepolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    mode: "off" | "warn" | "block";
+                    thresholdHours: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        obligationKind: "visit_note";
+                        mode: "off" | "warn" | "block";
+                        thresholdHours: number;
+                        enforceFrom: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersClosurestatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mode: "off" | "warn" | "block";
+                        thresholdHours: number;
+                        verdict: "clear" | "warn" | "blocked";
+                        stage: "ok" | "at_risk" | "overdue" | "escalated";
+                        encounterId: string | null;
+                        patientId: string | null;
+                        encounterStatus: string | null;
+                        deadlineAt: string | null;
+                        hoursOverdue: number;
+                        overdueCount: number;
+                        overrideExpiresAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1EncountersCosignaturequeue: {
         parameters: {
             query?: never;
@@ -68070,7 +68332,55 @@ export interface operations {
                                 signedAt: string | null;
                                 version: number;
                             }[];
+                            closure: {
+                                clockStartedAt: string | null;
+                                deadlineAt: string | null;
+                                stage: "ok" | "at_risk" | "overdue" | "escalated";
+                            };
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersOverduenotes: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mode: "off" | "warn" | "block";
+                        thresholdHours: number;
+                        items: {
+                            encounterId: string;
+                            authoredByMembershipId: string;
+                            patientId: string;
+                            encounterType: string;
+                            discipline: string;
+                            serviceDate: string;
+                            status: string;
+                            /** Format: date-time */
+                            clockStartedAt: string;
+                            /** Format: date-time */
+                            deadlineAt: string;
+                            stage: "at_risk" | "overdue" | "escalated";
+                            hoursOverdue: number;
+                        }[];
+                        truncated: boolean;
                     };
                 };
             };

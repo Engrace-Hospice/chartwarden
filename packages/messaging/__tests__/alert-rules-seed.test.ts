@@ -22,8 +22,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
     // admission/scheduling/encounter alert work (c3886b68: m6.admission.discharged, the four m17 visit
     // alerts, and the six m8 encounter sign/cosignature alerts). Every added type is a real emitter:
     // an M6/M10/M17/M8 outbox catalog event, or an alert the M8 cron workers raise directly
-    // (m8.encounter.unsigned / documentation_late). The full set is pinned so a rule cannot be added
-    // or dropped silently.
+    // (the m8.encounter.closure_* stages, which replaced m8.encounter.unsigned / documentation_late in ADR-0113).
+    // The full set is pinned so a rule cannot be added or dropped silently.
     expect(PLATFORM_DEFAULT_ALERT_RULES.map((r) => r.eventType)).toEqual([
       "m36.portal_signature.pending",
       "m36.message.mentioned",
@@ -128,8 +128,10 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m11.order.lab_cancellation_required",
       // #908/#910 - a critical (HH/LL) lab result; M36's `critical-lab-alerts` consumer.
       "m11.order.critical_lab_result",
-      "m8.encounter.unsigned",
-      "m8.encounter.documentation_late",
+      // ADR-0113 — the visit-note closure clock's three stages (replacing m8.encounter.unsigned / documentation_late).
+      "m8.encounter.closure_at_risk",
+      "m8.encounter.closure_overdue",
+      "m8.encounter.closure_escalated",
       "m8.encounter.cosignature_routed",
       "m8.encounter.cosignature_overdue",
       "m8.encounter.cosignature_escalated",
@@ -429,6 +431,96 @@ describe("M36-T05 §7.4 system_locked floors", () => {
       (r) => r.eventType !== "system.backup_failure",
     );
     expect(validateAlertRuleSeed(missing).map((x) => x.type)).toContain("missing_system_locked");
+  });
+
+  // The cosign rules must all reach the SAME supervisor audience. Which keys that audience is lives in ONE place: the cross-package
+  // equality with SUPERVISOR_ROLE_KEYS (apps/backend 08-encounters/supervisor-roles.ts; messaging cannot import apps/backend) is
+  // asserted in apps/backend/__tests__/m8-supervisor-role-keys-one-set.test.ts, so no literal copy of the keys is pinned here.
+  it("the m8 cosignature alerts all reach one and the same non-empty supervisor set, including director_of_nursing", () => {
+    const cosignEventTypes = [
+      "m8.encounter.cosignature_routed",
+      "m8.encounter.cosignature_overdue",
+      "m8.encounter.cosignature_escalated",
+      "m8.encounter.cosignature_hard_cap_reached",
+    ];
+    const audiences = cosignEventTypes.map((eventType) => {
+      const rule = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
+      expect(rule, `${eventType} must be seeded`).toBeDefined();
+      expect(rule!.recipientResolver).toBe("role_set");
+      return [...(rule!.resolverArgs as { roleKeys: string[] }).roleKeys].sort();
+    });
+    expect(audiences[0]?.length).toBeGreaterThan(0);
+    expect(audiences[0]).toContain("director_of_nursing");
+    for (const audience of audiences) expect(audience).toEqual(audiences[0]);
+  });
+
+  // ADR-0113 D5 - the visit-note closure alerts. The old `m8.encounter.unsigned` / `documentation_late` rows are gone (one alert
+  // stream); the three stages are info / warn / warn (never critical) and reach the author, with the supervisors of the note's
+  // provider entity added at escalation only.
+  describe("the m8 visit-note closure alerts (ADR-0113)", () => {
+    const ruleOf = (eventType: string) => {
+      const found = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
+      expect(found, `${eventType} must be seeded`).toBeDefined();
+      return found!;
+    };
+
+    it("no longer seeds the two superseded age-less rules", () => {
+      const types = PLATFORM_DEFAULT_ALERT_RULES.map((r) => r.eventType);
+      expect(types).not.toContain("m8.encounter.unsigned");
+      expect(types).not.toContain("m8.encounter.documentation_late");
+    });
+
+    it.each([
+      ["m8.encounter.closure_at_risk", "info"],
+      ["m8.encounter.closure_overdue", "warn"],
+      ["m8.encounter.closure_escalated", "warn"],
+    ] as const)(
+      "%s is enabled, not system-locked, and %s severity (never critical)",
+      (eventType, severity) => {
+        expect(ruleOf(eventType)).toMatchObject({
+          severityFloor: severity,
+          recipientResolver: "role_set",
+          systemLocked: false,
+          enabled: true,
+        });
+      },
+    );
+
+    it.each(["m8.encounter.closure_at_risk", "m8.encounter.closure_overdue"])(
+      "%s reaches the author only (no role audience, no supervisor)",
+      (eventType) => {
+        expect(ruleOf(eventType).resolverArgs).toEqual({
+          roleKeys: [],
+          userIdPaths: ["authorUserId"],
+        });
+      },
+    );
+
+    it("escalation is an administrative alert, so its push text is the generic notification line and never the urgent-request one", () => {
+      const rule = ruleOf("m8.encounter.closure_escalated");
+      expect(rule.category).toBe("administrative");
+      expect(rule.category).not.toBe("clinical_urgent");
+    });
+
+    it("escalation reaches the author plus the provider-entity supervisors, org-wide supervisors as fallback", () => {
+      const args = ruleOf("m8.encounter.closure_escalated").resolverArgs as {
+        roleKeys: string[];
+        userIdPaths: string[];
+        providerEntityIdPath: string;
+        providerEntityScopedRoleKeys: string[];
+        providerEntityFallbackRoleKeys: string[];
+      };
+      expect(args.roleKeys).toEqual([]);
+      expect(args.userIdPaths).toEqual(["authorUserId"]);
+      expect(args.providerEntityIdPath).toBe("providerEntityId");
+      // The audience is the cosignature rules' (the exact keys are pinned once, in m8-supervisor-role-keys-one-set.test.ts).
+      const cosignAudience = [
+        ...(ruleOf("m8.encounter.cosignature_routed").resolverArgs as { roleKeys: string[] })
+          .roleKeys,
+      ].sort();
+      expect([...args.providerEntityScopedRoleKeys].sort()).toEqual(cosignAudience);
+      expect([...args.providerEntityFallbackRoleKeys].sort()).toEqual(cosignAudience);
+    });
   });
 });
 

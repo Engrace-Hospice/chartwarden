@@ -17,6 +17,7 @@ export * from "./hospice-coverage";
 export * from "./commercial-billing";
 export * from "./commercial-claim";
 export * from "./encounter";
+export * from "./documentation-obligation";
 export * from "./assessment";
 export * from "./hope";
 export * from "./orders";

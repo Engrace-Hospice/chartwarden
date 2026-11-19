@@ -101,6 +101,7 @@ import {
 } from "../src/modules/34-saas-tenant-platform/routes/platform/service-drizzle";
 import { lockTenantOnboardingShared } from "../src/modules/34-saas-tenant-platform/routes/platform/tenant-onboarding-lock";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -3412,6 +3413,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           }),
         }),
         organizationStage: reader,
+        noteClosureGate: liveNoteClosureGate,
       });
     };
     const req = (method: string, url: string, template?: string) =>
@@ -3621,6 +3623,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         organizationStage: createOrganizationStageReader(() =>
           createOrganizationStatusReader(app.db)(ORG_K),
         ),
+        noteClosureGate: liveNoteClosureGate,
       });
     };
     const gateRequest = (method: string, template: string) =>
@@ -4638,6 +4641,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
             }),
           }),
           organizationStage: reader,
+          noteClosureGate: liveNoteClosureGate,
         }),
         security: { rateLimitEnabled: false },
       });

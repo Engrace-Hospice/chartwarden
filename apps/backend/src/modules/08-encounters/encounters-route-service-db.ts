@@ -32,6 +32,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type AdmissionSummary,
   type CarePlanOverdueStatus,
+  type EncounterClockStartSource,
   type EncounterVisitModality,
   type EvvBracketResolution,
   ForbiddenError,
@@ -76,6 +77,15 @@ import {
   promotionHasDraft,
   requireReview,
 } from "./chart-promotion";
+import {
+  clampClockStart,
+  isValidServiceDate,
+  localDayStart,
+  stampClockIfNull,
+} from "./closure/clock-stamp";
+import { myNotesOf } from "./closure/my-notes";
+import { OPEN_NOTE_STATUS_LIST_SQL } from "./closure/open-status";
+import { readClosurePolicy } from "./closure/policy-service";
 import { seedModalityFor } from "./consumers/seed-modality";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
@@ -444,6 +454,107 @@ export function createDbEncounterRouteService(
   /** GAP-013: the org-local calendar day (org timezone, never the request's UTC date) the late-entry tier is measured on. */
   const orgLocalToday = async (t: DbClient, organizationId: string): Promise<LocalDate> =>
     localDateInTimeZone(clock(), await organizationTimezone(t, organizationId)) as LocalDate;
+
+  /**
+   * ADR-0113: a seeded draft that never got an M17 start event gets its documentation clock on the AUTHOR's first
+   * authoring write (and at sign, so a signed note always has one). Only the author's own write counts: the clock is the
+   * author's duty, so an edit by anyone else (a supervisor on `IS_AUTHOR_OR_SUPERVISOR` routes) never starts it, and a
+   * legacy (pre-deploy, clockless) draft is not clocked by someone else touching it (D9). A `null` `actorMembershipId`
+   * (a caller with no acting member) stamps nothing. Write-once and open-notes-only in the UPDATE itself; the
+   * row's own `clockStartedAt` just skips the round trip once it is set. A GET never calls this.
+   */
+  const stampDraftOpened = async (
+    t: DbClient,
+    organizationId: string,
+    row: {
+      readonly id: string;
+      readonly clockStartedAt: Date | null;
+      readonly authoredByMembershipId: string;
+    },
+    actorMembershipId: string | null,
+  ): Promise<void> => {
+    if (row.clockStartedAt !== null) return;
+    if (actorMembershipId === null || actorMembershipId !== row.authoredByMembershipId) return;
+    await stampClockIfNull(t, {
+      orgId: organizationId,
+      encounterId: row.id,
+      at: clock(),
+      source: "draft_opened",
+    });
+  };
+
+  /**
+   * ADR-0113 D1: what a note's clock does at CREATION. The clock starts at ARRIVAL, so a visit-linked note follows the visit, but a
+   * `visitId` is otherwise just a uuid the clinician typed (no FK), so it counts only when the visit resolves, through the M17
+   * `VisitReader` seam, in this organization AND is assigned to the author. Then: a visit that has not started yet leaves the clock to
+   * the M17 `visit.started` event (`await_arrival`); one that has ALREADY started (that event came and went before this note existed)
+   * starts the clock at the visit's actual start, with the source the event consumer would have used (`arrived`). Anything else (no
+   * visit, a made-up or someone else's visit id, a seam that cannot answer) starts the clock at creation: the fail-safe is a clock that
+   * runs, never one that waits, and an arbitrary visit id can neither defer the clock nor move it into the past.
+   */
+  type CreationClockPlan =
+    | { readonly kind: "at_creation" }
+    | { readonly kind: "await_arrival" }
+    | {
+        readonly kind: "arrived";
+        readonly startedAt: Date;
+        readonly source: EncounterClockStartSource;
+        /** The VISIT's own service day (never the request's): the earliest the arrival may be held to. */
+        readonly visitServiceDate: string;
+      };
+
+  async function creationClockPlan(
+    organizationId: string,
+    visitId: string | undefined,
+    authorMembershipId: string,
+  ): Promise<CreationClockPlan> {
+    if (!visitId) return { kind: "at_creation" };
+    try {
+      const visit = await getSeam("VisitReader").visitForEncounter(organizationId, visitId);
+      if (
+        visit === null ||
+        visit.organizationId !== organizationId ||
+        visit.assignedMembershipId !== authorMembershipId
+      ) {
+        return { kind: "at_creation" };
+      }
+      if (visit.actualStartedAt === null) return { kind: "await_arrival" };
+      const startedAt = new Date(visit.actualStartedAt);
+      if (Number.isNaN(startedAt.getTime())) return { kind: "at_creation" };
+      // The lower bound is the VISIT's service day: a request's own `serviceDate` is the clinician's to type, and using it would let
+      // a late note claim today and start its clock days after the arrival. An unreadable date falls back to the creation instant.
+      if (!isValidServiceDate(visit.serviceDate)) return { kind: "at_creation" };
+      const source = visit.evvBracketState === "evv_present" ? "evv_check_in" : "visit_started";
+      return { kind: "arrived", startedAt, source, visitServiceDate: visit.serviceDate };
+    } catch {
+      return { kind: "at_creation" };
+    }
+  }
+
+  /**
+   * The clock columns for the INSERT. An `arrived` instant is held between the VISIT's service day (in the organization's own
+   * timezone) and now, so a skewed device instant on the visit cannot back-date or post-date it. The upper bound is the creation
+   * instant because the visit row carries no "recorded at" instant (the M17 consumer, which has the event, caps at that instead).
+   */
+  async function creationClockColumns(
+    t: DbClient,
+    organizationId: string,
+    plan: CreationClockPlan,
+  ): Promise<{ clockStartedAt?: Date; clockStartSource?: EncounterClockStartSource }> {
+    if (plan.kind === "await_arrival") return {};
+    const created = clock();
+    if (plan.kind === "at_creation")
+      return { clockStartedAt: created, clockStartSource: "draft_created" };
+    const timeZone = await organizationTimezone(t, organizationId);
+    return {
+      clockStartedAt: clampClockStart(
+        plan.startedAt,
+        localDayStart(plan.visitServiceDate, timeZone),
+        created,
+      ),
+      clockStartSource: plan.source,
+    };
+  }
 
   const freeTextCipher = ciphers?.freeText;
   const narrativeCipher = ciphers?.narrative;
@@ -1252,11 +1363,13 @@ export function createDbEncounterRouteService(
     organizationId: string,
     encounterId: string,
     input: Parameters<EncounterRouteService["captureMileage"]>[2],
+    actorMembershipId: string | null,
   ) {
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const t = tx as unknown as DbClient;
       const r = await loadEnc(t, encounterId);
       checkMutableForEdit({ status: r.status });
+      await stampDraftOpened(t, organizationId, r, actorMembershipId);
       const plan = planMileageCapture(input);
       const [existing] = await t
         .select({ id: MILEAGE.id })
@@ -1404,14 +1517,33 @@ export function createDbEncounterRouteService(
         return { encounters: rows.map(toView) };
       });
     },
+    // ADR-0113: "My notes" = the author's OPEN notes (draft + finalized, a finalized note is closed only once signed), each with
+    // where it sits on the visit-note clock, from the same pure clock + tenant policy the gate and the alerts use.
     async myDrafts(organizationId, actorUserId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const rows = (await tx
-          .select(encounterCols)
+        const t = tx as unknown as DbClient;
+        const policy = await readClosurePolicy(t, organizationId, "visit_note");
+        const rows = (await t
+          .select({ ...encounterCols, clockStartedAt: ENC.clockStartedAt })
           .from(ENC)
-          .where(and(eq(ENC.status, "draft"), eq(ENC.authoredByMembershipId, actorUserId)))
-          .orderBy(desc(ENC.serviceDate), desc(ENC.id))) as EncounterRow[];
-        return { encounters: rows.map(toView) };
+          .where(
+            and(
+              eq(ENC.organizationId, organizationId),
+              eq(ENC.authoredByMembershipId, actorUserId),
+              // A literal list (not bind parameters), as the closure reader does, so the planner can prove the partial-index predicate.
+              sql`${ENC.status} IN ${OPEN_NOTE_STATUS_LIST_SQL}`,
+            ),
+          )
+          .orderBy(desc(ENC.serviceDate), desc(ENC.id))) as (EncounterRow & {
+          clockStartedAt: Date | null;
+        })[];
+        return {
+          encounters: myNotesOf(
+            rows.map((r) => ({ view: toView(r), clockStartedAt: r.clockStartedAt })),
+            policy,
+            clock(),
+          ),
+        };
       });
     },
     async billable(organizationId, encounterIds) {
@@ -1465,6 +1597,8 @@ export function createDbEncounterRouteService(
       // and nesting that inside an open `withOrgContext` would set the GUC on an already-bound
       // connection (M10's `admissionSiting` records the same rule).
       const admission = await admissionSummaryFor(organizationId, args.admissionId);
+      // Likewise resolved before the write tx (the VisitReader seam opens its own tenant context).
+      const clockPlan = await creationClockPlan(organizationId, args.visitId, actorUserId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // §2.7 pre-write guards (the rest — volunteer assignment, service-date-after-admission — thread
@@ -1498,6 +1632,8 @@ export function createDbEncounterRouteService(
               status: "draft",
               // Only a telephonic encounter type implies a modality at creation; confirmed_at stays NULL.
               visitModality: seedModalityFor({ encounterType: args.encounterType }),
+              // ADR-0113: the clock columns by plan (at creation, at the visit's arrival, or left to the M17 start event), in this INSERT.
+              ...(await creationClockColumns(t, organizationId, clockPlan)),
             })
             .returning(),
           "encounter insert returned no row",
@@ -1527,13 +1663,14 @@ export function createDbEncounterRouteService(
     // This used to bump `version`, stamp `updated_at` and return `layer1Preview: ""` — the clinician's
     // note accepted with a 200 and dropped on the floor (#114). It now writes the row the table was
     // shaped for. One row per parent (mig 0225 made that index genuinely unique), so this is an upsert.
-    async updateSelections(organizationId, encounterId, ifVersion, input) {
+    async updateSelections(organizationId, encounterId, ifVersion, input, actorMembershipId) {
       const { stored, prose } = splitFreeText(input.sections);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
         checkVersion({ expected: ifVersion, actual: Number(r.version) });
+        await stampDraftOpened(t, organizationId, r, actorMembershipId);
         // Assemble BEFORE the write: an unknown code or section must reject the PATCH, not be stored and
         // discovered by whoever later tries to render the note.
         const layer1Preview = assembleSelections(
@@ -1695,11 +1832,12 @@ export function createDbEncounterRouteService(
     },
 
     // ── Vitals authoring (§2.2, §3.3 `vitals`) ─────────────────────────────────────────────────────────
-    async captureVitals(organizationId, encounterId, input) {
+    async captureVitals(organizationId, encounterId, input, actorMembershipId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
+        await stampDraftOpened(t, organizationId, r, actorMembershipId);
         const plan = planVitalsCapture(input); // validates envelopes + CNI reason (§2.2)
         const v = firstOrThrow(
           await t
@@ -1746,11 +1884,12 @@ export function createDbEncounterRouteService(
         };
       });
     },
-    async editVitals(organizationId, encounterId, vitalsId, input) {
+    async editVitals(organizationId, encounterId, vitalsId, input, actorMembershipId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
+        await stampDraftOpened(t, organizationId, r, actorMembershipId);
         const [existing] = await t
           .select({ id: VITALS.id })
           .from(VITALS)
@@ -1799,11 +1938,11 @@ export function createDbEncounterRouteService(
     },
 
     // ── Mileage authoring (§2.2 D10 — 0..1 per encounter; capture and edit share the upsert) ────────────
-    async captureMileage(organizationId, encounterId, input) {
-      return captureMileageImpl(organizationId, encounterId, input);
+    async captureMileage(organizationId, encounterId, input, actorMembershipId) {
+      return captureMileageImpl(organizationId, encounterId, input, actorMembershipId);
     },
-    async editMileage(organizationId, encounterId, input) {
-      return captureMileageImpl(organizationId, encounterId, input);
+    async editMileage(organizationId, encounterId, input, actorMembershipId) {
+      return captureMileageImpl(organizationId, encounterId, input, actorMembershipId);
     },
 
     // ── Care-plan links / EVV-missing (§2.3 draft-time edits) ──────────────────────────────────────────
@@ -1979,6 +2118,8 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
+        // The finalize route is `IS_AUTHOR`-guarded (only the author reaches it), so the writer here is the author.
+        await stampDraftOpened(t, organizationId, r, r.authoredByMembershipId);
         // GAP-013 §2.5 — the tier is COMPUTED here from service_date vs the org-local day and reified on the
         // row; a note > 24h late must carry the clinician's reason (422 LATE_ENTRY_REASON_REQUIRED). The
         // significant / administrative tiers cannot be written to the column before their override exists
@@ -2118,6 +2259,8 @@ export function createDbEncounterRouteService(
         if (r.authoredByMembershipId !== actor.membershipId) {
           throw new ForbiddenError("only the author of an encounter may sign it");
         }
+        // Before either status UPDATE below (the stamp only touches open notes): a signed note always carries a clock.
+        await stampDraftOpened(t, organizationId, r, actor.membershipId);
         const now = new Date();
         const admission = await admissionSummaryFor(organizationId, r.admissionId);
         validateAdmissionForService(

@@ -553,6 +553,8 @@ export const MODULES: ModuleDef[] = [
       "hearthnote_selection",
       "hearthnote_assembled_output",
       "hearthnote_llm_modification",
+      "documentation_obligation_policy", // ADR-0113 — per-tenant closure-clock mode + threshold (org-level, no patient)
+      "documentation_obligation_override", // ADR-0113 — supervisor override of the block (append-only, org-level)
     ],
   },
   {

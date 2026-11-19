@@ -9,7 +9,7 @@
 // aggregator (packages/messaging) needs no dependsOn edge on any producer. check-fitness-gaps.ts
 // enforces the same `mN.<resource>.<verb>` ownership the outbox catalog uses.
 import { Type } from "@sinclair/typebox";
-import type { TSchema } from "@sinclair/typebox";
+import type { Static, TSchema } from "@sinclair/typebox";
 import type { ModuleToken } from "./outbox";
 
 /**
@@ -310,5 +310,79 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
     requiresResponseTracking: false,
     description:
       "The monthly CAHPS decedent sample is built and ready for export — the one-shot notice to the QAPI Coordinator.",
+  },
+];
+
+// -----------------------------------------------------------------------------
+// Module 8 (Encounters) visit-note closure alert payloads (ADR-0113 D5).
+//
+// M8 PRODUCES these from the `encounter.attention` sweep (the same cron that used to raise `m8.encounter.unsigned` and
+// `m8.encounter.documentation_late`, which they replace in place — one alert stream). Ids and instants only: no patient, no note
+// text. They are alert-rule event types, NOT outbox catalog events (nothing subscribes to them), so there is no outbox entry.
+// The recipients are the platform `alert_rule` seeds (packages/messaging/src/seed/alert-rules.ts): the author for `at_risk` and
+// `overdue`, the author plus the supervisors of the note's provider entity for `escalated`.
+// -----------------------------------------------------------------------------
+
+/** The three `m8.encounter.closure_*` alert types, one per alertable stage of the closure clock. */
+export type M8ClosureAlertPayloadType =
+  | "m8.encounter.closure_at_risk"
+  | "m8.encounter.closure_overdue"
+  | "m8.encounter.closure_escalated";
+
+const m8Id = Type.String({ minLength: 1 });
+
+/**
+ * One schema for the three stages (the stage field says which). `providerEntityId` is nullable because an encounter's site is
+ * (legitimately) unset on some drafts; the escalation rule then falls back to the org-wide supervisors. `authorUserId` is nullable
+ * because the recipient resolver accepts only ACTIVE members' user ids on a payload: for an author who is no longer one, the sweep
+ * emits only the escalation, with no author on it, so the supervisors still hear.
+ */
+export const M8_CLOSURE_ALERT_PAYLOAD_SCHEMA = Type.Object({
+  obligationKind: Type.Literal("visit_note"),
+  encounterId: m8Id,
+  authorUserId: Type.Union([m8Id, Type.Null()]),
+  providerEntityId: Type.Union([m8Id, Type.Null()]),
+  stage: Type.Union([Type.Literal("at_risk"), Type.Literal("overdue"), Type.Literal("escalated")]),
+  deadlineAt: Type.String({ minLength: 1 }),
+  hoursOverdue: Type.Integer({ minimum: 0 }),
+  deepLink: Type.String({ minLength: 1 }),
+});
+
+/** The payload an `m8.encounter.closure_*` alert carries (derived from the schema, so the two cannot drift). */
+export type M8ClosureAlertPayload = Static<typeof M8_CLOSURE_ALERT_PAYLOAD_SCHEMA>;
+
+/** The §3.12 M36 alert-payload contribution for M8's closure alerts (registered on the Foundation registry by the composition root when a catalog-validating path needs it). */
+export const M8_CLOSURE_ALERT_PAYLOADS: ModuleAlertContribution = [
+  {
+    payloadType: "m8.encounter.closure_at_risk",
+    moduleOwner: "m8",
+    severity: "INFO", // six hours before the closure deadline; the author only
+    defaultChannels: ["inbox"],
+    defaultRecipientResolver: "note_author",
+    payloadSchema: M8_CLOSURE_ALERT_PAYLOAD_SCHEMA,
+    requiresResponseTracking: false,
+    description:
+      "A visit note is approaching its closure deadline — the early reminder to the author.",
+  },
+  {
+    payloadType: "m8.encounter.closure_overdue",
+    moduleOwner: "m8",
+    severity: "WARN", // at the closure deadline; the author only
+    defaultChannels: ["inbox", "socket_push"],
+    defaultRecipientResolver: "note_author",
+    payloadSchema: M8_CLOSURE_ALERT_PAYLOAD_SCHEMA,
+    requiresResponseTracking: false,
+    description: "A visit note passed its closure deadline — the overdue notice to the author.",
+  },
+  {
+    payloadType: "m8.encounter.closure_escalated",
+    moduleOwner: "m8",
+    severity: "WARN", // twelve hours after the closure deadline; the author and the provider entity's supervisors
+    defaultChannels: ["inbox", "socket_push"],
+    defaultRecipientResolver: "note_author_and_supervisors",
+    payloadSchema: M8_CLOSURE_ALERT_PAYLOAD_SCHEMA,
+    requiresResponseTracking: false,
+    description:
+      "A visit note is still open twelve hours past its closure deadline — the escalation to the author and the supervisors.",
   },
 ];

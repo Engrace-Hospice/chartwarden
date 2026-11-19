@@ -223,9 +223,15 @@ describe.skipIf(!DB_URL)(
         discipline: "lpn" as never,
         serviceDate: SERVICE_DATE as never,
       } as never);
-      await m8.updateSelections(ORG, d.id, 0, requiredSectionSelections("routine_visit", "lpn"));
+      await m8.updateSelections(
+        ORG,
+        d.id,
+        0,
+        requiredSectionSelections("routine_visit", "lpn"),
+        null,
+      );
       const vitals = requiredVitalsCapture("routine_visit", "lpn");
-      if (vitals) await m8.captureVitals(ORG, d.id, vitals);
+      if (vitals) await m8.captureVitals(ORG, d.id, vitals, null);
       return d.id;
     }
     async function signLpn(id: string) {

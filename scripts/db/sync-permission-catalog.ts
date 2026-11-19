@@ -23,6 +23,7 @@
  */
 import { allPermissionMirrorRows } from "@chartwarden/auth";
 import { Client } from "pg";
+import { fullCatalogGrantRows } from "./lib/full-catalog-grants";
 
 /** Roles granted the ENTIRE catalog — kept in lockstep so `org_admin ⊇ administrator` always holds. */
 const GRANT_ALL_ROLE_KEYS = ["administrator", "org_admin"];
@@ -57,15 +58,18 @@ async function main(): Promise<void> {
     `permission catalog synced: ${rows.length} keys projected (${before.rows[0]!.n} -> ${after.rows[0]!.n} rows)`,
   );
 
-  // Grant every catalog key to each org's full-catalog admin roles (administrator + org_admin).
+  // Grant every catalog key to each org's full-catalog admin roles (administrator + org_admin), except the visit-note closure key the
+  // role materializer withholds from them on purpose (`encounter.closure_override`: an administrator is not a clinical supervisor, ADR-0113
+  // D7), so a synced dev database matches what a freshly provisioned tenant holds. Other withheld keys keep their earlier dev behaviour.
   // ON CONFLICT DO NOTHING keeps it idempotent and preserves any abac_override already set on a grant.
   const admins = await db.query<{ id: string; organization_id: string; key: string }>(
     "SELECT id, organization_id, key FROM role WHERE key = ANY($1) AND organization_id IS NOT NULL",
     [GRANT_ALL_ROLE_KEYS],
   );
+  const grantRows = fullCatalogGrantRows(rows);
   let granted = 0;
   for (const role of admins.rows) {
-    for (const row of rows) {
+    for (const row of grantRows) {
       const r = await db.query(
         `INSERT INTO role_permission (organization_id, role_id, permission_key)
          VALUES ($1,$2,$3) ON CONFLICT (role_id, permission_key) DO NOTHING`,

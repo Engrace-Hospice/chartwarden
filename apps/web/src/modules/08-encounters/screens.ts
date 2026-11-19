@@ -2,7 +2,8 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/08-encounters — M8 screen registration (Track B, ADR-0030).
 // The §5 Encounters screens that have a backing M8 read route on the generated client: the
 // patient-scoped Encounter Read (§5.2 — now also hosting the Sign/Acknowledge/Cosign-sign/Supervisor-
-// release ceremonies, TASK-031), the Cosignature Queue (§5.5), and the author's My Drafts (§5.1). Nav
+// release ceremonies, TASK-031), the Cosignature Queue (§5.5), the author's My Notes (§5.1, route /work/drafts) and, for the
+// 24-hour note-closure clock (ADR-0113), the supervisor Overdue Notes board and the tenant Note Closure Policy. Nav
 // visibility is gated by the matching M8 permission key; the SERVER stays the only enforcement point
 // (no frontend authz).
 //
@@ -28,6 +29,12 @@ const EncounterCompose = lazy(() =>
   import("./encounter-compose").then((m) => ({ default: m.EncounterCompose })),
 );
 const MyDrafts = lazy(() => import("./my-drafts").then((m) => ({ default: m.MyDrafts })));
+const OverdueBoard = lazy(() =>
+  import("./overdue-board").then((m) => ({ default: m.OverdueBoard })),
+);
+const ClosurePolicy = lazy(() =>
+  import("./closure-policy").then((m) => ({ default: m.ClosurePolicy })),
+);
 const PatientEncounters = lazy(() =>
   import("./patient-encounters").then((m) => ({ default: m.PatientEncounters })),
 );
@@ -71,13 +78,32 @@ export const encounterScreens: ScreenRegistryModule<ComponentType> = {
       screen: CosignatureQueue,
     },
     {
-      // Author's open drafts — a top-level work surface.
+      // Author's open notes (drafts and finalized, until signed) with their closure deadline — a top-level work surface.
+      // The id and path keep their "drafts" names: they are the stable route and registry key.
       id: "encounter.my-drafts",
       path: "/work/drafts",
-      title: "My Drafts",
+      title: "My Notes",
       navGroup: "Clinical",
       requiredPermission: "encounter.author",
       screen: MyDrafts,
+    },
+    {
+      // Supervisor board of at-risk / overdue / escalated visit notes, with the time-boxed override grant (ADR-0113).
+      id: "encounter.overdue-notes",
+      path: "/work/overdue-notes",
+      title: "Overdue Notes",
+      navGroup: "Clinical",
+      requiredPermission: "encounter.closure_override",
+      screen: OverdueBoard,
+    },
+    {
+      // Tenant note-closure policy (mode off | warn | block, deadline hours) — step-up on save (ADR-0113).
+      id: "encounter.closure-policy",
+      path: "/admin/closure-policy",
+      title: "Note Closure Policy",
+      navGroup: "Admin",
+      requiredPermission: "encounter.closure_policy_admin",
+      screen: ClosurePolicy,
     },
   ],
 };

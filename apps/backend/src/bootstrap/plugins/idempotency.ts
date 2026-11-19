@@ -81,12 +81,15 @@ const pendingCaptures = new WeakMap<
 >();
 
 /**
- * The error codes of the retryable 409s: the deadlock/serialization 409 (error-handler.ts) and M10's lock-wait timeout
- * (`M10_RECORD_BUSY`). Each says "this step was not applied; check, then retry".
+ * The error codes of the retryable 409s: the deadlock/serialization 409 (error-handler.ts), M10's lock-wait timeout
+ * (`M10_RECORD_BUSY`) and M8's state-dependent closure-override refusal (`NOTE_CLOSURE_SUBJECT_NOT_BLOCKED`: the clinician is not
+ * blocked RIGHT NOW, which can change in seconds, so a same-key retry must run again, not replay the refusal for 24h). Each says
+ * "this step was not applied; check, then retry". (A bootstrap file imports no module, so the M8 code is spelled here.)
  */
 const RETRYABLE_CONFLICT_CODES: ReadonlySet<unknown> = new Set([
   "CONCURRENT_UPDATE",
   "M10_RECORD_BUSY",
+  "NOTE_CLOSURE_SUBJECT_NOT_BLOCKED",
 ]);
 
 /** The per-request commit trackers: opened in `onRequest` (so the ambient store covers the whole request), read in `onSend`. */

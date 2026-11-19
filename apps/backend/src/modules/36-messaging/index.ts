@@ -106,6 +106,9 @@ export {
   createDrizzleRoleSetMembersReader,
 } from "./alert-emitter-drizzle";
 export type { MembershipsHoldingPermissionPort } from "./alert-emitter-drizzle";
+// ADR-0113 D5 — "which of these alerts already exist?" (a producer sweep's batched pre-filter; M36 owns the `alert` table).
+export { createDbAlertCorrelationReader } from "./alert-correlation-reader";
+export type { AlertCorrelationReader } from "./alert-correlation-reader";
 export { buildM36ClinicalAlertConsumer } from "./outbox-consumers/clinical-alerts";
 // M14 §2.7/D8 — the carry-forward COMPLIANCE alert: `m14.action_item.carry_forward` (the count crossing 3) ->
 // the critical typed alert `m14.action_item.carry_forward.compliance`, once per action item.

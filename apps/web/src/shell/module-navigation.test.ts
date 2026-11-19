@@ -56,7 +56,13 @@ const scheduling = [
 const assessments = [
   screen("hope.dashboard", "/hope", "HOPE", "hope.schedule.read"),
   screen("encounter.cosignatures", "/work/cosignatures", "Cosignatures", "encounter.cosign"),
-  screen("encounter.drafts", "/work/drafts", "My Drafts", "encounter.author"),
+  screen("encounter.drafts", "/work/drafts", "My Notes", "encounter.author"),
+  screen(
+    "encounter.overdue-notes",
+    "/work/overdue-notes",
+    "Overdue Notes",
+    "encounter.closure_override",
+  ),
   screen(
     "assessment.licenses",
     "/admin/scales/licenses",
@@ -97,7 +103,8 @@ describe("resolveModuleNavigation", () => {
     expect(navigation?.items.map(({ label, path }) => [label, path])).toEqual([
       ["HOPE Timepoints", "/hope"],
       ["Cosignatures", "/work/cosignatures"],
-      ["My visit drafts", "/work/drafts"],
+      ["My notes", "/work/drafts"],
+      ["Overdue notes", "/work/overdue-notes"],
       ["Scale Licenses", "/admin/scales/licenses"],
       ["Scale Policies", "/admin/scales/policies"],
       ["SFV Worklist", "/hope/sfv"],

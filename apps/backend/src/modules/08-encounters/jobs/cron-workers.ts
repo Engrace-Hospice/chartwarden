@@ -1,13 +1,18 @@
-import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
-import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { CosignatureStatus } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { and, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  type ExistingAlertCorrelations,
+  runNoteClosureSweep,
+  scanOrgClosureState,
+} from "../closure/closure-sweep";
 import { transitionCosignature } from "../cosignature/cosignature";
 import { decideCosignatureSlaStage, hoursBetween } from "../cosignature/sla-clock";
 import type { EncounterWriteOutboxPort } from "../encounters-route-service-db";
+import { SUPERVISOR_ROLE_KEYS } from "../supervisor-roles";
 import { M8_JOB_SCHEDULES, M8_QUEUES, M8_QUEUE_PARAMS } from "./index";
 
 export interface ActiveOrgListPort {
@@ -20,6 +25,8 @@ export interface M8WorkerDeps {
   readonly outbox: EncounterWriteOutboxPort;
   readonly activeOrgs?: ActiveOrgListPort;
   readonly alerts?: AlertEmitter;
+  /** The closure sweep's batched "already alerted?" read (M36 owns the alert table; the composition root injects it). */
+  readonly existingAlertCorrelations?: ExistingAlertCorrelations;
   now?: () => Date;
 }
 
@@ -41,6 +48,7 @@ export function buildM8WorkerDeps(deps: {
   outbox: EncounterWriteOutboxPort;
   activeOrgs?: ActiveOrgListPort;
   alerts?: AlertEmitter;
+  existingAlertCorrelations?: ExistingAlertCorrelations;
 }): M8WorkerDeps {
   return { ...deps, now: () => new Date() };
 }
@@ -66,79 +74,36 @@ async function supervisorMembershipId(
         and(
           eq(M.organizationId, organizationId),
           eq(M.status, "active"),
-          inArray(R.key, ["clinical_lead", "don", "org_admin"]),
+          inArray(R.key, [...SUPERVISOR_ROLE_KEYS, "org_admin"]),
           eq(R.enabled, true),
           or(isNull(MR.expiresAt), gt(MR.expiresAt, new Date())),
         ),
       )
+      // A real supervisor wins over a bare org_admin; invitedAt/id make the pick stable across runs.
+      .orderBy(sql`(${R.key} = 'org_admin')`, asc(M.invitedAt), asc(M.id))
       .limit(1);
     return row?.membershipId ?? null;
   });
 }
 
+/**
+ * The `encounter.attention` tick (every 15 minutes): the visit-note closure alerts (ADR-0113 D5), `m8.encounter.closure_at_risk |
+ * closure_overdue | closure_escalated`, one stream replacing the old age-less unsigned / documentation-late sweep. The logic lives in
+ * closure/closure-sweep.ts: it has no time window (a due stage is emitted until its alert exists, found through the injected batched
+ * "already alerted?" read); a failing organization never stops the others, nor a failing alert its organization, and every failure
+ * is rethrown together after the last one.
+ */
 export async function runEncounterAttentionCron(deps: M8WorkerDeps): Promise<void> {
   const alerts = alertEmitterOf(deps);
-  const now = (deps.now ?? (() => new Date()))();
-  for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
-    await withOrgContext(deps.db, systemOrgContext(organizationId), async (txRaw) => {
-      const tx = txRaw as DbClient;
-      const E = schema.encounters;
-      const timezone = await organizationTimezone(tx, organizationId);
-      const today = localDateInTimeZone(now, timezone);
-      const unsigned = await tx
-        .select({
-          id: E.id,
-          patientId: E.patientId,
-          admissionId: E.admissionId,
-          authoredByMembershipId: E.authoredByMembershipId,
-        })
-        .from(E)
-        .where(and(eq(E.organizationId, organizationId), eq(E.status, "finalized")));
-      for (const e of unsigned) {
-        await alerts.emit(organizationId, {
-          eventType: "m8.encounter.unsigned",
-          severity: "warn",
-          correlationId: `m8:unsigned:${e.id}`,
-          payload: {
-            encounterId: e.id,
-            patientId: e.patientId,
-            admissionId: e.admissionId,
-            assignedMembershipId: e.authoredByMembershipId,
-            deepLink: `/patients/${e.patientId}/encounters/${e.id}`,
-          },
-        });
-      }
-      const lateDrafts = await tx
-        .select({
-          id: E.id,
-          patientId: E.patientId,
-          admissionId: E.admissionId,
-          authoredByMembershipId: E.authoredByMembershipId,
-        })
-        .from(E)
-        .where(
-          and(
-            eq(E.organizationId, organizationId),
-            eq(E.status, "draft"),
-            lt(E.serviceDate, today),
-          ),
-        );
-      for (const e of lateDrafts) {
-        await alerts.emit(organizationId, {
-          eventType: "m8.encounter.documentation_late",
-          severity: "warn",
-          correlationId: `m8:late-documentation:${e.id}:${today}`,
-          payload: {
-            encounterId: e.id,
-            patientId: e.patientId,
-            admissionId: e.admissionId,
-            assignedMembershipId: e.authoredByMembershipId,
-            deepLink: `/patients/${e.patientId}/encounters/${e.id}`,
-          },
-        });
-      }
-    });
-  }
+  await runNoteClosureSweep({
+    listActiveOrgs: () => activeOrgsOf(deps).listActiveOrgs(),
+    scanOrg: (organizationId) => scanOrgClosureState(deps.db, organizationId),
+    emit: (organizationId, input) => alerts.emit(organizationId, input),
+    ...(deps.existingAlertCorrelations
+      ? { existingCorrelations: deps.existingAlertCorrelations }
+      : {}),
+    now: deps.now ?? (() => new Date()),
+  });
 }
 
 export async function runCosignatureSlaCron(deps: M8WorkerDeps): Promise<void> {

@@ -35,6 +35,7 @@ import {
 } from "@chartwarden/auth";
 import { getSeam } from "../../bootstrap/index";
 import type { EncounterAbacResolver } from "./routes/service";
+import { hasSupervisorRole } from "./supervisor-roles";
 
 /**
  * The §4.6 predicate names M8 owns (registered into M3). `m8.cosigner_role_match` is namespaced —
@@ -53,12 +54,9 @@ export const M8_ABAC_PREDICATES = [
   "is_addendum_author",
 ] as const;
 
-/**
- * Roles that count as the "supervisor" arm of `is_author_or_supervisor` (spec §4.5 routes 3-10). The
- * same pair the cosign-release / late-entry service guards already treat as supervisors
- * (`isSupervisor` in routes/encounters-routes.ts). Org-wide scope alone (e.g. an admin) is NOT enough.
- */
-const SUPERVISOR_ROLES = ["clinical_supervisor", "don"] as const;
+// The "supervisor" arm of `is_author_or_supervisor` (spec §4.5 routes 3-10) uses the shared
+// `hasSupervisorRole` (supervisor-roles.ts) — the same set the cosign-release / late-entry service guards
+// (`isSupervisor` in routes/encounters-routes.ts) use. Org-wide scope alone (e.g. an admin) is NOT enough.
 
 /** The caller's org membership id — what `authored_by_membership_id` stores (never the raw user id). */
 const membershipIdOf = (context: AbacContext): string | null => {
@@ -130,7 +128,7 @@ export function buildEncounterAbacPredicates(
   return {
     is_author: authoredByCaller,
     is_author_or_supervisor: async (context, target) => {
-      if (!SUPERVISOR_ROLES.some((role) => hasRole(context, role))) {
+      if (!hasSupervisorRole(context.roles)) {
         return authoredByCaller(context, target);
       }
       // A supervisor still has to name a real, in-org encounter (fail closed on a bad/cross-tenant id).

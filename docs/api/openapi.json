@@ -153594,6 +153594,538 @@
         }
       }
     },
+    "/api/v1/encounters/closure-overrides": {
+      "post": {
+        "operationId": "postApiV1EncountersClosureoverrides",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Grant a supervisor override that lifts the closure BLOCK for one clinician for 1-24 hours (default 4). Needs a fresh step-up. The reason (40 to 500 characters) is free text: it is screened and refused with a 422 VALIDATION_FAILED (details[0].field `reason`, details[0].code EVIDENCE_LOOKS_LIKE_PHI, nothing written, the text never echoed) when it looks like an SSN or Medicare number; it is stored on the override row and carried, as `context.justification`, in the `m8.encounter.closure_override_granted` audit event, and no route returns it. Refused, checked in this order, with 403 FORBIDDEN for an override of oneself (before anything is read), 403 NOTE_CLOSURE_GRANTOR_BLOCKED when the granting supervisor has a note of their own past its block instant (judged with any override they hold ignored: close your own overdue notes first; only a genuinely clear supervisor releases others), and 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED (message: There is nothing for you to lift for this clinician right now.) when there is nothing for the caller to lift: the clinician has no open note, is clear, warn-only or already overridden, or has an oldest open note outside the caller's sites (a note with no site is in scope for every supervisor; org-wide roles see every site). That is ONE answer for all of them, so a site-scoped supervisor learns nothing about a clinician outside their sites. The 409 is not replayed under the Idempotency-Key (it depends on the clinician's state at that instant); the 403 NOTE_CLOSURE_GRANTOR_BLOCKED normally IS, because the refused attempt commits a best-effort m8.encounter.closure_override_denied audit event (ids only), so retry with a new Idempotency-Key after closing your own notes. Grants and revokes share one limit of 10 requests a minute per user and 100 a minute per organization (429 RATE_LIMITED, Retry-After 60)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "subjectMembershipId",
+                    "grantedByMembershipId",
+                    "obligationKind",
+                    "grantedAt",
+                    "expiresAt",
+                    "revokedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "subjectMembershipId": {
+                      "type": "string"
+                    },
+                    "grantedByMembershipId": {
+                      "type": "string"
+                    },
+                    "obligationKind": {
+                      "type": "string"
+                    },
+                    "grantedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subjectMembershipId",
+                  "reason"
+                ],
+                "properties": {
+                  "subjectMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "hours": {
+                    "minimum": 1,
+                    "maximum": 24,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/closure-overrides/{overrideId}/revoke": {
+      "post": {
+        "operationId": "postApiV1EncountersClosureoverridesByOverrideIdRevoke",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Revoke a closure override early (idempotent; needs a fresh step-up). The grant row is never deleted and a revoked grant can never be un-revoked. The response is the stored grant plus `remainingActiveUntil`: the latest expiry of any OTHER active override for the same clinician (another supervisor's grant keeps them unblocked), or null when the revoke re-blocks them. Only the supervisor who granted the override, or a caller whose scope is org-wide, may revoke it: anyone else is refused 403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE. The first revoke writes an `m8.encounter.closure_override_revoked` audit event (ids and instants, never the reason); a repeat writes none. Counted in the same limit as the grant route (10 a minute per user, 100 a minute per organization; 429 RATE_LIMITED, Retry-After 60)",
+        "parameters": [
+          {
+            "name": "overrideId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "subjectMembershipId",
+                    "grantedByMembershipId",
+                    "obligationKind",
+                    "grantedAt",
+                    "expiresAt",
+                    "revokedAt",
+                    "remainingActiveUntil"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "subjectMembershipId": {
+                      "type": "string"
+                    },
+                    "grantedByMembershipId": {
+                      "type": "string"
+                    },
+                    "obligationKind": {
+                      "type": "string"
+                    },
+                    "grantedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remainingActiveUntil": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/closure-policy": {
+      "get": {
+        "operationId": "getApiV1EncountersClosurepolicy",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The tenant's visit-note closure policy (mode off | warn | block, threshold hours; an unset tenant is warn / 24)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "obligationKind",
+                    "mode",
+                    "thresholdHours",
+                    "enforceFrom"
+                  ],
+                  "properties": {
+                    "obligationKind": {
+                      "const": "visit_note",
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "off",
+                          "type": "string"
+                        },
+                        {
+                          "const": "warn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "block",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "thresholdHours": {
+                      "type": "integer"
+                    },
+                    "enforceFrom": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1EncountersClosurepolicy",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Set the tenant's visit-note closure policy. Moving to block stamps enforce_from = now server-side so notes already overdue get a fresh window",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "obligationKind",
+                    "mode",
+                    "thresholdHours",
+                    "enforceFrom"
+                  ],
+                  "properties": {
+                    "obligationKind": {
+                      "const": "visit_note",
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "off",
+                          "type": "string"
+                        },
+                        {
+                          "const": "warn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "block",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "thresholdHours": {
+                      "type": "integer"
+                    },
+                    "enforceFrom": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "thresholdHours"
+                ],
+                "properties": {
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "const": "off",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "block",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "thresholdHours": {
+                    "minimum": 1,
+                    "maximum": 168,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/closure-status": {
+      "get": {
+        "operationId": "getApiV1EncountersClosurestatus",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The caller's own visit-note closure position (mode, stage, deadline, the oldest open clocked note, the count overdue) — the shell banner polls it. `patientId` and `encounterStatus` (draft | finalized) describe that oldest note, null exactly when `encounterId` is null, so the banner can link it without a read-audited `GET /encounters/{encounterId}`. Not read-audited (the caller's own position; opaque ids and an enum, no patient content)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "thresholdHours",
+                    "verdict",
+                    "stage",
+                    "encounterId",
+                    "patientId",
+                    "encounterStatus",
+                    "deadlineAt",
+                    "hoursOverdue",
+                    "overdueCount",
+                    "overrideExpiresAt"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "off",
+                          "type": "string"
+                        },
+                        {
+                          "const": "warn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "block",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "thresholdHours": {
+                      "type": "integer"
+                    },
+                    "verdict": {
+                      "anyOf": [
+                        {
+                          "const": "clear",
+                          "type": "string"
+                        },
+                        {
+                          "const": "warn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "stage": {
+                      "anyOf": [
+                        {
+                          "const": "ok",
+                          "type": "string"
+                        },
+                        {
+                          "const": "at_risk",
+                          "type": "string"
+                        },
+                        {
+                          "const": "overdue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "escalated",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "encounterId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterStatus": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deadlineAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hoursOverdue": {
+                      "type": "number"
+                    },
+                    "overdueCount": {
+                      "type": "integer"
+                    },
+                    "overrideExpiresAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/encounters/cosignature-queue": {
       "get": {
         "operationId": "getApiV1EncountersCosignaturequeue",
@@ -154065,7 +154597,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "The caller's open draft encounters",
+        "summary": "My notes: the caller's open encounters (draft and finalized: a note is closed only once signed), each with its visit-note closure clock (`closure.clockStartedAt`, `deadlineAt`, `stage`; a legacy note with no clock has null instants and stage ok). Nearest deadline first, legacy last",
         "parameters": [],
         "responses": {
           "200": {
@@ -154097,7 +154629,8 @@
                           "authoredByUserId",
                           "isF2f",
                           "signedAt",
-                          "cosignedAt"
+                          "cosignedAt",
+                          "closure"
                         ],
                         "properties": {
                           "id": {
@@ -154506,9 +155039,200 @@
                                 }
                               }
                             }
+                          },
+                          "closure": {
+                            "type": "object",
+                            "required": [
+                              "clockStartedAt",
+                              "deadlineAt",
+                              "stage"
+                            ],
+                            "properties": {
+                              "clockStartedAt": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "deadlineAt": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "stage": {
+                                "anyOf": [
+                                  {
+                                    "const": "ok",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "at_risk",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "overdue",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "escalated",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
                           }
                         }
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/overdue-notes": {
+      "get": {
+        "operationId": "getApiV1EncountersOverduenotes",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Supervisor board: at-risk, overdue and escalated clocked open notes, oldest first (org-wide scope sees every site; otherwise the caller's sites plus any note with no site; encounter.closure_override). Read-audited as a multi-patient read: one `encounter.viewed` event per distinct patient on the page; an empty page writes none",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "thresholdHours",
+                    "items",
+                    "truncated"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "off",
+                          "type": "string"
+                        },
+                        {
+                          "const": "warn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "block",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "thresholdHours": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "encounterId",
+                          "authoredByMembershipId",
+                          "patientId",
+                          "encounterType",
+                          "discipline",
+                          "serviceDate",
+                          "status",
+                          "clockStartedAt",
+                          "deadlineAt",
+                          "stage",
+                          "hoursOverdue"
+                        ],
+                        "properties": {
+                          "encounterId": {
+                            "type": "string"
+                          },
+                          "authoredByMembershipId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "encounterType": {
+                            "type": "string"
+                          },
+                          "discipline": {
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "clockStartedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "deadlineAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "stage": {
+                            "anyOf": [
+                              {
+                                "const": "at_risk",
+                                "type": "string"
+                              },
+                              {
+                                "const": "overdue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "escalated",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "hoursOverdue": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
                     }
                   }
                 }

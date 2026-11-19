@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
 // apps/backend/__tests__/authenticate-engagement.test.ts — GAP-093(c): the authenticate hook stamps
 // `attributes.engagementId` ONLY from the resolver's server-side session state, never from a header.
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 
 const ENGAGEMENT = "44444444-4444-4444-8444-444444444444";
@@ -48,6 +49,7 @@ const run = async (actor: ResolvedActor, headers: Record<string, string> = {}, u
   };
   const hook = createSessionAuthenticate({
     organizationStage: liveOrganizationStage,
+    noteClosureGate: liveNoteClosureGate,
     getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
     getResolver: () => resolverReturning(actor),
   });
@@ -111,6 +113,7 @@ describe("authenticate hook - screen unlock for auditor sessions (#589)", () => 
     };
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => resolverReturning(actor),
     });

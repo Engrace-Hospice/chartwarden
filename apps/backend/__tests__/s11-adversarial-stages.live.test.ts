@@ -68,6 +68,7 @@ import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:s11:adversarial-stages:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -576,6 +577,7 @@ describe.skipIf(!DB_URL)("S11 adversarial cases across clinical stages — LIVE 
     );
     const authenticate = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
       getResolver: () => getSeam("SessionContextResolver"),
       sessionTimeout: createDbSessionTimeoutEnforcer(handle.db),

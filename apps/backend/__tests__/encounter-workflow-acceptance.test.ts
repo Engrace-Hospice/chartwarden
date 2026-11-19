@@ -47,6 +47,7 @@ async function draft(
       created.id,
       0,
       requiredSectionSelections("routine_visit", discipline),
+      null,
     );
   }
   return { backend, svc: backend.service, id: created.id };
@@ -248,9 +249,9 @@ describe("M8-T12 §7 workflow acceptance", () => {
     // version 0 rather than at the 1 that documenting it would leave behind.
     const { svc, id } = await draft("rn", false);
     const EMPTY = { sections: [] };
-    await svc.updateSelections(ORG, id, 0, EMPTY); // version 0 → 1
-    await expect(svc.updateSelections(ORG, id, 0, EMPTY)).rejects.toThrow(); // stale If-Match
-    await expect(svc.updateSelections(ORG, id, 1, EMPTY)).resolves.toBeDefined(); // current succeeds
+    await svc.updateSelections(ORG, id, 0, EMPTY, null); // version 0 → 1
+    await expect(svc.updateSelections(ORG, id, 0, EMPTY, null)).rejects.toThrow(); // stale If-Match
+    await expect(svc.updateSelections(ORG, id, 1, EMPTY, null)).resolves.toBeDefined(); // current succeeds
   });
 
   it("cross-tenant isolation: an encounter is invisible to another org (non-leaking 404)", async () => {

@@ -6,6 +6,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 
 const actor: ResolvedActor = {
@@ -50,6 +51,7 @@ function request(method: string, url: string): FastifyRequest {
 function hook(passwordChangeRequired: boolean, activeOrganizationId: string | null) {
   return createSessionAuthenticate({
     organizationStage: liveOrganizationStage,
+    noteClosureGate: liveNoteClosureGate,
     getSnapshot: async () => ({
       sessionId: "session-1",
       userId: actor.userId,

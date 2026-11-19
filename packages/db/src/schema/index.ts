@@ -314,6 +314,9 @@ export * from "./encounter/mileage";
 export * from "./encounter/hearthnote-selections";
 export * from "./encounter/hearthnote-assembled-outputs";
 export * from "./encounter/hearthnote-llm-modifications";
+// ADR-0113 / migration 1514: the visit-note closure clock's tenant policy and supervisor override (org-level, no patient).
+export * from "./encounter/documentation-obligation-policies";
+export * from "./encounter/documentation-obligation-overrides";
 
 // ── Module 9 (Clinical Assessments Suite) — the validated-scale spine (§3.3) ──────────────────
 // M9 owns 5 tables (M9-T02): the shared `clinical_assessment` base table (one row per measurement

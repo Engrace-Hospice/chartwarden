@@ -13,6 +13,7 @@ import {
 } from "@chartwarden/auth";
 import { ChartWardenError, type OrgScope, type SessionContextResolver } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
+import type { NoteClosureGate } from "../note-closure-gate";
 import {
   type OrganizationStageReader,
   isCreatedOnlyRoute,
@@ -143,6 +144,15 @@ export interface SessionAuthenticateDeps {
    * pass `liveOrganizationStage` from `__tests__/_live-organization-stage.ts`).
    */
   organizationStage: OrganizationStageReader;
+  /**
+   * ADR-0113 D6 - the visit-note closure gate. For an org-bound STAFF session whose oldest clocked open visit note is past its block
+   * instant (organization mode `block`, no supervisor override) every route outside the exact allowlist of note-closure-allowlist.ts
+   * answers 403 NOTE_CLOSURE_REQUIRED; a failed read answers 503 NOTE_CLOSURE_UNAVAILABLE (closed). Runs after the not-live-organization
+   * confinement; machine credentials and every other session class bypass it. REQUIRED for the same reason `organizationStage` is: a
+   * hook built without it would silently skip the control, so a test that does not exercise it passes `liveNoteClosureGate` from
+   * `__tests__/_live-note-closure-gate.ts`.
+   */
+  noteClosureGate: NoteClosureGate;
 }
 
 /** Constant-time header/secret comparison (mirrors the M12/M19/M20/M13 witness-token precedent). */
@@ -300,6 +310,20 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
       ) {
         throw organizationOnboardingRefusal();
       }
+    }
+    // ADR-0113 D6 - a clinician past a visit note's block instant keeps only the allowlist. STAFF sessions only: portal, auditor and
+    // the other classes have no visit notes, and the machine credential returned above. The membership id was proven non-null for a
+    // staff session above; the explicit check keeps the type honest and means "no membership, no clock, nothing to evaluate".
+    const membershipId = actor.membershipId;
+    if (actor.sessionClass === "staff" && membershipId !== null) {
+      await deps.noteClosureGate.assertMayCall({
+        method: request.method,
+        routeTemplate: request.routeOptions?.url,
+        rawUrl: request.url,
+        organizationId: actor.organizationId,
+        userId: actor.userId,
+        membershipId,
+      });
     }
     request.context.organizationId = actor.organizationId;
     request.context.roles = [...actor.roles];

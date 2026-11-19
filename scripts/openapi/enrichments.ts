@@ -2148,6 +2148,17 @@ import {
   ProblemProposalListQuerySchema as M7ProblemProposalListQuerySchema,
   ProblemProposalListResponseSchema as M7ProblemProposalListResponseSchema,
 } from "../../apps/backend/src/modules/07-care-plan/routes/problem-proposal-typebox";
+// ADR-0113 visit-note closure clock (M8).
+import {
+  ClosureOverrideResponseSchema as M8ClosureOverrideResponseSchema,
+  ClosureOverrideRevokedResponseSchema as M8ClosureOverrideRevokedResponseSchema,
+  ClosurePolicyResponseSchema as M8ClosurePolicyResponseSchema,
+  ClosureStatusResponseSchema as M8ClosureStatusResponseSchema,
+  GrantClosureOverrideSchema as M8GrantClosureOverrideSchema,
+  OverdueNotesQuerySchema as M8OverdueNotesQuerySchema,
+  OverdueNotesResponseSchema as M8OverdueNotesResponseSchema,
+  PutClosurePolicySchema as M8PutClosurePolicySchema,
+} from "../../apps/backend/src/modules/08-encounters/routes/closure-typebox";
 import {
   AddendumFinalizeResponseSchema as M8AddendumFinalizeResponseSchema,
   AddendumSelectionsResponseSchema as M8AddendumSelectionsResponseSchema,
@@ -2186,6 +2197,7 @@ import {
   MileageViewResponseSchema as M8MileageViewResponseSchema,
   ModificationDecisionSchema as M8ModificationDecisionSchema,
   ModificationResponseSchema as M8ModificationResponseSchema,
+  MyNotesResponseSchema as M8MyNotesResponseSchema,
   RenderPayloadResponseSchema as M8RenderPayloadResponseSchema,
   SelectionsUpdateResponseSchema as M8SelectionsUpdateResponseSchema,
   SelectionsViewResponseSchema as M8SelectionsViewResponseSchema,
@@ -5584,8 +5596,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/encounters/my-drafts": {
-    summary: "The caller's open draft encounters",
-    response: M8EncounterListResponseSchema,
+    summary:
+      "My notes: the caller's open encounters (draft and finalized: a note is closed only once signed), each with its visit-note closure clock (`closure.clockStartedAt`, `deadlineAt`, `stage`; a legacy note with no clock has null instants and stage ok). Nearest deadline first, legacy last",
+    response: M8MyNotesResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId": {
     summary:
@@ -5756,6 +5769,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string)",
     response: M8RenderPayloadResponseSchema,
+  },
+  // ADR-0113 — the visit-note closure clock. Static `/encounters/<segment>` paths: they win over `/encounters/:encounterId`.
+  "GET /api/v1/encounters/closure-status": {
+    summary:
+      "The caller's own visit-note closure position (mode, stage, deadline, the oldest open clocked note, the count overdue) — the shell banner polls it. `patientId` and `encounterStatus` (draft | finalized) describe that oldest note, null exactly when `encounterId` is null, so the banner can link it without a read-audited `GET /encounters/{encounterId}`. Not read-audited (the caller's own position; opaque ids and an enum, no patient content)",
+    response: M8ClosureStatusResponseSchema,
+  },
+  "GET /api/v1/encounters/overdue-notes": {
+    summary:
+      "Supervisor board: at-risk, overdue and escalated clocked open notes, oldest first (org-wide scope sees every site; otherwise the caller's sites plus any note with no site; encounter.closure_override). Read-audited as a multi-patient read: one `encounter.viewed` event per distinct patient on the page; an empty page writes none",
+    query: M8OverdueNotesQuerySchema,
+    response: M8OverdueNotesResponseSchema,
+  },
+  "POST /api/v1/encounters/closure-overrides": {
+    summary:
+      "Grant a supervisor override that lifts the closure BLOCK for one clinician for 1-24 hours (default 4). Needs a fresh step-up. The reason (40 to 500 characters) is free text: it is screened and refused with a 422 VALIDATION_FAILED (details[0].field `reason`, details[0].code EVIDENCE_LOOKS_LIKE_PHI, nothing written, the text never echoed) when it looks like an SSN or Medicare number; it is stored on the override row and carried, as `context.justification`, in the `m8.encounter.closure_override_granted` audit event, and no route returns it. Refused, checked in this order, with 403 FORBIDDEN for an override of oneself (before anything is read), 403 NOTE_CLOSURE_GRANTOR_BLOCKED when the granting supervisor has a note of their own past its block instant (judged with any override they hold ignored: close your own overdue notes first; only a genuinely clear supervisor releases others), and 409 NOTE_CLOSURE_SUBJECT_NOT_BLOCKED (message: There is nothing for you to lift for this clinician right now.) when there is nothing for the caller to lift: the clinician has no open note, is clear, warn-only or already overridden, or has an oldest open note outside the caller's sites (a note with no site is in scope for every supervisor; org-wide roles see every site). That is ONE answer for all of them, so a site-scoped supervisor learns nothing about a clinician outside their sites. The 409 is not replayed under the Idempotency-Key (it depends on the clinician's state at that instant); the 403 NOTE_CLOSURE_GRANTOR_BLOCKED normally IS, because the refused attempt commits a best-effort m8.encounter.closure_override_denied audit event (ids only), so retry with a new Idempotency-Key after closing your own notes. Grants and revokes share one limit of 10 requests a minute per user and 100 a minute per organization (429 RATE_LIMITED, Retry-After 60)",
+    body: M8GrantClosureOverrideSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M8ClosureOverrideResponseSchema,
+  },
+  "POST /api/v1/encounters/closure-overrides/:overrideId/revoke": {
+    summary:
+      "Revoke a closure override early (idempotent; needs a fresh step-up). The grant row is never deleted and a revoked grant can never be un-revoked. The response is the stored grant plus `remainingActiveUntil`: the latest expiry of any OTHER active override for the same clinician (another supervisor's grant keeps them unblocked), or null when the revoke re-blocks them. Only the supervisor who granted the override, or a caller whose scope is org-wide, may revoke it: anyone else is refused 403 NOTE_CLOSURE_SUBJECT_OUT_OF_SCOPE. The first revoke writes an `m8.encounter.closure_override_revoked` audit event (ids and instants, never the reason); a repeat writes none. Counted in the same limit as the grant route (10 a minute per user, 100 a minute per organization; 429 RATE_LIMITED, Retry-After 60)",
+    response: M8ClosureOverrideRevokedResponseSchema,
+  },
+  "GET /api/v1/encounters/closure-policy": {
+    summary:
+      "The tenant's visit-note closure policy (mode off | warn | block, threshold hours; an unset tenant is warn / 24)",
+    response: M8ClosurePolicyResponseSchema,
+  },
+  "PUT /api/v1/encounters/closure-policy": {
+    summary:
+      "Set the tenant's visit-note closure policy. Moving to block stamps enforce_from = now server-side so notes already overdue get a fresh window",
+    body: M8PutClosurePolicySchema,
+    response: M8ClosurePolicyResponseSchema,
   },
 });
 

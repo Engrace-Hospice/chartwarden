@@ -14,6 +14,7 @@ import type { JSX, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { canSeeScreen } from "./actor-session";
+import { noteHref } from "./note-href";
 import type { WebScreenDescriptor } from "./screen-registry";
 import { useSession } from "./session";
 import type { Session } from "./session";
@@ -517,13 +518,16 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
       const res = await client.GET("/api/v1/encounters/my-drafts");
       if (res.error) throw res.error;
       return {
+        // The server returns the author's open notes nearest deadline first (ADR-0113); a legacy note has no deadline.
         tasks: (res.data?.encounters ?? []).slice(0, 10).map((e) => ({
           id: `note-${e.id}`,
           category: "other" as const,
           title: `Finish ${stateLabel(e.encounterType).toLowerCase()} note`,
           patientId: e.patientId,
-          dueAt: null,
-          href: `/patients/${e.patientId}/encounters/${e.id}`,
+          // `closure` is on every row of the contract, but a stale cached or older server answer may lack it: no deadline then.
+          dueAt: e.closure?.deadlineAt ?? null,
+          // A draft opens the composer, a finalized note the read screen where it is signed (the same rule My notes and the banner use).
+          href: noteHref({ id: e.id, patientId: e.patientId, status: e.status }),
         })),
       };
     },

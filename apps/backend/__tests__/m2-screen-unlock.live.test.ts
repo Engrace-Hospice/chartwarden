@@ -54,6 +54,7 @@ import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:screen-unlock:live
  */
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -217,6 +218,7 @@ describe.skipIf(!DB_URL)("#589 screen-lock unlock keeps the session, LIVE Postgr
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
         organizationStage: liveOrganizationStage,
+        noteClosureGate: liveNoteClosureGate,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),

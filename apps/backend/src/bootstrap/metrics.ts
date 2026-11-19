@@ -262,6 +262,31 @@ export function registerPartitionMetrics(
   });
 }
 
+// ── visit-note closure gate (ADR-0113 D6) ─────────────────────────────────────────────────────────────
+
+export interface NoteClosureMetricsHooks {
+  /** Add `count` refusals (the gate reports them throttled and batched, so the total is exact apart from a tail awaiting the next one). */
+  recordRefusals(count: number): void;
+}
+
+/**
+ * `chartwarden_note_closure_refusals_total`: requests the visit-note closure gate refused 403 NOTE_CLOSURE_REQUIRED, the evidence that
+ * the control enforces. No labels: an organization or member label would be unbounded cardinality (and the member is nobody's to
+ * profile); the per-organization breakdown is in the throttled log line instead.
+ */
+export function registerNoteClosureMetrics(registry: Registry): NoteClosureMetricsHooks {
+  const refusalsTotal = new Counter({
+    name: "chartwarden_note_closure_refusals_total",
+    help: "Requests refused 403 NOTE_CLOSURE_REQUIRED by the visit-note closure gate",
+    registers: [registry],
+  });
+  return {
+    recordRefusals(count) {
+      if (Number.isInteger(count) && count > 0) refusalsTotal.inc(count);
+    },
+  };
+}
+
 // ── the /metrics route ──────────────────────────────────────────────────────────────────────────────
 
 /** Mount `GET /metrics` — Prometheus text exposition, unauthenticated (the `/health`/`/ready` posture:

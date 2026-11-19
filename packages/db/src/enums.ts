@@ -1358,6 +1358,32 @@ export const evvBracketState = pgEnum("evv_bracket_state", [
   "evv_missing_documented",
 ]);
 
+/** `encounter_clock_start_source` — which signal started an encounter's documentation clock (migration 1514, ADR-0113): EVV check-in,
+ * the M17 visit start, the first authoring write on a seeded draft, ad-hoc creation. The first to arrive wins (write-once); there is
+ * no precedence between them. */
+export const encounterClockStartSource = pgEnum("encounter_clock_start_source", [
+  "evv_check_in",
+  "visit_started",
+  "draft_opened",
+  "draft_created",
+]);
+
+/** `documentation_obligation_kind` — which documentation duty a policy/override governs (migration 1514, ADR-0113).
+ * Only `visit_note` is accepted by the API in slice 1; the rest are reserved for later slices. */
+export const documentationObligationKind = pgEnum("documentation_obligation_kind", [
+  "visit_note",
+  "hope_window",
+  "cti",
+  "face_to_face",
+]);
+
+/** `documentation_obligation_mode` — what an overdue obligation does: nothing, warn (alerts + banner), or block (ADR-0113). */
+export const documentationObligationMode = pgEnum("documentation_obligation_mode", [
+  "off",
+  "warn",
+  "block",
+]);
+
 /** `layer2_eligibility_reason` — why the HearthNote Layer-2 LLM path is (in)eligible (§2.6 / M08-F01 /
  * ADR-0012 D4: the cloud path stays INELIGIBLE until M32's BAA+ZDR gate passes). */
 export const layer2EligibilityReason = pgEnum("layer2_eligibility_reason", [

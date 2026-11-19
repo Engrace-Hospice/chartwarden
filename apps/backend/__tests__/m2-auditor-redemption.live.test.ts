@@ -56,6 +56,7 @@ import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:auditor-redemption:live
  */
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -207,6 +208,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
 
     const authenticate = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
       getResolver: () => getSeam("SessionContextResolver"),
       sessionTimeout: createDbSessionTimeoutEnforcer(handle.db),

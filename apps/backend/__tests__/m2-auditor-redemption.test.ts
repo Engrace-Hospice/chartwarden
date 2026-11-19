@@ -20,6 +20,7 @@ import {
 import { auditorRefusalError } from "../src/modules/02-identity/auditor-redemption";
 // M2/M3 auditor link redemption — the pure / port-level units (the database behaviour is proven in
 // m2-auditor-redemption.live.test.ts).
+import { liveNoteClosureGate } from "./_live-note-closure-gate";
 import { liveOrganizationStage } from "./_live-organization-stage";
 
 const T0 = new Date("2026-10-07T12:00:00Z");
@@ -250,6 +251,7 @@ describe("authenticate hook — auditor sessions are read-only and stage-gated",
     };
     const hook = createSessionAuthenticate({
       organizationStage: liveOrganizationStage,
+      noteClosureGate: liveNoteClosureGate,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () =>
         ({

@@ -22,9 +22,11 @@
 // path that decodes cleanly and stays under `/api/auth/` (a dotted, backslashed or undecodable path is refused).
 import { ChartWardenError } from "@chartwarden/types";
 
-/** The exact `METHOD /template` pairs a session on ANY confined organization (created, suspended, closed, unreadable) may call. */
-const CONFINED_ROUTES: readonly string[] = [
-  // ── sign-in, session and step-up plumbing ───────────────────────────────────────────────────────────────
+/**
+ * Sign-in, session and step-up plumbing: what ANY gated session (a not-yet-live organization here, a note-closure-blocked
+ * clinician in note-closure-gate.ts) must always be able to reach to sign in, prove who it is and read its own permissions.
+ */
+export const SESSION_PLUMBING_ROUTES: readonly string[] = [
   "GET /api/v1/auth/context",
   "GET /api/v1/auth/credential-status",
   "GET /api/v1/auth/csrf",
@@ -38,6 +40,11 @@ const CONFINED_ROUTES: readonly string[] = [
   "POST /api/v1/sessions/step-up/initiate",
   "GET /health",
   "GET /ready",
+];
+
+/** The exact `METHOD /template` pairs a session on ANY confined organization (created, suspended, closed, unreadable) may call. */
+const CONFINED_ROUTES: readonly string[] = [
+  ...SESSION_PLUMBING_ROUTES,
   // ── M34 tenant wizard ───────────────────────────────────────────────────────────────────────────────────
   "GET /api/v1/tenant/onboarding",
   "POST /api/v1/tenant/onboarding/:taskId/attest",
@@ -134,7 +141,7 @@ export const VENDOR_AUTH_ROUTE_TEMPLATE = "/api/auth/*";
 const VENDOR_AUTH_ROOT = "/api/auth";
 
 /** True when `rawUrl` (query ignored) decodes cleanly and stays under the vendor auth root, with no dot segment or backslash. */
-function isCleanVendorAuthPath(rawUrl: string): boolean {
+export function isCleanVendorAuthPath(rawUrl: string): boolean {
   let path: string;
   try {
     path = decodeURIComponent(rawUrl.split("?")[0] ?? "");
