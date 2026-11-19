@@ -1746,6 +1746,72 @@ describe.skipIf(!DB_URL)(
         });
       });
 
+      describe("a template the corpus does not draft (S1 rollout scope)", () => {
+        it("a telephonic RN visit finalizes and signs as with the switch off even when every source throws: Layer 1 text, no sealed row, no confirmation, no source read", async () => {
+          const outage = async (): Promise<never> => {
+            throw new Error("synthetic upstream outage");
+          };
+          const reads = liveSeams({
+            carePlanAsOf: outage,
+            scaleSeries: outage,
+            medicationChangesBetween: outage,
+            part2DisclosureAllowed: outage,
+          });
+          currentSeams = reads;
+          const f = await seedEncounter(orgs.A, { type: "telephonic" });
+          patientsSeams.set(f.encounterId, reads);
+          const selections = requiredSectionSelections("telephonic", "rn");
+          await svc.updateSelections(
+            ORG_A,
+            f.encounterId,
+            0,
+            selections,
+            orgs.A.author.membershipId,
+          );
+          // Over the route and the service: every template section is not_drafted at the read time, and no source is asked.
+          const http = await getDraft(f);
+          expect(http.res.statusCode).toBe(200);
+          expect(http.body.sections.length).toBeGreaterThan(0);
+          for (const section of http.body.sections) {
+            expect(section, section.sectionId).toMatchObject({
+              state: "not_drafted",
+              text: null,
+              contentHash: null,
+              origins: [],
+            });
+          }
+          expect(http.body.asOf).toBe(NOW.toISOString());
+          const viaService = await draftService.getDraft(callerOf(orgs.A), f.encounterId);
+          expect(viaService.sections.every((section) => section.state === "not_drafted")).toBe(
+            true,
+          );
+
+          expect((await finalize(orgs.A, f)).status).toBe("finalized");
+          expect(
+            (
+              await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), {
+                at: SERVICE_DATE as never,
+                visitModality: "telephonic" as const,
+              })
+            ).status,
+          ).toBe("signed");
+
+          const layer1 = assembleSelections("telephonic", "rn", SERVICE_DATE, selections.sections);
+          const [out] = await outputsOf(f);
+          expect(await open(ORG_A, one(out ? [out] : []).final_cipher)).toBe(layer1);
+          expect(await signedRowsOf(f)).toEqual([]);
+          expect(await confirmationsOf(f.encounterId)).toEqual([]);
+          for (const name of [
+            "carePlanAsOf",
+            "scaleSeries",
+            "medicationChangesBetween",
+            "part2DisclosureAllowed",
+          ] as const) {
+            expect(reads[name], name).not.toHaveBeenCalled();
+          }
+        });
+      });
+
       describe("the switch off, and tenancy", () => {
         it("a tenant with the switch off finalizes and signs exactly as before: no confirmation asked, no source read, no sealed row", async () => {
           const reads = liveSeams();
