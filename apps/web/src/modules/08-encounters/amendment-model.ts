@@ -65,6 +65,8 @@ export function addendumRefusalMessage({ code, message, details }: AddendumRefus
       return "This note needed a cosigner, so its amendment does too, and no eligible cosigner was found (the patient's RN case manager cannot cosign their own amendment). Nothing was changed. Ask a supervisor to assign a case manager, then sign again.";
     case "AMENDMENT_PART2_NOT_ENTITLED":
       return PART2_NOT_ENTITLED;
+    case "STEP_UP_AUTH_REQUIRED":
+      return "Signing needs a fresh re-authentication, and yours is out of date. Nothing was changed: the addendum is still waiting. Re-authenticate, then sign again.";
     default:
       return message;
   }

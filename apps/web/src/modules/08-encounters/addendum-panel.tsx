@@ -49,6 +49,7 @@ import {
 } from "./amendment-model";
 import { AmendmentReview } from "./amendment-review";
 import { amendmentCosignTone, amendmentCosignWords } from "./cosign-model";
+import { isStepUpRefusal } from "./cosign-refusal";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
@@ -62,7 +63,6 @@ import { ProposedFromMessage } from "./proposed-from-message";
 import { humanizeSection } from "./sign-draft-notice";
 import { shortStamp } from "./signed-note-model";
 import { useNoteDraft } from "./use-note-draft";
-import { authFailureRedirect } from "./write-workflow";
 
 type Failure = Extract<AddendumResult<unknown>, { ok: false }>;
 
@@ -77,14 +77,17 @@ interface PanelProps {
 
 /** A refusal rendered as user-facing prose; step-up gets the real ceremony link. */
 function FailureAlert({ failure }: { failure: Failure }): JSX.Element {
-  const path = `${window.location.pathname}${window.location.search}`;
-  const stepUp = authFailureRedirect(
-    failure.status ?? undefined,
-    failure.code ?? undefined,
-    path,
-    failure.message,
-  );
-  const redirect = stepUp ?? (failure.status === 401 ? "/login" : null);
+  const path = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const stepUp = isStepUpRefusal({
+    status: failure.status ?? undefined,
+    code: failure.code ?? undefined,
+    message: failure.message,
+  });
+  const redirect = stepUp
+    ? `/step-up?returnTo=${encodeURIComponent(path)}`
+    : failure.status === 401
+      ? "/login"
+      : null;
   return (
     <div role="alert" style={alertBox}>
       <span>{addendumRefusalMessage(failure)}</span>
@@ -140,6 +143,7 @@ export function AddendaPanel({
   }
 
   async function sign(addendumId: string): Promise<void> {
+    if (busyId !== null) return;
     setBusyId(addendumId);
     setFailure(null);
     const res = await signAddendum(client, { encounterId, addendumId });
@@ -201,6 +205,7 @@ export function AddendaPanel({
         legalText="I attest this addendum is complete and accurate to the best of my knowledge."
         signer={{ name: "Signing clinician", role: "This session" }}
         commitLabel={busyId === signingId && signingId ? "Signing…" : "Sign & commit"}
+        commitBlocked={busyId !== null}
         onCommit={() => signingId && void sign(signingId)}
         onCancel={() => setSigningId(null)}
       />
@@ -348,7 +353,10 @@ function AddendumItem({
           </InlineAlert>
         </div>
       ) : null}
-      {signedNote !== null ? <output style={metaText}>{signedNote}</output> : null}
+      {/* Always on the page, so the sentence is announced when it is filled in (a region mounted with its text is not). */}
+      <output id={`signed-note-${a.id}`} style={metaText}>
+        {signedNote}
+      </output>
       {failure ? <FailureAlert failure={failure} /> : null}
       {editing && a.status === "draft" ? (
         <AddendumEditor encounterId={encounterId} addendumId={a.id} onClose={onCloseEditor} />

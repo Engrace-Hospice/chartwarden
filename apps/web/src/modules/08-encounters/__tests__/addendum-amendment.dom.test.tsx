@@ -325,6 +325,16 @@ describe("a refused sign", () => {
     await waitFor(() => expect(draftReads(GET)).toBe(2));
   });
 
+  it("412 STEP_UP_AUTH_REQUIRED offers the real re-authentication screen beside an app-worded sentence", async () => {
+    const { alert, onChanged } = await signRefused({ status: 412, code: "STEP_UP_AUTH_REQUIRED" });
+    expect(alert.textContent).toMatch(/re-authenticat/i);
+    expect(alert.textContent).not.toContain("server words");
+    expect(
+      within(alert).getByRole("link", { name: "Re-authenticate" }).getAttribute("href"),
+    ).toMatch(/^\/step-up\?returnTo=/);
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["DRAFT_OFF_AFTER_FINALIZE", 409, /Visit-note Draft/],
     ["COMPLIANCE_GATE_UNAVAILABLE", 503, /Try again in a moment/],
@@ -335,6 +345,32 @@ describe("a refused sign", () => {
     expect(alert.textContent).toMatch(wording);
     expect(alert.textContent).toMatch(/Nothing was changed|cannot be amended by you/);
     expect(onChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe("signing while a sign is in flight", () => {
+  it("sends the sign once however often the commit is pressed, and leaves Cancel available", async () => {
+    const user = userEvent.setup();
+    sections = [section("pain", "confirmed"), section("plan", "confirmed")];
+    let land: (reply: unknown) => void = () => undefined;
+    const reply = new Promise((resolve) => {
+      land = resolve;
+    });
+    const POST = vi.fn(async () => reply);
+    const { onChanged } = mount([amending], { POST });
+    const sign = await within(row()).findByRole("button", { name: "Sign addendum" });
+    await waitFor(() => expect(sign).not.toHaveAttribute("aria-disabled"));
+    await user.click(sign);
+    await user.click(screen.getByLabelText(/I attest this addendum/));
+    const commit = screen.getByRole("button", { name: "Sign & commit" });
+    await user.click(commit);
+    await user.click(screen.getByRole("button", { name: "Signing…" }));
+    await user.click(screen.getByRole("button", { name: "Signing…" }));
+    expect(POST).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Signing…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    land({ data: { status: "signed", amendedSectionIds: [] } });
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
   });
 });
 
@@ -362,6 +398,25 @@ describe("a signed amendment", () => {
       ),
     ).toBeInTheDocument();
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("says it in a status region that was already on the page, so it is announced", async () => {
+    const user = userEvent.setup();
+    sections = [section("pain", "confirmed"), section("plan", "confirmed")];
+    const POST = vi.fn(async () => ({
+      data: { status: "signed", amendedSectionIds: ["pain"], cosignatureRequestId: null },
+    }));
+    mount([amending], { POST });
+    const sign = await within(row()).findByRole("button", { name: "Sign addendum" });
+    const region = row().querySelector("#signed-note-add-1");
+    expect(region).not.toBeNull();
+    expect(region?.textContent).toBe("");
+    await waitFor(() => expect(sign).not.toHaveAttribute("aria-disabled"));
+    await user.click(sign);
+    await user.click(screen.getByLabelText(/I attest this addendum/));
+    await user.click(screen.getByRole("button", { name: "Sign & commit" }));
+    await waitFor(() => expect(region?.textContent).toBe("Addendum signed. 1 section amended."));
+    expect(row().querySelector("#signed-note-add-1")).toBe(region);
   });
 
   it("shows what it amended and its cosignature status, and reads no draft", () => {

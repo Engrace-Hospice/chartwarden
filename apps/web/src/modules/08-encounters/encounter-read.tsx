@@ -307,207 +307,212 @@ export function EncounterRead(): JSX.Element {
     response: Response;
   }>;
 
-  const load = useCallback(async () => {
-    if (!encounterId) return;
+  // `inPlace` reads the encounter again without replacing the page by a spinner, so what the screen holds (an addendum's result line, an
+  // open editor, the scroll position) survives the read.
+  const load = useCallback(
+    async (inPlace?: boolean) => {
+      if (!encounterId) return;
 
-    setLoading(true);
-    setError(null);
-    setRetryable(false);
+      if (!inPlace) setLoading(true);
+      setError(null);
+      setRetryable(false);
 
-    const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
-      params: {
-        path: {
-          encounterId,
-        },
-      },
-    });
-
-    if (err || !data?.id) {
-      const noteViewUnavailable = isNoteViewUnavailable(err);
-      setRetryable(noteViewUnavailable);
-      setError(
-        noteViewUnavailable ? NOTE_VIEW_UNAVAILABLE_DESCRIPTION : "Could not load the encounter.",
-      );
-      setLoading(false);
-      return;
-    }
-
-    const selections =
-      (
-        data as {
-          selections?: Record<string, unknown> | null;
-        }
-      ).selections ?? null;
-
-    const loadedVitals = (
-      data as {
-        vitals?: Record<string, unknown> | null;
-      }
-    ).vitals;
-
-    const loadedMileage = (
-      data as {
-        mileage?: Record<string, unknown> | null;
-      }
-    ).mileage;
-
-    setEncounter({
-      id: data.id,
-      patientId: data.patientId,
-      admissionId: data.admissionId,
-      visitId: data.visitId ?? null,
-      authoredByUserId: data.authoredByUserId,
-      encounterType: data.encounterType,
-      discipline: data.discipline,
-      serviceDate: data.serviceDate,
-      status: data.status,
-      lateEntryTier: data.lateEntryTier,
-      version: data.version,
-      isF2f: data.isF2f,
-      signedAt: data.signedAt ?? null,
-      cosignedAt: data.cosignedAt ?? null,
-      visitModality: data.visitModality ?? null,
-      visitModalityConfirmed: data.visitModalityConfirmed === true,
-      evvBracketPresent: data.evvBracketPresent === true,
-      selections,
-      finalDocumentation:
-        (
-          data as {
-            finalDocumentation?: string | null;
-          }
-        ).finalDocumentation ?? null,
-      finalDocumentationView: data.finalDocumentationView,
-      noteHistory: data.noteHistory,
-      vitals: loadedVitals ?? null,
-      mileage: loadedMileage ?? null,
-      carePlanLinks:
-        (
-          data as {
-            carePlanLinks?: CarePlanLink[];
-          }
-        ).carePlanLinks ?? [],
-      addenda: (data as { addenda?: AddendumRow[] }).addenda ?? [],
-    });
-
-    const pid = patientId ?? data.patientId;
-
-    if (loadedVitals) {
-      setVitals({
-        bpSystolic: String(loadedVitals.bpSystolic ?? ""),
-        bpDiastolic: String(loadedVitals.bpDiastolic ?? ""),
-        heartRate: String(loadedVitals.heartRate ?? ""),
-        respiratoryRate: String(loadedVitals.respiratoryRate ?? ""),
-        temperature: String(loadedVitals.temperature ?? ""),
-        temperatureUnit: String(loadedVitals.temperatureUnit ?? "f"),
-        spo2: String(loadedVitals.spo2 ?? ""),
-        painScore: String(loadedVitals.painScore ?? ""),
-        painScale: String(loadedVitals.painScale ?? "nrs_0_10"),
-      });
-    }
-
-    if (loadedMileage) {
-      setMileage({
-        odometerStart: String(loadedMileage.odometerStart ?? ""),
-        odometerEnd: String(loadedMileage.odometerEnd ?? ""),
-        milesDriven: String(loadedMileage.milesDriven ?? ""),
-        source: String(loadedMileage.source ?? "manual_override"),
-        manualOverrideReason: String(loadedMileage.manualOverrideReason ?? ""),
-      });
-    }
-
-    const [cos, pat, cp, ass, hope, sel] = await Promise.all([
-      client.GET("/api/v1/encounters/{encounterId}/cosignature", {
+      const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
         params: {
           path: {
             encounterId,
           },
         },
-      }),
+      });
 
-      client.GET("/api/v1/patients/{id}", {
-        params: {
-          path: {
-            id: pid,
-          },
-        },
-      }),
+      if (err || !data?.id) {
+        const noteViewUnavailable = isNoteViewUnavailable(err);
+        setRetryable(noteViewUnavailable);
+        setError(
+          noteViewUnavailable ? NOTE_VIEW_UNAVAILABLE_DESCRIPTION : "Could not load the encounter.",
+        );
+        setLoading(false);
+        return;
+      }
 
-      client.GET(
-        "/api/v1/internal/care-plan/relevant-elements" as never,
-        {
+      const selections =
+        (
+          data as {
+            selections?: Record<string, unknown> | null;
+          }
+        ).selections ?? null;
+
+      const loadedVitals = (
+        data as {
+          vitals?: Record<string, unknown> | null;
+        }
+      ).vitals;
+
+      const loadedMileage = (
+        data as {
+          mileage?: Record<string, unknown> | null;
+        }
+      ).mileage;
+
+      setEncounter({
+        id: data.id,
+        patientId: data.patientId,
+        admissionId: data.admissionId,
+        visitId: data.visitId ?? null,
+        authoredByUserId: data.authoredByUserId,
+        encounterType: data.encounterType,
+        discipline: data.discipline,
+        serviceDate: data.serviceDate,
+        status: data.status,
+        lateEntryTier: data.lateEntryTier,
+        version: data.version,
+        isF2f: data.isF2f,
+        signedAt: data.signedAt ?? null,
+        cosignedAt: data.cosignedAt ?? null,
+        visitModality: data.visitModality ?? null,
+        visitModalityConfirmed: data.visitModalityConfirmed === true,
+        evvBracketPresent: data.evvBracketPresent === true,
+        selections,
+        finalDocumentation:
+          (
+            data as {
+              finalDocumentation?: string | null;
+            }
+          ).finalDocumentation ?? null,
+        finalDocumentationView: data.finalDocumentationView,
+        noteHistory: data.noteHistory,
+        vitals: loadedVitals ?? null,
+        mileage: loadedMileage ?? null,
+        carePlanLinks:
+          (
+            data as {
+              carePlanLinks?: CarePlanLink[];
+            }
+          ).carePlanLinks ?? [],
+        addenda: (data as { addenda?: AddendumRow[] }).addenda ?? [],
+      });
+
+      const pid = patientId ?? data.patientId;
+
+      if (loadedVitals) {
+        setVitals({
+          bpSystolic: String(loadedVitals.bpSystolic ?? ""),
+          bpDiastolic: String(loadedVitals.bpDiastolic ?? ""),
+          heartRate: String(loadedVitals.heartRate ?? ""),
+          respiratoryRate: String(loadedVitals.respiratoryRate ?? ""),
+          temperature: String(loadedVitals.temperature ?? ""),
+          temperatureUnit: String(loadedVitals.temperatureUnit ?? "f"),
+          spo2: String(loadedVitals.spo2 ?? ""),
+          painScore: String(loadedVitals.painScore ?? ""),
+          painScale: String(loadedVitals.painScale ?? "nrs_0_10"),
+        });
+      }
+
+      if (loadedMileage) {
+        setMileage({
+          odometerStart: String(loadedMileage.odometerStart ?? ""),
+          odometerEnd: String(loadedMileage.odometerEnd ?? ""),
+          milesDriven: String(loadedMileage.milesDriven ?? ""),
+          source: String(loadedMileage.source ?? "manual_override"),
+          manualOverrideReason: String(loadedMileage.manualOverrideReason ?? ""),
+        });
+      }
+
+      const [cos, pat, cp, ass, hope, sel] = await Promise.all([
+        client.GET("/api/v1/encounters/{encounterId}/cosignature", {
           params: {
-            query: {
-              patientId: data.patientId,
-              admissionId: data.admissionId,
-              encounterType: data.encounterType,
-              discipline: data.discipline,
+            path: {
+              encounterId,
             },
           },
-        } as never,
-      ),
+        }),
 
-      client.GET("/api/v1/patients/{patientId}/assessments", {
-        params: {
-          path: {
-            patientId: data.patientId,
+        client.GET("/api/v1/patients/{id}", {
+          params: {
+            path: {
+              id: pid,
+            },
           },
-        },
-      } as never),
+        }),
 
-      client.GET("/api/v1/patients/{patientId}/hope/assessments", {
-        params: {
-          path: {
-            patientId: data.patientId,
+        client.GET(
+          "/api/v1/internal/care-plan/relevant-elements" as never,
+          {
+            params: {
+              query: {
+                patientId: data.patientId,
+                admissionId: data.admissionId,
+                encounterType: data.encounterType,
+                discipline: data.discipline,
+              },
+            },
+          } as never,
+        ),
+
+        client.GET("/api/v1/patients/{patientId}/assessments", {
+          params: {
+            path: {
+              patientId: data.patientId,
+            },
           },
-        },
-      } as never),
+        } as never),
 
-      // #114 — the stored HearthNote tree, assembled (Layer-1). The note is authored in the composer;
-      // this screen shows what it currently reads as.
-      client.GET("/api/v1/encounters/{encounterId}/selections", {
-        params: { path: { encounterId } },
-      }),
-    ]);
+        client.GET("/api/v1/patients/{patientId}/hope/assessments", {
+          params: {
+            path: {
+              patientId: data.patientId,
+            },
+          },
+        } as never),
 
-    setCosignStatus(cos.data?.status ?? null);
+        // #114 — the stored HearthNote tree, assembled (Layer-1). The note is authored in the composer;
+        // this screen shows what it currently reads as.
+        client.GET("/api/v1/encounters/{encounterId}/selections", {
+          params: { path: { encounterId } },
+        }),
+      ]);
 
-    if (pat.data) {
-      setPatient(pat.data as PatientSummary);
-    }
+      setCosignStatus(cos.data?.status ?? null);
 
-    setCarePlan((cp.data ?? null) as CarePlanRelevant | null);
+      if (pat.data) {
+        setPatient(pat.data as PatientSummary);
+      }
 
-    setAssessments(
-      (
+      setCarePlan((cp.data ?? null) as CarePlanRelevant | null);
+
+      setAssessments(
         (
-          ass.data as
+          (
+            ass.data as
+              | {
+                  assessments?: AssessmentRow[];
+                }
+              | undefined
+          )?.assessments ?? []
+        ).filter((row) => row.sourceEncounterId === encounterId),
+      );
+
+      setHopeAssessments(
+        ((
+          hope.data as
             | {
                 assessments?: AssessmentRow[];
               }
             | undefined
-        )?.assessments ?? []
-      ).filter((row) => row.sourceEncounterId === encounterId),
-    );
+        )?.assessments ?? []) as AssessmentRow[],
+      );
+      // A preview only once something is documented — an empty tree still assembles the template's
+      // headings, which would read as a note that says nothing.
+      setNoteText(
+        sel.data?.sections?.some((s) => s.entries.length > 0 || Boolean(s.freeText))
+          ? (sel.data?.layer1Preview ?? "")
+          : "",
+      );
 
-    setHopeAssessments(
-      ((
-        hope.data as
-          | {
-              assessments?: AssessmentRow[];
-            }
-          | undefined
-      )?.assessments ?? []) as AssessmentRow[],
-    );
-    // A preview only once something is documented — an empty tree still assembles the template's
-    // headings, which would read as a note that says nothing.
-    setNoteText(
-      sel.data?.sections?.some((s) => s.entries.length > 0 || Boolean(s.freeText))
-        ? (sel.data?.layer1Preview ?? "")
-        : "",
-    );
-
-    setLoading(false);
-  }, [client, encounterId, patientId]);
+      setLoading(false);
+    },
+    [client, encounterId, patientId],
+  );
 
   useEffect(() => {
     void load();
@@ -1836,7 +1841,7 @@ export function EncounterRead(): JSX.Element {
                     encounterId={e.id}
                     addenda={e.addenda}
                     noteAuthorId={e.authoredByUserId}
-                    onChanged={() => void load()}
+                    onChanged={() => void load(true)}
                   />
                 </div>
               ) : null}

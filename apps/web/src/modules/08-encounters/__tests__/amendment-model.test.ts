@@ -125,6 +125,13 @@ describe("addendumRefusalMessage", () => {
     ).toMatch(/42 CFR Part 2/);
   });
 
+  it("words the machine's stale step-up (412) in the app's own sentence, with the next step", () => {
+    const text = addendumRefusalMessage({ ...refusal("STEP_UP_AUTH_REQUIRED"), status: 412 });
+    expect(text).not.toBe("server said so");
+    expect(text).toMatch(/re-authenticat/i);
+    expect(text).toMatch(/Nothing was changed/);
+  });
+
   it("shows any other refusal as the server worded it", () => {
     expect(addendumRefusalMessage(refusal("STEP_UP_REQUIRED"))).toBe("server said so");
   });
