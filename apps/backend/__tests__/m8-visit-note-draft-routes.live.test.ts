@@ -60,7 +60,7 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { buildServer } from "../src/bootstrap/index";
+import { STEP_UP_FLOOR_KEY, buildServer, stepUpFreshFor } from "../src/bootstrap/index";
 import { registerSeam } from "../src/bootstrap/seams/registry";
 import { createDbDraftStore } from "../src/modules/08-encounters/drafting/db-draft-store";
 import { createDbRunInOrg } from "../src/modules/08-encounters/drafting/db-draft-unit";
@@ -80,6 +80,7 @@ import {
   createHearthnoteCiphers,
   registerEncounterRoutes,
 } from "../src/modules/08-encounters/index";
+import { runCosignatureSlaCron } from "../src/modules/08-encounters/jobs/cron-workers";
 import { registerDraftSectionRoutes } from "../src/modules/08-encounters/routes/draft-section-routes";
 import { assembleSelections } from "../src/modules/08-encounters/routes/service";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/index";
@@ -460,6 +461,8 @@ describe.skipIf(!DB_URL)(
               "encounter.read",
               "encounter.author",
               "encounter.addendum_author",
+              "encounter.cosign",
+              "encounter.cosign_supervisor_release",
               ...DOMAIN_READS,
             ]),
           ),
@@ -477,6 +480,16 @@ describe.skipIf(!DB_URL)(
         isInCaseload: async () => true,
       });
       for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+      // M3's step-up gate (registered at boot in production): a cosignature and a supervisor release need a FRESH step-up on the session.
+      registry.register("step_up_recent", async (context, target) =>
+        stepUpFreshFor({
+          organizationId: context.organizationId,
+          sessionId:
+            typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null,
+          operationKey:
+            typeof target.operationKey === "string" ? target.operationKey : STEP_UP_FLOOR_KEY,
+        }),
+      );
       registerAbacRegistry(registry);
 
       app = buildServer({
@@ -1488,6 +1501,21 @@ describe.skipIf(!DB_URL)(
             lastStepUpAt: new Date(),
             lastStepUpFactor: "webauthn" as const,
           })),
+          // The RN cosigner's HTTP session: `headerAuth` uses the user id as the session id, and a cosignature needs a FRESH step-up.
+          {
+            sessionClass: "staff" as const,
+            portalAccountId: null,
+            sessionPatientId: null,
+            sessionId: orgs.A.otherRn.userId,
+            userId: orgs.A.otherRn.userId,
+            membershipId: orgs.A.otherRn.membershipId,
+            organizationId: orgs.A.orgId,
+            roles: [],
+            providerEntityIds: [],
+            locationIds: [],
+            lastStepUpAt: new Date(),
+            lastStepUpFactor: "webauthn" as const,
+          },
           {
             sessionClass: "staff" as const,
             portalAccountId: null,
@@ -2738,18 +2766,21 @@ describe.skipIf(!DB_URL)(
           f: EncounterFixture,
           sectionIds: readonly string[] | undefined,
           service: ReturnType<typeof amendSvc> = a,
+          roles: readonly string[] = ["rn"],
         ) =>
           service.createAddendum(ORG_A, f.encounterId, {
             reason: REASON,
             authorMembershipId: orgs.A.author.membershipId,
+            roles,
             ...(sectionIds === undefined ? {} : { amendsSectionIds: sectionIds }),
           });
         /** The addendum's own selections, finalized: what is left before sign is the amended sections' resolution. */
         async function finalizedAddendum(
           f: EncounterFixture,
           sectionIds: readonly string[] | undefined,
+          roles: readonly string[] = ["rn"],
         ): Promise<string> {
-          const created = await createAmendment(f, sectionIds);
+          const created = await createAmendment(f, sectionIds, a, roles);
           await a.updateAddendumSelections(ORG_A, f.encounterId, created.id, requireSelections);
           await a.finalizeAddendum(ORG_A, f.encounterId, created.id);
           return created.id;
@@ -2843,6 +2874,28 @@ describe.skipIf(!DB_URL)(
           );
         const viewOf = (f: EncounterFixture, member: Member, roles: readonly string[]) =>
           a.getEncounter(ORG_A, f.encounterId, viewerOf(member, roles));
+
+        /** The note needed a cosigner: it has a cosignature request, routed to the RN case manager (what an LPN/CHHA note's sign opens). */
+        async function needsCosign(f: EncounterFixture): Promise<string> {
+          const enc = one(
+            await rows<{ provider_entity_id: string; location_id: string }>(
+              "SELECT provider_entity_id::text, location_id::text FROM encounter WHERE id = $1",
+              [f.encounterId],
+            ),
+          );
+          const created = await admin.query<{ id: string }>(
+            `INSERT INTO cosignature_request (organization_id, provider_entity_id, location_id, encounter_id, routed_to_membership_id, status, routed_at)
+             VALUES ($1,$2,$3,$4,$5,'routed','2026-01-16T15:00:00Z') RETURNING id::text`,
+            [
+              ORG_A,
+              enc.provider_entity_id,
+              enc.location_id,
+              f.encounterId,
+              orgs.A.otherRn.membershipId,
+            ],
+          );
+          return one(created.rows).id;
+        }
 
         // ---- naming ----------------------------------------------------------------------------------------------
         describe("naming sections", () => {
@@ -3230,7 +3283,7 @@ describe.skipIf(!DB_URL)(
               medicationChangesBetween: async () => sudChange(),
             });
             const f = await signedNote(["rn", "part2"]);
-            const id = await finalizedAddendum(f, ["interventions"]);
+            const id = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
             await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
             await signAddendum(f, id, ["rn", "part2"]);
             const get = (member: Member, roles: string) =>
@@ -3341,7 +3394,7 @@ describe.skipIf(!DB_URL)(
 
           it("both versions Part 2: a viewer with disclosure reads both; any other viewer sees the marker in the legacy string, text:null in every structured field, and never the content", async () => {
             const f = await signedWithPart2();
-            const id = await finalizedAddendum(f, ["interventions"]);
+            const id = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
             await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
             await signAddendum(f, id, ["rn", "part2"]);
             const [row] = await amendmentRowsOf(f);
@@ -3396,11 +3449,13 @@ describe.skipIf(!DB_URL)(
             expect(JSON.stringify(image)).not.toContain("Morphine");
           });
 
-          it("a Part 2 original amended by an author WITHOUT disclosure (the SUD content is out of the redraft): the current view shows the amendment, the history stays withheld whole", async () => {
+          it("a Part 2 original whose amendment holds no Part 2 content (the SUD source is gone from the redraft): the current view shows the amendment, the history stays withheld whole for a viewer without disclosure", async () => {
             const f = await signedWithPart2();
-            const id = await finalizedAddendum(f, ["interventions"]);
-            await resolveAmendment(f, id, "interventions", "confirmed", ["rn"]);
-            await signAddendum(f, id, ["rn"]);
+            // the SUD-treatment change no longer feeds the section (a corrected order): the entitled author's redraft carries the care-plan intervention only
+            currentSeams = goalSeams(GOAL_V2, { medicationChangesBetween: async () => [] });
+            const id = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
+            await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
+            await signAddendum(f, id, ["rn", "part2"]);
             const [row] = await amendmentRowsOf(f);
             expect(row?.part2_derived).toBe(false);
             const without = await viewOf(f, orgs.A.otherRn, ["rn"]);
@@ -3431,7 +3486,7 @@ describe.skipIf(!DB_URL)(
             currentSeams = goalSeams(GOAL_V2, {
               medicationChangesBetween: async () => sudChange(),
             });
-            const id = await finalizedAddendum(f, ["interventions"]);
+            const id = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
             await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
             await signAddendum(f, id, ["rn", "part2"]);
             const without = await viewOf(f, orgs.A.otherRn, ["rn"]);
@@ -3478,9 +3533,129 @@ describe.skipIf(!DB_URL)(
             expect(error).toMatchObject({ code: "NOTE_VIEW_UNAVAILABLE", statusCode: 503 });
           });
 
+          describe("who may amend a Part 2 section (AMENDMENT_PART2_NOT_ENTITLED)", () => {
+            const refusedWith = (error: unknown) =>
+              expect(error).toMatchObject({
+                code: "AMENDMENT_PART2_NOT_ENTITLED",
+                statusCode: 422,
+              });
+
+            it("an author with Part 2 disclosure amends a Part 2 section; the verdict is the draft's own (caller module m8, the author's session)", async () => {
+              const f = await signedWithPart2();
+              const id = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
+              await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
+              expect((await signAddendum(f, id, ["rn", "part2"])).status).toBe("signed");
+              const asked = currentSeams.part2DisclosureAllowed.mock.calls.map(
+                ([query]) =>
+                  (query as { viewer: { membershipId: string | null } }).viewer.membershipId,
+              );
+              expect(asked.length).toBeGreaterThan(0);
+              expect(new Set(asked)).toEqual(new Set([orgs.A.author.membershipId]));
+            });
+
+            it("an author WITHOUT disclosure is refused at naming: 422, no addendum, no naming, and no section in the error", async () => {
+              const f = await signedWithPart2();
+              const error = await createAmendment(f, ["interventions"], a, ["rn"]).catch(
+                (e: unknown) => e,
+              );
+              refusedWith(error);
+              const wire = JSON.stringify({
+                message: (error as Error).message,
+                ...(error as object),
+              });
+              for (const hidden of ["interventions", "Morphine", "Repositioning"]) {
+                expect(wire).not.toContain(hidden);
+              }
+              expect(
+                await rows("SELECT 1 FROM encounter_addendum WHERE encounter_id = $1", [
+                  f.encounterId,
+                ]),
+              ).toEqual([]);
+              expect(
+                await rows("SELECT 1 FROM encounter_amendment WHERE encounter_id = $1", [
+                  f.encounterId,
+                ]),
+              ).toEqual([]);
+              // over HTTP the same refusal is a 422 with the stable code
+              const res = await amendApp.inject({
+                method: "POST",
+                url: `/api/v1/encounters/${f.encounterId}/addenda`,
+                headers: authorA(),
+                payload: { reason: REASON, amendsSectionIds: ["interventions"] },
+              });
+              expect(res.statusCode).toBe(422);
+              expect(res.json().error.code).toBe("AMENDMENT_PART2_NOT_ENTITLED");
+            });
+
+            it("the same author amends the sections that are NOT Part 2 derived, and the verdict is not asked for them", async () => {
+              const f = await signedWithPart2();
+              currentSeams.part2DisclosureAllowed.mockClear();
+              const created = await createAmendment(f, ["plan"], a, ["rn"]);
+              expect(created.status).toBe("draft");
+              expect(currentSeams.part2DisclosureAllowed).not.toHaveBeenCalled();
+            });
+
+            it("a verdict that changes between naming and sign is checked again at sign: refused 422, nothing written, still finalized", async () => {
+              const f = await signedWithPart2();
+              const id = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
+              await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
+              // the release is withdrawn after naming (and after the author confirmed)
+              currentSeams = goalSeams(GOAL_V2, {
+                medicationChangesBetween: async () => sudChange(),
+                part2DisclosureAllowed: async () => false,
+              });
+              refusedWith(await signAddendum(f, id, ["rn"]).catch((e: unknown) => e));
+              expect(await addendumStatus(id)).toBe("finalized");
+              expect(await amendmentRowsOf(f)).toEqual([]);
+              expect(await addendumSignatures(id)).toBe(0);
+            });
+
+            it("an M39 outage is 503 and never a denial or a pass: DRAFT_UNAVAILABLE at naming, COMPLIANCE_GATE_UNAVAILABLE at sign", async () => {
+              const f = await signedWithPart2();
+              const outage = {
+                part2DisclosureAllowed: async (): Promise<boolean> => {
+                  throw new Error("synthetic M39 outage");
+                },
+              };
+              const named = await (async () => {
+                currentSeams = goalSeams(GOAL_V2, outage);
+                return createAmendment(f, ["interventions"], a, ["rn", "part2"]).catch(
+                  (e: unknown) => e,
+                );
+              })();
+              expect(named).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+              expect(JSON.stringify({ message: (named as Error).message })).not.toContain(
+                "synthetic",
+              );
+              expect(
+                await rows("SELECT 1 FROM encounter_addendum WHERE encounter_id = $1", [
+                  f.encounterId,
+                ]),
+              ).toEqual([]);
+
+              currentSeams = goalSeams(GOAL_V2, {
+                medicationChangesBetween: async () => sudChange(),
+              });
+              const id = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
+              await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
+              currentSeams = goalSeams(GOAL_V2, {
+                medicationChangesBetween: async () => sudChange(),
+                ...outage,
+              });
+              expect(
+                await signAddendum(f, id, ["rn", "part2"]).catch((e: unknown) => e),
+              ).toMatchObject({
+                code: "COMPLIANCE_GATE_UNAVAILABLE",
+                statusCode: 503,
+              });
+              expect(await addendumStatus(id)).toBe("finalized");
+              expect(await amendmentRowsOf(f)).toEqual([]);
+            });
+          });
+
           it("the document seam withholds a Part 2 amendment (a document is never entitled) and the note's own Part 2 text as before", async () => {
             const f = await signedWithPart2();
-            const id = await finalizedAddendum(f, ["interventions"]);
+            const id = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
             await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
             await signAddendum(f, id, ["rn", "part2"]);
             const store = createDrizzleEncounterReaderStore(handle.db, {
@@ -3514,26 +3689,6 @@ describe.skipIf(!DB_URL)(
               "SELECT addendum_id::text, routed_to_membership_id::text, status::text, routed_at, encounter_id::text FROM addendum_cosignature_request WHERE encounter_id = $1",
               [f.encounterId],
             );
-          async function needsCosign(f: EncounterFixture) {
-            const enc = one(
-              await rows<{ provider_entity_id: string; location_id: string }>(
-                "SELECT provider_entity_id::text, location_id::text FROM encounter WHERE id = $1",
-                [f.encounterId],
-              ),
-            );
-            await admin.query(
-              `INSERT INTO cosignature_request (organization_id, provider_entity_id, location_id, encounter_id, routed_to_membership_id, status, routed_at)
-               VALUES ($1,$2,$3,$4,$5,'routed','2026-01-16T15:00:00Z')`,
-              [
-                ORG_A,
-                enc.provider_entity_id,
-                enc.location_id,
-                f.encounterId,
-                orgs.A.otherRn.membershipId,
-              ],
-            );
-          }
-
           it("a note that needed a cosigner: signing an amendment opens a NEW request for the addendum, routed to the RN case manager, with its own clock; the note's request is untouched", async () => {
             const f = await signedNote();
             await needsCosign(f);
@@ -3601,6 +3756,639 @@ describe.skipIf(!DB_URL)(
                 primaryRnMembershipId: async () => orgs.A.otherRn.membershipId,
               } as never);
             }
+          });
+        });
+
+        // ---- working the amendment's cosignature request -------------------------------------------------------------------
+        describe("working the amendment's cosignature request: queue, acknowledge, sign, release, alerts (ADR-0114 VN-D30)", () => {
+          const T0 = "2026-01-20T00:00:00.000Z";
+          const hoursAfter = (iso: string, hours: number) =>
+            new Date(new Date(iso).getTime() + hours * 3_600_000).toISOString();
+          const cosigner = (sessionId: string = orgs.A.otherRn.userId) => ({
+            membershipId: orgs.A.otherRn.membershipId,
+            sessionId,
+            userId: orgs.A.otherRn.userId,
+            roles: ["rn"],
+          });
+          const SIGN = { isQualifiedRn: true, at: SERVICE_DATE as never };
+          const requestOf = async (requestId: string) =>
+            one(
+              await rows<{
+                status: string;
+                acknowledged_at: Date | null;
+                signed_at: Date | null;
+                supervisor_released_by: string | null;
+                routed_at: Date;
+              }>(
+                "SELECT status::text, acknowledged_at, signed_at, supervisor_released_by::text, routed_at FROM addendum_cosignature_request WHERE id = $1",
+                [requestId],
+              ),
+            );
+          const parentRequestOf = (f: EncounterFixture) =>
+            rows<Record<string, unknown>>(
+              "SELECT * FROM cosignature_request WHERE encounter_id = $1",
+              [f.encounterId],
+            );
+          const cosignSignatures = (addendumId: string) =>
+            rows<{ kind: string; signed_by_membership_id: string; method: string }>(
+              "SELECT kind::text, signed_by_membership_id::text, method::text FROM encounter_signature WHERE addendum_id = $1 AND kind = 'addendum_cosignature'",
+              [addendumId],
+            );
+          /** A note that needed a cosigner, amended by its author: the amendment's request is routed to the RN case manager. */
+          async function routedAmendment() {
+            const f = await signedNote();
+            const parentRequestId = await needsCosign(f);
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await finalizedAddendum(f, ["plan"]);
+            await resolveAmendment(f, id, "plan");
+            const signed = await signAddendum(f, id);
+            return { f, id, requestId: signed.cosignatureRequestId as string, parentRequestId };
+          }
+          const cosignUrl = (f: EncounterFixture, id: string, action = "") =>
+            `/api/v1/encounters/${f.encounterId}/addenda/${id}/cosignature${action}`;
+
+          it("the routed request is published like a note's: cosignature_routed names the addendum, on the request's own aggregate", async () => {
+            published.length = 0;
+            const { f, id, requestId } = await routedAmendment();
+            const routed = published.find((e) => e.eventName === "m8.encounter.cosignature_routed");
+            expect(routed?.payload).toMatchObject({
+              encounterId: f.encounterId,
+              addendumId: id,
+              routedToMembershipId: orgs.A.otherRn.membershipId,
+            });
+            expect(routed?.aggregateId).toBe(requestId);
+          });
+
+          it("the queue lists it: the parent encounter with cosign.subject 'addendum', the addendum, the request, its status and its own clock; a note's request is 'note'", async () => {
+            const { f, id, requestId } = await routedAmendment();
+            const note = await seedEncounter(orgs.A, { status: "cosign_pending" });
+            const noteRequestId = await needsCosign(note);
+            const queue = (await a.cosignatureQueue(ORG_A)).encounters;
+            const amendment = queue.find((entry) => entry.cosign.addendumId === id);
+            expect(amendment).toMatchObject({
+              id: f.encounterId,
+              status: "signed",
+              cosign: { subject: "addendum", addendumId: id, requestId, status: "routed" },
+            });
+            expect(amendment?.cosign.routedAt).toBe(
+              (await requestOf(requestId)).routed_at.toISOString(),
+            );
+            const noteEntry = queue.find((entry) => entry.id === note.encounterId);
+            expect(noteEntry).toMatchObject({
+              cosign: {
+                subject: "note",
+                addendumId: null,
+                requestId: noteRequestId,
+                status: "routed",
+              },
+            });
+            // another tenant sees neither
+            const other = (await a.cosignatureQueue(ORG_B)).encounters;
+            expect(
+              other.some((entry) => entry.id === f.encounterId || entry.id === note.encounterId),
+            ).toBe(false);
+          });
+
+          it("an addendum that amended nothing opens no request, so it is in no queue and reads null", async () => {
+            const f = await signedNote();
+            await needsCosign(f);
+            const free = await finalizedAddendum(f, undefined);
+            await signAddendum(f, free);
+            expect(
+              (await a.cosignatureQueue(ORG_A)).encounters.some(
+                (e) => e.cosign.addendumId === free,
+              ),
+            ).toBe(false);
+            expect(await a.getCosignature(ORG_A, f.encounterId, free)).toEqual({ status: null });
+          });
+
+          it("reads its status: routed, then acknowledged; an addendum of another encounter or tenant is a 404", async () => {
+            const { f, id } = await routedAmendment();
+            expect(await a.getCosignature(ORG_A, f.encounterId, id)).toEqual({ status: "routed" });
+            await a.cosignAcknowledge(ORG_A, f.encounterId, cosigner(), SERVICE_DATE as never, id);
+            expect(await a.getCosignature(ORG_A, f.encounterId, id)).toEqual({
+              status: "acknowledged",
+            });
+            const g = await signedNote();
+            expect(
+              await a.getCosignature(ORG_A, g.encounterId, id).catch((e: unknown) => e),
+            ).toMatchObject({ statusCode: 404 });
+            expect(
+              await a.getCosignature(ORG_B, f.encounterId, id).catch((e: unknown) => e),
+            ).toMatchObject({ statusCode: 404 });
+          });
+
+          it("acknowledge: the cosigner acknowledges; the addendum's author may not (no self-cosign), whatever the route", async () => {
+            const { f, id, requestId } = await routedAmendment();
+            const self = {
+              membershipId: orgs.A.author.membershipId,
+              sessionId: SESSIONS.A,
+              userId: orgs.A.author.userId,
+              roles: ["rn"],
+            };
+            expect(
+              await a
+                .cosignAcknowledge(ORG_A, f.encounterId, self, SERVICE_DATE as never, id)
+                .catch((e: unknown) => e),
+            ).toMatchObject({ statusCode: 403 });
+            expect((await requestOf(requestId)).status).toBe("routed");
+            const acknowledged = await a.cosignAcknowledge(
+              ORG_A,
+              f.encounterId,
+              cosigner(),
+              SERVICE_DATE as never,
+              id,
+            );
+            expect(acknowledged).toEqual({ status: "acknowledged" });
+            expect((await requestOf(requestId)).acknowledged_at).not.toBeNull();
+          });
+
+          it("an amendment authored by someone OTHER than the note's author: its author may not cosign it (the addendum's own no-self-cosign), a third RN may", async () => {
+            const f = await signedNote();
+            await needsCosign(f);
+            const thirdRn = limitedA; // an RN who authored neither the note nor the addendum
+            registerSeam("CareTeamProvider", {
+              primaryRnMembershipId: async () => thirdRn.membershipId,
+            } as never);
+            try {
+              currentSeams = goalSeams(GOAL_V2);
+              const author = {
+                membershipId: orgs.A.otherRn.membershipId,
+                sessionId: orgs.A.otherRn.userId,
+                userId: orgs.A.otherRn.userId,
+                roles: ["rn"],
+              };
+              const created = await a.createAddendum(ORG_A, f.encounterId, {
+                reason: REASON,
+                authorMembershipId: author.membershipId,
+                roles: ["rn"],
+                amendsSectionIds: ["plan"],
+              });
+              await a.updateAddendumSelections(ORG_A, f.encounterId, created.id, requireSelections);
+              await a.finalizeAddendum(ORG_A, f.encounterId, created.id);
+              const seen = (await amendDraft(f, created.id)).sections[0];
+              await draftService.resolveAmendmentSection(
+                { ...callerOf(orgs.A), userId: author.userId, membershipId: author.membershipId },
+                f.encounterId,
+                created.id,
+                "plan",
+                {
+                  resolution: "confirmed",
+                  contentHash: seen?.contentHash ?? "",
+                  corpusVersion: seen?.corpusVersion ?? "",
+                },
+                auditOf(orgs.A),
+              );
+              const signed = await a.signAddendum(ORG_A, f.encounterId, created.id, author, {
+                at: SERVICE_DATE as never,
+              });
+              expect(signed.cosignatureRequestId).not.toBeNull();
+              const asAuthor = { ...author, roles: ["rn"] };
+              expect(
+                await a
+                  .cosignAcknowledge(
+                    ORG_A,
+                    f.encounterId,
+                    asAuthor,
+                    SERVICE_DATE as never,
+                    created.id,
+                  )
+                  .catch((e: unknown) => e),
+              ).toMatchObject({ statusCode: 403 });
+              expect(
+                await a
+                  .cosignSign(ORG_A, f.encounterId, asAuthor, { ...SIGN, addendumId: created.id })
+                  .catch((e: unknown) => e),
+              ).toMatchObject({ statusCode: 403 });
+              const third = {
+                membershipId: thirdRn.membershipId,
+                sessionId: orgs.A.otherRn.userId,
+                userId: thirdRn.userId,
+                roles: ["rn"],
+              };
+              expect(
+                await a.cosignAcknowledge(
+                  ORG_A,
+                  f.encounterId,
+                  third,
+                  SERVICE_DATE as never,
+                  created.id,
+                ),
+              ).toEqual({ status: "acknowledged" });
+            } finally {
+              registerSeam("CareTeamProvider", {
+                primaryRnMembershipId: async () => orgs.A.otherRn.membershipId,
+              } as never);
+            }
+          });
+
+          it("sign: the RN cosigner signs with fresh step-up; the request is signed, the encounter's own status is NOT changed, the provenance row names the addendum, addendum_cosigned is published and m8.encounter.cosigned is not", async () => {
+            const { f, id, requestId, parentRequestId } = await routedAmendment();
+            const parentBefore = await parentRequestOf(f);
+            const encounterBefore = one(
+              await rows<{ status: string; cosigned_at: Date | null }>(
+                "SELECT status::text, cosigned_at FROM encounter WHERE id = $1",
+                [f.encounterId],
+              ),
+            );
+            expect((await viewOf(f, orgs.A.author, ["rn"])).addenda?.[0]?.cosignStatus).toBe(
+              "pending",
+            );
+            published.length = 0;
+            const signed = await a.cosignSign(ORG_A, f.encounterId, cosigner(), {
+              ...SIGN,
+              addendumId: id,
+            });
+            expect(signed.status).toBe("signed");
+            expect((await requestOf(requestId)).status).toBe("signed");
+            expect((await requestOf(requestId)).signed_at).not.toBeNull();
+            const [signature, ...others] = await cosignSignatures(id);
+            expect(others).toEqual([]);
+            expect(signature).toMatchObject({
+              kind: "addendum_cosignature",
+              signed_by_membership_id: orgs.A.otherRn.membershipId,
+            });
+            expect(published.map((e) => e.eventName)).toEqual(["m8.encounter.addendum_cosigned"]);
+            expect(published[0]?.payload).toMatchObject({
+              encounterId: f.encounterId,
+              addendumId: id,
+              cosignedByMembershipId: orgs.A.otherRn.membershipId,
+            });
+            // the note itself and its own request and clock are untouched
+            expect(
+              one(
+                await rows<{ status: string; cosigned_at: Date | null }>(
+                  "SELECT status::text, cosigned_at FROM encounter WHERE id = $1",
+                  [f.encounterId],
+                ),
+              ),
+            ).toEqual(encounterBefore);
+            expect(await parentRequestOf(f)).toEqual(parentBefore);
+            expect(parentBefore[0]?.id).toBe(parentRequestId);
+            // the views say so
+            const view = await viewOf(f, orgs.A.author, ["rn"]);
+            expect(view.addenda?.[0]?.cosignStatus).toBe("cosigned");
+            expect(view.noteHistory?.sections[0]?.versions.map((v) => v.cosignStatus)).toEqual([
+              null,
+              "cosigned",
+            ]);
+            // and it is out of the queue
+            expect(
+              (await a.cosignatureQueue(ORG_A)).encounters.some((e) => e.cosign.addendumId === id),
+            ).toBe(false);
+          });
+
+          it("sign needs a FRESH step-up and an RN, with the note's own codes; the request stays as it was", async () => {
+            const { f, id, requestId } = await routedAmendment();
+            expect(
+              await a
+                .cosignSign(ORG_A, f.encounterId, cosigner(STALE_STEP_UP_SESSION), {
+                  ...SIGN,
+                  addendumId: id,
+                })
+                .catch((e: unknown) => e),
+            ).toMatchObject({ code: "STEP_UP_AUTH_REQUIRED" });
+            expect(
+              await a
+                .cosignSign(ORG_A, f.encounterId, cosigner(), {
+                  isQualifiedRn: false,
+                  at: SERVICE_DATE as never,
+                  addendumId: id,
+                })
+                .catch((e: unknown) => e),
+            ).toMatchObject({ code: "NOT_COSIGN_ELIGIBLE" });
+            expect((await requestOf(requestId)).status).toBe("routed");
+            expect(await cosignSignatures(id)).toEqual([]);
+            // the addendum's author may not sign it either
+            const author = {
+              membershipId: orgs.A.author.membershipId,
+              sessionId: SESSIONS.A,
+              userId: orgs.A.author.userId,
+              roles: ["rn"],
+            };
+            expect(
+              await a
+                .cosignSign(ORG_A, f.encounterId, author, { ...SIGN, addendumId: id })
+                .catch((e: unknown) => e),
+            ).toMatchObject({ statusCode: 403 });
+          });
+
+          it("a concurrent second sign is 409 ILLEGAL_TRANSITION: one signature row, one addendum_cosigned event, the request signed once", async () => {
+            const { f, id, requestId } = await routedAmendment();
+            published.length = 0;
+            const settled = await Promise.allSettled([
+              a.cosignSign(ORG_A, f.encounterId, cosigner(), { ...SIGN, addendumId: id }),
+              a.cosignSign(ORG_A, f.encounterId, cosigner(), { ...SIGN, addendumId: id }),
+            ]);
+            expect(settled.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+            const refused = settled.filter(
+              (r): r is PromiseRejectedResult => r.status === "rejected",
+            );
+            expect(refused).toHaveLength(1);
+            expect(refused[0]?.reason).toMatchObject({
+              code: "ILLEGAL_TRANSITION",
+              statusCode: 409,
+            });
+            expect(await cosignSignatures(id)).toHaveLength(1);
+            expect(
+              published.filter((e) => e.eventName === "m8.encounter.addendum_cosigned"),
+            ).toHaveLength(1);
+            expect((await requestOf(requestId)).status).toBe("signed");
+          });
+
+          it("supervisor release: past the 48h hard cap a sign is COSIGNATURE_LOCKED until a supervisor releases it with a documented reason; then the RN signs", async () => {
+            const { f, id, requestId } = await routedAmendment();
+            await admin.query(
+              "UPDATE addendum_cosignature_request SET status = 'hard_cap_reached', hard_cap_at = now() WHERE id = $1",
+              [requestId],
+            );
+            expect(
+              await a
+                .cosignSign(ORG_A, f.encounterId, cosigner(), { ...SIGN, addendumId: id })
+                .catch((e: unknown) => e),
+            ).toMatchObject({ code: "COSIGNATURE_LOCKED" });
+            const release = (over: Partial<Parameters<typeof a.supervisorRelease>[2]> = {}) =>
+              a.supervisorRelease(ORG_A, f.encounterId, {
+                isSupervisor: true,
+                reason:
+                  "Past the hard cap: the case manager was on leave and the patient's care was not affected.",
+                at: SERVICE_DATE as never,
+                actorMembershipId: orgs.A.otherRn.membershipId,
+                addendumId: id,
+                ...over,
+              });
+            expect(await release({ isSupervisor: false }).catch((e: unknown) => e)).toMatchObject({
+              code: "SUPERVISOR_RELEASE_NOT_PERMITTED",
+            });
+            expect(await release({ reason: "too short" }).catch((e: unknown) => e)).toMatchObject({
+              code: "SUPERVISOR_RELEASE_REASON_TOO_SHORT",
+            });
+            expect((await requestOf(requestId)).status).toBe("hard_cap_reached");
+            expect(await release()).toEqual({ status: "supervisor_released" });
+            const released = await requestOf(requestId);
+            expect(released.supervisor_released_by).toBe(orgs.A.otherRn.membershipId);
+            expect((await viewOf(f, orgs.A.author, ["rn"])).addenda?.[0]?.cosignStatus).toBe(
+              "released",
+            );
+            // release is not a cosignature: the queue still lists it, and the RN still has to sign
+            expect(
+              (await a.cosignatureQueue(ORG_A)).encounters.find((e) => e.cosign.addendumId === id)
+                ?.cosign.status,
+            ).toBe("supervisor_released");
+            expect(
+              (await a.cosignSign(ORG_A, f.encounterId, cosigner(), { ...SIGN, addendumId: id }))
+                .status,
+            ).toBe("signed");
+            expect(await release().catch((e: unknown) => e)).toMatchObject({
+              code: "ILLEGAL_TRANSITION",
+            });
+          });
+
+          it("over HTTP: the same four routes behind the real middleware: the cosigner acknowledges and signs (step-up), the addendum's author is 403, a malformed id is 422, another tenant is refused", async () => {
+            const { f, id } = await routedAmendment();
+            const cosignerHeaders = as(orgs.A, orgs.A.otherRn);
+            const get = await amendApp.inject({
+              method: "GET",
+              url: cosignUrl(f, id),
+              headers: authorA(),
+            });
+            expect(get.statusCode).toBe(200);
+            expect(get.json()).toEqual({ status: "routed" });
+            expect(
+              (
+                await amendApp.inject({
+                  method: "POST",
+                  url: cosignUrl(f, id, "/acknowledge"),
+                  headers: authorA(),
+                  payload: {},
+                })
+              ).statusCode,
+            ).toBe(403);
+            expect(
+              (
+                await amendApp.inject({
+                  method: "POST",
+                  url: cosignUrl(f, id, "/acknowledge"),
+                  headers: as(orgs.B, orgs.B.author),
+                  payload: {},
+                })
+              ).statusCode,
+            ).toBe(403); // the cosigner predicate fails closed for an encounter that is not the caller's tenant: refused, nothing disclosed
+            expect(
+              (
+                await amendApp.inject({
+                  method: "GET",
+                  url: cosignUrl(f, id),
+                  headers: as(orgs.B, orgs.B.author),
+                })
+              ).statusCode,
+            ).toBe(404);
+            expect(
+              (
+                await amendApp.inject({
+                  method: "GET",
+                  url: cosignUrl(f, "not-a-uuid"),
+                  headers: authorA(),
+                })
+              ).statusCode,
+            ).toBe(422);
+            const ack = await amendApp.inject({
+              method: "POST",
+              url: cosignUrl(f, id, "/acknowledge"),
+              headers: cosignerHeaders,
+              payload: {},
+            });
+            expect(ack.statusCode).toBe(200);
+            expect(ack.json()).toEqual({ status: "acknowledged" });
+            const sign = await amendApp.inject({
+              method: "POST",
+              url: cosignUrl(f, id, "/sign"),
+              headers: cosignerHeaders,
+              payload: { attestationConfirmed: true },
+            });
+            expect(sign.statusCode).toBe(200);
+            expect(sign.json()).toMatchObject({ status: "signed" });
+            expect(await cosignSignatures(id)).toHaveLength(1);
+            // the read-audit event of the status read landed against the addendum
+            expect(await auditEvents(ORG_A, "addendum_cosignature.viewed", id)).toHaveLength(1);
+          });
+
+          it("over HTTP: a supervisor releases a hard-capped request (reason of 40+ characters, step-up) and the releasing membership is recorded", async () => {
+            const { f, id, requestId } = await routedAmendment();
+            await admin.query(
+              "UPDATE addendum_cosignature_request SET status = 'hard_cap_reached' WHERE id = $1",
+              [requestId],
+            );
+            const release = (roles: string) =>
+              amendApp.inject({
+                method: "POST",
+                url: cosignUrl(f, id, "/supervisor-release"),
+                headers: { ...as(orgs.A, orgs.A.otherRn), "x-test-roles": roles },
+                payload: {
+                  reason:
+                    "Past the hard cap; the case manager was on leave and the patient's care was not affected.",
+                  stepUpAuthAt: new Date().toISOString(),
+                },
+              });
+            expect((await release("rn")).statusCode).toBe(403); // not a supervisor
+            const ok = await release("clinical_supervisor");
+            expect(ok.statusCode).toBe(200);
+            expect(ok.json()).toEqual({ status: "supervisor_released" });
+            expect((await requestOf(requestId)).supervisor_released_by).toBe(
+              orgs.A.otherRn.membershipId,
+            );
+          });
+
+          describe("the SLA sweep (the late-alert cron) covers it", () => {
+            const alerts: {
+              orgId: string;
+              input: {
+                eventType: string;
+                severity: string;
+                correlationId: string;
+                payload: Record<string, unknown>;
+              };
+            }[] = [];
+            const sweep = (now: string) =>
+              runCosignatureSlaCron({
+                connection: {} as never,
+                db: handle.db,
+                outbox: outbox as never,
+                activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+                alerts: {
+                  emit: async (orgId: string, input: never) => {
+                    alerts.push({ orgId, input });
+                    return { alertId: "alert", resolvedRecipientCount: 0 };
+                  },
+                } as never,
+                now: () => new Date(now),
+              });
+            const alertsFor = (requestId: string) =>
+              alerts.filter((x) => x.input.correlationId.endsWith(requestId));
+            const eventsFor = (requestId: string) =>
+              published.filter((e) => e.aggregateId === requestId);
+            /** The amendment's request routed `hoursAgo` hours before the sweep, the note's own request routed AT the sweep (so it is not due). */
+            async function agedAmendment(hoursAgo: number) {
+              const made = await routedAmendment();
+              published.length = 0; // the routing publishes cosignature_routed; the sweep is what these tests watch
+              await admin.query(
+                "UPDATE addendum_cosignature_request SET routed_at = $2 WHERE id = $1",
+                [made.requestId, hoursAfter(T0, -hoursAgo)],
+              );
+              await admin.query("UPDATE cosignature_request SET routed_at = $2 WHERE id = $1", [
+                made.parentRequestId,
+                T0,
+              ]);
+              return made;
+            }
+            async function ensureSupervisor() {
+              if (
+                (
+                  await rows(
+                    "SELECT 1 FROM role WHERE organization_id = $1 AND key = 'clinical_supervisor'",
+                    [ORG_A],
+                  )
+                ).length > 0
+              )
+                return;
+              const supervisor = await seedMember(ORG_A, "cosign-supervisor");
+              const role = await admin.query<{ id: string }>(
+                "INSERT INTO role (organization_id, key, name, category, enabled) VALUES ($1,'clinical_supervisor','Clinical Supervisor','clinical_staff',true) RETURNING id::text",
+                [ORG_A],
+              );
+              await admin.query(
+                "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+                [ORG_A, supervisor.membershipId, one(role.rows).id],
+              );
+            }
+            beforeEach(() => {
+              alerts.length = 0;
+              published.length = 0;
+            });
+
+            it("a request under 12 hours old is left alone", async () => {
+              const { requestId } = await agedAmendment(11);
+              await sweep(T0);
+              expect(alertsFor(requestId)).toEqual([]);
+              expect(eventsFor(requestId)).toEqual([]);
+              expect((await requestOf(requestId)).status).toBe("routed");
+            });
+
+            it("12 hours: the overdue alert names the addendum and its own hours; the note's own request is not swept into it", async () => {
+              const { requestId, parentRequestId } = await agedAmendment(13);
+              const parentBefore = await rows(
+                "SELECT status::text, version FROM cosignature_request WHERE id = $1",
+                [parentRequestId],
+              );
+              await sweep(T0);
+              const [alert, ...more] = alertsFor(requestId);
+              expect(more).toEqual([]);
+              expect(alert?.input).toMatchObject({
+                eventType: "m8.encounter.cosignature_overdue",
+                severity: "warn",
+                payload: {
+                  addendumId: expect.any(String),
+                  routedToMembershipId: orgs.A.otherRn.membershipId,
+                  hoursOverdue: 13,
+                  deepLink: "/work/cosignatures",
+                },
+              });
+              expect(alertsFor(parentRequestId)).toEqual([]);
+              expect(
+                await rows("SELECT status::text, version FROM cosignature_request WHERE id = $1", [
+                  parentRequestId,
+                ]),
+              ).toEqual(parentBefore);
+            });
+
+            it("24 hours with no supervisor to escalate to: the critical 'supervisor missing' alert, the request unchanged", async () => {
+              const { requestId } = await agedAmendment(25);
+              await sweep(T0);
+              expect(
+                alertsFor(requestId).map((x) => [
+                  x.input.severity,
+                  x.input.correlationId.startsWith("m8:cosign-supervisor-missing"),
+                ]),
+              ).toEqual([["critical", true]]);
+              expect((await requestOf(requestId)).status).toBe("routed");
+            });
+
+            it("24 hours: escalated, with cosignature_escalated published on the request's own aggregate and naming the addendum; 48 hours: the hard cap", async () => {
+              await ensureSupervisor();
+              const { requestId, id } = await agedAmendment(25);
+              await sweep(T0);
+              expect((await requestOf(requestId)).status).toBe("escalated");
+              expect(eventsFor(requestId).map((e) => e.eventName)).toEqual([
+                "m8.encounter.cosignature_escalated",
+              ]);
+              expect(eventsFor(requestId)[0]?.payload).toMatchObject({
+                addendumId: id,
+                routedToMembershipId: orgs.A.otherRn.membershipId,
+              });
+              await sweep(hoursAfter(T0, 24)); // 49 hours after it was routed
+              expect((await requestOf(requestId)).status).toBe("hard_cap_reached");
+              expect(eventsFor(requestId).map((e) => e.eventName)).toEqual([
+                "m8.encounter.cosignature_escalated",
+                "m8.encounter.cosignature_hard_cap_reached",
+              ]);
+              // a request already at the cap is not swept again, and release then sign still work
+              published.length = 0;
+              await sweep(hoursAfter(T0, 30));
+              expect(eventsFor(requestId)).toEqual([]);
+            });
+
+            it("a signed request is not swept", async () => {
+              const { f, id, requestId } = await agedAmendment(60);
+              await a.cosignSign(ORG_A, f.encounterId, cosigner(), { ...SIGN, addendumId: id });
+              await sweep(T0);
+              expect(alertsFor(requestId)).toEqual([]);
+              expect(
+                eventsFor(requestId).filter(
+                  (e) => e.eventName !== "m8.encounter.addendum_cosigned",
+                ),
+              ).toEqual([]);
+              expect((await requestOf(requestId)).status).toBe("signed");
+            });
           });
         });
 
@@ -3851,26 +4639,6 @@ describe.skipIf(!DB_URL)(
             await signAddendum(f, id);
             return { f, id };
           }
-          async function needsCosignFor(f: EncounterFixture) {
-            const enc = one(
-              await rows<{ provider_entity_id: string; location_id: string }>(
-                "SELECT provider_entity_id::text, location_id::text FROM encounter WHERE id = $1",
-                [f.encounterId],
-              ),
-            );
-            await admin.query(
-              `INSERT INTO cosignature_request (organization_id, provider_entity_id, location_id, encounter_id, routed_to_membership_id, status)
-               VALUES ($1,$2,$3,$4,$5,'routed')`,
-              [
-                ORG_A,
-                enc.provider_entity_id,
-                enc.location_id,
-                f.encounterId,
-                orgs.A.otherRn.membershipId,
-              ],
-            );
-          }
-
           it("the application role can neither UPDATE nor DELETE a sealed row, original or amendment", async () => {
             const { f } = await amendedNote();
             for (const row of [...(await originalRowsOf(f)), ...(await amendmentRowsOf(f))]) {
@@ -4037,7 +4805,7 @@ describe.skipIf(!DB_URL)(
               medicationChangesBetween: async () => sudChange(),
             });
             const f = await signedNote(["rn", "part2"]);
-            const id = await finalizedAddendum(f, ["interventions"]);
+            const id = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
             await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
             const updates = await rows<{ after: Record<string, unknown>; retention_class: string }>(
               `SELECT after, retention_class::text FROM audit_event
@@ -4057,7 +4825,7 @@ describe.skipIf(!DB_URL)(
 
           it("the eraser covers amendments: it shreds every sealed text (the amendment rows included), then deletes the new rows with the rest of the subtree and leaves the root", async () => {
             const f = await signedNote();
-            await needsCosignFor(f);
+            await needsCosign(f);
             currentSeams = goalSeams(GOAL_V2);
             const id = await finalizedAddendum(f, ["plan", "interventions"]);
             await resolveAmendment(f, id, "plan");
@@ -4110,7 +4878,7 @@ describe.skipIf(!DB_URL)(
 
           it("the eraser also deletes the cosignature request an amendment opened", async () => {
             const f = await signedNote();
-            await needsCosignFor(f);
+            await needsCosign(f);
             currentSeams = goalSeams(GOAL_V2);
             const id = await finalizedAddendum(f, ["plan"]);
             await resolveAmendment(f, id, "plan");
