@@ -85,11 +85,33 @@ function carePlanInput(
   };
 }
 
+/** The viewer's Part 2 verdict, asked at most once per draft and only by a source that needs it. */
+type Part2Verdict = () => Promise<boolean>;
+
+function part2VerdictFor(
+  ports: DraftPorts,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+): Part2Verdict {
+  let asked: Promise<boolean> | undefined;
+  return () => {
+    asked ??= guarded("the Part 2 disclosure verdict", () =>
+      ports.part2DisclosureAllowed({
+        organizationId: encounter.organizationId,
+        patientId: encounter.patientId,
+        viewer,
+      }),
+    );
+    return asked;
+  };
+}
+
 async function readCarePlan(
   ports: DraftPorts,
   encounter: DraftEncounter,
   viewer: DraftViewer,
   asOf: string,
+  part2Verdict: Part2Verdict,
 ): Promise<CarePlanDraftInput | null> {
   const [plan, removed] = await Promise.all([
     guarded("the care plan", () =>
@@ -108,6 +130,11 @@ async function readCarePlan(
   // A plan that is not this patient's must never reach a note, however the seam came to return it.
   if (plan.patientId !== encounter.patientId)
     throw draftUnavailable("the care plan (wrong patient)");
+  // `redacted` says M7 withheld Part 2 content from this viewer. That is right for a viewer without disclosure (a reduced plan is
+  // their draft, VN-D11), but M7 resolves it in its own M39 call: a viewer this draft's own verdict clears was handed a reduced plan
+  // by an outage or a consent change in between, and a draft short of content they may read is never passed off as complete.
+  if (plan.redacted && (await part2Verdict()))
+    throw draftUnavailable("the care plan (withheld from a viewer entitled to it)");
   return carePlanInput(plan, removed);
 }
 
@@ -207,11 +234,11 @@ const DRAFTED_CHANGE_KIND: Readonly<Record<MedicationOrderChange["kind"], Medica
 async function readMedicationChanges(
   ports: DraftPorts,
   encounter: DraftEncounter,
-  viewer: DraftViewer,
   previousIso: string | null,
   asOf: string,
   asOfMs: number,
   timeZone: string,
+  part2Verdict: Part2Verdict,
 ): Promise<readonly MedicationChangeInput[]> {
   // No previous signed visit means no change window: an honest empty section (VN-D9), not "everything ever".
   if (previousIso === null) return [];
@@ -227,15 +254,7 @@ async function readMedicationChanges(
   // Fail closed: only the literal `false` proves an order is not SUD treatment. The verdict is asked only when
   // there is something it could withhold.
   const mayWithhold = changes.some((c) => c.order.isSudTreatment !== false);
-  const disclosed =
-    mayWithhold &&
-    (await guarded("the Part 2 disclosure verdict", () =>
-      ports.part2DisclosureAllowed({
-        organizationId: encounter.organizationId,
-        patientId: encounter.patientId,
-        viewer,
-      }),
-    ));
+  const disclosed = mayWithhold && (await part2Verdict());
   return changes
     .filter((c) => c.order.isSudTreatment === false || disclosed)
     .map((c): MedicationChangeInput => {
@@ -287,11 +306,12 @@ export async function readDraftInputs(
     readPreviousVisitMs(ports, encounter, asOfMs),
   ]);
   const previousIso = previousMs === null ? null : isoOf(previousMs);
+  const part2Verdict = part2VerdictFor(ports, encounter, viewer);
   const [carePlan, scaleReadings, vitals, medicationChanges] = await Promise.all([
-    readCarePlan(ports, encounter, viewer, asOf),
+    readCarePlan(ports, encounter, viewer, asOf, part2Verdict),
     readScaleReadings(ports, encounter, asOf, asOfMs, previousMs, timeZone),
     readVitals(ports, encounter, asOf, asOfMs),
-    readMedicationChanges(ports, encounter, viewer, previousIso, asOf, asOfMs, timeZone),
+    readMedicationChanges(ports, encounter, previousIso, asOf, asOfMs, timeZone, part2Verdict),
   ]);
   return {
     encounterType: encounter.encounterType,

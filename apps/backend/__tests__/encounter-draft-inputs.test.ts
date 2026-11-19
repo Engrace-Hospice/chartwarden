@@ -119,6 +119,67 @@ describe("readDraftInputs: care plan", () => {
   });
 });
 
+describe("readDraftInputs: a care plan withheld from the viewer (`redacted`)", () => {
+  const redactedPlan = () => carePlan({ redacted: true });
+
+  it("drafts the reduced plan for a viewer who is not entitled to Part 2 content", async () => {
+    const ports = fakePorts({
+      carePlanAsOf: async () => redactedPlan(),
+      part2DisclosureAllowed: async () => false,
+    });
+    const v = viewer();
+    const { carePlan: out } = await readDraftInputs(ports, encounter(), v, AS_OF);
+    expect(out?.goals.map((g) => g.id)).toEqual(["goal-1"]);
+    expect(ports.part2DisclosureAllowed).toHaveBeenCalledWith({
+      organizationId: ORG_ID,
+      patientId: PATIENT_ID,
+      viewer: v,
+    });
+  });
+
+  it("is DRAFT_UNAVAILABLE when the viewer IS entitled: an entitled viewer is never silently given a reduced plan", async () => {
+    // M7 withheld content its own verdict (an M39 outage, or a consent change between the two reads) says this viewer may read.
+    const ports = fakePorts({
+      carePlanAsOf: async () => redactedPlan(),
+      part2DisclosureAllowed: async () => true,
+    });
+    const error = await readDraftInputs(ports, encounter(), viewer(), AS_OF).catch((e) => e);
+    expect(error).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+    expect(error.message).toContain("the care plan");
+  });
+
+  it("is DRAFT_UNAVAILABLE when the Part 2 verdict itself fails", async () => {
+    const boom = new Error("consent down");
+    const ports = fakePorts({
+      carePlanAsOf: async () => redactedPlan(),
+      part2DisclosureAllowed: async () => Promise.reject(boom),
+    });
+    const error = await readDraftInputs(ports, encounter(), viewer(), AS_OF).catch((e) => e);
+    expect(error).toMatchObject({ code: "DRAFT_UNAVAILABLE" });
+    expect(error.message).toContain("the Part 2 disclosure verdict");
+    expect(error.cause).toBe(boom);
+  });
+
+  it("does not ask for a verdict when the plan was not redacted", async () => {
+    const ports = fakePorts({ carePlanAsOf: async () => carePlan() });
+    await readDraftInputs(ports, encounter(), viewer(), AS_OF);
+    expect(ports.part2DisclosureAllowed).not.toHaveBeenCalled();
+  });
+
+  it("asks once when both the plan and a medication change need the verdict", async () => {
+    const ports = fakePorts({
+      carePlanAsOf: async () => redactedPlan(),
+      previousSignedVisitAt: async () => PREVIOUS_VISIT,
+      medicationChangesBetween: async () => [
+        change("started", "2026-11-12T16:00:00.000Z", { isSudTreatment: true }),
+      ],
+      part2DisclosureAllowed: async () => false,
+    });
+    await readDraftInputs(ports, encounter(), viewer(), AS_OF);
+    expect(ports.part2DisclosureAllowed).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("readDraftInputs: scale readings", () => {
   const pps = [
     point("pps-old", "2026-11-03T15:00:00.000Z", 70),

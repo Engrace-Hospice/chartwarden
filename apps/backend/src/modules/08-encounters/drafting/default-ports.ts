@@ -9,11 +9,23 @@ import { getSeam } from "../../../bootstrap/index";
 // M8 `dependsOn` M7: the SAME per-actor Part 2 decision the care-plan reader store applies to its `{ actor }`
 // audience (M39 `evaluateForInternalAccess`, then the §7.6 RN-case-manager carve-out where no release names
 // others), so the draft never disagrees with the care plan about who may read SUD content.
-import { sudDisclosureAllowedForActor } from "../../07-care-plan/abac-predicates";
+import {
+  defaultInternalSudAccessChecker,
+  sudDisclosureAllowedForActor,
+} from "../../07-care-plan/index";
 import { getCarePlanReader } from "../seams/index";
 import type { DraftSeamPorts } from "./ports";
 
+/** The `callerModule` token M8 identifies itself with on M39's evaluation audit (M7's own reads carry "m7"). */
+const CONSENT_CALLER_MODULE = "m8";
+
 export function defaultDraftPorts(): DraftSeamPorts {
+  // An M39 outage RETHROWS here (M7's own reads answer "no"): the draft fails closed as DRAFT_UNAVAILABLE instead of
+  // quietly drafting a section short of content the viewer may be entitled to.
+  const part2Checker = defaultInternalSudAccessChecker({
+    callerModule: CONSENT_CALLER_MODULE,
+    onError: "throw",
+  });
   return {
     carePlanAsOf: (patientId, encounterType, discipline, admissionId, viewer, asOf) =>
       getCarePlanReader().relevantElementsAsOf(
@@ -33,13 +45,15 @@ export function defaultDraftPorts(): DraftSeamPorts {
         from,
         to,
       ),
-    // The checker underneath fails closed (an erroring M39 reads as "not allowed"), as M7's own reads do.
     part2DisclosureAllowed: ({ organizationId, patientId, viewer }) =>
-      sudDisclosureAllowedForActor({
-        organizationId,
-        patientId,
-        roles: viewer.roles,
-        membershipId: viewer.membershipId,
-      }),
+      sudDisclosureAllowedForActor(
+        {
+          organizationId,
+          patientId,
+          roles: viewer.roles,
+          membershipId: viewer.membershipId,
+        },
+        part2Checker,
+      ),
   };
 }

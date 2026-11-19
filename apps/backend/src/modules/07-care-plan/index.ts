@@ -139,11 +139,16 @@ export {
 export * from "./authoring/index";
 export {
   type CarePlanAbacDeps,
+  type InternalSudAccessChecker,
+  type InternalSudCheckerOptions,
+  type InternalSudVerdict,
   M7_ABAC_PREDICATES,
   buildCarePlanAbacPredicates,
   defaultConsentActiveChecker,
+  defaultInternalSudAccessChecker,
   disciplineScopeOf,
   registerCarePlanAbacPredicates,
+  sudDisclosureAllowedForActor,
   sudDisclosureAllowedForPatient,
 } from "./abac-predicates";
 

@@ -86,11 +86,42 @@ describe("defaultDraftPorts", () => {
       await expect(ask(["rn_case_manager"])).resolves.toBe(false);
     });
 
-    it("denies when M39 cannot be reached (the deny-stub throws)", async () => {
+    it("names M8 as the calling module on M39's evaluation audit", async () => {
+      const evaluateForInternalAccess = vi.fn(async () => ({
+        redactSubstanceUseDisorderFields: false,
+        basis: "release_names_actor",
+      }));
+      register("ConsentEvaluator", { evaluateForInternalAccess });
+      await ask(["rn"]);
+      expect(evaluateForInternalAccess).toHaveBeenCalledWith(
+        expect.objectContaining({ callerModule: "m8", actor: { membershipId: "membership-1" } }),
+      );
+    });
+
+    it("rethrows when M39 cannot be reached (the deny-stub throws): an outage is not a 'no'", async () => {
       register("ConsentEvaluator", {
         evaluateForInternalAccess: async () => Promise.reject(new Error("down")),
       });
-      await expect(ask(["rn_case_manager"])).resolves.toBe(false);
+      await expect(ask(["rn_case_manager"])).rejects.toThrow("down");
+    });
+
+    it("makes the draft DRAFT_UNAVAILABLE when M39 is down, instead of silently dropping SUD medication", async () => {
+      register("ConsentEvaluator", {
+        evaluateForInternalAccess: async () => Promise.reject(new Error("down")),
+      });
+      const ports = {
+        ...fakePorts({
+          previousSignedVisitAt: async () => new Date("2026-11-10T15:00:00.000Z"),
+          medicationChangesBetween: async () => [
+            change("started", "2026-11-12T16:00:00.000Z", { isSudTreatment: true }),
+          ],
+        }),
+        part2DisclosureAllowed: defaultDraftPorts().part2DisclosureAllowed,
+      };
+      await expect(readDraftInputs(ports, encounter(), viewer(), AS_OF)).rejects.toMatchObject({
+        code: "DRAFT_UNAVAILABLE",
+        statusCode: 503,
+      });
     });
 
     it("drops SUD medication end to end for a viewer M39 redacts", async () => {
