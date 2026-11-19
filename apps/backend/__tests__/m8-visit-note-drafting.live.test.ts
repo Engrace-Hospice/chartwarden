@@ -125,9 +125,10 @@ describe.skipIf(!DB_URL)(
     ): Promise<{ encounterId: string; patientId: string }> {
       const patientId = randomUUID();
       const result = await admin.query<{ id: string }>(
+        // `finalized`: the state sign finds a note in, and the only one in which migration 1525 lets its sealed sections be written.
         `INSERT INTO encounter (organization_id, provider_entity_id, location_id, patient_id, admission_id, encounter_type,
-         discipline, authored_by_membership_id, service_date, status)
-       VALUES ($1,$2,$3,$4,$5,'routine_visit','rn',$6,$7,'draft') RETURNING id`,
+         discipline, authored_by_membership_id, service_date, status, vocab_version_id)
+       VALUES ($1,$2,$3,$4,$5,'routine_visit','rn',$6,$7,'finalized', gen_random_uuid()) RETURNING id`,
         [
           orgId,
           providerEntityId,
@@ -1044,7 +1045,7 @@ describe.skipIf(!DB_URL)(
         const root = await admin.query("SELECT status FROM encounter WHERE id=$1", [
           target.encounterId,
         ]);
-        expect(one(root.rows).status).toBe("draft"); // the root is never deleted
+        expect(one(root.rows).status).toBe("finalized"); // the root is never deleted
         // the other patient of the same tenant and the other tenant keep every row
         expect(
           await countAs(
@@ -1364,6 +1365,377 @@ describe.skipIf(!DB_URL)(
         expect(part2.after.part2_derived).toBe(true);
         expect(part2.retention).toBe("compliance_42cfr_part2");
         expect(JSON.stringify(part2.after)).not.toContain(part2Refs[0]?.id);
+      });
+    });
+
+    // ===============================================================================================================
+    // 11. migration 1525: the guards behind the signed note
+    // ===============================================================================================================
+    describe("11. migration 1525: a signed note, its pin, its confirmations and its signatures cannot be rewritten", () => {
+      const a = () => orgs.A;
+      const b = () => orgs.B;
+      const run = <T>(fn: (c: Client) => Promise<T>) => asApp(ORG_A, a().author.userId, fn);
+      const SIGNED_STATUSES = ["signed", "cosign_pending", "cosigned"] as const;
+      const RESTRICT = "23001";
+      const TENANCY = "23503";
+
+      async function setStatus(encounterId: string, status: string) {
+        const signedAt = (SIGNED_STATUSES as readonly string[]).includes(status) ? "now()" : "NULL";
+        const voided =
+          status === "voided"
+            ? ", voided_at=now(), voided_by=authored_by_membership_id, voided_reason=repeat('v',40)"
+            : "";
+        await admin.query(
+          `UPDATE encounter SET status=$2::encounter_status, vocab_version_id=gen_random_uuid(), signed_at=${signedAt}${voided} WHERE id=$1`,
+          [encounterId, status],
+        );
+      }
+      /** An encounter of org A with its pin, in the given status (`seedEncounter` makes it `finalized`, the state sign finds a note in). */
+      async function encounterAt(status: string) {
+        const encounter = await seedEncounter(ORG_A, a().providerEntityId, a().locationId, a().author);
+        const outputId = await seedOutput(a(), encounter.encounterId);
+        if (status !== "finalized") await setStatus(encounter.encounterId, status);
+        return { ...encounter, outputId };
+      }
+      async function seedAddendum(encounterId: string, status: "draft" | "finalized" | "signed" | "voided") {
+        const result = await admin.query<{ id: string }>(
+          `INSERT INTO encounter_addendum (organization_id, provider_entity_id, location_id, encounter_id, authored_by_membership_id,
+             reason, status, signed_at)
+           VALUES ($1,$2,$3,$4,$5,'a reason of at least twenty characters',$6::encounter_status, ${status === "signed" ? "now()" : "NULL"}) RETURNING id`,
+          [ORG_A, a().providerEntityId, a().locationId, encounterId, a().author.membershipId, status],
+        );
+        return one(result.rows).id;
+      }
+      const pinOf = async (outputId: string) =>
+        one(
+          (
+            await admin.query(
+              "SELECT encounter_id, kind::text AS kind, part2_derived, final_cipher FROM hearthnote_assembled_output WHERE id=$1",
+              [outputId],
+            )
+          ).rows,
+        );
+
+      const PIN_COLUMNS =
+        "organization_id, provider_entity_id, location_id, encounter_id, addendum_id, kind, layer1_cipher, final_cipher, layer2_eligibility, assembly_template_key, vocab_version_id";
+      const insertPin = (
+        c: Client,
+        o: { kind: string; encounterId?: string | null; addendumId?: string | null },
+      ) =>
+        c.query(
+          `INSERT INTO hearthnote_assembled_output (${PIN_COLUMNS})
+           VALUES ($1,$2,$3,$4,$5,$6::assembled_output_kind,$7,$7,'tenant_flag_off','routine_visit:rn',$8) RETURNING id`,
+          [
+            ORG_A,
+            a().providerEntityId,
+            a().locationId,
+            o.encounterId ?? null,
+            o.addendumId ?? null,
+            o.kind,
+            SEALED_A,
+            randomUUID(),
+          ],
+        );
+
+      const SIGNATURE_COLUMNS =
+        "organization_id, provider_entity_id, location_id, encounter_id, addendum_id, kind, signed_by_membership_id, signed_by_discipline, method, session_id, step_up_auth_at, attestation_text, layer2_involved_at_signing";
+      const insertSignature = (
+        c: Client,
+        o: { encounterId: string; addendumId: string | null; kind?: string },
+      ) =>
+        c.query(
+          `INSERT INTO encounter_signature (${SIGNATURE_COLUMNS})
+           VALUES ($1,$2,$3,$4,$5,$6::signature_kind,$7,'rn','passkey',$8,now(),'I attest that this cosignature of the addendum is accurate and complete.',false) RETURNING id`,
+          [
+            ORG_A,
+            a().providerEntityId,
+            a().locationId,
+            o.encounterId,
+            o.addendumId,
+            o.kind ?? "addendum_cosignature",
+            a().author.membershipId,
+            randomUUID(),
+          ],
+        );
+
+      describe("D1: a signed pin keeps its parent, kind and flag", () => {
+        it("re-parenting a signed pin onto a draft encounter (with or without a cipher rewrite) is refused and changes nothing", async () => {
+          const signed = await encounterAt("signed");
+          const draft = await encounterAt("finalized");
+          for (const set of [
+            "encounter_id=$2, final_cipher='v1.x'",
+            "encounter_id=$2",
+            "encounter_id=$2, kind='addendum_finalize'",
+          ]) {
+            const refused = await sqlFailure(
+              run((c) =>
+                c.query(`UPDATE hearthnote_assembled_output SET ${set} WHERE id=$1`, [
+                  signed.outputId,
+                  draft.encounterId,
+                ]),
+              ),
+            );
+            expect(refused.code, set).toBe(RESTRICT);
+          }
+          expect(await pinOf(signed.outputId)).toMatchObject({
+            encounter_id: signed.encounterId,
+            kind: "primary_finalize",
+            final_cipher: SEALED_A,
+          });
+        });
+
+        it("a pin cannot be moved onto a signed encounter either (it would replace that note's newest pin)", async () => {
+          const signed = await encounterAt("signed");
+          const draft = await encounterAt("finalized");
+          const refused = await sqlFailure(
+            run((c) =>
+              c.query("UPDATE hearthnote_assembled_output SET encounter_id=$2 WHERE id=$1", [
+                draft.outputId,
+                signed.encounterId,
+              ]),
+            ),
+          );
+          expect(refused.code).toBe(RESTRICT);
+        });
+
+        it("the Part 2 flag moves with sign's own write (finalized) and is frozen once the encounter is signed", async () => {
+          const e = await encounterAt("finalized");
+          await run(async (c) => {
+            await c.query(
+              "UPDATE hearthnote_assembled_output SET part2_derived=true, final_cipher='v1.s' WHERE id=$1",
+              [e.outputId],
+            );
+            await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [e.encounterId]);
+          });
+          expect((await pinOf(e.outputId)).part2_derived).toBe(true);
+          const refused = await sqlFailure(
+            run((c) =>
+              c.query("UPDATE hearthnote_assembled_output SET part2_derived=false WHERE id=$1", [e.outputId]),
+            ),
+          );
+          expect(refused.code).toBe(RESTRICT);
+          expect((await pinOf(e.outputId)).part2_derived).toBe(true);
+        });
+      });
+
+      describe("D2: a new pin cannot replace a signed one", () => {
+        it.each([...SIGNED_STATUSES, "voided"])("refuses a primary pin on a %s encounter", async (status) => {
+          const e = await encounterAt(status);
+          const refused = await sqlFailure(
+            run((c) => insertPin(c, { kind: "primary_finalize", encounterId: e.encounterId })),
+          );
+          expect(refused.code).toBe(RESTRICT);
+        });
+
+        it("accepts the finalize shape: the status flips to finalized, then the pin is written", async () => {
+          const e = await encounterAt("finalized");
+          await run((c) => insertPin(c, { kind: "primary_finalize", encounterId: e.encounterId }));
+        });
+
+        it("refuses a kind that does not match its parent column", async () => {
+          const signed = await encounterAt("signed");
+          const addendumId = await seedAddendum(signed.encounterId, "finalized");
+          const mismatches = [
+            { kind: "addendum_finalize", encounterId: signed.encounterId },
+            { kind: "primary_finalize", addendumId },
+          ];
+          for (const mismatch of mismatches) {
+            const refused = await sqlFailure(run((c) => insertPin(c, mismatch)));
+            expect(refused.code, JSON.stringify(mismatch)).toBe(RESTRICT);
+          }
+        });
+
+        it("tests the ADDENDUM for an addendum pin: its parent is already signed, a finalized addendum may pin, a signed or voided one may not", async () => {
+          const parent = await encounterAt("signed");
+          const finalized = await seedAddendum(parent.encounterId, "finalized");
+          await run((c) => insertPin(c, { kind: "addendum_finalize", addendumId: finalized }));
+          for (const status of ["signed", "voided"] as const) {
+            const addendumId = await seedAddendum(parent.encounterId, status);
+            const refused = await sqlFailure(
+              run((c) => insertPin(c, { kind: "addendum_finalize", addendumId })),
+            );
+            expect(refused.code, status).toBe(RESTRICT);
+          }
+        });
+
+        it("fails closed on a parent of another organization", async () => {
+          const refusedEncounter = await sqlFailure(
+            run((c) => insertPin(c, { kind: "primary_finalize", encounterId: b().encounterId })),
+          );
+          expect(refusedEncounter.code).toBe(TENANCY);
+          const foreignAddendum = await admin.query<{ id: string }>(
+            `INSERT INTO encounter_addendum (organization_id, provider_entity_id, location_id, encounter_id, authored_by_membership_id, reason, status)
+             VALUES ($1,$2,$3,$4,$5,'a reason of at least twenty characters','finalized') RETURNING id`,
+            [ORG_B, b().providerEntityId, b().locationId, b().encounterId, b().author.membershipId],
+          );
+          const refusedAddendum = await sqlFailure(
+            run((c) => insertPin(c, { kind: "addendum_finalize", addendumId: one(foreignAddendum.rows).id })),
+          );
+          expect(refusedAddendum.code).toBe(TENANCY);
+        });
+      });
+
+      describe("D3: an original sealed row is written by sign, while the encounter is finalized", () => {
+        it.each([...SIGNED_STATUSES, "voided", "draft"])("refuses an original row on a %s encounter", async (status) => {
+          const e = await encounterAt(status);
+          const refused = await sqlFailure(
+            run((c) =>
+              insertSection(
+                c,
+                sectionValues(a(), { sectionId: "late", position: 0, encounterId: e.encounterId, outputId: e.outputId }),
+              ),
+            ),
+          );
+          expect(refused.code).toBe(RESTRICT);
+        });
+
+        it("the sign shape works (rows, then the status flip in one transaction) and a row after the flip is refused", async () => {
+          const e = await encounterAt("finalized");
+          await run(async (c) => {
+            await insertSection(
+              c,
+              sectionValues(a(), { sectionId: "first", position: 0, encounterId: e.encounterId, outputId: e.outputId }),
+            );
+            await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [e.encounterId]);
+          });
+          const refused = await sqlFailure(
+            run((c) =>
+              insertSection(
+                c,
+                sectionValues(a(), { sectionId: "second", position: 1, encounterId: e.encounterId, outputId: e.outputId }),
+              ),
+            ),
+          );
+          expect(refused.code).toBe(RESTRICT);
+        });
+      });
+
+      describe("D4: an addendum's cosignature request keeps its tenancy on UPDATE", () => {
+        async function seedRequest() {
+          const parent = await encounterAt("signed");
+          const addendumId = await seedAddendum(parent.encounterId, "signed");
+          const request = await admin.query<{ id: string }>(
+            `INSERT INTO addendum_cosignature_request (organization_id, provider_entity_id, location_id, encounter_id, addendum_id, routed_to_membership_id, status)
+             VALUES ($1,$2,$3,$4,$5,$6,'routed') RETURNING id`,
+            [ORG_A, a().providerEntityId, a().locationId, parent.encounterId, addendumId, a().author.membershipId],
+          );
+          return { parent, addendumId, requestId: one(request.rows).id };
+        }
+        const update = (c: Client, set: string, params: unknown[]) =>
+          c.query(`UPDATE addendum_cosignature_request SET ${set} WHERE id=$1`, params);
+
+        it("refuses pointing the routing or the release at a member of ANOTHER tenant (the foreign key alone ignores RLS)", async () => {
+          const { requestId } = await seedRequest();
+          for (const column of ["routed_to_membership_id", "supervisor_released_by"]) {
+            const refused = await sqlFailure(
+              run((c) => update(c, `${column}=$2`, [requestId, b().author.membershipId])),
+            );
+            expect(refused.code, column).toBe(TENANCY);
+          }
+          const row = one(
+            (await admin.query("SELECT routed_to_membership_id, supervisor_released_by FROM addendum_cosignature_request WHERE id=$1", [requestId])).rows,
+          );
+          expect(row).toEqual({ routed_to_membership_id: a().author.membershipId, supervisor_released_by: null });
+        });
+
+        it("refuses moving the request to another organization, encounter, addendum or siting", async () => {
+          const { requestId } = await seedRequest();
+          const other = await seedRequest();
+          for (const [set, value] of [
+            ["organization_id=$2", ORG_B],
+            ["encounter_id=$2", other.parent.encounterId],
+            ["addendum_id=$2", other.addendumId],
+            ["location_id=$2", null],
+          ] as const) {
+            const refused = await sqlFailure(run((c) => update(c, set, [requestId, value])));
+            expect(refused.code, set).toBe(RESTRICT);
+          }
+        });
+
+        it("still lets the workflow write: an acknowledgement, and a re-route to another member of the same organization", async () => {
+          const { requestId } = await seedRequest();
+          const colleague = await seedMember(ORG_A, "cosigner");
+          await run((c) => update(c, "acknowledged_at=now()", [requestId]));
+          await run((c) => update(c, "routed_to_membership_id=$2", [requestId, colleague.membershipId]));
+          await run((c) => update(c, "supervisor_released_by=$2", [requestId, colleague.membershipId]));
+        });
+      });
+
+      describe("D5: one provenance row per amending addendum's cosignature", () => {
+        it("refuses an addendum cosignature that names no addendum, or an addendum of another encounter", async () => {
+          const parent = await encounterAt("signed");
+          const other = await encounterAt("signed");
+          const addendumId = await seedAddendum(parent.encounterId, "signed");
+          const noAddendum = await sqlFailure(run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId: null })));
+          expect(noAddendum.code).toBe(TENANCY);
+          const wrongEncounter = await sqlFailure(run((c) => insertSignature(c, { encounterId: other.encounterId, addendumId })));
+          expect(wrongEncounter.code).toBe(TENANCY);
+        });
+
+        it("accepts the first and refuses a second row for the same addendum; other kinds are untouched", async () => {
+          const parent = await encounterAt("signed");
+          const addendumId = await seedAddendum(parent.encounterId, "signed");
+          await run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId }));
+          const duplicate = await sqlFailure(run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId })));
+          expect(duplicate.code).toBe(RESTRICT);
+          await run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId, kind: "addendum" }));
+          await run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId: null, kind: "primary" }));
+        });
+
+        it("two concurrent transactions for one addendum take turns: the second sees the first and is refused", async () => {
+          const parent = await encounterAt("signed");
+          const addendumId = await seedAddendum(parent.encounterId, "signed");
+          await admin.query("BEGIN");
+          try {
+            await insertSignature(admin, { encounterId: parent.encounterId, addendumId });
+            const second = sqlFailure(run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId })));
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            await admin.query("COMMIT");
+            expect((await second).code).toBe(RESTRICT);
+          } catch (error) {
+            await admin.query("ROLLBACK").catch(() => undefined);
+            throw error;
+          }
+        });
+      });
+
+      describe("C5 / D6 / D7: a confirmation is frozen with the note and carries the encounter's siting", () => {
+        it.each([...SIGNED_STATUSES, "voided"])("a confirmation of a %s encounter can be neither rewritten nor added to", async (status) => {
+          const e = await encounterAt("finalized");
+          await run((c) => insertConfirmation(c, confirmationValues(a(), { sectionId: "c5", encounterId: e.encounterId })));
+          await setStatus(e.encounterId, status);
+          const rewrite = await sqlFailure(
+            run((c) =>
+              c.query("UPDATE encounter_draft_confirmation SET resolution='deselected' WHERE encounter_id=$1 AND section_id='c5'", [e.encounterId]),
+            ),
+          );
+          expect(rewrite.code).toBe(RESTRICT);
+          const added = await sqlFailure(
+            run((c) => insertConfirmation(c, confirmationValues(a(), { sectionId: "c5_late", encounterId: e.encounterId }))),
+          );
+          expect(added.code).toBe(RESTRICT);
+          const row = one(
+            (await admin.query("SELECT resolution FROM encounter_draft_confirmation WHERE encounter_id=$1", [e.encounterId])).rows,
+          );
+          expect(row.resolution).toBe("confirmed");
+        });
+
+        it.each(["draft", "finalized"])("an unsigned (%s) encounter's confirmation is still written and rewritten", async (status) => {
+          const e = await encounterAt(status);
+          await run((c) => insertConfirmation(c, confirmationValues(a(), { sectionId: "open", encounterId: e.encounterId })));
+          await run((c) =>
+            c.query("UPDATE encounter_draft_confirmation SET resolution='deselected' WHERE encounter_id=$1 AND section_id='open'", [e.encounterId]),
+          );
+        });
+
+        it("refuses a siting pair that is not the encounter's own", async () => {
+          for (const [index, label] of [[1, "provider_entity_id"], [2, "location_id"]] as const) {
+            const values = confirmationValues(a(), { sectionId: `siting_${label}` });
+            values[index] = null;
+            const refused = await sqlFailure(run((c) => insertConfirmation(c, values)));
+            expect(refused.code, label).toBe(TENANCY);
+          }
+        });
       });
     });
   },
