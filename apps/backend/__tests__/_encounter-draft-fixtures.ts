@@ -22,8 +22,10 @@ export const ADMISSION_ID = "00000000-0000-4000-8000-000000000003";
 export const ENCOUNTER_ID = "00000000-0000-4000-8000-000000000004";
 export const NEW_YORK = "America/New_York";
 
-/** A visit that started 2026-11-18 14:30 UTC, being charted the same afternoon. */
+/** 15:00 EST on 2026-11-18: the default encounter's service date is still in progress, so its visit time is now. */
 export const NOW = new Date("2026-11-18T20:00:00.000Z");
+export const NOW_ISO = NOW.toISOString();
+/** An arbitrary visit time for tests that hand `readDraftInputs` its `asOf` directly. */
 export const AS_OF = "2026-11-18T14:30:00.000Z";
 
 export const encounter = (over: Partial<DraftEncounter> = {}): DraftEncounter => ({
@@ -34,8 +36,6 @@ export const encounter = (over: Partial<DraftEncounter> = {}): DraftEncounter =>
   encounterType: "routine_visit",
   discipline: "rn",
   serviceDate: "2026-11-18",
-  startedAt: new Date(AS_OF),
-  clockStartedAt: null,
   ...over,
 });
 

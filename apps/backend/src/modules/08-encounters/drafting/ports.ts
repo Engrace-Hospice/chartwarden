@@ -23,8 +23,6 @@ export interface DraftEncounter {
   readonly discipline: EncounterDiscipline;
   /** Org-local calendar day, `YYYY-MM-DD`. */
   readonly serviceDate: string;
-  readonly startedAt: Date | null;
-  readonly clockStartedAt: Date | null;
 }
 
 /**
@@ -75,8 +73,9 @@ export interface DraftStorePorts {
   /** The organization's IANA time zone (`organizationTimezone` in `@chartwarden/db`). */
   organizationTimeZone(organizationId: string): Promise<string>;
   /**
-   * When the patient's most recent EARLIER signed visit-type encounter happened (its `started_at`, else its
-   * `clock_started_at`), or `null` when there is none. "Earlier" means before THIS encounter's visit time.
+   * The visit time of the patient's most recent signed visit-type encounter on an EARLIER service date, or
+   * `null` when there is none. Its visit time is `visitAsOf` of that encounter (its own service date, the same
+   * zone and `now`), so "the picture at the previous visit plus the changes since" is exactly the picture now.
    */
   previousSignedVisitAt(encounter: DraftEncounter): Promise<Date | null>;
   /** The encounter's own latest vitals row captured at or before `asOf`, or `null`. One row, never merged. */

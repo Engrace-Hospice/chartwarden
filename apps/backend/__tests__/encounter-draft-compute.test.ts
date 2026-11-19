@@ -6,6 +6,7 @@ import { computeDraft } from "../src/modules/08-encounters/drafting/compute";
 import {
   AS_OF,
   NOW,
+  NOW_ISO,
   ORG_ID,
   PATIENT_ID,
   carePlan,
@@ -46,8 +47,8 @@ describe("computeDraft: composition", () => {
     const out = await computeDraft(richPorts(), encounter(), viewer(), NOW);
     expect(out.templateKey).toBe("routine_visit:rn");
     expect(out.draft.templateKey).toBe("routine_visit:rn");
-    expect(out.asOf).toBe(AS_OF);
-    expect(out.draft.asOf).toBe(AS_OF);
+    expect(out.asOf).toBe(NOW_ISO);
+    expect(out.draft.asOf).toBe(NOW_ISO);
   });
 
   it("drafts each source into its section and leaves the rest empty", async () => {
@@ -96,36 +97,33 @@ describe("computeDraft: composition", () => {
 });
 
 describe("computeDraft: the visit time", () => {
-  it("uses started_at and passes it to every as-of read", async () => {
+  const rowsOf = <T extends { recordedAt: string }>(rows: readonly T[], asOf: string) =>
+    rows
+      .filter((r) => Date.parse(r.recordedAt) <= Date.parse(asOf))
+      .sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt))
+      .at(-1) ?? null;
+
+  it("is now while the service date is in progress, and goes to every as-of read", async () => {
     const ports = fakePorts({ carePlanAsOf: async () => null });
-    await computeDraft(ports, encounter(), viewer(), NOW);
-    expect(ports.carePlanAsOf.mock.calls[0]?.[5]).toBe(AS_OF);
-    expect(ports.scaleSeries.mock.calls.map((c) => c[3])).toEqual([AS_OF, AS_OF]);
-    expect(ports.latestVitals).toHaveBeenCalledWith(encounter().id, AS_OF);
+    const out = await computeDraft(ports, encounter(), viewer(), NOW);
+    expect(out.asOf).toBe(NOW_ISO);
+    expect(ports.carePlanAsOf.mock.calls[0]?.[5]).toBe(NOW_ISO);
+    expect(ports.scaleSeries.mock.calls.map((c) => c[3])).toEqual([NOW_ISO, NOW_ISO]);
+    expect(ports.latestVitals).toHaveBeenCalledWith(encounter().id, NOW_ISO);
   });
 
-  it("falls back to clock_started_at, then to the end of the service date in the org zone", async () => {
-    const clock = await computeDraft(
+  it("is the end of the service date in the org zone once that date has ended", async () => {
+    const out = await computeDraft(
       fakePorts(),
-      encounter({ startedAt: null, clockStartedAt: new Date("2026-11-18T13:00:00.000Z") }),
+      encounter({ serviceDate: "2026-11-10" }),
       viewer(),
       NOW,
     );
-    expect(clock.asOf).toBe("2026-11-18T13:00:00.000Z");
-    const endOfDay = await computeDraft(
-      fakePorts(),
-      encounter({ startedAt: null, serviceDate: "2026-11-10" }),
-      viewer(),
-      NOW,
-    );
-    expect(endOfDay.asOf).toBe("2026-11-11T04:59:59.999Z");
+    expect(out.asOf).toBe("2026-11-11T04:59:59.999Z");
   });
 
-  it("describes the patient at the visit time for a late entry, never today", async () => {
-    const lateEncounter = encounter({
-      serviceDate: "2026-11-10",
-      startedAt: new Date("2026-11-10T15:30:00.000Z"),
-    });
+  it("describes the patient at the end of the service date for a late entry, never today", async () => {
+    const lateEncounter = encounter({ serviceDate: "2026-11-10" });
     const ports = fakePorts({
       scaleSeries: honestSeries({
         pps: [
@@ -134,15 +132,74 @@ describe("computeDraft: the visit time", () => {
         ],
       }),
       latestVitals: async (_id, asOf) =>
-        Date.parse("2026-11-18T14:20:00.000Z") <= Date.parse(asOf)
-          ? { id: "vitals-today", recordedAt: "2026-11-18T14:20:00.000Z", heartRate: 99 }
-          : null,
+        rowsOf(
+          [{ id: "vitals-today", recordedAt: "2026-11-18T14:20:00.000Z", heartRate: 99 }],
+          asOf,
+        ),
     });
     const { draft } = await computeDraft(ports, lateEncounter, viewer(), NOW);
     const assessment = sectionOf(draft, "assessment");
     expect(assessment?.state === "drafted" && assessment.text).toContain("PPS 60%");
     expect(JSON.stringify(draft)).not.toContain("PPS 30%");
     expect(JSON.stringify(draft)).not.toContain("vitals-today");
+  });
+
+  describe("readings captured later on the service date", () => {
+    // Documented the next afternoon: the visit's day (Nov 18 EST) has ended, at 2026-11-19T04:59:59.999Z.
+    const nextDay = new Date("2026-11-19T20:00:00.000Z");
+    const build = (rows: { vitals: string; pps: string }[]) => {
+      const vitalsRows = rows.map((r, i) => ({
+        id: `vitals-${i}`,
+        recordedAt: r.vitals,
+        heartRate: 70 + i,
+      }));
+      return fakePorts({
+        scaleSeries: honestSeries({
+          pps: rows.map((r, i) => point(`pps-${i}`, r.pps, 50 - i * 10)),
+        }),
+        latestVitals: async (_id, asOf) => rowsOf(vitalsRows, asOf),
+      });
+    };
+
+    it("drafts vitals and a PPS reading captured after check-in the same service day", async () => {
+      const ports = build([
+        { vitals: "2026-11-18T22:00:00.000Z", pps: "2026-11-18T22:05:00.000Z" },
+      ]);
+      const { draft } = await computeDraft(ports, encounter(), viewer(), nextDay);
+      const vitals = sectionOf(draft, "vitals_review");
+      const assessment = sectionOf(draft, "assessment");
+      expect(vitals?.state === "drafted" && vitals.sourceRefs).toEqual([
+        { kind: "vitals", id: "vitals-0" },
+      ]);
+      expect(assessment?.state === "drafted" && assessment.text).toContain("PPS 50%");
+    });
+
+    it("does not draft a vitals row or PPS reading captured the next local day", async () => {
+      const ports = build([
+        { vitals: "2026-11-18T22:00:00.000Z", pps: "2026-11-18T22:05:00.000Z" },
+        { vitals: "2026-11-19T15:00:00.000Z", pps: "2026-11-19T15:05:00.000Z" },
+      ]);
+      const { draft } = await computeDraft(ports, encounter(), viewer(), nextDay);
+      const json = JSON.stringify(draft);
+      expect(json).toContain("vitals-0");
+      expect(json).toContain("PPS 50%");
+      expect(json).not.toContain("vitals-1");
+      expect(json).not.toContain("PPS 40%");
+    });
+
+    it("keeps 23:30 local on the service day (already the next day in UTC) and drops local midnight", async () => {
+      const inDay = build([
+        { vitals: "2026-11-19T04:30:00.000Z", pps: "2026-11-19T04:30:00.000Z" },
+      ]);
+      const drafted = await computeDraft(inDay, encounter(), viewer(), nextDay);
+      expect(JSON.stringify(drafted.draft)).toContain("vitals-0");
+      const midnight = build([
+        { vitals: "2026-11-19T05:00:00.000Z", pps: "2026-11-19T05:00:00.000Z" },
+      ]);
+      const dropped = await computeDraft(midnight, encounter(), viewer(), nextDay);
+      expect(sectionOf(dropped.draft, "vitals_review")?.state).toBe("empty");
+      expect(sectionOf(dropped.draft, "assessment")?.state).toBe("empty");
+    });
   });
 
   it("reads the organization's time zone once per call", async () => {
@@ -156,12 +213,7 @@ describe("computeDraft: the visit time", () => {
 
   it("is DRAFT_UNAVAILABLE for a service date that is not a date", async () => {
     await expect(
-      computeDraft(
-        fakePorts(),
-        encounter({ startedAt: null, serviceDate: "2026-02-30" }),
-        viewer(),
-        NOW,
-      ),
+      computeDraft(fakePorts(), encounter({ serviceDate: "2026-02-30" }), viewer(), NOW),
     ).rejects.toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
   });
 });
@@ -179,14 +231,10 @@ describe("computeDraft: determinism and no caching across calls", () => {
     expect(b).toEqual(a);
   });
 
-  it("is not moved by `now` once the visit has a start time", async () => {
-    const a = await computeDraft(ports(), encounter(), viewer(), NOW);
-    const b = await computeDraft(
-      ports(),
-      encounter(),
-      viewer(),
-      new Date("2026-12-24T09:00:00.000Z"),
-    );
+  it("is not moved by `now` once the service date has ended", async () => {
+    const ended = encounter({ serviceDate: "2026-11-18" });
+    const a = await computeDraft(ports(), ended, viewer(), new Date("2026-11-19T10:00:00.000Z"));
+    const b = await computeDraft(ports(), ended, viewer(), new Date("2026-12-24T09:00:00.000Z"));
     expect(b).toEqual(a);
   });
 

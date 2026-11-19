@@ -5,20 +5,11 @@ import { isValidServiceDate, localDayStart } from "../closure/clock-stamp";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface VisitAsOfInput {
-  /** `encounter.started_at` (EVV check-in or clinician-entered), when recorded. */
-  readonly startedAt: Date | null;
-  /** `encounter.clock_started_at` (ADR-0113), when stamped. */
-  readonly clockStartedAt: Date | null;
   /** The org-local calendar day the visit happened on (`YYYY-MM-DD`). */
   readonly serviceDate: string;
   /** IANA zone of the organization (the one `organizationTimezone` resolves). */
   readonly orgTimeZone: string;
   readonly now: Date;
-}
-
-function assertInstant(name: string, value: Date): void {
-  if (Number.isNaN(value.getTime()))
-    throw new RangeError(`visitAsOf: ${name} is not a valid instant`);
 }
 
 /** The last millisecond of an org-local calendar day: the start of the next local day, minus 1 ms. */
@@ -33,15 +24,17 @@ function endOfLocalDay(serviceDate: string, timeZone: string): Date {
 }
 
 /**
- * The visit time: `started_at`, else `clock_started_at`, else the end of the service date in the org's zone,
- * and never later than `now` (a device clock that ran ahead, or a service date still in progress, cannot make
- * a note describe the future). Returned as an ISO-8601 instant in UTC, the form `compileDraft` and the seams take.
+ * The visit time: the last millisecond of the service date in the organization's zone, and never later than `now`.
+ * The whole service date counts, so a clinician documenting after checkout, or later that day, still gets the
+ * visit's own vitals, scores and medication changes; a note written days late does not pull in the days since;
+ * a service date still in progress is capped at `now`, so a note never describes the future. Neither
+ * `started_at` nor `clock_started_at` matters here. Returned as an ISO-8601 instant in UTC, the form
+ * `compileDraft` and the seams take.
  */
 export function visitAsOf(input: VisitAsOfInput): string {
-  assertInstant("now", input.now);
-  if (input.startedAt !== null) assertInstant("startedAt", input.startedAt);
-  if (input.clockStartedAt !== null) assertInstant("clockStartedAt", input.clockStartedAt);
-  const known =
-    input.startedAt ?? input.clockStartedAt ?? endOfLocalDay(input.serviceDate, input.orgTimeZone);
-  return new Date(Math.min(known.getTime(), input.now.getTime())).toISOString();
+  if (Number.isNaN(input.now.getTime())) {
+    throw new RangeError("visitAsOf: now is not a valid instant");
+  }
+  const dayEnd = endOfLocalDay(input.serviceDate, input.orgTimeZone);
+  return new Date(Math.min(dayEnd.getTime(), input.now.getTime())).toISOString();
 }

@@ -66,7 +66,7 @@ function compile(inputs: DraftInputs): Draft {
  * Compute the draft of `encounter` for `viewer` as of the visit time. Throws `EncounterStateError`
  * `DRAFT_UNAVAILABLE` when any read fails or returns something unusable, and the selection-assembly codes
  * (`VOCAB_VERSION_MISMATCH`, `INVALID_ENCOUNTER_DISCIPLINE_PAIR`, `UNKNOWN_VOCAB_CODE`) when the stored selection
- * cannot be rendered. `now` is only a ceiling on the visit time: a visit with a start time is not moved by it.
+ * cannot be rendered. `now` is only a ceiling on the visit time: once the service date has ended, `now` does not move it.
  */
 export async function computeDraft(
   ports: DraftPorts,
@@ -79,13 +79,7 @@ export async function computeDraft(
     call.organizationTimeZone(encounter.organizationId),
   );
   const asOf = await guarded("the visit time", () =>
-    visitAsOf({
-      startedAt: encounter.startedAt,
-      clockStartedAt: encounter.clockStartedAt,
-      serviceDate: encounter.serviceDate,
-      orgTimeZone,
-      now,
-    }),
+    visitAsOf({ serviceDate: encounter.serviceDate, orgTimeZone, now }),
   );
   const [sources, stored] = await Promise.all([
     readDraftInputs(call, encounter, viewer, asOf),
