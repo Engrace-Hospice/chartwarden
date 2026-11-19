@@ -345,11 +345,10 @@ describe("#91 — the aggregator queue can be worked", () => {
     expect(screen.queryByRole("button", { name: "Resubmit" })).toBeNull();
   });
 
-  it("an ACCEPTED submission is terminal and offers neither", async () => {
+  it("an ACCEPTED submission keeps evidence available but offers no mutation", async () => {
     submissionStatus = "accepted";
     mount(<EvvAggregatorSubmissions />);
-    // The row's own "—" placeholder is what an actionless row renders.
-    await screen.findByText("—");
+    await screen.findByRole("button", { name: "View evidence" });
     expect(screen.queryByRole("button", { name: "Resubmit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
   });

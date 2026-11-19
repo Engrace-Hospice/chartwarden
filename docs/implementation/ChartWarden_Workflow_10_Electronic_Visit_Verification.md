@@ -50,7 +50,7 @@ These paths were observed in the uploaded repository. Their presence is not proo
 | `docs/design/screens/clinical/CHARTWARDEN_UI_EVV.md` | Existing intended UX; not proof that features are implemented. |
 | `e2e/specs/evv.spec.ts`, `apps/web/src/modules/18-evv/evv-writes.dom.test.tsx` | UI/e2e test inventory. |
 | `apps/backend/__tests__/evv-*.test.ts`, `m17-evv-*.live.test.ts`, `m18-evv-*.test.ts` | Existing lifecycle, authorization, geofence, offline, worker and integration tests; distinguish live tests from unit tests. |
-| `chartwarden-mobile/src/features/visits/use-visit-workflow.ts`, `visit-detail-screen.tsx`, `features/evv/` (separate repository) | React Native/Expo foreground location, device self-registration, online capture, evidence reconciliation, and default-off encrypted offline sync. Cross-repository source evidence only; not production readiness. |
+| [`Engrace-Hospice/chartwarden-mobile`](https://github.com/Engrace-Hospice/chartwarden-mobile): `src/features/visits/use-visit-workflow.ts`, `visit-detail-screen.tsx`, `features/evv/` | React Native/Expo foreground location, device self-registration, online capture, evidence reconciliation, and default-off encrypted offline sync. Cross-repository source evidence only; not production readiness. |
 
 ### High-value findings requiring verification
 
@@ -292,8 +292,9 @@ real vendor transmission or configuration-health check.
 ### PR-4/PR-5 cross-repository audit note — 2026-11-19
 
 The authoritative architecture targets a separately versioned React Native/Expo app, not the historical
-Capacitor wrapper. At audited mobile commit `77f450ddbf02afa4ad0d662d392afdfd7fa8cbc5`, the sibling
-`chartwarden-mobile` repository already contains foreground-only fresh-location capture, device
+Capacitor wrapper. At audited mobile commit `77f450ddbf02afa4ad0d662d392afdfd7fa8cbc5`, the canonical
+[`Engrace-Hospice/chartwarden-mobile`](https://github.com/Engrace-Hospice/chartwarden-mobile) repository
+already contains foreground-only fresh-location capture, device
 self-registration with approval gating, server-bracket reconciliation, and an encrypted offline v2
 queue behind a default-off build flag. The mobile documentation explicitly forbids treating local source
 and unit tests as authenticated live or physical-device evidence.
@@ -343,3 +344,7 @@ credential change was made during this audit.
 7. End with a release report: before/after workflow, changed files, screenshots, migration/rollback notes, outstanding risks and verification results.
 
 **Next in sequence:** Workflow 11 — Medication Orders.
+
+**Release readiness:** [`evidence/10-evv-release-readiness.md`](./evidence/10-evv-release-readiness.md)
+records the delivered slices, verification, rollback, outstanding gates, and current NO-GO decision for
+the complete cross-platform/vendor workflow.
