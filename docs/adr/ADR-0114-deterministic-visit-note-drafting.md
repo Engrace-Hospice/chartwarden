@@ -2,7 +2,7 @@
 
 - **Status:** **Proposed** (2026-11-18). The owner decided this in a design session after a competitor comparison; acceptance is the owner's.
 - **Date:** 2026-11-18
-- **Related:** [ADR-0007](ADR-0007-m8-m9-m10-read-direction.md) and [ADR-0043](ADR-0043-m8-completeness-seam-inversion.md) (M8 reaches other modules by seam), [ADR-0012](ADR-0012-ai-governance-contract.md) (AI governance), [ADR-0072](ADR-0072-separate-react-native-expo-mobile-app.md) (separate mobile app), [ADR-0094](ADR-0094-messaging-voice-notes-and-dictation.md) (dictation), architecture §10.5, and the note-closure ADR on PR #1065 (not yet on `main`). The full design is `docs/implementation/04-visit-note-drafting-redesign.md`, whose decision IDs are `VN-D1`…`VN-D30` (the M8 spec has its own D1-D13).
+- **Related:** [ADR-0007](ADR-0007-m8-m9-m10-read-direction.md) and [ADR-0043](ADR-0043-m8-completeness-seam-inversion.md) (M8 reaches other modules by seam), [ADR-0012](ADR-0012-ai-governance-contract.md) (AI governance), [ADR-0072](ADR-0072-separate-react-native-expo-mobile-app.md) (separate mobile app), [ADR-0094](ADR-0094-messaging-voice-notes-and-dictation.md) (dictation), architecture §10.5, and [ADR-0113](ADR-0113-visit-note-closure-clock.md) (note-closure clock). The full design is `docs/implementation/04-visit-note-drafting-redesign.md`, whose decision IDs are `VN-D1`…`VN-D30` (the M8 spec has its own D1-D13).
 - **Amends:** nothing. It does not change Layer 2; it keeps it a stub. Decision 4 extends the M8 addendum path (M8 spec D2) without changing it.
 
 ## Context

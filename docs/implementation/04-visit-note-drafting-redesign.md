@@ -88,7 +88,7 @@ All DECIDED, 2026-11-18. IDs are stable; later slices cite them.
 | VN-D15 | Slice 1 finishes what the M8 spec and the screen design already promised for the RN routine visit but the code never built: vitals and scale readings in the narrative (PPS and ESAS phrase slots), the care-plan picker in the composer (it lives on Encounter Read today), the latest scale readings with their trend in the composer's right panel, and phrase categories for the routine template's uncategorized sections (`chief_concern`, `vitals_review`, `plan`). Sections that exist only in other templates (`pps`, `esas`, `prognosis`, `recert_summary`, the admission and IDG sections) belong to the slice that owns that template. New capability comes after. |
 | VN-D16 | Slice 1 enforces gate check 9 (attestation acknowledged, currently `deferred`) and adds a gate check that every drafted section is resolved (VN-D7). Check 4 (HOPE) stays with M10; check 7 (Layer 2) stays `deferred` until the AI slice. |
 | VN-D17 | The draft and the new sign-gate sit behind a per-tenant switch, default off at merge because `main` auto-deploys. A tenant is switched on only after the phrase corpus has had its clinical review (VN-D14) and a minimum mobile build is out (VN-D19). |
-| VN-D18 | Success is median **time-to-sign** per note type against a pre-ship baseline, from arrival (the clock start of the note-closure ADR on PR #1065) to signed; if that clock is not on `main`, the fallback start is draft creation. The numeric target is set only after two weeks of baseline data. Guards that must not worsen: addendum rate and QA-return rate. The share of drafted sections confirmed unedited is reported as a rubber-stamp indicator. |
+| VN-D18 | Success is median **time-to-sign** per note type against a pre-ship baseline, from arrival (`encounter.clock_started_at`, ADR-0113) to signed; a note with no clock is measured from draft creation. The numeric target is set only after two weeks of baseline data. Guards that must not worsen: addendum rate and QA-return rate. The share of drafted sections confirmed unedited is reported as a rubber-stamp indicator. |
 
 ### 2.4 Mobile (repo `chartwarden-mobile`, separate from this monorepo)
 
@@ -108,7 +108,7 @@ All DECIDED, 2026-11-18. IDs are stable; later slices cite them.
 | ID | Decision |
 |---|---|
 | VN-D30 | A signed visit note stays modifiable only through an **amendment** on the existing addendum path. The signed text is preserved and never overwritten in place. Each amendment is attributed, dated, step-up authenticated and re-confirmed per changed section, and it re-triggers cosign when the author needed one. |
-| VN-D27 | One workflow-redesign doc (this) plus one ADR. ADR-0114 records VN-D4, VN-D6, VN-D7 (with the binding clause of VN-D12) and VN-D30 as its Decisions 1-4. It merges after PR #1065, which holds ADR-0113, because the ADR gate requires contiguous numbering. |
+| VN-D27 | One workflow-redesign doc (this) plus one ADR. ADR-0114 records VN-D4, VN-D6, VN-D7 (with the binding clause of VN-D12) and VN-D30 as its Decisions 1-4. It follows ADR-0113 (the note-closure clock) in the contiguous numbering the ADR gate requires. |
 | VN-D28 | The FireNote, WellSky/Axxess and DocLens claims in the architecture, M8 spec and M32 spec that the corpus check found wrong or unsupported are corrected in this change (§7). |
 | VN-D29 | The vocabulary lives in `CONTEXT.md`. |
 
