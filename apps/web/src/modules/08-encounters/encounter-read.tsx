@@ -10,12 +10,10 @@ import {
   ageYears,
   cardSurface,
   ghostBorder,
-  sendWrite,
   t,
   useApiClient,
-  useIdempotencyKeeper,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
@@ -25,6 +23,8 @@ import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal
 import { type AddendumRow, openAddendum } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
 import { AmendSectionsPicker } from "./amend-sections-picker";
+import { CosignCeremonyModals } from "./cosign-ceremony-modals";
+import { cosignActionsFor } from "./cosign-model";
 import { draftIsActive, reviewCounts } from "./draft-model";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
 import {
@@ -46,6 +46,7 @@ import {
   amendableSections,
 } from "./signed-note-model";
 import { SignedNoteView } from "./signed-note-view";
+import { useCosignCeremony } from "./use-cosign-ceremony";
 import { useNoteDraft } from "./use-note-draft";
 import {
   type DeliveryDraft,
@@ -60,9 +61,8 @@ import { VisitDeliveryFields } from "./visit-delivery-fields";
 import { writeRefusalMessage } from "./write-refusal";
 import { authFailureRedirect } from "./write-workflow";
 
-type CeremonyMode = "sign" | "acknowledge" | "cosign-sign" | "supervisor-release" | null;
-
-const REASON_MIN = 40;
+// The sign ceremony; the cosigner's three (acknowledge, sign, supervisor release) are `useCosignCeremony`, shared with an amendment's request.
+type CeremonyMode = "sign" | null;
 
 interface Encounter {
   id: string;
@@ -202,9 +202,6 @@ function hasAnyValue(record: Record<string, unknown> | null | undefined): boolea
 
 export function EncounterRead(): JSX.Element {
   const client = useApiClient();
-  // The supervisor release body carries `stepUpAuthAt`, a click-time clock value the route requires (and ignores: step-up provenance
-  // comes from the session). One key and one first-attempt time per intent keeps a retry after a lost reply byte-identical.
-  const releaseKeeper = useIdempotencyKeeper();
   const navigate = useNavigate();
   const { refresh: refreshClosureStatus } = useNoteClosure();
 
@@ -513,6 +510,13 @@ export function EncounterRead(): JSX.Element {
     void load();
   }, [load]);
 
+  // The cosigner's acknowledge / sign / supervisor release for THIS note's request: one ceremony, shared with an amendment's.
+  const cosignSubject = useMemo(
+    () => ({ kind: "note" as const, encounterId: encounterId ?? "" }),
+    [encounterId],
+  );
+  const cosign = useCosignCeremony(cosignSubject, () => void load());
+
   const clearFieldError = useCallback((field: string) => {
     setFieldErrors((current) => {
       if (!current[field]) return current;
@@ -566,172 +570,100 @@ export function EncounterRead(): JSX.Element {
     clearFieldError("reason");
   }, [clearFieldError]);
 
-  const runWrite = useCallback(
-    async (mode: Exclude<CeremonyMode, null>) => {
-      if (!encounterId) return;
+  const runSign = useCallback(async () => {
+    if (!encounterId) return;
 
-      if (mode === "supervisor-release" && reason.trim().length < REASON_MIN) {
-        setActionError(null);
-        setFieldErrors((current) => ({
-          ...current,
-          reason: `Provide a reason of at least ${REASON_MIN} characters.`,
-        }));
-        return;
-      }
+    setBusy(true);
+    setActionError(null);
+    setActionRemediation(null);
 
-      setBusy(true);
-      setActionError(null);
-      setActionRemediation(null);
-      if (mode === "supervisor-release") {
-        clearFieldError("reason");
-      }
-
-      const path =
-        mode === "sign"
-          ? "/api/v1/encounters/{encounterId}/sign"
-          : mode === "acknowledge"
-            ? "/api/v1/encounters/{encounterId}/cosignature/acknowledge"
-            : mode === "cosign-sign"
-              ? "/api/v1/encounters/{encounterId}/cosignature/sign"
-              : "/api/v1/encounters/{encounterId}/cosignature/supervisor-release";
-
-      const body =
-        mode === "sign"
-          ? {
-              attestationConfirmed: true as const,
-              ...(encounter ? deliveryBody(delivery, deliveryContextOf(encounter)) : {}),
-            }
-          : mode === "cosign-sign"
-            ? {
-                attestationConfirmed: true as const,
-              }
-            : mode === "supervisor-release"
-              ? {
-                  reason: reason.trim(),
-                  stepUpAuthAt: "", // replaced by the intent's first-attempt time below
-                }
-              : undefined;
-
-      const init = {
-        params: {
-          path: {
-            encounterId,
-          },
+    const init = {
+      params: {
+        path: {
+          encounterId,
         },
-        ...(body ? { body } : {}),
-      };
+      },
+      body: {
+        attestationConfirmed: true as const,
+        ...(encounter ? deliveryBody(delivery, deliveryContextOf(encounter)) : {}),
+      },
+    };
 
-      type WriteOutcome = {
+    type WriteOutcome = {
+      error?: {
+        message?: string;
         error?: {
+          code?: string;
           message?: string;
-          error?: {
-            code?: string;
-            message?: string;
-            details?: unknown;
-          };
+          details?: unknown;
         };
-        response?: Response;
       };
-      let outcome: WriteOutcome;
-      if (mode === "supervisor-release" && body) {
-        const sent = await sendWrite(
-          releaseKeeper,
-          `${encounterId}|supervisor-release|${reason.trim()}`,
-          (key, stampedAt) =>
-            client.POST(
-              path as never,
-              {
-                ...init,
-                body: { ...body, stepUpAuthAt: stampedAt },
-                headers: { "Idempotency-Key": key },
-              } as never,
-            ) as Promise<WriteOutcome>,
-        );
-        if (sent.status === "unreachable") {
-          setBusy(false);
-          setActionError("Could not reach the server. Check your connection and try again.");
-          return;
-        }
-        // A refusal with an empty body (a gateway 5xx) is still a refusal: never read it as a success.
-        outcome =
-          sent.status === "refused" && sent.res.error === undefined
-            ? { ...sent.res, error: { message: "The action was refused." } }
-            : sent.res;
-      } else {
-        try {
-          outcome = (await client.POST(path as never, init as never)) as WriteOutcome;
-        } catch {
-          // An offline/aborted request rejects rather than resolving to an error envelope: never leave `busy` stuck.
-          // A lost reply may mean the action already landed, so say so: retrying an unchanged form is safe (the same
-          // idempotency key replays), but a changed form is a new intent and the server may answer that it is done.
-          setBusy(false);
-          setActionError(
-            "Could not reach the server. Check your connection and try again; if it keeps failing, reload the page to see whether the action already went through.",
-          );
-          return;
-        }
-      }
-      const { error: err, response } = outcome;
+      response?: Response;
+    };
+    let outcome: WriteOutcome;
+    try {
+      outcome = (await client.POST(
+        "/api/v1/encounters/{encounterId}/sign" as never,
+        init as never,
+      )) as WriteOutcome;
+    } catch {
+      // An offline/aborted request rejects rather than resolving to an error envelope: never leave `busy` stuck.
+      // A lost reply may mean the action already landed, so say so: retrying an unchanged form is safe (the same
+      // idempotency key replays), but a changed form is a new intent and the server may answer that it is done.
+      setBusy(false);
+      setActionError(
+        "Could not reach the server. Check your connection and try again; if it keeps failing, reload the page to see whether the action already went through.",
+      );
+      return;
+    }
+    const { error: err, response } = outcome;
 
-      if (err) {
-        const errCode = err?.error?.code;
-        const errMessage = err?.error?.message ?? err?.message;
-        const currentPath = `${window.location.pathname}${window.location.search}`;
+    if (err) {
+      const errCode = err?.error?.code;
+      const errMessage = err?.error?.message ?? err?.message;
+      const currentPath = `${window.location.pathname}${window.location.search}`;
 
-        const redirect = authFailureRedirect(response?.status, errCode, currentPath, errMessage);
+      const redirect = authFailureRedirect(response?.status, errCode, currentPath, errMessage);
 
-        if (redirect) {
-          navigate(redirect);
-          return;
-        }
-
-        setBusy(false);
-
-        const mapped = mode === "supervisor-release" ? fieldErrorsFrom(err, ["reason"]) : {};
-
-        if (Object.keys(mapped).length > 0) {
-          setFieldErrors((current) => ({ ...current, ...mapped }));
-          setActionError(null);
-          return;
-        }
-
-        // ADR-0114: the signer's drafted sections are not resolved against the draft as it stands now. Re-read it; the message says which.
-        if (errCode === "DRAFT_SECTION_STALE") void reloadDraft();
-        setActionError(
-          writeRefusalMessage({
-            status: response?.status,
-            code: errCode,
-            message: errMessage,
-            details: err?.error?.details,
-          }),
-        );
-
+      if (redirect) {
+        navigate(redirect);
         return;
       }
 
       setBusy(false);
-      closeCeremony();
 
-      void load();
-      // Signing closes the note, so the server may have lifted the author's block: ask the banner's status again now instead of
-      // leaving "your access is limited" up until its next poll.
-      if (mode === "sign") refreshClosureStatus();
-    },
-    [
-      encounterId,
-      encounter,
-      delivery,
-      reason,
-      client,
-      releaseKeeper,
-      navigate,
-      closeCeremony,
-      load,
-      clearFieldError,
-      refreshClosureStatus,
-      reloadDraft,
-    ],
-  );
+      // ADR-0114: the signer's drafted sections are not resolved against the draft as it stands now. Re-read it; the message says which.
+      if (errCode === "DRAFT_SECTION_STALE") void reloadDraft();
+      setActionError(
+        writeRefusalMessage({
+          status: response?.status,
+          code: errCode,
+          message: errMessage,
+          details: err?.error?.details,
+        }),
+      );
+
+      return;
+    }
+
+    setBusy(false);
+    closeCeremony();
+
+    void load();
+    // Signing closes the note, so the server may have lifted the author's block: ask the banner's status again now instead of
+    // leaving "your access is limited" up until its next poll.
+    refreshClosureStatus();
+  }, [
+    encounterId,
+    encounter,
+    delivery,
+    client,
+    navigate,
+    closeCeremony,
+    load,
+    refreshClosureStatus,
+    reloadDraft,
+  ]);
 
   async function runMutation(
     action: () => Promise<{
@@ -1038,12 +970,12 @@ export function EncounterRead(): JSX.Element {
   const sectionsToReview = draftSections ? reviewCounts(draftSections).needReview : [];
   const signBlockedByDraft = canSign && sectionsToReview.length > 0;
 
-  const canAcknowledge =
-    cosignStatus === "pending" || cosignStatus === "routed" || cosignStatus === "escalated";
-
-  const canCosignSign = cosignStatus === "acknowledged";
-
-  const canSupervisorRelease = cosignStatus === "escalated" || cosignStatus === "hard_cap_reached";
+  // The step the request's status allows (the server's §2.4 graph, shared with an amendment's request).
+  const {
+    acknowledge: canAcknowledge,
+    sign: canCosignSign,
+    release: canSupervisorRelease,
+  } = cosignActionsFor(cosignStatus);
 
   /*
    * UX progress.
@@ -1780,7 +1712,7 @@ export function EncounterRead(): JSX.Element {
                   {canSupervisorRelease ? (
                     <button
                       type="button"
-                      onClick={() => setCeremony("supervisor-release")}
+                      onClick={() => cosign.open("release")}
                       style={{
                         ...secondaryBtn,
                         width: "100%",
@@ -1793,7 +1725,7 @@ export function EncounterRead(): JSX.Element {
                   {canAcknowledge ? (
                     <button
                       type="button"
-                      onClick={() => setCeremony("acknowledge")}
+                      onClick={() => cosign.open("acknowledge")}
                       style={{
                         ...secondaryBtn,
                         width: "100%",
@@ -1806,7 +1738,7 @@ export function EncounterRead(): JSX.Element {
                   {canCosignSign ? (
                     <button
                       type="button"
-                      onClick={() => setCeremony("cosign-sign")}
+                      onClick={() => cosign.open("sign")}
                       style={{
                         ...primaryBtn,
                         width: "100%",
@@ -2122,175 +2054,19 @@ export function EncounterRead(): JSX.Element {
         // `commitBlocked`, not `commitDisabled`: a sign request that never settles (flaky mobile data) must not also
         // disable Cancel and trap the clinician in the dialog. Blocking only the commit still stops a double submit.
         commitBlocked={busy || deliveryProblem(delivery, deliveryContextOf(e)) !== null}
-        onCommit={() => void runWrite("sign")}
+        onCommit={() => void runSign()}
         onCancel={closeCeremony}
       />
 
       {/* ─────────────────────────────────────────────────────────────
-          ACKNOWLEDGE COSIGNATURE
+          COSIGNATURE: ACKNOWLEDGE, COSIGN, SUPERVISOR RELEASE
       ────────────────────────────────────────────────────────────── */}
 
-      <CeremonyModal
-        open={ceremony === "acknowledge"}
-        title="Acknowledge cosignature request"
-        attestation={
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.5rem",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.8125rem",
-                color: t.onSurfaceVariant,
-              }}
-            >
-              Confirms you have opened this encounter for cosignature review. This does not sign it.
-            </span>
-
-            {actionError ? (
-              <p role="alert" aria-live="assertive" style={alertStyle}>
-                {actionError}
-              </p>
-            ) : null}
-          </div>
-        }
-        signer={{
-          name: "Cosigner",
-          role: "This session",
-        }}
-        commitLabel={busy ? "Acknowledging…" : "Acknowledge"}
-        commitBlocked={busy}
-        onCommit={() => void runWrite("acknowledge")}
-        onCancel={closeCeremony}
-      />
-
-      {/* ─────────────────────────────────────────────────────────────
-          COSIGN
-      ────────────────────────────────────────────────────────────── */}
-
-      <CeremonyModal
-        open={ceremony === "cosign-sign"}
-        title="Sign cosignature"
-        attestation={
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.5rem",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-              }}
-            >
-              <Glyph name="shield" size={16} />
-
-              <strong>Cosign {stateLabel(e.encounterType)}</strong>
-            </div>
-
-            <RowField label="Service date" value={e.serviceDate} mono />
-
-            {actionError ? (
-              <p role="alert" aria-live="assertive" style={alertStyle}>
-                {actionError}
-              </p>
-            ) : null}
-          </div>
-        }
-        legalText="I attest I have reviewed this documentation and concur as the qualifying cosigner."
-        signer={{
-          name: "Cosigning RN",
-          role: "This session",
-        }}
-        commitLabel={busy ? "Signing…" : "Sign & commit"}
-        commitBlocked={busy}
-        onCommit={() => void runWrite("cosign-sign")}
-        onCancel={closeCeremony}
-      />
-
-      {/* ─────────────────────────────────────────────────────────────
-          SUPERVISOR RELEASE
-      ────────────────────────────────────────────────────────────── */}
-
-      <CeremonyModal
-        open={ceremony === "supervisor-release"}
-        title="Supervisor release"
-        attestation={
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.6rem",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.8125rem",
-                color: t.onSurfaceVariant,
-              }}
-            >
-              Releases this encounter from the 48-hour cosignature hard cap.
-            </span>
-
-            <label
-              htmlFor="supervisor-release-reason"
-              style={{
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                color: t.onSurfaceVariant,
-              }}
-            >
-              Reason (≥ {REASON_MIN} characters)
-            </label>
-
-            <textarea
-              id="supervisor-release-reason"
-              aria-describedby="supervisor-release-reason-count"
-              value={reason}
-              onChange={(event) => {
-                setReason(event.target.value);
-                clearFieldError("reason");
-              }}
-              rows={3}
-              style={{
-                ...textareaStyle,
-                ...(fieldErrors.reason ? fieldControlErrorStyle : null),
-              }}
-              aria-invalid={Boolean(fieldErrors.reason)}
-            />
-            <FieldError message={fieldErrors.reason} />
-
-            <span
-              id="supervisor-release-reason-count"
-              style={{
-                fontSize: "0.7rem",
-                color: reason.trim().length >= REASON_MIN ? t.onSurfaceVariant : t.warning,
-              }}
-            >
-              {reason.trim().length}/{REASON_MIN}
-            </span>
-
-            {actionError ? (
-              <p role="alert" aria-live="assertive" style={alertStyle}>
-                {actionError}
-              </p>
-            ) : null}
-          </div>
-        }
-        signer={{
-          name: "Supervisor",
-          role: "This session",
-        }}
-        commitLabel={busy ? "Releasing…" : "Release"}
-        commitBlocked={busy}
-        onCommit={() => void runWrite("supervisor-release")}
-        onCancel={closeCeremony}
+      <CosignCeremonyModals
+        ceremony={cosign}
+        subject="note"
+        heading={`Cosign ${stateLabel(e.encounterType)}`}
+        facts={[{ label: "Service date", value: e.serviceDate, mono: true }]}
       />
 
       {/* ─────────────────────────────────────────────────────────────
