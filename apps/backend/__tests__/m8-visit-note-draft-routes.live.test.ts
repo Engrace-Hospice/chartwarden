@@ -964,6 +964,19 @@ describe.skipIf(!DB_URL)(
         expect(res.statusCode).toBe(403);
         expect(await confirmationsOf(f.encounterId)).toEqual([]);
       });
+
+      it("a supervisor is refused 403 too: confirming a section is the AUTHOR's act, so the signer is who confirmed (C2), while the supervisor still reads the draft", async () => {
+        const f = await seedDraftWithPrevious();
+        const seen = sectionOf((await getDraft(f)).body, "plan");
+        const supervisor = {
+          ...as(orgs.A, orgs.A.otherRn),
+          "x-test-roles": "rn,clinical_supervisor",
+        };
+        const res = await putSection(f, "plan", "confirmed", seen, supervisor);
+        expect(res.statusCode).toBe(403);
+        expect(await confirmationsOf(f.encounterId)).toEqual([]);
+        expect((await getDraft(f, supervisor)).res.statusCode).toBe(200);
+      });
     });
 
     // ===============================================================================================================
@@ -2647,6 +2660,69 @@ describe.skipIf(!DB_URL)(
             contentHash: seen.contentHash,
           });
         });
+
+        // B2: the vitals render into the signed narrative, so a capture or an edit and a sign of one encounter take turns.
+        describe("vitals and sign take turns (B2)", () => {
+          const vitalsRows = (f: EncounterFixture) =>
+            rows<{ id: string; bp_systolic: number | null }>(
+              "SELECT id::text, bp_systolic FROM vitals WHERE encounter_id = $1 ORDER BY created_at, id",
+              [f.encounterId],
+            );
+          /** A sign parked mid-request holding the row, a vitals request that starts meanwhile and must wait for it, then the sign is released. */
+          async function vitalsWhileSigning(f: EncounterFixture, vitals: () => Promise<unknown>) {
+            const park = parkFirstCall(carePlanAnswer);
+            currentSeams = liveSeams({ carePlanAsOf: park.read });
+            const sign = settle(svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS));
+            await park.reached;
+            const capture = settle(vitals());
+            await untilABackendWaitsOnALock();
+            park.release();
+            return { sign: await sign, capture: await capture };
+          }
+
+          it("a vitals CAPTURE that starts while a sign holds the row waits, then is refused on the signed note: no vitals row lands after the seal", async () => {
+            const f = await prepared();
+            await resolveAll(orgs.A, f);
+            await finalize(orgs.A, f);
+            const before = await vitalsRows(f);
+            const vitals = requiredVitalsCapture("routine_visit", "rn");
+            if (!vitals) throw new Error("the template requires no vitals");
+            const { sign, capture } = await vitalsWhileSigning(f, () =>
+              svc.captureVitals(ORG_A, f.encounterId, vitals, orgs.A.author.membershipId),
+            );
+            expect(sign).toMatchObject({ ok: true, value: { status: "signed" } });
+            expect(capture).toMatchObject({
+              ok: false,
+              error: { code: "IMMUTABLE_AFTER_SIGN", statusCode: 409 },
+            });
+            expect(await vitalsRows(f)).toEqual(before);
+          });
+
+          it("a vitals EDIT that starts while a sign holds the row waits, then is refused: the vitals row stays what the signed note says", async () => {
+            const f = await prepared();
+            await resolveAll(orgs.A, f);
+            await finalize(orgs.A, f);
+            const [existing] = await vitalsRows(f);
+            if (!existing) throw new Error("prepared() captured no vitals");
+            const vitals = requiredVitalsCapture("routine_visit", "rn");
+            if (!vitals) throw new Error("the template requires no vitals");
+            const { sign, capture } = await vitalsWhileSigning(f, () =>
+              svc.editVitals(
+                ORG_A,
+                f.encounterId,
+                existing.id,
+                { ...vitals, bpSystolic: 199, bpDiastolic: 120 },
+                orgs.A.author.membershipId,
+              ),
+            );
+            expect(sign).toMatchObject({ ok: true, value: { status: "signed" } });
+            expect(capture).toMatchObject({
+              ok: false,
+              error: { code: "IMMUTABLE_AFTER_SIGN", statusCode: 409 },
+            });
+            expect(await vitalsRows(f)).toEqual([existing]);
+          });
+        });
       });
 
       // =============================================================================================================
@@ -3184,11 +3260,30 @@ describe.skipIf(!DB_URL)(
               "m8.encounter.addendum_signed",
               "m8.encounter.section_amended",
             ]);
+            // the OUTBOX payload is ids only: a Part 2 flag would tell a subscriber which section holds Part 2 content (S1)
             expect(published[1]?.payload).toEqual({
               encounterId: f.encounterId,
               addendumId: id,
               sectionId: "plan",
-              part2Derived: false,
+            });
+            // the AUDIT event (C4): who amended which section of which note by which addendum, with the flag, in the compliance class
+            const amended = one(
+              await rows<{
+                after: Record<string, unknown>;
+                retention_class: string;
+                actor_user_id: string | null;
+                resource_kind: string;
+              }>(
+                `SELECT after, retention_class::text, actor_user_id::text, resource_kind FROM audit_event
+                  WHERE organization_id = $1 AND event_type = 'm8.encounter.section_amended' AND resource_id::text = $2`,
+                [ORG_A, f.encounterId],
+              ),
+            );
+            expect(amended).toMatchObject({
+              after: { addendumId: id, sectionId: "plan", part2Derived: false },
+              retention_class: "compliance",
+              actor_user_id: orgs.A.author.userId,
+              resource_kind: "encounter",
             });
             expect(JSON.stringify(published)).not.toContain(GOAL_V2);
             expect(JSON.stringify(published)).not.toContain(row?.content_hash ?? "no hash");
@@ -3310,11 +3405,22 @@ describe.skipIf(!DB_URL)(
               JSON.stringify(without.finalDocumentationView) + JSON.stringify(without.noteHistory);
             expect(view).not.toContain(MARKER);
             expect(view).not.toContain("Morphine");
-            expect(
-              without.finalDocumentationView.sections.find(
-                (section: { sectionId: string }) => section.sectionId === "interventions",
-              ),
-            ).toMatchObject({ text: null, withheld: true, amendedByAddendumId: id });
+            // S1: the withheld section keeps its position and is told nothing else: no id, no amending addendum, no date; no history of it; no id in the addenda
+            const withheld = without.finalDocumentationView.sections.filter(
+              (section: { withheld: boolean }) => section.withheld,
+            );
+            expect(withheld).toEqual([
+              {
+                sectionId: null,
+                text: null,
+                withheld: true,
+                amendedByAddendumId: null,
+                signedAt: null,
+              },
+            ]);
+            expect(view).not.toContain("interventions");
+            expect(without.noteHistory).toBeNull();
+            expect(without.addenda[0].amendsSectionIds).toEqual([]);
             // a finalized-unsigned pin withheld whole: structured withheld, no sections, still no marker as data
             const g = await prepared();
             await resolveAll(orgs.A, g, {}, ["rn", "part2"]);
@@ -3415,21 +3521,22 @@ describe.skipIf(!DB_URL)(
             const wire = JSON.stringify(without);
             for (const hidden of ["Morphine", "Repositioning schedule review"])
               expect(wire).not.toContain(hidden);
-            const section = without.finalDocumentationView?.sections.find(
-              (s) => s.sectionId === "interventions",
-            );
-            expect(section).toMatchObject({ text: null, withheld: true });
+            expect(without.finalDocumentationView?.sections.filter((s) => s.withheld)).toEqual([
+              {
+                sectionId: null,
+                text: null,
+                withheld: true,
+                amendedByAddendumId: null,
+                signedAt: null,
+              },
+            ]);
             expect(
               without.finalDocumentationView?.sections.find((s) => s.sectionId === "plan")
                 ?.withheld,
             ).toBe(false);
-            const withheldHistory = without.noteHistory?.sections.find(
-              (s) => s.sectionId === "interventions",
-            );
-            expect(withheldHistory?.versions.map((v) => [v.text, v.withheld])).toEqual([
-              [null, true],
-              [null, true],
-            ]);
+            // S1: no history, no id and no amending addendum for a section with a Part 2 version
+            expect(without.noteHistory).toBeNull();
+            expect(without.addenda.map((x) => x.amendsSectionIds)).toEqual([[]]);
             // the row's audit image records no source id, no text and no hash, and files under the Part 2 class
             const rowAudit = await rows<{
               after: Record<string, unknown>;
@@ -3465,13 +3572,9 @@ describe.skipIf(!DB_URL)(
             expect(current).toMatchObject({ withheld: false, amendedByAddendumId: id });
             expect(current?.text).toContain("Repositioning schedule review");
             expect(current?.text).not.toContain("Morphine");
-            const history = without.noteHistory?.sections.find(
-              (s) => s.sectionId === "interventions",
-            );
-            expect(history?.versions.map((v) => [v.text, v.withheld])).toEqual([
-              [null, true],
-              [null, true],
-            ]);
+            // the section had a Part 2 version, so a viewer without disclosure is shown no history of it and no id of it in the addenda (S1)
+            expect(without.noteHistory).toBeNull();
+            expect(without.addenda.map((x) => x.amendsSectionIds)).toEqual([[]]);
             // a viewer with disclosure sees both versions
             const entitled = await viewOf(f, orgs.A.author, ["rn", "part2"]);
             expect(
@@ -3490,20 +3593,26 @@ describe.skipIf(!DB_URL)(
             await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
             await signAddendum(f, id, ["rn", "part2"]);
             const without = await viewOf(f, orgs.A.otherRn, ["rn"]);
-            const history = without.noteHistory?.sections.find(
+            // S1: the amended section is cut from the history whole (its id, author and date would say a Part 2 section exists), and the current view
+            // keeps its place with no id, no amending addendum and no date
+            expect(without.noteHistory).toBeNull();
+            expect(without.finalDocumentationView?.sections.filter((s) => s.withheld)).toEqual([
+              {
+                sectionId: null,
+                text: null,
+                withheld: true,
+                amendedByAddendumId: null,
+                signedAt: null,
+              },
+            ]);
+            expect(JSON.stringify(without.finalDocumentationView)).not.toContain(id);
+            // the entitled viewer sees the original and the amendment
+            const entitled = await viewOf(f, orgs.A.author, ["rn", "part2"]);
+            const history = entitled.noteHistory?.sections.find(
               (s) => s.sectionId === "interventions",
             );
-            expect(history?.versions.map((v) => v.withheld)).toEqual([false, true]);
+            expect(history?.versions.map((v) => v.withheld)).toEqual([false, false]);
             expect(history?.versions[0]?.text).toContain("Repositioning schedule review");
-            // (the original's own non-SUD medication text is visible, so the whole body is not searched: the amendment's version is what is withheld)
-            expect(history?.versions[1]?.text).toBeNull();
-            expect(
-              without.finalDocumentationView?.sections.find((s) => s.sectionId === "interventions"),
-            ).toMatchObject({
-              text: null,
-              withheld: true,
-              amendedByAddendumId: id,
-            });
           });
 
           it("a finalized pin carrying Part 2 text is withheld WHOLE (structured: withheld, no sections); the entitled viewer reads it as one block", async () => {
@@ -3912,16 +4021,17 @@ describe.skipIf(!DB_URL)(
             } as never);
             try {
               currentSeams = goalSeams(GOAL_V2);
+              // a supervisor of the note's author may name its sections (S2); anyone else with the addendum permission may not
               const author = {
                 membershipId: orgs.A.otherRn.membershipId,
                 sessionId: orgs.A.otherRn.userId,
                 userId: orgs.A.otherRn.userId,
-                roles: ["rn"],
+                roles: ["rn", "clinical_supervisor"],
               };
               const created = await a.createAddendum(ORG_A, f.encounterId, {
                 reason: REASON,
                 authorMembershipId: author.membershipId,
-                roles: ["rn"],
+                roles: author.roles,
                 amendsSectionIds: ["plan"],
               });
               await a.updateAddendumSelections(ORG_A, f.encounterId, created.id, requireSelections);
@@ -3943,7 +4053,7 @@ describe.skipIf(!DB_URL)(
                 at: SERVICE_DATE as never,
               });
               expect(signed.cosignatureRequestId).not.toBeNull();
-              const asAuthor = { ...author, roles: ["rn"] };
+              const asAuthor = { ...author };
               expect(
                 await a
                   .cosignAcknowledge(
@@ -4896,6 +5006,420 @@ describe.skipIf(!DB_URL)(
                 f.encounterId,
               ]),
             ).toEqual([]);
+          });
+        });
+
+        // ---- the slice's review fixes ---------------------------------------------------------------------------------
+        describe("review fixes (S1 slice): audit, who may amend, per-viewer ids, cosigner, connections", () => {
+          const supervisorRoles = ["rn", "clinical_supervisor"];
+          const supervisor = () => ({
+            membershipId: orgs.A.otherRn.membershipId,
+            sessionId: orgs.A.otherRn.userId,
+            userId: orgs.A.otherRn.userId,
+            roles: supervisorRoles,
+          });
+          const resolveAs = async (
+            who: ReturnType<typeof supervisor>,
+            f: EncounterFixture,
+            addendumId: string,
+            sectionId: string,
+          ) => {
+            const seen = (
+              await draftService.getAmendmentDraft(
+                {
+                  organizationId: ORG_A,
+                  userId: who.userId,
+                  roles: who.roles,
+                  membershipId: who.membershipId,
+                },
+                f.encounterId,
+                addendumId,
+              )
+            ).sections.find((section) => section.sectionId === sectionId);
+            return draftService.resolveAmendmentSection(
+              {
+                organizationId: ORG_A,
+                userId: who.userId,
+                roles: who.roles,
+                membershipId: who.membershipId,
+              },
+              f.encounterId,
+              addendumId,
+              sectionId,
+              {
+                resolution: "confirmed",
+                contentHash: seen?.contentHash ?? "",
+                corpusVersion: seen?.corpusVersion ?? "",
+              },
+              { ...auditOf(orgs.A), userId: who.userId },
+            );
+          };
+          const resolvedEvents = (f: EncounterFixture, addendumId: string) =>
+            rows<{
+              after: Record<string, unknown>;
+              retention_class: string;
+              actor_user_id: string | null;
+            }>(
+              `SELECT after, retention_class::text, actor_user_id::text FROM audit_event
+                WHERE organization_id = $1 AND event_type = 'm8.encounter.draft_section_resolved'
+                  AND resource_id::text = $2 AND after->>'addendumId' = $3
+                ORDER BY created_at`,
+              [ORG_A, f.encounterId, addendumId],
+            );
+
+          it("C1: the amendment's resolution writes the explicit audit event a note's does, naming the addendum: ids and counts, a Part 2 section in the Part 2 class with no source ids, a repeat writes none", async () => {
+            currentSeams = goalSeams(GOAL_V2, {
+              medicationChangesBetween: async () => sudChange(),
+            });
+            const f = await signedNote(["rn", "part2"]);
+            const noteEvents = (
+              await auditEvents(ORG_A, "m8.encounter.draft_section_resolved", f.encounterId)
+            ).length;
+            const id = await finalizedAddendum(f, ["plan", "interventions"], ["rn", "part2"]);
+            await resolveAmendment(f, id, "plan", "confirmed", ["rn", "part2"]);
+            await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
+            await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]); // idempotent repeat
+            const events = await resolvedEvents(f, id);
+            expect(events).toHaveLength(2);
+            const [plan, interventions] = events;
+            expect(plan).toMatchObject({
+              retention_class: "compliance",
+              actor_user_id: orgs.A.author.userId,
+              after: {
+                addendumId: id,
+                sectionId: "plan",
+                resolution: "confirmed",
+                part2Derived: false,
+              },
+            });
+            expect(plan?.after.sourceRefs).toEqual([{ kind: "care_plan_goal", id: GOAL }]);
+            expect(interventions).toMatchObject({
+              retention_class: "compliance_42cfr_part2",
+              after: { addendumId: id, sectionId: "interventions", part2Derived: true },
+            });
+            expect(interventions?.after).not.toHaveProperty("sourceRefs");
+            expect(JSON.stringify(events)).not.toContain("Morphine");
+            // the note's own events are unchanged: none of them names an addendum
+            expect(
+              (
+                await auditEvents(ORG_A, "m8.encounter.draft_section_resolved", f.encounterId)
+              ).filter((e) => e.after?.addendumId === undefined),
+            ).toHaveLength(noteEvents);
+          });
+
+          it("C4: a Part 2 amended section files its section_amended audit event under the Part 2 class, and the outbox event carries no flag", async () => {
+            currentSeams = goalSeams(GOAL_V2, {
+              medicationChangesBetween: async () => sudChange(),
+            });
+            const f = await signedNote(["rn", "part2"]);
+            const id = await finalizedAddendum(f, ["plan", "interventions"], ["rn", "part2"]);
+            await resolveAmendment(f, id, "plan", "confirmed", ["rn", "part2"]);
+            await resolveAmendment(f, id, "interventions", "confirmed", ["rn", "part2"]);
+            published.length = 0;
+            await signAddendum(f, id, ["rn", "part2"]);
+            const audit = await rows<{ after: Record<string, unknown>; retention_class: string }>(
+              `SELECT after, retention_class::text FROM audit_event
+                WHERE organization_id = $1 AND event_type = 'm8.encounter.section_amended' AND resource_id::text = $2
+                ORDER BY after->>'sectionId'`,
+              [ORG_A, f.encounterId],
+            );
+            expect(
+              audit.map((e) => [e.after.sectionId, e.after.part2Derived, e.retention_class]),
+            ).toEqual([
+              ["interventions", true, "compliance_42cfr_part2"],
+              ["plan", false, "compliance"],
+            ]);
+            const outbox = published.filter((e) => e.eventName === "m8.encounter.section_amended");
+            expect(outbox.map((e) => Object.keys(e.payload).sort())).toEqual([
+              ["addendumId", "encounterId", "sectionId"],
+              ["addendumId", "encounterId", "sectionId"],
+            ]);
+          });
+
+          it("S2: only the note's author or a supervisor may name its sections: another clinician is 403 and nothing is written, a free addendum is unchanged, a supervisor may, and the switch is no oracle", async () => {
+            const f = await signedNote();
+            const other = orgs.A.otherRn;
+            const nameAs = (roles: readonly string[], sections?: readonly string[]) =>
+              a.createAddendum(ORG_A, f.encounterId, {
+                reason: REASON,
+                authorMembershipId: other.membershipId,
+                roles,
+                ...(sections === undefined ? {} : { amendsSectionIds: sections }),
+              });
+            const addenda = () =>
+              rows("SELECT 1 FROM encounter_addendum WHERE encounter_id = $1", [f.encounterId]);
+            expect(await nameAs(["rn"], ["plan"]).catch((e: unknown) => e)).toMatchObject({
+              code: "FORBIDDEN",
+              statusCode: 403,
+            });
+            expect(await addenda()).toEqual([]);
+            expect(
+              await rows("SELECT 1 FROM encounter_amendment WHERE encounter_id = $1", [
+                f.encounterId,
+              ]),
+            ).toEqual([]);
+            // the same refusal whether or not the tenant has the draft on
+            await switchTo(false);
+            try {
+              expect(await nameAs(["rn"], ["plan"]).catch((e: unknown) => e)).toMatchObject({
+                code: "FORBIDDEN",
+              });
+            } finally {
+              await switchTo(true);
+            }
+            // a free addendum is anyone's with the addendum permission
+            expect((await nameAs(["rn"])).status).toBe("draft");
+            // a supervisor may name sections of someone else's note
+            expect((await nameAs(supervisorRoles, ["plan"])).status).toBe("draft");
+            expect(await addenda()).toHaveLength(2);
+          });
+
+          it("S2 over HTTP: POST .../addenda naming a section is 403 for a clinician who did not author the note, and 201 for its author", async () => {
+            const f = await signedNote();
+            const post = (headers: Record<string, string>) =>
+              amendApp.inject({
+                method: "POST",
+                url: `/api/v1/encounters/${f.encounterId}/addenda`,
+                headers,
+                payload: { reason: REASON, amendsSectionIds: ["plan"] },
+              });
+            expect((await post(as(orgs.A, orgs.A.otherRn))).statusCode).toBe(403);
+            expect((await post(authorA())).statusCode).toBe(201);
+          });
+
+          it("C3: an amendment is never routed to the note's author: when that RN is the only one on the caseload the sign is 422 NO_ELIGIBLE_COSIGNER before any write", async () => {
+            const f = await signedNote();
+            await needsCosign(f);
+            registerSeam("CareTeamProvider", {
+              primaryRnMembershipId: async () => orgs.A.author.membershipId,
+            } as never);
+            try {
+              currentSeams = goalSeams(GOAL_V2);
+              const who = supervisor();
+              const created = await a.createAddendum(ORG_A, f.encounterId, {
+                reason: REASON,
+                authorMembershipId: who.membershipId,
+                roles: who.roles,
+                amendsSectionIds: ["plan"],
+              });
+              await a.updateAddendumSelections(ORG_A, f.encounterId, created.id, requireSelections);
+              await a.finalizeAddendum(ORG_A, f.encounterId, created.id);
+              await resolveAs(who, f, created.id, "plan");
+              const refused = await a
+                .signAddendum(ORG_A, f.encounterId, created.id, who, { at: SERVICE_DATE as never })
+                .catch((e: unknown) => e);
+              expect(refused).toMatchObject({ code: "NO_ELIGIBLE_COSIGNER", statusCode: 422 });
+              // nothing was written: still finalized, no amendment row, no request raised at the note's author, no signature
+              expect(await addendumStatus(created.id)).toBe("finalized");
+              expect(await amendmentRowsOf(f)).toEqual([]);
+              expect(
+                await rows("SELECT 1 FROM addendum_cosignature_request WHERE addendum_id = $1", [
+                  created.id,
+                ]),
+              ).toEqual([]);
+              expect(await addendumSignatures(created.id)).toBe(0);
+            } finally {
+              registerSeam("CareTeamProvider", {
+                primaryRnMembershipId: async () => orgs.A.otherRn.membershipId,
+              } as never);
+            }
+          });
+
+          it("B3: a section whose original was NOT Part 2 but whose latest amendment is stays guarded: naming is refused for an author without disclosure, and so is the sign of a naming made before", async () => {
+            const f = await signedNote(); // no Part 2 anywhere in the note as signed
+            const earlier = await finalizedAddendum(f, ["interventions"], ["rn"]); // named while the section holds none: allowed
+            currentSeams = goalSeams(GOAL_V2, {
+              medicationChangesBetween: async () => sudChange(),
+            });
+            const entitled = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
+            await resolveAmendment(f, entitled, "interventions", "confirmed", ["rn", "part2"]);
+            await signAddendum(f, entitled, ["rn", "part2"]);
+            expect(one(await amendmentRowsOf(f)).part2_derived).toBe(true);
+            // the entitled reader's current text of `interventions` now holds the SUD content: an author without disclosure would shorten it
+            expect(
+              await createAmendment(f, ["interventions"], a, ["rn"]).catch((e: unknown) => e),
+            ).toMatchObject({ code: "AMENDMENT_PART2_NOT_ENTITLED", statusCode: 422 });
+            await resolveAmendment(f, earlier, "interventions", "confirmed", ["rn"]);
+            const refused = await signAddendum(f, earlier, ["rn"]).catch((e: unknown) => e);
+            expect(refused).toMatchObject({
+              code: "AMENDMENT_PART2_NOT_ENTITLED",
+              statusCode: 422,
+            });
+            expect(refused).not.toMatchObject({
+              message: expect.stringMatching(/part\s*2|42\s*cfr/i),
+            });
+            expect(await addendumStatus(earlier)).toBe("finalized");
+            expect(await amendmentRowsOf(f)).toHaveLength(1); // only the entitled author's amendment
+          });
+
+          it("S1: a reader without disclosure is not told which section an addendum names when it is Part 2, signed or not; a reader with disclosure is", async () => {
+            currentSeams = goalSeams(GOAL_V2, {
+              medicationChangesBetween: async () => sudChange(),
+            });
+            const f = await signedNote(["rn", "part2"]); // `interventions` is Part 2 derived in the note as signed
+            const unsigned = await finalizedAddendum(f, ["plan", "interventions"], ["rn", "part2"]);
+            const free = await finalizedAddendum(f, undefined);
+            const named = (view: Awaited<ReturnType<typeof viewOf>>) =>
+              Object.fromEntries((view.addenda ?? []).map((x) => [x.id, x.amendsSectionIds]));
+            expect(named(await viewOf(f, orgs.A.author, ["rn", "part2"]))).toEqual({
+              [unsigned]: ["interventions", "plan"],
+              [free]: [],
+            });
+            expect(named(await viewOf(f, orgs.A.otherRn, ["rn"]))).toEqual({
+              [unsigned]: ["plan"],
+              [free]: [],
+            });
+          });
+
+          it("C10: the acknowledger and the releasing supervisor are the audit actors of the request's updates, not 'system' (the note's own request and an amendment's)", async () => {
+            const note = await seedEncounter(orgs.A, { status: "cosign_pending" });
+            const noteRequestId = await needsCosign(note);
+            const cosignerActor = {
+              membershipId: orgs.A.otherRn.membershipId,
+              sessionId: orgs.A.otherRn.userId,
+              userId: orgs.A.otherRn.userId,
+              roles: ["rn"],
+            };
+            await a.cosignAcknowledge(
+              ORG_A,
+              note.encounterId,
+              cosignerActor,
+              SERVICE_DATE as never,
+            );
+            const acknowledged = await auditEvents(
+              ORG_A,
+              "cosignature_request.update",
+              noteRequestId,
+            );
+            expect(acknowledged.at(-1)?.after).toMatchObject({ status: "acknowledged" });
+            expect(acknowledged.at(-1)?.actor_user_id).toBe(orgs.A.otherRn.userId);
+
+            const f = await signedNote();
+            const parentRequest = await needsCosign(f);
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await finalizedAddendum(f, ["plan"]);
+            await resolveAmendment(f, id, "plan");
+            const requestId = (await signAddendum(f, id)).cosignatureRequestId as string;
+            await a.cosignAcknowledge(
+              ORG_A,
+              f.encounterId,
+              cosignerActor,
+              SERVICE_DATE as never,
+              id,
+            );
+            const ack = await auditEvents(ORG_A, "addendum_cosignature_request.update", requestId);
+            expect(ack.at(-1)?.actor_user_id).toBe(orgs.A.otherRn.userId);
+
+            for (const table of ["cosignature_request", "addendum_cosignature_request"]) {
+              await admin.query(
+                `UPDATE ${table} SET status = 'hard_cap_reached', hard_cap_at = now() WHERE id = $1`,
+                [table === "cosignature_request" ? parentRequest : requestId],
+              );
+            }
+            const reason =
+              "Past the hard cap: the case manager was on leave and the patient's care was not affected.";
+            const releaser = {
+              actorMembershipId: orgs.A.author.membershipId,
+              actorUserId: orgs.A.author.userId,
+            };
+            await a.supervisorRelease(ORG_A, f.encounterId, {
+              isSupervisor: true,
+              reason,
+              at: SERVICE_DATE as never,
+              ...releaser,
+            });
+            await a.supervisorRelease(ORG_A, f.encounterId, {
+              isSupervisor: true,
+              reason,
+              at: SERVICE_DATE as never,
+              addendumId: id,
+              ...releaser,
+            });
+            const noteRelease = await auditEvents(
+              ORG_A,
+              "cosignature_request.update",
+              parentRequest,
+            );
+            expect(noteRelease.at(-1)?.after).toMatchObject({
+              status: "supervisor_released",
+              supervisor_released_by: orgs.A.author.membershipId,
+            });
+            expect(noteRelease.at(-1)?.actor_user_id).toBe(orgs.A.author.userId);
+            const amendmentRelease = await auditEvents(
+              ORG_A,
+              "addendum_cosignature_request.update",
+              requestId,
+            );
+            expect(amendmentRelease.at(-1)?.after).toMatchObject({ status: "supervisor_released" });
+            expect(amendmentRelease.at(-1)?.actor_user_id).toBe(orgs.A.author.userId);
+          });
+
+          describe("S3: a read holds no connection while a source is asked, proven on a pool of ONE", () => {
+            let small: ReturnType<typeof createDbClient>;
+            beforeAll(async () => {
+              small = createDbClient({
+                connectionString: await appRoleConnectionString(admin, DB_URL as string),
+                max: 1,
+              });
+            });
+            afterAll(async () => {
+              await small?.close();
+            });
+            /** Every source read opens a pooled connection of its own, as the real seams do (M7, M9, M12 and M39 each open a transaction). */
+            const asking = (seams: ReturnType<typeof liveSeams>) =>
+              Object.fromEntries(
+                Object.entries(seams).map(([name, read]) => [
+                  name,
+                  async (...args: unknown[]) => {
+                    await small.db.execute(sql`SELECT 1`);
+                    return (read as (...a: unknown[]) => unknown)(...args);
+                  },
+                ]),
+              ) as unknown as ReturnType<typeof liveSeams>;
+
+            it("GET .../draft and the amendment draft answer on a pool of one: the facts are read in a short transaction that closes before M7, M9, M12 or M39 is asked", async () => {
+              currentSeams = goalSeams(GOAL_V2, {
+                medicationChangesBetween: async () => sudChange(),
+              });
+              const f = await signedNote(["rn", "part2"]);
+              const id = await finalizedAddendum(f, ["plan"], ["rn", "part2"]);
+              const reader = createDraftService({
+                runInOrg: createDbRunInOrg(small.db, CIPHERS),
+                seams: () => asking(currentSeams),
+                now: () => LIVE_NOW,
+              });
+              const draft = await reader.getDraft(callerOf(orgs.A, ["rn", "part2"]), f.encounterId);
+              expect(draft.sections.length).toBeGreaterThan(0);
+              const amendment = await reader.getAmendmentDraft(
+                callerOf(orgs.A, ["rn", "part2"]),
+                f.encounterId,
+                id,
+              );
+              expect(amendment.sections.map((section) => section.sectionId)).toEqual(["plan"]);
+            }, 40_000);
+
+            it("GET /encounters/:id answers on a pool of one for a note with a Part 2 section: the Part 2 verdict and the pinned narrative are read after the transaction closed", async () => {
+              currentSeams = goalSeams(GOAL_V2, {
+                medicationChangesBetween: async () => sudChange(),
+              });
+              const f = await signedNote(["rn", "part2"]);
+              const reader = createDbEncounterRouteService(
+                small.db,
+                undefined,
+                CIPHERS,
+                () => LIVE_NOW,
+                () => asking(currentSeams),
+              );
+              const view = await reader.getEncounter(
+                ORG_A,
+                f.encounterId,
+                viewerOf(orgs.A.otherRn, ["rn"]),
+              );
+              expect(view.finalDocumentation).toContain(MARKER);
+              expect(
+                view.finalDocumentationView?.sections.some((section) => section.withheld),
+              ).toBe(true);
+            }, 40_000);
           });
         });
       });
