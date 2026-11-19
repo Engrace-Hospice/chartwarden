@@ -60,7 +60,11 @@ export interface DraftSeamPorts {
     from: string,
     to: string,
   ): Promise<readonly MedicationOrderChange[]>;
-  /** Whether this viewer may read this patient's 42 CFR Part 2 content. Fails closed (`false`) on its own errors. */
+  /**
+   * Whether this viewer may read this patient's 42 CFR Part 2 content. THROWS on an M39 failure (`onError: "throw"` in `default-ports.ts`): an error
+   * is never a `false` and never a `true`. Each caller maps the throw to its own 503 (the draft, the sign gate, the note view, an amendment's naming
+   * and sign), so no caller treats an outage as a denial.
+   */
   part2DisclosureAllowed(query: {
     readonly organizationId: string;
     readonly patientId: string;

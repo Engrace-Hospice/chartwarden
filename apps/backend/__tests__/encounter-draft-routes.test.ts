@@ -87,7 +87,7 @@ function fakeService() {
   } as { [K in keyof DraftService]: ReturnType<typeof vi.fn> };
 }
 
-function makeServer(options: { inCaseload?: boolean } = {}) {
+function makeServer(options: { inCaseload?: boolean; author?: string } = {}) {
   const backend = createInMemoryEncounterBackend({
     encounters: [
       {
@@ -96,7 +96,7 @@ function makeServer(options: { inCaseload?: boolean } = {}) {
         patientId: PATIENT,
         discipline: "rn",
         status: "draft",
-        authoredByUserId: "author_1",
+        authoredByUserId: options.author ?? "author_1",
       },
     ],
   });
@@ -351,12 +351,12 @@ describe("PUT /encounters/:encounterId/draft/sections/:sectionId", () => {
   it.each(DOMAIN_READS)(
     "needs %s as well: the section it answers carries source text, so an author missing it is refused 403 and nothing is written",
     async (missing) => {
-      const { app, service } = makeServer();
+      // The caller IS the encounter's author, so only the missing source-domain key can refuse this call.
+      const { app, service } = makeServer({ author: `no_${missing}` });
       const res = await app.inject({
         method: "PUT",
         url: sectionUrl(),
-        // a supervisor passes the author-or-supervisor predicate, so only the missing source-domain key can refuse this call
-        headers: as(`no_${missing}`, "clinical_supervisor"),
+        headers: as(`no_${missing}`, "rn"),
         payload: BODY,
       });
       expect(res.statusCode).toBe(403);
@@ -376,24 +376,28 @@ describe("PUT /encounters/:encounterId/draft/sections/:sectionId", () => {
     expect(service.resolveSection).not.toHaveBeenCalled();
   });
 
-  it("refuses an RN who did not author the encounter (is_author_or_supervisor), and lets a supervisor through", async () => {
+  it("is the author's act (is_author): an RN who did not author the encounter is refused, and so is a supervisor, so the signer is who confirmed the draft (C2)", async () => {
     const { app, service } = makeServer();
-    const other = await app.inject({
-      method: "PUT",
-      url: sectionUrl(),
-      headers: OTHER_RN,
-      payload: BODY,
-    });
-    expect(other.statusCode).toBe(403);
+    for (const headers of [OTHER_RN, SUPERVISOR]) {
+      const res = await app.inject({ method: "PUT", url: sectionUrl(), headers, payload: BODY });
+      expect(res.statusCode).toBe(403);
+    }
     expect(service.resolveSection).not.toHaveBeenCalled();
-    const sup = await app.inject({
+    const author = await app.inject({
       method: "PUT",
       url: sectionUrl(),
-      headers: SUPERVISOR,
+      headers: AUTHOR,
       payload: BODY,
     });
-    expect(sup.statusCode).toBe(200);
+    expect(author.statusCode).toBe(200);
     expect(service.resolveSection).toHaveBeenCalledTimes(1);
+  });
+
+  it("the draft READ is unchanged: a supervisor still opens the draft (only the write became the author's act)", async () => {
+    const { app, service } = makeServer();
+    const res = await app.inject({ method: "GET", url: draftUrl(), headers: SUPERVISOR });
+    expect(res.statusCode).toBe(200);
+    expect(service.getDraft).toHaveBeenCalledTimes(1);
   });
 
   it("answers 404 for an encounter outside the caller's caseload", async () => {

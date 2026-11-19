@@ -44,6 +44,7 @@ const input = (over: Record<string, unknown> = {}) => ({
   encounter,
   viewer: viewer(),
   actorMembershipId: MEMBER,
+  addendumId: null,
   sectionId: "plan",
   resolution: "confirmed" as const,
   contentHash: "",

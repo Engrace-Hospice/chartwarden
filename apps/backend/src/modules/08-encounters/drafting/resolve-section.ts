@@ -27,6 +27,8 @@ export interface ResolveSectionInput {
   readonly encounter: DraftEncounterRow;
   readonly viewer: DraftViewer;
   readonly actorMembershipId: string;
+  /** The addendum whose amended section this resolves (VN-D30), or `null` for a note's own section: it rides on the audit event. */
+  readonly addendumId: string | null;
   readonly sectionId: string;
   readonly resolution: "confirmed" | "deselected";
   /** What the clinician saw (the request body). */
@@ -158,6 +160,7 @@ export async function resolveSection(
     view,
     event: {
       encounterId: encounter.id,
+      addendumId: input.addendumId,
       sectionId,
       resolution,
       edited,

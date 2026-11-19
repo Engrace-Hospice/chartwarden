@@ -45,6 +45,8 @@ export interface DraftStore extends DraftStorePorts {
 /** The explicit audit event of one resolution (ids, enums and counts only). */
 export interface DraftResolvedEvent {
   readonly encounterId: string;
+  /** The addendum whose amended section was resolved (VN-D30); `null` for a note's own section. */
+  readonly addendumId: string | null;
   readonly sectionId: string;
   readonly resolution: "confirmed" | "deselected";
   readonly edited: boolean;

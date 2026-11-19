@@ -232,6 +232,40 @@ describe("resolving a named section", () => {
     expect(ctx.amendmentSaved.size).toBe(0);
   });
 
+  it("records the same audit event a note's resolution records, naming the addendum (C1); an idempotent repeat records nothing more", async () => {
+    const ctx = service(amending());
+    const request = { resolution: "confirmed" as const, ...body(await plan(ctx)) };
+    await ctx.svc.resolveAmendmentSection(caller, ENCOUNTER, ADDENDUM, "plan", request, AUDIT);
+    expect(ctx.events).toHaveLength(1);
+    expect(ctx.events[0]).toMatchObject({
+      encounterId: ENCOUNTER,
+      addendumId: ADDENDUM,
+      sectionId: "plan",
+      resolution: "confirmed",
+      part2Derived: false,
+      carePlanElementsLinked: 0,
+      carePlanElementsRemoved: 0,
+    });
+    await ctx.svc.resolveAmendmentSection(caller, ENCOUNTER, ADDENDUM, "plan", request, AUDIT);
+    expect(ctx.events).toHaveLength(1);
+  });
+
+  it("a note's own resolution carries no addendum id in its event", async () => {
+    const ctx = service(amending({ encounter: draftEncounterRow({ status: "finalized" }) }));
+    const noteSection = (await ctx.svc.getDraft(caller, ENCOUNTER)).sections.find(
+      (s) => s.sectionId === "plan",
+    );
+    await ctx.svc.resolveSection(
+      caller,
+      ENCOUNTER,
+      "plan",
+      { resolution: "confirmed", ...body(noteSection) },
+      AUDIT,
+    );
+    expect(ctx.events).toHaveLength(1);
+    expect(ctx.events[0]?.addendumId).toBeNull();
+  });
+
   it("is idempotent: the same confirmation again writes nothing more", async () => {
     const ctx = service(amending());
     const request = { resolution: "confirmed" as const, ...body(await plan(ctx)) };

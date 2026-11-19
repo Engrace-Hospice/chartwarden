@@ -171,6 +171,102 @@ describe("reading the draft", () => {
   });
 });
 
+describe("connections held while a source is asked (S3)", () => {
+  const ENCOUNTER = "00000000-0000-4000-8000-000000000004";
+
+  /** A `RunInOrg` that counts the transactions open at any moment, and the ones it ever opened. */
+  function counted(options: Parameters<typeof memoryRunInOrg>[0] = withPrevious) {
+    const mem = memoryRunInOrg(options);
+    const state = { open: 0, opened: 0, openAtSeam: [] as number[] };
+    const runInOrg: typeof mem.runInOrg = async (scope, fn) => {
+      state.open += 1;
+      state.opened += 1;
+      try {
+        return await mem.runInOrg(scope, fn);
+      } finally {
+        state.open -= 1;
+      }
+    };
+    const seams = fakePorts({
+      carePlanAsOf: async () => {
+        state.openAtSeam.push(state.open);
+        return carePlan();
+      },
+      part2DisclosureAllowed: async () => {
+        state.openAtSeam.push(state.open);
+        return true;
+      },
+      medicationChangesBetween: async () => {
+        state.openAtSeam.push(state.open);
+        return [change("started", "2026-11-12T16:00:00.000Z", { id: "order-a" })];
+      },
+    });
+    return {
+      ...mem,
+      state,
+      svc: createDraftService({ runInOrg, seams: () => seams, now: () => NOW }),
+    };
+  }
+
+  it("a draft READ holds no transaction while M7, M9, M12 or M39 is asked: the facts in one short transaction, the confirmations in a second", async () => {
+    const { svc, state } = counted();
+    const view = await svc.getDraft(caller, ENCOUNTER);
+    expect(view.sections.length).toBeGreaterThan(0);
+    expect(state.openAtSeam.length).toBeGreaterThan(0);
+    expect(state.openAtSeam.every((open) => open === 0)).toBe(true);
+    expect(state.opened).toBe(2);
+    expect(state.open).toBe(0);
+  });
+
+  it("the amendment draft READ does the same", async () => {
+    const { svc, state } = counted({
+      ...withPrevious,
+      encounter: draftEncounterRow({ status: "signed" }),
+      amendment: {
+        id: "00000000-0000-4000-8000-0000000000ad",
+        status: "draft",
+        authoredByMembershipId: MEMBER,
+        sectionIds: ["plan"],
+      },
+    });
+    await svc.getAmendmentDraft(caller, ENCOUNTER, "00000000-0000-4000-8000-0000000000ad");
+    expect(state.openAtSeam.length).toBeGreaterThan(0);
+    expect(state.openAtSeam.every((open) => open === 0)).toBe(true);
+    expect(state.opened).toBe(2);
+  });
+
+  it("a section WRITE keeps its transaction, and the row lock in it, open across the source reads: the draft it decides over is the one the lock protects", async () => {
+    const { svc, state, encounterCalls } = counted();
+    const section = (await svc.getDraft(caller, ENCOUNTER)).sections.find(
+      (s) => s.sectionId === "plan",
+    );
+    state.openAtSeam.length = 0;
+    await svc.resolveSection(
+      caller,
+      ENCOUNTER,
+      "plan",
+      {
+        resolution: "confirmed",
+        contentHash: section?.contentHash ?? "",
+        corpusVersion: section?.corpusVersion ?? "",
+      },
+      AUDIT,
+    );
+    expect(state.openAtSeam.length).toBeGreaterThan(0);
+    expect(state.openAtSeam.every((open) => open === 1)).toBe(true);
+    expect(encounterCalls.at(-1)).toEqual({ id: ENCOUNTER, forUpdate: true });
+  });
+
+  it("a read of an encounter whose template the corpus does not draft asks no source and needs no store read after its transaction", async () => {
+    const { svc, state } = counted({
+      encounter: draftEncounterRow({ discipline: "lpn" }),
+    });
+    const view = await svc.getDraft(caller, ENCOUNTER);
+    expect(view.sections.every((s) => s.state === "not_drafted")).toBe(true);
+    expect(state.openAtSeam).toEqual([]);
+  });
+});
+
 describe("resolving a section", () => {
   const ID = "00000000-0000-4000-8000-000000000004";
 

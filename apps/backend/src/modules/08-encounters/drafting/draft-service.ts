@@ -8,7 +8,7 @@ import type { AuditContext } from "@chartwarden/audit";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { EncounterStateError } from "../lifecycle/errors";
 import { checkMutableForEdit } from "../lifecycle/validation";
-import { computeDraftOverview } from "./compute";
+import { computeDraftOverview, snapshotStorePorts } from "./compute";
 import { defaultDraftPorts } from "./default-ports";
 import type { AmendmentRef, DraftEncounterRow, DraftUnit, RunInOrg } from "./draft-store";
 import {
@@ -107,17 +107,26 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
   // One request's source reads take turns (serial-seams.ts): each opens a pooled transaction beside the request's own.
   const seams = (): DraftSeamPorts => serialSeams((deps.seams ?? defaultDraftPorts)());
   return {
+    // The two READS hold no connection while a source is asked (S3): the encounter and every store read go in one short transaction, which closes;
+    // then the sources (M7, M9, M12, M39, each opening a pooled transaction of its own) are read; then the confirmations in a second short one.
+    // The WRITES below keep their transaction, and the row lock in it, open across the seam reads: the draft they decide over must be the one the
+    // lock protects (a source that does not answer within DRAFT_SOURCE_READ_TIMEOUT_MS fails the request, 503, and releases both).
     async getDraft(caller, encounterId) {
       const now = clock();
-      return deps.runInOrg(
-        { organizationId: caller.organizationId, userId: caller.userId, now },
-        async (unit) => {
-          const encounter = await loadOr404(unit, encounterId, false);
-          const ports: DraftPorts = { ...seams(), ...unit.store };
-          const viewer = { roles: caller.roles, membershipId: caller.membershipId };
-          const computed = await computeDraftOverview(ports, encounter, viewer, now);
-          return draftView(encounter, computed, await unit.store.confirmations(encounter.id));
-        },
+      const scope = { organizationId: caller.organizationId, userId: caller.userId, now };
+      const { encounter, storePorts } = await deps.runInOrg(scope, async (unit) => {
+        const row = await loadOr404(unit, encounterId, false);
+        return { encounter: row, storePorts: await snapshotStorePorts(unit.store, row, now) };
+      });
+      const viewer = { roles: caller.roles, membershipId: caller.membershipId };
+      const computed = await computeDraftOverview(
+        { ...seams(), ...storePorts },
+        encounter,
+        viewer,
+        now,
+      );
+      return deps.runInOrg(scope, async (unit) =>
+        draftView(encounter, computed, await unit.store.confirmations(encounter.id)),
       );
     },
 
@@ -134,6 +143,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
             encounter,
             viewer: { roles: caller.roles, membershipId: caller.membershipId },
             actorMembershipId: caller.membershipId,
+            addendumId: null,
             sectionId,
             resolution: body.resolution,
             contentHash: body.contentHash,
@@ -148,21 +158,32 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
 
     async getAmendmentDraft(caller, encounterId, addendumId) {
       const now = clock();
-      return deps.runInOrg(
-        { organizationId: caller.organizationId, userId: caller.userId, now },
-        async (unit) => {
-          const encounter = await loadOr404(unit, encounterId, false);
-          const amendment = await loadAmendmentOr404(unit, encounterId, addendumId);
-          const store = unit.amendmentStore(addendumId);
-          const ports: DraftPorts = { ...seams(), ...store };
-          const viewer = { roles: caller.roles, membershipId: caller.membershipId };
-          const computed = await computeDraftOverview(ports, encounter, viewer, now);
-          return amendmentDraftView(
-            addendumId,
-            amendment.sectionIds,
-            draftView(encounter, computed, await store.confirmations(encounter.id)),
-          );
-        },
+      const scope = { organizationId: caller.organizationId, userId: caller.userId, now };
+      const { encounter, amendment, storePorts } = await deps.runInOrg(scope, async (unit) => {
+        const row = await loadOr404(unit, encounterId, false);
+        return {
+          encounter: row,
+          amendment: await loadAmendmentOr404(unit, encounterId, addendumId),
+          storePorts: await snapshotStorePorts(unit.store, row, now),
+        };
+      });
+      const viewer = { roles: caller.roles, membershipId: caller.membershipId };
+      const computed = await computeDraftOverview(
+        { ...seams(), ...storePorts },
+        encounter,
+        viewer,
+        now,
+      );
+      return deps.runInOrg(scope, async (unit) =>
+        amendmentDraftView(
+          addendumId,
+          amendment.sectionIds,
+          draftView(
+            encounter,
+            computed,
+            await unit.amendmentStore(addendumId).confirmations(encounter.id),
+          ),
+        ),
       );
     },
 
@@ -195,12 +216,16 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
             encounter,
             viewer: { roles: caller.roles, membershipId: caller.membershipId },
             actorMembershipId: caller.membershipId,
+            addendumId,
             sectionId,
             resolution: body.resolution,
             contentHash: body.contentHash,
             corpusVersion: body.corpusVersion,
             now,
           });
+          // The same explicit audit event a note's resolution records (CW-AC-49), naming the addendum: it is the only record of a deselection that
+          // leaves a named section empty, and the row trigger's image of the update alone does not say who resolved what against which addendum.
+          if (outcome.event !== null) await unit.recordResolved(outcome.event);
           return outcome.view;
         },
       );

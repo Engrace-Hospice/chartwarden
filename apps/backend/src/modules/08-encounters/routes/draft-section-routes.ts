@@ -15,11 +15,11 @@
 //
 // Both answer 404 when the tenant has the draft switched off (the service decides, before it reads anything), and for an encounter that is not
 // the caller's tenant. The viewer is the server-assembled session (roles, active membership), never request input: the draft is computed per
-// reader so 42 CFR Part 2 redaction holds (VN-D10). The PUT carries the SAME permission and ABAC chain as the selections save
-// (`encounter.author`, caseload scope, author-or-supervisor), minus the `If-Match` version (the section's content hash is the optimistic
-// lock), plus the AI-principal refusal: an AI may not confirm what it drafted a note from. A stale hash or corpus version is 409
+// reader so 42 CFR Part 2 redaction holds (VN-D10). The PUT carries the permission and ABAC chain of the selections save
+// (`encounter.author`, caseload scope) with the author's own rule (`is_author`, not author-or-supervisor: the signer must be who confirmed, C2),
+// minus the `If-Match` version (the section's content hash is the optimistic lock), plus the AI-principal refusal: an AI may not confirm what
+// it drafted a note from. A stale hash or corpus version is 409
 // `DRAFT_SECTION_STALE`; a draft that cannot be computed is 503 `DRAFT_UNAVAILABLE`.
-import type { AuditContext } from "@chartwarden/audit";
 import { requireAbac, requirePermission } from "@chartwarden/auth";
 import {
   type PreHandler,
@@ -30,6 +30,7 @@ import {
 import type { TObject } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { DraftService } from "../drafting/draft-service";
+import { auditContextOf } from "./audit-context";
 import {
   AmendmentDraftParamsSchema,
   AmendmentSectionParamsSchema,
@@ -62,28 +63,17 @@ const NO_AI = rejectAiActor(
 // the same answer as an absent encounter.
 const SCOPE_FOR = (action: string): PreHandler =>
   requireAbac(action, "encounter.scope", { notFoundOnDeny: true }) as PreHandler;
-const IS_AUTHOR_OR_SUPERVISOR = requireAbac(
-  "encounter.author",
-  "is_author_or_supervisor",
-) as PreHandler;
+/**
+ * Confirming a section is the AUTHOR's act, a supervisor's included (C2): the note is signed by its author alone, and the sign refuses a note
+ * the signer has not resolved, so a confirmation by anyone else would let the author sign a draft they never opened. (The addendum's PUT
+ * carries `is_addendum_author` for the same reason.) A supervisor reads the draft; they do not confirm it for the author.
+ */
+const IS_AUTHOR = requireAbac("encounter.author", "is_author") as PreHandler;
 /** A malformed id is a 422 BEFORE the scope predicate casts it to a uuid (that cast would be a 500). */
 const PARAMS_VALID = (schema: TObject): PreHandler =>
   (async (request: FastifyRequest) => {
     parse(schema, request.params);
   }) as unknown as PreHandler;
-
-function auditContextOf(request: FastifyRequest): AuditContext {
-  const ctx = request.context;
-  return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    actorKind: "user",
-    correlationId: ctx.correlationId,
-    requestId: String(request.id),
-    sourceIp: ctx.ip,
-    userAgent: ctx.userAgent,
-  };
-}
 
 export function registerDraftSectionRoutes(
   app: FastifyInstance,
@@ -142,7 +132,7 @@ export function registerDraftSectionRoutes(
         NO_AI,
         PARAMS_VALID(DraftSectionParamsSchema),
         SCOPE_FOR("encounter.author"),
-        IS_AUTHOR_OR_SUPERVISOR,
+        IS_AUTHOR,
       ],
     },
     async (request) => {

@@ -7,6 +7,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { HearthnoteCiphers } from "../hearthnote-crypto";
 import { createAmendmentDraftStore, namedSectionIds } from "./amendment-store";
+import { retentionClassOf } from "./audit-retention";
 import { createDbDraftStore } from "./db-draft-store";
 import type {
   AmendmentRef,
@@ -23,8 +24,6 @@ export const DRAFT_SECTION_AUDIT_EVENT = "m8.encounter.draft_section_resolved";
 
 const E = schema.encounters;
 const ADDENDUM = schema.encounterAddenda;
-const PART2_RETENTION_CLASS = "compliance_42cfr_part2";
-const DEFAULT_RETENTION_CLASS = "compliance";
 
 async function loadEncounter(
   tx: DbClient,
@@ -99,10 +98,11 @@ function createUnit(
         severity: "info",
         // A Part 2 section files under the Part 2 retention class (the catalog marks the event Part 2 eligible) and records no source ids:
         // the audit read path (`audit.read`) is not Part 2 gated, and a medication id tied to a patient discloses the SUD treatment.
-        retentionClass: event.part2Derived ? PART2_RETENTION_CLASS : DEFAULT_RETENTION_CLASS,
+        retentionClass: retentionClassOf(event.part2Derived),
         // Ids, enums and counts only: the source ids are the VN-D7 provenance for a plain section; no sentence of the note is copied here,
         // and no content hash (an unsalted SHA-256 of low-entropy text is an offline guessing oracle; the hash lives on the confirmation row).
         after: {
+          ...(event.addendumId === null ? {} : { addendumId: event.addendumId }),
           sectionId: event.sectionId,
           resolution: event.resolution,
           edited: event.edited,

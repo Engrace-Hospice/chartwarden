@@ -17,7 +17,7 @@ import {
 } from "@chartwarden/hearthnote";
 import { ASSEMBLY_ERROR_CODE, EncounterStateError } from "../lifecycle/errors";
 import { readDraftInputs } from "./inputs";
-import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
+import type { DraftEncounter, DraftPorts, DraftStorePorts, DraftViewer } from "./ports";
 import { draftUnavailable, guarded } from "./unavailable";
 import { visitAsOf } from "./visit-time";
 
@@ -98,6 +98,53 @@ export async function computeDraft(
     context: stored.context,
     asOf,
     templateKey: draft.templateKey,
+  };
+}
+
+/** What stands in for the store of a draft whose transaction has closed and that needs none: a read through it is a bug, not a silent open connection. */
+const CLOSED_STORE: DraftStorePorts = {
+  organizationTimeZone: () =>
+    Promise.reject(new Error("a store read after its transaction closed")),
+  previousSignedVisitAt: () =>
+    Promise.reject(new Error("a store read after its transaction closed")),
+  latestVitals: () => Promise.reject(new Error("a store read after its transaction closed")),
+  removedCarePlanElementIds: () =>
+    Promise.reject(new Error("a store read after its transaction closed")),
+  loadSelection: () => Promise.reject(new Error("a store read after its transaction closed")),
+};
+
+/**
+ * Every STORE read the draft makes (the zone, the previous visit, the vitals, the removed care-plan links, the stored selections), taken up
+ * front, as constant ports. A read-only draft then runs its source reads (M7, M9, M12, M39: each opens a pooled transaction of its own) with
+ * NO connection held by this request, instead of one held across them for as long as the slowest seam takes (S3: ten concurrent drafts would
+ * hold the whole pool and each wait for an eleventh). The reads, their arguments and their failure codes are the ones `computeDraft` makes;
+ * only when they are made moves. A template the corpus does not draft reads nothing, and its ports refuse any read.
+ */
+export async function snapshotStorePorts(
+  store: DraftStorePorts,
+  encounter: DraftEncounter,
+  now: Date,
+): Promise<DraftStorePorts> {
+  if (!templateHasDraftedSection(encounter.encounterType, encounter.discipline))
+    return CLOSED_STORE;
+  const orgTimeZone = await guarded("the organization time zone", () =>
+    store.organizationTimeZone(encounter.organizationId),
+  );
+  const asOf = await guarded("the visit time", () =>
+    visitAsOf({ serviceDate: encounter.serviceDate, orgTimeZone, now }),
+  );
+  const [previous, vitals, removed, stored] = await Promise.all([
+    guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter)),
+    guarded("the vitals", () => store.latestVitals(encounter.id, asOf)),
+    guarded("the removed care-plan links", () => store.removedCarePlanElementIds(encounter.id)),
+    guarded("the stored selections", () => store.loadSelection(encounter)),
+  ]);
+  return {
+    organizationTimeZone: async () => orgTimeZone,
+    previousSignedVisitAt: async () => previous,
+    latestVitals: async () => vitals,
+    removedCarePlanElementIds: async () => removed,
+    loadSelection: async () => stored,
   };
 }
 
