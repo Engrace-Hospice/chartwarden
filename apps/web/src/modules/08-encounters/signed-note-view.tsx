@@ -17,6 +17,7 @@ import {
   type NoteVersion,
   WITHHELD_LABEL,
   WITHHELD_NOTE_TEXT,
+  WITHHELD_SECTION_HEADING,
   WITHHELD_SECTION_TEXT,
   WITHHELD_VERSION_TEXT,
   historyOfSection,
@@ -101,6 +102,21 @@ function VersionHistory({
   );
 }
 
+/**
+ * A section withheld from this reader keeps its place and nothing else (S1): a generic heading, the withheld block, and none of what would say
+ * which section it is or whether it was amended: no name, no id to link to (so no landmark either, whatever the API sent), no date, no badge.
+ */
+function WithheldSectionBlock(): JSX.Element {
+  return (
+    <div className="wx-note-section">
+      <header className="wx-note-section-head">
+        <h3 className="wx-note-section-title">{WITHHELD_SECTION_HEADING}</h3>
+      </header>
+      <WithheldNotice scope="section" />
+    </div>
+  );
+}
+
 function NoteSectionBlock({
   section,
   history,
@@ -108,6 +124,7 @@ function NoteSectionBlock({
   readonly section: NoteSection;
   readonly history: NoteHistory | null | undefined;
 }): JSX.Element {
+  if (section.withheld) return <WithheldSectionBlock />;
   const amended = section.amendedByAddendumId !== null;
   const body = (
     <>

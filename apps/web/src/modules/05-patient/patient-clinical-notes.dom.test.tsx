@@ -57,6 +57,9 @@ const sectionOf = (sectionId: string | null, over: Record<string, unknown> = {})
   ...over,
 });
 
+/** A section withheld from the viewer as the API sends it: its place, and no id, no text, no amendment, no date. */
+const WITHHELD = { text: null, withheld: true };
+
 // The tab's other reads, answered as a healthy chart would (the notes are what these tests are about).
 const OTHER_READS: Record<string, unknown> = {
   "/api/v1/patients/{patientId}/scales/{scaleType}/latest": ok({
@@ -135,7 +138,7 @@ describe("a note's summary in the recent notes", () => {
         detail("e1", {
           finalDocumentationView: {
             withheld: false,
-            sections: [sectionOf("sud", { text: null, withheld: true })],
+            sections: [sectionOf(null, WITHHELD)],
           },
         }),
     });
@@ -149,10 +152,7 @@ describe("a note's summary in the recent notes", () => {
         detail("e1", {
           finalDocumentationView: {
             withheld: false,
-            sections: [
-              sectionOf("pain", { text: "Pain controlled." }),
-              sectionOf("sud", { text: null, withheld: true }),
-            ],
+            sections: [sectionOf("pain", { text: "Pain controlled." }), sectionOf(null, WITHHELD)],
           },
         }),
     });

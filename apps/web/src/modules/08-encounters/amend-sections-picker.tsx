@@ -1,16 +1,15 @@
 // apps/web/src/modules/08-encounters — choosing the sections of a signed note an addendum amends (ADR-0114 VN-D30, S1 PR E3).
 //
 // Offered beside the free addendum, never instead of it: choosing none is a free addendum, exactly as before. At most twelve (the API's
-// limit); a section the viewer cannot read (withheld) is shown but cannot be chosen, since nobody amends text they cannot see. The choice
+// limit); a section the viewer cannot read (withheld) has no id and is not listed, since nobody amends text they cannot see. The choice
 // is the order it was made in; what is amended is decided later, section by section, when the author confirms each redraft.
 import type { JSX } from "react";
 import { MAX_AMENDED_SECTIONS } from "./amendment-model";
 import { humanizeSection } from "./sign-draft-notice";
-import { type AmendableSection, WITHHELD_LABEL } from "./signed-note-model";
+import type { AmendableSection } from "./signed-note-model";
 
 const HINT_ID = "amend-sections-hint";
 const LIMIT_ID = "amend-sections-limit";
-const WITHHELD_REASON = `${WITHHELD_LABEL}: protected by 42 CFR Part 2, your access does not include it`;
 
 export interface AmendSectionsPickerProps {
   readonly sections: readonly AmendableSection[];
@@ -42,7 +41,7 @@ export function AmendSectionsPicker({
         be signed; a section you do not confirm stays as signed. Leave all unchosen for a free
         addendum.
       </p>
-      {sections.map(({ sectionId, selectable }) => {
+      {sections.map(({ sectionId }) => {
         const inputId = `amend-section-${sectionId}`;
         const isChosen = chosen.includes(sectionId);
         const pastLimit = atLimit && !isChosen;
@@ -52,15 +51,12 @@ export function AmendSectionsPicker({
               id={inputId}
               type="checkbox"
               checked={isChosen}
-              disabled={disabled || !selectable}
+              disabled={disabled}
               aria-disabled={pastLimit || undefined}
               aria-describedby={pastLimit ? LIMIT_ID : undefined}
               onChange={() => toggle(sectionId)}
             />
-            <label htmlFor={inputId}>
-              {humanizeSection(sectionId)}
-              {selectable ? "" : ` (${WITHHELD_REASON})`}
-            </label>
+            <label htmlFor={inputId}>{humanizeSection(sectionId)}</label>
           </div>
         );
       })}

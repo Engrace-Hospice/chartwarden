@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Choosing the sections of a signed note an addendum amends (ADR-0114 VN-D30): at most twelve, none that the viewer cannot read, and
+// Choosing the sections of a signed note an addendum amends (ADR-0114 VN-D30): at most twelve, and
 // leaving them all unchosen is the free addendum. Synthetic data only.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -12,7 +12,7 @@ import type { AmendableSection } from "../signed-note-model";
 afterEach(cleanup);
 
 const sections = (n: number): AmendableSection[] =>
-  Array.from({ length: n }, (_, i) => ({ sectionId: `section_${i + 1}`, selectable: true }));
+  Array.from({ length: n }, (_, i) => ({ sectionId: `section_${i + 1}` }));
 
 function Harness({
   all,
@@ -78,21 +78,6 @@ describe("AmendSectionsPicker", () => {
     );
     await user.click(screen.getByRole("checkbox", { name: "Section 1" }));
     expect(thirteenth).not.toHaveAttribute("aria-disabled");
-  });
-
-  it("shows a withheld section but cannot choose it, and says why", () => {
-    render(
-      <Harness
-        all={[
-          { sectionId: "pain", selectable: true },
-          { sectionId: "sud_history", selectable: false },
-        ]}
-      />,
-    );
-    const withheld = screen.getByRole("checkbox", { name: /Sud history/ });
-    expect(withheld).toBeDisabled();
-    expect(withheld).toHaveAccessibleName(/Withheld: protected by 42 CFR Part 2/);
-    expect(screen.getByRole("checkbox", { name: "Pain" })).toBeEnabled();
   });
 
   it("has no axe violations", async () => {

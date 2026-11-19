@@ -51,6 +51,10 @@ const viewSection = (sectionId: string | null, over: Record<string, unknown> = {
   ...over,
 });
 
+/** A section withheld from the viewer as the API sends it: its place, and no id, no text, no amendment, no date. */
+const withheldSection = () =>
+  viewSection(null, { text: null, withheld: true, amendedByAddendumId: null, signedAt: null });
+
 const DRAFT_PATH = "/api/v1/encounters/{encounterId}/draft";
 const ADDENDA_PATH = "/api/v1/encounters/{encounterId}/addenda";
 
@@ -143,19 +147,26 @@ describe("the signed note on the encounter record", () => {
     expect(screen.queryByText(LEGACY_TEXT)).toBeNull();
   });
 
-  it("shows a withheld section as a labelled block and the rest as note text", async () => {
+  it("shows a withheld section as a labelled block under a generic heading, and the rest as note text", async () => {
     encounter = {
       ...signedRn,
       finalDocumentationView: {
         withheld: false,
-        sections: [viewSection("pain"), viewSection("sud_history", { text: null, withheld: true })],
+        sections: [viewSection("pain"), withheldSection(), viewSection("plan")],
       },
     };
     mount();
     const note = await documentation();
-    const sud = await note.findByRole("region", { name: "Sud history" });
-    expect(within(sud).getByText("Withheld")).toBeInTheDocument();
-    expect(within(sud).getByText(/Protected by 42 CFR Part 2/)).toBeInTheDocument();
+    const heading = await note.findByRole("heading", { name: "Withheld section" });
+    const block = heading.closest(".wx-note-section") as HTMLElement;
+    expect(within(block).getByText("Withheld")).toBeInTheDocument();
+    expect(within(block).getByText(/Protected by 42 CFR Part 2/)).toBeInTheDocument();
+    expect(note.getAllByRole("heading").map((h) => h.textContent)).toEqual([
+      "Documentation",
+      "Pain",
+      "Withheld section",
+      "Plan",
+    ]);
     expect(screen.queryByText(LEGACY_TEXT)).toBeNull();
   });
 
@@ -233,11 +244,7 @@ describe("the addendum dialog", () => {
     ...signedRn,
     finalDocumentationView: {
       withheld: false,
-      sections: [
-        viewSection("pain"),
-        viewSection("plan"),
-        viewSection("sud_history", { text: null, withheld: true }),
-      ],
+      sections: [viewSection("pain"), viewSection("plan"), withheldSection()],
     },
   });
   const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -251,7 +258,8 @@ describe("the addendum dialog", () => {
     const { post } = mount();
     const dialog = await openDialog(user);
     await dialog.findByRole("checkbox", { name: "Plan" });
-    expect(dialog.getByRole("checkbox", { name: /Sud history/ })).toBeDisabled();
+    // The section withheld from this viewer has no id and is not listed: only the two readable ones can be chosen.
+    expect(dialog.getAllByRole("checkbox")).toHaveLength(2);
     await user.click(dialog.getByRole("checkbox", { name: "Plan" }));
     await user.click(dialog.getByRole("checkbox", { name: "Pain" }));
     await user.type(

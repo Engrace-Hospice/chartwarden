@@ -32,19 +32,23 @@ describe("shortStamp", () => {
 });
 
 describe("amendableSections", () => {
-  it("offers the sealed sections whose text the viewer may read", () => {
+  it("offers the sealed sections the API names, in order", () => {
     const rows = amendableSections(
-      view([
-        section("pain"),
-        section("plan", { amendedByAddendumId: "add-1" }),
-        section("sud", { text: null, withheld: true }),
-      ]),
+      view([section("pain"), section("plan", { amendedByAddendumId: "add-1" })]),
     );
-    expect(rows).toEqual([
-      { sectionId: "pain", selectable: true },
-      { sectionId: "plan", selectable: true },
-      { sectionId: "sud", selectable: false },
+    expect(rows).toEqual([{ sectionId: "pain" }, { sectionId: "plan" }]);
+  });
+
+  it("offers nothing for a section withheld from the viewer: the API sends it no id, and nobody amends text they cannot see", () => {
+    const withheld = section(null, { text: null, withheld: true, signedAt: null });
+    expect(amendableSections(view([section("pain"), withheld, section("plan")]))).toEqual([
+      { sectionId: "pain" },
+      { sectionId: "plan" },
     ]);
+  });
+
+  it("does not offer a withheld section an older server still sent an id for", () => {
+    expect(amendableSections(view([section("sud", { text: null, withheld: true })]))).toEqual([]);
   });
 
   it("offers nothing for a pin with no sealed rows, a withheld note, or no view", () => {
@@ -99,5 +103,21 @@ describe("historyOfSection", () => {
     expect(historyOfSection(null, "pain")).toBeNull();
     expect(historyOfSection(undefined, "pain")).toBeNull();
     expect(versionCount(null)).toBe(0);
+  });
+
+  it("is null when the API left no section in the history, or left a group with no version in it", () => {
+    // A group with a withheld version is omitted whole, and the history is null when none is left: neither is a list to show.
+    expect(historyOfSection({ sections: [] }, "pain")).toBeNull();
+    expect(
+      historyOfSection({ sections: [{ sectionId: "pain", versions: [] }] }, "pain"),
+    ).toBeNull();
+  });
+
+  it("finds a section by its id in a history that lists fewer sections than were amended", () => {
+    const shorter: NoteHistory = {
+      sections: [{ ...history.sections[0], sectionId: "plan" }],
+    } as NoteHistory;
+    expect(historyOfSection(shorter, "plan")).toHaveLength(2);
+    expect(historyOfSection(shorter, "pain")).toBeNull();
   });
 });

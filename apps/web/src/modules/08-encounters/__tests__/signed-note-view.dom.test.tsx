@@ -63,25 +63,86 @@ describe("a note read section by section", () => {
   });
 });
 
+// A section withheld from the reader keeps its place and nothing else: no id, no name, no date, no amendment (S1, ADR-0114).
+const withheldSection = (over: Partial<FinalDocumentationView["sections"][number]> = {}) =>
+  section(null, { text: null, withheld: true, signedAt: null, ...over });
+
 describe("withheld text", () => {
-  it("is a labelled block for the section, with no text and no copy affordance", () => {
-    render(
+  it("keeps its place under a generic heading that names no section, with no id to link to and no copy affordance", () => {
+    const { container } = render(
       <SignedNoteView
         view={{
           withheld: false,
-          sections: [section("pain"), section("sud", { text: null, withheld: true })],
+          sections: [section("pain"), withheldSection(), section("plan")],
         }}
         history={null}
         fallbackText="legacy"
       />,
     );
-    const sud = screen.getByRole("region", { name: "Sud" });
-    const block = within(sud).getByRole("note");
+    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([
+      "Pain",
+      "Withheld section",
+      "Plan",
+    ]);
+    const heading = screen.getByRole("heading", { name: "Withheld section" });
+    expect(heading).not.toHaveAttribute("id");
+    // Only the two readable sections can be linked to; the withheld one has no anchor and is no landmark.
+    expect(Array.from(container.querySelectorAll("[id]")).map((el) => el.id)).toEqual([
+      "note-section-pain",
+      "note-section-plan",
+    ]);
+    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual([
+      "note-section-pain",
+      "note-section-plan",
+    ]);
+    const block = heading.closest(".wx-note-section") as HTMLElement;
+    expect(within(block).getByRole("note")).toBeInTheDocument();
     expect(within(block).getByText("Withheld")).toBeInTheDocument();
     expect(within(block).getByText(PART2)).toBeInTheDocument();
-    expect(within(sud).queryByRole("button")).toBeNull();
+    expect(within(block).queryByRole("button")).toBeNull();
+    expect(within(block).queryByText("Amended")).toBeNull();
+    expect(block.querySelector("time")).toBeNull();
     // The clinician's section next to it is still plain text.
     expect(within(screen.getByRole("region", { name: "Pain" })).queryByRole("note")).toBeNull();
+  });
+
+  it("gives two withheld sections the same generic heading and tells them apart by nothing", () => {
+    render(
+      <SignedNoteView
+        view={{ withheld: false, sections: [withheldSection(), withheldSection()] }}
+        history={null}
+        fallbackText="legacy"
+      />,
+    );
+    expect(screen.getAllByRole("heading", { name: "Withheld section" })).toHaveLength(2);
+    expect(screen.getAllByRole("note")).toHaveLength(2);
+  });
+
+  it("names nothing and carries no amendment even when an older server still sent the id and the addendum", () => {
+    const { container } = render(
+      <SignedNoteView
+        view={{
+          withheld: false,
+          sections: [
+            section("sud_screening", {
+              text: null,
+              withheld: true,
+              amendedByAddendumId: "add-1",
+              signedAt: "2026-10-02T09:30:00Z",
+            }),
+          ],
+        }}
+        history={{
+          sections: [{ sectionId: "sud_screening", versions: [] }],
+        }}
+        fallbackText="legacy"
+      />,
+    );
+    expect(container.textContent).not.toMatch(/sud|screening/i);
+    expect(container.querySelector("[id]")).toBeNull();
+    expect(screen.queryByText("Amended")).toBeNull();
+    expect(screen.queryByText(/Version history/)).toBeNull();
+    expect(container.querySelector("time")).toBeNull();
   });
 
   it("is one labelled block for a whole withheld note, never an empty note", () => {
@@ -110,7 +171,7 @@ describe("withheld text", () => {
         view={{
           withheld: false,
           sections: [
-            section("sud", { text: null, withheld: true }),
+            withheldSection(),
             section("pain", { amendedByAddendumId: "add-1", signedAt: "2026-10-02T09:30:00Z" }),
           ],
         }}
@@ -236,6 +297,53 @@ describe("an amended section", () => {
   it("says the earlier versions are not available when no history came for an amended section", () => {
     render(<SignedNoteView view={amendedView} history={null} fallbackText="legacy" />);
     expect(screen.getByText("Earlier versions are not available.")).toBeInTheDocument();
+  });
+
+  // The API leaves out a section group that has a withheld version, and sends null when none is left.
+  it("says so, with no empty disclosure, when the history lists no section or a section with no version", () => {
+    const { rerender } = render(
+      <SignedNoteView view={amendedView} history={{ sections: [] }} fallbackText="legacy" />,
+    );
+    expect(screen.getByText("Earlier versions are not available.")).toBeInTheDocument();
+    expect(screen.queryByText(/Version history/)).toBeNull();
+    rerender(
+      <SignedNoteView
+        view={amendedView}
+        history={{ sections: [{ sectionId: "pain", versions: [] }] }}
+        fallbackText="legacy"
+      />,
+    );
+    expect(screen.getByText("Earlier versions are not available.")).toBeInTheDocument();
+    expect(screen.queryByText(/Version history/)).toBeNull();
+  });
+
+  it("opens the history of the amended section that has one, and says so for the one the API left out", async () => {
+    const user = userEvent.setup();
+    const twoAmended: FinalDocumentationView = {
+      withheld: false,
+      sections: [
+        section("pain", { amendedByAddendumId: "add-2", signedAt: "2026-10-03T08:00:00Z" }),
+        withheldSection(),
+        section("plan", { amendedByAddendumId: "add-1", signedAt: "2026-10-02T09:30:00Z" }),
+      ],
+    };
+    const shorter: NoteHistory = {
+      sections: history.sections.filter((s) => s.sectionId === "pain"),
+    };
+    render(<SignedNoteView view={twoAmended} history={shorter} fallbackText="legacy" />);
+    const pain = screen.getByRole("region", { name: "Pain" });
+    await user.click(within(pain).getByText("Version history (3 versions)"));
+    expect(within(pain).getAllByRole("listitem")).toHaveLength(3);
+    const plan = screen.getByRole("region", { name: "Plan" });
+    expect(within(plan).getByText("Earlier versions are not available.")).toBeInTheDocument();
+    expect(within(plan).queryByText(/Version history/)).toBeNull();
+    // The withheld section between them adds no hole, no heading of its own history and no badge.
+    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([
+      "Pain",
+      "Withheld section",
+      "Plan",
+    ]);
+    expect(screen.getAllByText("Amended")).toHaveLength(2);
   });
 });
 

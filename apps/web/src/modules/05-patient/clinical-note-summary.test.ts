@@ -80,6 +80,29 @@ describe("summariseNote", () => {
     ).toEqual({ kind: "withheld" });
   });
 
+  it("reads a withheld section as the API sends it: no id, no text, no amendment, no date", () => {
+    const withheld = {
+      sectionId: null,
+      text: null,
+      withheld: true,
+      amendedByAddendumId: null,
+      signedAt: null,
+    };
+    const readable = { ...withheld, sectionId: "plan", text: "Plan unchanged.", withheld: false };
+    expect(
+      summariseNote({
+        finalDocumentation: null,
+        finalDocumentationView: { withheld: false, sections: [readable, withheld] },
+      }),
+    ).toEqual({ kind: "text", text: "Plan unchanged.", someWithheld: true });
+    expect(
+      summariseNote({
+        finalDocumentation: null,
+        finalDocumentationView: { withheld: false, sections: [withheld, withheld] },
+      }),
+    ).toEqual({ kind: "withheld" });
+  });
+
   it("is unavailable for a note whose view could not be decided", () => {
     expect(summariseNote({ finalDocumentation: null, viewUnavailable: true })).toEqual({
       kind: "unavailable",

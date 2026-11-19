@@ -293,6 +293,52 @@ describe("when the amended sections cannot be shown", () => {
   });
 });
 
+// A reader without Part 2 disclosure is sent only the section ids they may be told of: a Part 2 section an addendum named is left out of
+// `amendsSectionIds`, signed or not. The list is what the page can say; it never says how many sections there were.
+describe("an addendum whose Part 2 sections the API left out of what it amends", () => {
+  it("lists only the sections it was sent and claims no total, signed or not", async () => {
+    sections = [section("pain", "confirmed")];
+    mount([
+      { ...amending, amendsSectionIds: ["pain"] },
+      {
+        ...amending,
+        id: "add-2",
+        status: "signed",
+        signedAt: "2026-10-02T10:00:00Z",
+        amendsSectionIds: ["plan"],
+      },
+    ]);
+    const open = row();
+    expect(within(open).getByText("Pain")).toBeInTheDocument();
+    await review();
+    const signed = screen.getByLabelText("Addendum add-2");
+    expect(within(signed).getByText("Plan")).toBeInTheDocument();
+    for (const item of [open, signed]) {
+      expect(item.textContent).not.toMatch(/\b\d+ (of \d+ )?sections?\b/i);
+      expect(item.textContent).not.toMatch(/part 2|withheld/i);
+    }
+  });
+
+  it("reads as a free addendum, with no review, no draft read and no hole, when every section it named was left out", () => {
+    const { GET } = mount([
+      { ...amending, amendsSectionIds: [], cosignStatus: "pending" },
+      {
+        ...amending,
+        id: "add-2",
+        status: "signed",
+        signedAt: "2026-10-02T10:00:00Z",
+        amendsSectionIds: [],
+        cosignStatus: "pending",
+      },
+    ]);
+    expect(draftReads(GET)).toBe(0);
+    expect(screen.queryByRole("region", { name: /^Amended sections/ })).toBeNull();
+    expect(screen.queryByText("Amends")).toBeNull();
+    expect(screen.queryByText("Cosignature of this amendment")).toBeNull();
+    expect(screen.getAllByText("Pain pattern changed after the family call")).toHaveLength(2);
+  });
+});
+
 describe("two addenda amending the same section", () => {
   it("name their review regions and their sections apart, by when each addendum was opened", async () => {
     mount([amending, { ...amending, id: "add-2", createdAt: "2026-10-03T09:30:00Z" }]);
