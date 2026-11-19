@@ -148886,6 +148886,26 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "cosignStatus": {
+                                  "anyOf": [
+                                    {
+                                      "const": "not_required",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "cosigned",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "released",
+                                      "type": "string"
+                                    }
+                                  ]
                                 }
                               }
                             }
@@ -148921,7 +148941,8 @@
                                               "signedAt",
                                               "text",
                                               "withheld",
-                                              "current"
+                                              "current",
+                                              "cosignStatus"
                                             ],
                                             "properties": {
                                               "kind": {
@@ -148974,6 +148995,33 @@
                                               },
                                               "current": {
                                                 "type": "boolean"
+                                              },
+                                              "cosignStatus": {
+                                                "anyOf": [
+                                                  {
+                                                    "anyOf": [
+                                                      {
+                                                        "const": "not_required",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "pending",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "cosigned",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "released",
+                                                        "type": "string"
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
                                               }
                                             }
                                           }
@@ -149747,6 +149795,26 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "cosignStatus": {
+                            "anyOf": [
+                              {
+                                "const": "not_required",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cosigned",
+                                "type": "string"
+                              },
+                              {
+                                "const": "released",
+                                "type": "string"
+                              }
+                            ]
                           }
                         }
                       }
@@ -149782,7 +149850,8 @@
                                         "signedAt",
                                         "text",
                                         "withheld",
-                                        "current"
+                                        "current",
+                                        "cosignStatus"
                                       ],
                                       "properties": {
                                         "kind": {
@@ -149835,6 +149904,33 @@
                                         },
                                         "current": {
                                           "type": "boolean"
+                                        },
+                                        "cosignStatus": {
+                                          "anyOf": [
+                                            {
+                                              "anyOf": [
+                                                {
+                                                  "const": "not_required",
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "const": "pending",
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "const": "cosigned",
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "const": "released",
+                                                  "type": "string"
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
                                         }
                                       }
                                     }
@@ -149939,6 +150035,390 @@
                       "pattern": "^[a-z][a-z0-9_]{0,63}$",
                       "type": "string"
                     }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdAddendaByAddendumIdCosignature",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read the state of the cosignature request an amending addendum opened (null before any routing; 404 for an addendum of another encounter or tenant)",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "routed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "acknowledged",
+                              "type": "string"
+                            },
+                            {
+                              "const": "escalated",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hard_cap_reached",
+                              "type": "string"
+                            },
+                            {
+                              "const": "supervisor_released",
+                              "type": "string"
+                            },
+                            {
+                              "const": "signed",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature/acknowledge": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureAcknowledge",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The cosigner acknowledges the request of an amendment (§4.6 cosigner_role_match: an RN who is neither the note's author nor the addendum's author)",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "routed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "acknowledged",
+                          "type": "string"
+                        },
+                        {
+                          "const": "escalated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "hard_cap_reached",
+                          "type": "string"
+                        },
+                        {
+                          "const": "supervisor_released",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature/sign": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSign",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The RN cosigner signs an amendment (D13 step-up; same errors as the note's cosignature: 403 not an RN or the author, 409 ILLEGAL_TRANSITION for a request already signed (a concurrent second sign included), 409 COSIGNATURE_LOCKED past the 48h cap until released). The encounter's own status is unchanged (answered as it stands); publishes m8.encounter.addendum_cosigned, never m8.encounter.cosigned (an amendment never re-opens billing)",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "cosignedAt"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "finalized",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cosign_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cosigned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "cosignedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attestationConfirmed"
+                ],
+                "properties": {
+                  "attestationConfirmed": {
+                    "const": true,
+                    "type": "boolean"
+                  },
+                  "lateEntryReason": {
+                    "minLength": 40,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature/supervisor-release": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSupervisorrelease",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "A supervisor releases an amendment's request past the 48h hard cap (reason of at least 40 characters, fresh step-up); the RN cosigner still has to sign",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "routed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "acknowledged",
+                          "type": "string"
+                        },
+                        {
+                          "const": "escalated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "hard_cap_reached",
+                          "type": "string"
+                        },
+                        {
+                          "const": "supervisor_released",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "stepUpAuthAt"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "stepUpAuthAt": {
+                    "format": "date-time",
+                    "type": "string"
                   }
                 }
               }
@@ -155256,7 +155736,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "RN/Supervisor cosignature work queue with SLA chips (§5.5)",
+        "summary": "RN/Supervisor cosignature work queue with SLA chips (§5.5): every open cosignature request of the tenant. Each entry is the encounter plus `cosign`, which says which request it is: a NOTE awaiting its cosigner (`subject: note`) or an AMENDMENT of a signed note awaiting its own (`subject: addendum`, with `addendumId`; the entry is then the parent encounter, which stays signed or cosigned), with the request id, its status and when it was routed (the start of its own 12h/24h/48h clock) (ADR-0114 VN-D30)",
         "parameters": [],
         "responses": {
           "200": {
@@ -155288,7 +155768,8 @@
                           "authoredByUserId",
                           "isF2f",
                           "signedAt",
-                          "cosignedAt"
+                          "cosignedAt",
+                          "cosign"
                         ],
                         "properties": {
                           "id": {
@@ -155777,6 +156258,26 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "cosignStatus": {
+                                  "anyOf": [
+                                    {
+                                      "const": "not_required",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "cosigned",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "released",
+                                      "type": "string"
+                                    }
+                                  ]
                                 }
                               }
                             }
@@ -155812,7 +156313,8 @@
                                               "signedAt",
                                               "text",
                                               "withheld",
-                                              "current"
+                                              "current",
+                                              "cosignStatus"
                                             ],
                                             "properties": {
                                               "kind": {
@@ -155865,6 +156367,33 @@
                                               },
                                               "current": {
                                                 "type": "boolean"
+                                              },
+                                              "cosignStatus": {
+                                                "anyOf": [
+                                                  {
+                                                    "anyOf": [
+                                                      {
+                                                        "const": "not_required",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "pending",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "cosigned",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "released",
+                                                        "type": "string"
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
                                               }
                                             }
                                           }
@@ -155878,6 +156407,99 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "cosign": {
+                            "type": "object",
+                            "required": [
+                              "subject",
+                              "addendumId",
+                              "requestId",
+                              "status",
+                              "routedAt"
+                            ],
+                            "properties": {
+                              "subject": {
+                                "anyOf": [
+                                  {
+                                    "const": "note",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "addendum",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "addendumId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "requestId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "pending",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "routed",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "acknowledged",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "escalated",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "hard_cap_reached",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "supervisor_released",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "signed",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "routedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
                           }
                         }
                       }
@@ -156546,6 +157168,26 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "cosignStatus": {
+                                  "anyOf": [
+                                    {
+                                      "const": "not_required",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "cosigned",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "released",
+                                      "type": "string"
+                                    }
+                                  ]
                                 }
                               }
                             }
@@ -156581,7 +157223,8 @@
                                               "signedAt",
                                               "text",
                                               "withheld",
-                                              "current"
+                                              "current",
+                                              "cosignStatus"
                                             ],
                                             "properties": {
                                               "kind": {
@@ -156634,6 +157277,33 @@
                                               },
                                               "current": {
                                                 "type": "boolean"
+                                              },
+                                              "cosignStatus": {
+                                                "anyOf": [
+                                                  {
+                                                    "anyOf": [
+                                                      {
+                                                        "const": "not_required",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "pending",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "cosigned",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "released",
+                                                        "type": "string"
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
                                               }
                                             }
                                           }
@@ -185784,6 +186454,26 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "cosignStatus": {
+                                  "anyOf": [
+                                    {
+                                      "const": "not_required",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "cosigned",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "released",
+                                      "type": "string"
+                                    }
+                                  ]
                                 }
                               }
                             }
@@ -185819,7 +186509,8 @@
                                               "signedAt",
                                               "text",
                                               "withheld",
-                                              "current"
+                                              "current",
+                                              "cosignStatus"
                                             ],
                                             "properties": {
                                               "kind": {
@@ -185872,6 +186563,33 @@
                                               },
                                               "current": {
                                                 "type": "boolean"
+                                              },
+                                              "cosignStatus": {
+                                                "anyOf": [
+                                                  {
+                                                    "anyOf": [
+                                                      {
+                                                        "const": "not_required",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "pending",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "cosigned",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "const": "released",
+                                                        "type": "string"
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
                                               }
                                             }
                                           }

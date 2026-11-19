@@ -2186,6 +2186,7 @@ import {
   ConfirmVisitModalityResponseSchema as M8ConfirmVisitModalityResponseSchema,
   ConfirmVisitModalitySchema as M8ConfirmVisitModalitySchema,
   CosignSignResponseSchema as M8CosignSignResponseSchema,
+  CosignatureQueueResponseSchema as M8CosignatureQueueResponseSchema,
   CosignatureReadResponseSchema as M8CosignatureReadResponseSchema,
   CosignatureStatusResponseSchema as M8CosignatureStatusResponseSchema,
   CreateAddendumResponseSchema as M8CreateAddendumResponseSchema,
@@ -5603,8 +5604,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/encounters/cosignature-queue": {
-    summary: "RN/Supervisor cosignature work queue with SLA chips (§5.5)",
-    response: M8EncounterListResponseSchema,
+    summary:
+      "RN/Supervisor cosignature work queue with SLA chips (§5.5): every open cosignature request of the tenant. Each entry is the encounter plus `cosign`, which says which request it is: a NOTE awaiting its cosigner (`subject: note`) or an AMENDMENT of a signed note awaiting its own (`subject: addendum`, with `addendumId`; the entry is then the parent encounter, which stays signed or cosigned), with the request id, its status and when it was routed (the start of its own 12h/24h/48h clock) (ADR-0114 VN-D30)",
+    response: M8CosignatureQueueResponseSchema,
   },
   "GET /api/v1/encounters/my-drafts": {
     summary:
@@ -5739,6 +5741,30 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/encounters/:encounterId/cosignature/supervisor-release": {
     summary: "Supervisor releases past the 48h hard cap",
+    body: M8SupervisorReleaseSchema,
+    response: M8CosignatureStatusResponseSchema,
+  },
+  // ADR-0114 PR E2b (VN-D30): the same four cosignature routes for the request an AMENDING addendum opened. One workflow: the same state machine, permissions,
+  // step-up and error codes; the cosigner is not the encounter's author and not the addendum's author. 404 when the addendum has no request (it needed none).
+  "GET /api/v1/encounters/:encounterId/addenda/:addendumId/cosignature": {
+    summary:
+      "Read the state of the cosignature request an amending addendum opened (null before any routing; 404 for an addendum of another encounter or tenant)",
+    response: M8CosignatureReadResponseSchema,
+  },
+  "POST /api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/acknowledge": {
+    summary:
+      "The cosigner acknowledges the request of an amendment (§4.6 cosigner_role_match: an RN who is neither the note's author nor the addendum's author)",
+    response: M8CosignatureStatusResponseSchema,
+  },
+  "POST /api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/sign": {
+    summary:
+      "The RN cosigner signs an amendment (D13 step-up; same errors as the note's cosignature: 403 not an RN or the author, 409 ILLEGAL_TRANSITION for a request already signed (a concurrent second sign included), 409 COSIGNATURE_LOCKED past the 48h cap until released). The encounter's own status is unchanged (answered as it stands); publishes m8.encounter.addendum_cosigned, never m8.encounter.cosigned (an amendment never re-opens billing)",
+    body: M8AttestationSchema,
+    response: M8CosignSignResponseSchema,
+  },
+  "POST /api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/supervisor-release": {
+    summary:
+      "A supervisor releases an amendment's request past the 48h hard cap (reason of at least 40 characters, fresh step-up); the RN cosigner still has to sign",
     body: M8SupervisorReleaseSchema,
     response: M8CosignatureStatusResponseSchema,
   },

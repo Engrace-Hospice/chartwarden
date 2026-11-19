@@ -11616,6 +11616,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the state of the cosignature request an amending addendum opened (null before any routing; 404 for an addendum of another encounter or tenant) */
+        get: operations["getApiV1EncountersByEncounterIdAddendaByAddendumIdCosignature"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The cosigner acknowledges the request of an amendment (§4.6 cosigner_role_match: an RN who is neither the note's author nor the addendum's author) */
+        post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureAcknowledge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The RN cosigner signs an amendment (D13 step-up; same errors as the note's cosignature: 403 not an RN or the author, 409 ILLEGAL_TRANSITION for a request already signed (a concurrent second sign included), 409 COSIGNATURE_LOCKED past the 48h cap until released). The encounter's own status is unchanged (answered as it stands); publishes m8.encounter.addendum_cosigned, never m8.encounter.cosigned (an amendment never re-opens billing) */
+        post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature/supervisor-release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A supervisor releases an amendment's request past the 48h hard cap (reason of at least 40 characters, fresh step-up); the RN cosigner still has to sign */
+        post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSupervisorrelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft": {
         parameters: {
             query?: never;
@@ -12191,7 +12259,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** RN/Supervisor cosignature work queue with SLA chips (§5.5) */
+        /** RN/Supervisor cosignature work queue with SLA chips (§5.5): every open cosignature request of the tenant. Each entry is the encounter plus `cosign`, which says which request it is: a NOTE awaiting its cosigner (`subject: note`) or an AMENDMENT of a signed note awaiting its own (`subject: addendum`, with `addendumId`; the entry is then the parent encounter, which stays signed or cosigned), with the request id, its status and when it was routed (the start of its own 12h/24h/48h clock) (ADR-0114 VN-D30) */
         get: operations["getApiV1EncountersCosignaturequeue"];
         put?: never;
         post?: never;
@@ -66800,6 +66868,7 @@ export interface operations {
                                 signedAt: string | null;
                                 version: number;
                                 amendsSectionIds?: string[];
+                                cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                             }[];
                             noteHistory?: {
                                 sections: {
@@ -66812,6 +66881,7 @@ export interface operations {
                                         text: string | null;
                                         withheld: boolean;
                                         current: boolean;
+                                        cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
                                     }[];
                                 }[];
                             } | null;
@@ -66943,6 +67013,7 @@ export interface operations {
                             signedAt: string | null;
                             version: number;
                             amendsSectionIds?: string[];
+                            cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                         }[];
                         noteHistory?: {
                             sections: {
@@ -66955,6 +67026,7 @@ export interface operations {
                                     text: string | null;
                                     withheld: boolean;
                                     current: boolean;
+                                    cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
                                 }[];
                             }[];
                         } | null;
@@ -66995,6 +67067,131 @@ export interface operations {
                         id: string;
                         /** @constant */
                         status: "draft";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdAddendaByAddendumIdCosignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: ("pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed") | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureAcknowledge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    attestationConfirmed: true;
+                    lateEntryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
+                        cosignedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSupervisorrelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: date-time */
+                    stepUpAuthAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed";
                     };
                 };
             };
@@ -68575,6 +68772,7 @@ export interface operations {
                                 signedAt: string | null;
                                 version: number;
                                 amendsSectionIds?: string[];
+                                cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                             }[];
                             noteHistory?: {
                                 sections: {
@@ -68587,9 +68785,17 @@ export interface operations {
                                         text: string | null;
                                         withheld: boolean;
                                         current: boolean;
+                                        cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
                                     }[];
                                 }[];
                             } | null;
+                            cosign: {
+                                subject: "note" | "addendum";
+                                addendumId: string | null;
+                                requestId: string | null;
+                                status: ("pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed") | null;
+                                routedAt: string | null;
+                            };
                         }[];
                     };
                 };
@@ -68727,6 +68933,7 @@ export interface operations {
                                 signedAt: string | null;
                                 version: number;
                                 amendsSectionIds?: string[];
+                                cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                             }[];
                             noteHistory?: {
                                 sections: {
@@ -68739,6 +68946,7 @@ export interface operations {
                                         text: string | null;
                                         withheld: boolean;
                                         current: boolean;
+                                        cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
                                     }[];
                                 }[];
                             } | null;
@@ -76227,6 +76435,7 @@ export interface operations {
                                 signedAt: string | null;
                                 version: number;
                                 amendsSectionIds?: string[];
+                                cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                             }[];
                             noteHistory?: {
                                 sections: {
@@ -76239,6 +76448,7 @@ export interface operations {
                                         text: string | null;
                                         withheld: boolean;
                                         current: boolean;
+                                        cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
                                     }[];
                                 }[];
                             } | null;
