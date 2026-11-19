@@ -1375,7 +1375,48 @@ controls:
       - file: packages/audit/src/actions/m8.ts
     gap:
       reason: >-
-        This row covers the switch only. The draft and the sign gate it controls (the draft_sections_resolved check, stale-confirmation rejection) are built in later pull requests of the same slice and get their own evidence here when they land; until then switching a tenant on changes nothing a clinician sees. The DON and the tenant administrators hold the key with step-up and a warn-severity audit event but no second person and no alert (CW-MON-01 is a gap), the same posture as the closure policy (CW-AC-48). The corpus review state is a constant in code (CORPUS_CLINICAL_REVIEW), approved by a deliberate edit in its own commit, not a record with an approver and a date, and the switch reads it at write time only: a tenant already on stays on if the constant were ever reverted to pending.
+        This row covers the switch and the draft routes behind it; the sign gate is CW-AC-50 and the sealed signed sections are CW-AC-51. The DON and the tenant administrators hold the key with step-up and a warn-severity audit event but no second person and no alert (CW-MON-01 is a gap), the same posture as the closure policy (CW-AC-48). The corpus review state is a constant in code (CORPUS_CLINICAL_REVIEW), approved by a deliberate edit in its own commit, not a record with an approver and a date, and the switch reads it at write time only: a tenant already on stays on if the constant were ever reverted to pending.
+      owner: clinical-platform
+      review_by: 2027-04-30
+
+  - id: CW-AC-50
+    title: >-
+      A visit note is not signed against a draft the signer has not resolved (ADR-0114 VN-D4, VN-D10). While the tenant switch (CW-AC-49) is on and the template has a drafted section, gate check draft_sections_resolved (the 13th check) and the sign itself recompute the draft for the signer as of the visit time, from the sources the signer is allowed to see, and compare each section with its stored confirmation. A section that is unresolved is refused with DRAFT_SECTION_UNRESOLVED; a section whose content hash or corpus version differs from its confirmation, a deselected one included, is DRAFT_SECTION_STALE; sign answers 409 DRAFT_SECTION_STALE with each section named, finalize answers the same condition as a 422 remediation list. A draft that cannot be computed, or a switch that cannot be read, is 503 COMPLIANCE_GATE_UNAVAILABLE and never a pass. Nothing is cached between requests, so one author's Part 2 redaction cannot reach another. Check 9 (the attestation) is reclassified from deferred to elsewhere because SignEncounterSchema requires attestationConfirmed true, pinned by a test.
+    hipaa: ["164.312(c)(1)", "164.312(b)", "164.308(a)(1)(ii)(D)"]
+    soc2: ["CC7.2", "CC8.1"]
+    status: partial
+    evidence:
+      - script: test:m8:visit-note-draft-routes:live
+      - ci: "M8 visit-note draft routes"
+      - file: apps/backend/src/modules/08-encounters/gate/checks.ts
+      - file: apps/backend/src/modules/08-encounters/gate/gate.ts
+      - file: apps/backend/src/modules/08-encounters/drafting/note-draft.ts
+      - file: apps/backend/src/modules/08-encounters/drafting/note-draft-flow.ts
+      - file: apps/backend/src/modules/08-encounters/drafting/section-state.ts
+      - file: apps/backend/__tests__/encounter-compliance-gate.test.ts
+      - file: apps/backend/__tests__/encounter-draft-note-draft.test.ts
+    gap:
+      reason: >-
+        The sources are real seams in production but fakes in the live suite (their own live suites cover them). The amendment of a signed drafted note and the per-viewer Part 2 view are later pull requests of the slice. Nothing measures the latency the recompute adds at finalize and sign.
+      owner: clinical-platform
+      review_by: 2027-04-30
+
+  - id: CW-AC-51
+    title: >-
+      The signed text of a drafted note is frozen per section (ADR-0114 §3.1). At sign, in the sign transaction, one hearthnote_signed_section row is written per section of the final note: the section block sealed under the tenant key (text_cipher), its SHA-256, the Part 2 flag the compiler set, and the source references of a confirmed section. The rows joined in order by a blank line equal the plaintext of the encounter's final_cipher, pinned by a test, and a failed seal rolls the sign back. The application role holds SELECT and INSERT only on the table (append-only), cross-tenant rows are refused by a guard trigger, the audit trigger scrubs the sealed text, and the encounter eraser shreds the text before it deletes the rows. Sign re-writes final_cipher and layer1_cipher from the signer's own recomputed draft in the same transaction, and refuses when Layer 2 took part in the pinned output.
+    hipaa: ["164.312(c)(1)", "164.312(b)", "164.312(a)(2)(iv)"]
+    soc2: ["CC6.1", "CC7.2"]
+    status: partial
+    evidence:
+      - script: test:m8:visit-note-draft-routes:live
+      - ci: "M8 visit-note draft routes"
+      - file: apps/backend/src/modules/08-encounters/drafting/signed-sections.ts
+      - file: apps/backend/src/modules/08-encounters/drafting/final-note.ts
+      - file: packages/db/migrations/1518_m8_hearthnote_signed_section.sql
+      - file: apps/backend/__tests__/encounter-draft-final-note.test.ts
+    gap:
+      reason: >-
+        The faxed-face-to-face sign branch has its own seal call that no live test drives. The eraser is driven live only for the shred half until the tombstone fix merges. Amendments of a signed drafted note ride the addendum path in a later pull request.
       owner: clinical-platform
       review_by: 2027-04-30
 
