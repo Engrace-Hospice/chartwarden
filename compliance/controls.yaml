@@ -1381,7 +1381,7 @@ controls:
 
   - id: CW-AC-50
     title: >-
-      A visit note is not signed against a draft the signer has not resolved (ADR-0114 VN-D4, VN-D10). While the tenant switch (CW-AC-49) is on and the template has a drafted section, gate check draft_sections_resolved (the 13th check) and the sign itself recompute the draft for the signer as of the visit time, from the sources the signer is allowed to see, and compare each section with its stored confirmation. A section that is unresolved is refused with DRAFT_SECTION_UNRESOLVED; a section whose content hash or corpus version differs from its confirmation, a deselected one included, is DRAFT_SECTION_STALE; sign answers 409 DRAFT_SECTION_STALE with each section named, finalize answers the same condition as a 422 remediation list. A draft that cannot be computed, or a switch that cannot be read, is 503 COMPLIANCE_GATE_UNAVAILABLE and never a pass. Nothing is cached between requests, so one author's Part 2 redaction cannot reach another. Check 9 (the attestation) is reclassified from deferred to elsewhere because SignEncounterSchema requires attestationConfirmed true, pinned by a test.
+      A visit note is not signed against a draft the signer has not resolved (ADR-0114 VN-D4, VN-D10). While the tenant switch (CW-AC-49) is on and the encounter's template has a drafted section, decided by one predicate read off the corpus's phrase tags (templateHasDraftedSection) before any source is read, gate check draft_sections_resolved (the 13th check) and the sign itself recompute the draft for the signer as of the visit time, from the sources the signer is allowed to see, and compare each section with its stored confirmation. A section that is unresolved is refused with DRAFT_SECTION_UNRESOLVED; a section whose content hash or corpus version differs from its confirmation, a deselected one included, is DRAFT_SECTION_STALE; sign answers 409 DRAFT_SECTION_STALE with each section named, finalize answers the same condition as a 422 remediation list. A draft that cannot be computed, one whose source read does not answer within DRAFT_SOURCE_READ_TIMEOUT_MS (5 s), or a switch that cannot be read, is 503 COMPLIANCE_GATE_UNAVAILABLE and never a pass. Today only the RN routine visit has a drafted section; every other template behaves as with the switch off: no draft read, no check 13, no sealed rows. Nothing is cached between requests, so one author's Part 2 redaction cannot reach another. Check 9 (the attestation) is reclassified from deferred to elsewhere because SignEncounterSchema requires attestationConfirmed true, pinned by a test.
     hipaa: ["164.312(c)(1)", "164.312(b)", "164.308(a)(1)(ii)(D)"]
     soc2: ["CC7.2", "CC8.1"]
     status: partial
@@ -1395,15 +1395,20 @@ controls:
       - file: apps/backend/src/modules/08-encounters/drafting/section-state.ts
       - file: apps/backend/__tests__/encounter-compliance-gate.test.ts
       - file: apps/backend/__tests__/encounter-draft-note-draft.test.ts
+      - file: packages/hearthnote/src/draft/scope.ts
+      - file: apps/backend/src/modules/08-encounters/drafting/unavailable.ts
+      - file: packages/hearthnote/__tests__/draft-scope.test.ts
+      - file: apps/backend/__tests__/encounter-draft-scope.test.ts
+      - file: apps/backend/__tests__/encounter-draft-source-failure.test.ts
     gap:
       reason: >-
-        The sources are real seams in production but fakes in the live suite (their own live suites cover them). The amendment of a signed drafted note and the per-viewer Part 2 view are later pull requests of the slice. Nothing measures the latency the recompute adds at finalize and sign.
+        The sources are real seams in production but fakes in the live suite (their own live suites cover them). The amendment of a signed drafted note and the per-viewer Part 2 view are later pull requests of the slice. Nothing measures the latency the recompute adds at finalize and sign. Other note types get no draft gate until their slices (S2 to S5). A source read abandoned at the timeout is not cancelled, and the 5 s bound is untuned against production latency.
       owner: clinical-platform
       review_by: 2027-04-30
 
   - id: CW-AC-51
     title: >-
-      The signed text of a drafted note is frozen per section (ADR-0114 §3.1). At sign, in the sign transaction, one hearthnote_signed_section row is written per section of the final note: the section block sealed under the tenant key (text_cipher), its SHA-256, the Part 2 flag the compiler set, and the source references of a confirmed section. The rows joined in order by a blank line equal the plaintext of the encounter's final_cipher, pinned by a test, and a failed seal rolls the sign back. The application role holds SELECT and INSERT only on the table (append-only), cross-tenant rows are refused by a guard trigger, the audit trigger scrubs the sealed text, and the encounter eraser shreds the text before it deletes the rows. Sign re-writes final_cipher and layer1_cipher from the signer's own recomputed draft in the same transaction, and refuses when Layer 2 took part in the pinned output.
+      The signed text of a drafted note is frozen per section (ADR-0114 §3.1). At sign, in the sign transaction, for a template that has a drafted section and with the tenant switch on, one hearthnote_signed_section row is written per section of the final note (none for any other template): the section block sealed under the tenant key (text_cipher), its SHA-256, the Part 2 flag the compiler set, and the source references of a confirmed section. The rows joined in order by a blank line equal the plaintext of the encounter's final_cipher, pinned by a test, and a failed seal rolls the sign back. The application role holds SELECT and INSERT only on the table (append-only), cross-tenant rows are refused by a guard trigger, the audit trigger scrubs the sealed text, and the encounter eraser shreds the text before it deletes the rows. Sign re-writes final_cipher and layer1_cipher from the signer's own recomputed draft in the same transaction, and refuses when Layer 2 took part in the pinned output.
     hipaa: ["164.312(c)(1)", "164.312(b)", "164.312(a)(2)(iv)"]
     soc2: ["CC6.1", "CC7.2"]
     status: partial
