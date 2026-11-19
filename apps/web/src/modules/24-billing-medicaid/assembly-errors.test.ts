@@ -16,6 +16,27 @@ describe("Medicaid assembly error guidance", () => {
     ).toContain("third-party-liability policy");
   });
 
+  it("gives actionable guidance for an occupied R&B day and unverified Medicare linkage", () => {
+    expect(
+      assembleErrorMessage(409, { error: { code: "MEDICAID_RB_DAYS_ALREADY_ASSIGNED" } }),
+    ).toContain("already belong to a claim");
+    expect(
+      assembleErrorMessage(409, { error: { code: "MEDICAID_MEDICARE_LINKAGE_UNSUPPORTED" } }),
+    ).toContain("not adjudication or payment evidence");
+  });
+
+  it("does not describe an awaiting discharge as a confirmed stay end", () => {
+    expect(
+      assembleErrorMessage(409, { error: { code: "MEDICAID_RB_ADMISSION_END_PENDING" } }),
+    ).toContain("awaiting required approval");
+  });
+
+  it("matches the arrangement guidance to the identifier field in the assembly wizard", () => {
+    expect(assembleErrorMessage(409, { error: { code: "MEDICAID_RB_ARRANGEMENT_REQUIRED" } })).toBe(
+      "Enter an applicable Room & Board arrangement ID before assembling this claim kind.",
+    );
+  });
+
   it("uses a conservative generic conflict message for unknown 409 codes", () => {
     expect(
       assembleErrorMessage(409, { error: { code: "UNKNOWN", message: "sensitive detail" } }),

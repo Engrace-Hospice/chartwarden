@@ -799,6 +799,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
       serviceFrom: "2026-07-01",
       serviceTo: "2026-07-31",
       kind: "combined_hospice_rb",
+      rbArrangementId: ARR,
     },
     expectStatus: 201,
   },

@@ -17,11 +17,18 @@ const PATIENT_B = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const ADMISSION_A = "11111111-8888-4888-8888-111111111111";
 
 let paths: string[] = [];
+let eligibilityRequestStatus = 200;
 
 async function stubFetch(input: RequestInfo | URL): Promise<Response> {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   const path = new URL(url, "http://localhost").pathname;
   paths.push(path);
+  if (path === "/api/v1/medicaid-eligibility-checks" && eligibilityRequestStatus >= 400) {
+    return new Response(JSON.stringify({ error: { code: "INTERNAL_ERROR" } }), {
+      status: eligibilityRequestStatus,
+      headers: { "content-type": "application/json" },
+    });
+  }
   const body = path.endsWith("/admissions")
     ? {
         items: [
@@ -94,6 +101,7 @@ async function pickFirstOption(input: HTMLInputElement): Promise<void> {
 
 beforeEach(() => {
   paths = [];
+  eligibilityRequestStatus = 200;
 });
 
 describe("F-066 — the assembly wizard's admission belongs to the chosen patient", () => {
@@ -129,5 +137,25 @@ describe("F-066 — the assembly wizard's admission belongs to the chosen patien
     const patientOptions = await screen.findAllByRole("option");
     fireEvent.click(patientOptions[1] as HTMLElement);
     await waitFor(() => expect((comboboxes()[1] as HTMLInputElement).value).toBe(""));
+  });
+
+  it("shows an eligibility lookup failure as unknown instead of claiming no check exists", async () => {
+    eligibilityRequestStatus = 503;
+    mount();
+    const [patient] = comboboxes();
+    await pickFirstOption(patient as HTMLInputElement);
+    const [, admission, provider] = comboboxes();
+    await pickFirstOption(admission as HTMLInputElement);
+    await pickFirstOption(provider as HTMLInputElement);
+    fireEvent.change(screen.getByLabelText("Service from"), { target: { value: "2026-03-01" } });
+    fireEvent.change(screen.getByLabelText("Service to"), { target: { value: "2026-03-31" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(
+      await screen.findByText(/The eligibility-check history could not be retrieved/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No eligibility check on file/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry eligibility history" })).toBeTruthy();
   });
 });

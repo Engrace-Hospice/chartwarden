@@ -45,6 +45,17 @@ describe("medicaid_claim machine", () => {
     expect(claim.reduce("ACK_REJECTED", "abandon").state).toBe("ABANDONED");
   });
 
+  it("allows the service to archive eligible pre-submission states", () => {
+    for (const state of [
+      "DRAFT",
+      "FAILED_VALIDATION",
+      "READY",
+      "FAILED_MEDICARE_PRIMARY",
+    ] as const) {
+      expect(claim.reduce(state, "abandon").state).toBe("ABANDONED");
+    }
+  });
+
   it("rejects illegal transitions without throwing and reports terminals", () => {
     expect(claim.reduce("PAID", "begin_validation").error).toBe("INVALID_TRANSITION");
     expect(claim.isTerminal("REPLACED")).toBe(true);

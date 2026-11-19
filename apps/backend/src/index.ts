@@ -618,7 +618,11 @@ import {
 import { cahpsDeathCandidatesForOrg } from "./modules/06-admission/seams/cahps-death-candidates-for-org";
 import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
 import { deathDischargeFactsForOrg } from "./modules/06-admission/seams/death-discharge-facts-for-org";
-import { levelOfCarePeriodsForPatientForOrg } from "./modules/06-admission/seams/loc-periods-for-patient";
+import {
+  levelOfCarePeriodsForPatientForOrg,
+  levelOfCarePeriodsForPatientInTransaction,
+  lockPatientAdmissionsInTransaction,
+} from "./modules/06-admission/seams/loc-periods-for-patient";
 import { orderTriggeredRecordsForOrg } from "./modules/06-admission/seams/order-triggered-records-for-org";
 import { patientSiteForOrg } from "./modules/06-admission/seams/patient-site-for-org";
 // F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
@@ -11978,6 +11982,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         locPeriods: {
           periodsForPatient: (organizationId, patientId, range) =>
             levelOfCarePeriodsForPatientForOrg(dbHandle.db, organizationId, patientId, range),
+          periodsForPatientInTransaction: (transaction, organizationId, patientId, range) =>
+            levelOfCarePeriodsForPatientInTransaction(
+              transaction,
+              organizationId,
+              patientId,
+              range,
+            ),
+          lockPatientAdmissionsInTransaction,
         },
       }),
       eligibilityWatchdog: buildDrizzleEligibilityWatchdogStore(dbHandle.db),
@@ -15852,6 +15864,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             locPeriods: {
               periodsForPatient: (organizationId, patientId, range) =>
                 levelOfCarePeriodsForPatientForOrg(dbHandle.db, organizationId, patientId, range),
+              periodsForPatientInTransaction: (transaction, organizationId, patientId, range) =>
+                levelOfCarePeriodsForPatientInTransaction(
+                  transaction,
+                  organizationId,
+                  patientId,
+                  range,
+                ),
+              lockPatientAdmissionsInTransaction,
             },
             admissions: {
               patientIdForAdmission: async (organizationId, admissionId) =>

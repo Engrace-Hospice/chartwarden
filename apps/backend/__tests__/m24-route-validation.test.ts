@@ -88,6 +88,29 @@ describe("M24 §4.2 request validation — bodies", () => {
     expectRejected(AssembleClaimBody, { ...base, patientId: undefined });
   });
 
+  it("requires R&B arrangements only for claim kinds that contain R&B lines", () => {
+    const base = {
+      patientId: UUID_A,
+      admissionId: UUID_B,
+      providerEntityId: UUID_C,
+      serviceFrom: "2026-07-01",
+      serviceTo: "2026-07-31",
+    };
+    expectRejected(AssembleClaimBody, { ...base, kind: "rb_only" });
+    expectRejected(AssembleClaimBody, {
+      ...base,
+      kind: "hospice_only",
+      rbArrangementId: UUID_A,
+    });
+    expect(
+      parse(AssembleClaimBody, {
+        ...base,
+        kind: "rb_only",
+        rbArrangementId: UUID_A,
+      }).rbArrangementId,
+    ).toBe(UUID_A);
+  });
+
   it("rejects unknown properties rather than passing them through to a service", () => {
     expectRejected(AssembleClaimBody, {
       patientId: UUID_A,
@@ -97,6 +120,15 @@ describe("M24 §4.2 request validation — bodies", () => {
       serviceTo: "2026-07-31",
       kind: "hospice_only",
       organizationId: UUID_A, // org binding is SERVER-side — a body must never carry one
+    });
+    expectRejected(AssembleClaimBody, {
+      patientId: UUID_A,
+      admissionId: UUID_B,
+      providerEntityId: UUID_C,
+      serviceFrom: "2026-07-01",
+      serviceTo: "2026-07-31",
+      kind: "hospice_only",
+      medicareClaimId: UUID_A, // unsupported linkage is not adjudication or payment evidence
     });
   });
 

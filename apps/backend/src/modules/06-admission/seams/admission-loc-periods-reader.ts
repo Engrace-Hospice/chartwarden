@@ -9,6 +9,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, ne } from "drizzle-orm";
+import { claimStayEndFactsForAdmissionInTransaction } from "./claim-stay-end-store";
 
 const LOC = schema.levelOfCarePeriods;
 const ADM = schema.admissions;
@@ -29,7 +30,8 @@ export interface AdmissionLocPeriodsReader {
   periodsForAdmission(organizationId: string, admissionId: string): Promise<AdmissionLocPeriod[]>;
   /**
    * Lock the M6 admission row on the caller's transaction. M24 uses this as the serialization point for
-   * discharge state + original-claim cadence, so concurrent assemblers cannot both derive a first claim.
+   * discharge state, original-claim cadence and the LOC snapshot. M6 LOC writers lock the same row before
+   * changing periods, so concurrent clinical updates cannot invalidate an R&B assembly snapshot.
    */
   cadenceSnapshotInTransaction(
     transaction: unknown,
@@ -39,6 +41,15 @@ export interface AdmissionLocPeriodsReader {
     patientId: string;
     providerEntityId: string | null;
     dischargedAt: Date | null;
+    status: (typeof ADM.$inferSelect)["status"];
+    stayEndFacts: {
+      dischargeDate: string | null;
+      dischargeReason: string | null;
+      deceasedDate: string | null;
+      pendingDischargeDates: readonly string[];
+      transferOut: { effectiveDate: string } | null;
+      revocationDate: string | null;
+    };
   } | null>;
 }
 
@@ -55,12 +66,32 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
           patientId: ADM.patientId,
           providerEntityId: ADM.providerEntityId,
           dischargedAt: ADM.dischargedAt,
+          status: ADM.status,
         })
         .from(ADM)
         .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
         .limit(1)
         .for("update");
-      return rows[0] ?? null;
+      const admission = rows[0];
+      if (!admission) return null;
+      const stayEndFacts = await claimStayEndFactsForAdmissionInTransaction(
+        transaction,
+        organizationId,
+        admissionId,
+      );
+      return {
+        ...admission,
+        stayEndFacts: {
+          dischargeDate: stayEndFacts?.dischargeDate ?? null,
+          dischargeReason: stayEndFacts?.dischargeReason ?? null,
+          deceasedDate: stayEndFacts?.deceasedDate ?? null,
+          pendingDischargeDates: stayEndFacts?.pendingDischargeDates ?? [],
+          transferOut: stayEndFacts?.transferOut
+            ? { effectiveDate: stayEndFacts.transferOut.effectiveDate }
+            : null,
+          revocationDate: stayEndFacts?.revocationDate ?? null,
+        },
+      };
     },
     periodsForAdmission(organizationId, admissionId) {
       return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, (tx) =>

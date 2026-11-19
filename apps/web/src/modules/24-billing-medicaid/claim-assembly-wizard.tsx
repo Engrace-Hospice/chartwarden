@@ -12,9 +12,9 @@ import {
 import type { GateItem } from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID ASSEMBLY WIZARD (R2, §5.1 #4). The stepped
 // draft-creation flow: patient + service range → claim kind (combined / hospice-only / R&B-only) → MCO
-// routing preview (from the patient's latest eligibility check) → COB confirmation when a Medicare primary
-// is asserted → assemble. The assemble POST is the only write (Idempotency-Key is added server-side by the
-// route guard); the server re-derives eligibility, R&B days, and the COB chain, so every preview here is
+// routing preview (from the patient's latest eligibility check) → Medicare coordination notice → assemble.
+// The assemble POST is the only write (Idempotency-Key is added server-side by the route guard); the server
+// re-resolves payer coverage and the R&B day set, so every preview here is
 // advisory and clearly labelled as such. A 503 is the Phase-1 reader deferral (the assembly readers are not
 // bound yet) and is surfaced as a precise inline message, not a crash. Lantern: StepperWorkflowLayout +
 // GateStepper (§6.5), CSS-var tokens only.
@@ -57,10 +57,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
   const [serviceTo, setServiceTo] = useState("");
   const [kind, setKind] = useState<ClaimKind>("hospice_only");
   const [rbArrangementId, setRbArrangementId] = useState("");
-  const [medicareClaimId, setMedicareClaimId] = useState("");
 
   const [eligibility, setEligibility] = useState<EligibilityCheck | null>(null);
-  const [eligibilityChecked, setEligibilityChecked] = useState(false);
+  const [eligibilityLoadState, setEligibilityLoadState] = useState<
+    "idle" | "loading" | "loaded" | "failed"
+  >("idle");
   const [busy, setBusy] = useState(false);
   // ADR-0110 — creating a claim is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
@@ -77,8 +78,7 @@ export function MedicaidAssemblyWizard(): JSX.Element {
   const needsRb = kind !== "hospice_only";
   const step2Valid = !needsRb || UUID_RE.test(rbArrangementId);
   const step3Valid = true; // routing is advisory — the server resolves the real channel (§4.4)
-  const cobAsserted = medicareClaimId.length > 0;
-  const step4Valid = !cobAsserted || UUID_RE.test(medicareClaimId);
+  const step4Valid = true;
 
   const stepValid = [step1Valid, step2Valid, step3Valid, step4Valid][step] ?? false;
 
@@ -96,22 +96,26 @@ export function MedicaidAssemblyWizard(): JSX.Element {
   // missing MCO does not prove fee-for-service. The claim API reports unresolved routing until an
   // authoritative state-program mapping is available.
   const loadRouting = useCallback(async () => {
-    setEligibilityChecked(true);
+    setEligibilityLoadState("loading");
     setEligibility(null);
     const res = await client.GET("/api/v1/medicaid-eligibility-checks", {
       params: { query: { patientId } },
     } as never);
-    if (res.error) return;
+    if (res.error) {
+      setEligibilityLoadState("failed");
+      return;
+    }
     const rows = (res.data as unknown as EligibilityCheck[]) ?? [];
     setEligibility(rows[0] ?? null);
+    setEligibilityLoadState("loaded");
   }, [client, patientId]);
 
   const goNext = useCallback(() => {
     if (!stepValid) return;
     const next = step + 1;
     setStep(next);
-    if (next === 2 && !eligibilityChecked) void loadRouting();
-  }, [step, stepValid, eligibilityChecked, loadRouting]);
+    if (next === 2 && eligibilityLoadState === "idle") void loadRouting();
+  }, [step, stepValid, eligibilityLoadState, loadRouting]);
 
   const assemble = useCallback(async () => {
     setBusy(true);
@@ -125,7 +129,6 @@ export function MedicaidAssemblyWizard(): JSX.Element {
       kind,
     };
     if (needsRb) body.rbArrangementId = rbArrangementId;
-    if (cobAsserted) body.medicareClaimId = medicareClaimId;
     const {
       data,
       error: err,
@@ -149,8 +152,6 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     kind,
     needsRb,
     rbArrangementId,
-    cobAsserted,
-    medicareClaimId,
   ]);
 
   if (assembledId) {
@@ -201,8 +202,8 @@ export function MedicaidAssemblyWizard(): JSX.Element {
           }
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Assemble a server-authoritative Medicaid draft from patient, episode, R&B, and COB
-            inputs.
+            Assemble a server-authoritative Medicaid draft from patient, episode, and applicable
+            R&amp;B inputs.
           </div>
           <div style={{ marginTop: "0.75rem" }}>
             <MedicaidBillingTabs />
@@ -216,9 +217,8 @@ export function MedicaidAssemblyWizard(): JSX.Element {
       context={
         <Card title="How assembly works">
           <span style={mutedStyle}>
-            Everything previewed here is advisory. At assemble the server re-derives eligibility,
-            the R&amp;B day set, and the COB chain from the record of truth, then runs the
-            validation registry.
+            Everything previewed here is advisory. At assemble the server re-resolves payer coverage
+            and the R&amp;B day set from the record of truth, then runs the validation registry.
           </span>
         </Card>
       }
@@ -317,12 +317,21 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                 </select>
               </label>
               {needsRb ? (
-                <TextField
-                  label="R&B arrangement id"
-                  value={rbArrangementId}
-                  onChange={setRbArrangementId}
-                  mono
-                />
+                <div>
+                  <TextField
+                    label="R&B arrangement id"
+                    value={rbArrangementId}
+                    onChange={setRbArrangementId}
+                    mono
+                    required
+                    hint="Use the arrangement for this patient and provider entity that covers the service dates."
+                    error={
+                      rbArrangementId.length > 0 && !UUID_RE.test(rbArrangementId)
+                        ? "Enter a valid arrangement identifier."
+                        : undefined
+                    }
+                  />
+                </div>
               ) : (
                 <span style={mutedStyle}>
                   A hospice-only claim carries no NF Room &amp; Board pass-through lines.
@@ -334,8 +343,19 @@ export function MedicaidAssemblyWizard(): JSX.Element {
 
         {step === 2 ? (
           <Card title="Routing preview">
-            {!eligibilityChecked ? (
+            {eligibilityLoadState === "idle" || eligibilityLoadState === "loading" ? (
               <span style={mutedStyle}>Resolving the patient's latest eligibility check…</span>
+            ) : eligibilityLoadState === "failed" ? (
+              <div role="alert" aria-live="polite" style={{ display: "grid", gap: "0.5rem" }}>
+                <span style={mutedStyle}>
+                  The eligibility-check history could not be retrieved. This read failure is not an
+                  eligibility determination; retry the lookup or continue only using the
+                  server-validated billing record.
+                </span>
+                <Button tone="secondary" size="sm" onClick={() => void loadRouting()}>
+                  Retry eligibility history
+                </Button>
+              </div>
             ) : eligibility ? (
               <>
                 <Field
@@ -369,17 +389,13 @@ export function MedicaidAssemblyWizard(): JSX.Element {
         ) : null}
 
         {step === 3 ? (
-          <Card title="Coordination of benefits">
+          <Card title="Medicare coordination">
             <span style={mutedStyle}>
-              If this patient is dual-eligible, link the Medicare (M23) claim that adjudicated
-              first. Leave it blank for a Medicaid-primary claim.
+              Medicare claim linkage and adjudication evidence are not available on this assembly
+              path. A Medicare claim identifier alone does not prove adjudication or payment, so do
+              not enter an unrelated claim ID. Secondary Medicaid claim formats remain blocked
+              pending the applicable billing policy and COB requirements.
             </span>
-            <TextField
-              label="Medicare claim id (optional)"
-              value={medicareClaimId}
-              onChange={setMedicareClaimId}
-              mono
-            />
             <Field label="Claim kind" value={kindLabel(kind)} />
             <Field label="Service range" value={`${serviceFrom} → ${serviceTo}`} />
             <Field
@@ -390,9 +406,6 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                   : "State program not determined"
               }
             />
-            {cobAsserted && !step4Valid ? (
-              <span style={alertStyle}>The Medicare claim id must be a valid identifier.</span>
-            ) : null}
           </Card>
         ) : null}
       </div>
@@ -406,23 +419,49 @@ function TextField({
   onChange,
   type,
   mono,
+  required = false,
+  hint,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
   mono?: boolean;
+  required?: boolean;
+  hint?: string;
+  error?: string;
 }): JSX.Element {
+  const hintId = `${label.replaceAll(" ", "-")}-hint`;
+  const errorId = `${label.replaceAll(" ", "-")}-error`;
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={mutedStyle}>{label}</span>
+      <span style={mutedStyle}>
+        {label}
+        {required ? " (required)" : ""}
+      </span>
       <input
         aria-label={label}
+        aria-required={required || undefined}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={
+          [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined
+        }
         type={type ?? "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         style={{ ...inputStyle, width: "100%", fontFamily: mono ? "var(--font-mono)" : undefined }}
       />
+      {hint ? (
+        <span id={hintId} style={mutedStyle}>
+          {hint}
+        </span>
+      ) : null}
+      {error ? (
+        <span id={errorId} role="alert" style={{ color: "var(--color-error)", fontSize: "0.8rem" }}>
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }
