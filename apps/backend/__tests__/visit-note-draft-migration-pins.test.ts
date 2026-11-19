@@ -341,7 +341,10 @@ describe("migration 1525: the database-side guards behind a signed note (C5, D1-
   });
 
   it("every guard is SECURITY INVOKER (its reads run under the caller's RLS) and carries the neighbours' search_path", () => {
-    const functions = sql.match(/CREATE OR REPLACE FUNCTION [a-z_0-9]+\(\) RETURNS trigger\s+LANGUAGE plpgsql[^$]*\$\$/g) ?? [];
+    const functions =
+      sql.match(
+        /CREATE OR REPLACE FUNCTION [a-z_0-9]+\(\) RETURNS trigger\s+LANGUAGE plpgsql[^$]*\$\$/g,
+      ) ?? [];
     expect(functions).toHaveLength(6);
     for (const header of functions) {
       expect(header).toContain("SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp");
@@ -349,11 +352,15 @@ describe("migration 1525: the database-side guards behind a signed note (C5, D1-
   });
 
   it("D1: the pin's parent, kind and organization never change; its Part 2 flag and ciphers are frozen with the encounter, read from OLD", () => {
-    expect(sql).toContain("CREATE OR REPLACE FUNCTION hearthnote_assembled_output_frozen_after_sign()");
+    expect(sql).toContain(
+      "CREATE OR REPLACE FUNCTION hearthnote_assembled_output_frozen_after_sign()",
+    );
     for (const column of ["encounter_id", "addendum_id", "kind", "organization_id"]) {
       expect(sql).toContain(`NEW.${column} IS DISTINCT FROM OLD.${column}`);
     }
-    expect(sql).toContain("COALESCE(OLD.encounter_id, (SELECT a.encounter_id FROM encounter_addendum a WHERE a.id = OLD.addendum_id))");
+    expect(sql).toContain(
+      "COALESCE(OLD.encounter_id, (SELECT a.encounter_id FROM encounter_addendum a WHERE a.id = OLD.addendum_id))",
+    );
     expect(sql).not.toContain("COALESCE(NEW.encounter_id");
     expect(sql).toContain("NEW.part2_derived IS DISTINCT FROM OLD.part2_derived");
     // the eraser's shred exception is the 1521 one
@@ -385,7 +392,13 @@ describe("migration 1525: the database-side guards behind a signed note (C5, D1-
       /CREATE OR REPLACE TRIGGER "trg_addendum_cosignature_request_org_guard"\s+BEFORE INSERT OR UPDATE ON "addendum_cosignature_request"/,
     );
     expect(sql).toContain("m.id = NEW.supervisor_released_by");
-    for (const column of ["organization_id", "encounter_id", "addendum_id", "provider_entity_id", "location_id"]) {
+    for (const column of [
+      "organization_id",
+      "encounter_id",
+      "addendum_id",
+      "provider_entity_id",
+      "location_id",
+    ]) {
       expect(sql).toContain(`NEW.${column} IS DISTINCT FROM OLD.${column}`);
     }
   });
@@ -395,9 +408,15 @@ describe("migration 1525: the database-side guards behind a signed note (C5, D1-
       /CREATE TRIGGER "trg_encounter_signature_addendum_cosignature_guard"\s+BEFORE INSERT ON "encounter_signature"/,
     );
     expect(sql).toContain("NEW.kind::text <> 'addendum_cosignature'");
-    expect(sql).toContain("a.encounter_id = NEW.encounter_id AND a.organization_id = NEW.organization_id");
-    expect(sql).toContain("pg_advisory_xact_lock(hashtextextended('encounter_signature:addendum_cosignature:'");
-    expect(sql).toContain("s.addendum_id = NEW.addendum_id AND s.kind::text = 'addendum_cosignature'");
+    expect(sql).toContain(
+      "a.encounter_id = NEW.encounter_id AND a.organization_id = NEW.organization_id",
+    );
+    expect(sql).toContain(
+      "pg_advisory_xact_lock(hashtextextended('encounter_signature:addendum_cosignature:'",
+    );
+    expect(sql).toContain(
+      "s.addendum_id = NEW.addendum_id AND s.kind::text = 'addendum_cosignature'",
+    );
   });
 
   it("C5 / D6 / D7: the confirmation guard compares the siting pair and refuses a signed or voided encounter, bar the destruction role", () => {

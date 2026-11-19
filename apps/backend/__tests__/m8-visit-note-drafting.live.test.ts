@@ -1142,7 +1142,11 @@ describe.skipIf(!DB_URL)(
           run((c) =>
             insertSection(
               c,
-              sectionValues(a(), { sectionId: "cross_encounter", position: 40, outputId: otherOutput }),
+              sectionValues(a(), {
+                sectionId: "cross_encounter",
+                position: 40,
+                outputId: otherOutput,
+              }),
             ),
           ),
         );
@@ -1162,18 +1166,27 @@ describe.skipIf(!DB_URL)(
       });
 
       it("accepts the encounter's own output with the encounter's own siting", async () => {
-        await run((c) => insertSection(c, sectionValues(a(), { sectionId: "own_output", position: 42 })));
+        await run((c) =>
+          insertSection(c, sectionValues(a(), { sectionId: "own_output", position: 42 })),
+        );
       });
 
       it("the eraser's role may UPDATE text_cipher (the shred) but no other column", async () => {
         const id = one(
-          (await run((c) => insertSection(c, sectionValues(a(), { sectionId: "grant_probe", position: 43 }))))
-            .rows,
+          (
+            await run((c) =>
+              insertSection(c, sectionValues(a(), { sectionId: "grant_probe", position: 43 })),
+            )
+          ).rows,
         ).id;
         await asDestruction(ORG_A, (c) =>
           c.query("UPDATE hearthnote_signed_section SET text_cipher='' WHERE id=$1", [id]),
         );
-        for (const column of ["content_hash=repeat('c',64)", "part2_derived=true", "section_id='x'"]) {
+        for (const column of [
+          "content_hash=repeat('c',64)",
+          "part2_derived=true",
+          "section_id='x'",
+        ]) {
           const refused = await sqlFailure(
             asDestruction(ORG_A, (c) =>
               c.query(`UPDATE hearthnote_signed_section SET ${column} WHERE id=$1`, [id]),
@@ -1193,13 +1206,20 @@ describe.skipIf(!DB_URL)(
       const SIGNED_STATUSES = ["signed", "cosign_pending", "cosigned"] as const;
 
       async function seedAt(status: "finalized" | "signed" | "cosign_pending" | "cosigned") {
-        const encounter = await seedEncounter(ORG_A, a().providerEntityId, a().locationId, a().author);
+        const encounter = await seedEncounter(
+          ORG_A,
+          a().providerEntityId,
+          a().locationId,
+          a().author,
+        );
         const outputId = await seedOutput(a(), encounter.encounterId);
         await setStatus(encounter.encounterId, status);
         return { ...encounter, outputId };
       }
       async function setStatus(encounterId: string, status: string) {
-        const signedAt = ["signed", "cosign_pending", "cosigned"].includes(status) ? "now()" : "NULL";
+        const signedAt = ["signed", "cosign_pending", "cosigned"].includes(status)
+          ? "now()"
+          : "NULL";
         await admin.query(
           `UPDATE encounter SET status=$2::encounter_status, vocab_version_id=gen_random_uuid(), signed_at=${signedAt} WHERE id=$1`,
           [encounterId, status],
@@ -1230,37 +1250,64 @@ describe.skipIf(!DB_URL)(
       it("pin, then status flip, in ONE app-role transaction: the sign shape works", async () => {
         const { encounterId, outputId } = await seedAt("finalized");
         await run(async (c) => {
-          await c.query("UPDATE hearthnote_assembled_output SET final_cipher='v1.signed' WHERE id=$1", [outputId]);
-          await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [encounterId]);
+          await c.query(
+            "UPDATE hearthnote_assembled_output SET final_cipher='v1.signed' WHERE id=$1",
+            [outputId],
+          );
+          await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [
+            encounterId,
+          ]);
         });
         expect((await cipherOf(outputId)).final_cipher).toBe("v1.signed");
         // ... and the same two statements in the other order are refused: the freeze is real, the order is the contract.
         const second = await seedAt("finalized");
         const reordered = await sqlFailure(
           run(async (c) => {
-            await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [second.encounterId]);
-            await c.query("UPDATE hearthnote_assembled_output SET final_cipher='v1.late' WHERE id=$1", [second.outputId]);
+            await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [
+              second.encounterId,
+            ]);
+            await c.query(
+              "UPDATE hearthnote_assembled_output SET final_cipher='v1.late' WHERE id=$1",
+              [second.outputId],
+            );
           }),
         );
         expect(reordered.code).toBe("23001");
         expect((await cipherOf(second.outputId)).final_cipher).toBe(SEALED_A);
       });
 
-      it.each(SIGNED_STATUSES)("a %s encounter's layer1, layer2 and final ciphers are refused to the app role", async (status) => {
-        const { outputId } = await seedAt(status);
-        for (const set of ["layer1_cipher='v1.x'", "layer2_cipher='v1.x'", "final_cipher='v1.x'", "final_cipher=''", "layer2_cipher=NULL, final_cipher='v1.x'"]) {
-          const refused = await sqlFailure(
-            run((c) => c.query(`UPDATE hearthnote_assembled_output SET ${set} WHERE id=$1`, [outputId])),
-          );
-          expect(refused.code, `${status}: ${set}`).toBe("23001");
-        }
-        expect(await cipherOf(outputId)).toEqual({ layer1_cipher: SEALED_A, layer2_cipher: null, final_cipher: SEALED_A });
-      });
+      it.each(SIGNED_STATUSES)(
+        "a %s encounter's layer1, layer2 and final ciphers are refused to the app role",
+        async (status) => {
+          const { outputId } = await seedAt(status);
+          for (const set of [
+            "layer1_cipher='v1.x'",
+            "layer2_cipher='v1.x'",
+            "final_cipher='v1.x'",
+            "final_cipher=''",
+            "layer2_cipher=NULL, final_cipher='v1.x'",
+          ]) {
+            const refused = await sqlFailure(
+              run((c) =>
+                c.query(`UPDATE hearthnote_assembled_output SET ${set} WHERE id=$1`, [outputId]),
+              ),
+            );
+            expect(refused.code, `${status}: ${set}`).toBe("23001");
+          }
+          expect(await cipherOf(outputId)).toEqual({
+            layer1_cipher: SEALED_A,
+            layer2_cipher: null,
+            final_cipher: SEALED_A,
+          });
+        },
+      );
 
       it("a write that changes no cipher is not refused after sign", async () => {
         const { outputId } = await seedAt("signed");
         const result = await run((c) =>
-          c.query("UPDATE hearthnote_assembled_output SET final_cipher=final_cipher WHERE id=$1", [outputId]),
+          c.query("UPDATE hearthnote_assembled_output SET final_cipher=final_cipher WHERE id=$1", [
+            outputId,
+          ]),
         );
         expect(result.rowCount).toBe(1);
       });
@@ -1269,7 +1316,9 @@ describe.skipIf(!DB_URL)(
         const { outputId } = await seedAt("signed");
         const arbitrary = await sqlFailure(
           asDestruction(ORG_A, (c) =>
-            c.query("UPDATE hearthnote_assembled_output SET final_cipher='v1.other' WHERE id=$1", [outputId]),
+            c.query("UPDATE hearthnote_assembled_output SET final_cipher='v1.other' WHERE id=$1", [
+              outputId,
+            ]),
           ),
         );
         expect(arbitrary.code).toBe("23001");
@@ -1279,7 +1328,11 @@ describe.skipIf(!DB_URL)(
             [outputId],
           ),
         );
-        expect(await cipherOf(outputId)).toEqual({ layer1_cipher: "", layer2_cipher: null, final_cipher: "" });
+        expect(await cipherOf(outputId)).toEqual({
+          layer1_cipher: "",
+          layer2_cipher: null,
+          final_cipher: "",
+        });
       });
     });
 
@@ -1303,7 +1356,14 @@ describe.skipIf(!DB_URL)(
       it("a confirmation: the hash is scrubbed, a plain row keeps its source ids under the 7-year class", async () => {
         const refs = [{ kind: "care_plan_goal", id: randomUUID() }];
         await run((c) =>
-          insertConfirmation(c, confirmationValues(a(), { sectionId: "audit_plain", contentHash: hash("7"), sourceRefs: refs })),
+          insertConfirmation(
+            c,
+            confirmationValues(a(), {
+              sectionId: "audit_plain",
+              contentHash: hash("7"),
+              sourceRefs: refs,
+            }),
+          ),
         );
         const event = await auditOf("encounter_draft_confirmation.insert", "audit_plain");
         expect(event.after.content_hash).toBe("<changed>");
@@ -1315,7 +1375,14 @@ describe.skipIf(!DB_URL)(
       it("a Part 2 confirmation: Part 2 retention class, the source ids withheld, the flag kept", async () => {
         const refs = [{ kind: "medication_order", id: randomUUID() }];
         await run((c) =>
-          insertConfirmation(c, confirmationValues(a(), { sectionId: "audit_part2", sourceRefs: refs, part2Derived: true })),
+          insertConfirmation(
+            c,
+            confirmationValues(a(), {
+              sectionId: "audit_part2",
+              sourceRefs: refs,
+              part2Derived: true,
+            }),
+          ),
         );
         const event = await auditOf("encounter_draft_confirmation.insert", "audit_part2");
         expect(event.retention).toBe("compliance_42cfr_part2");
@@ -1327,7 +1394,14 @@ describe.skipIf(!DB_URL)(
       it("a Part 2 re-confirmation's before image withholds the source ids too", async () => {
         const refs = [{ kind: "medication_order", id: randomUUID() }];
         await run((c) =>
-          insertConfirmation(c, confirmationValues(a(), { sectionId: "audit_part2_update", sourceRefs: refs, part2Derived: true })),
+          insertConfirmation(
+            c,
+            confirmationValues(a(), {
+              sectionId: "audit_part2_update",
+              sourceRefs: refs,
+              part2Derived: true,
+            }),
+          ),
         );
         await run((c) =>
           c.query(
@@ -1352,8 +1426,23 @@ describe.skipIf(!DB_URL)(
         const plainRefs = [{ kind: "care_plan_goal", id: randomUUID() }];
         const part2Refs = [{ kind: "medication_order", id: randomUUID() }];
         await run(async (c) => {
-          await insertSection(c, sectionValues(a(), { sectionId: "sig_audit_plain", position: 50, sourceRefs: plainRefs }));
-          await insertSection(c, sectionValues(a(), { sectionId: "sig_audit_part2", position: 51, sourceRefs: part2Refs, part2Derived: true }));
+          await insertSection(
+            c,
+            sectionValues(a(), {
+              sectionId: "sig_audit_plain",
+              position: 50,
+              sourceRefs: plainRefs,
+            }),
+          );
+          await insertSection(
+            c,
+            sectionValues(a(), {
+              sectionId: "sig_audit_part2",
+              position: 51,
+              sourceRefs: part2Refs,
+              part2Derived: true,
+            }),
+          );
         });
         const plain = await auditOf("hearthnote_signed_section.insert", "sig_audit_plain");
         expect(plain.after.content_hash).toBe("<changed>");
@@ -1392,17 +1481,32 @@ describe.skipIf(!DB_URL)(
       }
       /** An encounter of org A with its pin, in the given status (`seedEncounter` makes it `finalized`, the state sign finds a note in). */
       async function encounterAt(status: string) {
-        const encounter = await seedEncounter(ORG_A, a().providerEntityId, a().locationId, a().author);
+        const encounter = await seedEncounter(
+          ORG_A,
+          a().providerEntityId,
+          a().locationId,
+          a().author,
+        );
         const outputId = await seedOutput(a(), encounter.encounterId);
         if (status !== "finalized") await setStatus(encounter.encounterId, status);
         return { ...encounter, outputId };
       }
-      async function seedAddendum(encounterId: string, status: "draft" | "finalized" | "signed" | "voided") {
+      async function seedAddendum(
+        encounterId: string,
+        status: "draft" | "finalized" | "signed" | "voided",
+      ) {
         const result = await admin.query<{ id: string }>(
           `INSERT INTO encounter_addendum (organization_id, provider_entity_id, location_id, encounter_id, authored_by_membership_id,
              reason, status, signed_at)
            VALUES ($1,$2,$3,$4,$5,'a reason of at least twenty characters',$6::encounter_status, ${status === "signed" ? "now()" : "NULL"}) RETURNING id`,
-          [ORG_A, a().providerEntityId, a().locationId, encounterId, a().author.membershipId, status],
+          [
+            ORG_A,
+            a().providerEntityId,
+            a().locationId,
+            encounterId,
+            a().author.membershipId,
+            status,
+          ],
         );
         return one(result.rows).id;
       }
@@ -1505,12 +1609,16 @@ describe.skipIf(!DB_URL)(
               "UPDATE hearthnote_assembled_output SET part2_derived=true, final_cipher='v1.s' WHERE id=$1",
               [e.outputId],
             );
-            await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [e.encounterId]);
+            await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [
+              e.encounterId,
+            ]);
           });
           expect((await pinOf(e.outputId)).part2_derived).toBe(true);
           const refused = await sqlFailure(
             run((c) =>
-              c.query("UPDATE hearthnote_assembled_output SET part2_derived=false WHERE id=$1", [e.outputId]),
+              c.query("UPDATE hearthnote_assembled_output SET part2_derived=false WHERE id=$1", [
+                e.outputId,
+              ]),
             ),
           );
           expect(refused.code).toBe(RESTRICT);
@@ -1519,13 +1627,16 @@ describe.skipIf(!DB_URL)(
       });
 
       describe("D2: a new pin cannot replace a signed one", () => {
-        it.each([...SIGNED_STATUSES, "voided"])("refuses a primary pin on a %s encounter", async (status) => {
-          const e = await encounterAt(status);
-          const refused = await sqlFailure(
-            run((c) => insertPin(c, { kind: "primary_finalize", encounterId: e.encounterId })),
-          );
-          expect(refused.code).toBe(RESTRICT);
-        });
+        it.each([...SIGNED_STATUSES, "voided"])(
+          "refuses a primary pin on a %s encounter",
+          async (status) => {
+            const e = await encounterAt(status);
+            const refused = await sqlFailure(
+              run((c) => insertPin(c, { kind: "primary_finalize", encounterId: e.encounterId })),
+            );
+            expect(refused.code).toBe(RESTRICT);
+          },
+        );
 
         it("accepts the finalize shape: the status flips to finalized, then the pin is written", async () => {
           const e = await encounterAt("finalized");
@@ -1569,40 +1680,62 @@ describe.skipIf(!DB_URL)(
             [ORG_B, b().providerEntityId, b().locationId, b().encounterId, b().author.membershipId],
           );
           const refusedAddendum = await sqlFailure(
-            run((c) => insertPin(c, { kind: "addendum_finalize", addendumId: one(foreignAddendum.rows).id })),
+            run((c) =>
+              insertPin(c, { kind: "addendum_finalize", addendumId: one(foreignAddendum.rows).id }),
+            ),
           );
           expect(refusedAddendum.code).toBe(TENANCY);
         });
       });
 
       describe("D3: an original sealed row is written by sign, while the encounter is finalized", () => {
-        it.each([...SIGNED_STATUSES, "voided", "draft"])("refuses an original row on a %s encounter", async (status) => {
-          const e = await encounterAt(status);
-          const refused = await sqlFailure(
-            run((c) =>
-              insertSection(
-                c,
-                sectionValues(a(), { sectionId: "late", position: 0, encounterId: e.encounterId, outputId: e.outputId }),
+        it.each([...SIGNED_STATUSES, "voided", "draft"])(
+          "refuses an original row on a %s encounter",
+          async (status) => {
+            const e = await encounterAt(status);
+            const refused = await sqlFailure(
+              run((c) =>
+                insertSection(
+                  c,
+                  sectionValues(a(), {
+                    sectionId: "late",
+                    position: 0,
+                    encounterId: e.encounterId,
+                    outputId: e.outputId,
+                  }),
+                ),
               ),
-            ),
-          );
-          expect(refused.code).toBe(RESTRICT);
-        });
+            );
+            expect(refused.code).toBe(RESTRICT);
+          },
+        );
 
         it("the sign shape works (rows, then the status flip in one transaction) and a row after the flip is refused", async () => {
           const e = await encounterAt("finalized");
           await run(async (c) => {
             await insertSection(
               c,
-              sectionValues(a(), { sectionId: "first", position: 0, encounterId: e.encounterId, outputId: e.outputId }),
+              sectionValues(a(), {
+                sectionId: "first",
+                position: 0,
+                encounterId: e.encounterId,
+                outputId: e.outputId,
+              }),
             );
-            await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [e.encounterId]);
+            await c.query("UPDATE encounter SET status='signed', signed_at=now() WHERE id=$1", [
+              e.encounterId,
+            ]);
           });
           const refused = await sqlFailure(
             run((c) =>
               insertSection(
                 c,
-                sectionValues(a(), { sectionId: "second", position: 1, encounterId: e.encounterId, outputId: e.outputId }),
+                sectionValues(a(), {
+                  sectionId: "second",
+                  position: 1,
+                  encounterId: e.encounterId,
+                  outputId: e.outputId,
+                }),
               ),
             ),
           );
@@ -1617,7 +1750,14 @@ describe.skipIf(!DB_URL)(
           const request = await admin.query<{ id: string }>(
             `INSERT INTO addendum_cosignature_request (organization_id, provider_entity_id, location_id, encounter_id, addendum_id, routed_to_membership_id, status)
              VALUES ($1,$2,$3,$4,$5,$6,'routed') RETURNING id`,
-            [ORG_A, a().providerEntityId, a().locationId, parent.encounterId, addendumId, a().author.membershipId],
+            [
+              ORG_A,
+              a().providerEntityId,
+              a().locationId,
+              parent.encounterId,
+              addendumId,
+              a().author.membershipId,
+            ],
           );
           return { parent, addendumId, requestId: one(request.rows).id };
         }
@@ -1633,9 +1773,17 @@ describe.skipIf(!DB_URL)(
             expect(refused.code, column).toBe(TENANCY);
           }
           const row = one(
-            (await admin.query("SELECT routed_to_membership_id, supervisor_released_by FROM addendum_cosignature_request WHERE id=$1", [requestId])).rows,
+            (
+              await admin.query(
+                "SELECT routed_to_membership_id, supervisor_released_by FROM addendum_cosignature_request WHERE id=$1",
+                [requestId],
+              )
+            ).rows,
           );
-          expect(row).toEqual({ routed_to_membership_id: a().author.membershipId, supervisor_released_by: null });
+          expect(row).toEqual({
+            routed_to_membership_id: a().author.membershipId,
+            supervisor_released_by: null,
+          });
         });
 
         it("refuses moving the request to another organization, encounter, addendum or siting", async () => {
@@ -1656,8 +1804,12 @@ describe.skipIf(!DB_URL)(
           const { requestId } = await seedRequest();
           const colleague = await seedMember(ORG_A, "cosigner");
           await run((c) => update(c, "acknowledged_at=now()", [requestId]));
-          await run((c) => update(c, "routed_to_membership_id=$2", [requestId, colleague.membershipId]));
-          await run((c) => update(c, "supervisor_released_by=$2", [requestId, colleague.membershipId]));
+          await run((c) =>
+            update(c, "routed_to_membership_id=$2", [requestId, colleague.membershipId]),
+          );
+          await run((c) =>
+            update(c, "supervisor_released_by=$2", [requestId, colleague.membershipId]),
+          );
         });
       });
 
@@ -1666,9 +1818,13 @@ describe.skipIf(!DB_URL)(
           const parent = await encounterAt("signed");
           const other = await encounterAt("signed");
           const addendumId = await seedAddendum(parent.encounterId, "signed");
-          const noAddendum = await sqlFailure(run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId: null })));
+          const noAddendum = await sqlFailure(
+            run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId: null })),
+          );
           expect(noAddendum.code).toBe(TENANCY);
-          const wrongEncounter = await sqlFailure(run((c) => insertSignature(c, { encounterId: other.encounterId, addendumId })));
+          const wrongEncounter = await sqlFailure(
+            run((c) => insertSignature(c, { encounterId: other.encounterId, addendumId })),
+          );
           expect(wrongEncounter.code).toBe(TENANCY);
         });
 
@@ -1676,10 +1832,20 @@ describe.skipIf(!DB_URL)(
           const parent = await encounterAt("signed");
           const addendumId = await seedAddendum(parent.encounterId, "signed");
           await run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId }));
-          const duplicate = await sqlFailure(run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId })));
+          const duplicate = await sqlFailure(
+            run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId })),
+          );
           expect(duplicate.code).toBe(RESTRICT);
-          await run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId, kind: "addendum" }));
-          await run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId: null, kind: "primary" }));
+          await run((c) =>
+            insertSignature(c, { encounterId: parent.encounterId, addendumId, kind: "addendum" }),
+          );
+          await run((c) =>
+            insertSignature(c, {
+              encounterId: parent.encounterId,
+              addendumId: null,
+              kind: "primary",
+            }),
+          );
         });
 
         it("two concurrent transactions for one addendum take turns: the second sees the first and is refused", async () => {
@@ -1688,7 +1854,9 @@ describe.skipIf(!DB_URL)(
           await admin.query("BEGIN");
           try {
             await insertSignature(admin, { encounterId: parent.encounterId, addendumId });
-            const second = sqlFailure(run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId })));
+            const second = sqlFailure(
+              run((c) => insertSignature(c, { encounterId: parent.encounterId, addendumId })),
+            );
             await new Promise((resolve) => setTimeout(resolve, 300));
             await admin.query("COMMIT");
             expect((await second).code).toBe(RESTRICT);
@@ -1700,36 +1868,71 @@ describe.skipIf(!DB_URL)(
       });
 
       describe("C5 / D6 / D7: a confirmation is frozen with the note and carries the encounter's siting", () => {
-        it.each([...SIGNED_STATUSES, "voided"])("a confirmation of a %s encounter can be neither rewritten nor added to", async (status) => {
-          const e = await encounterAt("finalized");
-          await run((c) => insertConfirmation(c, confirmationValues(a(), { sectionId: "c5", encounterId: e.encounterId })));
-          await setStatus(e.encounterId, status);
-          const rewrite = await sqlFailure(
-            run((c) =>
-              c.query("UPDATE encounter_draft_confirmation SET resolution='deselected' WHERE encounter_id=$1 AND section_id='c5'", [e.encounterId]),
-            ),
-          );
-          expect(rewrite.code).toBe(RESTRICT);
-          const added = await sqlFailure(
-            run((c) => insertConfirmation(c, confirmationValues(a(), { sectionId: "c5_late", encounterId: e.encounterId }))),
-          );
-          expect(added.code).toBe(RESTRICT);
-          const row = one(
-            (await admin.query("SELECT resolution FROM encounter_draft_confirmation WHERE encounter_id=$1", [e.encounterId])).rows,
-          );
-          expect(row.resolution).toBe("confirmed");
-        });
+        it.each([...SIGNED_STATUSES, "voided"])(
+          "a confirmation of a %s encounter can be neither rewritten nor added to",
+          async (status) => {
+            const e = await encounterAt("finalized");
+            await run((c) =>
+              insertConfirmation(
+                c,
+                confirmationValues(a(), { sectionId: "c5", encounterId: e.encounterId }),
+              ),
+            );
+            await setStatus(e.encounterId, status);
+            const rewrite = await sqlFailure(
+              run((c) =>
+                c.query(
+                  "UPDATE encounter_draft_confirmation SET resolution='deselected' WHERE encounter_id=$1 AND section_id='c5'",
+                  [e.encounterId],
+                ),
+              ),
+            );
+            expect(rewrite.code).toBe(RESTRICT);
+            const added = await sqlFailure(
+              run((c) =>
+                insertConfirmation(
+                  c,
+                  confirmationValues(a(), { sectionId: "c5_late", encounterId: e.encounterId }),
+                ),
+              ),
+            );
+            expect(added.code).toBe(RESTRICT);
+            const row = one(
+              (
+                await admin.query(
+                  "SELECT resolution FROM encounter_draft_confirmation WHERE encounter_id=$1",
+                  [e.encounterId],
+                )
+              ).rows,
+            );
+            expect(row.resolution).toBe("confirmed");
+          },
+        );
 
-        it.each(["draft", "finalized"])("an unsigned (%s) encounter's confirmation is still written and rewritten", async (status) => {
-          const e = await encounterAt(status);
-          await run((c) => insertConfirmation(c, confirmationValues(a(), { sectionId: "open", encounterId: e.encounterId })));
-          await run((c) =>
-            c.query("UPDATE encounter_draft_confirmation SET resolution='deselected' WHERE encounter_id=$1 AND section_id='open'", [e.encounterId]),
-          );
-        });
+        it.each(["draft", "finalized"])(
+          "an unsigned (%s) encounter's confirmation is still written and rewritten",
+          async (status) => {
+            const e = await encounterAt(status);
+            await run((c) =>
+              insertConfirmation(
+                c,
+                confirmationValues(a(), { sectionId: "open", encounterId: e.encounterId }),
+              ),
+            );
+            await run((c) =>
+              c.query(
+                "UPDATE encounter_draft_confirmation SET resolution='deselected' WHERE encounter_id=$1 AND section_id='open'",
+                [e.encounterId],
+              ),
+            );
+          },
+        );
 
         it("refuses a siting pair that is not the encounter's own", async () => {
-          for (const [index, label] of [[1, "provider_entity_id"], [2, "location_id"]] as const) {
+          for (const [index, label] of [
+            [1, "provider_entity_id"],
+            [2, "location_id"],
+          ] as const) {
             const values = confirmationValues(a(), { sectionId: `siting_${label}` });
             values[index] = null;
             const refused = await sqlFailure(run((c) => insertConfirmation(c, values)));
