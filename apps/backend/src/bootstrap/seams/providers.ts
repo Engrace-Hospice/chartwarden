@@ -1137,6 +1137,12 @@ export const medicationOrderProviderDenyStub: MedicationOrderProvider = {
   getMedicationsSince() {
     throw new NotImplementedError("MedicationOrderProvider");
   },
+  getMedicationsAsOf() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getMedicationChangesBetween() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
   getMedicationOrder() {
     throw new NotImplementedError("MedicationOrderProvider");
   },

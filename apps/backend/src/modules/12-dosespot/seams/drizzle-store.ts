@@ -221,6 +221,7 @@ function toMedicationOrderDto(r: MoRow): MedicationOrderDto {
     transmittedAt: isoN(r.transmittedAt),
     activatedAt: isoN(r.activatedAt),
     discontinuedAt: isoN(r.discontinuedAt),
+    completedAt: isoN(r.completedAt),
     isControlledSubstance: r.isControlledSubstance,
     deaSchedule: r.deaSchedule ?? null,
     isSudTreatment: r.isSudTreatment,
