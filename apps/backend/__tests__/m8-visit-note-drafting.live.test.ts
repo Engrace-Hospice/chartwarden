@@ -13,6 +13,7 @@
  *      to the actor; a refused write lands neither. The confirmation's source ids reach the audit trail; the sealed text never does.
  *   6. The encounter eraser (a real `chartwarden_destruction` login) shreds the sealed text, then deletes the new rows, leaves the root and
  *      another tenant's rows alone.
+ *   7. Migration 1520 grants encounter.draft_policy_admin to the DON keys and the administrators, and to nobody else.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m8:visit-note-drafting:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1. Never point this at the shared Docker cluster.
@@ -1031,6 +1032,75 @@ describe.skipIf(!DB_URL)(
           ),
         ).toBe(keptA);
         expect(await countAs(ORG_B, orgs.B.author.userId, "hearthnote_signed_section")).toBe(keptB);
+      });
+    });
+
+    // ===============================================================================================================
+    // 7. migration 1520
+    // ===============================================================================================================
+    describe("7. migration 1520 mirrors encounter.draft_policy_admin: the DON keys and the administrators, nobody else", () => {
+      const KEY = "encounter.draft_policy_admin";
+      const EXPECTED: Record<string, string[]> = {
+        director_of_nursing: [KEY],
+        don: [KEY],
+        org_admin: [KEY],
+        administrator: [KEY],
+        clinical_supervisor: [],
+        clinical_lead: [],
+        rn: [],
+      };
+      const migration = () =>
+        readFileSync(join(MIGRATIONS_DIR, "1520_m8_visit_note_draft_permissions.sql"), "utf8");
+      const grantsFor = async (roleKey: string) =>
+        (
+          await admin.query(
+            `SELECT rp.permission_key FROM role_permission rp JOIN role r ON r.id = rp.role_id
+            WHERE r.key=$1 AND r.organization_id=$2 AND rp.permission_key=$3`,
+            [roleKey, ORG_A, KEY],
+          )
+        ).rows.map((r) => r.permission_key as string);
+
+      it("the permission row exists in the catalog (compliance category, no ABAC default)", async () => {
+        const rows = await admin.query(
+          "SELECT key, resource, action, category::text AS category, default_abac::text AS default_abac FROM permission WHERE key=$1",
+          [KEY],
+        );
+        expect(rows.rows).toEqual([
+          {
+            key: KEY,
+            resource: "encounter",
+            action: "draft_policy_admin",
+            category: "compliance",
+            default_abac: "none",
+          },
+        ]);
+      });
+
+      it("grants each existing role exactly its share, and a re-run is idempotent", async () => {
+        // The migration ran over an empty tenant set: roles created since hold no grant yet (the control).
+        for (const roleKey of Object.keys(EXPECTED)) {
+          await admin.query(
+            "INSERT INTO role (organization_id,key,name,category) VALUES ($1,$2,$2,'clinical_staff')",
+            [ORG_A, roleKey],
+          );
+          expect(await grantsFor(roleKey), `${roleKey} before`).toEqual([]);
+        }
+        await admin.query(migration());
+        for (const [roleKey, expected] of Object.entries(EXPECTED)) {
+          expect(await grantsFor(roleKey), `${roleKey} after`).toEqual(expected);
+        }
+        const count = async () =>
+          one(
+            (
+              await admin.query(
+                "SELECT count(*)::int AS n FROM role_permission WHERE permission_key=$1",
+                [KEY],
+              )
+            ).rows,
+          ).n;
+        const before = await count();
+        await admin.query(migration());
+        expect(await count()).toBe(before);
       });
     });
   },

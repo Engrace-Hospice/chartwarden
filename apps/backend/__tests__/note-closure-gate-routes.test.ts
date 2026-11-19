@@ -397,10 +397,11 @@ const DENIED_CHART_GETS = [
   "GET /api/v1/scales",
 ];
 
-/** Family routes a blocked clinician does NOT get: voiding a note, the closure policy, authoring (not acting on) standing orders and triage protocols, safety administration. */
+/** Family routes a blocked clinician does NOT get: voiding a note, the closure policy, the visit-note draft switch (ADR-0114), authoring (not acting on) standing orders and triage protocols, safety administration. */
 const DENIED_FAMILY_ROUTES = [
   "DELETE /api/v1/safety/supervisor-subscriptions/:subscriptionId",
   "GET /api/v1/encounters/closure-policy",
+  "GET /api/v1/encounters/draft-policy",
   "GET /api/v1/safety/admin/terminus-readiness",
   "GET /api/v1/safety/dashboard",
   "GET /api/v1/safety/high-risk-areas",
@@ -421,6 +422,7 @@ const DENIED_FAMILY_ROUTES = [
   "POST /api/v1/triage-protocols",
   "POST /api/v1/triage-protocols/:protocolId/questions",
   "PUT /api/v1/encounters/closure-policy",
+  "PUT /api/v1/encounters/draft-policy",
 ];
 
 /** Entries that sit under a forbidden root on purpose: a reporter's own incident routes and the comfort kit deployed at the bedside. */
@@ -533,6 +535,8 @@ describe("the note-closure allowlist against the registered route table", () => 
     ["POST", "/api/v1/encounters/:encounterId/void"],
     ["GET", "/api/v1/encounters/closure-policy"],
     ["PUT", "/api/v1/encounters/closure-policy"],
+    ["GET", "/api/v1/encounters/draft-policy"],
+    ["PUT", "/api/v1/encounters/draft-policy"],
     ["POST", "/api/v1/visits"],
     ["POST", "/api/v1/visits/:visitId/start"],
     ["POST", "/api/v1/evv/check-in"],
