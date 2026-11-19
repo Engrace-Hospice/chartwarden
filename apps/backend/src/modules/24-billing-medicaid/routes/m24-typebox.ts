@@ -169,6 +169,80 @@ export const AssembleClaimBody = Type.Union([
   ),
 ]);
 
+/** Read-only preview inputs: no claim kind, Medicare claim id, organization id or actor id is accepted. */
+export const AssemblyPreviewBody = Type.Object(
+  {
+    patientId: uuid(),
+    admissionId: uuid(),
+    providerEntityId: uuid(),
+    serviceFrom: isoDate(),
+    serviceTo: isoDate(),
+  },
+  { additionalProperties: false },
+);
+const AssemblyPreviewCoverage = Type.Object({
+  status: lit(["uniform", "none", "changes", "ambiguous", "unavailable"] as const),
+  coverageKind: nullableStr(),
+  rank: Type.Union([Type.Integer(), Type.Null()]),
+});
+export const AssemblyPreviewResponse = Type.Object({
+  primaryCoverage: AssemblyPreviewCoverage,
+  medicaidCoverage: AssemblyPreviewCoverage,
+  payerResponsibility: lit([
+    "medicaid_primary",
+    "medicare_primary_medicaid_secondary",
+    "other_primary",
+    "unresolved",
+  ] as const),
+  recordedEligibility: Type.Object({
+    status: lit(["current", "stale", "not_recorded", "unavailable"] as const),
+    outcome: nullableStr(),
+    serviceState: nullableStr(),
+    asOfServiceDate: Type.Union([isoDate(), Type.Null()]),
+    checkedAt: Type.Union([isoInstant(), Type.Null()]),
+    staleAt: Type.Union([isoInstant(), Type.Null()]),
+  }),
+  claimKinds: Type.Array(
+    Type.Object({
+      kind: lit(CLAIM_KIND),
+      payerPolicy: lit(["permitted", "blocked", "unresolved"] as const),
+      reasonCode: nullableStr(),
+    }),
+  ),
+  rbArrangements: Type.Array(
+    Type.Object({
+      id: uuid(),
+      facilityName: Type.String(),
+      effectiveFrom: isoDate(),
+      effectiveTo: Type.Union([isoDate(), Type.Null()]),
+      billableDayCount: Type.Integer({ minimum: 0 }),
+      status: lit(["candidate", "blocked", "unresolved"] as const),
+      reasonCode: nullableStr(),
+    }),
+  ),
+  arrangementListStatus: lit(["available", "unavailable"] as const),
+  medicareEvidence: Type.Object({
+    match: lit([
+      "not_applicable",
+      "unresolved",
+      "unavailable",
+      "none",
+      "ambiguous",
+      "single",
+    ] as const),
+    evidenceStatus: nullableStr(),
+    rangeRelation: nullableStr(),
+    remittanceAdviceRecorded: Type.Union([Type.Boolean(), Type.Null()]),
+  }),
+  stateBillingPolicy: lit([
+    "not_applicable_to_primary_medicaid",
+    "unconfirmed",
+    "unresolved",
+  ] as const),
+  electronicSubmissionAvailable: Type.Literal(false),
+  isAdvisorySnapshot: Type.Literal(true),
+});
+
 /** PATCH /api/v1/medicaid-claims/:id — no tenant-supplied payer/MCO routing mutation is supported. */
 export const UpdateDraftClaimBody = Type.Object({}, { additionalProperties: false });
 
@@ -521,6 +595,7 @@ export const RuleConfigDto = Type.Object({
   customOverrideRole: nullableStr(),
   overrideRoleRequired: nullableStr(),
   regulatoryRequired: Type.Boolean(),
+  platformRequired: Type.Boolean(),
   parametersOverlay: Type.Unknown(),
   version: nullableInt(),
   platformDefault: Type.Optional(
@@ -529,6 +604,7 @@ export const RuleConfigDto = Type.Object({
       category: Type.String(),
       severity: Type.String(),
       regulatoryRequired: Type.Boolean(),
+      platformRequired: Type.Boolean(),
       applicableStates: Type.Array(StateCode),
     }),
   ),

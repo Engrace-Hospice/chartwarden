@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import { assembleErrorMessage } from "./assembly-errors";
 
 describe("Medicaid assembly error guidance", () => {
+  it("gives specific guidance when preview readers are unavailable or payer responsibility is unresolved", () => {
+    expect(
+      assembleErrorMessage(503, { error: { code: "MEDICAID_COVERAGE_READER_UNBOUND" } }),
+    ).toContain("Coverage records are unavailable");
+    const responsibilityMessage = assembleErrorMessage(409, {
+      error: { code: "MEDICAID_PAYER_RESPONSIBILITY_UNRESOLVED" },
+    });
+    expect(responsibilityMessage).toContain("Payer responsibility could not be established");
+    expect(responsibilityMessage).toContain("do not change payer ranking");
+    expect(
+      assembleErrorMessage(503, { error: { code: "MEDICAID_LOC_PERIOD_READER_UNBOUND" } }),
+    ).toContain("level-of-care records are unavailable");
+  });
+
   it("explains the unverified secondary R&B format without denying eligibility", () => {
     expect(
       assembleErrorMessage(409, {

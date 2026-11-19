@@ -5,15 +5,30 @@
 // Scalar id/date aliases are re-exported from @chartwarden/billing so M23 and M24 share ONE definition; the
 // MBI-equivalent state Medicaid Recipient ID is NEVER a field here (D12/§3.6 — only masked/format-flag facts).
 import type {
+  AdmissionId,
   Cents,
+  ClaimId,
   IsoDate,
   IsoDateTime,
+  MedicareClaimEvidenceStatus,
+  MedicareClaimRangeRelation,
   OrgId,
   PatientId,
   ProviderEntityId,
 } from "@chartwarden/billing";
 
-export type { Cents, IsoDate, IsoDateTime, OrgId, PatientId, ProviderEntityId };
+export type {
+  AdmissionId,
+  ClaimId,
+  Cents,
+  IsoDate,
+  IsoDateTime,
+  MedicareClaimEvidenceStatus,
+  MedicareClaimRangeRelation,
+  OrgId,
+  PatientId,
+  ProviderEntityId,
+};
 
 // ── M24 id aliases ───────────────────────────────────────────────────────────────────────────────────
 export type MedicaidClaimId = string;

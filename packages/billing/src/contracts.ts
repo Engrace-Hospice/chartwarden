@@ -126,12 +126,40 @@ export interface HciFeatureSetDto {
   readonly features: Record<string, number>;
 }
 
-/** §4.3 ClaimReader.medicareSecondaryContext — M24 coordination-of-benefits context. */
+/** M23 claim lifecycle evidence available to a downstream Medicare-COB reader. */
+export type MedicareClaimEvidenceStatus =
+  | "draft"
+  | "submitted"
+  | "acknowledged"
+  | "rejected"
+  | "adjudicated_paid"
+  | "adjudicated_partial"
+  | "adjudicated_denied"
+  | "reversed_or_superseded"
+  | "unknown";
+
+export type MedicareClaimRangeRelation = "exact" | "covers_requested_range" | "partial_overlap";
+
+/** §4.3 ClaimReader.medicareSecondaryContext — M24 coordination-of-benefits evidence. */
 export interface MedicareSecondaryContextDto {
+  readonly organizationId: OrgId;
   readonly claimId: ClaimId;
+  readonly patientId: PatientId;
+  readonly providerEntityId: ProviderEntityId;
+  readonly admissionId: AdmissionId;
+  /** M5 coverage row snapshotted on the M23 claim; used to correlate the resolved primary coverage. */
+  readonly patientPayerId: string;
   readonly serviceFrom: IsoDate;
   readonly serviceTo: IsoDate;
-  readonly medicarePrimary: boolean;
+  readonly claimState: ClaimState;
+  readonly rangeRelation: MedicareClaimRangeRelation;
+  /** Derived from the M23 state written by the M25 remittance consumer; acknowledgment alone is never adjudication. */
+  readonly evidenceStatus: MedicareClaimEvidenceStatus;
+  /** True only when M23 history records an M25 advice reference for this claim. */
+  readonly remittanceAdviceRecorded: boolean;
+  /** M23 does not own M25 financial detail; null means unavailable, never an inferred zero. */
+  readonly paidAmountCents: null;
+  readonly patientResponsibilityCents: null;
 }
 
 /** §4.3 ClaimDayProjectionProvider — per-LOC day rollup (M26 cap / M27 statistics). */

@@ -17,15 +17,72 @@ const PATIENT_B = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const ADMISSION_A = "11111111-8888-4888-8888-111111111111";
 
 let paths: string[] = [];
-let eligibilityRequestStatus = 200;
+let previewRequestStatus = 200;
+let holdPreviewResponse = false;
+let releasePreviewResponse: (() => void) | null = null;
+
+const BLOCKED_ARRANGEMENT_PREVIEW = {
+  primaryCoverage: { status: "uniform", coverageKind: "medicaid", rank: 1 },
+  medicaidCoverage: { status: "uniform", coverageKind: "medicaid", rank: 1 },
+  payerResponsibility: "medicaid_primary",
+  recordedEligibility: {
+    status: "not_recorded",
+    outcome: null,
+    serviceState: "OR",
+    asOfServiceDate: null,
+    checkedAt: null,
+    staleAt: null,
+  },
+  claimKinds: [
+    { kind: "hospice_only", payerPolicy: "permitted", reasonCode: null },
+    { kind: "rb_only", payerPolicy: "permitted", reasonCode: null },
+    {
+      kind: "combined_hospice_rb",
+      payerPolicy: "blocked",
+      reasonCode: "MEDICAID_TPL_POLICY_UNVERIFIED",
+    },
+  ],
+  rbArrangements: [
+    {
+      id: "22222222-8888-4888-8888-222222222222",
+      facilityName: "Synthetic NF",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+      billableDayCount: 0,
+      status: "unresolved",
+      reasonCode: "MEDICAID_LOC_PERIOD_READER_UNBOUND",
+    },
+  ],
+  arrangementListStatus: "unavailable",
+  medicareEvidence: {
+    match: "not_applicable",
+    evidenceStatus: null,
+    rangeRelation: null,
+    remittanceAdviceRecorded: null,
+  },
+  stateBillingPolicy: "not_applicable_to_primary_medicaid",
+  electronicSubmissionAvailable: false,
+  isAdvisorySnapshot: true,
+};
 
 async function stubFetch(input: RequestInfo | URL): Promise<Response> {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   const path = new URL(url, "http://localhost").pathname;
   paths.push(path);
-  if (path === "/api/v1/medicaid-eligibility-checks" && eligibilityRequestStatus >= 400) {
+  if (path === "/api/v1/medicaid-claims/assembly-preview" && previewRequestStatus >= 400) {
     return new Response(JSON.stringify({ error: { code: "INTERNAL_ERROR" } }), {
-      status: eligibilityRequestStatus,
+      status: previewRequestStatus,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  if (path === "/api/v1/medicaid-claims/assembly-preview") {
+    if (holdPreviewResponse) {
+      await new Promise<void>((resolve) => {
+        releasePreviewResponse = resolve;
+      });
+    }
+    return new Response(JSON.stringify(BLOCKED_ARRANGEMENT_PREVIEW), {
+      status: 200,
       headers: { "content-type": "application/json" },
     });
   }
@@ -101,7 +158,9 @@ async function pickFirstOption(input: HTMLInputElement): Promise<void> {
 
 beforeEach(() => {
   paths = [];
-  eligibilityRequestStatus = 200;
+  previewRequestStatus = 200;
+  holdPreviewResponse = false;
+  releasePreviewResponse = null;
 });
 
 describe("F-066 — the assembly wizard's admission belongs to the chosen patient", () => {
@@ -139,23 +198,79 @@ describe("F-066 — the assembly wizard's admission belongs to the chosen patien
     await waitFor(() => expect((comboboxes()[1] as HTMLInputElement).value).toBe(""));
   });
 
-  it("shows an eligibility lookup failure as unknown instead of claiming no check exists", async () => {
-    eligibilityRequestStatus = 503;
+  it("shows an assembly preview failure without making an eligibility determination", async () => {
+    previewRequestStatus = 503;
     mount();
     const [patient] = comboboxes();
     await pickFirstOption(patient as HTMLInputElement);
     const [, admission, provider] = comboboxes();
-    await pickFirstOption(admission as HTMLInputElement);
     await pickFirstOption(provider as HTMLInputElement);
+    await pickFirstOption(admission as HTMLInputElement);
+    fireEvent.change(screen.getByLabelText("Service from"), { target: { value: "2026-03-01" } });
+    fireEvent.change(screen.getByLabelText("Service to"), { target: { value: "2026-03-31" } });
+    expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(paths).toContain("/api/v1/medicaid-claims/assembly-preview"));
+
+    expect(
+      await screen.findByText(
+        /The billing preview could not be loaded\. No eligibility or payer conclusion was made/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No check recorded for this Medicaid coverage/)).toBeNull();
+    expect(paths).toContain("/api/v1/medicaid-claims/assembly-preview");
+  });
+
+  it("does not issue duplicate preview reads while the first request is pending", async () => {
+    holdPreviewResponse = true;
+    mount();
+    const [patient] = comboboxes();
+    await pickFirstOption(patient as HTMLInputElement);
+    const [, admission, provider] = comboboxes();
+    await pickFirstOption(provider as HTMLInputElement);
+    await pickFirstOption(admission as HTMLInputElement);
+    fireEvent.change(screen.getByLabelText("Service from"), { target: { value: "2026-03-01" } });
+    fireEvent.change(screen.getByLabelText("Service to"), { target: { value: "2026-03-31" } });
+
+    const continueButton = screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement;
+    fireEvent.click(continueButton);
+    await waitFor(() =>
+      expect(
+        paths.filter((path) => path === "/api/v1/medicaid-claims/assembly-preview"),
+      ).toHaveLength(1),
+    );
+    expect(continueButton.disabled).toBe(true);
+    fireEvent.click(continueButton);
+    expect(
+      paths.filter((path) => path === "/api/v1/medicaid-claims/assembly-preview"),
+    ).toHaveLength(1);
+
+    holdPreviewResponse = false;
+    releasePreviewResponse?.();
+    expect(await screen.findByText("Server preview loaded for this service window.")).toBeTruthy();
+  });
+
+  it("explains unresolved Room & Board candidates and non-applicable Medicare evidence", async () => {
+    mount();
+    const [patient] = comboboxes();
+    await pickFirstOption(patient as HTMLInputElement);
+    const [, admission, provider] = comboboxes();
+    await pickFirstOption(provider as HTMLInputElement);
+    await pickFirstOption(admission as HTMLInputElement);
     fireEvent.change(screen.getByLabelText("Service from"), { target: { value: "2026-03-01" } });
     fireEvent.change(screen.getByLabelText("Service to"), { target: { value: "2026-03-31" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText("Server preview loaded for this service window.");
+    fireEvent.change(screen.getByLabelText("Claim kind"), { target: { value: "rb_only" } });
 
-    expect(
-      await screen.findByText(/The eligibility-check history could not be retrieved/),
-    ).toBeTruthy();
-    expect(screen.queryByText(/No eligibility check on file/)).toBeNull();
-    expect(screen.getByRole("button", { name: "Retry eligibility history" })).toBeTruthy();
+    expect(await screen.findByText(/Room & Board candidates could not be determined/)).toBeTruthy();
+    expect(screen.getAllByText(/level-of-care records are unavailable/).length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText("Claim kind"), {
+      target: { value: "hospice_only" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Not applicable for the recorded primary payer")).toBeTruthy();
   });
 });

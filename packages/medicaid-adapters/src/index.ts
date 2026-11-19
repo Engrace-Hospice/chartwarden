@@ -4,7 +4,7 @@
 // including the Room & Board per-diem flow — across a pluggable per-state adapter registry (ARCH §11.E /
 // §13). This package is the PURE DOMAIN: the canonical value types, the deterministic state-namespaced
 // control-number, the TOB derivation, the three lifecycle reducers (claim / rb_arrangement / rb_day), the
-// Medicaid validation rule registry (the 13 platform-default rules + the pure runner, reusing the M23
+// Medicaid validation rule registry (the platform-default rules + the pure runner, reusing the M23
 // rule-result vocabulary), the `MedicaidAdapter` interface + the per-state registry, the Oregon reference
 // adapter (real metadata + helpers; wire I/O deferred) and the WA/ID/CA/NV Phase-1 deny-stubs.
 //
@@ -26,7 +26,7 @@ export * from "./tob";
 export * from "./payer-policy";
 // M24 claim kind ↔ line-family structural invariant (separate from payer responsibility and state format).
 export * from "./claim-structure";
-// §4.6 the validation rule MODEL + REGISTRY + runner + the 13 platform-default rules.
+// §4.6 the validation rule MODEL + REGISTRY + runner + the platform-default rules.
 export * from "./rules";
 // §4.5 the MedicaidAdapter interface + DTOs.
 export * from "./interface";

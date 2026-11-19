@@ -28,6 +28,25 @@ export interface AdmissionLocPeriod {
 
 export interface AdmissionLocPeriodsReader {
   periodsForAdmission(organizationId: string, admissionId: string): Promise<AdmissionLocPeriod[]>;
+  /** Read-only admission identity and stay-end facts for advisory previews; does not lock the admission. */
+  previewSnapshotInTransaction(
+    transaction: unknown,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{
+    patientId: string;
+    providerEntityId: string | null;
+    dischargedAt: Date | null;
+    status: (typeof ADM.$inferSelect)["status"];
+    stayEndFacts: {
+      dischargeDate: string | null;
+      dischargeReason: string | null;
+      deceasedDate: string | null;
+      pendingDischargeDates: readonly string[];
+      transferOut: { effectiveDate: string } | null;
+      revocationDate: string | null;
+    };
+  } | null>;
   /**
    * Lock the M6 admission row on the caller's transaction. M24 uses this as the serialization point for
    * discharge state, original-claim cadence and the LOC snapshot. M6 LOC writers lock the same row before
@@ -60,6 +79,41 @@ export interface AdmissionLocPeriodsReader {
  */
 export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPeriodsReader {
   return {
+    async previewSnapshotInTransaction(transaction, organizationId, admissionId) {
+      const tx = transaction as DbClient;
+      await assertTxScopedToOrg(tx, organizationId);
+      const rows = await tx
+        .select({
+          patientId: ADM.patientId,
+          providerEntityId: ADM.providerEntityId,
+          dischargedAt: ADM.dischargedAt,
+          status: ADM.status,
+        })
+        .from(ADM)
+        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+        .limit(1);
+      const admission = rows[0];
+      if (!admission) return null;
+      const stayEndFacts = await claimStayEndFactsForAdmissionInTransaction(
+        tx,
+        organizationId,
+        admissionId,
+      );
+      if (!stayEndFacts) return null;
+      return {
+        ...admission,
+        stayEndFacts: {
+          dischargeDate: stayEndFacts.dischargeDate,
+          dischargeReason: stayEndFacts.dischargeReason,
+          deceasedDate: stayEndFacts.deceasedDate,
+          pendingDischargeDates: stayEndFacts.pendingDischargeDates,
+          transferOut: stayEndFacts.transferOut
+            ? { effectiveDate: stayEndFacts.transferOut.effectiveDate }
+            : null,
+          revocationDate: stayEndFacts.revocationDate,
+        },
+      };
+    },
     async cadenceSnapshotInTransaction(transaction, organizationId, admissionId) {
       const rows = await (transaction as DbClient)
         .select({

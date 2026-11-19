@@ -184,9 +184,17 @@ export function MedicaidSurveyorReadView(): JSX.Element {
           </Card>
           <Card title="COB chain">
             {claim.medicareClaimId ? (
-              <Field label="Medicare primary" value={shortId(claim.medicareClaimId)} mono />
+              <>
+                <Field label="Linked Medicare claim" value={shortId(claim.medicareClaimId)} mono />
+                <span style={mutedStyle}>
+                  This reference alone does not establish adjudication, remittance, or payment.
+                </span>
+              </>
             ) : (
-              <span style={mutedStyle}>Medicaid-primary claim — no Medicare coordination.</span>
+              <span style={mutedStyle}>
+                No Medicare coordination evidence is linked to this claim; payer responsibility is
+                not established by that absence.
+              </span>
             )}
           </Card>
           <Card title="Validation run">

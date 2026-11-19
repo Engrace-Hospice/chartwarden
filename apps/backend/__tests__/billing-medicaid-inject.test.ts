@@ -251,6 +251,7 @@ function createM24Backend(): {
     customOverrideRole: null,
     overrideRoleRequired: null,
     regulatoryRequired: false,
+    platformRequired: false,
     parametersOverlay: {},
     version: 1,
   });
@@ -528,6 +529,7 @@ function createM24Backend(): {
         customOverrideRole: input.customOverrideRole ?? null,
         overrideRoleRequired: null,
         regulatoryRequired: false,
+        platformRequired: false,
         parametersOverlay: input.customPredicateDsl,
         version: 1,
       });

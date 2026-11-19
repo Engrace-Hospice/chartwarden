@@ -965,6 +965,12 @@ controls:
       - script: test:m4:audit-integrity:live
       - script: test:m4:read-audit:live
       - script: test:m5:code-status:live
+      # M24 assembly-preview reads carry patient-scoped read-audit metadata. Route and audit-emission tests
+      # verify the local contract; the existing M4 live suite remains the database-level audit-pipeline evidence.
+      - file: apps/backend/src/modules/24-billing-medicaid/routes/claims.routes.ts
+      - file: apps/backend/src/bootstrap/plugins/read-audit.ts
+      - file: apps/backend/__tests__/m24-route-validation.test.ts
+      - file: apps/backend/__tests__/read-audit-emission.test.ts
       # #874 — the live suite proves a successful coverage void records a critical audit event keyed to
       # the payer row with its enumerated reason.
       - script: test:m5:payer-intervals:live

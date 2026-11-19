@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import type { PatientCoverage, PatientCoverageReader } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runMedicaidRevalidate } from "../src/modules/24-billing-medicaid/jobs/revalidate-jobs";
@@ -79,9 +80,14 @@ describe.skipIf(!DB_URL)(
       readonly state: string;
       readonly patientId?: string;
       readonly medicareClaimId?: string | null;
-    }): Promise<{ readonly id: string; readonly patientId: string }> {
+    }): Promise<{
+      readonly id: string;
+      readonly patientId: string;
+      readonly patientPayerId: string;
+    }> {
       const claimId = randomUUID();
       const patientId = args.patientId ?? randomUUID();
+      const patientPayerId = randomUUID();
       const controlNumber = `CN-${claimId.slice(0, 8)}`;
       await admin.query(
         `INSERT INTO medicaid_claim
@@ -99,17 +105,19 @@ describe.skipIf(!DB_URL)(
           args.orgId,
           args.providerEntityId,
           patientId,
-          randomUUID(),
+          patientPayerId,
           randomUUID(),
           randomUUID(),
           args.medicareClaimId ?? null,
-          args.medicareClaimId ? JSON.stringify({ paidAmountCents: 0 }) : null,
+          args.medicareClaimId
+            ? JSON.stringify({ syntheticFixture: true, evidenceStatus: "unknown" })
+            : null,
           controlNumber,
           args.state,
           USER,
         ],
       );
-      return { id: claimId, patientId };
+      return { id: claimId, patientId, patientPayerId };
     }
 
     async function loadClaim(claimId: string) {
@@ -225,6 +233,68 @@ describe.skipIf(!DB_URL)(
       });
     });
 
+    it("runMedicaidRevalidate: a legacy Medicare link cannot become ready despite resolved primary Medicaid", async () => {
+      const claim = await seedClaim({
+        orgId: ORG_A,
+        providerEntityId: peA,
+        state: "READY",
+        medicareClaimId: randomUUID(),
+      });
+      const outbox = fakeOutbox();
+      const coverage: PatientCoverage = {
+        id: claim.patientPayerId,
+        patientId: claim.patientId,
+        payerId: randomUUID(),
+        rank: 1,
+        coverageKind: "medicaid",
+        subscriberId: "synthetic-member-0001",
+        groupNumber: null,
+        current: true,
+        effectiveFrom: "2026-01-01",
+        effectiveTo: null,
+      };
+      const coverages: Pick<PatientCoverageReader, "coverageSnapshotForRangeInTransaction"> = {
+        async coverageSnapshotForRangeInTransaction(_transaction, input) {
+          expect(input.patientId).toBe(claim.patientId);
+          return {
+            coverages: [coverage],
+            resolution: { status: "uniform", coverage },
+            primaryResolution: { status: "uniform", coverage },
+          };
+        },
+      };
+
+      await withTx(ORG_A, async (tx) => {
+        await runMedicaidRevalidate(
+          tx,
+          { connection: {} as never, db: handle.db, outbox: outbox.port, coverages },
+          {
+            organizationId: ORG_A,
+            eventId: randomUUID(),
+            eventName: "m5.patient.updated",
+            patientId: claim.patientId,
+          },
+        );
+      });
+
+      const after = await loadClaim(claim.id);
+      expect(after.state).toBe("FAILED_VALIDATION");
+      const result = await admin.query(
+        "SELECT rule_key, outcome FROM medicaid_validation_result WHERE medicaid_validation_run_id=$1 AND organization_id=$2",
+        [after.validation_run_id_latest, ORG_A],
+      );
+      expect(result.rows).toContainEqual({
+        rule_key: "medicaid_medicare_linkage_supported",
+        outcome: "fail",
+      });
+      expect(outbox.published.map((event) => event.eventName)).toContain(
+        "m24.medicaid_claim.validation_failed",
+      );
+      expect(outbox.published.map((event) => event.eventName)).not.toContain(
+        "m24.medicaid_claim.ready_for_submission",
+      );
+    });
+
     it("runMedicaidRevalidate: a DRAFT claim (not revalidate-eligible) is silently skipped", async () => {
       const claim = await seedClaim({ orgId: ORG_A, providerEntityId: peA, state: "DRAFT" });
       const outbox = fakeOutbox();
@@ -249,7 +319,7 @@ describe.skipIf(!DB_URL)(
       expect(await historyFor(claim.id)).toHaveLength(0);
     });
 
-    it("medicare-primary-ack: an AWAITING_MEDICARE_PRIMARY claim resolves to READY and emits medicare_primary_resolved", async () => {
+    it("medicare-primary-ack: a technical acknowledgment does not advance an awaiting Medicaid claim", async () => {
       const medicareClaimId = randomUUID();
       const claim = await seedClaim({
         orgId: ORG_A,
@@ -276,30 +346,12 @@ describe.skipIf(!DB_URL)(
       });
 
       const after = await loadClaim(claim.id);
-      expect(after.state).toBe("READY");
-      const hist = await historyFor(claim.id);
-      expect(hist).toHaveLength(1);
-      expect(hist[0]).toMatchObject({
-        from_state: "AWAITING_MEDICARE_PRIMARY",
-        to_state: "READY",
-        trigger_source: "consumer",
-        actor_membership_id: null,
-        reason: "medicare_primary_acknowledged",
-      });
-      expect(outbox.published).toEqual([
-        {
-          eventName: "m24.medicaid_claim.medicare_primary_resolved",
-          payload: {
-            organizationId: ORG_A,
-            claimId: claim.id,
-            medicareClaimId,
-            medicareClaimState: "ACK_ACCEPTED",
-          },
-        },
-      ]);
+      expect(after.state).toBe("AWAITING_MEDICARE_PRIMARY");
+      expect(await historyFor(claim.id)).toHaveLength(0);
+      expect(outbox.published).toHaveLength(0);
     });
 
-    it("medicare-primary-ack: FAILED_MEDICARE_PRIMARY also resolves to READY (the machine's other legal source)", async () => {
+    it("medicare-primary-ack: a technical acknowledgment does not clear FAILED_MEDICARE_PRIMARY", async () => {
       const medicareClaimId = randomUUID();
       const claim = await seedClaim({
         orgId: ORG_A,
@@ -325,7 +377,9 @@ describe.skipIf(!DB_URL)(
         createdAt: new Date(),
       });
 
-      expect((await loadClaim(claim.id)).state).toBe("READY");
+      expect((await loadClaim(claim.id)).state).toBe("FAILED_MEDICARE_PRIMARY");
+      expect(outbox.published).toHaveLength(0);
+      expect(await historyFor(claim.id)).toHaveLength(0);
     });
 
     it("medicare-primary-ack: a PAID claim sharing the same medicare_claim_id is left alone (not eligible)", async () => {
@@ -391,10 +445,11 @@ describe.skipIf(!DB_URL)(
         createdAt: new Date(),
       });
 
-      expect((await loadClaim(claimA.id)).state).toBe("READY");
+      expect((await loadClaim(claimA.id)).state).toBe("AWAITING_MEDICARE_PRIMARY");
       expect((await loadClaim(claimB.id)).state).toBe("AWAITING_MEDICARE_PRIMARY");
-      expect(outbox.published).toHaveLength(1);
-      expect(outbox.published[0]?.payload.claimId).toBe(claimA.id);
+      expect(outbox.published).toHaveLength(0);
+      expect(await historyFor(claimA.id)).toHaveLength(0);
+      expect(await historyFor(claimB.id)).toHaveLength(0);
     });
 
     /** Run `fn` inside a real `withOrgContext`-shaped transaction for the given org — `runMedicaidRevalidate`
