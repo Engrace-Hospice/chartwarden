@@ -1388,6 +1388,14 @@ export const M8_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // ADR-0114 (visit-note drafting): an administrator switches the tenant's deterministic draft and its sign gate on or off (step-up on
+  // the route). Default grants: migration 1520, pinned to DRAFT_POLICY_ADMIN_SUPERVISOR_ROLE_KEYS.
+  "encounter.draft_policy_admin": {
+    resource: "encounter",
+    action: "draft_policy_admin",
+    category: "compliance",
+    abac: "none",
+  },
   "encounter.read_internal": {
     resource: "encounter",
     action: "read_internal",
