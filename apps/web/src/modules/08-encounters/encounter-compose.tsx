@@ -1,7 +1,6 @@
 import {
   Button,
   EmptyState,
-  InlineAlert,
   LoadingSpinner,
   Modal,
   PageHeader,
@@ -27,16 +26,9 @@ import type { CSSProperties, JSX } from "react";
 import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
 import { ComposerCarePlanPicker } from "./composer-care-plan-picker";
 import { ComposerScoreTrend } from "./composer-score-trend";
-import type { DraftSectionView, Resolution } from "./draft-api";
-import {
-  STATE_LABEL,
-  describeIssues,
-  draftIsActive,
-  draftIssuesFrom,
-  touchesCarePlan,
-} from "./draft-model";
+import { STATE_LABEL, describeIssues, draftGateRefusal } from "./draft-model";
 import { DraftSectionPanel } from "./draft-section-panel";
-import { DraftSummary } from "./draft-summary";
+import { DraftSummary, DraftUnavailable } from "./draft-summary";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
@@ -53,7 +45,8 @@ import {
   toSelectionsBody,
   unmetRequiredSections,
 } from "./encounters-api";
-import { useNoteDraft } from "./use-note-draft";
+import { useComposerDraft } from "./use-composer-draft";
+import { useFocusRequest } from "./use-focus-request";
 
 const humanize = (k: string): string =>
   k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -77,6 +70,13 @@ function feedbackFor(result: Extract<WriteResult<unknown>, { ok: false }>): UiFe
       title: "This visit note changed",
       message:
         "The note was updated after you opened it. Reload the latest version before continuing.",
+    };
+  if (result.code === "COMPLIANCE_GATE_UNAVAILABLE" || result.code === "DRAFT_UNAVAILABLE")
+    return {
+      tone: "error",
+      title: "The draft could not be checked",
+      message:
+        "The visit-note draft could not be checked right now. The note was not finalized. Try again in a moment.",
     };
   const first = Array.isArray(result.details) ? result.details[0] : result.details;
   const field =
@@ -150,10 +150,8 @@ export function EncounterCompose(): JSX.Element {
   const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}));
   const [vitalsOpen, setVitalsOpen] = useState(false);
   const loadSequence = useRef(0);
-  // ADR-0114: the pre-drafted sections. "off" (the tenant switch, or nothing drafted) leaves the composer exactly as it was.
-  const noteDraft = useNoteDraft(encounterId);
-  const [carePlanRevision, setCarePlanRevision] = useState(0);
-  const [draftRefusal, setDraftRefusal] = useState<string | null>(null);
+  // Focus for the heading of the open section, so a drafted section opened from the strip takes the reader to it.
+  const [sectionHeadingRef, focusSectionHeading] = useFocusRequest<HTMLHeadingElement>();
 
   const load = useCallback(async (): Promise<EncounterView | null> => {
     if (!encounterId) return null;
@@ -241,6 +239,26 @@ export function EncounterCompose(): JSX.Element {
     [busy, dirty],
   );
   const blocker = useBlocker(shouldBlock);
+  const active =
+    template?.sections.find((s) => s.sectionId === openSection) ?? template?.sections[0];
+  // ADR-0114: the pre-drafted sections. "off" (the tenant switch, or nothing drafted) leaves the composer exactly as it was.
+  const {
+    noteDraft,
+    drafted,
+    pending,
+    panelSection,
+    blockedReason,
+    carePlanRevision,
+    refusal,
+    refuse,
+    resolveSection,
+  } = useComposerDraft({
+    encounterId: encounter?.id,
+    encounterStatus: encounter?.status,
+    activeSectionId: active?.sectionId,
+    saving: busy,
+    dirty,
+  });
 
   useEffect(() => {
     if (!dirty && !busy) return;
@@ -320,16 +338,10 @@ export function EncounterCompose(): JSX.Element {
     template?.sections.find((section) => section.sectionId === sectionId)?.heading ??
     humanize(sectionId);
 
-  /** Confirm or deselect one drafted section. A resolve that changed the visit's care-plan links re-reads the picker's list. */
-  async function resolveSection(
-    section: DraftSectionView,
-    resolution: Resolution,
-  ): Promise<boolean> {
-    setDraftRefusal(null);
-    const recorded = await noteDraft.resolve(section, resolution);
-    if (recorded && touchesCarePlan(section)) setCarePlanRevision((revision) => revision + 1);
-    return recorded;
-  }
+  const openFromSummary = (sectionId: string): void => {
+    setOpenSection(sectionId);
+    focusSectionHeading();
+  };
 
   async function save(): Promise<void> {
     if (!encounterId) return;
@@ -380,22 +392,21 @@ export function EncounterCompose(): JSX.Element {
       setVersion(saved.value.version);
       setPreview(saved.value.layer1Preview);
       setLastSavedDraft(currentDraft);
-      void noteDraft.reload();
 
       finalizationAttempted = true;
       const res = await finalizeEncounter(client, encounterId);
 
       if (!res.ok) {
-        const issues = draftIssuesFrom(res.details);
-        if (issues.length > 0) {
-          // The gate named drafted sections: say which and why, beside the draft strip, and re-read what the server now holds.
-          void noteDraft.reload();
-          setDraftRefusal(describeIssues(issues, headingOfSection));
-          // The gate lists every failure at once; the drafted sections are named below, the first other one is repeated here.
-          const others = (Array.isArray(res.details) ? res.details : []).filter(
-            (detail) => draftIssuesFrom([detail]).length === 0,
-          );
-          const alsoNeeded = others.length > 0 ? ` Also: ${readableValidation(others, "")}` : "";
+        // The save changed what the draft is built from and the gate may have named drafted sections: one re-read shows what the
+        // server holds now. (A finalize that succeeds reloads the whole note below, and the draft with it.)
+        void noteDraft.reload();
+        const gate = draftGateRefusal(res.details);
+        if (gate) {
+          // The gate named drafted sections: say which and why, beside the draft strip. It lists every failure at once; the drafted
+          // sections are named below, the first other one is repeated here.
+          refuse(describeIssues(gate.issues, headingOfSection));
+          const alsoNeeded =
+            gate.others.length > 0 ? ` Also: ${readableValidation(gate.others, "")}` : "";
           setFeedback({
             tone: "error",
             title: "Drafted sections need your review",
@@ -463,28 +474,10 @@ export function EncounterCompose(): JSX.Element {
     return <EmptyState title="Not found" description="This encounter is not available." />;
   }
 
-  const active = template.sections.find((s) => s.sectionId === openSection) ?? template.sections[0];
-
   const activeDraft = active ? draft[active.sectionId] : undefined;
   const activeSelectionCount = activeDraft?.entries.length ?? 0;
   const activeHasFreeText = (activeDraft?.freeText.trim().length ?? 0) > 0;
   const recordPath = `/patients/${encounter.patientId}/encounters/${encounter.id}`;
-  // ADR-0114: `drafted` is the draft only when something was drafted; otherwise the composer below renders exactly as before.
-  const drafted =
-    noteDraft.load.status === "ready" && draftIsActive(noteDraft.load.draft)
-      ? noteDraft.load.draft
-      : null;
-  const draftedActive = drafted?.sections.find(
-    (section) => section.sectionId === active?.sectionId,
-  );
-  const draftBlockedReason =
-    encounter.status !== "draft" && encounter.status !== "finalized"
-      ? `This note is ${stateLabel(encounter.status).toLowerCase()}, so its drafted sections can no longer be changed.`
-      : busy
-        ? "Wait for the save to finish."
-        : dirty
-          ? "You have unsaved changes. Save the draft first, so what you confirm is what you will sign."
-          : null;
   const banner = patient ? (
     <PatientBanner
       name={`${patient.firstName} ${patient.lastName}`}
@@ -642,24 +635,17 @@ export function EncounterCompose(): JSX.Element {
             )}
 
             {noteDraft.load.status === "unavailable" ? (
-              <section className="wx-draft-summary" aria-label="Drafted sections">
-                <InlineAlert tone="warning">
-                  The pre-drafted text could not be loaded. Your own documentation is not affected,
-                  but the note cannot be finalized until the draft can be read.
-                </InlineAlert>
-                <div>
-                  <Button tone="secondary" size="sm" onClick={() => void noteDraft.reload()}>
-                    Try again
-                  </Button>
-                </div>
-              </section>
+              <DraftUnavailable
+                retrying={noteDraft.refreshing}
+                onRetry={() => void noteDraft.reload()}
+              />
             ) : null}
-            {drafted ? (
+            {pending ? (
               <DraftSummary
-                draft={drafted}
+                draft={pending}
                 headingOf={headingOfSection}
-                onOpenSection={setOpenSection}
-                refusal={draftRefusal}
+                onOpenSection={openFromSummary}
+                refusal={refusal}
               />
             ) : null}
 
@@ -669,6 +655,8 @@ export function EncounterCompose(): JSX.Element {
                 disabled={busy}
                 onSaved={() => {
                   setVitalsOpen(false);
+                  // Vitals are a source of the draft: the text, its hash and its state are re-read.
+                  void noteDraft.reload();
                   setFeedback({
                     tone: "success",
                     title: "Vitals recorded",
@@ -775,7 +763,9 @@ export function EncounterCompose(): JSX.Element {
                       <div style={{ minWidth: 0 }}>
                         <div style={eyebrow}>Current section</div>
                         <div style={editorTitleRow}>
-                          <h2 style={editorTitle}>{active.heading}</h2>
+                          <h2 ref={sectionHeadingRef} tabIndex={-1} style={editorTitle}>
+                            {active.heading}
+                          </h2>
                           {active.required ? (
                             <span className="wx-encounter-required-badge" style={requiredBadge}>
                               Required
@@ -800,15 +790,15 @@ export function EncounterCompose(): JSX.Element {
                       </div>
                     </header>
 
-                    {draftedActive ? (
+                    {panelSection ? (
                       <div className="wx-draft-slot">
                         <DraftSectionPanel
-                          key={draftedActive.sectionId}
-                          section={draftedActive}
-                          note={noteDraft.notes[draftedActive.sectionId] ?? null}
-                          busy={noteDraft.busySectionId === draftedActive.sectionId}
-                          blockedReason={draftBlockedReason}
-                          onResolve={(resolution) => resolveSection(draftedActive, resolution)}
+                          key={panelSection.sectionId}
+                          section={panelSection}
+                          note={noteDraft.notes[panelSection.sectionId] ?? null}
+                          busy={noteDraft.busySectionId === panelSection.sectionId}
+                          blockedReason={blockedReason}
+                          onResolve={(resolution) => resolveSection(panelSection, resolution)}
                         />
                       </div>
                     ) : null}

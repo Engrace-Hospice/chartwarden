@@ -1599,11 +1599,27 @@
   gap: 0.5rem;
   padding: 0.5rem 0 0.75rem;
 }
+/* The empty region is a programmatic focus target (tabIndex -1): after a deselect empties a section, focus lands here. */
+.wx-draft-empty:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+/* The status line is a live region that must be in the accessibility tree from the first render, so it is never display: none while
+   empty (a region that appears when it fills is not reliably announced). Empty, it takes no room: zero height, and a negative margin
+   cancels the gap its parent (grid or flex) would put before it. */
 .wx-draft-status {
   display: block;
 }
 .wx-draft-status:empty {
-  display: none;
+  height: 0;
+  margin: -0.5rem 0 0 -0.5rem;
+  overflow: hidden;
+}
+/* The draft switch screen's "saved" line: a live region in the panel from the first render, room only once it has a sentence. */
+.wx-draft-policy-status:not(:empty) {
+  display: block;
+  margin-bottom: 0.75rem;
 }
 .wx-draft-summary {
   display: grid;

@@ -7,8 +7,13 @@
 // and re-reads this list when a draft resolve changed the visit's links (`revision`). The server is the judge of every link: a refusal is
 // shown in words and the checkbox stays where the server left it.
 //
+// LINKS KNOWN. The boxes show which elements are linked, so they are offered only once the visit's links have been read: until then (or
+// when that read failed, which says so and offers a retry in place of the boxes) every box would read "not linked", and ticking a linked
+// goal would add it twice.
+// A box that cannot act says why beside it, because a disabled control cannot be focused to find the reason.
+//
 // NO EMPTY FRAME: a visit with no care plan, no linkable goals or interventions, or a viewer who may not read them shows nothing.
-import { InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
+import { Button, InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import {
@@ -45,6 +50,8 @@ interface Row {
   readonly label: string;
 }
 
+type LinksStatus = "loading" | "error" | "ready";
+
 type LinksChange = (current: readonly CarePlanLink[]) => readonly CarePlanLink[];
 
 const goalRows = (elements: RelevantElements): readonly Row[] =>
@@ -66,6 +73,18 @@ const linkOf = (links: readonly CarePlanLink[], target: LinkTarget): CarePlanLin
 
 const NOT_SHOWN_STATUSES: readonly number[] = [403, 404];
 
+/** A 200 whose lists are not lists is a broken answer (the picker would throw rendering it): the care plan is then "could not be loaded". */
+const hasLinkableLists = (
+  elements: RelevantElements | null | undefined,
+): elements is RelevantElements =>
+  Array.isArray(elements?.goals) && Array.isArray(elements?.interventions);
+
+const NOT_A_DRAFT_REASON = "Links can change only while the note is a draft.";
+const LOADING_REASON = "Loading this visit's care-plan links…";
+const LINKS_ERROR_REASON =
+  "The care-plan links could not be loaded for this visit, so they cannot be changed right now.";
+const REASON_ID = "care-plan-picker-reason";
+
 export function ComposerCarePlanPicker({
   encounter,
   editable,
@@ -76,6 +95,8 @@ export function ComposerCarePlanPicker({
   const mounted = useIsMounted();
   const [load, setLoad] = useState<ElementsLoad>({ status: "loading" });
   const [links, setLinks] = useState<readonly CarePlanLink[]>([]);
+  const [linksStatus, setLinksStatus] = useState<LinksStatus>("loading");
+  const [linksReadKey, setLinksReadKey] = useState(0);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const { id: encounterId, patientId, admissionId, encounterType, discipline } = encounter;
@@ -91,24 +112,35 @@ export function ComposerCarePlanPicker({
       discipline,
     }).then((outcome) => {
       if (!active) return;
-      if (outcome.ok) setLoad({ status: "ready", elements: outcome.data });
-      else setLoad({ status: NOT_SHOWN_STATUSES.includes(outcome.status) ? "none" : "error" });
+      if (outcome.ok) {
+        setLoad(
+          hasLinkableLists(outcome.data)
+            ? { status: "ready", elements: outcome.data }
+            : { status: "error" },
+        );
+        return;
+      }
+      setLoad({ status: NOT_SHOWN_STATUSES.includes(outcome.status) ? "none" : "error" });
     });
     return () => {
       active = false;
     };
   }, [client, encounterId, patientId, admissionId, encounterType, discipline]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `revision` is the re-read trigger, not read in the body.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `revision` and `linksReadKey` are the re-read triggers, not read in the body.
   useEffect(() => {
     let active = true;
+    setLinksStatus("loading");
     void loadCarePlanLinks(client, encounterId).then((outcome) => {
-      if (active && outcome.ok) setLinks(outcome.data.links);
+      if (!active) return;
+      const read = outcome.ok ? outcome.data?.links : undefined;
+      if (Array.isArray(read)) setLinks(read);
+      setLinksStatus(Array.isArray(read) ? "ready" : "error");
     });
     return () => {
       active = false;
     };
-  }, [client, encounterId, revision]);
+  }, [client, encounterId, revision, linksReadKey]);
 
   if (load.status === "loading" || load.status === "none") return null;
   if (load.status === "error") {
@@ -155,6 +187,9 @@ export function ComposerCarePlanPicker({
     onChanged();
   };
 
+  const reason = !editable ? NOT_A_DRAFT_REASON : linksStatus === "loading" ? LOADING_REASON : null;
+  const linksLocked = !editable || linksStatus !== "ready";
+
   const group = (legend: string, rows: readonly Row[]): JSX.Element | null =>
     rows.length === 0 ? null : (
       <fieldset className="wx-form-stack wx-fieldset-reset">
@@ -167,7 +202,8 @@ export function ComposerCarePlanPicker({
                 id={inputId}
                 type="checkbox"
                 checked={linkOf(links, row.target) !== undefined}
-                disabled={!editable || pendingKey !== null}
+                disabled={linksLocked || pendingKey !== null}
+                aria-describedby={reason ? REASON_ID : undefined}
                 onChange={() => void toggle(row)}
               />
               <label htmlFor={inputId}>{row.label}</label>
@@ -184,8 +220,29 @@ export function ComposerCarePlanPicker({
       description="A link ties an item to this visit only. The care plan itself is never changed."
       stack
     >
-      {group("Goals worked toward", goals)}
-      {group("Interventions performed", interventions)}
+      {linksStatus === "error" ? (
+        // Not the boxes: with the links unknown every box would read "not linked" (or show a stale tick), and none could be trusted.
+        <>
+          <InlineAlert tone="warning" live={false}>
+            {LINKS_ERROR_REASON}
+          </InlineAlert>
+          <div>
+            <Button tone="secondary" size="sm" onClick={() => setLinksReadKey((key) => key + 1)}>
+              Try again
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          {reason ? (
+            <p id={REASON_ID} className="wx-row-sub">
+              {reason}
+            </p>
+          ) : null}
+          {group("Goals worked toward", goals)}
+          {group("Interventions performed", interventions)}
+        </>
+      )}
       {load.elements.redacted ? (
         <p className="wx-row-sub">Some items are hidden by privacy or consent settings.</p>
       ) : null}

@@ -86,26 +86,39 @@ above that section's statements:
 
 Rules the screen keeps:
 
-- **Unsaved edits block resolving.** Confirm and Deselect are off, with the reason, while the note has
-  unsaved changes: what is confirmed is what will be signed. A save re-reads the draft.
+- **Unsaved edits block resolving.** Confirm and Deselect wait, with the reason, while the note has
+  unsaved changes: what is confirmed is what will be signed. A save, or recording vitals (a source of the
+  draft), re-reads the draft, and Confirm and Deselect wait ("Updating the drafted text") until the new text
+  is on screen, so a choice is never made against text that is about to be replaced. They also wait while
+  another section's choice is being recorded. A waiting button is `aria-disabled`, not `disabled`: it stays
+  reachable by keyboard and points at its reason with `aria-describedby`, and pressing it does nothing.
 - **Stale is not an error to the clinician.** A confirm or deselect answered 409 `DRAFT_SECTION_STALE`
   recorded nothing: the draft is re-read, the section shows its new text and says so, and the next confirm
   carries the new hash.
 - **Deselecting care-plan items unlinks them from this visit** (never from the care plan): the section says so
   before the click and after it, the care-plan picker re-reads its links, and a section left empty by the
-  deselect reads "Nothing is left to draft in it".
+  deselect reads "Nothing is left to draft in it". Deselecting the last drafted section keeps the panel
+  (with that sentence in its live region, and focus on it), the care-plan list the sentence points at and the
+  score trend; only the progress strip, which has nothing left to count, goes. They stay for as long as the
+  composer is open on that note.
 - A finalized note can still have its drafted sections resolved (the server allows it, since it can only go on
   to sign); a signed, cosigned or voided note shows them read-only.
 - **No empty frames.** With the switch off, a template with nothing drafted, or a draft the viewer may not
   read, the composer renders exactly as before and asks for nothing extra. A draft that could not be read
   (a source failed) is said once with **Try again**; the clinician's own documentation still works.
-- After a resolve lands, **focus** moves to the drafted-section heading and the outcome is announced.
+- After a resolve lands, **focus** moves to the drafted-section heading (to the empty section's region when
+  the deselect emptied it) and the outcome is announced from a live region that is in the page from the
+  first render and never hidden while empty. A section opened from the progress strip takes focus to the
+  open section's heading, including when it is the section already open.
 
 ## Right Panel
 
 - Relevant care-plan goals / interventions as a **picker in the composer** (link / unlink to this visit; the
   care plan itself is never changed). Linking an item again brings it back into the draft; confirming a
-  drafted section links its items, deselecting unlinks them. Shown with the draft only.
+  drafted section links its items, deselecting unlinks them. Shown with the draft only. The boxes are
+  offered only once the visit's links have been read ("Loading this visit's care-plan links…" until then);
+  if that read fails the list says so with **Try again** instead of boxes that could not be trusted. A list
+  that cannot be changed says why beside it (for example "Links can change only while the note is a draft.").
 - Latest assessment scores + trend (M09): the latest PPS and ESAS-r reading up to the visit, the change
   against the reading before it, and the last few readings. Shown with the draft only; nothing renders without
   a scored reading or for a viewer who may not read scales.

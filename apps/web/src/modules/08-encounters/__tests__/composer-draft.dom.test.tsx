@@ -98,6 +98,7 @@ const template = {
 
 interface World {
   status: string;
+  serviceDate: string;
   draftSections: Section[];
   links: {
     id: string;
@@ -158,7 +159,7 @@ function routes(over: Record<string, Responder> = {}): Record<string, Responder>
         visitId: null,
         encounterType: "routine_visit",
         discipline: "rn",
-        serviceDate: "2026-11-17",
+        serviceDate: world.serviceDate,
         status: world.status,
         lateEntryTier: "on_time",
         version: 3,
@@ -281,6 +282,19 @@ const openSection = async (user: ReturnType<typeof userEvent.setup>, heading: Re
 const callsTo = (method: string, suffix: string): Call[] =>
   calls.filter((c) => c.method === method && c.path.endsWith(suffix));
 
+interface Gate {
+  readonly promise: Promise<void>;
+  readonly open: () => void;
+}
+/** A promise a test settles by hand, to hold a request in flight. */
+function gate(): Gate {
+  let open = (): void => {};
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
 const consoleSpies = ["log", "info", "warn", "error", "debug"] as const;
 let spies: ReturnType<typeof vi.spyOn>[] = [];
 
@@ -288,6 +302,7 @@ beforeEach(() => {
   calls = [];
   world = {
     status: "draft",
+    serviceDate: "2026-11-17",
     draftSections: [
       empty("chief_concern"),
       drafted({ sectionId: "vitals_review", origins: ["vitals"], text: VITALS_TEXT }),
@@ -603,12 +618,14 @@ describe("finalizing with drafted sections", () => {
     await openSection(user, /^Plan and Next Visit/);
 
     const confirm = await screen.findByRole("button", { name: "Confirm section" });
-    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText(/Save the draft first/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Confirm section" })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "Confirm section" })).not.toHaveAttribute(
+        "aria-disabled",
+      ),
     );
     // A save changes the section the clinician's words are in, so the draft is re-read.
     expect(callsTo("GET", "/draft").length).toBeGreaterThan(1);
@@ -629,7 +646,10 @@ describe("finalizing with drafted sections", () => {
     mountComposer();
     await ready();
     await openSection(user, /^Plan and Next Visit/);
-    expect(await screen.findByRole("button", { name: "Confirm section" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Confirm section" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     expect(screen.getByText(/can no longer be changed/)).toBeInTheDocument();
   });
 });
@@ -681,6 +701,277 @@ describe("the composer as before", () => {
     expect(screen.getByRole("button", { name: "Save draft" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("region", { name: "Drafted sections" })).toBeInTheDocument();
+  });
+});
+
+describe("deselecting the only drafted section", () => {
+  it("keeps its result announced, focus on a live element and the care-plan picker, and drops the strip", async () => {
+    const user = userEvent.setup();
+    world.draftSections = world.draftSections.map((s) =>
+      s.sectionId === "vitals_review" ? empty("vitals_review") : s,
+    );
+    mountComposer({
+      [`PUT ${BASE}/draft/sections/plan`]: () => {
+        world.draftSections = world.draftSections.map((s) =>
+          s.sectionId === "plan" ? empty("plan") : s,
+        );
+        return { body: empty("plan") };
+      },
+    });
+    await ready();
+    await openSection(user, /^Plan and Next Visit/);
+    await screen.findByRole("heading", { name: "Care plan for this visit" });
+    await user.click(await screen.findByRole("button", { name: "Deselect section" }));
+
+    const panel = await screen.findByRole("region", { name: "Pre-drafted from the record" });
+    // The note is inside the live region that was already mounted, so it is announced; and it points at the care-plan list.
+    expect(within(panel).getByRole("status")).toHaveTextContent(
+      /Nothing is left to draft in it.*link them again in the care-plan list/,
+    );
+    await waitFor(() => expect(panel).toHaveFocus());
+    expect(document.body).not.toHaveFocus();
+    // The list the note points at is still there, and so is the score trend.
+    expect(screen.getByRole("heading", { name: "Care plan for this visit" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Scores and trend" })).toBeInTheDocument();
+    // Nothing is drafted any more, so the strip that counts drafted sections has nothing to say.
+    expect(screen.queryByRole("region", { name: "Drafted sections" })).toBeNull();
+  });
+
+  it("does not show a draft panel for an encounter whose draft was never active", async () => {
+    world.draftSections = world.draftSections.map((s) => empty(s.sectionId));
+    mountComposer();
+    await ready();
+    await waitFor(() => expect(callsTo("GET", "/draft")).toHaveLength(1));
+    expect(screen.queryByRole("region", { name: "Pre-drafted from the record" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Care plan for this visit" })).toBeNull();
+  });
+});
+
+describe("opening a drafted section from the strip", () => {
+  it("moves focus to that section's heading, even when it is the section already open", async () => {
+    const user = userEvent.setup();
+    mountComposer();
+    await ready();
+    const summary = await screen.findByRole("region", { name: "Drafted sections" });
+    await user.click(within(summary).getByRole("button", { name: "Plan and Next Visit" }));
+    const heading = await screen.findByRole("heading", { name: "Plan and Next Visit", level: 2 });
+    await waitFor(() => expect(heading).toHaveFocus());
+
+    // Pressing it again for the section that is already open still takes the reader to it.
+    await user.click(within(summary).getByRole("button", { name: "Plan and Next Visit" }));
+    await waitFor(() => expect(heading).toHaveFocus());
+  });
+});
+
+describe("a control that waits is still reachable and says why", () => {
+  it("keeps a blocked Confirm focusable and tied to its reason, and sends nothing when pressed", async () => {
+    const user = userEvent.setup();
+    mountComposer();
+    await ready();
+    await openSection(user, /^Assessment/);
+    await user.click(await screen.findByRole("checkbox", { name: /Dyspnea at rest/ }));
+    await openSection(user, /^Plan and Next Visit/);
+
+    const confirm = await screen.findByRole("button", { name: "Confirm section" });
+    expect(confirm).toHaveAttribute("aria-disabled", "true");
+    expect(confirm).toHaveAccessibleDescription(/Save the draft first/);
+    confirm.focus();
+    expect(confirm).toHaveFocus();
+    await user.click(confirm);
+    expect(callsTo("PUT", "/draft/sections/plan")).toHaveLength(0);
+  });
+
+  it("blocks the other sections while one is being recorded, with the reason, instead of ignoring a click", async () => {
+    const user = userEvent.setup();
+    const putGate = gate();
+    mountComposer({
+      [`PUT ${BASE}/draft/sections/plan`]: async (call) => {
+        await putGate.promise;
+        return sectionPut("plan")(call);
+      },
+    });
+    await ready();
+    await openSection(user, /^Plan and Next Visit/);
+    await user.click(await screen.findByRole("button", { name: "Confirm section" }));
+    await openSection(user, /^Vital Signs Review/);
+
+    const confirm = await screen.findByRole("button", { name: "Confirm section" });
+    expect(confirm).toHaveAttribute("aria-disabled", "true");
+    expect(confirm).toHaveAccessibleDescription(/another section is being recorded/i);
+    await user.click(confirm);
+    expect(callsTo("PUT", "/draft/sections/vitals_review")).toHaveLength(0);
+
+    putGate.open();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Confirm section" })).not.toHaveAttribute(
+        "aria-disabled",
+      ),
+    );
+  });
+
+  it("says why the care-plan list cannot be changed once the note is not a draft", async () => {
+    world.status = "finalized";
+    mountComposer();
+    await ready();
+    const picker = (
+      await screen.findByRole("heading", { name: "Care plan for this visit" })
+    ).closest("section") as HTMLElement;
+    const goal = await within(picker).findByRole("checkbox", {
+      name: "Keep the patient comfortable at rest",
+    });
+    expect(goal).toBeDisabled();
+    expect(goal).toHaveAccessibleDescription(/only while the note is a draft/i);
+  });
+});
+
+describe("a draft that is being re-read", () => {
+  it("will not confirm against text that is about to be replaced, and says so", async () => {
+    const user = userEvent.setup();
+    const second = gate();
+    let reads = 0;
+    mountComposer({
+      [`GET ${BASE}/draft`]: async () => {
+        reads += 1;
+        if (reads === 2) await second.promise;
+        return { body: draftBody() };
+      },
+    });
+    await ready();
+    await openSection(user, /^Assessment/);
+    await user.click(await screen.findByRole("checkbox", { name: /Dyspnea at rest/ }));
+    await user.click(screen.getByRole("button", { name: "Save draft" }));
+    await openSection(user, /^Plan and Next Visit/);
+
+    const confirm = await screen.findByRole("button", { name: "Confirm section" });
+    await waitFor(() => expect(confirm).toHaveAccessibleDescription(/Updating the drafted text/));
+    expect(confirm).toHaveAttribute("aria-disabled", "true");
+
+    second.open();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Confirm section" })).not.toHaveAttribute(
+        "aria-disabled",
+      ),
+    );
+  });
+
+  it("re-reads the draft after vitals are recorded, because vitals are a source of it", async () => {
+    const user = userEvent.setup();
+    mountComposer({
+      [`POST ${BASE}/vitals`]: () => ({ status: 201, body: { vitalsId: "vitals-1" } }),
+    });
+    await ready();
+    await screen.findByRole("region", { name: "Drafted sections" });
+    const reads = callsTo("GET", "/draft").length;
+
+    await user.click(screen.getByRole("button", { name: "Vitals" }));
+    await user.type(await screen.findByLabelText("Heart rate"), "76");
+    await user.click(screen.getByRole("button", { name: "Record vitals" }));
+
+    expect(await screen.findByText("Vitals recorded")).toBeInTheDocument();
+    await waitFor(() => expect(callsTo("GET", "/draft")).toHaveLength(reads + 1));
+  });
+
+  it("re-reads the draft once after a refused finalize, not once for the save and again for the refusal", async () => {
+    const user = userEvent.setup();
+    mountComposer({
+      [`POST ${BASE}/finalize`]: () =>
+        errorBody(422, "COMPLIANCE_GATE_FAILED", [
+          { field: "plan", code: "DRAFT_SECTION_UNRESOLVED", message: "x" },
+        ]),
+    });
+    await ready();
+    await screen.findByRole("region", { name: "Drafted sections" });
+    const reads = callsTo("GET", "/draft").length;
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    await screen.findByText(/Plan and Next Visit \(not confirmed or deselected yet\)/);
+    await waitFor(() => expect(callsTo("GET", "/draft")).toHaveLength(reads + 1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(callsTo("GET", "/draft")).toHaveLength(reads + 1);
+  });
+
+  it("re-reads the draft after the note is finalized, from the finalized note", async () => {
+    const user = userEvent.setup();
+    mountComposer({
+      [`POST ${BASE}/finalize`]: () => {
+        world.status = "finalized";
+        return { body: { status: "finalized", version: 5 } };
+      },
+    });
+    await ready();
+    await screen.findByRole("region", { name: "Drafted sections" });
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    await screen.findByText("Note finalized");
+    await screen.findByRole("region", { name: "Drafted sections" });
+    const finalizedAt = calls.findIndex((c) => c.method === "POST" && c.path.endsWith("/finalize"));
+    const lastRead = calls.map((c) => `${c.method} ${c.path}`).lastIndexOf(`GET ${BASE}/draft`);
+    expect(lastRead).toBeGreaterThan(finalizedAt);
+    expect(
+      calls.filter((c, i) => i > finalizedAt && c.method === "GET" && c.path === `${BASE}/draft`),
+    ).toHaveLength(1);
+  });
+
+  it("shows the retry as working while the draft is being read again", async () => {
+    const user = userEvent.setup();
+    const retry = gate();
+    let attempts = 0;
+    mountComposer({
+      [`GET ${BASE}/draft`]: async () => {
+        attempts += 1;
+        if (attempts === 1) return errorBody(503, "DRAFT_UNAVAILABLE");
+        await retry.promise;
+        return { body: draftBody() };
+      },
+    });
+    await ready();
+    await screen.findByText(/pre-drafted text could not be loaded/);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Try again/ })).toBeDisabled());
+    retry.open();
+    // The strip that said the draft could not be read gives way to the one that counts the drafted sections.
+    expect(await screen.findByText(/drafted sections are resolved/)).toBeInTheDocument();
+    expect(screen.queryByText(/pre-drafted text could not be loaded/)).toBeNull();
+  });
+
+  it("says the draft could not be checked, in words, when finalizing answers 503", async () => {
+    const user = userEvent.setup();
+    mountComposer({
+      [`POST ${BASE}/finalize`]: () => errorBody(503, "COMPLIANCE_GATE_UNAVAILABLE"),
+    });
+    await ready();
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    expect(
+      await screen.findByText(
+        /The visit-note draft could not be checked right now\. The note was not finalized/,
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("a section changed under the clinician", () => {
+  it("explains it once, in plain text rather than a live alert, and keeps the one live region empty", async () => {
+    const user = userEvent.setup();
+    world.draftSections = world.draftSections.map((s) =>
+      s.sectionId === "plan" ? { ...s, state: "needs_reconfirmation" } : s,
+    );
+    mountComposer();
+    await ready();
+    await openSection(user, /^Plan and Next Visit/);
+    const panel = await screen.findByRole("region", { name: "Pre-drafted from the record" });
+    expect(within(panel).getByText(/changed after you resolved it/)).toBeInTheDocument();
+    expect(within(panel).queryByRole("alert")).toBeNull();
+    // The one live region is there from the first render and says nothing until an action does.
+    expect(within(panel).getByRole("status")).toBeEmptyDOMElement();
+  });
+});
+
+describe("a service date the composer cannot read", () => {
+  it("still opens the draft, and shows no score trend, instead of failing", async () => {
+    world.serviceDate = "not-a-date";
+    mountComposer();
+    await ready();
+    expect(await screen.findByRole("region", { name: "Drafted sections" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Scores and trend" })).toBeNull();
+    expect(calls.filter((c) => c.path.includes("/scales/"))).toHaveLength(0);
   });
 });
 
@@ -774,6 +1065,81 @@ describe("the care-plan picker", () => {
     await screen.findByRole("region", { name: "Drafted sections" });
     await waitFor(() => expect(callsTo("GET", "/care-plan/relevant-elements")).toHaveLength(1));
     expect(screen.queryByRole("heading", { name: "Care plan for this visit" })).toBeNull();
+  });
+
+  it("will not let a goal be ticked before the visit's links are known", async () => {
+    const links = gate();
+    mountComposer({
+      [`GET ${BASE}/care-plan-links`]: async () => {
+        await links.promise;
+        return { body: { links: world.links } };
+      },
+    });
+    await ready();
+    const picker = await pickerOf();
+    const goal = await within(picker).findByRole("checkbox", {
+      name: "Keep the patient comfortable at rest",
+    });
+    expect(goal).toBeDisabled();
+    links.open();
+    await waitFor(() => expect(goal).toBeEnabled());
+  });
+
+  it("says the links could not be read, offers a retry in place of boxes it cannot trust, and sends nothing", async () => {
+    const user = userEvent.setup();
+    world.links = [link(GOAL_ID, null)];
+    let attempts = 0;
+    mountComposer({
+      [`GET ${BASE}/care-plan-links`]: () => {
+        attempts += 1;
+        return attempts === 1 ? errorBody(503, "UNAVAILABLE") : { body: { links: world.links } };
+      },
+    });
+    await ready();
+    const picker = await pickerOf();
+    expect(await within(picker).findByText(/links could not be loaded/i)).toBeInTheDocument();
+    expect(within(picker).queryByRole("checkbox")).toBeNull();
+    expect(callsTo("POST", "/care-plan-links")).toHaveLength(0);
+
+    await user.click(within(picker).getByRole("button", { name: "Try again" }));
+    const goal = await within(picker).findByRole("checkbox", {
+      name: "Keep the patient comfortable at rest",
+    });
+    expect(goal).toBeEnabled();
+    expect(goal).toBeChecked();
+  });
+
+  it("does not show an unlinked element as linked when the re-read after a deselect fails", async () => {
+    const user = userEvent.setup();
+    world.links = [link(GOAL_ID, null)];
+    let reads = 0;
+    mountComposer({
+      [`GET ${BASE}/care-plan-links`]: () => {
+        reads += 1;
+        return reads === 1 ? { body: { links: world.links } } : errorBody(503, "UNAVAILABLE");
+      },
+    });
+    await ready();
+    await openSection(user, /^Plan and Next Visit/);
+    const picker = await pickerOf();
+    expect(
+      await within(picker).findByRole("checkbox", { name: "Keep the patient comfortable at rest" }),
+    ).toBeChecked();
+    world.links = [];
+    await user.click(screen.getByRole("button", { name: "Deselect section" }));
+    expect(await within(picker).findByText(/links could not be loaded/i)).toBeInTheDocument();
+    expect(within(picker).queryByRole("checkbox")).toBeNull();
+  });
+
+  it("shows the care plan as unavailable, not a crash, when the answer is not a list of goals", async () => {
+    mountComposer({
+      "GET /api/v1/internal/care-plan/relevant-elements": () => ({
+        body: { planId: "plan-1", redacted: false },
+      }),
+    });
+    await ready();
+    expect(await screen.findByText(/care plan could not be loaded/i)).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Drafted sections" })).toBeInTheDocument();
   });
 });
 

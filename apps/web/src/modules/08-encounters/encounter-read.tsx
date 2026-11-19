@@ -24,7 +24,7 @@ import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assess
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
 import type { AddendumRow } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
-import { describeIssues, draftIsActive, draftIssuesFrom, reviewCounts } from "./draft-model";
+import { draftIsActive, reviewCounts, signStaleMessage } from "./draft-model";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
 import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice, humanizeSection } from "./sign-draft-notice";
 import { useNoteDraft } from "./use-note-draft";
@@ -777,13 +777,8 @@ export function EncounterRead(): JSX.Element {
           setActionError("Your step-up expired — try again.");
         } else if (errCode === "DRAFT_SECTION_STALE") {
           // ADR-0114: the signer's drafted sections are not resolved against the draft as it stands now. Re-read it, and say which.
-          const issues = draftIssuesFrom(err?.error?.details);
           void reloadDraft();
-          setActionError(
-            `Some drafted sections need another look before this note can be signed${
-              issues.length > 0 ? `: ${describeIssues(issues, humanizeSection)}` : ""
-            }. Review them in the note editor, then sign again.`,
-          );
+          setActionError(signStaleMessage(err?.error?.details, humanizeSection));
         } else if (errCode === "COMPLIANCE_GATE_UNAVAILABLE") {
           setActionError(
             "The visit-note draft could not be checked right now. Try again in a moment.",
@@ -1907,9 +1902,11 @@ export function EncounterRead(): JSX.Element {
                   {canSign ? (
                     <button
                       type="button"
-                      disabled={signBlockedByDraft}
+                      // aria-disabled, not disabled: the button stays reachable by keyboard so its reason (the notice) is found.
+                      aria-disabled={signBlockedByDraft || undefined}
                       aria-describedby={signBlockedByDraft ? SIGN_DRAFT_NOTICE_ID : undefined}
                       onClick={() => {
+                        if (signBlockedByDraft) return;
                         setDelivery(
                           initialDelivery(
                             asVisitModality(e.visitModality),

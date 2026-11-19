@@ -164,9 +164,14 @@ describe("an unresolved drafted section", () => {
     // The status text above the button no longer claims the note is ready.
     expect(screen.getByText("Review before signing")).toBeInTheDocument();
     expect(screen.queryByText("Ready for signature")).toBeNull();
+    // The Sign button waits but stays reachable by keyboard, tied to the reason, and opens nothing when pressed.
     const button = await signButton();
-    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-disabled", "true");
     expect(button).toHaveAccessibleDescription(/still needs your review/);
+    button.focus();
+    expect(button).toHaveFocus();
+    await userEvent.setup().click(button);
+    expect(screen.queryByRole("dialog", { name: "Sign encounter" })).toBeNull();
   });
 
   it("names several, each with why, and counts them", async () => {

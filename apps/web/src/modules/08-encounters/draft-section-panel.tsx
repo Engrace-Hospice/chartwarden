@@ -5,9 +5,11 @@
 // things a clinician may do with it: confirm it (the note reads exactly this) or deselect it (the drafted text stays out; their own
 // selections and notes stay in). It never edits the text: editing is the statements and notes below it, which change the section and
 // so ask for another confirmation. FOCUS: when a resolve lands, focus moves to the panel heading, because the button that had it may no
-// longer be there. The outcome sentence sits in a live region that is mounted from the first render, so it is announced.
+// longer be there. The outcome sentence sits in a live region that is mounted from the first render (and never taken out of the
+// accessibility tree while empty), so it is announced.
+// WAITING: a button that cannot act yet (unsaved edits, a read-only note, another section being recorded) stays focusable with
+// `aria-disabled` and points at its reason with `aria-describedby`: a disabled button cannot take focus, so its reason would never be read.
 import { Button, InlineAlert, StatusPill } from "@chartwarden/ui";
-import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { DraftSectionView, Resolution } from "./draft-api";
 import {
@@ -17,13 +19,14 @@ import {
   originsText,
   touchesCarePlan,
 } from "./draft-model";
+import { useFocusRequest } from "./use-focus-request";
 
 export interface DraftSectionPanelProps {
   readonly section: DraftSectionView;
   readonly note: SectionNote | null;
   /** This section's confirm or deselect is in flight. */
   readonly busy: boolean;
-  /** Why confirm and deselect are off right now (unsaved edits, a read-only note), else null. */
+  /** Why confirm and deselect cannot act right now (unsaved edits, a read-only note, another section in flight), else null. */
   readonly blockedReason: string | null;
   readonly onResolve: (resolution: Resolution) => Promise<boolean>;
 }
@@ -32,6 +35,8 @@ const STALE_EXPLANATION =
   "The records this section was drafted from changed after you resolved it. Re-read the text below, then confirm it again or deselect it.";
 const REVIEW_EXPLANATION =
   "Read this, then confirm it or deselect it. Signing is blocked until every drafted section is resolved.";
+/** The kit Button sets opacity and cursor inline, so the look of a waiting button has to be inline too. */
+const WAITING_STYLE = { opacity: 0.6, cursor: "not-allowed" } as const;
 const CARE_PLAN_DESELECT_HINT =
   "Deselecting unlinks this section's care-plan goals and interventions from this visit. The care plan itself is never changed.";
 
@@ -43,16 +48,15 @@ export function DraftSectionPanel({
   onResolve,
 }: DraftSectionPanelProps): JSX.Element {
   // The heading of a drafted section, or the whole region of an empty one (a deselect can leave a section with nothing to draft).
-  const focusRef = useRef<HTMLHeadingElement>(null);
-  const [focusRequests, setFocusRequests] = useState(0);
+  // Focus is moved after React has committed the new state: when a deselect leaves the section empty, the element that had the focus
+  // is replaced, and only the committed one can take it.
+  const [focusRef, requestFocus] = useFocusRequest<HTMLHeadingElement>();
   const { state } = section;
-  // Focus is moved in an effect, after React has committed the new state: when a deselect leaves the section empty, the element that
-  // had the focus is replaced, and only the committed one can take it.
-  useEffect(() => {
-    if (focusRequests > 0) focusRef.current?.focus();
-  }, [focusRequests]);
+  const waiting = busy || blockedReason !== null;
+  const reasonId = `draft-reason-${section.sectionId}`;
   const resolve = async (resolution: Resolution): Promise<void> => {
-    if (await onResolve(resolution)) setFocusRequests((count) => count + 1);
+    if (waiting) return;
+    if (await onResolve(resolution)) requestFocus();
   };
   const status = (
     <output className="wx-draft-status">
@@ -88,7 +92,6 @@ export function DraftSectionPanel({
   const canDeselect = state !== "deselected";
   const confirmLabel = state === "needs_reconfirmation" ? "Confirm again" : "Confirm section";
   const leftOut = state === "deselected";
-  const unavailable = busy || blockedReason !== null;
 
   return (
     <section className="wx-draft" aria-labelledby={`draft-title-${section.sectionId}`}>
@@ -105,7 +108,9 @@ export function DraftSectionPanel({
       </header>
       <p className="wx-row-sub">Built from {originsText(section.origins)}.</p>
       {state === "needs_reconfirmation" ? (
-        <InlineAlert tone="warning">{STALE_EXPLANATION}</InlineAlert>
+        <InlineAlert tone="warning" live={false}>
+          {STALE_EXPLANATION}
+        </InlineAlert>
       ) : null}
       {state === "unresolved" ? <p className="wx-row-sub">{REVIEW_EXPLANATION}</p> : null}
       {leftOut ? <p className="wx-row-sub">Left out of the note:</p> : null}
@@ -114,8 +119,10 @@ export function DraftSectionPanel({
         {canConfirm ? (
           <Button
             tone={state === "deselected" ? "secondary" : "primary"}
-            loading={busy}
-            disabled={unavailable}
+            aria-disabled={waiting || undefined}
+            aria-busy={busy || undefined}
+            aria-describedby={blockedReason ? reasonId : undefined}
+            style={waiting ? WAITING_STYLE : undefined}
             onClick={() => void resolve("confirmed")}
           >
             {confirmLabel}
@@ -124,14 +131,20 @@ export function DraftSectionPanel({
         {canDeselect ? (
           <Button
             tone="secondary"
-            disabled={unavailable}
+            aria-disabled={waiting || undefined}
+            aria-describedby={blockedReason ? reasonId : undefined}
+            style={waiting ? WAITING_STYLE : undefined}
             onClick={() => void resolve("deselected")}
           >
             Deselect section
           </Button>
         ) : null}
       </div>
-      {blockedReason ? <p className="wx-row-sub">{blockedReason}</p> : null}
+      {blockedReason ? (
+        <p id={reasonId} className="wx-row-sub">
+          {blockedReason}
+        </p>
+      ) : null}
       {canDeselect && touchesCarePlan(section) ? (
         <p className="wx-row-sub">{CARE_PLAN_DESELECT_HINT}</p>
       ) : null}
