@@ -7,6 +7,8 @@ import type { CosignStep, CosignSubjectKind } from "./cosign-model";
 export interface CosignRefusal {
   readonly status: number | undefined;
   readonly code: string | undefined;
+  /** The server's own text, read only to recognise a step-up refusal worded as a plain 403; it is never shown. */
+  readonly message?: string | undefined;
   readonly step: CosignStep;
   readonly subject: CosignSubjectKind;
 }
@@ -33,21 +35,29 @@ export function isStepUpRefusal({
 
 const NOT_CHANGED = "Nothing was changed.";
 
+const reauthenticate = (step: CosignStep): string =>
+  `This step needs a fresh re-authentication, and yours is out of date. ${NOT_CHANGED} Re-authenticate, then ${step} again.`;
+
 const forbidden = (step: CosignStep, noun: string): string =>
   step === "release"
     ? `Only a clinical supervisor or the director of nursing can release this ${noun}. ${NOT_CHANGED} Ask one of them to release it.`
     : `You cannot do this: only an RN with cosign access who wrote neither the note nor this ${noun} can. ${NOT_CHANGED} Ask that RN to do it.`;
 
-export function cosignRefusalMessage({ status, code, step, subject }: CosignRefusal): string {
+export function cosignRefusalMessage({
+  status,
+  code,
+  message,
+  step,
+  subject,
+}: CosignRefusal): string {
   const noun = subject === "addendum" ? "amendment" : "note";
+  // A step-up refusal first: a 403 that names step_up_recent is a stale re-authentication, not a statement about the cosigner's role.
+  if (isStepUpRefusal({ status, code, message })) return reauthenticate(step);
   switch (code) {
     case "ILLEGAL_TRANSITION":
       return `This ${noun}'s cosignature request is no longer waiting for this step: someone else may have already acknowledged, signed or released it. ${NOT_CHANGED} Reload the page to see where it stands.`;
     case "COSIGNATURE_LOCKED":
       return `This ${noun} is locked at the 48-hour cap, so it cannot be cosigned yet. ${NOT_CHANGED} A supervisor has to release it first, then an RN can sign.`;
-    case "STEP_UP_REQUIRED":
-    case "STEP_UP_AUTH_REQUIRED":
-      return `This step needs a fresh re-authentication, and yours is out of date. ${NOT_CHANGED} Re-authenticate, then ${step} again.`;
     case "SUPERVISOR_RELEASE_NOT_PERMITTED":
       return forbidden("release", noun);
     case "NOT_COSIGN_ELIGIBLE":

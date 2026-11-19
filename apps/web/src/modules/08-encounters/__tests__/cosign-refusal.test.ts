@@ -52,6 +52,23 @@ describe("step-up", () => {
     expect(say({ status: 412, code: "STEP_UP_AUTH_REQUIRED" })).toMatch(/re-authenticat/i);
   });
 
+  it("words a 403 FORBIDDEN that names step_up_recent as a re-authentication, not as a role refusal", () => {
+    const text = say({ status: 403, code: "FORBIDDEN", message: "needs step_up_recent" });
+    expect(text).toMatch(/re-authenticat/i);
+    expect(text).not.toMatch(/only an RN/);
+    expect(text).not.toMatch(/clinical supervisor/);
+    expect(text).not.toMatch(/step_up_recent/);
+    expect(
+      say({ status: 403, code: "FORBIDDEN", message: "needs step_up_recent", step: "release" }),
+    ).toMatch(/re-authenticat/i);
+  });
+
+  it("still words a 403 whose message does not name step-up as a role refusal", () => {
+    expect(say({ status: 403, code: "FORBIDDEN", message: "no self-cosign" })).toMatch(
+      /only an RN/,
+    );
+  });
+
   it("recognises every shape of it, and no other 403", () => {
     expect(isStepUpRefusal({ status: 403, code: "STEP_UP_REQUIRED", message: undefined })).toBe(
       true,

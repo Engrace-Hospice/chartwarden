@@ -55,11 +55,15 @@ function Location() {
 }
 
 type Reply = { data?: unknown; error?: unknown; response?: { status: number } };
-function mount(subject: CosignSubject, reply: () => Promise<Reply> | Reply) {
+function mount(
+  subject: CosignSubject,
+  reply: () => Promise<Reply> | Reply,
+  at = "/patients/patient-1/encounters/enc-1",
+) {
   const POST = vi.fn(async () => reply());
   const onDone = vi.fn();
   render(
-    <MemoryRouter initialEntries={["/patients/patient-1/encounters/enc-1"]}>
+    <MemoryRouter initialEntries={[at]}>
       <ApiClientProvider client={{ POST } as never}>
         <Routes>
           <Route
@@ -84,6 +88,14 @@ const refused = (status: number, code: string, message = "server text"): Reply =
   response: { status },
 });
 const dialog = () => screen.getByRole("dialog");
+/** A reply that stays out until the test lets it land. */
+function held() {
+  let settle: (reply: Reply) => void = () => undefined;
+  const promise = new Promise<Reply>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, settle };
+}
 
 describe.each([
   ["a note's request", NOTE],
@@ -181,6 +193,27 @@ describe.each([
     );
   });
 
+  it("words a 403 FORBIDDEN that names step_up_recent as a re-authentication, beside the link", async () => {
+    const { user } = mount(subject, () => refused(403, "FORBIDDEN", "requires step_up_recent"));
+    await user.click(screen.getByRole("button", { name: "Open sign" }));
+    await user.click(within(dialog()).getByRole("checkbox"));
+    await user.click(within(dialog()).getByRole("button", { name: "Sign & commit" }));
+    const alert = await within(dialog()).findByRole("alert");
+    expect(alert).toHaveTextContent(/needs a fresh re-authentication/);
+    expect(alert).not.toHaveTextContent(/only an RN/);
+    expect(within(dialog()).getByRole("link", { name: "Re-authenticate" })).toBeInTheDocument();
+  });
+
+  it("comes back to the same place, hash included, after re-authenticating", async () => {
+    const at = "/patients/patient-1/encounters/enc-1?x=1#addendum-cosign-add-1";
+    const { user } = mount(subject, () => refused(403, "STEP_UP_REQUIRED"), at);
+    await user.click(screen.getByRole("button", { name: "Open sign" }));
+    await user.click(within(dialog()).getByRole("checkbox"));
+    await user.click(within(dialog()).getByRole("button", { name: "Sign & commit" }));
+    const link = await within(dialog()).findByRole("link", { name: "Re-authenticate" });
+    expect(link.getAttribute("href")).toBe(`/step-up?returnTo=${encodeURIComponent(at)}`);
+  });
+
   it("reads the machine's expired step-up (412) the same way", async () => {
     const { user } = mount(subject, () => refused(412, "STEP_UP_AUTH_REQUIRED"));
     await user.click(screen.getByRole("button", { name: "Open sign" }));
@@ -274,5 +307,35 @@ describe.each([
     await user.click(within(dialog()).getByRole("button", { name: "Cancel" }));
     await user.click(screen.getByRole("button", { name: "Open acknowledge" }));
     expect(within(dialog()).queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps Cancel available while a step is in flight, and a failure that lands after it sets nothing", async () => {
+    const { promise, settle } = held();
+    const { user, onDone } = mount(subject, () => promise);
+    await user.click(screen.getByRole("button", { name: "Open acknowledge" }));
+    await user.click(within(dialog()).getByRole("button", { name: "Acknowledge" }));
+    await user.click(within(dialog()).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // Another dialog opens while the first answer is still out: the late refusal must not land in it.
+    await user.click(screen.getByRole("button", { name: "Open release" }));
+    settle(refused(409, "ILLEGAL_TRANSITION"));
+    await waitFor(() =>
+      expect(within(dialog()).getByRole("button", { name: "Release" })).toBeEnabled(),
+    );
+    expect(within(dialog()).queryByRole("alert")).toBeNull();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("still reads the request again when a step cancelled meanwhile went through", async () => {
+    const { promise, settle } = held();
+    const { user, onDone } = mount(subject, () => promise);
+    await user.click(screen.getByRole("button", { name: "Open acknowledge" }));
+    await user.click(within(dialog()).getByRole("button", { name: "Acknowledge" }));
+    await user.click(within(dialog()).getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Open sign" }));
+    settle(ok());
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    // The dialog the cosigner opened afterwards is theirs: the late success does not close it.
+    expect(within(dialog()).getByRole("button", { name: "Sign & commit" })).toBeInTheDocument();
   });
 });

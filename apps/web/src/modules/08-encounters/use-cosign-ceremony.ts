@@ -7,7 +7,7 @@
 // release reason is not lost to a redirect. The release carries `stepUpAuthAt`, a click-time clock value the route requires (and ignores:
 // step-up provenance comes from the session), under one key and one first-attempt time per intent, so a retry after a lost reply is identical.
 import { sendWrite, useApiClient, useIdempotencyKeeper } from "@chartwarden/ui";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { CosignStep } from "./cosign-model";
 import { cosignRefusalMessage, isStepUpRefusal } from "./cosign-refusal";
@@ -81,7 +81,11 @@ export function useCosignCeremony(subject: CosignSubject, onDone: () => void): C
   const [reason, setReasonText] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
 
+  // Which commit's answer may still be read: closing the dialog (Cancel stays available while a step is out) retires the one in flight.
+  const live = useRef(0);
+
   const close = useCallback(() => {
+    live.current += 1;
     setStep(null);
     setReasonText("");
     setReasonError(null);
@@ -152,9 +156,16 @@ export function useCosignCeremony(subject: CosignSubject, onDone: () => void): C
     setError(null);
     setReauthenticateHref(null);
     setReasonError(null);
+    const ticket = live.current;
     const outcome = await send(step);
     // The page the person was on may be gone by now (a request that took long); a late answer sets nothing and moves nothing.
     if (!mounted.current) return;
+    if (live.current !== ticket) {
+      // The dialog was cancelled while this was out: a refusal has nowhere to be shown, but a step that went through changed the request.
+      setBusy(false);
+      if (outcome !== "unreachable" && !outcome.error) onDone();
+      return;
+    }
     if (outcome === "unreachable") {
       setBusy(false);
       setError(UNREACHABLE);
@@ -170,7 +181,7 @@ export function useCosignCeremony(subject: CosignSubject, onDone: () => void): C
     const status = outcome.response?.status;
     const code = err.error?.code;
     const message = err.error?.message ?? err.message;
-    const path = `${location.pathname}${location.search}`;
+    const path = `${location.pathname}${location.search}${location.hash}`;
     if (status === 401) {
       navigate(authFailureRedirect(status, code, path, message) ?? "/login");
       return;
@@ -184,7 +195,7 @@ export function useCosignCeremony(subject: CosignSubject, onDone: () => void): C
     if (isStepUpRefusal({ status, code, message })) {
       setReauthenticateHref(`/step-up?returnTo=${encodeURIComponent(path)}`);
     }
-    setError(cosignRefusalMessage({ status, code, step, subject: subject.kind }));
+    setError(cosignRefusalMessage({ status, code, message, step, subject: subject.kind }));
   }, [step, reason, send, mounted, close, onDone, navigate, location, subject.kind]);
 
   return {
