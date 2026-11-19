@@ -32,6 +32,7 @@ import {
   type DraftLoad,
   type SectionNote,
   isDraftSectionView,
+  notAuthorRefusal,
   replaceSection,
   resolutionNote,
 } from "./draft-model";
@@ -53,6 +54,7 @@ export interface NoteDraft {
 }
 
 const NOT_ALLOWED_STATUSES: readonly number[] = [403, 404];
+const FORBIDDEN_CODE = "FORBIDDEN";
 
 function loadStateOf(outcome: Outcome<DraftView>): DraftLoad {
   if (outcome.ok) {
@@ -175,7 +177,12 @@ export function useNoteDraft(
         return false;
       }
       if (rereadAsked) await reload();
-      if (stillHere()) noteFor(section.sectionId, { tone: "error", text: failure.message });
+      // Only the author may resolve (403 FORBIDDEN): worded for the act, not as a general lack of access. Nothing was recorded, so the section stays as it was.
+      const text =
+        failure.code === FORBIDDEN_CODE
+          ? notAuthorRefusal(addendumId !== undefined)
+          : failure.message;
+      if (stillHere()) noteFor(section.sectionId, { tone: "error", text });
       return false;
     },
     [client, encounterId, addendumId, reload],

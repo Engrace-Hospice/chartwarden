@@ -200,6 +200,16 @@ export interface SectionNote {
   readonly text: string;
 }
 
+/**
+ * What a confirm or deselect refused 403 FORBIDDEN says. The draft is the AUTHOR's act, a supervisor's included: the signer is who confirmed,
+ * so nobody else may confirm a draft the author will sign. Nothing was recorded; the section is as it was.
+ */
+export function notAuthorRefusal(amending: boolean): string {
+  return amending
+    ? "Only the author of this addendum can confirm or deselect the sections it amends. Nothing was changed. Ask them to do it, or open your own addendum."
+    : "Only the author of this note can confirm or deselect its drafted sections, because the author is who signs it. Nothing was changed. Ask the author to do it.";
+}
+
 export function resolutionNote(
   requested: Resolution,
   previous: DraftSectionView,

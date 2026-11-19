@@ -339,6 +339,37 @@ describe("an addendum whose Part 2 sections the API left out of what it amends",
   });
 });
 
+describe("a confirmation by someone other than the addendum's author", () => {
+  it("says only the author can confirm or deselect when the API answers 403, and leaves the section unresolved with Sign waiting", async () => {
+    const user = userEvent.setup();
+    const { PUT } = mount([amending], {
+      PUT: async () => ({
+        error: { error: { code: "FORBIDDEN", message: "only the author of an addendum" } },
+        response: { status: 403 },
+      }),
+    });
+    const inReview = await review();
+    await inReview.findByText("Redrafted pain.");
+    await user.click(
+      inReview.getAllByRole("button", { name: "Deselect section" })[0] as HTMLElement,
+    );
+    const note = await inReview.findByText(
+      /Only the author of this addendum can confirm or deselect/,
+    );
+    expect(note).toHaveTextContent(/Nothing was changed/);
+    expect(note).not.toHaveTextContent(/only the author of an addendum/);
+    expect(inReview.queryByText(/You do not have access/)).toBeNull();
+    // No half-resolved state: no outcome line, no state change, and the addendum still cannot be signed.
+    expect(inReview.queryByText(/will be amended|amends nothing/)).toBeNull();
+    expect(inReview.getAllByRole("button", { name: "Confirm section" })).toHaveLength(2);
+    expect(within(row()).getByRole("button", { name: "Sign addendum" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(PUT).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("two addenda amending the same section", () => {
   it("name their review regions and their sections apart, by when each addendum was opened", async () => {
     mount([amending, { ...amending, id: "add-2", createdAt: "2026-10-03T09:30:00Z" }]);

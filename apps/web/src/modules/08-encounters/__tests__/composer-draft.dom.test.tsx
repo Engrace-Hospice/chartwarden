@@ -554,6 +554,31 @@ describe("a section whose inputs changed", () => {
     expect(screen.getByRole("button", { name: "Confirm section" })).toBeEnabled();
   });
 
+  // The draft's confirmation is the AUTHOR's act (the signer is who confirmed): anyone else, a supervisor included, is refused 403.
+  it("says only the note's author can confirm or deselect when the API answers 403, and leaves the section unresolved", async () => {
+    const user = userEvent.setup();
+    mountComposer({ [`PUT ${BASE}/draft/sections/plan`]: () => errorBody(403, "FORBIDDEN") });
+    await ready();
+    await openSection(user, /^Plan and Next Visit/);
+    await user.click(await screen.findByRole("button", { name: "Confirm section" }));
+    const panel = await screen.findByRole("region", { name: "Pre-drafted from the record" });
+    const status = await within(panel).findByText(/Only the author of this note can confirm/);
+    expect(status).toHaveTextContent(/who signs it/);
+    expect(status).toHaveTextContent(/Nothing was changed/);
+    expect(within(panel).queryByText(/You do not have access/)).toBeNull();
+    // Nothing is shown as confirmed: the text, the state, the buttons and the strip's count are as they were.
+    expect(within(panel).queryByText("Confirmed")).toBeNull();
+    expect(within(panel).getByText(PLAN_TEXT)).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Confirm section" })).not.toHaveAttribute(
+      "aria-disabled",
+    );
+    expect(within(panel).getByRole("button", { name: "Deselect section" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Drafted sections" })).getByText(/0 of 2/),
+    ).toBeInTheDocument();
+    expect(callsTo("PUT", "/draft/sections/plan")).toHaveLength(1);
+  });
+
   it("falls back to the plain composer when the switch is turned off mid-session", async () => {
     const user = userEvent.setup();
     mountComposer({ [`PUT ${BASE}/draft/sections/plan`]: () => errorBody(404, "NOT_FOUND") });
