@@ -366,16 +366,33 @@ export function toSelectionsBody(draft: DraftSections): UpdateSelectionsBody {
   return { sections } as UpdateSelectionsBody;
 }
 
+const NO_SECTIONS: ReadonlySet<string> = new Set();
+
+/**
+ * Whether a section counts as populated: the clinician's own entries or free text, or drafted text they CONFIRMED (ADR-0114). The same
+ * rule as the server's gate check 1 (`required_sections`): a deselected, unresolved or changed drafted section is not in
+ * `confirmedSectionIds`, so only the clinician's own words count there. A UI hint; the server judges.
+ */
+export function isSectionPopulated(
+  draft: DraftSections,
+  sectionId: string,
+  confirmedSectionIds: ReadonlySet<string> = NO_SECTIONS,
+): boolean {
+  const own = draft[sectionId];
+  return (
+    (own?.entries.length ?? 0) > 0 ||
+    (own?.freeText.trim().length ?? 0) > 0 ||
+    confirmedSectionIds.has(sectionId)
+  );
+}
+
 /** Which required sections are still empty — shown to the author, never used to block the request. */
 export function unmetRequiredSections(
   template: TemplateView,
   draft: DraftSections,
+  confirmedSectionIds: ReadonlySet<string> = NO_SECTIONS,
 ): readonly string[] {
   return template.sections
-    .filter((s) => s.required)
-    .filter((s) => {
-      const d = draft[s.sectionId];
-      return !d || (d.entries.length === 0 && d.freeText.trim().length === 0);
-    })
+    .filter((s) => s.required && !isSectionPopulated(draft, s.sectionId, confirmedSectionIds))
     .map((s) => s.heading);
 }

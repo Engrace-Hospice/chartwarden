@@ -24,9 +24,16 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
+import {
+  type UiFeedback,
+  feedbackFor,
+  humanize,
+  readableValidation,
+  transportFeedback,
+} from "./compose-feedback";
 import { ComposerCarePlanPicker } from "./composer-care-plan-picker";
 import { ComposerScoreTrend } from "./composer-score-trend";
-import { STATE_LABEL, describeIssues, draftGateRefusal } from "./draft-model";
+import { STATE_LABEL, confirmedSectionIds, describeIssues, draftGateRefusal } from "./draft-model";
 import { DraftSectionPanel } from "./draft-section-panel";
 import { DraftSummary, DraftUnavailable } from "./draft-summary";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
@@ -35,9 +42,9 @@ import {
   type EncounterView,
   type MenuEntry,
   type TemplateView,
-  type WriteResult,
   captureVitals,
   finalizeEncounter,
+  isSectionPopulated,
   loadSelections,
   loadTemplate,
   saveSelections,
@@ -45,51 +52,13 @@ import {
   toSelectionsBody,
   unmetRequiredSections,
 } from "./encounters-api";
+import {
+  NOTE_VIEW_UNAVAILABLE_DESCRIPTION,
+  NoteViewUnavailable,
+  isNoteViewUnavailable,
+} from "./note-view-unavailable";
 import { useComposerDraft } from "./use-composer-draft";
 import { useFocusRequest } from "./use-focus-request";
-
-const humanize = (k: string): string =>
-  k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-
-const sectionIsFilled = (draft: DraftSections, sectionId: string): boolean => {
-  const value = draft[sectionId];
-  return (value?.entries.length ?? 0) > 0 || (value?.freeText.trim().length ?? 0) > 0;
-};
-
-type UiFeedback = {
-  tone: "success" | "error" | "warning";
-  title: string;
-  message: string;
-  field?: string;
-};
-
-function feedbackFor(result: Extract<WriteResult<unknown>, { ok: false }>): UiFeedback {
-  if (result.code === "STALE_VERSION")
-    return {
-      tone: "warning",
-      title: "This visit note changed",
-      message:
-        "The note was updated after you opened it. Reload the latest version before continuing.",
-    };
-  if (result.code === "COMPLIANCE_GATE_UNAVAILABLE" || result.code === "DRAFT_UNAVAILABLE")
-    return {
-      tone: "error",
-      title: "The draft could not be checked",
-      message:
-        "The visit-note draft could not be checked right now. The note was not finalized. Try again in a moment.",
-    };
-  const first = Array.isArray(result.details) ? result.details[0] : result.details;
-  const field =
-    first && typeof first === "object" && typeof (first as { field?: unknown }).field === "string"
-      ? (first as { field: string }).field
-      : undefined;
-  return {
-    tone: "error",
-    title: "Action needed",
-    message: readableValidation(result.details, result.message),
-    field,
-  };
-}
 
 interface PatientSummary {
   readonly firstName: string;
@@ -103,33 +72,6 @@ const isShellExit = (pathname: string): boolean =>
   SHELL_EXIT_PATHS.has(pathname) || pathname === "/login" || pathname.startsWith("/login/");
 
 const serializedDraft = (draft: DraftSections): string => JSON.stringify(toSelectionsBody(draft));
-
-const transportFeedback: UiFeedback = {
-  tone: "error",
-  title: "Connection interrupted",
-  message: "The connection was interrupted. Your changes are still here; try again.",
-};
-
-const VITAL_LABELS: Record<string, string> = {
-  bpSystolic: "Systolic blood pressure",
-  bpDiastolic: "Diastolic blood pressure",
-  heartRate: "Heart rate",
-  respiratoryRate: "Respiratory rate",
-  temperature: "Temperature",
-  spo2: "SpO₂",
-  painScore: "Pain score",
-};
-
-function readableValidation(details: unknown, fallback: string): string {
-  const first = Array.isArray(details) ? details[0] : details;
-  if (first && typeof first === "object") {
-    const item = first as { field?: unknown; message?: unknown };
-    const field =
-      typeof item.field === "string" ? (VITAL_LABELS[item.field] ?? humanize(item.field)) : null;
-    if (typeof item.message === "string") return field ? `${field}: ${item.message}` : item.message;
-  }
-  return fallback;
-}
 
 export function EncounterCompose(): JSX.Element {
   const client = useApiClient();
@@ -145,6 +87,8 @@ export function EncounterCompose(): JSX.Element {
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The failed read is the Part 2 note view that could not be decided (503): the screen offers a retry.
+  const [retryable, setRetryable] = useState(false);
   const [feedback, setFeedback] = useState<UiFeedback | null>(null);
   const [operation, setOperation] = useState<"saving" | "finalizing" | null>(null);
   const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}));
@@ -159,6 +103,7 @@ export function EncounterCompose(): JSX.Element {
 
     setLoading(true);
     setError(null);
+    setRetryable(false);
     setEncounter(null);
     setPatient(null);
     setTemplate(null);
@@ -175,7 +120,13 @@ export function EncounterCompose(): JSX.Element {
 
       if (sequence !== loadSequence.current) return null;
       if (enc.error || !enc.data) {
-        setError("Could not load this encounter.");
+        const noteViewUnavailable = isNoteViewUnavailable(enc.error);
+        setRetryable(noteViewUnavailable);
+        setError(
+          noteViewUnavailable
+            ? NOTE_VIEW_UNAVAILABLE_DESCRIPTION
+            : "Could not load this encounter.",
+        );
         setLoading(false);
         return null;
       }
@@ -225,11 +176,6 @@ export function EncounterCompose(): JSX.Element {
     };
   }, [load]);
 
-  const unmet = useMemo(
-    () => (template ? unmetRequiredSections(template, draft) : []),
-    [template, draft],
-  );
-
   const editable = encounter?.status === "draft" && encounter.id === encounterId;
   const currentDraft = useMemo(() => serializedDraft(draft), [draft]);
   const dirty = editable && currentDraft !== lastSavedDraft;
@@ -259,6 +205,12 @@ export function EncounterCompose(): JSX.Element {
     saving: busy,
     dirty,
   });
+  // The server's check 1 counts drafted text the clinician confirmed as populating a required section; so does every count here.
+  const confirmedIds = useMemo(() => confirmedSectionIds(drafted), [drafted]);
+  const unmet = useMemo(
+    () => (template ? unmetRequiredSections(template, draft, confirmedIds) : []),
+    [template, draft, confirmedIds],
+  );
 
   useEffect(() => {
     if (!dirty && !busy) return;
@@ -278,7 +230,7 @@ export function EncounterCompose(): JSX.Element {
     }
 
     const completed = template.sections.filter((section) =>
-      sectionIsFilled(draft, section.sectionId),
+      isSectionPopulated(draft, section.sectionId, confirmedIds),
     ).length;
 
     const total = template.sections.length;
@@ -289,7 +241,7 @@ export function EncounterCompose(): JSX.Element {
       requiredRemaining: unmet.length,
       percent: total > 0 ? Math.round((completed / total) * 100) : 0,
     };
-  }, [draft, template, unmet.length]);
+  }, [draft, template, confirmedIds, unmet.length]);
 
   function toggleEntry(sectionId: string, entry: MenuEntry): void {
     setDraft((prev) => {
@@ -459,7 +411,11 @@ export function EncounterCompose(): JSX.Element {
   }
 
   if (error) {
-    return <EmptyState title="Unavailable" description={error} />;
+    return retryable ? (
+      <NoteViewUnavailable description={error} onRetry={() => void load()} />
+    ) : (
+      <EmptyState title="Unavailable" description={error} />
+    );
   }
 
   if (encounter !== null && encounter.id !== encounterId) {
@@ -682,7 +638,7 @@ export function EncounterCompose(): JSX.Element {
 
                 <nav style={sectionNav}>
                   {template.sections.map((section, index) => {
-                    const filled = sectionIsFilled(draft, section.sectionId);
+                    const filled = isSectionPopulated(draft, section.sectionId, confirmedIds);
                     const isActive = section.sectionId === active?.sectionId;
                     const missingRequired = section.required && !filled;
                     const sectionState = filled

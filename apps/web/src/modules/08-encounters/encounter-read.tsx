@@ -24,9 +24,14 @@ import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assess
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
 import type { AddendumRow } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
-import { draftIsActive, reviewCounts, signStaleMessage } from "./draft-model";
+import { draftIsActive, reviewCounts } from "./draft-model";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
-import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice, humanizeSection } from "./sign-draft-notice";
+import {
+  NOTE_VIEW_UNAVAILABLE_DESCRIPTION,
+  NoteViewUnavailable,
+  isNoteViewUnavailable,
+} from "./note-view-unavailable";
+import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice } from "./sign-draft-notice";
 import { useNoteDraft } from "./use-note-draft";
 import {
   type DeliveryDraft,
@@ -38,6 +43,7 @@ import {
   unconfirmedSeed,
 } from "./visit-delivery";
 import { VisitDeliveryFields } from "./visit-delivery-fields";
+import { writeRefusalMessage } from "./write-refusal";
 import { authFailureRedirect } from "./write-workflow";
 
 type CeremonyMode = "sign" | "acknowledge" | "cosign-sign" | "supervisor-release" | null;
@@ -301,6 +307,8 @@ export function EncounterRead(): JSX.Element {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The failed read is the Part 2 note view that could not be decided (503): the screen offers a retry.
+  const [retryable, setRetryable] = useState(false);
 
   const [ceremony, setCeremony] = useState<CeremonyMode>(null);
   const [utilityModal, setUtilityModal] = useState<"void" | "addendum" | "assessment" | null>(null);
@@ -380,6 +388,7 @@ export function EncounterRead(): JSX.Element {
 
     setLoading(true);
     setError(null);
+    setRetryable(false);
 
     const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
       params: {
@@ -390,7 +399,11 @@ export function EncounterRead(): JSX.Element {
     });
 
     if (err || !data?.id) {
-      setError("Could not load the encounter.");
+      const noteViewUnavailable = isNoteViewUnavailable(err);
+      setRetryable(noteViewUnavailable);
+      setError(
+        noteViewUnavailable ? NOTE_VIEW_UNAVAILABLE_DESCRIPTION : "Could not load the encounter.",
+      );
       setLoading(false);
       return;
     }
@@ -755,41 +768,16 @@ export function EncounterRead(): JSX.Element {
           return;
         }
 
-        if (errCode === "MODALITY_CONFIRMATION_REQUIRED") {
-          setActionError("Choose how this visit was delivered, then sign again.");
-        } else if (errCode === "MODALITY_CONFLICTS_WITH_VISIT_TYPE") {
-          setActionError(
-            "This is a telephonic visit type, so it cannot be recorded as in person or video. Choose Telephonic, then sign again.",
-          );
-        } else if (errCode === "VISIT_TIME_INVALID") {
-          setActionError(
-            errMessage ?? "The visit times could not be accepted. Check them and sign again.",
-          );
-        } else if (errCode === "VISIT_TIME_OVERLAP") {
-          setActionError(
-            "These visit times overlap another visit you documented. Correct the times, or clear them and sign without times.",
-          );
-        } else if (errCode === "EVV_BRACKET_UNAVAILABLE") {
-          setActionError(
-            "The visit's check-in/check-out record could not be reached, so typed times cannot be accepted right now. Try again in a moment, or clear the times and sign without them.",
-          );
-        } else if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED") {
-          setActionError("Your step-up expired — try again.");
-        } else if (errCode === "DRAFT_SECTION_STALE") {
-          // ADR-0114: the signer's drafted sections are not resolved against the draft as it stands now. Re-read it, and say which.
-          void reloadDraft();
-          setActionError(signStaleMessage(err?.error?.details, humanizeSection));
-        } else if (errCode === "COMPLIANCE_GATE_UNAVAILABLE") {
-          setActionError(
-            "The visit-note draft could not be checked right now. Try again in a moment.",
-          );
-        } else if (errCode === "STALE_VERSION") {
-          setActionError("This encounter changed since you opened it — reload to retry.");
-        } else if (response?.status === 403) {
-          setActionError("You do not have permission for this action.");
-        } else {
-          setActionError("The action could not be completed.");
-        }
+        // ADR-0114: the signer's drafted sections are not resolved against the draft as it stands now. Re-read it; the message says which.
+        if (errCode === "DRAFT_SECTION_STALE") void reloadDraft();
+        setActionError(
+          writeRefusalMessage({
+            status: response?.status,
+            code: errCode,
+            message: errMessage,
+            details: err?.error?.details,
+          }),
+        );
 
         return;
       }
@@ -1107,7 +1095,11 @@ export function EncounterRead(): JSX.Element {
   if (error || !encounter) {
     return (
       <PatientChartBail banner={bailBanner} patientId={patientId} current="encounters">
-        <EmptyState title="Unavailable" description={error ?? "Not found."} />
+        {retryable && error ? (
+          <NoteViewUnavailable description={error} onRetry={() => void load()} />
+        ) : (
+          <EmptyState title="Unavailable" description={error ?? "Not found."} />
+        )}
       </PatientChartBail>
     );
   }

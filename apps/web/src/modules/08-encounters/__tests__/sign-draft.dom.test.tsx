@@ -2,6 +2,9 @@
 // The sign step with a drafted note (ADR-0114 VN-D7): the signer is told, beside the Sign button, which drafted sections still need them
 // and where to resolve them; the button waits; and when the server refuses the sign with 409 DRAFT_SECTION_STALE the sections it names are
 // shown in words and the draft is re-read. A note with nothing drafted, or a tenant with the draft off, signs exactly as before.
+// E1 (the per-viewer Part 2 view): a note finalized with Part 2 draft text cannot be signed once the draft is switched off (409
+// DRAFT_OFF_AFTER_FINALIZE, with the next step), and a note view whose Part 2 check cannot be decided (503 NOTE_VIEW_UNAVAILABLE) is an
+// error state with a retry, never an empty or partial note.
 import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -52,6 +55,10 @@ const section = (sectionId: string, state: string) => ({
 
 let sections: ReturnType<typeof section>[];
 let draftAnswer: "ok" | "off";
+/** How many reads of the encounter answer 503 NOTE_VIEW_UNAVAILABLE before it answers. */
+let noteViewFailures: number;
+/** The status and code the encounter read answers instead, when set (a failure that is not a retryable note view). */
+let encounterFailure: { status: number; code: string } | null;
 type PostImpl = (path: string, init?: unknown) => Promise<unknown>;
 
 const signed: PostImpl = async () => ({ data: { status: "signed" }, response: new Response() });
@@ -65,11 +72,27 @@ const refused =
 beforeEach(() => {
   sections = [section("vitals_review", "unresolved"), section("plan", "confirmed")];
   draftAnswer = "ok";
+  noteViewFailures = 0;
+  encounterFailure = null;
 });
 
 function mount(postImpl: PostImpl = signed) {
   const get = vi.fn(async (path: string) => {
-    if (path === "/api/v1/encounters/{encounterId}") return { data: finalizedRn };
+    if (path === "/api/v1/encounters/{encounterId}") {
+      if (noteViewFailures > 0) {
+        noteViewFailures -= 1;
+        return {
+          error: { error: { code: "NOTE_VIEW_UNAVAILABLE", message: "cannot be decided" } },
+          response: new Response(null, { status: 503 }),
+        };
+      }
+      if (encounterFailure !== null)
+        return {
+          error: { error: { code: encounterFailure.code, message: "failed" } },
+          response: new Response(null, { status: encounterFailure.status }),
+        };
+      return { data: finalizedRn };
+    }
     if (path === "/api/v1/encounters/{encounterId}/cosignature") return { data: { status: null } };
     if (path === "/api/v1/patients/{id}")
       return {
@@ -262,5 +285,90 @@ describe("the server refuses the sign for drafted sections", () => {
     expect(await ceremonyAlert()).toHaveTextContent(
       "The visit-note draft could not be checked right now. Try again in a moment.",
     );
+  });
+});
+
+describe("the server refuses the sign because the draft was switched off after finalize", () => {
+  it("says why, that nothing changed, and the next step, and leaves the draft strip alone", async () => {
+    draftAnswer = "off";
+    const user = userEvent.setup();
+    const { get } = mount(
+      refused(409, "DRAFT_OFF_AFTER_FINALIZE", [{ message: "switch the draft back on" }]),
+    );
+    expect(await signButton()).toBeEnabled();
+    const reads = draftReads(get);
+
+    await signThroughTheCeremony(user);
+
+    const alert = await ceremonyAlert();
+    expect(alert).toHaveTextContent(/finalized with drafted text/);
+    expect(alert).toHaveTextContent(/still finalized/);
+    expect(alert).toHaveTextContent(/Ask an administrator to switch the visit-note draft back on/);
+    expect(alert).toHaveTextContent(/Visit-note Draft/);
+    expect(alert).toHaveTextContent(/then sign again/);
+    // Not read as a stale section, a permission or a general failure.
+    expect(alert).not.toHaveTextContent(/need another look/);
+    expect(alert).not.toHaveTextContent(/permission/);
+    expect(alert).not.toHaveTextContent(/could not be completed/);
+    expect(draftReads(get)).toBe(reads);
+  });
+
+  it("moves focus to the message, so a keyboard user hears it", async () => {
+    draftAnswer = "off";
+    const user = userEvent.setup();
+    mount(refused(409, "DRAFT_OFF_AFTER_FINALIZE"));
+    await signThroughTheCeremony(user);
+    const alert = await ceremonyAlert();
+    await waitFor(() => expect(alert).toHaveFocus());
+  });
+});
+
+describe("the note view when the Part 2 check cannot be decided", () => {
+  const unavailableState = () => screen.findByRole("alert");
+
+  it("is an error state with a retry, not an empty or partial note", async () => {
+    noteViewFailures = 1;
+    mount();
+    const state = await unavailableState();
+    expect(state).toHaveTextContent("The note cannot be shown right now");
+    expect(state).toHaveTextContent(/could not be checked/);
+    expect(within(state).getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    // Nothing of the note, and none of the page's own empty or not-found wording.
+    expect(screen.queryByText("No assembled documentation is available.")).toBeNull();
+    expect(screen.queryByText("Not found.")).toBeNull();
+    expect(screen.queryByText("Could not load the encounter.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign encounter" })).toBeNull();
+  });
+
+  it("reads the note again on retry and shows it", async () => {
+    noteViewFailures = 1;
+    const user = userEvent.setup();
+    const { get } = mount();
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(await signButton()).toBeEnabled();
+    expect(screen.queryByText("The note cannot be shown right now")).toBeNull();
+    expect(
+      get.mock.calls.filter(([path]) => path === "/api/v1/encounters/{encounterId}"),
+    ).toHaveLength(2);
+  });
+
+  it("stays an error state, still retryable, when the check fails again", async () => {
+    noteViewFailures = 2;
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    const state = await unavailableState();
+    expect(state).toHaveTextContent("The note cannot be shown right now");
+    expect(within(state).getByRole("button", { name: "Try again" })).toBeEnabled();
+    await user.click(within(state).getByRole("button", { name: "Try again" }));
+    expect(await signButton()).toBeEnabled();
+  });
+
+  it("leaves any other failed read as it was: unavailable, no retry offered", async () => {
+    encounterFailure = { status: 500, code: "INTERNAL" };
+    mount();
+    expect(await screen.findByText("Could not load the encounter.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(screen.queryByText("The note cannot be shown right now")).toBeNull();
   });
 });

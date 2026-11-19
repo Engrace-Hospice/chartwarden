@@ -1188,6 +1188,136 @@ describe("the score trend", () => {
   });
 });
 
+describe("the required count and drafted text", () => {
+  // The server's gate check 1 counts drafted text the clinician confirmed as populating a required section; the count must agree.
+  const draftedAssessment = (state: string): Section =>
+    drafted({ sectionId: "assessment", state, origins: ["vitals"] });
+  const withAssessment = (state: string): void => {
+    world.draftSections = world.draftSections.map((s) =>
+      s.sectionId === "assessment" ? draftedAssessment(state) : s,
+    );
+  };
+  const requiredRemaining = (): HTMLElement =>
+    screen.getByText("required remaining").parentElement as HTMLElement;
+
+  it("counts a section whose drafted text was confirmed as populated", async () => {
+    withAssessment("confirmed");
+    mountComposer();
+    await ready();
+    expect(await screen.findByText("Required documentation is complete")).toBeInTheDocument();
+    expect(requiredRemaining()).toHaveTextContent(/^0\s*required remaining$/);
+    expect(
+      within(await sectionList()).getByRole("button", {
+        name: "Assessment: Documented, draft confirmed",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/required section needs attention/)).toBeNull();
+  });
+
+  it.each([
+    ["deselected", "draft deselected"],
+    ["unresolved", "draft needs your review"],
+    ["needs_reconfirmation", "draft changed, review again"],
+  ])("does not count a %s drafted section", async (state, railDraft) => {
+    withAssessment(state);
+    mountComposer();
+    await ready();
+    expect(
+      await within(await sectionList()).findByRole("button", {
+        name: `Assessment: Required, ${railDraft}`,
+      }),
+    ).toBeInTheDocument();
+    expect(requiredRemaining()).toHaveTextContent(/^1\s*required remaining$/);
+    expect(screen.getByText(/1 required section needs attention/)).toBeInTheDocument();
+  });
+
+  it("counts a section as populated the moment its draft is confirmed, and not before", async () => {
+    const user = userEvent.setup();
+    withAssessment("unresolved");
+    mountComposer({ [`PUT ${BASE}/draft/sections/assessment`]: sectionPut("assessment") });
+    await ready();
+    await openSection(user, /^Assessment/);
+    expect(requiredRemaining()).toHaveTextContent(/^1\s*required remaining$/);
+
+    await user.click(await screen.findByRole("button", { name: "Confirm section" }));
+
+    await waitFor(() => expect(requiredRemaining()).toHaveTextContent(/^0\s*required remaining$/));
+    expect(screen.getByText("Required documentation is complete")).toBeInTheDocument();
+  });
+
+  it("counts again once a deselect takes the confirmed text out", async () => {
+    const user = userEvent.setup();
+    withAssessment("confirmed");
+    mountComposer({ [`PUT ${BASE}/draft/sections/assessment`]: sectionPut("assessment") });
+    await ready();
+    await waitFor(() => expect(requiredRemaining()).toHaveTextContent(/^0\s*required remaining$/));
+    await openSection(user, /^Assessment/);
+
+    await user.click(await screen.findByRole("button", { name: "Deselect section" }));
+
+    await waitFor(() => expect(requiredRemaining()).toHaveTextContent(/^1\s*required remaining$/));
+  });
+
+  it("counts as before when the tenant has the draft switched off", async () => {
+    mountComposer({ [`GET ${BASE}/draft`]: () => errorBody(404, "NOT_FOUND") });
+    await ready();
+    await waitFor(() => expect(callsTo("GET", "/draft")).toHaveLength(1));
+    expect(requiredRemaining()).toHaveTextContent(/^1\s*required remaining$/);
+  });
+});
+
+describe("a finalized note whose Part 2 view cannot be decided", () => {
+  it("is an error state with a retry, never an empty or partial composer, and opens on retry", async () => {
+    const user = userEvent.setup();
+    world.status = "finalized";
+    let reads = 0;
+    mountComposer({
+      [`GET ${BASE}`]: () => {
+        reads += 1;
+        return reads === 1
+          ? errorBody(503, "NOTE_VIEW_UNAVAILABLE")
+          : {
+              body: {
+                id: ENC,
+                organizationId: "org-1",
+                patientId: PATIENT,
+                admissionId: "adm-1",
+                visitId: null,
+                encounterType: "routine_visit",
+                discipline: "rn",
+                serviceDate: world.serviceDate,
+                status: world.status,
+                lateEntryTier: "on_time",
+                version: 3,
+                authoredByUserId: "user-1",
+                isF2f: false,
+                signedAt: null,
+                cosignedAt: null,
+              },
+            };
+      },
+    });
+    const state = await screen.findByRole("alert");
+    expect(state).toHaveTextContent("The note cannot be shown right now");
+    expect(screen.queryByRole("heading", { name: "Compose visit note" })).toBeNull();
+    expect(screen.queryByText("Could not load this encounter.")).toBeNull();
+    // Nothing else of the note was read behind the failed answer.
+    expect(callsTo("GET", "/selections")).toHaveLength(0);
+
+    await user.click(within(state).getByRole("button", { name: "Try again" }));
+
+    await ready();
+    expect(reads).toBe(2);
+    expect(screen.queryByText("The note cannot be shown right now")).toBeNull();
+  });
+
+  it("keeps any other failed read as it was, with no retry", async () => {
+    mountComposer({ [`GET ${BASE}`]: () => errorBody(500, "INTERNAL") });
+    expect(await screen.findByText("Could not load this encounter.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+});
+
 describe("accessibility", () => {
   it(
     "has no axe violations on the drafted section, its summary and the right rail",

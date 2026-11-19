@@ -74,6 +74,18 @@ export const needsReview = (section: Pick<DraftSectionView, "state">): boolean =
 export const draftIsActive = (draft: DraftView | null): draft is DraftView =>
   draft?.sections.some(isDrafted) === true;
 
+/**
+ * The sections whose drafted text the clinician confirmed, as the draft says it now (`needs_reconfirmation` is not confirmed: the text
+ * changed). A confirmed section is the text the note will read, so it populates a required section, as in the server's gate check 1.
+ */
+export function confirmedSectionIds(draft: DraftView | null): ReadonlySet<string> {
+  return new Set(
+    (draft?.sections ?? [])
+      .filter((section) => section.state === "confirmed")
+      .map((section) => section.sectionId),
+  );
+}
+
 export interface ReviewCounts {
   readonly drafted: number;
   readonly resolved: number;
