@@ -1,9 +1,12 @@
 // apps/web/src/modules/05-patient — one cell of the Clinical tab's "Recent Clinical Notes": what a note says in the row, and, for a note whose
 // Part 2 view could not be decided, the retry that reads just that note again (ADR-0114 VN-D30, S1 PR E3).
-// Moved out of patient-clinical.tsx unchanged.
+// Moved out of patient-clinical.tsx (S1 React review); the retry keeps keyboard focus while the note is read again.
 import { Button, StatusPill } from "@chartwarden/ui";
 import { type JSX, useState } from "react";
 import type { NoteSummary } from "./clinical-note-summary";
+
+/** The kit Button sets opacity and cursor inline, so the look of a button that is waiting has to be inline too. */
+const WORKING_STYLE = { opacity: 0.6, cursor: "not-allowed" } as const;
 
 /** A recent note whose Part 2 view could not be decided: said in words, with a retry that reads just this note again. */
 function UnavailableNote({
@@ -25,21 +28,30 @@ function UnavailableNote({
       setRetrying(false);
     }
   };
+  const outcomeWords = retrying
+    ? " Reading the note again…"
+    : failedAgain
+      ? " Still not available. Try again in a moment."
+      : "";
   return (
     <span>
       <span>The note cannot be shown right now</span>{" "}
       <Button
         tone="tertiary"
         size="sm"
-        loading={retrying}
+        // Not `loading` (which disables the button and drops keyboard focus from the person who pressed it): it says it is working and waits.
+        aria-disabled={retrying || undefined}
+        aria-busy={retrying || undefined}
+        style={retrying ? WORKING_STYLE : undefined}
         aria-label={`Try again: ${visit}`}
-        onClick={() => void retry()}
+        onClick={() => {
+          if (!retrying) void retry();
+        }}
       >
         Try again
       </Button>
-      {failedAgain ? (
-        <output className="wx-row-sub"> Still not available. Try again in a moment.</output>
-      ) : null}
+      {/* Always on the page and filled in, so the outcome is announced (a region mounted with its text is not). */}
+      <output className="wx-row-sub">{outcomeWords}</output>
     </span>
   );
 }

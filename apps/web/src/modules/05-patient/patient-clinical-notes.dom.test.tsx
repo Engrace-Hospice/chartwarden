@@ -196,6 +196,41 @@ describe("a note whose Part 2 check could not be decided", () => {
     expect(get.mock.calls.filter(([p]) => p === ENCOUNTER)).toHaveLength(3);
   });
 
+  it("keeps the retry focusable while the note is read again, and says so in a region that was already there", async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reads = 0;
+    mount({
+      e1: () => {
+        reads += 1;
+        // The first read is refused at once; the retry's read waits for the test.
+        return reads === 1 ? noteViewUnavailable() : held.then(() => noteViewUnavailable());
+      },
+      e2: () => detail("e2", { finalDocumentation: "Other." }),
+    });
+    const row = await rowAt(1);
+    const retry = await row.findByRole("button", { name: /Try again/ });
+    const status = retry.parentElement?.querySelector("output") as HTMLOutputElement;
+    expect(status).not.toBeNull();
+    expect(status.textContent).toBe("");
+
+    await user.click(retry);
+    await waitFor(() => expect(retry).toHaveAttribute("aria-disabled", "true"));
+    expect(retry).not.toBeDisabled();
+    expect(retry).toHaveFocus();
+    expect(status.textContent).toMatch(/reading the note again/i);
+    await user.click(retry);
+    expect(reads).toBe(2);
+
+    release();
+    await waitFor(() => expect(status.textContent).toMatch(/Still not available/));
+    expect(retry).not.toHaveAttribute("aria-disabled");
+    expect(retry).toHaveFocus();
+  });
+
   it("says so again when the retry is refused the same way, and offers the retry again", async () => {
     const user = userEvent.setup();
     mount({
