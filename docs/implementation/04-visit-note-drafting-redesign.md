@@ -28,7 +28,7 @@ Evidence labels used in this document:
 - **VERIFIED** Eleven template sections have no phrase category (`allowedCategories`): `chief_concern`, `vitals_review`, `plan`, `family_dynamics`, `advance_directive`, `caregiver_overview`, `pps`, `esas`, `prognosis`, `recert_summary`, `idg_followup` (`packages/hearthnote/src/templates/registry.ts`). A section without one accepts any eligible entry. The RN routine visit template (`routine_visit`, discipline `rn`) carries three of them (`chief_concern`, `vitals_review`, `plan`); `pps`, `esas`, `prognosis` and `recert_summary` exist only in the recertification template, and `prognosis` also in the face-to-face template.
 - **VERIFIED** The M8 spec (§2.6) promises that vitals and scale references are interpolated into the Layer 1 narrative; the code passes none. The M8 spec (§5.2) places a care-plan picker in the composer; today the picker lives on Encounter Read (`apps/web/src/modules/08-encounters/encounter-read.tsx`, `addCarePlanLink`), not the composer. The visit-documentation screen design (`docs/design/screens/clinical/CHARTWARDEN_UI_ENCOUNTER_VISIT_DOCUMENTATION.md`, Right Panel) promises "Latest assessment scores + trend"; no score trend exists.
 - **VERIFIED** Layer 2 (LLM enhancement) is a deny-stub that returns the Layer 1 narrative unchanged (`packages/hearthnote/src/layer2/enhance.ts`).
-- **VERIFIED** Gate checks 4 (HOPE items), 7 (Layer 2 decisions) and 9 (attestation confirmed) are `deferred` (`apps/backend/src/modules/08-encounters/gate/checks.ts`).
+- **VERIFIED** Gate checks 4 (HOPE items), 7 (Layer 2 decisions) and 9 (attestation confirmed) are `deferred` (`apps/backend/src/modules/08-encounters/gate/checks.ts`). Check 9's stated blocker ("nothing carries the clinician's confirmation") is stale: the sign body already requires `attestationConfirmed: true` (`AttestationSchema` in `routes/encounters-typebox.ts`), enforced by the route schema.
 - **VERIFIED** The seams a draft needs exist, but they are now-reads: they return current state and accept no as-of instant (`CarePlanReader.relevantElementsForEncounter`, `LatestAssessmentProvider.latestBatch`, `MedicationOrderProvider.getActiveMedications`). **RECON** Also `ScaleSeriesProvider.series`/`delta`, `MedicationAdministrationProvider`, `PatientAllergyReader`. **VERIFIED** The events exist: `m17.visit.published`, `m9.assessment.recorded`, `m7.care_plan.version_signed`, `m11.order.signed`, `m13.administration.recorded`.
 - **VERIFIED** Nothing in M8 or `packages/hearthnote` seeds admission selections from document extractions, although architecture §10.5 and its §11 row describe that as a feature.
 
@@ -86,7 +86,7 @@ All DECIDED, 2026-11-18. IDs are stable; later slices cite them.
 | ID | Decision |
 |---|---|
 | VN-D15 | Slice 1 finishes what the M8 spec and the screen design already promised for the RN routine visit but the code never built: vitals and scale readings in the narrative (PPS and ESAS phrase slots), the care-plan picker in the composer (it lives on Encounter Read today), the latest scale readings with their trend in the composer's right panel, and phrase categories for the routine template's uncategorized sections (`chief_concern`, `vitals_review`, `plan`). Sections that exist only in other templates (`pps`, `esas`, `prognosis`, `recert_summary`, the admission and IDG sections) belong to the slice that owns that template. New capability comes after. |
-| VN-D16 | Slice 1 enforces gate check 9 (attestation acknowledged, currently `deferred`) and adds a gate check that every drafted section is resolved (VN-D7). Check 4 (HOPE) stays with M10; check 7 (Layer 2) stays `deferred` until the AI slice. |
+| VN-D16 | Slice 1 makes gate check 9 (attestation acknowledged) real, not `deferred`: the sign body already requires `attestationConfirmed: true`, so the check is reclassified to the schema that enforces it and pinned by a test. It also adds a gate check that every drafted section is resolved (VN-D7). Check 4 (HOPE) stays with M10; check 7 (Layer 2) stays `deferred` until the AI slice. |
 | VN-D17 | The draft and the new sign-gate sit behind a per-tenant switch, default off at merge because `main` auto-deploys. A tenant is switched on only after the phrase corpus has had its clinical review (VN-D14) and a minimum mobile build is out (VN-D19). |
 | VN-D18 | Success is median **time-to-sign** per note type against a pre-ship baseline, from arrival (`encounter.clock_started_at`, ADR-0113) to signed; a note with no clock is measured from draft creation. The numeric target is set only after two weeks of baseline data. Guards that must not worsen: addendum rate and QA-return rate. The share of drafted sections confirmed unedited is reported as a rubber-stamp indicator. |
 
@@ -121,14 +121,22 @@ All DECIDED, 2026-11-18. IDs are stable; later slices cite them.
 5. Sign: step-up (existing, online), attestation acknowledged (check 9), every drafted section resolved (new check). A stale confirmation returns that section for re-confirmation.
 6. Source ids stay in the audit trail only (VN-D7). After signing, the note changes only by amendment (VN-D30).
 
-**To design in S1:** the sign step freezes an authoritative text and derives a redacted view from it for viewers without Part 2 access (VN-D13), and amendments (VN-D30) layer on that frozen text without overwriting it. The M8 spec makes a signed encounter immutable with changes through addenda (M8 spec D2); VN-D30 extends that addendum path to carry section-level amendments.
+### 3.1 Frozen text, per-viewer view and amendments (S1 step 0 design)
+
+PROPOSED within the decisions above; no decision changes. The M8 spec makes a signed encounter immutable with changes through addenda (M8 spec D2); VN-D30 extends that addendum path to carry section-level amendments.
+
+- **Frozen text.** `hearthnote_assembled_outputs.final_cipher` stays the legal text of a signed note. At sign, S1 also writes one sealed row per section (`hearthnote_signed_sections`): section id, position, sealed rendered text, a SHA-256 of the canonical text, a `part2_derived` flag and the source ids. The ordered rows must equal `final_cipher`; a test pins that invariant.
+- **Per-viewer view (VN-D13).** A viewer with Part 2 disclosure, or a note with no `part2_derived` section, gets `final_cipher`. Any other viewer gets the section rows with each `part2_derived` section replaced by a withheld marker. A section is `part2_derived` unless every source behind it is proven not SUD-related, failing closed as `redactStateSnapshot` does in M7. A clinician's own free text is not classified.
+- **Amendment (VN-D30).** An addendum (its own draft, finalized, signed lifecycle; the parent stays signed) that names the sections it amends. Its section rows reference the amended section, so the current view shows the latest signed text per section and the history shows every version. Original rows are never updated. Each amended section is confirmed like a drafted one (VN-D12), signing needs step-up, and a cosign request is created for the addendum when the parent needed cosign.
+- **As-of inputs (VN-D11).** Care plan: the `care_plan_version` in effect at the visit time (`signed_at` at or before it, `superseded_at` null or after it), read from its frozen `state_snapshot` with the existing per-viewer Part 2 redaction. Scale readings: the existing `ScaleSeriesProvider.series(from, to)` with `to` set to the visit time, so no new M9 seam. Medications: a new changes-between and active-as-of read on `MedicationOrderProvider`.
+- **Open until built:** the exact `amends_section_id` shape, the addendum cosign link, and how M22 renders amended sections.
 
 ## 4. Constraints found
 
 ### 4.1 Backend and tenancy
 
 - M8 reaches other modules by seam only (ADR-0007, ADR-0043). RECON: the M9 store throws outside a request context, so any worker-time computation needs org-explicit `...ForOrg` seams, as M14 does (`14-idg/jobs/packet-build.ts`). The per-author draft is computed in a request, which avoids that.
-- VN-D11 needs as-of variants of the seams: the care-plan version in effect at an instant (M7), scale readings up to an instant (M9) and medication orders as of an instant (M12). The current seams return the present state.
+- VN-D11 needs as-of reads (§3.1): the care plan from the frozen version in effect at an instant (M7), medication orders as of an instant (M12, a new method), and scale readings through the existing `series(from, to)` (M9, no new seam). The other current seams return the present state.
 - RECON: `CarePlanReader` already redacts Part 2 per actor. The draft inherits that and must never cache an unredacted result across authors.
 - AI is blocked platform-wide (`ai.full` off, M32 inference seams are deny-stubs). A deterministic draft is not AI and does not meet that gate. The later AI slice is a separate decision.
 - New tables follow the repo rules: three-column tenancy, RLS enabled and FORCEd, PHI audit triggers, `-- compat: expand`, manifest `ownedTables` (`.ts` and `.cjs`).
@@ -167,7 +175,7 @@ Two tracks. Each slice is its own PR; pushes are batched (Actions minutes are me
 
 ## 6. Not yet specified
 
-- **How amendments are modelled** on the M8 addendum state machine (VN-D30): the audit trail, whether an amendment restarts the cosign window, billing impact, and how it interacts with per-viewer rendering (VN-D13). First task of S1.
+- **Amendment details** on the M8 addendum state machine (VN-D30), beyond the design in §3.1: the audit trail, whether an amendment restarts the cosign window, and billing impact. Settled before PR E.
 - **The exact section list for S1.** The RN routine visit is `routine_visit` with discipline `rn` (sections `chief_concern`, `vitals_review`, `assessment`, `symptom_management`, `interventions`, `plan`); confirm against `packages/hearthnote/src/templates/registry.ts` at S1 start.
 - **AI-content labelling.** The AI governance document says AI content is visibly labelled in the record and also that provenance is audit-only (two passages, RECON). The AI slice (A1) must resolve that conflict; VN-D7 settles it only for deterministic sections.
 - **Per-discipline designs** for S3-S5, including which discipline-assessment goals link to the note.
