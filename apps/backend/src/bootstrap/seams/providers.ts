@@ -847,6 +847,9 @@ export const carePlanReaderDenyStub: CarePlanReader = {
   relevantElementsForEncounter() {
     throw new NotImplementedError("CarePlanReader");
   },
+  relevantElementsAsOf() {
+    throw new NotImplementedError("CarePlanReader");
+  },
   isReviewOverdue() {
     throw new NotImplementedError("CarePlanReader");
   },

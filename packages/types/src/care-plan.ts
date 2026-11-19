@@ -372,6 +372,28 @@ export interface CarePlanReader {
     viewer: CarePlanElementsAudience,
   ): Promise<RelevantCarePlanElements | null>;
 
+  /**
+   * The same picker rule as {@link relevantElementsForEncounter}, but for the patient AS OF `asOf` (VN-D11: a visit
+   * note describes the patient at the visit time, never today's plan). The elements come from the frozen
+   * `state_snapshot` of the care-plan version in effect at `asOf`: signed at or before it, and not superseded until
+   * after it (so exactly one version is in effect at any instant, and the signing instant itself belongs to the
+   * newly signed version). Same per-viewer Part 2 redaction as the now-read.
+   *
+   * FAIL CLOSED: `null` when no signed version is in effect at `asOf`, or when the version's snapshot is not of the
+   * expected shape; a snapshot problem whose `sudRelated` is not the literal `false` is treated as Part 2. A viewer
+   * without disclosure never receives SUD content. `care_plan` carries no discharge instant, so for an `asOf` after
+   * the plan was discharged the last signed version is still the one in effect; pass `admissionId` to keep a
+   * re-admission's plan apart. Throws when `asOf` is not an ISO instant.
+   */
+  relevantElementsAsOf(
+    patientId: PatientId,
+    encounterType: string,
+    discipline: InterventionDiscipline,
+    admissionId: string | undefined,
+    viewer: CarePlanElementsAudience,
+    asOf: IsoInstant,
+  ): Promise<RelevantCarePlanElements | null>;
+
   /** Whether the patient's active care plan is past a CoP 418.56 gate (5-day initial / 15-day review).
    * M8 calls this at encounter-sign time; `overdue=true` blocks signing (§7.8). */
   isReviewOverdue(patientId: PatientId): Promise<CarePlanOverdueStatus | null>;

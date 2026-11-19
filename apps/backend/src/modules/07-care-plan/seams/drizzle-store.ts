@@ -32,8 +32,12 @@
 // plan carries no SUD-flagged problem.
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { getRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
-import type { CarePlanCodeUsageRecord, CarePlanElementsActor } from "@chartwarden/types";
-import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
+import type {
+  CarePlanCodeUsageRecord,
+  CarePlanElementsActor,
+  CarePlanElementsAudience,
+} from "@chartwarden/types";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getSeam } from "../../../bootstrap/index";
 import { sudDisclosureAllowedForActor } from "../abac-predicates";
@@ -50,6 +54,7 @@ import type {
   CarePlanClockRecord,
   CarePlanElementsRecord,
   CarePlanReaderStore,
+  CarePlanVersionAtRecord,
   StoredRelevantProblem,
 } from "./store";
 
@@ -125,6 +130,42 @@ async function actorSudAllowed(
 }
 
 /**
+ * The D7 verdict for one read: true when the caller may read SUD-flagged content of this patient's plan. The
+ * decision is only observable when SUD content exists, so the M39 round-trip is skipped otherwise. A human
+ * caller's per-ACTOR verdict outranks the patient-level release fact: a release that names other staff redacts
+ * this caller even though "a release exists", and an RN case manager is let through where no release names
+ * others. The verdict is either the route's own (`sudDisclosureAllowed`) or resolved HERE from the session
+ * identity (`actor`); only a caller with no human actor gets the patient-level lookup.
+ */
+async function resolveSudReadAllowed(
+  viewer: CarePlanElementsAudience,
+  organizationId: string,
+  patientId: string,
+  sudPresent: boolean,
+): Promise<boolean> {
+  if (!sudPresent) return true;
+  if (viewer === "patient_level") return part2ReleaseAllowed(organizationId, patientId);
+  if ("actor" in viewer) return actorSudAllowed(organizationId, patientId, viewer.actor);
+  return viewer.sudDisclosureAllowed;
+}
+
+/**
+ * Whether a frozen `state_snapshot` may hold Part 2 content. FAIL CLOSED, as `redactStateSnapshot` is: a problem
+ * whose `sudRelated` is not the literal `false`, or a snapshot without a problems array, counts as holding it.
+ */
+function snapshotMayHoldSud(snapshot: unknown): boolean {
+  const problems =
+    typeof snapshot === "object" && snapshot !== null
+      ? (snapshot as { problems?: unknown }).problems
+      : undefined;
+  if (!Array.isArray(problems)) return true;
+  return problems.some(
+    (p) =>
+      typeof p !== "object" || p === null || (p as { sudRelated?: unknown }).sudRelated !== false,
+  );
+}
+
+/**
  * Build the production Drizzle-backed {@link CarePlanReaderStore}. No in-memory fallback: every
  * method reads M7's tables.
  *
@@ -189,19 +230,12 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
           status: r.status,
           containsSud: r.sudRelated,
         }));
-        // The D7 decision is only observable when SUD content exists — skip the M39 round-trip otherwise.
-        const sudPresent = problems.some((p) => p.containsSud);
-        // A human caller's per-ACTOR verdict outranks the patient-level release fact: a release that names other
-        // staff redacts this caller even though "a release exists", and an RN case manager is let through where no
-        // release names others. The verdict is either the route's own (`sudDisclosureAllowed`) or resolved HERE
-        // from the session identity (`actor`); only a caller with no human actor gets the patient-level lookup.
-        const sudReadAllowed = !sudPresent
-          ? true
-          : viewer === "patient_level"
-            ? await part2ReleaseAllowed(plan.organizationId, patientId)
-            : "actor" in viewer
-              ? await actorSudAllowed(plan.organizationId, patientId, viewer.actor)
-              : viewer.sudDisclosureAllowed;
+        const sudReadAllowed = await resolveSudReadAllowed(
+          viewer,
+          plan.organizationId,
+          patientId,
+          problems.some((p) => p.containsSud),
+        );
         return {
           planId: plan.id,
           patientId: plan.patientId,
@@ -221,6 +255,64 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
             discipline: r.discipline,
             status: r.status,
           })),
+          sudReadAllowed,
+        };
+      });
+    },
+
+    /**
+     * VN-D11: the version in effect at `asOf`. Status `signed` or `superseded`, `signed_at <= asOf`, and either
+     * `superseded_at > asOf` or (`superseded_at` null and status `signed`): a `superseded` row with no instant is
+     * in effect at no instant (fail closed). Exactly one version qualifies at any instant (a new version's
+     * `signed_at` is the instant its predecessor is superseded); the order-by only settles overlapping data.
+     * Deliberately NOT filtered on the plan's status: a late entry for a visit before a discharge still reads the
+     * plan that was in effect (`care_plan` carries no discharge instant to bound it by; callers pass
+     * `admissionId`). The snapshot crosses RAW: the reader redacts and projects it.
+     */
+    async carePlanVersionAsOf(
+      patientId,
+      admissionId,
+      asOf,
+      viewer,
+    ): Promise<CarePlanVersionAtRecord | null> {
+      const at = new Date(asOf);
+      if (Number.isNaN(at.getTime()))
+        throw new RangeError("carePlanVersionAsOf: asOf is not an instant");
+      return withOrgContextFromRequest(db, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [row] = await t
+          .select({
+            versionId: CPV.id,
+            planId: CPV.carePlanId,
+            patientId: CP.patientId,
+            organizationId: CP.organizationId,
+            stateSnapshot: CPV.stateSnapshot,
+          })
+          .from(CPV)
+          .innerJoin(CP, eq(CP.id, CPV.carePlanId))
+          .where(
+            and(
+              eq(CP.patientId, patientId),
+              ...(admissionId ? [eq(CP.admissionId, admissionId)] : []),
+              inArray(CPV.status, ["signed", "superseded"]),
+              lte(CPV.signedAt, at),
+              or(gt(CPV.supersededAt, at), and(isNull(CPV.supersededAt), eq(CPV.status, "signed"))),
+            ),
+          )
+          .orderBy(desc(CPV.signedAt), desc(CPV.sequence))
+          .limit(1);
+        if (!row) return null;
+        const sudReadAllowed = await resolveSudReadAllowed(
+          viewer,
+          row.organizationId,
+          patientId,
+          snapshotMayHoldSud(row.stateSnapshot),
+        );
+        return {
+          versionId: row.versionId,
+          planId: row.planId,
+          patientId: row.patientId,
+          stateSnapshot: row.stateSnapshot,
           sudReadAllowed,
         };
       });
