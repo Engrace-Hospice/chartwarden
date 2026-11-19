@@ -16,8 +16,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 // apps/web/src/modules/24-billing-medicaid — M24, the VALIDATION RULE CONFIG (R2, §5.1 #14). The compliance
 // officer's per-tenant overlay on the platform rule floor: each rule's enabled state, severity, override
-// role, and the applicable states from the platform default. A REGULATORY-REQUIRED rule shows a lock glyph
-// and cannot be disabled — the toggle is not rendered for it, and the server rejects the write regardless
+// role, and the applicable states from the platform default. Regulatory-required and internal platform-required
+// rules show distinct lock glyphs and cannot be disabled — the toggle is not rendered for them, and the server rejects the write regardless
 // (the client is a courtesy, not the enforcement point; ADR-0030). Backed by GET /api/v1/medicaid-rule-config
 // + PATCH /api/v1/medicaid-rule-config/{ruleKey}. Custom-rule authoring (the §11 predicate DSL) is a
 // deliberate follow-up — the surface links to it rather than shipping a half DSL editor. Lantern:
@@ -43,12 +43,14 @@ interface RuleConfig {
   customSeverity: string | null;
   customOverrideRole: string | null;
   regulatoryRequired: boolean;
+  platformRequired: boolean;
   version: number | null;
   platformDefault?: {
     title: string;
     category: string;
     severity: string;
     regulatoryRequired: boolean;
+    platformRequired: boolean;
     applicableStates: readonly string[];
   };
 }
@@ -58,6 +60,7 @@ const SHOW_OPTIONS = [
   { value: "enabled", label: "Enabled only" },
   { value: "disabled", label: "Disabled only" },
   { value: "regulatory", label: "Regulatory-required" },
+  { value: "platform", label: "Platform-required" },
   { value: "custom", label: "Tenant custom" },
 ];
 
@@ -96,7 +99,7 @@ export function MedicaidRuleConfig(): JSX.Element {
 
   const toggle = useCallback(
     async (rule: RuleConfig) => {
-      if (rule.regulatoryRequired) return;
+      if (rule.regulatoryRequired || rule.platformRequired) return;
       setPendingKey(rule.ruleKey);
       setActionError(null);
       const { error: err, response } = (await client.PATCH(
@@ -130,6 +133,8 @@ export function MedicaidRuleConfig(): JSX.Element {
           return rules.filter((r) => !r.enabled);
         case "regulatory":
           return rules.filter((r) => r.regulatoryRequired);
+        case "platform":
+          return rules.filter((r) => r.platformRequired);
         case "custom":
           return rules.filter((r) => r.isCustom);
         default:
@@ -154,6 +159,7 @@ export function MedicaidRuleConfig(): JSX.Element {
   const enabledCount = rules.filter((r) => r.enabled).length;
   const disabledCount = rules.length - enabledCount;
   const regulatoryCount = rules.filter((r) => r.regulatoryRequired).length;
+  const platformCount = rules.filter((r) => r.platformRequired).length;
   const customCount = rules.filter((r) => r.isCustom).length;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const activePage = Math.min(page, pageCount);
@@ -165,7 +171,7 @@ export function MedicaidRuleConfig(): JSX.Element {
       header={
         <PageHeader title="Validation Rules">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Review the active validation floor, tenant overrides, regulatory locks, and audited
+            Review regulatory rules, internal platform safety gates, tenant overrides, and audited
             toggles.
           </div>
           <div style={{ marginTop: "0.75rem" }}>
@@ -211,12 +217,26 @@ export function MedicaidRuleConfig(): JSX.Element {
           <KpiCard
             label="Regulatory"
             value={loading || error ? "—" : regulatoryCount}
-            detail="Locked floor"
+            detail="Regulatory rules"
             tone="warning"
             accentColor="var(--color-warning)"
             selected={show === "regulatory"}
             onSelect={() => {
               setShow("regulatory");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Platform gates"
+            value={loading || error ? "—" : platformCount}
+            detail="Non-regulatory safety gates"
+            tone={platformCount > 0 ? "info" : "neutral"}
+            accentColor={
+              platformCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"
+            }
+            selected={show === "platform"}
+            onSelect={() => {
+              setShow("platform");
               setPage(1);
             }}
           />
@@ -361,9 +381,21 @@ export function MedicaidRuleConfig(): JSX.Element {
                       <td style={tdMono}>
                         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
                           {r.ruleKey}
-                          {r.regulatoryRequired ? (
-                            <span title="Regulatory-required — cannot be disabled">
-                              <Glyph name="lock" size={13} label="regulatory-required" />
+                          {r.regulatoryRequired || r.platformRequired ? (
+                            <span
+                              title={
+                                r.regulatoryRequired
+                                  ? "Regulatory-required — cannot be disabled"
+                                  : "Platform-required safety gate — cannot be disabled"
+                              }
+                            >
+                              <Glyph
+                                name="lock"
+                                size={13}
+                                label={
+                                  r.regulatoryRequired ? "regulatory-required" : "platform-required"
+                                }
+                              />
                             </span>
                           ) : null}
                         </div>
@@ -388,8 +420,10 @@ export function MedicaidRuleConfig(): JSX.Element {
                         />
                       </td>
                       <td style={{ ...td, textAlign: "right" }}>
-                        {r.regulatoryRequired ? (
-                          <span style={mutedStyle}>Locked</span>
+                        {r.regulatoryRequired || r.platformRequired ? (
+                          <span style={mutedStyle}>
+                            {r.regulatoryRequired ? "Regulatory lock" : "Platform safety gate"}
+                          </span>
                         ) : (
                           <Button
                             type="button"
@@ -437,7 +471,8 @@ export function MedicaidRuleConfig(): JSX.Element {
 function configErrorMessage(status: number | undefined, code?: string): string {
   if (code === "STALE_VERSION")
     return "The rule overlay changed since you loaded it — reload and retry.";
-  if (status === 409) return "This rule is regulatory-required and cannot be disabled.";
+  if (status === 409)
+    return "This rule is locked by a required regulatory or platform safety control.";
   if (status === 401 || status === 403) return "You lack permission to edit the rule overlay.";
   return "The rule could not be updated.";
 }

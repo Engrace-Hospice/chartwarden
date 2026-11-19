@@ -41,6 +41,68 @@ export interface AssembleClaimInput {
   rbArrangementId?: string;
   medicareClaimId?: string;
 }
+/** Inputs for a read-only, non-reserving claim assembly preview. */
+export interface PreviewClaimAssemblyInput {
+  patientId: string;
+  admissionId: string;
+  providerEntityId: string;
+  serviceFrom: string;
+  serviceTo: string;
+}
+export type AssemblyCoverageResolutionStatus =
+  | "uniform"
+  | "none"
+  | "changes"
+  | "ambiguous"
+  | "unavailable";
+export interface AssemblyPreviewCoverage {
+  status: AssemblyCoverageResolutionStatus;
+  coverageKind: string | null;
+  rank: number | null;
+}
+export interface AssemblyPreviewClaimKind {
+  kind: AssembleClaimInput["kind"];
+  payerPolicy: "permitted" | "blocked" | "unresolved";
+  reasonCode: string | null;
+}
+export interface AssemblyPreviewArrangement {
+  id: string;
+  facilityName: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  billableDayCount: number;
+  status: "candidate" | "blocked" | "unresolved";
+  reasonCode: string | null;
+}
+export interface AssemblyPreviewView {
+  primaryCoverage: AssemblyPreviewCoverage;
+  medicaidCoverage: AssemblyPreviewCoverage;
+  payerResponsibility:
+    | "medicaid_primary"
+    | "medicare_primary_medicaid_secondary"
+    | "other_primary"
+    | "unresolved";
+  recordedEligibility: {
+    status: "current" | "stale" | "not_recorded" | "unavailable";
+    outcome: string | null;
+    serviceState: string | null;
+    asOfServiceDate: string | null;
+    checkedAt: string | null;
+    staleAt: string | null;
+  };
+  claimKinds: readonly AssemblyPreviewClaimKind[];
+  rbArrangements: readonly AssemblyPreviewArrangement[];
+  arrangementListStatus: "available" | "unavailable";
+  medicareEvidence: {
+    match: "not_applicable" | "unresolved" | "unavailable" | "none" | "ambiguous" | "single";
+    evidenceStatus: string | null;
+    rangeRelation: string | null;
+    remittanceAdviceRecorded: boolean | null;
+  };
+  stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+  electronicSubmissionAvailable: false;
+  isAdvisorySnapshot: true;
+}
 export interface UpdateDraftClaimInput {
   expectedVersion: number | null;
 }
@@ -133,6 +195,11 @@ export interface LoadRateScheduleInput {
 }
 
 export interface M24WriteService {
+  /** Optional on legacy/test bindings; production Drizzle binding provides the read-only preview. */
+  previewClaimAssembly?(
+    actor: M24Actor,
+    input: PreviewClaimAssemblyInput,
+  ): Promise<AssemblyPreviewView>;
   assembleClaim(actor: M24Actor, input: AssembleClaimInput): Promise<ClaimView>;
   updateDraftClaim(
     actor: M24Actor,

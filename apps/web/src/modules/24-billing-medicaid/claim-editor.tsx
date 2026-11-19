@@ -236,7 +236,11 @@ export function MedicaidClaimEditor(): JSX.Element {
   const submitPaused = claimsBilling.blocked && claim.tob !== "818";
   const totalCharges = lines.reduce((acc, l) => acc + l.chargesCents, 0);
   const rbLines = lines.filter((l) => l.isRb);
-  const cobPaid = lines.reduce((acc, l) => acc + (l.cobPaidCents ?? 0), 0);
+  const cobPaidValues = lines.map((line) => line.cobPaidCents);
+  const cobPaid =
+    cobPaidValues.length > 0 && cobPaidValues.every((value) => value !== null)
+      ? cobPaidValues.reduce((sum, value) => sum + (value ?? 0), 0)
+      : null;
 
   return (
     <DetailPageLayout
@@ -342,15 +346,23 @@ export function MedicaidClaimEditor(): JSX.Element {
           <Card title="Coordination of benefits">
             {claim.medicareClaimId ? (
               <>
-                <Field label="Medicare primary" value={shortId(claim.medicareClaimId)} mono />
-                <Field label="COB paid (lines)" value={money(cobPaid)} />
+                <Field label="Linked Medicare claim" value={shortId(claim.medicareClaimId)} mono />
+                <Field
+                  label="COB paid (lines)"
+                  value={cobPaid === null ? "Not recorded" : money(cobPaid)}
+                />
+                <p style={mutedStyle}>
+                  The linked claim reference alone does not establish adjudication, remittance, or
+                  payment.
+                </p>
                 <a href={`/billing/claims/${claim.medicareClaimId}`} style={linkStyle}>
                   Open Medicare claim →
                 </a>
               </>
             ) : (
               <span style={mutedStyle}>
-                Medicaid-primary claim — no Medicare COB chain on this service period.
+                No Medicare claim is linked to this Medicaid claim. The missing link does not
+                establish which payer was primary.
               </span>
             )}
           </Card>
@@ -362,7 +374,7 @@ export function MedicaidClaimEditor(): JSX.Element {
               <span style={mutedStyle}>No validation run on file.</span>
             )}
             <Field
-              label="Eligibility at assembly"
+              label="Recorded eligibility result at assembly"
               value={
                 claim.eligibilityOutcomeSnapshot ? (
                   <StatusPill
@@ -374,6 +386,10 @@ export function MedicaidClaimEditor(): JSX.Element {
                 )
               }
             />
+            <p style={mutedStyle}>
+              This records an eligibility response available at assembly; it does not establish
+              Medicare adjudication or payment.
+            </p>
             <a href={`/medicaid/billing/claims/${claim.id}/validation`} style={linkStyle}>
               Open validation worklist →
             </a>

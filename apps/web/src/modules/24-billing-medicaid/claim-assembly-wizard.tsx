@@ -4,21 +4,18 @@ import {
   GateStepper,
   Glyph,
   PageHeader,
-  StatusPill,
   StepperWorkflowLayout,
   useApiClient,
   useClaimsBilling,
 } from "@chartwarden/ui";
 import type { GateItem } from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID ASSEMBLY WIZARD (R2, §5.1 #4). The stepped
-// draft-creation flow: patient + service range → claim kind (combined / hospice-only / R&B-only) → MCO
-// routing preview (from the patient's latest eligibility check) → Medicare coordination notice → assemble.
-// The assemble POST is the only write (Idempotency-Key is added server-side by the route guard); the server
-// re-resolves payer coverage and the R&B day set, so every preview here is
-// advisory and clearly labelled as such. A 503 is the Phase-1 reader deferral (the assembly readers are not
-// bound yet) and is surfaced as a precise inline message, not a crash. Lantern: StepperWorkflowLayout +
+// draft-creation flow: patient + service range → server-resolved claim kinds → coverage/R&B/Medicare context
+// → review and assemble. The preview is advisory; the assembly service re-resolves payer coverage and R&B
+// day ownership before writing. Electronic Medicaid submission is independently unavailable. Lantern:
+// StepperWorkflowLayout +
 // GateStepper (§6.5), CSS-var tokens only.
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
   AdmissionLookupField,
@@ -27,22 +24,88 @@ import {
 } from "../../shell/entity-lookups";
 import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { assembleErrorMessage } from "./assembly-errors";
-import { ELIGIBILITY_OUTCOME_TONE, humanize, kindLabel, shortId, toneOf } from "./medicaid-status";
+import { humanize, kindLabel, shortId } from "./medicaid-status";
 import { Card, Field, alertStyle, inputStyle, mutedStyle, selectStyle } from "./medicaid-ui";
 
 type ClaimKind = "combined_hospice_rb" | "hospice_only" | "rb_only";
 
-interface EligibilityCheck {
-  id: string;
-  patientId: string;
-  serviceState: string;
-  asOfServiceDate: string;
-  outcome: string;
-  mcoId: string | null;
-  checkedAt: string;
+interface AssemblyPreview {
+  primaryCoverage: { status: string; coverageKind: string | null; rank: number | null };
+  medicaidCoverage: { status: string; coverageKind: string | null; rank: number | null };
+  payerResponsibility: string;
+  recordedEligibility: {
+    status: "current" | "stale" | "not_recorded" | "unavailable";
+    outcome: string | null;
+    serviceState: string | null;
+    asOfServiceDate: string | null;
+    checkedAt: string | null;
+    staleAt: string | null;
+  };
+  claimKinds: {
+    kind: ClaimKind;
+    payerPolicy: "permitted" | "blocked" | "unresolved";
+    reasonCode: string | null;
+  }[];
+  rbArrangements: {
+    id: string;
+    facilityName: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    billableDayCount: number;
+    status: "candidate" | "blocked" | "unresolved";
+    reasonCode: string | null;
+  }[];
+  arrangementListStatus: "available" | "unavailable";
+  medicareEvidence: {
+    match: "not_applicable" | "unresolved" | "unavailable" | "none" | "ambiguous" | "single";
+    evidenceStatus: string | null;
+    rangeRelation: string | null;
+    remittanceAdviceRecorded: boolean | null;
+  };
+  stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+  electronicSubmissionAvailable: false;
+  isAdvisorySnapshot: true;
 }
 
-const STEP_TITLES = ["Patient & dates", "Claim kind", "Routing", "Confirm"] as const;
+function coverageLabel(coverage: AssemblyPreview["primaryCoverage"]): string {
+  if (coverage.status !== "uniform") return `Unresolved (${humanize(coverage.status)})`;
+  const kind = coverage.coverageKind
+    ? humanize(coverage.coverageKind)
+    : "Coverage type unavailable";
+  return `${kind} · rank ${coverage.rank ?? "unknown"} · recorded coverage, not benefit verification`;
+}
+
+function responsibilityLabel(value: string): string {
+  switch (value) {
+    case "medicaid_primary":
+      return "Medicaid is the recorded primary payer";
+    case "medicare_primary_medicaid_secondary":
+      return "Medicare is recorded primary; Medicaid is secondary";
+    case "other_primary":
+      return "Another payer is recorded primary; Medicaid TPL policy is unresolved";
+    default:
+      return "Payer responsibility is unresolved for this service period";
+  }
+}
+
+function medicareEvidenceLabel(preview: AssemblyPreview): string {
+  const evidence = preview.medicareEvidence;
+  if (evidence.match === "not_applicable") return "Not applicable for the recorded primary payer";
+  if (evidence.match === "unresolved")
+    return "Payer responsibility unresolved; Medicare evidence applicability is unknown";
+  if (evidence.match === "unavailable") return "Medicare evidence reader unavailable";
+  if (evidence.match === "none")
+    return "No matching Medicare claim is recorded in ChartWarden for this provider, admission, and date range";
+  if (evidence.match === "ambiguous")
+    return "More than one matching Medicare claim; manual review required";
+  const state = evidence.evidenceStatus
+    ? humanize(evidence.evidenceStatus)
+    : "Evidence status unknown";
+  const range = evidence.rangeRelation ? humanize(evidence.rangeRelation) : "range unknown";
+  return `${state} · ${range}${evidence.remittanceAdviceRecorded ? " · remittance reference recorded" : " · no remittance reference recorded"}`;
+}
+
+const STEP_TITLES = ["Patient & dates", "Claim kind", "Billing context", "Review"] as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -58,10 +121,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
   const [kind, setKind] = useState<ClaimKind>("hospice_only");
   const [rbArrangementId, setRbArrangementId] = useState("");
 
-  const [eligibility, setEligibility] = useState<EligibilityCheck | null>(null);
-  const [eligibilityLoadState, setEligibilityLoadState] = useState<
+  const [preview, setPreview] = useState<AssemblyPreview | null>(null);
+  const [previewLoadState, setPreviewLoadState] = useState<
     "idle" | "loading" | "loaded" | "failed"
   >("idle");
+  const previewGeneration = useRef(0);
   const [busy, setBusy] = useState(false);
   // ADR-0110 — creating a claim is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
@@ -76,11 +140,15 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     ISO_DATE_RE.test(serviceTo) &&
     serviceFrom <= serviceTo;
   const needsRb = kind !== "hospice_only";
-  const step2Valid = !needsRb || UUID_RE.test(rbArrangementId);
-  const step3Valid = true; // routing is advisory — the server resolves the real channel (§4.4)
-  const step4Valid = true;
-
-  const stepValid = [step1Valid, step2Valid, step3Valid, step4Valid][step] ?? false;
+  const kindPreview = preview?.claimKinds.find((candidate) => candidate.kind === kind);
+  const arrangementPreview = preview?.rbArrangements.find(
+    (candidate) => candidate.id === rbArrangementId,
+  );
+  const step2Valid =
+    previewLoadState === "loaded" &&
+    kindPreview?.payerPolicy === "permitted" &&
+    (!needsRb || (arrangementPreview?.status === "candidate" && UUID_RE.test(rbArrangementId)));
+  const stepValid = [step1Valid, step2Valid, step2Valid, step2Valid][step] ?? false;
 
   const gates: GateItem[] = useMemo(
     () =>
@@ -92,32 +160,55 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     [step],
   );
 
-  // Advisory eligibility context only. A stored MCO assignment is not a verified payer route, and a
-  // missing MCO does not prove fee-for-service. The claim API reports unresolved routing until an
-  // authoritative state-program mapping is available.
-  const loadRouting = useCallback(async () => {
-    setEligibilityLoadState("loading");
-    setEligibility(null);
-    const res = await client.GET("/api/v1/medicaid-eligibility-checks", {
-      params: { query: { patientId } },
-    } as never);
-    if (res.error) {
-      setEligibilityLoadState("failed");
+  const loadPreview = useCallback(async (): Promise<boolean> => {
+    const generation = ++previewGeneration.current;
+    setPreviewLoadState("loading");
+    setPreview(null);
+    setRbArrangementId("");
+    setError(null);
+    try {
+      const { data, error: requestError } = (await client.POST(
+        "/api/v1/medicaid-claims/assembly-preview",
+        {
+          body: { patientId, admissionId, providerEntityId, serviceFrom, serviceTo },
+        } as never,
+      )) as { data?: unknown; error?: unknown };
+      if (generation !== previewGeneration.current) return false;
+      if (requestError || !data) {
+        setPreviewLoadState("failed");
+        return false;
+      }
+      setPreview(data as AssemblyPreview);
+      setPreviewLoadState("loaded");
+      return true;
+    } catch {
+      if (generation !== previewGeneration.current) return false;
+      setPreviewLoadState("failed");
+      return false;
+    }
+  }, [client, patientId, admissionId, providerEntityId, serviceFrom, serviceTo]);
+
+  const invalidatePreview = useCallback(() => {
+    previewGeneration.current += 1;
+    setPreview(null);
+    setPreviewLoadState("idle");
+    setRbArrangementId("");
+    setError(null);
+    setStep(0);
+  }, []);
+
+  const goNext = useCallback(async () => {
+    if (step === 0) {
+      if (!step1Valid || !(await loadPreview())) return;
+      setStep(1);
       return;
     }
-    const rows = (res.data as unknown as EligibilityCheck[]) ?? [];
-    setEligibility(rows[0] ?? null);
-    setEligibilityLoadState("loaded");
-  }, [client, patientId]);
-
-  const goNext = useCallback(() => {
     if (!stepValid) return;
-    const next = step + 1;
-    setStep(next);
-    if (next === 2 && eligibilityLoadState === "idle") void loadRouting();
-  }, [step, stepValid, eligibilityLoadState, loadRouting]);
+    setStep((current) => Math.min(current + 1, STEP_TITLES.length - 1));
+  }, [step, step1Valid, stepValid, loadPreview]);
 
   const assemble = useCallback(async () => {
+    if (busy || !step2Valid) return;
     setBusy(true);
     setError(null);
     const body: Record<string, unknown> = {
@@ -129,19 +220,33 @@ export function MedicaidAssemblyWizard(): JSX.Element {
       kind,
     };
     if (needsRb) body.rbArrangementId = rbArrangementId;
-    const {
-      data,
-      error: err,
-      response,
-    } = (await client.POST("/api/v1/medicaid-claims", {
-      body,
-    } as never)) as { data?: unknown; error?: unknown; response?: Response };
-    setBusy(false);
-    if (err) {
-      setError(assembleErrorMessage(response?.status, err));
-      return;
+    try {
+      const {
+        data,
+        error: err,
+        response,
+      } = (await client.POST("/api/v1/medicaid-claims", {
+        body,
+      } as never)) as { data?: unknown; error?: unknown; response?: Response };
+      if (err) {
+        setError(assembleErrorMessage(response?.status, err));
+        return;
+      }
+      const id = (data as { id?: string } | undefined)?.id;
+      if (!id) {
+        setError(
+          "The draft response could not be confirmed. Check the claim workbench before trying again.",
+        );
+        return;
+      }
+      setAssembledId(id);
+    } catch {
+      setError(
+        "The draft response could not be confirmed. Check the claim workbench before trying again.",
+      );
+    } finally {
+      setBusy(false);
     }
-    setAssembledId((data as { id?: string } | undefined)?.id ?? null);
   }, [
     client,
     patientId,
@@ -152,6 +257,8 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     kind,
     needsRb,
     rbArrangementId,
+    busy,
+    step2Valid,
   ]);
 
   if (assembledId) {
@@ -217,8 +324,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
       context={
         <Card title="How assembly works">
           <span style={mutedStyle}>
-            Everything previewed here is advisory. At assemble the server re-resolves payer coverage
-            and the R&amp;B day set from the record of truth, then runs the validation registry.
+            The server resolves payer responsibility and current R&amp;B candidates for this tenant,
+            provider, admission, and date range. This snapshot is advisory; assembly rechecks
+            coverage and day ownership. Medicaid electronic submission is unavailable.
           </span>
         </Card>
       }
@@ -232,7 +340,10 @@ export function MedicaidAssemblyWizard(): JSX.Element {
             Back
           </Button>
           {step < STEP_TITLES.length - 1 ? (
-            <Button onClick={goNext} disabled={!stepValid}>
+            <Button
+              onClick={goNext}
+              disabled={!stepValid || (step === 0 && previewLoadState === "loading")}
+            >
               Continue
             </Button>
           ) : (
@@ -267,36 +378,69 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                 onChange={(next) => {
                   setPatientId(next);
                   setAdmissionId("");
+                  invalidatePreview();
                 }}
                 required
               />
               <AdmissionLookupField
                 label="Admission"
                 value={admissionId}
-                onChange={setAdmissionId}
+                onChange={(next) => {
+                  setAdmissionId(next);
+                  invalidatePreview();
+                }}
                 patientId={patientId}
                 required
               />
               <ProviderEntityLookupField
                 label="Provider entity"
                 value={providerEntityId}
-                onChange={setProviderEntityId}
+                onChange={(next) => {
+                  setProviderEntityId(next);
+                  setAdmissionId("");
+                  invalidatePreview();
+                }}
                 required
               />
               <TextField
                 label="Service from"
                 value={serviceFrom}
-                onChange={setServiceFrom}
+                onChange={(next) => {
+                  setServiceFrom(next);
+                  invalidatePreview();
+                }}
                 type="date"
+                required
               />
-              <TextField label="Service to" value={serviceTo} onChange={setServiceTo} type="date" />
+              <TextField
+                label="Service to"
+                value={serviceTo}
+                onChange={(next) => {
+                  setServiceTo(next);
+                  invalidatePreview();
+                }}
+                type="date"
+                required
+              />
             </div>
             {!step1Valid ? (
-              <span style={mutedStyle}>
+              <output aria-live="polite" style={mutedStyle}>
                 Enter the patient, admission, and provider-entity identifiers plus a service range
-                that starts on or before it ends.
-              </span>
+                with both dates, starting on or before the end date.
+              </output>
             ) : null}
+            <output aria-live="polite" style={{ display: "block", marginTop: "0.75rem" }}>
+              {previewLoadState === "loading" ? (
+                <span style={mutedStyle}>Checking payer responsibility and R&amp;B records…</span>
+              ) : previewLoadState === "failed" ? (
+                <span style={{ color: "var(--color-error)" }}>
+                  The billing preview could not be loaded. No eligibility or payer conclusion was
+                  made. Retry after confirming the selected records.
+                </span>
+              ) : previewLoadState === "loaded" ? (
+                <span style={mutedStyle}>Server preview loaded for this service window.</span>
+              ) : null}
+            </output>
           </Card>
         ) : null}
 
@@ -308,29 +452,118 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                 <select
                   aria-label="Claim kind"
                   value={kind}
-                  onChange={(e) => setKind(e.target.value as ClaimKind)}
+                  onChange={(e) => {
+                    const nextKind = e.target.value as ClaimKind;
+                    setKind(nextKind);
+                    if (nextKind === "hospice_only") setRbArrangementId("");
+                    setError(null);
+                  }}
                   style={selectStyle}
                 >
-                  <option value="hospice_only">{kindLabel("hospice_only")}</option>
-                  <option value="combined_hospice_rb">{kindLabel("combined_hospice_rb")}</option>
-                  <option value="rb_only">{kindLabel("rb_only")}</option>
+                  {preview?.claimKinds.map((candidate) => (
+                    <option
+                      key={candidate.kind}
+                      value={candidate.kind}
+                      disabled={candidate.payerPolicy !== "permitted"}
+                    >
+                      {kindLabel(candidate.kind)}
+                      {candidate.payerPolicy === "permitted"
+                        ? ""
+                        : ` — ${candidate.reasonCode ? assembleErrorMessage(undefined, { error: { code: candidate.reasonCode } }) : "availability unresolved"}`}
+                    </option>
+                  )) ?? <option value={kind}>{kindLabel(kind)}</option>}
                 </select>
               </label>
+              {previewLoadState !== "loaded" ? (
+                <p style={mutedStyle}>
+                  Load the server preview from the first step to see available claim kinds.
+                </p>
+              ) : kindPreview?.payerPolicy !== "permitted" ? (
+                <output aria-live="polite" style={{ ...alertStyle, display: "block" }}>
+                  {kindPreview?.reasonCode
+                    ? assembleErrorMessage(undefined, { error: { code: kindPreview.reasonCode } })
+                    : "Payer responsibility is unresolved for this range."}
+                </output>
+              ) : (
+                <p style={mutedStyle}>
+                  This claim kind passes the current payer-responsibility policy. Clinical, rate,
+                  arrangement, and state-format checks still apply.
+                </p>
+              )}
               {needsRb ? (
                 <div>
-                  <TextField
-                    label="R&B arrangement id"
-                    value={rbArrangementId}
-                    onChange={setRbArrangementId}
-                    mono
-                    required
-                    hint="Use the arrangement for this patient and provider entity that covers the service dates."
-                    error={
-                      rbArrangementId.length > 0 && !UUID_RE.test(rbArrangementId)
-                        ? "Enter a valid arrangement identifier."
-                        : undefined
-                    }
-                  />
+                  <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                    <span style={mutedStyle}>Room &amp; Board arrangement (required)</span>
+                    <select
+                      aria-label="Room and Board arrangement"
+                      aria-required="true"
+                      value={rbArrangementId}
+                      onChange={(event) => setRbArrangementId(event.target.value)}
+                      style={selectStyle}
+                      disabled={previewLoadState !== "loaded"}
+                    >
+                      <option value="">Select an arrangement</option>
+                      {preview?.rbArrangements.map((arrangement) => (
+                        <option
+                          key={arrangement.id}
+                          value={arrangement.id}
+                          disabled={arrangement.status !== "candidate"}
+                        >
+                          {arrangement.facilityName} · {arrangement.effectiveFrom}
+                          {arrangement.effectiveTo ? ` to ${arrangement.effectiveTo}` : " onward"}
+                          {arrangement.status === "candidate"
+                            ? ` · ${arrangement.billableDayCount} available day${arrangement.billableDayCount === 1 ? "" : "s"}`
+                            : " · unavailable"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {arrangementPreview?.reasonCode ? (
+                    <output aria-live="polite" style={mutedStyle}>
+                      {assembleErrorMessage(undefined, {
+                        error: { code: arrangementPreview.reasonCode },
+                      })}
+                    </output>
+                  ) : null}
+                  {previewLoadState === "loaded" &&
+                  preview?.arrangementListStatus === "unavailable" ? (
+                    <output aria-live="polite" style={{ ...mutedStyle, display: "block" }}>
+                      Room &amp; Board candidates could not be determined because required admission
+                      or level-of-care records are unavailable. No arrangement was treated as
+                      billable.
+                    </output>
+                  ) : null}
+                  {previewLoadState === "loaded" &&
+                  preview?.arrangementListStatus === "available" ? (
+                    <output aria-live="polite" style={{ ...mutedStyle, display: "block" }}>
+                      An arrangement candidate has a stored contract reference; this preview does
+                      not verify the M22 document type, active status, or signature.
+                    </output>
+                  ) : null}
+                  {previewLoadState === "loaded"
+                    ? preview?.rbArrangements
+                        .filter(
+                          (arrangement) =>
+                            arrangement.status !== "candidate" && arrangement.reasonCode,
+                        )
+                        .map((arrangement) => (
+                          <output
+                            key={arrangement.id}
+                            aria-live="polite"
+                            style={{ ...mutedStyle, display: "block" }}
+                          >
+                            {arrangement.facilityName}:{" "}
+                            {assembleErrorMessage(undefined, {
+                              error: { code: arrangement.reasonCode },
+                            })}
+                          </output>
+                        ))
+                    : null}
+                  {previewLoadState === "loaded" && preview?.rbArrangements.length === 0 ? (
+                    <span style={mutedStyle}>
+                      No arrangement overlaps this patient, provider, and service period.
+                    </span>
+                  ) : null}
                 </div>
               ) : (
                 <span style={mutedStyle}>
@@ -342,70 +575,106 @@ export function MedicaidAssemblyWizard(): JSX.Element {
         ) : null}
 
         {step === 2 ? (
-          <Card title="Routing preview">
-            {eligibilityLoadState === "idle" || eligibilityLoadState === "loading" ? (
-              <span style={mutedStyle}>Resolving the patient's latest eligibility check…</span>
-            ) : eligibilityLoadState === "failed" ? (
-              <div role="alert" aria-live="polite" style={{ display: "grid", gap: "0.5rem" }}>
-                <span style={mutedStyle}>
-                  The eligibility-check history could not be retrieved. This read failure is not an
-                  eligibility determination; retry the lookup or continue only using the
-                  server-validated billing record.
-                </span>
-                <Button tone="secondary" size="sm" onClick={() => void loadRouting()}>
-                  Retry eligibility history
-                </Button>
+          <Card title="Coverage and coordination">
+            {previewLoadState === "failed" ? (
+              <p role="alert" aria-live="assertive" style={alertStyle}>
+                The billing preview failed. No claim or Room &amp; Board day was changed. Go back
+                and retry.
+              </p>
+            ) : preview ? (
+              <div style={{ display: "grid", gap: "0.75rem" }}>
+                <Field label="Medicaid coverage" value={coverageLabel(preview.medicaidCoverage)} />
+                <Field label="Primary coverage" value={coverageLabel(preview.primaryCoverage)} />
+                <Field
+                  label="Payer responsibility"
+                  value={responsibilityLabel(preview.payerResponsibility)}
+                />
+                <Field
+                  label="Recorded eligibility check"
+                  value={
+                    preview.recordedEligibility.status === "unavailable"
+                      ? "Coverage is unresolved; no matching eligibility check can be identified"
+                      : preview.recordedEligibility.status === "not_recorded"
+                        ? "No check recorded for this Medicaid coverage and service range"
+                        : `${humanize(preview.recordedEligibility.outcome ?? "unknown")} · ${preview.recordedEligibility.asOfServiceDate ?? "date unavailable"} · ${preview.recordedEligibility.status === "stale" ? "stale recorded result" : "current recorded result"}; not benefit verification`
+                  }
+                />
+                {preview.recordedEligibility.serviceState ? (
+                  <Field
+                    label="Recorded service state"
+                    value={preview.recordedEligibility.serviceState}
+                  />
+                ) : null}
+                <Field label="Medicare claim evidence" value={medicareEvidenceLabel(preview)} />
+                <Field
+                  label="State secondary billing policy"
+                  value={
+                    preview.stateBillingPolicy === "not_applicable_to_primary_medicaid"
+                      ? "Secondary COB policy does not apply to the recorded primary Medicaid scenario"
+                      : preview.stateBillingPolicy === "unresolved"
+                        ? "Cannot assess until payer responsibility is resolved"
+                        : "Unconfirmed; secondary Medicaid claim formats remain unavailable"
+                  }
+                />
+                {needsRb ? (
+                  <Field
+                    label="Selected R&B arrangement"
+                    value={
+                      arrangementPreview
+                        ? `${arrangementPreview.facilityName} · ${arrangementPreview.billableDayCount} currently available day${arrangementPreview.billableDayCount === 1 ? "" : "s"}`
+                        : "Select a server-listed arrangement in the previous step"
+                    }
+                  />
+                ) : null}
+                <output aria-live="polite" style={{ ...mutedStyle, display: "block" }}>
+                  The preview does not reserve days or authorize transmission. Electronic Medicaid
+                  submission is unavailable.
+                </output>
               </div>
-            ) : eligibility ? (
-              <>
-                <Field
-                  label="Latest eligibility"
-                  value={
-                    <StatusPill
-                      label={humanize(eligibility.outcome)}
-                      tone={toneOf(ELIGIBILITY_OUTCOME_TONE, eligibility.outcome)}
-                    />
-                  }
-                />
-                <Field label="Service state" value={eligibility.serviceState} />
-                <Field
-                  label="Routes to"
-                  value={
-                    eligibility.mcoId
-                      ? `MCO ${shortId(eligibility.mcoId)} (unverified)`
-                      : "State program not determined"
-                  }
-                />
-                <Field label="Checked" value={eligibility.checkedAt.slice(0, 10)} />
-              </>
             ) : (
-              <span style={mutedStyle}>
-                No eligibility check on file for this patient. Assembly will still proceed — the
-                validation registry flags a missing or stale check as a finding on the resulting
-                claim.
-              </span>
+              <output aria-live="polite" style={{ ...mutedStyle, display: "block" }}>
+                Load the server preview from the patient and dates step first.
+              </output>
             )}
           </Card>
         ) : null}
 
         {step === 3 ? (
-          <Card title="Medicare coordination">
-            <span style={mutedStyle}>
-              Medicare claim linkage and adjudication evidence are not available on this assembly
-              path. A Medicare claim identifier alone does not prove adjudication or payment, so do
-              not enter an unrelated claim ID. Secondary Medicaid claim formats remain blocked
-              pending the applicable billing policy and COB requirements.
-            </span>
-            <Field label="Claim kind" value={kindLabel(kind)} />
-            <Field label="Service range" value={`${serviceFrom} → ${serviceTo}`} />
-            <Field
-              label="Routing"
-              value={
-                eligibility?.mcoId
-                  ? `MCO ${shortId(eligibility.mcoId)} (unverified)`
-                  : "State program not determined"
-              }
-            />
+          <Card title="Review draft request">
+            <div style={{ display: "grid", gap: "0.5rem" }}>
+              <Field label="Patient" value={shortId(patientId)} />
+              <Field label="Admission" value={shortId(admissionId)} />
+              <Field label="Provider entity" value={shortId(providerEntityId)} />
+              <Field label="Service period" value={`${serviceFrom} → ${serviceTo}`} />
+              <Field label="Claim kind" value={kindLabel(kind)} />
+              <Field
+                label="Payer responsibility"
+                value={
+                  preview ? responsibilityLabel(preview.payerResponsibility) : "Preview unavailable"
+                }
+              />
+              {needsRb ? (
+                <Field
+                  label="Room & Board arrangement"
+                  value={
+                    arrangementPreview
+                      ? `${arrangementPreview.facilityName} · ${arrangementPreview.billableDayCount} days shown as available in the preview`
+                      : "No valid arrangement selected"
+                  }
+                />
+              ) : null}
+              <Field
+                label="Medicare evidence"
+                value={preview ? medicareEvidenceLabel(preview) : "Unavailable"}
+              />
+              <output aria-live="polite" style={{ ...mutedStyle, display: "block" }}>
+                Assembling creates a draft only; it does not submit to Medicaid or establish
+                Medicare adjudication. The server revalidates coverage and day ownership. If this is
+                an R&amp;B claim, assembly assigns the currently available days shown above to the
+                draft. If the draft is later abandoned, those days require reconciliation before
+                reuse and are not automatically released.
+              </output>
+            </div>
           </Card>
         ) : null}
       </div>

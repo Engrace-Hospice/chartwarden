@@ -35,6 +35,7 @@ import {
   resolveWebTrustedOrigins,
 } from "@chartwarden/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@chartwarden/auth";
+import type { ClaimReader } from "@chartwarden/billing";
 import { type DbClient, createDbClient, schema } from "@chartwarden/db";
 // F-172 (#248) — the M35 `patient_pseudonym_key` platform-singleton KEK ring (distinct secret from
 // M34_TENANT_KEK — see `packages/subscription-billing/src/pseudonym/key-envelope.ts`'s own header for why
@@ -8813,6 +8814,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   (state) => state !== "OR" || m24OregonGateway !== null,
                   m24LocPeriodReader,
                   m24AdapterRegistry,
+                  () => getSeam("ClaimReader") as ClaimReader,
                 ),
               }),
           );
@@ -11958,6 +11960,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     const m24RevalidateWorker = registerM24RevalidateWorker({
       connection: queueConnection,
       db: dbHandle.db,
+      coverages: getSeam("PatientCoverageReader"),
       outbox: m24OutboxPublisher,
     });
     app.addHook("onClose", async () => {

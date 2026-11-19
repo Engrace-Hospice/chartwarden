@@ -19,6 +19,7 @@ import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { AppealClaimCopy } from "@chartwarden/types";
 import { registerSeam } from "../../bootstrap/index";
+import { buildDrizzleM23ClaimReader } from "./seams/claim-reader";
 
 /** The M23 → M27 billed-census seam contract. Opaque in the M1 registry (`unknown`); M27 casts to its own
  *  minimal view. Aggregate, FY-scoped, PHI-free (D18). */
@@ -153,6 +154,9 @@ export function toAppealClaimCopy(
 /** Register M23's published seams into the M1 registry. No-op without a db (the deny-stubs stand). */
 export function registerM23PublishedSeams(db: DbClient | undefined): void {
   if (!db) return;
+  // M24's read-only coordination preview uses the owner-scoped claim lifecycle projection. Amounts remain
+  // unavailable here; only M25 can expose posted remittance detail, so null is never interpreted as zero.
+  registerSeam("ClaimReader", buildDrizzleM23ClaimReader(db));
   registerSeam("PatientDaysProvider", buildM23PatientDaysProvider(db));
   // M30's HCI claims-derived indicators — the second M23 publish (same repo, windowed grain).
   registerSeam("ClaimLineReader", buildM23ClaimLineReader(db));

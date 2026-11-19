@@ -7,6 +7,14 @@ export function assembleErrorMessage(status: number | undefined, payload: unknow
   const code = typeof envelope?.code === "string" ? envelope.code : undefined;
 
   switch (code) {
+    case "MEDICAID_COVERAGE_READER_UNBOUND":
+      return "Coverage records are unavailable for this service window. Confirm the coverage records and retry the preview.";
+    case "MEDICAID_PAYER_RESPONSIBILITY_UNRESOLVED":
+      return "Payer responsibility could not be established for this service window. Review the recorded coverage and applicable billing policy; do not change payer ranking to bypass a billing restriction.";
+    case "MEDICAID_LOC_PERIOD_READER_UNBOUND":
+      return "Room & Board availability is unresolved because level-of-care records are unavailable. Reconcile the clinical records or retry later.";
+    case "MEDICAID_ASSEMBLY_PREVIEW_UNBOUND":
+      return "The server-authoritative assembly preview is unavailable in this environment. No payer or eligibility conclusion was made.";
     case "MEDICAID_COVERAGE_NOT_IN_FORCE":
       return "No single Medicaid coverage is in force for the full service range. Correct the coverage dates or split the claim at the coverage change.";
     case "MEDICAID_COVERAGE_CHANGED":
@@ -18,7 +26,7 @@ export function assembleErrorMessage(status: number | undefined, payload: unknow
     case "MEDICAID_PRIMARY_COVERAGE_MISSING":
       return "Primary coverage is missing or unconfirmed for this service range. Correct the coverage record before assembly.";
     case "MEDICARE_PRIMARY_HOSPICE_RESPONSIBILITY":
-      return "Medicare is primary for hospice-covered services. Assemble those services through Medicare billing.";
+      return "Medicare FFS is the recorded primary coverage for this service window. This record alone does not establish Part A hospice coverage or payment responsibility; verify the applicable benefit before choosing the Medicare billing workflow.";
     case "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED":
     case "MEDICAID_SECONDARY_COMBINED_FORMAT_UNVERIFIED":
       return "Medicaid eligibility is not denied, but the secondary Room & Board claim format is unverified. Assembly is blocked pending state-format confirmation.";

@@ -646,6 +646,8 @@ import {
   ArDashboardDto as M24ArDashboardDto,
   ArMetricsDto as M24ArMetricsDto,
   AssembleClaimBody as M24AssembleClaimBody,
+  AssemblyPreviewBody as M24AssemblyPreviewBody,
+  AssemblyPreviewResponse as M24AssemblyPreviewResponse,
   ClaimDto as M24ClaimDto,
   ClaimLineListResponse as M24ClaimLineListResponse,
   ClaimListQuery as M24ClaimListQuery,
@@ -4463,6 +4465,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       "Assemble a Medicaid claim draft over a patient + service range (Idempotency-Key required; §2.1)",
     body: M24AssembleClaimBody,
     response: M24ClaimDto,
+  },
+  "POST /api/v1/medicaid-claims/assembly-preview": {
+    summary:
+      "Read-only payer, claim-kind, Room & Board, and Medicare-evidence preview; creates no claim or reservation",
+    body: M24AssemblyPreviewBody,
+    response: M24AssemblyPreviewResponse,
   },
   "GET /api/v1/medicaid-claims/:id": {
     summary: "Single Medicaid claim — state, TOB, control number, COB + R&B linkage (§4.1)",

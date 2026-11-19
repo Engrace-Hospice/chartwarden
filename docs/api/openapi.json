@@ -208648,6 +208648,532 @@
         }
       }
     },
+    "/api/v1/medicaid-claims/assembly-preview": {
+      "post": {
+        "operationId": "postApiV1MedicaidclaimsAssemblypreview",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Read-only payer, claim-kind, Room & Board, and Medicare-evidence preview; creates no claim or reservation",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "primaryCoverage",
+                    "medicaidCoverage",
+                    "payerResponsibility",
+                    "recordedEligibility",
+                    "claimKinds",
+                    "rbArrangements",
+                    "arrangementListStatus",
+                    "medicareEvidence",
+                    "stateBillingPolicy",
+                    "electronicSubmissionAvailable",
+                    "isAdvisorySnapshot"
+                  ],
+                  "properties": {
+                    "primaryCoverage": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "coverageKind",
+                        "rank"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "uniform",
+                              "type": "string"
+                            },
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "changes",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "coverageKind": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rank": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "medicaidCoverage": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "coverageKind",
+                        "rank"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "uniform",
+                              "type": "string"
+                            },
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "changes",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "coverageKind": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rank": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "payerResponsibility": {
+                      "anyOf": [
+                        {
+                          "const": "medicaid_primary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "medicare_primary_medicaid_secondary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other_primary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unresolved",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "recordedEligibility": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "outcome",
+                        "serviceState",
+                        "asOfServiceDate",
+                        "checkedAt",
+                        "staleAt"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "current",
+                              "type": "string"
+                            },
+                            {
+                              "const": "stale",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_recorded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "outcome": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "serviceState": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "asOfServiceDate": {
+                          "anyOf": [
+                            {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "checkedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "staleAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "claimKinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "payerPolicy",
+                          "reasonCode"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "combined_hospice_rb",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hospice_only",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rb_only",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "payerPolicy": {
+                            "anyOf": [
+                              {
+                                "const": "permitted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unresolved",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reasonCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "rbArrangements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "facilityName",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "billableDayCount",
+                          "status",
+                          "reasonCode"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "facilityName": {
+                            "type": "string"
+                          },
+                          "effectiveFrom": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "billableDayCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "candidate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unresolved",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reasonCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "arrangementListStatus": {
+                      "anyOf": [
+                        {
+                          "const": "available",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unavailable",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "medicareEvidence": {
+                      "type": "object",
+                      "required": [
+                        "match",
+                        "evidenceStatus",
+                        "rangeRelation",
+                        "remittanceAdviceRecorded"
+                      ],
+                      "properties": {
+                        "match": {
+                          "anyOf": [
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ambiguous",
+                              "type": "string"
+                            },
+                            {
+                              "const": "single",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "evidenceStatus": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rangeRelation": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "remittanceAdviceRecorded": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "stateBillingPolicy": {
+                      "anyOf": [
+                        {
+                          "const": "not_applicable_to_primary_medicaid",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unconfirmed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unresolved",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "electronicSubmissionAvailable": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "isAdvisorySnapshot": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "admissionId",
+                  "providerEntityId",
+                  "serviceFrom",
+                  "serviceTo"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "serviceTo": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/medicaid-eligibility-checks": {
       "get": {
         "operationId": "getApiV1Medicaideligibilitychecks",
@@ -208908,6 +209434,7 @@
                       "customOverrideRole",
                       "overrideRoleRequired",
                       "regulatoryRequired",
+                      "platformRequired",
                       "parametersOverlay",
                       "version"
                     ],
@@ -208954,6 +209481,9 @@
                       "regulatoryRequired": {
                         "type": "boolean"
                       },
+                      "platformRequired": {
+                        "type": "boolean"
+                      },
                       "parametersOverlay": {},
                       "version": {
                         "anyOf": [
@@ -208972,6 +209502,7 @@
                           "category",
                           "severity",
                           "regulatoryRequired",
+                          "platformRequired",
                           "applicableStates"
                         ],
                         "properties": {
@@ -208985,6 +209516,9 @@
                             "type": "string"
                           },
                           "regulatoryRequired": {
+                            "type": "boolean"
+                          },
+                          "platformRequired": {
                             "type": "boolean"
                           },
                           "applicableStates": {

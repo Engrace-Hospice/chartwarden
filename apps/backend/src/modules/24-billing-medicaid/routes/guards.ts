@@ -70,6 +70,13 @@ export const ABAC_BODY_PE = (key: string, predicate: string): PreHandler =>
     notFoundOnDeny: false,
   }) as PreHandler;
 
+/** M5 patient caseload/scope for request bodies that read patient-level billing evidence. */
+export const ABAC_BODY_PATIENT = (key: string): PreHandler =>
+  requireAbac(key, "caseload_or_scope", {
+    getTarget: (r) => ({ patientId: bodyField(r, "patientId") }),
+    notFoundOnDeny: true,
+  }) as PreHandler;
+
 /** §D12 step-up gate — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate. */
 export const STEP_UP = (operationKey: string): PreHandler =>
   requireStepUp(operationKey) as PreHandler;

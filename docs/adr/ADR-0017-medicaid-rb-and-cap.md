@@ -32,8 +32,10 @@ amount per resident from the state eligibility feed.
 
 - **Third-party liability (TPL):** other coverage is billed before Medicaid; Medicaid is payer of
   last resort.
-- **Crossover:** for dual-eligibles with Medicare primary, the Medicare claim crosses over and
-  Medicaid pays the residual per the state's crossover rules.
+- **Crossover:** for dual-eligibles with Medicare primary, coordination follows the applicable
+  state's crossover rules and supported claim format. This principle does not establish that Oregon
+  accepts a separate R&B-only or combined electronic claim, or which Medicare adjudication/remittance
+  evidence must accompany it.
 - **Retroactive eligibility:** claims for service dates covered by retro-eligibility are billable
   within the state window.
 - **Timely filing:** each state's filing deadline is enforced as a pre-submission rule.
@@ -74,6 +76,32 @@ claim-format support, or permission to submit. Those controls remain independent
 secondary claim scenario in the M24 proposal is not evidence that Oregon accepts that electronic format.
 Billing-owner approval and applicable Oregon format/COB confirmation remain open under #876.
 
+### D7 — Medicare coordination evidence is server-resolved; preview is advisory (#876 L3)
+
+M24 derives payer responsibility from M5's complete service-window coverage snapshot, not from an
+optional client-supplied Medicare claim id. M23's published `ClaimReader.medicareSecondaryContext`
+returns only tenant-, patient-, provider-, admission-, resolved-primary-Medicare-coverage-, and
+date-scoped claim evidence. A technical
+acknowledgment is not adjudication or payment. An M25 remittance reference in M23 claim history may be
+reported as a correlated reference, but the current reader has no authoritative payment-amount projection;
+unknown amounts remain `null`. A recouped/reversed or ambiguous claim is not represented as active payment
+evidence.
+
+The M24 assembly preview is an advisory read protected by the claim-assembly permission, provider-entity scope,
+and the M5 patient `caseload_or_scope` predicate. It reports resolved coverage, a provider- and selected-Medicaid-
+coverage-matched eligibility check with its freshness state, R&B candidates, Medicare evidence classification,
+and state-policy uncertainty. Successful previews emit actor- and patient-attributed read-audit events. The
+preview does not create a claim, reserve days, or emit a business event. Assembly and validation re-resolve material facts at their mutation
+boundary. The R&B contract check currently verifies a stored M22 document UUID and start timestamp, but does not
+resolve the document or verify its type, active status, or signature; this remains an explicit evidence limitation.
+The `m23.claim.acknowledged` handler does not transition a Medicaid claim to `READY`. Secondary assembly
+remains blocked until a state-specific policy identifies the supported format and the evidence that format
+requires. This ADR does not establish a universal requirement for Medicare adjudication, remittance, or payment.
+
+D7 is an internal evidence and safety boundary, not a legal determination, Oregon billing-format approval,
+or electronic submission authorization. Secondary Medicaid R&B-only and combined assembly remain blocked;
+M24 electronic submission remains independently fail-closed.
+
 ## Consequences
 
 - M24 re-specs R&B pricing, patient liability, TPL/crossover/retro/timely-filing, and corrects the
@@ -81,3 +109,5 @@ Billing-owner approval and applicable Oregon format/COB confirmation remain open
 - M26 drops the override and corrects the inpatient-cap numerator/denominator + overage math.
 - M24 implements D6 as an interim fail-closed assembly boundary; it does not settle Oregon's separate-versus-
   combined secondary R&B format or Medicaid eligibility policy.
+- M24 implements D7 as a read-only evidence and preview boundary; it does not establish a secondary claim format,
+  payment calculation, or payer qualification.

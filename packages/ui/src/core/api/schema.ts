@@ -16524,6 +16524,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medicaid-claims/assembly-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read-only payer, claim-kind, Room & Board, and Medicare-evidence preview; creates no claim or reservation */
+        post: operations["postApiV1MedicaidclaimsAssemblypreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medicaid-eligibility-checks": {
         parameters: {
             query?: never;
@@ -82238,6 +82255,91 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MedicaidclaimsAssemblypreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    serviceFrom: string;
+                    /** Format: date */
+                    serviceTo: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        primaryCoverage: {
+                            status: "uniform" | "none" | "changes" | "ambiguous" | "unavailable";
+                            coverageKind: string | null;
+                            rank: number | null;
+                        };
+                        medicaidCoverage: {
+                            status: "uniform" | "none" | "changes" | "ambiguous" | "unavailable";
+                            coverageKind: string | null;
+                            rank: number | null;
+                        };
+                        payerResponsibility: "medicaid_primary" | "medicare_primary_medicaid_secondary" | "other_primary" | "unresolved";
+                        recordedEligibility: {
+                            status: "current" | "stale" | "not_recorded" | "unavailable";
+                            outcome: string | null;
+                            serviceState: string | null;
+                            asOfServiceDate: string | null;
+                            checkedAt: string | null;
+                            staleAt: string | null;
+                        };
+                        claimKinds: {
+                            kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                            payerPolicy: "permitted" | "blocked" | "unresolved";
+                            reasonCode: string | null;
+                        }[];
+                        rbArrangements: {
+                            /** Format: uuid */
+                            id: string;
+                            facilityName: string;
+                            /** Format: date */
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            billableDayCount: number;
+                            status: "candidate" | "blocked" | "unresolved";
+                            reasonCode: string | null;
+                        }[];
+                        arrangementListStatus: "available" | "unavailable";
+                        medicareEvidence: {
+                            match: "not_applicable" | "unresolved" | "unavailable" | "none" | "ambiguous" | "single";
+                            evidenceStatus: string | null;
+                            rangeRelation: string | null;
+                            remittanceAdviceRecorded: boolean | null;
+                        };
+                        stateBillingPolicy: "not_applicable_to_primary_medicaid" | "unconfirmed" | "unresolved";
+                        /** @constant */
+                        electronicSubmissionAvailable: false;
+                        /** @constant */
+                        isAdvisorySnapshot: true;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Medicaideligibilitychecks: {
         parameters: {
             query?: {
@@ -82342,6 +82444,7 @@ export interface operations {
                         customOverrideRole: string | null;
                         overrideRoleRequired: string | null;
                         regulatoryRequired: boolean;
+                        platformRequired: boolean;
                         parametersOverlay: unknown;
                         version: number | null;
                         platformDefault?: {
@@ -82349,6 +82452,7 @@ export interface operations {
                             category: string;
                             severity: string;
                             regulatoryRequired: boolean;
+                            platformRequired: boolean;
                             applicableStates: string[];
                         };
                     }[];

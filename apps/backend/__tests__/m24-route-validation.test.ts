@@ -1,4 +1,5 @@
 import { ValidationError } from "@chartwarden/types";
+import Fastify from "fastify";
 // apps/backend/__tests__/m24-route-validation.test.ts — M24 (§4.2) request-validation conformance.
 //
 // The M24 routes bind the `m24-typebox` schemas through `parse(...)` at the route boundary, so a malformed
@@ -15,9 +16,12 @@ import { ValidationError } from "@chartwarden/types";
 //   - `parse` (bodies) deliberately does NOT convert, so a wrong-typed money field is REJECTED rather than
 //     rounded — coercion there would turn a client bug into a silent money bug.
 import { describe, expect, it } from "vitest";
+import { buildM24AbacPredicates } from "../src/modules/24-billing-medicaid/abac-predicates";
+import { registerClaimsRoutes } from "../src/modules/24-billing-medicaid/routes/claims.routes";
 import {
   ApplyOverrideBody,
   AssembleClaimBody,
+  AssemblyPreviewBody,
   ClaimListQuery,
   CreateRbArrangementBody,
   OverrideRbDayBody,
@@ -45,6 +49,21 @@ const expectQueryRejected = (schema: Parameters<typeof parseQuery>[0], raw: unkn
 };
 
 describe("M24 §4.2 request validation — bodies", () => {
+  it("accepts only scoped server-resolved inputs for the read-only assembly preview", () => {
+    const preview = {
+      patientId: UUID_A,
+      admissionId: UUID_B,
+      providerEntityId: UUID_C,
+      serviceFrom: "2026-07-01",
+      serviceTo: "2026-07-31",
+    };
+    expect(parse(AssemblyPreviewBody, preview)).toEqual(preview);
+    expectRejected(AssemblyPreviewBody, { ...preview, organizationId: UUID_A });
+    expectRejected(AssemblyPreviewBody, { ...preview, kind: "rb_only" });
+    expectRejected(AssemblyPreviewBody, { ...preview, medicareClaimId: UUID_A });
+    expectRejected(AssemblyPreviewBody, { ...preview, rbArrangementId: UUID_A });
+  });
+
   it("does not allow clients to set or clear an MCO routing identity", () => {
     expect(parse(UpdateDraftClaimBody, {})).toEqual({});
     expectRejected(UpdateDraftClaimBody, { mcoId: UUID_A });
@@ -196,6 +215,51 @@ describe("M24 §4.2 request validation — bodies", () => {
     expect(parse(UpsertCredentialBody, base).serviceState).toBe("OR");
     expectRejected(UpsertCredentialBody, { ...base, serviceState: "Oregon" });
     expectRejected(UpsertCredentialBody, { ...base, serviceState: "or" });
+  });
+});
+
+describe("M24 assembly preview read audit", () => {
+  it("attributes successful previews to the request's patient without waiving PHI read audit", async () => {
+    const app = Fastify();
+    let auditConfig: Record<string, unknown> | undefined;
+    let previewPreHandlerCount = 0;
+    app.addHook("onRoute", (route) => {
+      if (route.url === "/api/v1/medicaid-claims/assembly-preview") {
+        auditConfig = (route.config as { auditRead?: Record<string, unknown> }).auditRead;
+        previewPreHandlerCount = Array.isArray(route.preHandler) ? route.preHandler.length : 0;
+      }
+    });
+    registerClaimsRoutes(app, {
+      readService: {} as never,
+      writeService: {} as never,
+    });
+    expect(auditConfig).toMatchObject({
+      resourceKind: "medicaid_claim_assembly_preview",
+      patientIdBodyPath: "patientId",
+      fields: ["coverage", "eligibility", "room_and_board", "medicare_coordination"],
+    });
+    expect(auditConfig).not.toHaveProperty("none");
+    expect(previewPreHandlerCount).toBe(3); // permission + provider scope + M5 patient scope
+    await app.close();
+  });
+});
+
+describe("M24 platform-required validation gate protection", () => {
+  it("prevents tenants from disabling internal payer-responsibility safety gates", async () => {
+    const protectRule = buildM24AbacPredicates({}).regulatory_required_rule_protected_medicaid!;
+    const context = { organizationId: UUID_A, userId: UUID_B } as never;
+    expect(await protectRule(context, { ruleKey: "medicaid_payer_responsibility_resolved" })).toBe(
+      false,
+    );
+    expect(await protectRule(context, { ruleKey: "medicare_primary_required_for_dual" })).toBe(
+      false,
+    );
+    expect(await protectRule(context, { ruleKey: "medicaid_medicare_linkage_supported" })).toBe(
+      false,
+    );
+    expect(await protectRule(context, { ruleKey: "medicaid_eligibility_freshness_30d" })).toBe(
+      true,
+    );
   });
 });
 

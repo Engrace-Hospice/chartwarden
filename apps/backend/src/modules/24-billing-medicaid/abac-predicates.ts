@@ -14,8 +14,9 @@
 //   rb_arrangement_visible_in_scope             — the arrangement's (or R&B day's) PE is in the actor's set.
 //   state_trading_partner_credential_admin      — the PE is in scope AND the actor is a billing_manager/org_admin.
 //
-// DEFERRAL: the per-PATIENT caseload narrowing of `medicaid_claim_in_billing_manager_caseload` binds when the
-// M5 CaseloadProvider seam binds; the provider-entity scope (GAP-145) is enforced now.
+// DEFERRAL: existing claim-object ABAC `medicaid_claim_in_billing_manager_caseload` remains provider-entity
+// scoped (GAP-145). The assembly-preview read additionally composes M5 `caseload_or_scope` over its patient
+// body target because it reads patient-level Medicare evidence before a claim object exists.
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
 import { DEFAULT_MEDICAID_RULES } from "@chartwarden/medicaid-adapters";
@@ -188,7 +189,7 @@ export function buildM24AbacPredicates(
       const ruleKey = targetStr(target, "ruleKey");
       if (!ruleKey) return true; // bulk view; the per-rule check happens at item level
       const rule = RULES_BY_KEY.get(ruleKey);
-      return rule ? !rule.regulatoryRequired : true; // tenant custom rules are not regulatory
+      return rule ? !rule.regulatoryRequired && !rule.platformRequired : true;
     },
 
     rb_arrangement_visible_in_scope: async (context, target) => {

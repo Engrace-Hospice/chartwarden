@@ -1,12 +1,12 @@
 // @chartwarden/medicaid-adapters — M24 §4.6 / §11.A the MEDICAID VALIDATION RULE REGISTRY (D10). Mirrors the
 // M23 BillingRuleRegistry: a mutable-until-frozen container keyed by rule.key + a pure deterministic runner.
-// FREEZE-AT-BOOT: the Phase-3 composition root registers the 13 platform-default rules (+ tenant overlays)
+// FREEZE-AT-BOOT: the Phase-3 composition root registers the platform-default rules (+ tenant overlays)
 // then freeze()s; register after freeze THROWS; duplicate keys THROW. PURE DOMAIN — no I/O, no clock, no PHI.
 import { skip } from "./types";
 import type { MedicaidRule, MedicaidValidationContext, RuleParameters, RuleResult } from "./types";
 
 /** The platform-default rule-set version (stamped into medicaid_validation_run.rule_registry_version). */
-export const DEFAULT_MEDICAID_RULE_SET_VERSION = "1";
+export const DEFAULT_MEDICAID_RULE_SET_VERSION = "3";
 
 /** Per-rule parameter overlays keyed by rule.key (the tenant medicaid_validation_rule_config merge). */
 export type MedicaidRuleParameterOverlays = Readonly<Record<string, RuleParameters>>;
@@ -113,6 +113,11 @@ export function runMedicaidRules(
     else failedCount += 1;
 
     const wasOverridden = overridden.has(rule.key);
+    if (rule.platformRequired && result.severity === "error") {
+      // A platform safety gate cannot be bypassed by an override row, including stale legacy data.
+      blockingFailures += 1;
+      continue;
+    }
     if (wasOverridden) overriddenCount += 1;
     if (rule.regulatoryRequired && result.severity === "error" && !wasOverridden) {
       blockingFailures += 1;

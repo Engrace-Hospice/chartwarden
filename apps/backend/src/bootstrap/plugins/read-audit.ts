@@ -98,6 +98,7 @@ function resolvePatientId(
   cfg: RouteReadAuditEmit,
   params: Record<string, string>,
   query: unknown,
+  body: unknown,
   payload: unknown,
 ): string | undefined {
   const fromParam = cfg.patientIdParam ? params[cfg.patientIdParam] : undefined;
@@ -106,6 +107,10 @@ function resolvePatientId(
     ? (query as Record<string, unknown> | undefined)?.[cfg.patientIdQueryParam]
     : undefined;
   if (typeof fromQuery === "string" && fromQuery.length > 0) return fromQuery;
+  if (cfg.patientIdBodyPath) {
+    const fromBody = atPath(body, cfg.patientIdBodyPath);
+    if (fromBody) return fromBody;
+  }
   const paths = cfg.patientIdPayloadPath;
   for (const path of typeof paths === "string" ? [paths] : (paths ?? [])) {
     const found = atPath(payload, path);
@@ -211,7 +216,13 @@ export function applyReadAuditCoverage(
         return;
       }
       const params = (request.params ?? {}) as Record<string, string>;
-      const patientId = resolvePatientId(cfg, params, request.query, binary ? undefined : payload);
+      const patientId = resolvePatientId(
+        cfg,
+        params,
+        request.query,
+        request.body,
+        binary ? undefined : payload,
+      );
       // The service principal's userId is the literal "system", not a uuid: audit it as no user (#680).
       const actorUserId = ctx.attributes?.actorKind === "system" ? "" : ctx.userId || "";
       const auditCtx: AuditContext = {
