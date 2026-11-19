@@ -6,6 +6,16 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-19 — Visit-note draft scope (M8, ADR-0114): only the RN routine visit is drafted, and a source that never answers is `503`
+
+**No new route and no new field; response shapes are unchanged, and nothing changes for a tenant with the draft switched off.** Which templates draft is now one rule read off the phrase corpus; today only the RN routine visit (`routine_visit` with discipline `rn`) has drafted sections.
+
+- **Every other encounter type and discipline** behaves exactly as with the switch off, whatever the draft sources are doing: `POST /encounters/{encounterId}/finalize` and `/sign` read no source, run no `draft_sections_resolved` check and ask for no confirmation; the note's text is the clinician's own selections as before, and no sealed section rows are written. A source outage can no longer block the sign of those types. Earlier the draft was read for every type, and a template with a care-plan-fed section (a CHHA `plan`, say) could be drafted with RN-routine wording; that no longer happens. No tenant could have the switch on yet (the corpus review is pending).
+- **`GET /encounters/{encounterId}/draft`** for such an encounter answers `200` with every template section `not_drafted` (`text`, `contentHash`, `corpusVersion`, `part2Derived` null and `origins` empty) and `asOf` set to the time of the read; `PUT /encounters/{encounterId}/draft/sections/{sectionId}` answers `409 DRAFT_SECTION_STALE` (nothing is drafted to confirm), or `422 UNKNOWN_TEMPLATE_SECTION` for a section the template lacks. The `404` for a tenant with the switch off is unchanged.
+- **A source read that does not answer within 5 seconds** fails the same way a failing one does: `503 DRAFT_UNAVAILABLE` on the draft routes, `503 COMPLIANCE_GATE_UNAVAILABLE` at finalize and sign, never a pass. Retry the request.
+
+---
+
 ## 2026-11-19 — Visit-note draft gate and sign (M8, ADR-0114): a drafted section must be resolved to finalize and sign, `409 DRAFT_SECTION_STALE` at sign
 
 **No new route and no new field; nothing changes for a tenant with the draft switched off.** For a tenant with it on, `POST /encounters/{encounterId}/finalize` and `POST /encounters/{encounterId}/sign` read the visit-note draft (the one `GET /encounters/{encounterId}/draft` returns) and require every drafted section to be confirmed or deselected against what it shows now.
