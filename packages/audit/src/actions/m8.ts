@@ -234,9 +234,9 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     action: "m8.encounter.section_amended",
     moduleOwner: "m8",
     defaultRetentionClass: "compliance",
-    description: "One section of a signed visit note was amended by a signed addendum (encounterId, addendumId, sectionId, part2Derived = the compiler's verdict on the confirmed amendment; severity info; ids and one flag only, never text, a content hash or a source id; one event per amended section, written in the addendum's sign transaction beside the sealed amendment row; the outbox event of the same name carries ids only and no flag; ADR-0114 VN-D30). Part 2 eligible: a part2Derived section is filed under compliance_42cfr_part2 (the emitter selects the class per event; the default stays compliance).",
+    description: "A signed addendum amended sections of a signed visit note (encounterId, addendumId, sectionCount = how many sections the addendum amended; severity info; the addendum id and a count only, never a section id, a Part 2 flag, text, a content hash or a source id; ONE event per signed addendum that amended at least one section, written in its sign transaction beside the sealed amendment rows; filed under the standard compliance class, never the Part 2 class, because audit.read is not Part 2 gated and either would tell a reader which sections hold Part 2 content; the per-section trail is the row trigger of hearthnote_signed_section; the outbox event of the same name is one per section and carries ids only; ADR-0114 VN-D30). Not Part 2 eligible.",
     denylistCategories: [],
-    isPartTwoEligible: true,
+    isPartTwoEligible: false,
   },
   {
     action: "m8.encounter.draft_policy_changed",

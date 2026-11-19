@@ -3103,8 +3103,8 @@ export function createDbEncounterRouteService(
             addenda: [{ addendumId, reason: a.reason, text: "" }],
           },
         });
-        // ADR-0114 VN-D30: one explicit event per amended section. The OUTBOX event carries ids only (a Part 2 flag would tell a subscriber which
-        // section holds Part 2 content); the AUDIT event carries the flag, filed under the Part 2 retention class when it is true (CW-AC-51).
+        // ADR-0114 VN-D30: the OUTBOX event is one per amended section, ids only (a Part 2 flag would tell a subscriber which section holds Part 2
+        // content). The AUDIT event is ONE per addendum: its id and a count, no section and no flag, standard retention class (CW-AC-51).
         for (const section of amendedSections) {
           await emit(t, organizationId, "m8.encounter.section_amended", "encounter", encounterId, {
             encounterId,
@@ -3120,7 +3120,7 @@ export function createDbEncounterRouteService(
             actorKind: "user",
             correlationId: `m8-sign-addendum:${addendumId}`,
           },
-          { encounterId, addendumId, sections: amendedSections },
+          { encounterId, addendumId, sectionCount: amendedSections.length },
         );
         const cosignatureRequestId =
           cosignerMembershipId === null
