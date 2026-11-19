@@ -6,8 +6,8 @@ PR-6 across the separate
 [`Engrace-Hospice/chartwarden-mobile`](https://github.com/Engrace-Hospice/chartwarden-mobile) repository
 and the existing aggregator adapter.
 **Decision:** **NO-GO for production release as one complete workflow.** The supervisor web slices are
-locally verified and ready for review, but authenticated application-stack, physical-device, and real
-vendor sandbox evidence is incomplete.
+locally verified, including a bounded authenticated application-stack journey, and ready for review,
+but physical-device, populated aggregator-dialog, and real vendor sandbox evidence is incomplete.
 
 ## 1. Delivered local slices
 
@@ -49,14 +49,16 @@ offline storage was introduced by these commits.
 | EVV documentation corpus | Check-clean. |
 | Platform boot check | Passed with `DATABASE_PLATFORM_URL` set: the backend returned `/health` 200 and the outbox relay was polling. |
 | PR-1 browser sweep | Six EVV screens were checked at 375, 768, and 1440 px without horizontal overflow or automated axe violations. No screenshot artifact was retained. |
+| Post-PR-3 authenticated browser journey | Passed 4/4 Playwright checks against the local application stack after an idempotent synthetic field-operations seed. The real M17 publication consumer registered the current visit before real M18 check-in/check-out API calls created the evidence. The correction ceremony and truthful empty aggregator state passed WCAG A/AA scans and document-overflow checks at 375×812 and 1440×900. |
+| Retained browser artifacts | [Correction desktop](./screenshots/evv/correction-ceremony-desktop-1440x900.png), [correction mobile](./screenshots/evv/correction-ceremony-mobile-375x812.png), [aggregator desktop](./screenshots/evv/aggregator-empty-state-desktop-1440x900.png), and [aggregator mobile](./screenshots/evv/aggregator-empty-state-mobile-375x812.png). All data is synthetic. |
 
-The PR-3 evidence dialog was tested in the DOM accessibility suite after that browser sweep; it has not
-received a second authenticated browser/device pass.
+The PR-3 evidence dialog remains tested by the DOM accessibility suite and production-route live proof.
+The authenticated stack had no aggregator submission rows, so the browser journey proved the empty-state
+truthfulness but did not open the populated evidence dialog.
 
 ## 4. Not run or not evidenced
 
-- A post-PR-3 authenticated Playwright journey against the Docker application stack.
-- Screenshots suitable for release review.
+- A populated aggregator submission evidence dialog in an authenticated browser journey.
 - VoiceOver, TalkBack, or manual screen-reader verification.
 - Physical iOS/Android foreground-location, permission, approximate-location, interruption, and attestation cases.
 - SQLCipher, WAL/SHM plaintext scan, backup exclusion, lost/wrong key, logout, account switch, reinstall, and offline replay recovery on devices.
@@ -80,9 +82,9 @@ must not be simulated by pointing production at an unverified endpoint.
 
 | Area | Current posture | Gate to close |
 |---|---|---|
-| Supervisor web slices | Locally verified; no migration; focused application-role tenant-boundary proofs pass. | Fresh review, authenticated Docker journey, and retained screenshots. |
-| Aggregator evidence | Authorized audited list read; additive fields; M18 workers pass; the production route projection, cross-tenant exclusion, and read-audit persistence pass live under the application role. | Authenticated Docker browser journey and retained release screenshots. |
-| Correction workflow | Uses the existing server permission, ABAC, step-up, and immutable provenance path; the production route passes live stale/fresh step-up, supersession, reason persistence, scrubbed audit, outbox attribution, and replay-conflict proof. | Authenticated Docker browser journey and retained release screenshots. |
+| Supervisor web slices | Locally verified; no migration; focused application-role tenant-boundary proofs, authenticated browser journey, responsive WCAG scans, and retained screenshots pass. | Fresh review and manual assistive-technology pass. |
+| Aggregator evidence | Authorized audited list read; additive fields; M18 workers pass; the production route projection, cross-tenant exclusion, read-audit persistence, and authenticated empty-state browser proof pass. | Populated evidence-dialog browser proof and real vendor sandbox evidence. |
+| Correction workflow | Uses the existing server permission, ABAC, step-up, and immutable provenance path; the production route passes live stale/fresh step-up, supersession, reason persistence, scrubbed audit, outbox attribution, replay-conflict proof, and an authenticated responsive ceremony pass. | Manual assistive-technology pass. |
 | React Native/Expo online capture | Source exists in `chartwarden-mobile`; release NO-GO. | Physical-device and authenticated backend matrix on the pinned contract/build. |
 | Offline v2 queue | Encrypted design and default-off source exist; release NO-GO. | SQLCipher/device security, identity isolation, replay, recovery, and retention evidence. |
 | Sandata | Fail-closed adapter and fake transport tests exist; release NO-GO. | Named state/provider, executed agreement, approved secrets, synthetic sandbox conformance, and rollback drill. |

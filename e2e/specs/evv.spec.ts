@@ -29,9 +29,42 @@
 //
 // Signs in as the SUPERVISOR, not the RN who owns the handset: `/me/evv/devices` deliberately offers no
 // approve control, because approving a device is an act on someone else's equipment.
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { SUPERVISOR_ACCOUNT } from "../fixtures/credentials";
-import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
+import { expectNoAxeViolations, expectRouteReached, signInAs } from "../fixtures/helpers";
+
+const EVIDENCE_VIEWPORTS = [
+  { name: "mobile", width: 375, height: 812 },
+  { name: "desktop", width: 1440, height: 900 },
+] as const;
+
+async function captureEvvEvidence(
+  page: import("@playwright/test").Page,
+  checkpoint: string,
+): Promise<void> {
+  const evidenceDir = process.env.EVV_EVIDENCE_DIR;
+  if (evidenceDir) mkdirSync(evidenceDir, { recursive: true });
+
+  for (const viewport of EVIDENCE_VIEWPORTS) {
+    await page.setViewportSize(viewport);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      `${checkpoint} should not introduce document-level horizontal overflow at ${viewport.width}px`,
+    ).toBe(true);
+    await expectNoAxeViolations(page);
+    if (evidenceDir) {
+      await page.screenshot({
+        path: join(
+          evidenceDir,
+          `${checkpoint}-${viewport.name}-${viewport.width}x${viewport.height}.png`,
+        ),
+        fullPage: true,
+      });
+    }
+  }
+}
 
 test.describe("EVV", () => {
   test("main path: a supervisor approves a pending device and it leaves the queue", async ({
@@ -87,5 +120,84 @@ test.describe("EVV", () => {
       { timeout: 15_000 },
     );
     await expectNoAxeViolations(page);
+  });
+
+  test("release evidence: correction ceremony and aggregator status stay honest", async ({
+    page,
+  }) => {
+    await signInAs(page, SUPERVISOR_ACCOUNT());
+    await page.goto("/evv/events");
+    await expectRouteReached(page, "/evv/events");
+    await expect(page.getByRole("heading", { name: "EVV Event Ledger" })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const eventRows = page.locator("tbody tr[role=button]");
+    await expect(eventRows.first()).toBeVisible({ timeout: 15_000 });
+    const eventCount = await eventRows.count();
+    expect(
+      eventCount,
+      "the synthetic field-operations seed should contain EVV events",
+    ).toBeGreaterThan(0);
+
+    let correctableEventFound = false;
+    for (let index = 0; index < eventCount; index += 1) {
+      await eventRows.nth(index).click();
+      await expect(page.getByRole("heading", { name: "EVV Event Detail" })).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByRole("heading", { name: "Recorded evidence" })).toBeVisible({
+        timeout: 15_000,
+      });
+      const correction = page.getByRole("button", { name: "File correction" });
+      const correctionVisible = await correction
+        .waitFor({ state: "visible", timeout: 3_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (correctionVisible) {
+        correctableEventFound = true;
+        await correction.click();
+        break;
+      }
+      await page.goto("/evv/events");
+      await expect(page.getByRole("heading", { name: "EVV Event Ledger" })).toBeVisible();
+    }
+
+    expect(
+      correctableEventFound,
+      "the seed should contain a current event eligible for correction",
+    ).toBe(true);
+    const correctionDialog = page.getByRole("dialog", { name: "Correct EVV event" });
+    await expect(correctionDialog).toBeVisible();
+    await expect(correctionDialog.getByText(/original event remains unchanged/i)).toBeVisible();
+    await expect(
+      correctionDialog.getByRole("button", { name: "Create correction" }),
+    ).toBeDisabled();
+    await captureEvvEvidence(page, "correction-ceremony");
+    await correctionDialog.getByRole("button", { name: "Cancel" }).click();
+
+    await page.goto("/evv/aggregator-submissions");
+    await expectRouteReached(page, "/evv/aggregator-submissions");
+    await expect(page.getByRole("heading", { name: "Aggregator Submissions" })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByText("Configuration status unavailable", { exact: false }),
+    ).toBeVisible();
+
+    const evidenceButtons = page.getByRole("button", { name: "View evidence" });
+    if ((await evidenceButtons.count()) > 0) {
+      await evidenceButtons.first().click();
+      const evidenceDialog = page.getByRole("dialog", { name: "Submission evidence" });
+      await expect(evidenceDialog).toBeVisible();
+      await expect(
+        evidenceDialog.getByText(/not a payer claim decision or payment status/i),
+      ).toBeVisible();
+      await captureEvvEvidence(page, "aggregator-evidence");
+    } else {
+      await expect(page.getByText("No submission records")).toBeVisible();
+      await expect(page.getByText(/empty queue does not confirm/i)).toBeVisible();
+      await captureEvvEvidence(page, "aggregator-empty-state");
+    }
   });
 });

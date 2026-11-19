@@ -30,6 +30,7 @@ const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001";
 const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001";
 const nowIso = (): string => new Date().toISOString();
 const addHours = (h: number): string => new Date(Date.now() + h * 3_600_000).toISOString();
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function membershipIdFor(email: string): Promise<string> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
@@ -139,6 +140,25 @@ async function seedPublishedVisit(
   const data = res.data as unknown as { id: string } | undefined;
   if (res.error || !data) throw new Error(`visit create failed: ${JSON.stringify(res.error)}`);
   return data.id;
+}
+
+async function waitForEvvRegistration(visitId: string): Promise<void> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  try {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const registration = await db.query<{ registered: boolean }>(
+        "SELECT EXISTS (SELECT 1 FROM evv_visit_registration WHERE visit_id = $1) AS registered",
+        [visitId],
+      );
+      if (registration.rows[0]?.registered) return;
+      await sleep(250);
+    }
+  } finally {
+    await db.end();
+  }
+  throw new Error(`M18 visit registration did not arrive for ${visitId} within 10 seconds`);
 }
 
 /**
@@ -366,6 +386,7 @@ async function main(): Promise<void> {
 
   // ── M18 — EVV ──────────────────────────────────────────────────────────────────────────────────
   try {
+    const ritaId = await membershipIdFor("rita@chartwarden.local");
     const dev = await rn.client.POST("/api/v1/evv/devices/self-register", {
       // The `attestationId` this used to pass was `crypto.randomUUID()` — the only caller in the
       // codebase, satisfying a REQUIRED uuid by inventing one, because no route mints a device
@@ -381,6 +402,45 @@ async function main(): Promise<void> {
     });
     if (approve.error) throw new Error(`device approve failed: ${JSON.stringify(approve.error)}`);
 
+    // A separate current visit gives the supervisor workspace real, coordinate-free event evidence
+    // without consuming the future scheduling example above. The scenario drives the same API calls
+    // as the mobile client; the browser E2E remains read-only and never pretends web capture exists.
+    const evvVisitId = await seedPublishedVisit(
+      rn,
+      patientId,
+      admissionId,
+      ritaId,
+      null,
+      addHours(-1),
+      addHours(1),
+    );
+    await waitForEvvRegistration(evvVisitId);
+    const syntheticCoords = { lat: 45.523, lng: -122.6789 };
+    const checkIn = await rn.client.POST("/api/v1/evv/check-in", {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: {
+        visitId: evvVisitId,
+        serviceTypeCode: "routine_visit",
+        capturedAt: nowIso(),
+        coords: syntheticCoords,
+        accuracyM: 8,
+        evvDeviceId: devData.id,
+      },
+    });
+    if (checkIn.error) throw new Error(`EVV check-in failed: ${JSON.stringify(checkIn.error)}`);
+
+    const checkOut = await rn.client.POST("/api/v1/evv/check-out", {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: {
+        visitId: evvVisitId,
+        capturedAt: nowIso(),
+        coords: syntheticCoords,
+        accuracyM: 8,
+        evvDeviceId: devData.id,
+      },
+    });
+    if (checkOut.error) throw new Error(`EVV check-out failed: ${JSON.stringify(checkOut.error)}`);
+
     // A SECOND handset, deliberately left PENDING. The approve/reject ceremony is the only M18 write a
     // browser can drive at all — check-in/check-out is the Capacitor mobile flow (§5.2), because a
     // browser has no attested device and no §12.4 posture to report — and with the first device driven
@@ -395,8 +455,8 @@ async function main(): Promise<void> {
       throw new Error(`second device register failed: ${JSON.stringify(pending.error)}`);
 
     log.ok(
-      "EVV: device self-registered + approved, and a second left PENDING for the supervisor roster " +
-        "(no completed visit yet to check in/out against — scheduled for tomorrow)",
+      "EVV: device self-registered + approved, current visit checked in/out through the real API, " +
+        "and a second device left PENDING for the supervisor roster",
     );
   } catch (err) {
     log.fail(`M18 EVV: ${String(err)}`);

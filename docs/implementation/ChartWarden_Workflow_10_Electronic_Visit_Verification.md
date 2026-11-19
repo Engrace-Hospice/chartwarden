@@ -7,7 +7,8 @@
 **Baseline:** The historical ZIP proposal has been superseded by the current-branch WP0 evidence at
 [`evidence/10-evv-current-state.md`](./evidence/10-evv-current-state.md). That audit includes static source
 inspection, focused non-live tests and architecture gates; it did not run a browser journey, live DB suite,
-real-device test, vendor integration, or state-specific regulatory verification.
+real-device test, vendor integration, or state-specific regulatory verification. Later implementation
+evidence below now records the owner-run live suites and bounded authenticated browser journey separately.
 **Scope:** Clinician check-in/check-out, offline capture/synchronization, EVV event visibility, exceptions and corrections, device and geofence policy, supervisor review, aggregator submissions, and integration with scheduled visits and clinical encounters.
 
 ---
@@ -106,6 +107,11 @@ own approval gates.
   expected navigation links remained available, no horizontal overflow occurred, and the final WCAG A/AA axe
   scan reported no violations. Visual comparison remains inconclusive because no approved screenshot baseline
   exists.
+- A later authenticated Playwright run passed 4/4 against the local stack after the synthetic field-operations
+  seed created a current visit and drove real M18 check-in/check-out API calls. It retained desktop/mobile
+  correction-ceremony and aggregator-empty-state screenshots, with WCAG A/AA and document-overflow checks at
+  375×812 and 1440×900. The stack had no aggregator submission row, so the populated evidence dialog remains a
+  browser-evidence gap rather than being inferred from its DOM and live-route proofs.
 
 ## 3. UX architecture — proposed
 
@@ -282,8 +288,9 @@ application role. A session with stale server-side step-up is denied before the 
 fresh session supersedes the original and persists the replacement link and correction reason; replaying
 the original returns the server-owned conflict. The real catalog-validating outbox attributes the action
 to the acting membership, and the M4 insert/update audit rows exist with the correction reason scrubbed.
-The updated write lifecycle suite passes 29/29. This proof does not replace an authenticated browser
-journey through the correction dialog.
+The updated write lifecycle suite passes 29/29. A later authenticated browser journey also opened the
+correction dialog against a real seeded event at mobile and desktop sizes without submitting a mutation;
+the live suite remains the proof of the stale/fresh step-up and immutable write path.
 
 ### PR-3 implementation note — 2026-11-19
 
