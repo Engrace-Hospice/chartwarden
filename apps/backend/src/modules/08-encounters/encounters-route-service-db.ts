@@ -132,6 +132,7 @@ import {
   getEvvBracketResolver,
   getLatestAssessmentProvider,
 } from "./seams/index";
+import { type StoredSelectionSection, openStoredProse, storedSections } from "./selection-tree";
 import {
   assertModalityFitsVisitType,
   confirmedModalityColumns,
@@ -154,21 +155,8 @@ const MEM = schema.memberships;
 
 // ── The stored selection tree (#114 write path, #121 gate input) ──────────────────────────────────────
 //
-// What actually lands in `hearthnote_selection.selections`: the vocabulary codes and their numeric slot
-// params, plus `hasFreeText` — a boolean saying a section carries prose, never the prose (that is sealed
-// under the tenant DEK in `free_text_cipher`). The API shape (`SelectionSectionInput`) has the prose and
-// not the marker; the two are converted at the storage boundary, in `splitFreeText` and `openProse`.
-interface StoredSelectionSection {
-  readonly sectionId: string;
-  readonly entries: SelectionSectionInput["entries"];
-  readonly hasFreeText?: boolean;
-}
-
-/** Project the jsonb column to the stored tree (an unwritten row reads as no sections, not a throw). */
-function storedSections(selections: unknown): StoredSelectionSection[] {
-  return ((selections as { sections?: StoredSelectionSection[] } | null)?.sections ??
-    []) as StoredSelectionSection[];
-}
+// The storage shape lives in ./selection-tree (shared with the visit-note draft's selection port): the two sides are converted at the
+// storage boundary, in `splitFreeText` and `openProse`.
 
 /** The §2.6 gate's view of a stored tree: presence only — how many entries, and whether prose exists. */
 function gateSections(selections: unknown): GateSectionSelection[] {
@@ -633,23 +621,16 @@ export function createDbEncounterRouteService(
     organizationId: string,
     row: { selections: unknown; freeTextCipher: string | null },
   ): Promise<SelectionSectionInput[]> {
-    const stored = storedSections(row.selections);
-    // `hasFreeText` is a storage marker for the gate; it never leaves the service (the API shape is
-    // `{ sectionId, entries, freeText? }` — the prose itself, or its absence).
-    const project = ({ sectionId, entries }: StoredSelectionSection): SelectionSectionInput => ({
-      sectionId,
-      entries,
-    });
-    if (row.freeTextCipher === null || !freeTextCipher) return stored.map(project);
-    const prose = JSON.parse(
-      await withTenantDek("the clinician's free text could not be opened", () =>
-        freeTextCipher.open(organizationId, row.freeTextCipher as string),
-      ),
-    ) as Record<string, string>;
-    return stored.map((s) => {
-      const text = prose[s.sectionId];
-      return text === undefined ? project(s) : { ...project(s), freeText: text };
-    });
+    const cipher = freeTextCipher;
+    return openStoredProse(
+      row,
+      cipher
+        ? (envelope) =>
+            withTenantDek("the clinician's free text could not be opened", () =>
+              cipher.open(organizationId, envelope),
+            )
+        : undefined,
+    );
   }
 
   // ── §2.6 Layer-3 compliance gate (#121) ───────────────────────────────────────────────────────────
