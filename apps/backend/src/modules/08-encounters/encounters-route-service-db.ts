@@ -1277,7 +1277,7 @@ export function createDbEncounterRouteService(
           await patientOfEncounter(organizationId, encounterId),
         )
       : null;
-    return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    return withOrgContext(db, { organizationId, userId: args.authorUserId ?? "" }, async (tx) => {
       const t = tx as unknown as DbClient;
       const r = await loadEnc(t, encounterId);
       checkParentNotVoided({ parentStatus: r.status });
@@ -1919,8 +1919,8 @@ export function createDbEncounterRouteService(
     },
 
     // ── Vitals authoring (§2.2, §3.3 `vitals`) ─────────────────────────────────────────────────────────
-    async captureVitals(organizationId, encounterId, input, actorMembershipId) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    async captureVitals(organizationId, encounterId, input, actorMembershipId, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId ?? "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Locked (B2): the vitals render into the signed narrative, so a capture and a sign of one encounter take turns. Without the lock a
         // capture that loaded the row `finalized` could commit after sign sealed the note, leaving a vitals row the signed text does not say.
@@ -1973,8 +1973,8 @@ export function createDbEncounterRouteService(
         };
       });
     },
-    async editVitals(organizationId, encounterId, vitalsId, input, actorMembershipId) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    async editVitals(organizationId, encounterId, vitalsId, input, actorMembershipId, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId ?? "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId, { lock: true }); // locked, as captureVitals (B2)
         checkMutableForEdit({ status: r.status });
@@ -2205,7 +2205,7 @@ export function createDbEncounterRouteService(
 
     // ── Finalize (§2.3 — Layer-3 gate preview + pin the vocab version D11) ─────────────────────────────
     async finalize(organizationId, encounterId, at, args) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      return withOrgContext(db, { organizationId, userId: args?.actorUserId ?? "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Locked first: the draft read below, and the pin written from it, must be of what every earlier section PUT committed.
         const r = await loadEnc(t, encounterId, { lock: true });
@@ -2944,8 +2944,8 @@ export function createDbEncounterRouteService(
         };
       });
     },
-    async finalizeAddendum(organizationId, encounterId, addendumId) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    async finalizeAddendum(organizationId, encounterId, addendumId, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId ?? "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const a = await loadAddendum(t, encounterId, addendumId);
         const trans = transitionAddendum(a.status as "draft" | "finalized" | "signed", {

@@ -93,6 +93,12 @@ async function listScopeOf(
   }
 }
 
+/** The session's M2 USER id (a different id space from the membership id): the audit actor of a write's row-trigger images, as the cosign routes pass it. */
+function actorUserIdOf(request: FastifyRequest): string | undefined {
+  const userId = request.context?.userId;
+  return typeof userId === "string" && userId.length > 0 ? userId : undefined;
+}
+
 /** The real caller signing an encounter/cosignature/addendum (§3.3/D13) — membership id + M2 session
  *  id, the `encounter_signature` provenance row's actor. `requireStepUp` (composed on the sign routes)
  *  already denied the request if this session's step-up isn't fresh; the service re-resolves the same
@@ -106,7 +112,7 @@ function signingActorOf(request: FastifyRequest): SigningActor {
   if (typeof membershipId !== "string" || typeof sessionId !== "string")
     throw new UnauthorizedError();
   // The M2 USER id rides along for a promoted addendum's `decidedByUserId` (a different id space from the membership id).
-  const userId = typeof ctx?.userId === "string" && ctx.userId.length > 0 ? ctx.userId : undefined;
+  const userId = actorUserIdOf(request);
   return {
     membershipId,
     sessionId,
@@ -513,6 +519,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         encounterIdOf(request),
         body,
         actorMembershipId,
+        actorUserIdOf(request),
       );
       return reply.code(201).send(res);
     },
@@ -533,7 +540,14 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const { organizationId, userId: actorMembershipId } = membershipActorOf(request);
       const { encounterId, vitalId } = parse(VitalParamsSchema, request.params);
       const body = parse(CaptureVitalsSchema, request.body);
-      return service.editVitals(organizationId, encounterId, vitalId, body, actorMembershipId);
+      return service.editVitals(
+        organizationId,
+        encounterId,
+        vitalId,
+        body,
+        actorMembershipId,
+        actorUserIdOf(request),
+      );
     },
   );
 
@@ -722,6 +736,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       return service.finalize(organizationId, encounterIdOf(request), today(), {
         lateEntryReason: body.lateEntryReason,
         viewer: draftViewerOf(request),
+        actorUserId: actorUserIdOf(request),
       });
     },
   );
@@ -920,6 +935,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const res = await service.createAddendum(organizationId, encounterIdOf(request), {
         reason: body.reason,
         authorMembershipId: userId,
+        authorUserId: actorUserIdOf(request),
         ...(body.amendsSectionIds !== undefined ? { amendsSectionIds: body.amendsSectionIds } : {}),
         roles,
         ...(body.promotionRequestId !== undefined
@@ -1030,7 +1046,12 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
-      return service.finalizeAddendum(organizationId, encounterId, addendumId);
+      return service.finalizeAddendum(
+        organizationId,
+        encounterId,
+        addendumId,
+        actorUserIdOf(request),
+      );
     },
   );
 

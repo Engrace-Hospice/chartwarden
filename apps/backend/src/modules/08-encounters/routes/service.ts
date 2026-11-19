@@ -641,6 +641,8 @@ export interface EncounterRouteService {
     encounterId: string,
     input: VitalsInput,
     actorMembershipId: string | null,
+    /** The acting M2 USER id: the audit actor of the row (absent, the row-trigger image is filed under the system). Same on the writes below. */
+    actorUserId?: string,
   ): Promise<VitalsResult>;
   editVitals(
     organizationId: string,
@@ -648,6 +650,7 @@ export interface EncounterRouteService {
     vitalsId: string,
     input: VitalsInput,
     actorMembershipId: string | null,
+    actorUserId?: string,
   ): Promise<VitalsResult>;
   /**
    * The authoring menu — the resolved template + the vocabulary each section accepts (F-063).
@@ -710,6 +713,7 @@ export interface EncounterRouteService {
     at: LocalDate,
     args?: {
       lateEntryReason?: string;
+      actorUserId?: string;
       /**
        * The finalizing member (the author), from the server-assembled session. The visit-note draft's gate preview (ADR-0114) reads the
        * draft for this member; absent, it is redacted as for a member with no role and no Part 2 release.
@@ -823,6 +827,7 @@ export interface EncounterRouteService {
       amendsSectionIds?: readonly string[];
       /** The author's session roles (never the request body): the Part 2 verdict for naming a section of a note that holds Part 2 content (VN-D30). */
       roles?: readonly string[];
+      authorUserId?: string;
     },
   ): Promise<{ id: string; status: "draft" }>;
   /** WP 3.7: the proposals waiting on a reviewer for this encounter's patient (`enabled:false` when the hub flag is off). */
@@ -853,6 +858,7 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     addendumId: string,
+    actorUserId?: string,
   ): Promise<{ status: "finalized" }>;
   signAddendum(
     organizationId: string,
