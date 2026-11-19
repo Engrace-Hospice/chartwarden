@@ -51,7 +51,7 @@ function slotValues(
 }
 
 /** Render one section's body (assembled sentences + verbatim free-text), or "" when it has no content. */
-function renderSection(section: SectionSelection, context: AssemblyContext): string {
+export function renderSection(section: SectionSelection, context: AssemblyContext): string {
   const sentences: string[] = [];
   for (const entry of section.entries) {
     const vocab = getVocabEntry(entry.code);
@@ -99,10 +99,11 @@ export function assembleLayer1(
 }
 
 /**
- * Resolve the template for the selection's pair and assemble. Enforces the D11 vocab-version pin and the
- * legal-pair / key-integrity guards, raising {@link HearthnoteAssemblyError} the M8 service maps to HTTP.
+ * Resolve the template a selection claims, enforcing the D11 vocab-version pin and the legal-pair /
+ * key-integrity guards, raising {@link HearthnoteAssemblyError} the M8 service maps to HTTP. Shared by
+ * `assemble` and the visit-note draft compiler so both refuse the same selections.
  */
-export function assemble(selection: SelectionState, context: AssemblyContext): AssemblyResult {
+export function resolveSelectionTemplate(selection: SelectionState): HearthnoteTemplate {
   if (selection.vocabVersion !== VOCAB_VERSION) {
     throw new HearthnoteAssemblyError(
       "VOCAB_VERSION_MISMATCH",
@@ -123,7 +124,12 @@ export function assemble(selection: SelectionState, context: AssemblyContext): A
       `no template for the illegal pair '${expectedKey}'`,
     );
   }
-  return assembleLayer1(template, selection, context);
+  return template;
+}
+
+/** Resolve the template for the selection's pair (see {@link resolveSelectionTemplate}) and assemble. */
+export function assemble(selection: SelectionState, context: AssemblyContext): AssemblyResult {
+  return assembleLayer1(resolveSelectionTemplate(selection), selection, context);
 }
 
 /**

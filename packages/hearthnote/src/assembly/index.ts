@@ -13,5 +13,7 @@ export {
   assemble,
   assembleLayer1,
   missingRequiredSections,
+  renderSection,
+  resolveSelectionTemplate,
   type AssemblyErrorCode,
 } from "./assemble";
