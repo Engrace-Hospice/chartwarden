@@ -142,6 +142,9 @@ async function readScale(
   // The latest reading at the visit time. One without a score is not drafted, and an older one does not stand in.
   const latest = latestAtOrBefore(timed, asOfMs);
   if (latest === undefined || latest.point.score === null) return null;
+  // A reading at or before the previous visit was already in that visit's note: it is not new since then (VN-D6, VN-D9), and
+  // as `previous` of itself it would read as "unchanged from itself".
+  if (previousMs !== null && latest.ms <= previousMs) return null;
   const before = previousMs === null ? undefined : latestAtOrBefore(timed, previousMs);
   const previous =
     before === undefined || before.point.score === null

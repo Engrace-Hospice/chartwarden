@@ -184,6 +184,45 @@ describe("readDraftInputs: scale readings", () => {
     });
   });
 
+  it("does not draft a reading the previous visit already had: nothing is new since then", async () => {
+    // The one reading predates the previous visit, so it is both the latest and the one "before" it: drafting it would
+    // put the same reading in `previous` and read as "unchanged from itself" (it was already in the previous note).
+    const ports = fakePorts({
+      scaleSeries: honestSeries({ pps: [point("pps-old", "2026-11-03T15:00:00.000Z", 60)] }),
+      previousSignedVisitAt: async () => PREVIOUS_VISIT,
+    });
+    const { scaleReadings } = await readDraftInputs(ports, encounter(), viewer(), AS_OF);
+    expect(scaleReadings).toEqual([]);
+  });
+
+  it("treats a reading captured exactly at the previous visit time as already seen", async () => {
+    const ports = fakePorts({
+      scaleSeries: honestSeries({
+        pps: [point("pps-at", PREVIOUS_VISIT.toISOString(), 60)],
+      }),
+      previousSignedVisitAt: async () => PREVIOUS_VISIT,
+    });
+    const { scaleReadings } = await readDraftInputs(ports, encounter(), viewer(), AS_OF);
+    expect(scaleReadings).toEqual([]);
+  });
+
+  it("drafts a reading a millisecond after the previous visit, against the one before it", async () => {
+    const ports = fakePorts({
+      scaleSeries: honestSeries({
+        pps: [
+          point("pps-prev", PREVIOUS_VISIT.toISOString(), 60),
+          point("pps-new", "2026-11-10T15:00:00.001Z", 55),
+        ],
+      }),
+      previousSignedVisitAt: async () => PREVIOUS_VISIT,
+    });
+    const { scaleReadings } = await readDraftInputs(ports, encounter(), viewer(), AS_OF);
+    expect(scaleReadings[0]).toMatchObject({
+      id: "pps-new",
+      previous: { value: 60, recordedOn: "2026-11-10" },
+    });
+  });
+
   it("sets `previous` to null when there is no previous visit", async () => {
     const ports = fakePorts({ scaleSeries: honestSeries({ pps }) });
     const { scaleReadings } = await readDraftInputs(ports, encounter(), viewer(), AS_OF);

@@ -96,6 +96,36 @@ describe("computeDraft: composition", () => {
   });
 });
 
+describe("computeDraft: a scale reading the previous visit already had", () => {
+  it("leaves the assessment empty instead of drafting the reading as unchanged from itself", async () => {
+    const ports = fakePorts({
+      scaleSeries: honestSeries({ pps: [point("pps-old", "2026-11-03T15:00:00.000Z", 60)] }),
+      previousSignedVisitAt: async () => PREVIOUS_VISIT,
+    });
+    const { draft } = await computeDraft(ports, encounter(), viewer(), NOW);
+    expect(sectionOf(draft, "assessment")?.state).toBe("empty");
+    expect(JSON.stringify(draft)).not.toContain("unchanged");
+    expect(JSON.stringify(draft)).not.toContain("pps-old");
+  });
+
+  it("still drafts the change when a newer reading follows the previous visit", async () => {
+    const ports = fakePorts({
+      scaleSeries: honestSeries({
+        pps: [
+          point("pps-old", "2026-11-03T15:00:00.000Z", 60),
+          point("pps-new", "2026-11-18T14:10:00.000Z", 50),
+        ],
+      }),
+      previousSignedVisitAt: async () => PREVIOUS_VISIT,
+    });
+    const { draft } = await computeDraft(ports, encounter(), viewer(), NOW);
+    const assessment = sectionOf(draft, "assessment");
+    expect(assessment?.state === "drafted" && assessment.text).toContain(
+      "PPS 50%, down from 60% on 2026-11-03",
+    );
+  });
+});
+
 describe("computeDraft: the visit time", () => {
   const rowsOf = <T extends { recordedAt: string }>(rows: readonly T[], asOf: string) =>
     rows
