@@ -228,3 +228,9 @@ export const DRAFT_VOCABULARY: readonly VocabEntry[] = [
     encounterTypes: ROUTINE_ONLY,
   },
 ] as const;
+
+/**
+ * The codes of the draft entries: the phrases a tenant's authoring menu offers only once that tenant's visit-note draft switch is on,
+ * so a tenant with the switch off sees the corpus as it was before `narrative-vocab@2026.11.0` (design §3.2 "Rollout").
+ */
+export const DRAFT_VOCAB_CODES: ReadonlySet<string> = new Set(DRAFT_VOCABULARY.map((e) => e.code));

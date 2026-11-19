@@ -7,6 +7,8 @@ import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import type { VocabEntry } from "./types";
 import { VOCABULARY } from "./vocabulary";
 
+export { DRAFT_VOCAB_CODES } from "./draft-entries";
+
 export type { VocabBodySystem, VocabCategory, VocabEntry } from "./types";
 export {
   CORPUS_CLINICAL_REVIEW,

@@ -93,6 +93,7 @@ import { defaultDraftPorts } from "./drafting/default-ports";
 import { assertResolved } from "./drafting/note-draft";
 import type { NoteDraft } from "./drafting/note-draft";
 import { createNoteDraftFlow } from "./drafting/note-draft-flow";
+import { isVisitNoteDraftEnabled } from "./drafting/policy-service";
 import type { DraftSeamPorts, DraftViewer } from "./drafting/ports";
 import { deriveEvvAtSign } from "./evv-at-sign";
 import {
@@ -1739,13 +1740,18 @@ export function createDbEncounterRouteService(
      * engine see the same deterministic ordering", and no route ever surfaced it — so there was no
      * selection UI. Derived from the encounter's OWN type/discipline (never from the caller), so the
      * menu a client is offered and the rules `assembleSelections` enforces on the way back in cannot
-     * be different rules.
+     * be different rules. ADR-0114: the draft phrases of the 2026.11.0 corpus are unreviewed wording, so the menu carries them only
+     * for a tenant whose visit-note draft switch is on; with it off the menu is what it was before that corpus.
      */
     async getTemplate(organizationId, encounterId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId); // non-leaking 404 before the menu is built
-        return { encounterId, ...buildTemplateMenu(r.encounterType, r.discipline) };
+        const draftWording = await isVisitNoteDraftEnabled(t, organizationId);
+        return {
+          encounterId,
+          ...buildTemplateMenu(r.encounterType, r.discipline, { draftWording }),
+        };
       });
     },
 

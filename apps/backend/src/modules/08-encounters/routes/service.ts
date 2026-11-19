@@ -20,6 +20,7 @@ import {
   resolveTemplate,
 } from "@chartwarden/hearthnote";
 import {
+  DRAFT_VOCAB_CODES,
   VOCAB_VERSION,
   activeNarrativeVocabRelease,
   entriesFor,
@@ -447,19 +448,28 @@ export function toSelectionState(
  * Slots are derived from each phrase rather than declared, minus the two the assembly context supplies
  * (`patient`, `serviceDate`) — so the client is asked for exactly the `params` keys interpolation needs,
  * and a corpus edit cannot leave it asking for one the phrase no longer has.
+ *
+ * `draftWording` is the tenant's visit-note draft switch (ADR-0114 VN-D17): the draft phrases of `narrative-vocab@2026.11.0` are
+ * unreviewed wording, so they are offered only where the switch is on (it cannot be turned on while the corpus review is pending).
+ * Off, the menu is exactly what it was before that corpus: no draft phrase, and the RN routine visit's three formerly uncategorized
+ * sections as open as they were. The default is off, so a caller that does not know the tenant never leaks the draft wording.
  */
 export function buildTemplateMenu(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
+  options: { readonly draftWording?: boolean } = {},
 ): Omit<EncounterTemplateView, "encounterId"> {
-  const template = resolveTemplate(encounterType, discipline);
+  const draftWording = options.draftWording === true;
+  const template = resolveTemplate(encounterType, discipline, { draftWording });
   if (template === undefined) {
     throw new EncounterStateError(
       "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
       `no HearthNote template for '${hearthnoteTemplateKey(encounterType, discipline)}'`,
     );
   }
-  const eligible = entriesFor(encounterType, discipline);
+  const eligible = entriesFor(encounterType, discipline).filter(
+    (e) => draftWording || !DRAFT_VOCAB_CODES.has(e.code),
+  );
   return {
     templateKey: template.key,
     vocabVersion: VOCAB_VERSION,

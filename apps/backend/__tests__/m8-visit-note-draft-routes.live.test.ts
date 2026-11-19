@@ -43,6 +43,7 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import { type DbClient, createDbClient } from "@chartwarden/db";
+import { DRAFT_VOCAB_CODES } from "@chartwarden/narrative-vocab";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -1834,6 +1835,19 @@ describe.skipIf(!DB_URL)(
       });
 
       describe("the switch off, and tenancy", () => {
+        it("the authoring menu offers the unreviewed draft phrases only to a tenant with the switch on", async () => {
+          const menuCodesOf = async (orgId: string, encounterId: string) =>
+            (await svc.getTemplate(orgId, encounterId)).sections.flatMap((section) =>
+              section.entries.map((entry) => entry.code),
+            );
+          const on = await menuCodesOf(ORG_A, (await seedEncounter(orgs.A)).encounterId);
+          const off = await menuCodesOf(ORG_B, (await seedEncounter(orgs.B)).encounterId);
+          expect(on.some((code) => DRAFT_VOCAB_CODES.has(code))).toBe(true);
+          expect(off.some((code) => DRAFT_VOCAB_CODES.has(code))).toBe(false);
+          // The tenant with the switch off still has the pre-existing phrases in the sections that stayed open.
+          expect(off).toContain("nv.cv.stable");
+        });
+
         it("a tenant with the switch off finalizes and signs exactly as before: no confirmation asked, no source read, no sealed row", async () => {
           const reads = liveSeams();
           currentSeams = reads;

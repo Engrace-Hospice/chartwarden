@@ -72,6 +72,44 @@ describe("RN routine visit category wiring", () => {
   });
 });
 
+describe("a template resolved without draft wording", () => {
+  it("is the RN routine visit exactly as it was before S1 PR B: every section's pre-S1 categories", () => {
+    const template = resolveTemplate("routine_visit", "rn", { draftWording: false });
+    expect(template?.sections.map((s) => [s.id, s.allowedCategories])).toEqual(
+      resolveTemplate("routine_visit", "rn")?.sections.map((s) => [s.id, LEGACY_CATEGORIES[s.id]]),
+    );
+  });
+
+  it("keeps the section order, headings and required flags of the wired template", () => {
+    const plain = resolveTemplate("routine_visit", "rn", { draftWording: false });
+    const wired = resolveTemplate("routine_visit", "rn");
+    expect(plain?.sections.map((s) => [s.id, s.heading, s.required])).toEqual(
+      wired?.sections.map((s) => [s.id, s.heading, s.required]),
+    );
+  });
+
+  it("is the same template as the default for every other pair", () => {
+    for (const type of Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]) {
+      for (const discipline of ENCOUNTER_DISCIPLINE_RULES[type]) {
+        if (`${type}:${discipline}` === ROUTINE_RN) continue;
+        expect(resolveTemplate(type, discipline, { draftWording: false })).toEqual(
+          resolveTemplate(type, discipline),
+        );
+      }
+    }
+  });
+
+  it("is still wired when draftWording is true or unsaid", () => {
+    expect(
+      resolveTemplate("routine_visit", "rn", { draftWording: true })?.sections[0]
+        ?.allowedCategories,
+    ).toEqual(["chief_concern"]);
+    expect(resolveTemplate("routine_visit", "rn")?.sections[0]?.allowedCategories).toEqual([
+      "chief_concern",
+    ]);
+  });
+});
+
 describe("every other template is unchanged", () => {
   it("keeps the pre-S1 allowedCategories on each section of each other template", () => {
     for (const type of Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]) {

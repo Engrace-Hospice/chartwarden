@@ -162,6 +162,7 @@ function extraSectionIds(encounterType: EncounterType): readonly string[] {
 function buildTemplate(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
+  wired: boolean,
 ): HearthnoteTemplate {
   const base = baseSectionIds(discipline).filter(
     (id) => !(id === "vitals_review" && encounterType === "telephonic"),
@@ -178,28 +179,44 @@ function buildTemplate(
     sections: ordered.map((id) => {
       const section = SECTION[id];
       if (section === undefined) throw new Error(`unknown section id '${id}'`);
-      const wired = CATEGORY_WIRING.get(key)?.[id];
-      return wired === undefined ? section : { ...section, allowedCategories: wired };
+      const categories = wired ? CATEGORY_WIRING.get(key)?.[id] : undefined;
+      return categories === undefined ? section : { ...section, allowedCategories: categories };
     }),
   };
 }
 
+const buildAll = (wired: boolean): ReadonlyMap<string, HearthnoteTemplate> =>
+  new Map(
+    (Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]).flatMap((encounterType) =>
+      ENCOUNTER_DISCIPLINE_RULES[encounterType].map((discipline): [string, HearthnoteTemplate] => [
+        templateKey(encounterType, discipline),
+        buildTemplate(encounterType, discipline, wired),
+      ]),
+    ),
+  );
+
 /** Every default template, keyed by `${encounterType}:${discipline}`, for all legal pairs. */
-export const TEMPLATES: ReadonlyMap<string, HearthnoteTemplate> = new Map(
-  (Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]).flatMap((encounterType) =>
-    ENCOUNTER_DISCIPLINE_RULES[encounterType].map((discipline): [string, HearthnoteTemplate] => [
-      templateKey(encounterType, discipline),
-      buildTemplate(encounterType, discipline),
-    ]),
-  ),
-);
+export const TEMPLATES: ReadonlyMap<string, HearthnoteTemplate> = buildAll(true);
+
+/** The same templates with the VN-D15 category wiring left off: every section carries the categories it had before S1 PR B. */
+const UNWIRED_TEMPLATES: ReadonlyMap<string, HearthnoteTemplate> = buildAll(false);
+
+export interface ResolveTemplateOptions {
+  /**
+   * Whether the RN routine visit's `chief_concern`, `vitals_review` and `plan` sections carry the draft-wording categories (the default).
+   * `false` resolves the template as it was before the draft corpus, for a tenant whose visit-note draft switch is off.
+   */
+  readonly draftWording?: boolean;
+}
 
 /** Resolve the default template for a pair; `undefined` if the pair is illegal (§2.7). */
 export function resolveTemplate(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
+  options: ResolveTemplateOptions = {},
 ): HearthnoteTemplate | undefined {
-  return TEMPLATES.get(templateKey(encounterType, discipline));
+  const templates = options.draftWording === false ? UNWIRED_TEMPLATES : TEMPLATES;
+  return templates.get(templateKey(encounterType, discipline));
 }
 
 /** The ids of the template's required sections (the Layer-3 gate's "must be populated" list). */

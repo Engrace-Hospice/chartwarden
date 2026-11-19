@@ -5,6 +5,7 @@ import { ENCOUNTER_DISCIPLINE_RULES, type EncounterType } from "@chartwarden/typ
 import { describe, expect, it } from "vitest";
 import {
   CORPUS_CLINICAL_REVIEW,
+  DRAFT_VOCAB_CODES,
   NARRATIVE_VOCAB_RELEASES,
   VOCABULARY,
   VOCAB_VERSION,
@@ -44,6 +45,13 @@ describe("CORPUS_CLINICAL_REVIEW", () => {
   it("is typed so a later gate can compare against both states", () => {
     const status: "pending" | "approved" = CORPUS_CLINICAL_REVIEW.status;
     expect(["pending", "approved"]).toContain(status);
+  });
+});
+
+describe("DRAFT_VOCAB_CODES", () => {
+  it("is exactly the codes added in 2026.11.0, none of the 23 earlier ones", () => {
+    expect([...DRAFT_VOCAB_CODES].sort()).toEqual(NEW_ENTRIES.map((e) => e.code).sort());
+    for (const code of LEGACY_CODES) expect(DRAFT_VOCAB_CODES.has(code)).toBe(false);
   });
 });
 

@@ -6,6 +6,15 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-19 — Visit-note drafting rollout (M8, ADR-0114): corpus release `narrative-vocab@2026.11.0`, `409 VOCAB_VERSION_MISMATCH` at finalize for a draft saved before it, and the template menu
+
+**Two behaviour changes that reach every tenant at deploy, whatever its draft switch; no new route and no new field.**
+
+- **`narrative-vocab@2026.11.0` is the active corpus for every tenant** (the corpus release that adds the visit-note draft phrases). A draft encounter whose selections were last saved before the deploy is stamped `narrative-vocab@2026.06.0`, so `POST /encounters/{encounterId}/finalize` answers `409 VOCAB_VERSION_MISMATCH` for it. Remedy: save the selections again (`PATCH /encounters/{encounterId}/selections` restamps the version with the active one, whatever the body changes, and the web composer already saves before it finalizes). A note that is already finalized keeps the corpus version it was pinned to; nothing else reads the stored version.
+- **`GET /encounters/{encounterId}/template` (the authoring menu)** offers the new draft phrases only for a tenant whose visit-note draft switch is on. A tenant with the switch off gets the menu it had before the release, so its RN routine visit sections `chief_concern`, `vitals_review` and `plan` keep offering the phrases they offered then (their `allowedCategories` stay `[]`). With the switch on, those three sections are limited to the new `chief_concern`, `vitals_review` and `plan` / `care_plan_element` phrases, as `allowedCategories` says. The switch cannot be turned on while the phrase corpus review is pending.
+
+---
+
 ## 2026-11-19 — Visit-note draft scope (M8, ADR-0114): only the RN routine visit is drafted, and a source that never answers is `503`
 
 **No new route and no new field; response shapes are unchanged, and nothing changes for a tenant with the draft switched off.** Which templates draft is now one rule read off the phrase corpus; today only the RN routine visit (`routine_visit` with discipline `rn`) has drafted sections.
