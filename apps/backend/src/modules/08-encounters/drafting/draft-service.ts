@@ -53,7 +53,8 @@ export interface DraftService extends AmendmentDraftService {
 export interface AmendmentDraftService {
   /**
    * The draft of the signed note as the addendum's author sees it as of the visit time, restricted to the sections the addendum names (VN-D30),
-   * each against the addendum's own resolutions. 404 for a free addendum (it names nothing) and for a tenant with the draft off.
+   * each against the addendum's own resolutions. The addendum's AUTHOR alone (403 for anyone else, a free addendum's included); 404 for the author's
+   * free addendum (it names nothing) and for a tenant with the draft off.
    */
   getAmendmentDraft(
     caller: DraftCaller,
@@ -99,6 +100,28 @@ async function loadAmendmentOr404(
 ): Promise<AmendmentRef> {
   const amendment = await unit.amendment(encounterId, addendumId);
   if (amendment === null || amendment.sectionIds.length === 0) throw new NotFoundError("addendum");
+  return amendment;
+}
+
+/**
+ * The amendment draft is its AUTHOR's view: the sections an addendum names say what it amends. Anyone else is refused 403 whether the addendum is
+ * free or amending (so the refusal is no oracle for which addenda name sections), BEFORE the sections are looked at. The route gates it with the
+ * same rule (`is_addendum_author`); this is the service not relying on that. An absent addendum stays 404: only its author reaches here.
+ */
+async function loadAuthoredAmendmentOr404(
+  unit: DraftUnit,
+  encounterId: string,
+  addendumId: string,
+  caller: DraftCaller,
+): Promise<AmendmentRef> {
+  const amendment = await unit.amendment(encounterId, addendumId);
+  if (amendment === null) throw new NotFoundError("addendum");
+  if (caller.membershipId === null || amendment.authoredByMembershipId !== caller.membershipId) {
+    throw new ForbiddenError(
+      "only the author of an addendum may read the draft of its amended sections",
+    );
+  }
+  if (amendment.sectionIds.length === 0) throw new NotFoundError("addendum");
   return amendment;
 }
 
@@ -163,7 +186,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
         const row = await loadOr404(unit, encounterId, false);
         return {
           encounter: row,
-          amendment: await loadAmendmentOr404(unit, encounterId, addendumId),
+          amendment: await loadAuthoredAmendmentOr404(unit, encounterId, addendumId, caller),
           storePorts: await snapshotStorePorts(unit.store, row, now),
         };
       });

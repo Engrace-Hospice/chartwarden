@@ -28,6 +28,7 @@ import { registerDraftingRoutes } from "../src/modules/08-encounters/routes/draf
 const ORG = "org_a";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ENCOUNTER = "a0000000-0000-4000-8000-000000000001";
+const ADDENDUM = "b0000000-0000-4000-8000-000000000002";
 const HASH = "a".repeat(64);
 const BODY = { resolution: "confirmed", contentHash: HASH, corpusVersion: "2026.11.0" };
 const DRAFT = {
@@ -84,10 +85,13 @@ function fakeService() {
   return {
     getDraft: vi.fn(async () => DRAFT),
     resolveSection: vi.fn(async () => SECTION),
+    getAmendmentDraft: vi.fn(async () => ({ ...DRAFT, addendumId: ADDENDUM })),
   } as { [K in keyof DraftService]: ReturnType<typeof vi.fn> };
 }
 
-function makeServer(options: { inCaseload?: boolean; author?: string } = {}) {
+function makeServer(
+  options: { inCaseload?: boolean; author?: string; status?: "draft" | "signed" } = {},
+) {
   const backend = createInMemoryEncounterBackend({
     encounters: [
       {
@@ -95,7 +99,7 @@ function makeServer(options: { inCaseload?: boolean; author?: string } = {}) {
         organizationId: ORG,
         patientId: PATIENT,
         discipline: "rn",
-        status: "draft",
+        status: options.status ?? "draft",
         authoredByUserId: options.author ?? "author_1",
       },
     ],
@@ -129,7 +133,7 @@ function makeServer(options: { inCaseload?: boolean; author?: string } = {}) {
     service: { getPolicy: vi.fn(), putPolicy: vi.fn() } as never,
   });
   registerDraftSectionRoutes(app, { service: service as unknown as DraftService });
-  return { app, service };
+  return { app, service, backend };
 }
 
 const as = (user: string, roles: string, extra: Record<string, string> = {}) => ({
@@ -145,6 +149,8 @@ const VIEWER = as("viewer_1", "auditor");
 
 const draftUrl = (id = ENCOUNTER) => `/api/v1/encounters/${id}/draft`;
 const sectionUrl = (id = ENCOUNTER, section = "plan") => `${draftUrl(id)}/sections/${section}`;
+const amendmentDraftUrl = (addendum: string, id = ENCOUNTER) =>
+  `/api/v1/encounters/${id}/addenda/${addendum}/draft`;
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -304,6 +310,70 @@ describe("GET /encounters/:encounterId/draft", () => {
       patientIdPayloadPath: "patientId",
     });
     expect(declared[0]?.fields).toEqual(expect.arrayContaining(["text", "contentHash", "state"]));
+  });
+});
+
+describe("GET /encounters/:encounterId/addenda/:addendumId/draft (VN-D30): the addendum author's own view", () => {
+  /** A signed note by `author_1` with one addendum by `other_rn`, over the real predicates. */
+  async function withAddendum() {
+    const server = makeServer({ status: "signed" });
+    const created = await server.backend.service.createAddendum(ORG, ENCOUNTER, {
+      reason: "a correction",
+      authorMembershipId: "other_rn",
+    });
+    return { ...server, addendumId: created.id };
+  }
+
+  it("answers the addendum's author with the service's draft, for the SESSION viewer", async () => {
+    const { app, service, addendumId } = await withAddendum();
+    const res = await app.inject({
+      method: "GET",
+      url: amendmentDraftUrl(addendumId),
+      headers: as("other_rn", "rn"),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(service.getAmendmentDraft).toHaveBeenCalledWith(
+      { organizationId: ORG, userId: "other_rn", roles: ["rn"], membershipId: "other_rn" },
+      ENCOUNTER,
+      addendumId,
+    );
+  });
+
+  it.each([
+    ["the note's own author", AUTHOR],
+    ["a supervisor", SUPERVISOR],
+    ["a read-only reader", VIEWER],
+  ])(
+    "refuses %s who did not write the addendum with 403, and reads nothing",
+    async (_who, headers) => {
+      const { app, service, addendumId } = await withAddendum();
+      const res = await app.inject({
+        method: "GET",
+        url: amendmentDraftUrl(addendumId),
+        headers,
+      });
+      expect(res.statusCode).toBe(403);
+      expect(service.getAmendmentDraft).not.toHaveBeenCalled();
+    },
+  );
+
+  it("answers an addendum that does not exist exactly as another author's: 403, so the refusal tells nothing about which addenda exist or what they name", async () => {
+    const { app, service, addendumId } = await withAddendum();
+    const others = await app.inject({
+      method: "GET",
+      url: amendmentDraftUrl(addendumId),
+      headers: AUTHOR,
+    });
+    const absent = await app.inject({
+      method: "GET",
+      url: amendmentDraftUrl("c0000000-0000-4000-8000-0000000000ff"),
+      headers: AUTHOR,
+    });
+    expect(absent.statusCode).toBe(403);
+    expect(others.statusCode).toBe(403);
+    const { code, message } = others.json().error;
+    expect(absent.json().error).toMatchObject({ code, message });
+    expect(service.getAmendmentDraft).not.toHaveBeenCalled();
   });
 });
 

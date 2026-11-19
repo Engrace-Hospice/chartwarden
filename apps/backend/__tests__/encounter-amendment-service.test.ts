@@ -98,6 +98,56 @@ describe("the amendment draft read", () => {
     ]);
   });
 
+  describe("is the addendum author's view alone (the route gates it too; the service does not rely on that)", () => {
+    const OTHER = "00000000-0000-4000-8000-0000000000cc";
+    const addendum = (sectionIds: readonly string[]) =>
+      amending({
+        amendment: {
+          id: ADDENDUM,
+          status: "draft",
+          authoredByMembershipId: AUTHOR,
+          sectionIds: [...sectionIds],
+        },
+      });
+
+    it.each([
+      ["an amending addendum", ["plan"]],
+      ["a free addendum", []],
+    ])(
+      "refuses anyone but the author of %s with 403, whatever Part 2 disclosure they hold, and reads nothing",
+      async (_kind, sectionIds) => {
+        for (const disclosure of [true, false]) {
+          const ctx = service(addendum(sectionIds));
+          ctx.seams.part2DisclosureAllowed.mockResolvedValue(disclosure);
+          expect(
+            await codeOf(
+              ctx.svc.getAmendmentDraft({ ...caller, membershipId: OTHER }, ENCOUNTER, ADDENDUM),
+            ),
+          ).toEqual(["FORBIDDEN", 403]);
+          expect(ctx.seams.carePlanAsOf).not.toHaveBeenCalled();
+          expect(ctx.seams.part2DisclosureAllowed).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it("refuses a session with no membership with 403 too", async () => {
+      const ctx = service(addendum(["plan"]));
+      expect(
+        await codeOf(
+          ctx.svc.getAmendmentDraft({ ...caller, membershipId: null }, ENCOUNTER, ADDENDUM),
+        ),
+      ).toEqual(["FORBIDDEN", 403]);
+    });
+
+    it("still answers its own author's free addendum 404: they know it names nothing", async () => {
+      const ctx = service(addendum([]));
+      expect(await codeOf(ctx.svc.getAmendmentDraft(caller, ENCOUNTER, ADDENDUM))).toEqual([
+        "NOT_FOUND",
+        404,
+      ]);
+    });
+  });
+
   it("returns only the sections the addendum names, as of the visit time, each against the addendum's resolutions", async () => {
     const ctx = service(amending());
     const view = await ctx.svc.getAmendmentDraft(caller, ENCOUNTER, ADDENDUM);

@@ -3,7 +3,8 @@
 //   GET /api/v1/encounters/:encounterId/draft                       the draft for the SESSION viewer, every section with its state   encounter.read
 //   PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId   confirm or deselect one section against the content seen          encounter.author
 //   GET /api/v1/encounters/:encounterId/addenda/:addendumId/draft   (PR E2, VN-D30) the draft of the SIGNED note as an amending addendum's
-//                                                                   author sees it: only the sections the addendum names               encounter.read
+//                                                                   author sees it: only the sections the addendum names; the addendum's
+//                                                                   author alone (403 for anyone else, an absent addendum included)    encounter.read
 //   PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId   the addendum's author confirms or deselects one   encounter.addendum_author
 //
 // Both also need the read key of each SOURCE domain the draft is compiled from (SOURCE_DOMAIN_READS): the care plan (M7), the medication
@@ -54,6 +55,15 @@ const ADDENDUM_AUTHOR = requirePermission("encounter.addendum_author") as PreHan
 /** Only the addendum's own author resolves the sections it amends (the same predicate the addendum's selections, finalize and sign carry). */
 const IS_ADDENDUM_AUTHOR = requireAbac(
   "encounter.addendum_author",
+  "is_addendum_author",
+) as PreHandler;
+/**
+ * And only the author READS that draft: it shows the sections the addendum names, which says what it amends, and a free addendum has none. Anyone
+ * else, the note's author and a supervisor included, is refused 403 whether the addendum is free, amending or absent (the predicate fails closed
+ * on an absent one), so the refusal cannot be probed for which addenda name sections. Their own view of the note is the note view.
+ */
+const IS_ADDENDUM_AUTHOR_TO_READ = requireAbac(
+  "encounter.read",
   "is_addendum_author",
 ) as PreHandler;
 const NO_AI = rejectAiActor(
@@ -162,6 +172,7 @@ export function registerDraftSectionRoutes(
         ...SOURCE_DOMAIN_READS,
         PARAMS_VALID(AmendmentDraftParamsSchema),
         SCOPE_FOR("encounter.read"),
+        IS_ADDENDUM_AUTHOR_TO_READ,
       ],
       config: {
         auditRead: {
