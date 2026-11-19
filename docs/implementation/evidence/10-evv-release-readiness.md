@@ -6,8 +6,8 @@ PR-6 across the separate
 [`Engrace-Hospice/chartwarden-mobile`](https://github.com/Engrace-Hospice/chartwarden-mobile) repository
 and the existing aggregator adapter.
 **Decision:** **NO-GO for production release as one complete workflow.** The supervisor web slices are
-locally verified and ready for review, but the required live database, physical-device, and real vendor
-sandbox evidence is incomplete.
+locally verified and ready for review, but authenticated application-stack, physical-device, and real
+vendor sandbox evidence is incomplete.
 
 ## 1. Delivered local slices
 
@@ -44,7 +44,7 @@ offline storage was introduced by these commits.
 | EVV web module DOM suite | Passed after updating the terminal-submission assertion to retain read-only evidence while withholding mutations. |
 | PR-3 behavior tests | Passed empty-state truthfulness, rejection evidence, accepted-vs-paid language, keyboard interaction, and automated WCAG A/AA checks. |
 | Aggregator injected-route contract | Passed evidence projection and rejection-evidence clearing on resubmit. |
-| M18 private PostgreSQL live suites | Owner-run evidence passed the read/RLS, write lifecycle, worker/tenant-scope, and DEK rotation/audit suites against a fresh database per suite in an isolated `chartwarden-postgres:dev` container. |
+| M18 private PostgreSQL live suites | Owner-run evidence passed the read/RLS, write lifecycle, worker/tenant-scope, and DEK rotation/audit suites against fresh databases in an isolated `chartwarden-postgres:dev` container. The updated read suite passed 5/5, including the production aggregator route's evidence projection, cross-tenant exclusion, and actor-attributed list-read audit event under the NOBYPASSRLS application role. |
 | OpenAPI and generated client | Regenerated and check-clean. |
 | EVV documentation corpus | Check-clean. |
 | PR-1 browser sweep | Six EVV screens were checked at 375, 768, and 1440 px without horizontal overflow or automated axe violations. No screenshot artifact was retained. |
@@ -55,8 +55,6 @@ received a second authenticated browser/device pass.
 ## 4. Not run or not evidenced
 
 - A post-PR-3 authenticated Playwright journey against the Docker application stack.
-- A live route-level read of the newly projected aggregator evidence and its corresponding read-audit row;
-  the owner-run M18 live suites prove application-role RLS generally but do not exercise that new list projection.
 - Screenshots suitable for release review.
 - VoiceOver, TalkBack, or manual screen-reader verification.
 - Physical iOS/Android foreground-location, permission, approximate-location, interruption, and attestation cases.
@@ -82,7 +80,7 @@ must not be simulated by pointing production at an unverified endpoint.
 | Area | Current posture | Gate to close |
 |---|---|---|
 | Supervisor web slices | Locally verified; no migration. | Fresh review, authenticated Docker journey, live tenant-boundary proof, and retained screenshots. |
-| Aggregator evidence | Authorized audited list read; additive fields; M18 worker and general RLS live suites pass. | Live route-level projection, cross-tenant denial, and read-audit evidence. |
+| Aggregator evidence | Authorized audited list read; additive fields; M18 workers pass; the production route projection, cross-tenant exclusion, and read-audit persistence pass live under the application role. | Authenticated Docker browser journey and retained release screenshots. |
 | Correction workflow | Uses the existing server permission, ABAC, step-up, and immutable provenance path; the live write suite proves supersession, reason persistence, RLS, and append-only behavior. | Route-level step-up/conflict/audit proof and authenticated browser journey. |
 | React Native/Expo online capture | Source exists in `chartwarden-mobile`; release NO-GO. | Physical-device and authenticated backend matrix on the pinned contract/build. |
 | Offline v2 queue | Encrypted design and default-off source exist; release NO-GO. | SQLCipher/device security, identity isolation, replay, recovery, and retention evidence. |

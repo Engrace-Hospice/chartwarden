@@ -287,8 +287,10 @@ behavior, schema, policy, or new PHI storage was added.
 
 Focused DOM behavior and injected-route contract tests pass. OpenAPI and the generated client are in
 sync. The owner-run private-PostgreSQL M18 read/RLS, write, worker, and DEK-rotation suites also pass.
-The new aggregator list projection still needs a live route-level cross-tenant/read-audit journey; this
-slice does not claim a real vendor transmission or configuration-health check.
+The production aggregator list route additionally passes a private-PostgreSQL journey under the real
+NOBYPASSRLS application role: the filtered evidence projection returns only the acting tenant's row and
+persists one actor-attributed `evv_aggregator_submission.list_viewed` audit event. This slice still does
+not claim a real vendor transmission or configuration-health check.
 
 ### PR-4/PR-5 cross-repository audit note — 2026-11-19
 
