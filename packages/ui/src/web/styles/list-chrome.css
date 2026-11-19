@@ -1636,3 +1636,13 @@
   gap: 1rem;
   margin-top: 1rem;
 }
+/* The care-plan picker's rows in the composer's right rail read at body size, like the rest of the rail. */
+.wx-draft-rail .wx-action-check {
+  align-items: flex-start;
+  padding-block: 0.375rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.wx-draft-rail .wx-action-check > input[type="checkbox"] {
+  margin-block-start: 0.125rem;
+}

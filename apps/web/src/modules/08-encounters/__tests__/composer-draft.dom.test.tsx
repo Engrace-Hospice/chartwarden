@@ -459,6 +459,10 @@ describe("confirm and deselect", () => {
     await openSection(user, /^Plan and Next Visit/);
     await user.click(await screen.findByRole("button", { name: "Deselect section" }));
     expect(await screen.findByText(/Nothing is left to draft in it/)).toBeInTheDocument();
+    // The heading the focus was on is gone with the drafted text: focus lands on the region that replaced it, not on the page.
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Pre-drafted from the record" })).toHaveFocus(),
+    );
   });
 });
 
@@ -566,6 +570,26 @@ describe("finalizing with drafted sections", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Drafted sections need your review")).toBeInTheDocument();
     await waitFor(() => expect(callsTo("GET", "/draft").length).toBeGreaterThan(reads));
+  });
+
+  it("repeats the first refusal that is not about the draft, so nothing the gate listed is hidden", async () => {
+    const user = userEvent.setup();
+    mountComposer({
+      [`POST ${BASE}/finalize`]: () =>
+        errorBody(422, "COMPLIANCE_GATE_FAILED", [
+          {
+            field: "vitals",
+            code: "VITALS_REQUIRED",
+            message: "Vitals are required for this visit",
+          },
+          { field: "plan", code: "DRAFT_SECTION_UNRESOLVED", message: "x" },
+        ]),
+    });
+    await ready();
+    await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    expect(
+      await screen.findByText(/Also: Vitals: Vitals are required for this visit/),
+    ).toBeInTheDocument();
   });
 
   it("will not confirm while there are unsaved edits, and says why", async () => {

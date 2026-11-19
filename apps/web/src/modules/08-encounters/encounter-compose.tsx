@@ -391,11 +391,15 @@ export function EncounterCompose(): JSX.Element {
           // The gate named drafted sections: say which and why, beside the draft strip, and re-read what the server now holds.
           void noteDraft.reload();
           setDraftRefusal(describeIssues(issues, headingOfSection));
+          // The gate lists every failure at once; the drafted sections are named below, the first other one is repeated here.
+          const others = (Array.isArray(res.details) ? res.details : []).filter(
+            (detail) => draftIssuesFrom([detail]).length === 0,
+          );
+          const alsoNeeded = others.length > 0 ? ` Also: ${readableValidation(others, "")}` : "";
           setFeedback({
             tone: "error",
             title: "Drafted sections need your review",
-            message:
-              "The note was not finalized. Confirm or deselect the sections listed under the progress summary, then finalize again.",
+            message: `The note was not finalized. Confirm or deselect the sections listed under the progress summary, then finalize again.${alsoNeeded}`,
           });
           return;
         }

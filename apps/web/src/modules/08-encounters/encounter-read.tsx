@@ -1838,10 +1838,14 @@ export function EncounterRead(): JSX.Element {
                     </>
                   ) : e.status === "finalized" ? (
                     <>
-                      <strong style={quickActionTitle}>Ready for signature</strong>
+                      <strong style={quickActionTitle}>
+                        {signBlockedByDraft ? "Review before signing" : "Ready for signature"}
+                      </strong>
 
                       <span style={quickActionHelp}>
-                        The encounter has been finalized and can now be signed.
+                        {signBlockedByDraft
+                          ? "The encounter has been finalized. It can be signed once its drafted sections are resolved."
+                          : "The encounter has been finalized and can now be signed."}
                       </span>
                     </>
                   ) : (

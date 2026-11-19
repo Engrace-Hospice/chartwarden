@@ -161,6 +161,9 @@ describe("an unresolved drafted section", () => {
     expect(
       within(notice).getByRole("link", { name: "Review them in the note editor" }),
     ).toHaveAttribute("href", "/patients/patient-1/encounters/enc-1/compose");
+    // The status text above the button no longer claims the note is ready.
+    expect(screen.getByText("Review before signing")).toBeInTheDocument();
+    expect(screen.queryByText("Ready for signature")).toBeNull();
     const button = await signButton();
     expect(button).toBeDisabled();
     expect(button).toHaveAccessibleDescription(/still needs your review/);

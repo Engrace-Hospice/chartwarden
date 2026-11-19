@@ -7,7 +7,7 @@
 // so ask for another confirmation. FOCUS: when a resolve lands, focus moves to the panel heading, because the button that had it may no
 // longer be there. The outcome sentence sits in a live region that is mounted from the first render, so it is announced.
 import { Button, InlineAlert, StatusPill } from "@chartwarden/ui";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { DraftSectionView, Resolution } from "./draft-api";
 import {
@@ -44,9 +44,15 @@ export function DraftSectionPanel({
 }: DraftSectionPanelProps): JSX.Element {
   // The heading of a drafted section, or the whole region of an empty one (a deselect can leave a section with nothing to draft).
   const focusRef = useRef<HTMLHeadingElement>(null);
+  const [focusRequests, setFocusRequests] = useState(0);
   const { state } = section;
+  // Focus is moved in an effect, after React has committed the new state: when a deselect leaves the section empty, the element that
+  // had the focus is replaced, and only the committed one can take it.
+  useEffect(() => {
+    if (focusRequests > 0) focusRef.current?.focus();
+  }, [focusRequests]);
   const resolve = async (resolution: Resolution): Promise<void> => {
-    if (await onResolve(resolution)) focusRef.current?.focus();
+    if (await onResolve(resolution)) setFocusRequests((count) => count + 1);
   };
   const status = (
     <output className="wx-draft-status">
