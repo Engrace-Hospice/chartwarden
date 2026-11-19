@@ -3,6 +3,13 @@
 //   GET /api/v1/encounters/:encounterId/draft                       the draft for the SESSION viewer, every section with its state   encounter.read
 //   PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId   confirm or deselect one section against the content seen          encounter.author
 //
+// Both also need the read key of each SOURCE domain the draft is compiled from (SOURCE_DOMAIN_READS): the care plan (M7), the medication
+// orders (M12) and the scored scales (M9) reach the draft through seams that apply no permission check of their own, so without them a role
+// holding only `encounter.read` would read goal text, medication names and scores it cannot read through those modules. Requiring them on the
+// route, rather than dropping the sections a caller lacks, keeps ONE draft per patient and visit: a section hash is never computed from fewer
+// sources for one viewer than for another, so a confirmation cannot be matched against a fuller view than the one its author saw. (The sign
+// recomputes the draft for the signer without these keys, which is the same full draft; only Part 2 redaction differs per viewer, by design.)
+//
 // Both answer 404 when the tenant has the draft switched off (the service decides, before it reads anything), and for an encounter that is not
 // the caller's tenant. The viewer is the server-assembled session (roles, active membership), never request input: the draft is computed per
 // reader so 42 CFR Part 2 redaction holds (VN-D10). The PUT carries the SAME permission and ABAC chain as the selections save
@@ -31,6 +38,10 @@ export interface DraftSectionRouteDeps {
   readonly service: DraftService;
 }
 
+/** The sibling routes' read keys: M7 `GET /care-plan/...`, M12 `GET /medication-orders`, M9 `GET /patients/:id/scales/:type/series`. */
+const SOURCE_DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"].map(
+  (key) => requirePermission(key) as PreHandler,
+);
 const READ = requirePermission("encounter.read") as PreHandler;
 const AUTHOR = requirePermission("encounter.author") as PreHandler;
 const NO_AI = rejectAiActor(
@@ -72,7 +83,12 @@ export function registerDraftSectionRoutes(
   app.get(
     "/api/v1/encounters/:encounterId/draft",
     {
-      preHandler: [READ, PARAMS_VALID(DraftParamsSchema), SCOPE_FOR("encounter.read")],
+      preHandler: [
+        READ,
+        ...SOURCE_DOMAIN_READS,
+        PARAMS_VALID(DraftParamsSchema),
+        SCOPE_FOR("encounter.read"),
+      ],
       config: {
         // A chart open of the patient's own record: accountable against the patient named in the response (§164.528). Names only.
         auditRead: {
@@ -111,6 +127,7 @@ export function registerDraftSectionRoutes(
     {
       preHandler: [
         AUTHOR,
+        ...SOURCE_DOMAIN_READS,
         NO_AI,
         PARAMS_VALID(DraftSectionParamsSchema),
         SCOPE_FOR("encounter.author"),

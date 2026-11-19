@@ -47,11 +47,21 @@ const SECTION = {
   origins: ["care_plan_goal"],
 };
 
+// The draft is computed from the care plan (M7), medication orders (M12) and scored scales (M9) through seams that apply no permission
+// check of their own, so both draft routes ask for each source domain's read key on top of the encounter's (the keys of the sibling routes).
+const DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
+const without = (key: string) => DOMAIN_READS.filter((k) => k !== key);
 const PERMISSION_SEED = [
-  { userId: "author_1", permissions: ["encounter.read", "encounter.author"] },
-  { userId: "other_rn", permissions: ["encounter.read", "encounter.author"] },
-  { userId: "sup_1", permissions: ["encounter.read", "encounter.author"] },
-  { userId: "viewer_1", permissions: ["encounter.read"] },
+  { userId: "author_1", permissions: ["encounter.read", "encounter.author", ...DOMAIN_READS] },
+  { userId: "other_rn", permissions: ["encounter.read", "encounter.author", ...DOMAIN_READS] },
+  { userId: "sup_1", permissions: ["encounter.read", "encounter.author", ...DOMAIN_READS] },
+  { userId: "viewer_1", permissions: ["encounter.read", ...DOMAIN_READS] },
+  // holds encounter.read / encounter.author but misses ONE source domain's read key
+  ...DOMAIN_READS.map((missing) => ({
+    userId: `no_${missing}`,
+    permissions: ["encounter.read", "encounter.author", ...without(missing)],
+  })),
+  { userId: "encounter_only", permissions: ["encounter.read", "encounter.author"] },
   { userId: "nobody", permissions: [] },
 ];
 
@@ -182,6 +192,32 @@ describe("GET /encounters/:encounterId/draft", () => {
     );
   });
 
+  it.each(DOMAIN_READS)(
+    "needs %s as well: a role with encounter.read that misses it is refused 403 and nothing is computed or read",
+    async (missing) => {
+      const { app, service } = makeServer();
+      const res = await app.inject({
+        method: "GET",
+        url: draftUrl(),
+        headers: as(`no_${missing}`, "rn"),
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.message).toContain(missing);
+      expect(service.getDraft).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses a role holding encounter.read and none of the source domains' read keys", async () => {
+    const { app, service } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: draftUrl(),
+      headers: as("encounter_only", "chaplain"),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(service.getDraft).not.toHaveBeenCalled();
+  });
+
   it("needs encounter.read: a caller without it is refused 403 and nothing is computed", async () => {
     const { app, service } = makeServer();
     const res = await app.inject({ method: "GET", url: draftUrl(), headers: as("nobody", "rn") });
@@ -293,6 +329,22 @@ describe("PUT /encounters/:encounterId/draft/sections/:sectionId", () => {
       membershipId: "author_1",
     });
   });
+
+  it.each(DOMAIN_READS)(
+    "needs %s as well: the section it answers carries source text, so an author missing it is refused 403 and nothing is written",
+    async (missing) => {
+      const { app, service } = makeServer();
+      const res = await app.inject({
+        method: "PUT",
+        url: sectionUrl(),
+        // a supervisor passes the author-or-supervisor predicate, so only the missing source-domain key can refuse this call
+        headers: as(`no_${missing}`, "clinical_supervisor"),
+        payload: BODY,
+      });
+      expect(res.statusCode).toBe(403);
+      expect(service.resolveSection).not.toHaveBeenCalled();
+    },
+  );
 
   it("needs encounter.author: a read-only caller is refused 403", async () => {
     const { app, service } = makeServer();
