@@ -5,8 +5,8 @@ import type { SelectionState } from "@chartwarden/hearthnote";
 import { VOCAB_VERSION } from "@chartwarden/narrative-vocab";
 import { describe, expect, it } from "vitest";
 import type { DraftEncounterRow } from "../src/modules/08-encounters/drafting/draft-store";
-import { readNoteDraft } from "../src/modules/08-encounters/drafting/note-draft";
-import type { EncounterStateError } from "../src/modules/08-encounters/lifecycle/errors";
+import { assertResolved, readNoteDraft } from "../src/modules/08-encounters/drafting/note-draft";
+import { EncounterStateError } from "../src/modules/08-encounters/lifecycle/errors";
 import { NOW, carePlan, change, fakePorts, viewer } from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
@@ -215,5 +215,34 @@ describe("readNoteDraft: a draft that cannot be computed is never a pass", () =>
       },
     }).catch((e: unknown) => e);
     expect(error).toMatchObject({ code: "UNKNOWN_VOCAB_CODE" });
+  });
+});
+
+describe("assertResolved: sign refuses a note whose drafted sections are not all resolved", () => {
+  it("passes for a tenant with the draft off and for a draft with nothing left to resolve", async () => {
+    expect(() => assertResolved(null)).not.toThrow();
+    const { result } = await read({}, seams(), undefined, confirmAll());
+    expect(() => assertResolved(result)).not.toThrow();
+  });
+
+  it("is 409 DRAFT_SECTION_STALE naming every unresolved or stale section, each with its own code", async () => {
+    const { result } = await read({}, seams(), undefined, async (unit, hashes) => {
+      await unit.store.saveConfirmation(
+        confirmation("plan", "confirmed", { ...hashes.plan!, contentHash: "0".repeat(64) }),
+      );
+    });
+    try {
+      assertResolved(result);
+      throw new Error("expected a throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(EncounterStateError);
+      const refusal = error as EncounterStateError;
+      expect(refusal.code).toBe("DRAFT_SECTION_STALE");
+      expect(refusal.statusCode).toBe(409);
+      expect(refusal.details?.map((d) => [d.field, d.code])).toEqual([
+        ["interventions", "DRAFT_SECTION_UNRESOLVED"],
+        ["plan", "DRAFT_SECTION_STALE"],
+      ]);
+    }
   });
 });

@@ -105,7 +105,25 @@ function signingActorOf(request: FastifyRequest): SigningActor {
     throw new UnauthorizedError();
   // The M2 USER id rides along for a promoted addendum's `decidedByUserId` (a different id space from the membership id).
   const userId = typeof ctx?.userId === "string" && ctx.userId.length > 0 ? ctx.userId : undefined;
-  return { membershipId, sessionId, ...(userId !== undefined ? { userId } : {}) };
+  return {
+    membershipId,
+    sessionId,
+    roles: ctx.roles ?? [],
+    ...(userId !== undefined ? { userId } : {}),
+  };
+}
+
+/** The finalizing member as the visit-note draft sees them (ADR-0114): the session's roles and active membership, never the body. */
+function draftViewerOf(request: FastifyRequest): {
+  roles: readonly string[];
+  membershipId: string | null;
+} {
+  const ctx = request.context;
+  const membershipId = ctx?.attributes.membershipId;
+  return {
+    roles: ctx?.roles ?? [],
+    membershipId: typeof membershipId === "string" && membershipId.length > 0 ? membershipId : null,
+  };
 }
 
 /** The M2 USER id of the caller (the id space the M36 proposals and the messaging seam use; not the membership id). */
@@ -602,6 +620,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const body = parse(FinalizeEncounterSchema, request.body ?? {});
       return service.finalize(organizationId, encounterIdOf(request), today(), {
         lateEntryReason: body.lateEntryReason,
+        viewer: draftViewerOf(request),
       });
     },
   );

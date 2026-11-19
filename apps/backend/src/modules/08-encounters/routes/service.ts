@@ -103,6 +103,11 @@ export interface SigningActor {
    * (it becomes `decidedByUserId` on `m8.chart_promotion.decided`); a promoted addendum refuses to sign without it.
    */
   readonly userId?: string;
+  /**
+   * The signer's role keys from the server-assembled session (never the request body). A primary sign recomputes the visit-note draft
+   * for THIS member (ADR-0114), whose Part 2 redaction depends on them; absent, the draft is redacted as for a member with no role.
+   */
+  readonly roles?: readonly string[];
 }
 
 /** The §4.6 owner facts the `m8.cosigner_role_match` predicate resolves for one encounter (RLS-backstopped). */
@@ -661,7 +666,14 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     at: LocalDate,
-    args?: { lateEntryReason?: string },
+    args?: {
+      lateEntryReason?: string;
+      /**
+       * The finalizing member (the author), from the server-assembled session. The visit-note draft's gate preview (ADR-0114) reads the
+       * draft for this member; absent, it is redacted as for a member with no role and no Part 2 release.
+       */
+      viewer?: { readonly roles: readonly string[]; readonly membershipId: string | null };
+    },
   ): Promise<{ status: "finalized"; version: number }>;
   /** §2.6 D5 — invoke Layer-2. Returns the ladder's verdict; see {@link Layer2EnhanceOutcome} for why
    *  there is no `enhanced: true` arm to return yet (#123). */

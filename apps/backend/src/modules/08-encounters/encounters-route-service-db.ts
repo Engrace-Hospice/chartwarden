@@ -89,6 +89,11 @@ import { readClosurePolicy } from "./closure/policy-service";
 import { seedModalityFor } from "./consumers/seed-modality";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
+import { defaultDraftPorts } from "./drafting/default-ports";
+import { assertResolved } from "./drafting/note-draft";
+import type { NoteDraft } from "./drafting/note-draft";
+import { createNoteDraftFlow } from "./drafting/note-draft-flow";
+import type { DraftSeamPorts, DraftViewer } from "./drafting/ports";
 import { deriveEvvAtSign } from "./evv-at-sign";
 import {
   type GateSectionSelection,
@@ -433,11 +438,16 @@ async function admissionSummaryFor(
  * The production, RLS-backed EncounterRouteService. Reads and writes are real (Drizzle + RLS).
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
+/** A caller with no identity of its own: its draft is redacted as for a member with no role and no Part 2 release (fails closed). */
+const ANONYMOUS_VIEWER: DraftViewer = { roles: [], membershipId: null };
+
 export function createDbEncounterRouteService(
   db: DbClient,
   outbox: EncounterWriteOutboxPort = NOOP_OUTBOX,
   ciphers?: HearthnoteCiphers,
   clock: () => Date = () => new Date(),
+  /** ADR-0114: the seam-backed half of the visit-note draft the gate and sign read (M7, M9, M12, M39); the M1-registry wiring by default. */
+  draftSeams: () => DraftSeamPorts = defaultDraftPorts,
 ): EncounterRouteService {
   /** GAP-013: the org-local calendar day (org timezone, never the request's UTC date) the late-entry tier is measured on. */
   const orgLocalToday = async (t: DbClient, organizationId: string): Promise<LocalDate> =>
@@ -570,6 +580,28 @@ export function createDbEncounterRouteService(
       );
     }
   }
+  /**
+   * ADR-0114: the visit-note draft's part in finalize and sign. A tenant with the switch off gets `null` from every read and the
+   * gate, the pin and the sign are exactly what they were; with it on, the draft is read for the member acting (author at finalize,
+   * signer at sign), the gate decides check 13 over it, and sign pins and seals the note's text in its own transaction.
+   */
+  const noteDraft = createNoteDraftFlow({
+    clock,
+    seams: draftSeams,
+    ...(freeTextCipher ? { freeTextCipher } : {}),
+    seal: (organizationId, plaintext) => {
+      if (!narrativeCipher) {
+        throw new EncounterStateError(
+          "HEARTHNOTE_CIPHER_UNBOUND",
+          "no per-tenant DEK envelope is bound for M8, so the signed note's sections cannot be sealed",
+        );
+      }
+      return withTenantDek("the signed note could not be sealed", () =>
+        narrativeCipher.seal(organizationId, plaintext),
+      );
+    },
+  });
+
   // ── HearthNote selections (§2.6/§3.6, #114) ────────────────────────────────────────────────────────
   //
   // `selections` (vocabulary codes + numeric slot params) goes to the jsonb column in the clear; the
@@ -688,11 +720,15 @@ export function createDbEncounterRouteService(
     }
   }
 
-  /** Run the §2.6 gate for one encounter and raise the 422 + remediation list when it does not pass. */
+  /**
+   * Run the §2.6 gate for one encounter and raise the 422 + remediation list when it does not pass. `draft` is the acting member's
+   * visit-note draft (ADR-0114), or `null` when the tenant has it switched off, in which case check 13 does not run.
+   */
   async function gateEncounter(
     t: DbClient,
     r: typeof ENC.$inferSelect,
     at: "finalize" | "sign",
+    draft: NoteDraft | null,
   ): Promise<boolean> {
     const [sel] = await t
       .select({ selections: SEL.selections })
@@ -721,6 +757,7 @@ export function createDbEncounterRouteService(
       vitalsCaptured: captured,
       vitalsClinicallyNotIndicated: clinicallyNotIndicated,
       scalesPresent: await scalesPresentFor(r.patientId, r.encounterType),
+      ...(draft === null ? {} : { draftSectionActions: draft.actions }),
     });
     assertGatePassed(verdict, at);
     return verdict.pass;
@@ -818,6 +855,8 @@ export function createDbEncounterRouteService(
       readonly discipline: EncounterView["discipline"];
       readonly serviceDate: string;
       readonly vocabVersionId: string;
+      /** ADR-0114: the note's text when the visit-note draft is on (the confirmed draft and the clinician's own selections); absent, Layer 1 from the selections. */
+      readonly narrative?: string;
     },
   ): Promise<void> {
     if (!narrativeCipher) {
@@ -833,12 +872,9 @@ export function createDbEncounterRouteService(
         ? { encounterId: input.encounterId as string }
         : { addendumId: input.addendumId },
     );
-    const layer1 = assembleSelections(
-      input.encounterType,
-      input.discipline,
-      input.serviceDate,
-      sections,
-    );
+    const layer1 =
+      input.narrative ??
+      assembleSelections(input.encounterType, input.discipline, input.serviceDate, sections);
     // D5's finalize-time reification, through the module's own shipped ladder rather than a literal.
     // Phase 1: the platform flag is off, so this is `kill_switch_active` / `enhanced: false` / final === layer1.
     const outcome = enhanceNarrative({
@@ -2115,11 +2151,13 @@ export function createDbEncounterRouteService(
           requireOverride: false,
         });
         const reifiedTier = reifiableTier(r.lateEntryTier, late.tier);
+        // ADR-0114: the author's visit-note draft (null when the tenant has the switch off).
+        const draft = await noteDraft.read(t, r, args?.viewer ?? ANONYMOUS_VIEWER);
         // §2.3 — the gate runs as a PREVIEW here: a failure raises the 422 + remediation list and the
         // row stays in draft, which is the transition not happening at all.
         const trans = transitionEncounter(r.status, {
           type: "finalize",
-          gatePreviewPassed: await gateEncounter(t, r, "finalize"),
+          gatePreviewPassed: await gateEncounter(t, r, "finalize", draft),
           at,
         });
         // §2.7 D11 — the vocabulary version guard, which had never run: `checkVocabVersion` has existed
@@ -2176,6 +2214,8 @@ export function createDbEncounterRouteService(
           discipline: r.discipline,
           serviceDate: r.serviceDate,
           vocabVersionId,
+          // The gate has passed, so every drafted section is resolved: the pin carries the confirmed text, not Layer 1 alone.
+          ...(draft === null ? {} : { narrative: noteDraft.narrativeOf(draft) }),
         });
         await emit(t, organizationId, "m8.encounter.finalized", "encounter", encounterId, {
           encounterId,
@@ -2280,6 +2320,13 @@ export function createDbEncounterRouteService(
           );
         }
         const siting = { providerEntityId: r.providerEntityId, locationId: r.locationId };
+        // ADR-0114: the SIGNER's own draft, recomputed now as of the visit time (never the author's: redaction can differ). Any drafted
+        // section that is unresolved or no longer matches its confirmation refuses the sign with 409 DRAFT_SECTION_STALE, before any write.
+        const draft = await noteDraft.read(t, r, {
+          roles: actor.roles ?? [],
+          membershipId: actor.membershipId,
+        });
+        assertResolved(draft);
         const careplanLinks = await carePlanLinksFor(t, encounterId);
         // The pinned narrative is sealed under the tenant DEK (#122); it is NOT copied into the outbox
         // payload in the clear. M22 renders through `renderPayload` (route 31), which opens the pin.
@@ -2290,7 +2337,7 @@ export function createDbEncounterRouteService(
         // The M6 write descriptor (plan.attestation) is handed to M6's writer by the composition root in
         // prod; this slice performs the M8 side only (no cross-module write edge).
         if (isF2f(r)) {
-          const gatePassed = await gateEncounter(t, r, "sign");
+          const gatePassed = await gateEncounter(t, r, "sign", draft);
           const plan = planF2fDualWrite({
             status: r.status,
             encounterId: r.id,
@@ -2336,6 +2383,8 @@ export function createDbEncounterRouteService(
             attestationText: PRIMARY_ATTESTATION_TEXT,
             layer2InvolvedAtSigning: false,
           });
+          // ADR-0114: the signed note's text and its sealed section rows, in this transaction (no-op with the draft off).
+          await noteDraft.sealSigned(t, r, draft);
           await emit(t, organizationId, "m8.encounter.signed", "encounter", encounterId, {
             encounterId,
             patientId: r.patientId,
@@ -2365,7 +2414,7 @@ export function createDbEncounterRouteService(
         const trans = transitionEncounter(r.status, {
           type: "sign",
           discipline: r.discipline,
-          gatePassed: await gateEncounter(t, r, "sign"),
+          gatePassed: await gateEncounter(t, r, "sign", draft),
           stepUpFresh: provenance.stepUpFresh,
           isF2f: false,
           f2fDualWriteSatisfied: true,
@@ -2407,6 +2456,8 @@ export function createDbEncounterRouteService(
           attestationText: PRIMARY_ATTESTATION_TEXT,
           layer2InvolvedAtSigning: false,
         });
+        // ADR-0114: the signed note's text and its sealed section rows, in this transaction (no-op with the draft off).
+        await noteDraft.sealSigned(t, r, draft);
         await emit(t, organizationId, "m8.encounter.signed", "encounter", encounterId, {
           encounterId,
           patientId: r.patientId,

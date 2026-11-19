@@ -17,6 +17,7 @@ import {
   type SectionAction,
   type SectionState,
   sectionStates,
+  sectionsNeedResolving,
   unresolvedSections,
 } from "./section-state";
 
@@ -67,4 +68,12 @@ export async function readNoteDraft(
     if (cause instanceof EncounterStateError && KEEPS_ITS_CODE.has(cause.code)) throw cause;
     throw unavailable("the draft could not be computed", cause);
   }
+}
+
+/**
+ * Sign's own check on the signer's draft: 409 `DRAFT_SECTION_STALE` naming every drafted section that is unresolved or no longer matches
+ * its confirmation, so the client refetches and resolves them again. `null` (the draft is off) passes: sign is then what it always was.
+ */
+export function assertResolved(draft: NoteDraft | null): void {
+  if (draft !== null && draft.actions.length > 0) throw sectionsNeedResolving(draft.actions);
 }
