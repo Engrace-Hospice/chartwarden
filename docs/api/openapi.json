@@ -148676,6 +148676,83 @@
                               }
                             ]
                           },
+                          "finalDocumentationView": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "withheld",
+                                  "sections"
+                                ],
+                                "properties": {
+                                  "withheld": {
+                                    "type": "boolean"
+                                  },
+                                  "sections": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sectionId",
+                                        "text",
+                                        "withheld",
+                                        "amendedByAddendumId",
+                                        "signedAt"
+                                      ],
+                                      "properties": {
+                                        "sectionId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "withheld": {
+                                          "type": "boolean"
+                                        },
+                                        "amendedByAddendumId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "signedAt": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "vitals": {
                             "anyOf": [
                               {
@@ -148803,9 +148880,113 @@
                                 },
                                 "version": {
                                   "type": "integer"
+                                },
+                                "amendsSectionIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               }
                             }
+                          },
+                          "noteHistory": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "sections"
+                                ],
+                                "properties": {
+                                  "sections": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sectionId",
+                                        "versions"
+                                      ],
+                                      "properties": {
+                                        "sectionId": {
+                                          "type": "string"
+                                        },
+                                        "versions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "kind",
+                                              "addendumId",
+                                              "authoredByMembershipId",
+                                              "signedAt",
+                                              "text",
+                                              "withheld",
+                                              "current"
+                                            ],
+                                            "properties": {
+                                              "kind": {
+                                                "anyOf": [
+                                                  {
+                                                    "const": "original",
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "const": "amendment",
+                                                    "type": "string"
+                                                  }
+                                                ]
+                                              },
+                                              "addendumId": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "authoredByMembershipId": {
+                                                "type": "string"
+                                              },
+                                              "signedAt": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "text": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "withheld": {
+                                                "type": "boolean"
+                                              },
+                                              "current": {
+                                                "type": "boolean"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -149044,7 +149225,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2). `finalDocumentation` is the pinned note as the SESSION viewer may read it (ADR-0114, VN-D13): a viewer with 42 CFR Part 2 disclosure, or a note with no Part 2 derived section, gets the note as pinned; any other viewer gets each Part 2 derived section replaced by a generic withheld marker (a finalized note not yet signed, whose sections are not sealed yet, is withheld whole when its text carries Part 2 content). 503 NOTE_VIEW_UNAVAILABLE when the Part 2 disclosure check cannot be decided (never a silent denial)",
+        "summary": "Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2). `finalDocumentation` is the pinned note as the SESSION viewer may read it (ADR-0114, VN-D13): a viewer with 42 CFR Part 2 disclosure, or a note with no Part 2 derived section, gets the note as pinned; any other viewer gets each Part 2 derived section replaced by a generic withheld marker (a finalized note not yet signed, whose sections are not sealed yet, is withheld whole when its text carries Part 2 content). With amendments (VN-D30) it is the CURRENT view, the latest signed text per section. `finalDocumentationView` is the same view as structured data (a withheld section has `text: null`, so no marker string reaches a client as data; `amendedByAddendumId` and `signedAt` say which version each section shows), and `noteHistory` lists every version of each amended section (author, date, addendum) under the same per-viewer rule. 503 NOTE_VIEW_UNAVAILABLE when the Part 2 disclosure check cannot be decided (never a silent denial)",
         "parameters": [
           {
             "name": "encounterId",
@@ -149356,6 +149537,83 @@
                         }
                       ]
                     },
+                    "finalDocumentationView": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "withheld",
+                            "sections"
+                          ],
+                          "properties": {
+                            "withheld": {
+                              "type": "boolean"
+                            },
+                            "sections": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "sectionId",
+                                  "text",
+                                  "withheld",
+                                  "amendedByAddendumId",
+                                  "signedAt"
+                                ],
+                                "properties": {
+                                  "sectionId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "text": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "withheld": {
+                                    "type": "boolean"
+                                  },
+                                  "amendedByAddendumId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "signedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "vitals": {
                       "anyOf": [
                         {
@@ -149483,9 +149741,113 @@
                           },
                           "version": {
                             "type": "integer"
+                          },
+                          "amendsSectionIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         }
                       }
+                    },
+                    "noteHistory": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "sections"
+                          ],
+                          "properties": {
+                            "sections": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "sectionId",
+                                  "versions"
+                                ],
+                                "properties": {
+                                  "sectionId": {
+                                    "type": "string"
+                                  },
+                                  "versions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "kind",
+                                        "addendumId",
+                                        "authoredByMembershipId",
+                                        "signedAt",
+                                        "text",
+                                        "withheld",
+                                        "current"
+                                      ],
+                                      "properties": {
+                                        "kind": {
+                                          "anyOf": [
+                                            {
+                                              "const": "original",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "amendment",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "addendumId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "authoredByMembershipId": {
+                                          "type": "string"
+                                        },
+                                        "signedAt": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "withheld": {
+                                          "type": "boolean"
+                                        },
+                                        "current": {
+                                          "type": "boolean"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -149507,7 +149869,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Create an addendum draft on a signed encounter",
+        "summary": "Create an addendum draft on a signed encounter. `amendsSectionIds` (ADR-0114 VN-D30) names sections of the note's own sealed rows to amend: the author then confirms the redrafted sections through GET/PUT .../addenda/{addendumId}/draft before the addendum can sign. Only for a tenant with the visit-note draft on (404 NOT_FOUND when it is off, the same answer as an absent encounter) and a note with sealed rows (422 UNKNOWN_TEMPLATE_SECTION for a section the note does not carry, or a note with none). Absent, the addendum is a free addendum exactly as before",
         "parameters": [
           {
             "name": "encounterId",
@@ -149566,6 +149928,394 @@
                   },
                   "promotionRequestId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "amendsSectionIds": {
+                    "minItems": 1,
+                    "maxItems": 12,
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdAddendaByAddendumIdDraft",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The draft of the SIGNED note as an amending addendum's author sees it, recomputed fresh as of the visit time and restricted to the sections the addendum names: each with its `state` against the addendum's own resolutions, the redrafted `text`, the `contentHash` and `corpusVersion` a confirmation binds to, the fail-closed `part2Derived` flag and the kinds of record it was built from. 42 CFR Part 2 content is redacted for this viewer by the sources themselves. 404 when the tenant has the draft switched off or the addendum names no section; 503 DRAFT_UNAVAILABLE when a source cannot be read; encounter.read plus the source domains' read keys",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "addendumId",
+                    "encounterId",
+                    "patientId",
+                    "templateKey",
+                    "asOf",
+                    "sections"
+                  ],
+                  "properties": {
+                    "addendumId": {
+                      "type": "string"
+                    },
+                    "encounterId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "asOf": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "sectionId",
+                          "state",
+                          "text",
+                          "contentHash",
+                          "corpusVersion",
+                          "part2Derived",
+                          "origins"
+                        ],
+                        "properties": {
+                          "sectionId": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "not_drafted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unresolved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "confirmed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "deselected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "needs_reconfirmation",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "text": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "contentHash": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "corpusVersion": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "part2Derived": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "origins": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "care_plan_goal",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "care_plan_intervention",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "scale_reading",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "vitals",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_change",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft/sections/{sectionId}": {
+      "put": {
+        "operationId": "putApiV1EncountersByEncounterIdAddendaByAddendumIdDraftSectionsBySectionId",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Confirm or deselect one section the addendum names, against the content the author saw (`contentHash` and `corpusVersion` from the amendment draft); 409 DRAFT_SECTION_STALE when either no longer matches. Only the addendum's author, only while the addendum is a draft or finalized (409 ILLEGAL_TRANSITION after), only for a named section (422 UNKNOWN_TEMPLATE_SECTION). Confirming amends the section when the addendum signs; deselecting declines the redraft and leaves the section as signed. The note's care-plan links are never changed. Idempotent. encounter.addendum_author; AI principals refused; 404 when the tenant has the draft switched off",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sectionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sectionId",
+                    "state",
+                    "text",
+                    "contentHash",
+                    "corpusVersion",
+                    "part2Derived",
+                    "origins"
+                  ],
+                  "properties": {
+                    "sectionId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "not_drafted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unresolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "confirmed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "deselected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "needs_reconfirmation",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "text": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contentHash": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "corpusVersion": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "part2Derived": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "origins": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "care_plan_goal",
+                            "type": "string"
+                          },
+                          {
+                            "const": "care_plan_intervention",
+                            "type": "string"
+                          },
+                          {
+                            "const": "scale_reading",
+                            "type": "string"
+                          },
+                          {
+                            "const": "vitals",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_change",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resolution",
+                  "contentHash",
+                  "corpusVersion"
+                ],
+                "properties": {
+                  "resolution": {
+                    "anyOf": [
+                      {
+                        "const": "confirmed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "deselected",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "contentHash": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "corpusVersion": {
+                    "minLength": 1,
+                    "maxLength": 64,
                     "type": "string"
                   }
                 }
@@ -149882,7 +150632,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Sign an addendum (D13 step-up)",
+        "summary": "Sign an addendum (D13 step-up). An addendum that names sections (ADR-0114 VN-D30) signs only when every named section is confirmed or deselected against the draft as the signer sees it now (409 DRAFT_SECTION_STALE naming each unresolved or stale section; 503 COMPLIANCE_GATE_UNAVAILABLE when a source cannot be read; 409 DRAFT_OFF_AFTER_FINALIZE when the tenant has since switched the draft off). The confirmed sections are sealed as amendment rows of the signed note in the same transaction (the note's original rows are never changed), one m8.encounter.section_amended event is published per amended section, and when the note needed a cosigner its amendment opens its own cosignature request (422 NO_ELIGIBLE_COSIGNER when there is none). A second concurrent sign answers 409 ILLEGAL_TRANSITION",
         "parameters": [
           {
             "name": "encounterId",
@@ -149919,6 +150669,22 @@
                     },
                     "signedAt": {
                       "type": "string"
+                    },
+                    "amendedSectionIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "cosignatureRequestId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -154801,6 +155567,83 @@
                               }
                             ]
                           },
+                          "finalDocumentationView": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "withheld",
+                                  "sections"
+                                ],
+                                "properties": {
+                                  "withheld": {
+                                    "type": "boolean"
+                                  },
+                                  "sections": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sectionId",
+                                        "text",
+                                        "withheld",
+                                        "amendedByAddendumId",
+                                        "signedAt"
+                                      ],
+                                      "properties": {
+                                        "sectionId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "withheld": {
+                                          "type": "boolean"
+                                        },
+                                        "amendedByAddendumId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "signedAt": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "vitals": {
                             "anyOf": [
                               {
@@ -154928,9 +155771,113 @@
                                 },
                                 "version": {
                                   "type": "integer"
+                                },
+                                "amendsSectionIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               }
                             }
+                          },
+                          "noteHistory": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "sections"
+                                ],
+                                "properties": {
+                                  "sections": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sectionId",
+                                        "versions"
+                                      ],
+                                      "properties": {
+                                        "sectionId": {
+                                          "type": "string"
+                                        },
+                                        "versions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "kind",
+                                              "addendumId",
+                                              "authoredByMembershipId",
+                                              "signedAt",
+                                              "text",
+                                              "withheld",
+                                              "current"
+                                            ],
+                                            "properties": {
+                                              "kind": {
+                                                "anyOf": [
+                                                  {
+                                                    "const": "original",
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "const": "amendment",
+                                                    "type": "string"
+                                                  }
+                                                ]
+                                              },
+                                              "addendumId": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "authoredByMembershipId": {
+                                                "type": "string"
+                                              },
+                                              "signedAt": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "text": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "withheld": {
+                                                "type": "boolean"
+                                              },
+                                              "current": {
+                                                "type": "boolean"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -155389,6 +156336,83 @@
                               }
                             ]
                           },
+                          "finalDocumentationView": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "withheld",
+                                  "sections"
+                                ],
+                                "properties": {
+                                  "withheld": {
+                                    "type": "boolean"
+                                  },
+                                  "sections": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sectionId",
+                                        "text",
+                                        "withheld",
+                                        "amendedByAddendumId",
+                                        "signedAt"
+                                      ],
+                                      "properties": {
+                                        "sectionId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "withheld": {
+                                          "type": "boolean"
+                                        },
+                                        "amendedByAddendumId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "signedAt": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "vitals": {
                             "anyOf": [
                               {
@@ -155516,9 +156540,113 @@
                                 },
                                 "version": {
                                   "type": "integer"
+                                },
+                                "amendsSectionIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               }
                             }
+                          },
+                          "noteHistory": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "sections"
+                                ],
+                                "properties": {
+                                  "sections": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sectionId",
+                                        "versions"
+                                      ],
+                                      "properties": {
+                                        "sectionId": {
+                                          "type": "string"
+                                        },
+                                        "versions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "kind",
+                                              "addendumId",
+                                              "authoredByMembershipId",
+                                              "signedAt",
+                                              "text",
+                                              "withheld",
+                                              "current"
+                                            ],
+                                            "properties": {
+                                              "kind": {
+                                                "anyOf": [
+                                                  {
+                                                    "const": "original",
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "const": "amendment",
+                                                    "type": "string"
+                                                  }
+                                                ]
+                                              },
+                                              "addendumId": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "authoredByMembershipId": {
+                                                "type": "string"
+                                              },
+                                              "signedAt": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "text": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "withheld": {
+                                                "type": "boolean"
+                                              },
+                                              "current": {
+                                                "type": "boolean"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "closure": {
                             "type": "object",
@@ -184446,6 +185574,83 @@
                               }
                             ]
                           },
+                          "finalDocumentationView": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "withheld",
+                                  "sections"
+                                ],
+                                "properties": {
+                                  "withheld": {
+                                    "type": "boolean"
+                                  },
+                                  "sections": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sectionId",
+                                        "text",
+                                        "withheld",
+                                        "amendedByAddendumId",
+                                        "signedAt"
+                                      ],
+                                      "properties": {
+                                        "sectionId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "withheld": {
+                                          "type": "boolean"
+                                        },
+                                        "amendedByAddendumId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "signedAt": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "vitals": {
                             "anyOf": [
                               {
@@ -184573,9 +185778,113 @@
                                 },
                                 "version": {
                                   "type": "integer"
+                                },
+                                "amendsSectionIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               }
                             }
+                          },
+                          "noteHistory": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "sections"
+                                ],
+                                "properties": {
+                                  "sections": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sectionId",
+                                        "versions"
+                                      ],
+                                      "properties": {
+                                        "sectionId": {
+                                          "type": "string"
+                                        },
+                                        "versions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "kind",
+                                              "addendumId",
+                                              "authoredByMembershipId",
+                                              "signedAt",
+                                              "text",
+                                              "withheld",
+                                              "current"
+                                            ],
+                                            "properties": {
+                                              "kind": {
+                                                "anyOf": [
+                                                  {
+                                                    "const": "original",
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "const": "amendment",
+                                                    "type": "string"
+                                                  }
+                                                ]
+                                              },
+                                              "addendumId": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "authoredByMembershipId": {
+                                                "type": "string"
+                                              },
+                                              "signedAt": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "text": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "withheld": {
+                                                "type": "boolean"
+                                              },
+                                              "current": {
+                                                "type": "boolean"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }

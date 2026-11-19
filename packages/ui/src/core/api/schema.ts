@@ -11589,7 +11589,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2). `finalDocumentation` is the pinned note as the SESSION viewer may read it (ADR-0114, VN-D13): a viewer with 42 CFR Part 2 disclosure, or a note with no Part 2 derived section, gets the note as pinned; any other viewer gets each Part 2 derived section replaced by a generic withheld marker (a finalized note not yet signed, whose sections are not sealed yet, is withheld whole when its text carries Part 2 content). 503 NOTE_VIEW_UNAVAILABLE when the Part 2 disclosure check cannot be decided (never a silent denial) */
+        /** Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2). `finalDocumentation` is the pinned note as the SESSION viewer may read it (ADR-0114, VN-D13): a viewer with 42 CFR Part 2 disclosure, or a note with no Part 2 derived section, gets the note as pinned; any other viewer gets each Part 2 derived section replaced by a generic withheld marker (a finalized note not yet signed, whose sections are not sealed yet, is withheld whole when its text carries Part 2 content). With amendments (VN-D30) it is the CURRENT view, the latest signed text per section. `finalDocumentationView` is the same view as structured data (a withheld section has `text: null`, so no marker string reaches a client as data; `amendedByAddendumId` and `signedAt` say which version each section shows), and `noteHistory` lists every version of each amended section (author, date, addendum) under the same per-viewer rule. 503 NOTE_VIEW_UNAVAILABLE when the Part 2 disclosure check cannot be decided (never a silent denial) */
         get: operations["getApiV1EncountersByEncounterId"];
         put?: never;
         post?: never;
@@ -11608,8 +11608,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create an addendum draft on a signed encounter */
+        /** Create an addendum draft on a signed encounter. `amendsSectionIds` (ADR-0114 VN-D30) names sections of the note's own sealed rows to amend: the author then confirms the redrafted sections through GET/PUT .../addenda/{addendumId}/draft before the addendum can sign. Only for a tenant with the visit-note draft on (404 NOT_FOUND when it is off, the same answer as an absent encounter) and a note with sealed rows (422 UNKNOWN_TEMPLATE_SECTION for a section the note does not carry, or a note with none). Absent, the addendum is a free addendum exactly as before */
         post: operations["postApiV1EncountersByEncounterIdAddenda"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The draft of the SIGNED note as an amending addendum's author sees it, recomputed fresh as of the visit time and restricted to the sections the addendum names: each with its `state` against the addendum's own resolutions, the redrafted `text`, the `contentHash` and `corpusVersion` a confirmation binds to, the fail-closed `part2Derived` flag and the kinds of record it was built from. 42 CFR Part 2 content is redacted for this viewer by the sources themselves. 404 when the tenant has the draft switched off or the addendum names no section; 503 DRAFT_UNAVAILABLE when a source cannot be read; encounter.read plus the source domains' read keys */
+        get: operations["getApiV1EncountersByEncounterIdAddendaByAddendumIdDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft/sections/{sectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Confirm or deselect one section the addendum names, against the content the author saw (`contentHash` and `corpusVersion` from the amendment draft); 409 DRAFT_SECTION_STALE when either no longer matches. Only the addendum's author, only while the addendum is a draft or finalized (409 ILLEGAL_TRANSITION after), only for a named section (422 UNKNOWN_TEMPLATE_SECTION). Confirming amends the section when the addendum signs; deselecting declines the redraft and leaves the section as signed. The note's care-plan links are never changed. Idempotent. encounter.addendum_author; AI principals refused; 404 when the tenant has the draft switched off */
+        put: operations["putApiV1EncountersByEncounterIdAddendaByAddendumIdDraftSectionsBySectionId"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -11660,7 +11694,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sign an addendum (D13 step-up) */
+        /** Sign an addendum (D13 step-up). An addendum that names sections (ADR-0114 VN-D30) signs only when every named section is confirmed or deselected against the draft as the signer sees it now (409 DRAFT_SECTION_STALE naming each unresolved or stale section; 503 COMPLIANCE_GATE_UNAVAILABLE when a source cannot be read; 409 DRAFT_OFF_AFTER_FINALIZE when the tenant has since switched the draft off). The confirmed sections are sealed as amendment rows of the signed note in the same transaction (the note's original rows are never changed), one m8.encounter.section_amended event is published per amended section, and when the note needed a cosigner its amendment opens its own cosignature request (422 NO_ELIGIBLE_COSIGNER when there is none). A second concurrent sign answers 409 ILLEGAL_TRANSITION */
         post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdSign"];
         delete?: never;
         options?: never;
@@ -66735,6 +66769,16 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationView?: {
+                                withheld: boolean;
+                                sections: {
+                                    sectionId: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    amendedByAddendumId: string | null;
+                                    signedAt: string | null;
+                                }[];
+                            } | null;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -66755,7 +66799,22 @@ export interface operations {
                                 createdAt: string;
                                 signedAt: string | null;
                                 version: number;
+                                amendsSectionIds?: string[];
                             }[];
+                            noteHistory?: {
+                                sections: {
+                                    sectionId: string;
+                                    versions: {
+                                        kind: "original" | "amendment";
+                                        addendumId: string | null;
+                                        authoredByMembershipId: string;
+                                        signedAt: string | null;
+                                        text: string | null;
+                                        withheld: boolean;
+                                        current: boolean;
+                                    }[];
+                                }[];
+                            } | null;
                         }[];
                     };
                 };
@@ -66853,6 +66912,16 @@ export interface operations {
                             [key: string]: unknown;
                         } | null;
                         finalDocumentation?: string | null;
+                        finalDocumentationView?: {
+                            withheld: boolean;
+                            sections: {
+                                sectionId: string | null;
+                                text: string | null;
+                                withheld: boolean;
+                                amendedByAddendumId: string | null;
+                                signedAt: string | null;
+                            }[];
+                        } | null;
                         vitals?: {
                             [key: string]: unknown;
                         } | null;
@@ -66873,7 +66942,22 @@ export interface operations {
                             createdAt: string;
                             signedAt: string | null;
                             version: number;
+                            amendsSectionIds?: string[];
                         }[];
+                        noteHistory?: {
+                            sections: {
+                                sectionId: string;
+                                versions: {
+                                    kind: "original" | "amendment";
+                                    addendumId: string | null;
+                                    authoredByMembershipId: string;
+                                    signedAt: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    current: boolean;
+                                }[];
+                            }[];
+                        } | null;
                     };
                 };
             };
@@ -66896,6 +66980,7 @@ export interface operations {
                     reason: string;
                     /** Format: uuid */
                     promotionRequestId?: string;
+                    amendsSectionIds?: string[];
                 };
             };
         };
@@ -66910,6 +66995,89 @@ export interface operations {
                         id: string;
                         /** @constant */
                         status: "draft";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdAddendaByAddendumIdDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        addendumId: string;
+                        encounterId: string;
+                        patientId: string;
+                        templateKey: string;
+                        /** Format: date-time */
+                        asOf: string;
+                        sections: {
+                            sectionId: string;
+                            state: "not_drafted" | "unresolved" | "confirmed" | "deselected" | "needs_reconfirmation";
+                            text: string | null;
+                            contentHash: string | null;
+                            corpusVersion: string | null;
+                            part2Derived: boolean | null;
+                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change")[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersByEncounterIdAddendaByAddendumIdDraftSectionsBySectionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+                sectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    resolution: "confirmed" | "deselected";
+                    contentHash: string;
+                    corpusVersion: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sectionId: string;
+                        state: "not_drafted" | "unresolved" | "confirmed" | "deselected" | "needs_reconfirmation";
+                        text: string | null;
+                        contentHash: string | null;
+                        corpusVersion: string | null;
+                        part2Derived: boolean | null;
+                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change")[];
                     };
                 };
             };
@@ -67061,6 +67229,8 @@ export interface operations {
                         /** @constant */
                         status: "signed";
                         signedAt: string;
+                        amendedSectionIds?: string[];
+                        cosignatureRequestId?: string | null;
                     };
                 };
             };
@@ -68374,6 +68544,16 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationView?: {
+                                withheld: boolean;
+                                sections: {
+                                    sectionId: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    amendedByAddendumId: string | null;
+                                    signedAt: string | null;
+                                }[];
+                            } | null;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -68394,7 +68574,22 @@ export interface operations {
                                 createdAt: string;
                                 signedAt: string | null;
                                 version: number;
+                                amendsSectionIds?: string[];
                             }[];
+                            noteHistory?: {
+                                sections: {
+                                    sectionId: string;
+                                    versions: {
+                                        kind: "original" | "amendment";
+                                        addendumId: string | null;
+                                        authoredByMembershipId: string;
+                                        signedAt: string | null;
+                                        text: string | null;
+                                        withheld: boolean;
+                                        current: boolean;
+                                    }[];
+                                }[];
+                            } | null;
                         }[];
                     };
                 };
@@ -68501,6 +68696,16 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationView?: {
+                                withheld: boolean;
+                                sections: {
+                                    sectionId: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    amendedByAddendumId: string | null;
+                                    signedAt: string | null;
+                                }[];
+                            } | null;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -68521,7 +68726,22 @@ export interface operations {
                                 createdAt: string;
                                 signedAt: string | null;
                                 version: number;
+                                amendsSectionIds?: string[];
                             }[];
+                            noteHistory?: {
+                                sections: {
+                                    sectionId: string;
+                                    versions: {
+                                        kind: "original" | "amendment";
+                                        addendumId: string | null;
+                                        authoredByMembershipId: string;
+                                        signedAt: string | null;
+                                        text: string | null;
+                                        withheld: boolean;
+                                        current: boolean;
+                                    }[];
+                                }[];
+                            } | null;
                             closure: {
                                 clockStartedAt: string | null;
                                 deadlineAt: string | null;
@@ -75976,6 +76196,16 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationView?: {
+                                withheld: boolean;
+                                sections: {
+                                    sectionId: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    amendedByAddendumId: string | null;
+                                    signedAt: string | null;
+                                }[];
+                            } | null;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -75996,7 +76226,22 @@ export interface operations {
                                 createdAt: string;
                                 signedAt: string | null;
                                 version: number;
+                                amendsSectionIds?: string[];
                             }[];
+                            noteHistory?: {
+                                sections: {
+                                    sectionId: string;
+                                    versions: {
+                                        kind: "original" | "amendment";
+                                        addendumId: string | null;
+                                        authoredByMembershipId: string;
+                                        signedAt: string | null;
+                                        text: string | null;
+                                        withheld: boolean;
+                                        current: boolean;
+                                    }[];
+                                }[];
+                            } | null;
                         }[];
                     };
                 };
