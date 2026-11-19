@@ -42,6 +42,7 @@ import {
 } from "./addenda-api";
 import { AddendumCosign } from "./addendum-cosign";
 import {
+  addendumContentHint,
   addendumName,
   addendumRefusalMessage,
   isSectionRefusal,
@@ -58,7 +59,6 @@ import {
   loadTemplate,
   toDraft,
   toSelectionsBody,
-  unmetRequiredSections,
 } from "./encounters-api";
 import { ProposedFromMessage } from "./proposed-from-message";
 import { humanizeSection } from "./sign-draft-notice";
@@ -66,6 +66,7 @@ import { shortStamp } from "./signed-note-model";
 import { useNoteDraft } from "./use-note-draft";
 
 type Failure = Extract<AddendumResult<unknown>, { ok: false }>;
+type Step = "finalize" | "sign";
 
 interface PanelProps {
   readonly encounterId: string;
@@ -80,7 +81,7 @@ interface PanelProps {
 }
 
 /** A refusal rendered as user-facing prose; step-up gets the real ceremony link. */
-function FailureAlert({ failure }: { failure: Failure }): JSX.Element {
+function FailureAlert({ failure, step }: { failure: Failure; step?: Step }): JSX.Element {
   const path = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const stepUp = isStepUpRefusal({
     status: failure.status ?? undefined,
@@ -94,7 +95,7 @@ function FailureAlert({ failure }: { failure: Failure }): JSX.Element {
       : null;
   return (
     <div role="alert" style={alertBox}>
-      <span>{addendumRefusalMessage(failure)}</span>
+      <span>{addendumRefusalMessage({ ...failure, step })}</span>
       {redirect ? (
         <Link to={redirect} style={alertLink}>
           {failure.status === 401 ? "Sign in again" : "Re-authenticate"}
@@ -139,7 +140,11 @@ export function AddendaPanel({
   });
   const [signingId, setSigningId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [failure, setFailure] = useState<{ addendumId: string; error: Failure } | null>(null);
+  const [failure, setFailure] = useState<{
+    addendumId: string;
+    error: Failure;
+    step: Step;
+  } | null>(null);
   // What the last sign of an amending addendum did (sections amended, cosignature requested), until the next action.
   const [signedNote, setSignedNote] = useState<{ addendumId: string; text: string } | null>(null);
 
@@ -162,7 +167,7 @@ export function AddendaPanel({
     const res = await finalizeAddendum(client, { encounterId, addendumId });
     if (!res.ok) {
       setBusyId(null);
-      return setFailure({ addendumId, error: res });
+      return setFailure({ addendumId, error: res, step: "finalize" });
     }
     await settled(addendumId);
   }
@@ -175,7 +180,7 @@ export function AddendaPanel({
     setSigningId(null);
     if (!res.ok) {
       setBusyId(null);
-      return setFailure({ addendumId, error: res });
+      return setFailure({ addendumId, error: res, step: "sign" });
     }
     const text = signedAmendmentMessage(res.value);
     setSignedNote(text === null ? null : { addendumId, text });
@@ -206,6 +211,7 @@ export function AddendaPanel({
               editing={editingId === a.id}
               editorLocked={editingId !== null}
               failure={failure?.addendumId === a.id ? failure.error : null}
+              failureStep={failure?.addendumId === a.id ? failure.step : undefined}
               signedNote={signedNote?.addendumId === a.id ? signedNote.text : null}
               onChanged={onChanged}
               onSettled={() => setFocusRow({ addendumId: a.id })}
@@ -231,7 +237,7 @@ export function AddendaPanel({
             <strong>Sign addendum</strong>
             <span style={metaText}>{signing?.reason}</span>
             {failure && failure.addendumId === signingId ? (
-              <FailureAlert failure={failure.error} />
+              <FailureAlert failure={failure.error} step={failure.step} />
             ) : null}
           </div>
         }
@@ -260,6 +266,8 @@ interface ItemProps {
   readonly editorLocked: boolean;
   /** The last refusal of an action on THIS addendum. */
   readonly failure: Failure | null;
+  /** The step that `failure` refused (finalize or sign): what a refused compliance gate says depends on it. */
+  readonly failureStep?: Step;
   /** What its last sign did, for an amending addendum. */
   readonly signedNote: string | null;
   readonly onChanged: () => void | Promise<void>;
@@ -286,6 +294,7 @@ function AddendumItem({
   editing,
   editorLocked,
   failure,
+  failureStep,
   signedNote,
   onChanged,
   onSettled,
@@ -299,6 +308,11 @@ function AddendumItem({
   // Reads nothing (undefined encounter) for a free or a signed addendum.
   const amendment = useNoteDraft(reviewing ? encounterId : undefined, a.status, a.id);
   const blockReason = reviewing ? signBlockReason(amendment.load) : null;
+  // How many named sections the author has confirmed (null until the draft is read): content the addendum's gate counts.
+  const confirmedAmended =
+    amendment.load.status === "ready"
+      ? amendment.load.draft.sections.filter((section) => section.state === "confirmed").length
+      : null;
   const blockId = `amend-block-${a.id}`;
   // Where the amendment's own cosignature stands, in words (nothing when none was needed), and whether it still awaits a cosigner.
   const cosignWords = amends.length > 0 ? amendmentCosignWords(a.cosignStatus) : null;
@@ -427,9 +441,14 @@ function AddendumItem({
       <output id={`signed-note-${a.id}`} style={metaText}>
         {signedNote}
       </output>
-      {failure ? <FailureAlert failure={failure} /> : null}
+      {failure ? <FailureAlert failure={failure} step={failureStep} /> : null}
       {editing && a.status === "draft" ? (
-        <AddendumEditor encounterId={encounterId} addendumId={a.id} onClose={onCloseEditor} />
+        <AddendumEditor
+          encounterId={encounterId}
+          addendumId={a.id}
+          amendment={amends.length > 0 ? { confirmed: confirmedAmended } : null}
+          onClose={onCloseEditor}
+        />
       ) : null}
     </li>
   );
@@ -457,11 +476,13 @@ function StackedRows({ rows }: { readonly rows: readonly StackedRow[] }): JSX.El
 interface EditorProps {
   readonly encounterId: string;
   readonly addendumId: string;
+  /** Null for a free addendum; for an amending one, how many of its sections the author has confirmed (null while unread). */
+  readonly amendment: { readonly confirmed: number | null } | null;
   readonly onClose: () => void;
 }
 
 /** Selection composer for one draft addendum — the parent's template menu, the addendum's own tree. */
-function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.Element {
+function AddendumEditor({ encounterId, addendumId, amendment, onClose }: EditorProps): JSX.Element {
   const client = useApiClient();
   const session = useSession();
   const draftKey = stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, addendumId);
@@ -581,7 +602,8 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
   if (loadError) return <FailureAlert failure={loadError} />;
   if (!template) return <p style={metaText}>Loading addendum…</p>;
 
-  const unmet = unmetRequiredSections(template, draft);
+  // An addendum has no required sections of its own (the note's are not its business): it needs something in it.
+  const contentHint = addendumContentHint(draft, amendment);
 
   return (
     <div style={editor} aria-label="Addendum editor">
@@ -589,10 +611,7 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
         const sec = draft[section.sectionId];
         return (
           <fieldset key={section.sectionId} style={fieldset}>
-            <legend style={legend}>
-              {section.heading}
-              {section.required ? " (required)" : ""}
-            </legend>
+            <legend style={legend}>{section.heading}</legend>
             {section.entries.map((entry) => {
               const picked = sec?.entries.find((e) => e.code === entry.code);
               const id = `${addendumId}-${section.sectionId}-${entry.code}`;
@@ -634,9 +653,7 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
           </fieldset>
         );
       })}
-      {unmet.length > 0 ? (
-        <p style={metaText}>Required before finalizing: {unmet.join(", ")}</p>
-      ) : null}
+      {contentHint !== null ? <p style={metaText}>{contentHint}</p> : null}
       {preview ? (
         <div>
           <strong style={metaText}>Narrative preview</strong>

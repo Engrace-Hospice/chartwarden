@@ -10,6 +10,7 @@ import {
   draftIssuesFrom,
   needsReview,
 } from "./draft-model";
+import type { DraftSections } from "./encounters-api";
 import { humanizeSection } from "./sign-draft-notice";
 import { shortStamp } from "./signed-note-model";
 
@@ -88,15 +89,57 @@ export interface AddendumRefusal {
   /** The envelope's own text, shown verbatim for a code this feature gives no sentence of its own. */
   readonly message: string;
   readonly details?: unknown;
+  /** Which step of the addendum was refused, when the caller knows: the words of a refused compliance gate say what to do next at that step. */
+  readonly step?: "finalize" | "sign";
 }
 
 /** The sign refusals that mean "a named section is not resolved against the draft as it stands now": the draft is read again. */
 export const isSectionRefusal = (code: string | null | undefined): boolean =>
   code === "DRAFT_SECTION_STALE" || code === "DRAFT_SECTION_UNRESOLVED";
 
-/** What a refused addendum sign says (an amending addendum adds the draft's own refusals to the free addendum's). */
-export function addendumRefusalMessage({ code, message, details }: AddendumRefusal): string {
+// An addendum is judged by one rule only: it must have something in it (a finding, a note, or a confirmed amended section). The note's own
+// required sections are not its business, and the server's top-level sentence for a refused gate names the ENCOUNTER, so it is never shown.
+const ADDENDUM_EMPTY_AT_FINALIZE =
+  "This addendum has nothing in it yet. Add a finding or a note, or confirm a redrafted section, then finalize it.";
+const ADDENDUM_EMPTY_AT_SIGN =
+  "This addendum has nothing in it now: every section it amends was deselected, and it has no finding or note. Confirm a redrafted section, then sign it.";
+const GATE_REFUSED_UNSPECIFIED =
+  "This addendum did not pass the compliance check. Nothing was changed. Review it, then try again.";
+
+/** The remediation a refused gate lists (`{ code, message }` each), with anything that is not that shape left out. */
+function gateRemediationOf(details: unknown): readonly { code: string; message: string }[] {
+  if (!Array.isArray(details)) return [];
+  return details.flatMap((detail): { code: string; message: string }[] =>
+    detail !== null &&
+    typeof detail === "object" &&
+    typeof (detail as { code?: unknown }).code === "string" &&
+    typeof (detail as { message?: unknown }).message === "string"
+      ? [
+          {
+            code: (detail as { code: string }).code,
+            message: (detail as { message: string }).message,
+          },
+        ]
+      : [],
+  );
+}
+
+/** What a refused compliance gate says: the app's words for a remediation it knows, else the server's own detail, never the top-level sentence. */
+function gateRefusalMessage(details: unknown, step: AddendumRefusal["step"]): string {
+  const remediation = gateRemediationOf(details);
+  if (remediation.some((r) => r.code === "ADDENDUM_EMPTY")) {
+    return step === "sign" ? ADDENDUM_EMPTY_AT_SIGN : ADDENDUM_EMPTY_AT_FINALIZE;
+  }
+  return remediation.length > 0
+    ? remediation.map((r) => r.message).join(" ")
+    : GATE_REFUSED_UNSPECIFIED;
+}
+
+/** What a refused addendum step says (an amending addendum adds the draft's own refusals to the free addendum's). */
+export function addendumRefusalMessage({ code, message, details, step }: AddendumRefusal): string {
   switch (code) {
+    case "COMPLIANCE_GATE_FAILED":
+      return gateRefusalMessage(details, step);
     case "DRAFT_SECTION_UNRESOLVED":
     case "DRAFT_SECTION_STALE": {
       const issues = draftIssuesFrom(details);
@@ -116,6 +159,25 @@ export function addendumRefusalMessage({ code, message, details }: AddendumRefus
     default:
       return message;
   }
+}
+
+/**
+ * What the addendum editor says is still missing before Finalize, or null when nothing is: the addendum's one rule (it must have something in
+ * it), not the note's required sections. `amendment` is null for a free addendum; for an amending one it is how many of its named sections
+ * the author has confirmed (null while its own draft has not been read: an unknown count is not an empty one, so nothing is said). A hint:
+ * the server judges (`ADDENDUM_EMPTY`).
+ */
+export function addendumContentHint(
+  draft: DraftSections,
+  amendment: { readonly confirmed: number | null } | null,
+): string | null {
+  const written = Object.values(draft).some(
+    (section) => section.entries.length > 0 || section.freeText.trim().length > 0,
+  );
+  if (written) return null;
+  if (amendment === null) return "Nothing here yet. Before finalizing, add a finding or a note.";
+  if (amendment.confirmed === null || amendment.confirmed > 0) return null;
+  return "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section.";
 }
 
 const reasonOf = (section: DraftSectionView): DraftIssue => ({

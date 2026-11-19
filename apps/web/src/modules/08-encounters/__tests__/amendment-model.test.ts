@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_AMENDED_SECTIONS,
   SUPERVISOR_ROLE_KEYS,
+  addendumContentHint,
   addendumRefusalMessage,
   amendCreateRefusal,
   amendedSectionNote,
@@ -153,6 +154,68 @@ describe("addendumRefusalMessage", () => {
     expect(text).toMatch(/Visit-note Draft/);
   });
 
+  describe("a refused compliance gate (COMPLIANCE_GATE_FAILED)", () => {
+    const GENERIC = "the Layer-3 compliance gate did not pass; the encounter stays in draft";
+    const gate = (details?: unknown, step?: "finalize" | "sign") => ({
+      status: 422,
+      code: "COMPLIANCE_GATE_FAILED",
+      message: GENERIC,
+      details,
+      ...(step ? { step } : {}),
+    });
+    const EMPTY = [{ code: "ADDENDUM_EMPTY", message: "an addendum must carry something" }];
+
+    it("words an empty addendum at finalize: nothing in it yet, what to add, then finalize", () => {
+      expect(addendumRefusalMessage(gate(EMPTY, "finalize"))).toBe(
+        "This addendum has nothing in it yet. Add a finding or a note, or confirm a redrafted section, then finalize it.",
+      );
+    });
+
+    it("words an empty addendum at sign: its amended sections were deselected, confirm one, then sign", () => {
+      const text = addendumRefusalMessage(gate(EMPTY, "sign"));
+      expect(text).toMatch(/nothing in it now/);
+      expect(text).toMatch(/confirm a redrafted section/i);
+      expect(text).toMatch(/then sign it\.$/);
+    });
+
+    it("never shows the top-level sentence, which names the encounter, nor the server's text for a code it words itself", () => {
+      for (const step of ["finalize", "sign"] as const) {
+        const text = addendumRefusalMessage(gate(EMPTY, step));
+        expect(text).not.toMatch(/encounter/i);
+        expect(text).not.toContain("Layer-3");
+        expect(text).not.toContain("an addendum must carry something");
+      }
+    });
+
+    it("falls back to the server's detail message for a remediation code it has no words for, not the top-level one", () => {
+      const text = addendumRefusalMessage(
+        gate([
+          { code: "SOMETHING_NEW", message: "the first detail" },
+          { field: "pain", code: "ANOTHER_NEW", message: "the second detail" },
+        ]),
+      );
+      expect(text).toBe("the first detail the second detail");
+    });
+
+    it("still says what happened, changing nothing, when the refusal lists no remediation", () => {
+      for (const details of [undefined, [], "nonsense", [{ code: 3 }]]) {
+        const text = addendumRefusalMessage(gate(details));
+        expect(text).toMatch(/Nothing was changed/);
+        expect(text).not.toMatch(/encounter/i);
+      }
+    });
+
+    it("leaves a 422 with another code to the default (the server's own message)", () => {
+      expect(
+        addendumRefusalMessage({
+          status: 422,
+          code: "GATE_FAILED",
+          message: "required Pain is empty",
+        }),
+      ).toBe("required Pain is empty");
+    });
+  });
+
   it("says a source could not be read and to try again, changing nothing", () => {
     expect(
       addendumRefusalMessage({ ...refusal("COMPLIANCE_GATE_UNAVAILABLE"), status: 503 }),
@@ -298,5 +361,45 @@ describe("signedAmendmentMessage", () => {
 
   it("says nothing extra for a free addendum", () => {
     expect(signedAmendmentMessage({})).toBeNull();
+  });
+});
+
+describe("addendumContentHint (the addendum's one rule: it needs content, not the note's required sections)", () => {
+  const EMPTY = {};
+  const WRITTEN = { pain: { entries: [{ code: "pain.controlled", params: {} }], freeText: "" } };
+  const NOTE_ONLY = { pain: { entries: [], freeText: "  Family reports relief.  " } };
+  const BLANK = { pain: { entries: [], freeText: "   " } };
+
+  it("says a free addendum with nothing in it needs a finding or a note", () => {
+    expect(addendumContentHint(EMPTY, null)).toBe(
+      "Nothing here yet. Before finalizing, add a finding or a note.",
+    );
+    expect(addendumContentHint(BLANK, null)).toMatch(/^Nothing here yet/);
+  });
+
+  it("also offers a confirmed redrafted section to an amending addendum", () => {
+    expect(addendumContentHint(EMPTY, { confirmed: 0 })).toBe(
+      "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section.",
+    );
+  });
+
+  it("is silent once a finding or a note is in, whatever else is empty", () => {
+    expect(addendumContentHint(WRITTEN, null)).toBeNull();
+    expect(addendumContentHint(NOTE_ONLY, null)).toBeNull();
+    expect(addendumContentHint(WRITTEN, { confirmed: 0 })).toBeNull();
+  });
+
+  it("is silent once an amended section is confirmed, with no finding or note at all", () => {
+    expect(addendumContentHint(EMPTY, { confirmed: 1 })).toBeNull();
+  });
+
+  it("says nothing while an amending addendum's own draft has not been read: an unknown count is not an empty one", () => {
+    expect(addendumContentHint(EMPTY, { confirmed: null })).toBeNull();
+  });
+
+  it("never lists the note's required sections", () => {
+    for (const amendment of [null, { confirmed: 0 }]) {
+      expect(addendumContentHint(EMPTY, amendment)).not.toMatch(/required|Assessment|Plan/i);
+    }
   });
 });

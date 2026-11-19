@@ -586,3 +586,88 @@ describe("a signed amendment", () => {
     expect(within(row()).queryByText("Cosignature of this amendment")).toBeNull();
   });
 });
+
+// The editor of an AMENDING draft addendum counts a confirmed amended section as content, as the server's gate does: it only says "nothing
+// here yet" while no finding or note is in, no named section is confirmed, and the addendum's own draft has been read.
+describe("the editor's hint on an amending draft addendum", () => {
+  const TEMPLATE = {
+    encounterId: "enc-1",
+    sections: [
+      {
+        sectionId: "pain",
+        heading: "Pain",
+        required: true,
+        allowedCategories: [],
+        entries: [
+          {
+            code: "pain.controlled",
+            label: "Pain controlled",
+            category: "c",
+            bodySystem: null,
+            slots: [],
+          },
+        ],
+      },
+    ],
+  };
+  const drafting: AddendumRow = { ...amending, status: "draft", amendsSectionIds: ["pain"] };
+  const HINT = /^Nothing here yet\. Before finalizing/;
+
+  async function openEditor(draftState: string, answer: typeof draftAnswer = "ok") {
+    sections = [section("pain", draftState)];
+    draftAnswer = answer;
+    const GET = vi.fn(async (path: string) => {
+      if (path === DRAFT_PATH) return answerDraft();
+      if (path === "/api/v1/encounters/{encounterId}/template") return { data: TEMPLATE };
+      return {
+        data: { templateKey: "k", vocabVersion: "v", sections: [], layer1Preview: "", version: 1 },
+      };
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: (
+            <ApiClientProvider
+              client={{ GET, PUT: vi.fn(), POST: vi.fn(), PATCH: vi.fn() } as never}
+            >
+              <SessionProvider session={null}>
+                <AddendaPanel encounterId="enc-1" addenda={[drafting]} onChanged={vi.fn()} />
+              </SessionProvider>
+            </ApiClientProvider>
+          ),
+        },
+      ],
+      { initialEntries: ["/patients/patient-1/encounters/enc-1"] },
+    );
+    render(<RouterProvider router={router} />);
+    await screen.findByRole("region", { name: /^Amended sections/ });
+    userEvent.setup();
+    await userEvent.click(within(row()).getByRole("button", { name: "Edit draft" }));
+    return screen.findByLabelText("Addendum editor");
+  }
+
+  it("also offers confirming a redrafted section while none is confirmed", async () => {
+    const editor = await openEditor("unresolved");
+    expect(
+      within(editor).getByText(
+        "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing once an amended section is confirmed, though no finding or note is in", async () => {
+    const editor = await openEditor("confirmed");
+    expect(within(editor).queryByText(HINT)).toBeNull();
+  });
+
+  it("still asks while the only named section is deselected", async () => {
+    const editor = await openEditor("deselected");
+    expect(within(editor).getByText(HINT)).toBeInTheDocument();
+  });
+
+  it("says nothing when the addendum's own draft could not be read: an unknown count is not an empty one", async () => {
+    const editor = await openEditor("unresolved", "unavailable");
+    expect(within(editor).queryByText(HINT)).toBeNull();
+  });
+});
