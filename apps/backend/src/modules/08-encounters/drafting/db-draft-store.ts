@@ -65,7 +65,19 @@ async function previousSignedVisitAt(
 
 async function latestVitals(tx: DbClient, encounterId: string, asOf: string) {
   const [row] = await tx
-    .select()
+    .select({
+      id: V.id,
+      capturedAt: V.capturedAt,
+      bpSystolic: V.bpSystolic,
+      bpDiastolic: V.bpDiastolic,
+      heartRate: V.heartRate,
+      respiratoryRate: V.respiratoryRate,
+      temperature: V.temperature,
+      temperatureUnit: V.temperatureUnit,
+      spo2: V.spo2,
+      painScore: V.painScore,
+      painScale: V.painScale,
+    })
     .from(V)
     .where(and(eq(V.encounterId, encounterId), lte(V.capturedAt, new Date(asOf))))
     .orderBy(desc(V.capturedAt), desc(V.createdAt), desc(V.id))

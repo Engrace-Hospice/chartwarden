@@ -38,32 +38,40 @@ export async function removedCarePlanElementIds(
 const elementColumns = (element: CarePlanElement) =>
   element.kind === "goal" ? { goalId: element.id } : { interventionId: element.id };
 
+/**
+ * Executes a plan in at most three statements, however many elements it names: one UPDATE for every soft-removal, one INSERT for the new
+ * live links and one for the already-removed tombstones. Each statement runs inside the encounter's row lock, so a round trip per
+ * element would hold the lock (and the connection) for as long as the plan is long.
+ */
 async function execute(
   tx: DbClient,
   encounter: DraftEncounterRow,
   ops: readonly LinkOp[],
   removal: { readonly by: string; readonly at: Date } | null,
 ): Promise<number> {
-  for (const op of ops) {
-    if (op.op === "remove_live") {
-      await tx
-        .update(L)
-        .set({ removedAt: removal?.at, removedByMembershipId: removal?.by })
-        .where(and(eq(L.encounterId, encounter.id), inArray(L.id, [...op.rowIds])));
-      continue;
-    }
-    await tx.insert(L).values({
-      organizationId: encounter.organizationId,
-      providerEntityId: encounter.providerEntityId,
-      locationId: encounter.locationId,
-      encounterId: encounter.id,
-      ...elementColumns(op.element),
-      // An already-removed tombstone carries both columns or neither (the table's removal-consistent CHECK).
-      ...(op.op === "insert_removed"
-        ? { removedAt: removal?.at, removedByMembershipId: removal?.by }
-        : {}),
-    });
+  const rowIds = ops.flatMap((op) => (op.op === "remove_live" ? op.rowIds : []));
+  const link = (element: CarePlanElement) => ({
+    organizationId: encounter.organizationId,
+    providerEntityId: encounter.providerEntityId,
+    locationId: encounter.locationId,
+    encounterId: encounter.id,
+    ...elementColumns(element),
+  });
+  const live = ops.flatMap((op) => (op.op === "insert_live" ? [link(op.element)] : []));
+  // An already-removed tombstone carries both removal columns or neither (the table's removal-consistent CHECK).
+  const tombstones = ops.flatMap((op) =>
+    op.op === "insert_removed"
+      ? [{ ...link(op.element), removedAt: removal?.at, removedByMembershipId: removal?.by }]
+      : [],
+  );
+  if (rowIds.length > 0) {
+    await tx
+      .update(L)
+      .set({ removedAt: removal?.at, removedByMembershipId: removal?.by })
+      .where(and(eq(L.encounterId, encounter.id), inArray(L.id, rowIds)));
   }
+  if (live.length > 0) await tx.insert(L).values(live);
+  if (tombstones.length > 0) await tx.insert(L).values(tombstones);
   return ops.length;
 }
 
