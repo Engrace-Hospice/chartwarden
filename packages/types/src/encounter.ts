@@ -219,7 +219,9 @@ export type M8TableName =
   | "hearthnote_assembled_output"
   | "hearthnote_llm_modification"
   | "encounter_draft_confirmation"
-  | "hearthnote_signed_section";
+  | "hearthnote_signed_section"
+  | "encounter_amendment"
+  | "addendum_cosignature_request";
 
 /** Per-table audit denylist (§3.1 / §8.1). Empty array = no free-text PHI on that table. */
 export const M8_AUDIT_DENYLIST: { readonly [K in M8TableName]: readonly string[] } = {
@@ -243,6 +245,10 @@ export const M8_AUDIT_DENYLIST: { readonly [K in M8TableName]: readonly string[]
   // nor does the signed section's sealed text. A Part 2 row also withholds `source_refs`, row-conditionally, in the same triggers.
   encounter_draft_confirmation: ["content_hash"],
   hearthnote_signed_section: ["text_cipher", "content_hash"],
+  // ADR-0114 VN-D30: an amendment's resolution is as a confirmation's (the hash never reaches the audit diff, a Part 2 row withholds `source_refs`); the
+  // addendum's cosignature request carries the same reason carrier as the encounter's.
+  encounter_amendment: ["content_hash"],
+  addendum_cosignature_request: ["supervisor_released_reason"],
 } as const;
 
 // ── §4.4 outbox event names (the `m8.*` namespace the dispatcher + arch:gaps catalog validate) ───────
@@ -256,6 +262,7 @@ export const M8_EVENT_NAMES = [
   "m8.encounter.signed",
   "m8.encounter.cosigned",
   "m8.encounter.addendum_signed",
+  "m8.encounter.section_amended",
   "m8.encounter.cosignature_routed",
   "m8.encounter.cosignature_overdue",
   "m8.encounter.cosignature_escalated",

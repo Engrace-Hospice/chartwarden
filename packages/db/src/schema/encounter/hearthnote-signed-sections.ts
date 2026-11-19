@@ -3,9 +3,11 @@
 // string as `final_cipher`), a SHA-256 of the canonical text, whether the section is `part2_derived` (the writer decides; no default,
 // fail closed) and the ids of its sources. APPEND-ONLY for the application role (SELECT + INSERT only; only the destruction role may
 // shred and delete). PHI-bearing, three-column tenancy copied from the encounter. RLS + grants + audit trigger (scrubs `text_cipher`)
-// + org guard land in migration 1518. No amends column: the amendment PR adds it.
+// + org guard land in migration 1518. Migration 1523 adds the amendment columns (`addendum_id`, `amends_section_id`): an AMENDMENT row hangs off
+// the addendum's own assembled output and names the amended ORIGINAL row of the parent's pin; originals are never updated.
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -20,6 +22,7 @@ import {
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
+import { encounterAddenda } from "./encounter-addenda";
 import type { DraftSourceRef } from "./encounter-draft-confirmations";
 import { encounters } from "./encounters";
 import { hearthnoteAssembledOutputs } from "./hearthnote-assembled-outputs";
@@ -51,6 +54,13 @@ export const hearthnoteSignedSections = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Set on an AMENDMENT row (with `amendsSectionId`; the guard trigger makes them both set or both null): the signed addendum that amended the section. */
+    addendumId: uuid("addendum_id").references(() => encounterAddenda.id, { onDelete: "cascade" }),
+    /** The amended ORIGINAL row of the parent's own pin (never an amendment row: a second amendment of a section names the original again). */
+    amendsSectionId: uuid("amends_section_id").references(
+      (): AnyPgColumn => hearthnoteSignedSections.id,
+      { onDelete: "cascade" },
+    ),
   },
   (t) => ({
     outputSectionUniq: unique("hearthnote_signed_section_output_section_uniq").on(
@@ -66,6 +76,12 @@ export const hearthnoteSignedSections = pgTable(
       t.organizationId,
       t.encounterId,
     ),
+    addendumIdx: index("hearthnote_signed_section_addendum_idx")
+      .on(t.addendumId)
+      .where(sql`${t.addendumId} IS NOT NULL`),
+    amendsIdx: index("hearthnote_signed_section_amends_idx")
+      .on(t.amendsSectionId)
+      .where(sql`${t.amendsSectionId} IS NOT NULL`),
     positionCheck: check("hearthnote_signed_section_position_check", sql`${t.position} >= 0`),
     contentHashCheck: check(
       "hearthnote_signed_section_content_hash_check",

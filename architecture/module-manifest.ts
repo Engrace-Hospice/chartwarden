@@ -557,6 +557,8 @@ export const MODULES: ModuleDef[] = [
       "documentation_obligation_override", // ADR-0113 — supervisor override of the block (append-only, org-level)
       "encounter_draft_confirmation", // ADR-0114 — per-section confirmation of a drafted visit note (PHI satellite)
       "hearthnote_signed_section", // ADR-0114 — sealed per-section rows written at sign (append-only PHI satellite)
+      "encounter_amendment", // ADR-0114 VN-D30 — the sections an addendum amends and the author's resolution of each (PHI satellite)
+      "addendum_cosignature_request", // ADR-0114 VN-D30 — the cosignature request an amending addendum opens (sibling of cosignature_request)
       "visit_note_draft_policy", // ADR-0114 — per-tenant draft switch, default off (org-level, no patient)
     ],
   },

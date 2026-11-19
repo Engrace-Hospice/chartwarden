@@ -207,6 +207,17 @@ const CONDITIONAL_REDACTIONS: ReadonlyArray<{
     ],
   },
   {
+    key: "M8.encounter_amendment",
+    migration: "packages/db/migrations/1523_m8_note_amendments.sql",
+    mustContain: [
+      "v_part2",
+      "part2_derived",
+      "audit_scrub(v_before, ARRAY['source_refs']",
+      "audit_scrub(v_after, ARRAY['source_refs']",
+      "'compliance_42cfr_part2'",
+    ],
+  },
+  {
     key: "M8.hearthnote_signed_section",
     migration: "packages/db/migrations/1518_m8_hearthnote_signed_section.sql",
     mustContain: [
