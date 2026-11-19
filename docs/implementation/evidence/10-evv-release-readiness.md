@@ -7,7 +7,7 @@ PR-6 across the separate
 and the existing aggregator adapter.
 **Decision:** **NO-GO for production release as one complete workflow.** The supervisor web slices are
 locally verified, including a bounded authenticated application-stack journey, and ready for review,
-but physical-device, populated aggregator-dialog, and real vendor sandbox evidence is incomplete.
+but physical-device and real vendor sandbox evidence is incomplete.
 
 ## 1. Delivered local slices
 
@@ -49,16 +49,15 @@ offline storage was introduced by these commits.
 | EVV documentation corpus | Check-clean. |
 | Platform boot check | Passed with `DATABASE_PLATFORM_URL` set: the backend returned `/health` 200 and the outbox relay was polling. |
 | PR-1 browser sweep | Six EVV screens were checked at 375, 768, and 1440 px without horizontal overflow or automated axe violations. No screenshot artifact was retained. |
-| Post-PR-3 authenticated browser journey | Passed 4/4 Playwright checks against the local application stack after an idempotent synthetic field-operations seed. The real M17 publication consumer registered the current visit before real M18 check-in/check-out API calls created the evidence. The correction ceremony and truthful empty aggregator state passed WCAG A/AA scans and document-overflow checks at 375×812 and 1440×900. |
-| Retained browser artifacts | [Correction desktop](./screenshots/evv/correction-ceremony-desktop-1440x900.png), [correction mobile](./screenshots/evv/correction-ceremony-mobile-375x812.png), [aggregator desktop](./screenshots/evv/aggregator-empty-state-desktop-1440x900.png), and [aggregator mobile](./screenshots/evv/aggregator-empty-state-mobile-375x812.png). All data is synthetic. |
+| Post-PR-3 authenticated browser journey | Passed 4/4 Playwright checks against the local application stack after an idempotent synthetic field-operations seed. The real M17 publication consumer registered the current visit before real M18 check-in/check-out API calls created the event evidence. Separate authenticated runs proved the truthful empty aggregator state and a visibly synthetic rejected-submission dialog through the production read route. The correction ceremony and aggregator states passed WCAG A/AA scans and document-overflow checks at 375×812 and 1440×900; the mobile dialog's Close control was also reached after scrolling. |
+| Retained browser artifacts | [Correction desktop](./screenshots/evv/correction-ceremony-desktop-1440x900.png), [correction mobile](./screenshots/evv/correction-ceremony-mobile-375x812.png), [aggregator empty desktop](./screenshots/evv/aggregator-empty-state-desktop-1440x900.png), [aggregator empty mobile](./screenshots/evv/aggregator-empty-state-mobile-375x812.png), [aggregator evidence desktop](./screenshots/evv/aggregator-evidence-desktop-1440x900.png), [aggregator evidence mobile top](./screenshots/evv/aggregator-evidence-mobile-375x812.png), and [aggregator evidence mobile bottom](./screenshots/evv/aggregator-evidence-mobile-bottom-375x812.png). All data is synthetic. |
 
-The PR-3 evidence dialog remains tested by the DOM accessibility suite and production-route live proof.
-The authenticated stack had no aggregator submission rows, so the browser journey proved the empty-state
-truthfulness but did not open the populated evidence dialog.
+The populated browser fixture identifies its vendor as `synthetic_demo`, uses transaction id
+`demo-no-vendor-call`, and says no vendor transmission occurred. It proves authenticated presentation,
+not Sandata conformance or connectivity.
 
 ## 4. Not run or not evidenced
 
-- A populated aggregator submission evidence dialog in an authenticated browser journey.
 - VoiceOver, TalkBack, or manual screen-reader verification.
 - Physical iOS/Android foreground-location, permission, approximate-location, interruption, and attestation cases.
 - SQLCipher, WAL/SHM plaintext scan, backup exclusion, lost/wrong key, logout, account switch, reinstall, and offline replay recovery on devices.
@@ -83,7 +82,7 @@ must not be simulated by pointing production at an unverified endpoint.
 | Area | Current posture | Gate to close |
 |---|---|---|
 | Supervisor web slices | Locally verified; no migration; focused application-role tenant-boundary proofs, authenticated browser journey, responsive WCAG scans, and retained screenshots pass. | Fresh review and manual assistive-technology pass. |
-| Aggregator evidence | Authorized audited list read; additive fields; M18 workers pass; the production route projection, cross-tenant exclusion, read-audit persistence, and authenticated empty-state browser proof pass. | Populated evidence-dialog browser proof and real vendor sandbox evidence. |
+| Aggregator evidence | Authorized audited list read; additive fields; M18 workers pass; the production route projection, cross-tenant exclusion, read-audit persistence, and authenticated empty/populated browser states pass. | Real vendor sandbox evidence. |
 | Correction workflow | Uses the existing server permission, ABAC, step-up, and immutable provenance path; the production route passes live stale/fresh step-up, supersession, reason persistence, scrubbed audit, outbox attribution, replay-conflict proof, and an authenticated responsive ceremony pass. | Manual assistive-technology pass. |
 | React Native/Expo online capture | Source exists in `chartwarden-mobile`; release NO-GO. | Physical-device and authenticated backend matrix on the pinned contract/build. |
 | Offline v2 queue | Encrypted design and default-off source exist; release NO-GO. | SQLCipher/device security, identity isolation, replay, recovery, and retention evidence. |

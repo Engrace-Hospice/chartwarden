@@ -109,9 +109,10 @@ own approval gates.
   exists.
 - A later authenticated Playwright run passed 4/4 against the local stack after the synthetic field-operations
   seed created a current visit and drove real M18 check-in/check-out API calls. It retained desktop/mobile
-  correction-ceremony and aggregator-empty-state screenshots, with WCAG A/AA and document-overflow checks at
-  375×812 and 1440×900. The stack had no aggregator submission row, so the populated evidence dialog remains a
-  browser-evidence gap rather than being inferred from its DOM and live-route proofs.
+  correction-ceremony and aggregator empty/populated-state screenshots, with WCAG A/AA and document-overflow
+  checks at 375×812 and 1440×900. The populated row is an explicit `synthetic_demo` local fixture whose
+  transaction id and rejection reason say no vendor call occurred; it proves the production read route and
+  responsive dialog, not vendor connectivity or conformance.
 
 ## 3. UX architecture — proposed
 

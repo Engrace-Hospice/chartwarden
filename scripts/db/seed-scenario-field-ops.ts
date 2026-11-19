@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * ChartWarden — field-ops scenario data: M15 (volunteer plan) / M17 (scheduling) / M18 (EVV) /
  * M19 (on-call triage) / M20 (field safety) / M21 (supplies) for the flagship patient (local dev).
@@ -161,6 +162,46 @@ async function waitForEvvRegistration(visitId: string): Promise<void> {
   throw new Error(`M18 visit registration did not arrive for ${visitId} within 10 seconds`);
 }
 
+async function seedSyntheticAggregatorEvidence(input: {
+  organizationId: string;
+  visitId: string;
+  checkInEventId: string;
+  checkOutEventId: string;
+}): Promise<void> {
+  // There is deliberately no public "create submission" route: preparation is worker-owned. This
+  // local-only fixture seeds a visibly synthetic rejected response so the authenticated UI can show
+  // every evidence field without claiming that a vendor call occurred. Worker behavior remains
+  // covered by the private-PostgreSQL M18 worker suite.
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  try {
+    await db.query("SET session_replication_role = replica");
+    const eventPairHash = createHash("sha256")
+      .update(`${input.checkInEventId}:${input.checkOutEventId}`)
+      .digest("hex");
+    await db.query(
+      `INSERT INTO evv_aggregator_submission
+         (organization_id, visit_id, check_in_event_id, check_out_event_id, event_pair_hash,
+          state_code, aggregator_vendor, status, attempt_count, last_attempt_at, submitted_at,
+          aggregator_transaction_id, aggregator_response_at, aggregator_rejection_code,
+          aggregator_rejection_reason)
+       VALUES ($1,$2,$3,$4,$5,'OR','synthetic_demo','rejected',2,now(),now(),
+               'demo-no-vendor-call',now(),'DEMO_VALIDATION',
+               'Synthetic local fixture; no vendor transmission occurred.')`,
+      [
+        input.organizationId,
+        input.visitId,
+        input.checkInEventId,
+        input.checkOutEventId,
+        eventPairHash,
+      ],
+    );
+  } finally {
+    await db.end();
+  }
+}
+
 /**
  * GENUINE GAP: `tenant_oncall_policy` has no create route at all — `PATCH /api/v1/oncall/policy` 404s
  * with `ONCALL_POLICY_NOT_FOUND` if the row doesn't already exist (`write-service-drizzle.ts`'s
@@ -234,6 +275,7 @@ async function wipePriorFieldOps(patientId: string, organizationId: string): Pro
   ]);
   const visitIds = visits.rows.map((r) => r.id);
   if (visitIds.length) {
+    await db.query("DELETE FROM evv_aggregator_submission WHERE visit_id = ANY($1)", [visitIds]);
     await db.query("DELETE FROM evv_visit_registration WHERE visit_id = ANY($1)", [visitIds]);
     await db.query("DELETE FROM visit_state_history WHERE visit_id = ANY($1)", [visitIds]);
     await db.query("DELETE FROM visit WHERE id = ANY($1)", [visitIds]);
@@ -440,6 +482,15 @@ async function main(): Promise<void> {
       },
     });
     if (checkOut.error) throw new Error(`EVV check-out failed: ${JSON.stringify(checkOut.error)}`);
+    const checkInData = checkIn.data as unknown as { eventId: string } | undefined;
+    const checkOutData = checkOut.data as unknown as { eventId: string } | undefined;
+    if (!checkInData || !checkOutData) throw new Error("EVV capture returned no event ids");
+    await seedSyntheticAggregatorEvidence({
+      organizationId: rn.organizationId,
+      visitId: evvVisitId,
+      checkInEventId: checkInData.eventId,
+      checkOutEventId: checkOutData.eventId,
+    });
 
     // A SECOND handset, deliberately left PENDING. The approve/reject ceremony is the only M18 write a
     // browser can drive at all — check-in/check-out is the Capacitor mobile flow (§5.2), because a
@@ -455,8 +506,8 @@ async function main(): Promise<void> {
       throw new Error(`second device register failed: ${JSON.stringify(pending.error)}`);
 
     log.ok(
-      "EVV: device self-registered + approved, current visit checked in/out through the real API, " +
-        "and a second device left PENDING for the supervisor roster",
+      "EVV: device approved, current visit checked in/out through the real API, synthetic no-vendor " +
+        "rejection evidence seeded for the supervisor UI, and a second device left PENDING",
     );
   } catch (err) {
     log.fail(`M18 EVV: ${String(err)}`);

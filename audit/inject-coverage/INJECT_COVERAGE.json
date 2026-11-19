@@ -346,7 +346,9 @@
       "routes": 26,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/evv-inject.test.ts"
+        "apps/backend/__tests__/evv-inject.test.ts",
+        "apps/backend/__tests__/m18-evv-read-service.live.test.ts",
+        "apps/backend/__tests__/m18-evv-write.live.test.ts"
       ],
       "directRoutesReferenced": 26
     },

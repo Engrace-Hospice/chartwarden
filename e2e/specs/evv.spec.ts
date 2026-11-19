@@ -194,6 +194,16 @@ test.describe("EVV", () => {
         evidenceDialog.getByText(/not a payer claim decision or payment status/i),
       ).toBeVisible();
       await captureEvvEvidence(page, "aggregator-evidence");
+      await page.setViewportSize({ width: 375, height: 812 });
+      const closeEvidence = evidenceDialog.getByRole("button", { name: "Close" });
+      await closeEvidence.scrollIntoViewIfNeeded();
+      await expect(closeEvidence).toBeVisible();
+      if (process.env.EVV_EVIDENCE_DIR) {
+        await page.screenshot({
+          path: join(process.env.EVV_EVIDENCE_DIR, "aggregator-evidence-mobile-bottom-375x812.png"),
+          fullPage: true,
+        });
+      }
     } else {
       await expect(page.getByText("No submission records")).toBeVisible();
       await expect(page.getByText(/empty queue does not confirm/i)).toBeVisible();
