@@ -223,6 +223,14 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m8.encounter.draft_section_resolved",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "A clinician confirmed or deselected one drafted section of a visit note (encounterId, sectionId, resolution = confirmed | deselected, edited = the section carried the clinician's own text, contentHash and corpusVersion the resolution is bound to, sourceRefs = the ids and kinds of the section's sources, carePlanElementsLinked / carePlanElementsRemoved counts; severity info; ids, enums and counts only, never text; the only place a deselection that leaves the section empty is recorded; ADR-0114 VN-D7 / VN-D8). Part 2 eligible: the sources can be SUD-derived.",
+    denylistCategories: [],
+    isPartTwoEligible: true,
+  },
+  {
     action: "m8.encounter.draft_policy_changed",
     moduleOwner: "m8",
     defaultRetentionClass: "compliance",

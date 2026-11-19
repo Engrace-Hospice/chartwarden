@@ -64,6 +64,9 @@ export const M8_ERROR_STATUS = {
   /** The visit-note draft could not be computed: a seam it reads (care plan, scales, medications, Part 2 verdict)
    *  failed or returned something unusable. Never a partial draft passed off as complete (VN-D9, design §3.2). */
   DRAFT_UNAVAILABLE: 503,
+  /** The clinician confirmed or deselected a drafted section against content that is no longer the draft: the section's content
+   *  hash or the phrase-corpus version differs from the recomputed draft (VN-D12). Refetch the draft, review, resolve again. */
+  DRAFT_SECTION_STALE: 409,
   // Visit delivery at sign (migration 1510): the clinician must say how the visit was delivered (Medicare
   // hospice SIA / visit lines count in-person visits only), and any documented start/end must be a real,
   // ordered, past bracket on the service date. Both are fixable by the clinician, hence 422.
