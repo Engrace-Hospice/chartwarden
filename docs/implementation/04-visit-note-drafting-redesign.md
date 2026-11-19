@@ -145,6 +145,17 @@ PROPOSED within the decisions above; no decision changes.
 - **Part 2.** Medication orders carry `isSudTreatment` unredacted from the M12 seam (PR A), so M8 drops SUD orders for an author without disclosure, using the same disclosure check the care-plan reader applies, and marks the rest `sudRelated` so a section's `part2Derived` fails closed.
 - **Sealed rows** are encrypted with the same key path as `final_cipher`. **Source ids** reach the audit trail through the confirmation row's audit trigger and never the signed text.
 
+#### Input rules (PR C2a, `08-encounters/drafting/inputs.ts`)
+
+- **Care plan.** `relevantElementsAsOf(patient, type, discipline, admission, viewer, asOf)` with the session identity as the audience, so M7 redacts per viewer. Goals and interventions whose link was removed for this encounter (`removedCarePlanElementIds`, supplied by the store) are left out. A `null` plan is `carePlan: null`. A plan of another patient is refused. A goal or intervention takes its parent problem's SUD flag; a parent the reader did not return leaves the flag unset, which reads as Part 2. Encounter disciplines `md`/`np` map to `md_np` and `slp` to `st`.
+- **Previous visit.** The patient's most recent earlier SIGNED visit-type encounter (its `started_at`, else `clock_started_at`), supplied by the store port `previousSignedVisitAt`. One later than the visit time is refused.
+- **Scale readings.** For `pps` and `esas_r`: the latest reading captured at or before `asOf` (`series` with `to = asOf`, cut again in code), `previous` the latest at or before the previous visit time, else null; no previous visit means `previous` is null. A latest reading without a score is not drafted and an older one does not stand in. The M9 series carries one score per ESAS-r capture, so it is drafted as the `total`. Dates are org-local.
+- **Vitals.** The encounter's own latest row captured at or before `asOf`; no merging across rows. Vitals and PPS/ESAS-r readings carry `sudRelated: false` (M9 redacts only AIMS taken in a SUD context).
+- **Medication changes.** `getMedicationChangesBetween(patient, previousVisitAt, asOf)`. With no previous signed visit there is no window and none are drafted (an honest empty section, VN-D9). A completed course is drafted as discontinued (the corpus has no "completed" phrase). A change's source id is `<orderId>:<kind>`, because one order can start and stop inside a window.
+- **Part 2.** An order with `isSudTreatment !== false` (fail closed) is dropped unless the viewer has Part 2 disclosure; kept orders carry `sudRelated = (isSudTreatment !== false)`. The verdict is M7's per-actor decision (`sudDisclosureAllowedForActor`: M39 `evaluateForInternalAccess`, then the RN case manager carve-out where no release names others) and is asked only when an order could be withheld.
+- **Failure.** A seam that throws, or returns something unusable (an instant that is not one, another patient's plan), is `DRAFT_UNAVAILABLE` (503), never a partial draft. The message names the read; the upstream cause stays on the error for the log.
+- **Visit time.** `visitAsOf` is the earlier of `now` and (`started_at`, else `clock_started_at`, else the last millisecond of the service date in the organization's zone).
+
 ## 4. Constraints found
 
 ### 4.1 Backend and tenancy
