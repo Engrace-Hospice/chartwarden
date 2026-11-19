@@ -111,6 +111,18 @@ Rules the screen keeps:
   first render and never hidden while empty. A section opened from the progress strip takes focus to the
   open section's heading, including when it is the section already open.
 
+## The Signed Note's Part 2 View (ADR-0114, S1 PR E1)
+
+`finalDocumentation` is the note as the signed-in viewer may read it: a viewer without 42 CFR Part 2
+disclosure gets each Part 2 derived section replaced by a generic withheld sentence. When the server cannot
+decide that (503 `NOTE_VIEW_UNAVAILABLE`), the note view, on the encounter record and in the composer of a
+finalized note, is an announced error state, "The note cannot be shown right now", with **Try again**; never
+an empty or partial note, and never a denial. The withheld sentence still arrives as plain note text: the
+response carries no structured "withheld" indicator, so the screen cannot yet style it apart from the
+clinician's own words (it needs one from the API).
+
+---
+
 ## Right Panel
 
 - Relevant care-plan goals / interventions as a **picker in the composer** (link / unlink to this visit; the
@@ -144,7 +156,9 @@ Cosignature request: `Pending`, `Routed`, `Acknowledged`, `Escalated`,
 
 The Sign action is blocked until all are satisfied — surface them as a checklist:
 
-- All required HearthNote sections have a selection
+- All required HearthNote sections have a selection, or drafted text the clinician confirmed (the server's
+  check 1; the composer's "required remaining" count and section list follow the same rule: a deselected,
+  unresolved or changed drafted section does not count, the clinician's own statements and notes still do)
 - Required vitals captured or marked not-indicated
 - Required clinical scales / HOPE items captured
 - Late-entry tier within the caller's permitted ceiling
@@ -153,6 +167,10 @@ The Sign action is blocked until all are satisfied — surface them as a checkli
   on). The Sign action names the sections still unresolved beside it and waits; a sign refused with 409
   `DRAFT_SECTION_STALE` shows the sections the server named, re-reads the draft and links to the composer;
   a finalize refused with the 422 gate list names them the same way
+- A sign refused with 409 `DRAFT_OFF_AFTER_FINALIZE` (the note was finalized with drafted text that carries
+  42 CFR Part 2 content, and the draft was switched off for the tenant since) says that nothing changed and
+  the note is still finalized, and names the next step: an administrator switches the draft back on (Admin,
+  Visit-note Draft), then the clinician signs again
 - Every AI Layer-2 modification has a per-passage decision (none pending)
 - Step-up auth fresh (≤ 5 minutes)
 - Attestation confirmed (language varies by Layer-2 involvement)
