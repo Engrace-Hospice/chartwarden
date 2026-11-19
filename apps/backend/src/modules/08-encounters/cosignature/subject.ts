@@ -34,3 +34,14 @@ export function cosignDisplayStatus(status: CosignatureStatus | null): CosignDis
   if (status === "supervisor_released") return "released";
   return "pending";
 }
+
+/**
+ * The RN a cosignature request is routed to: the patient's case-management RN, unless that RN may not cosign THIS subject, in which case there is
+ * none (the caller's 422 `NO_ELIGIBLE_COSIGNER`, before any write). `excluded` are the members the cosignature service refuses at acknowledge and
+ * sign: whoever signed what is being cosigned, and for an amendment the author of the note it amends as well. Routing to one of them would raise
+ * the request, its alerts and its escalations at someone who cannot act on it, and the eligible-cosigner check would never fire.
+ */
+export const eligibleCosigner = (
+  candidate: string | null,
+  excluded: readonly string[],
+): string | null => (candidate !== null && excluded.includes(candidate) ? null : candidate);

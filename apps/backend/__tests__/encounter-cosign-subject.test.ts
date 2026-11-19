@@ -5,6 +5,7 @@ import {
   COSIGN_OPEN_STATUSES,
   cosignDisplayStatus,
   cosignSubjectOf,
+  eligibleCosigner,
 } from "../src/modules/08-encounters/cosignature/subject";
 
 const ENCOUNTER = "00000000-0000-4000-8000-000000000004";
@@ -51,5 +52,27 @@ describe("cosignDisplayStatus: where an amendment's cosignature stands, for a sc
     expect([...COSIGN_OPEN_STATUSES].sort()).toEqual(
       ["acknowledged", "escalated", "hard_cap_reached", "routed", "supervisor_released"].sort(),
     );
+  });
+});
+
+describe("eligibleCosigner: the RN a request may be routed to (C3)", () => {
+  const RN = "00000000-0000-4000-8000-0000000000a1";
+  const SIGNER = "00000000-0000-4000-8000-0000000000a2";
+  const NOTE_AUTHOR = "00000000-0000-4000-8000-0000000000a3";
+
+  it("is the case-management RN when nobody excluded is that RN", () => {
+    expect(eligibleCosigner(RN, [SIGNER, NOTE_AUTHOR])).toBe(RN);
+  });
+
+  it("is nobody when the care team names no RN", () => {
+    expect(eligibleCosigner(null, [SIGNER])).toBeNull();
+  });
+
+  it("is nobody when the RN is the signer: a request never cosigns itself", () => {
+    expect(eligibleCosigner(SIGNER, [SIGNER])).toBeNull();
+  });
+
+  it("is nobody when the RN is the note's author, whom the cosign service refuses at acknowledge and sign: the request would wait for ever", () => {
+    expect(eligibleCosigner(NOTE_AUTHOR, [SIGNER, NOTE_AUTHOR])).toBeNull();
   });
 });

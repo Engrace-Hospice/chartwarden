@@ -25,6 +25,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { hasSupervisorRole } from "../supervisor-roles";
 
+import { auditContextOf } from "./audit-context";
 import { AmendmentDraftParamsSchema } from "./draft-section-typebox";
 import {
   AddendumParamsSchema,
@@ -317,11 +318,13 @@ function cosignatureRoutes(service: EncounterRouteService, todayOf: () => string
         handler: async (request: FastifyRequest, body: { readonly reason: string }) => {
           const { organizationId, userId, roles } = membershipActorOf(request);
           const { encounterId, addendumId } = subjectOf(request);
+          const actorUserId = signingActorOf(request).userId;
           return service.supervisorRelease(organizationId, encounterId, {
             isSupervisor: isSupervisor(roles),
             reason: body.reason,
             at: todayOf(),
             actorMembershipId: userId,
+            ...(actorUserId !== undefined ? { actorUserId } : {}),
             ...(addendumId !== undefined ? { addendumId } : {}),
           });
         },
@@ -1051,7 +1054,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         encounterId,
         addendumId,
         signingActorOf(request),
-        { at: today() },
+        { at: today(), audit: auditContextOf(request) },
       );
     },
   );

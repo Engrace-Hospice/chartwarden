@@ -389,6 +389,8 @@ export const EncounterViewResponseSchema = Type.Object({
    * (an amendment replaces the section it amends). A withheld section carries `text: null` and `withheld: true`, and a note withheld whole (a finalized pin
    * that carries Part 2 text has no sealed rows to cut by section) is `withheld: true` with no sections, so no marker string reaches a client as data.
    * `sectionId` is null for a pin with no sealed rows (finalized, or signed with the draft off): the whole narrative is one block. Null when nothing is pinned.
+   * A section WITHHELD from the reader keeps its position and nothing else: `sectionId`, `amendedByAddendumId` and `signedAt` are null too (S1), so
+   * the reader is not told which section is Part 2 or who amended it and when.
    */
   finalDocumentationView: Type.Optional(
     Type.Union([
@@ -432,7 +434,7 @@ export const EncounterViewResponseSchema = Type.Object({
         createdAt: Type.String(),
         signedAt: Type.Union([Type.String(), Type.Null()]),
         version: Type.Integer(),
-        /** ADR-0114 VN-D30: the sections the addendum amends; empty for a free addendum. */
+        /** ADR-0114 VN-D30: the sections the addendum amends; empty for a free addendum. Without the ids of a section with a Part 2 derived version, for a reader without disclosure (S1). */
         amendsSectionIds: Type.Optional(Type.Array(Type.String())),
         /** ADR-0114 VN-D30: where the addendum's own cosignature stands; `not_required` unless it amended a section of a note that needed a cosigner. */
         cosignStatus: Type.Optional(COSIGN_DISPLAY_STATUS),
@@ -442,7 +444,8 @@ export const EncounterViewResponseSchema = Type.Object({
   /**
    * ADR-0114 VN-D30, single-read only: the version history of every AMENDED section of a signed note (original first, then each amendment in
    * the order its addendum was signed, the last one `current`), `null` when nothing was amended. `finalDocumentation` is the CURRENT view
-   * (the latest signed text per section). Each version's text is the withheld marker where the reader may not see 42 CFR Part 2 content.
+   * (the latest signed text per section). A reader without Part 2 disclosure gets no entry for a section with a Part 2 derived version (the original or an
+   * amendment): its id, authors and dates would say that a Part 2 section exists (S1); `null` when no section is left to list.
    */
   noteHistory: Type.Optional(
     Type.Union([

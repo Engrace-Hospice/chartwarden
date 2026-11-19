@@ -204,12 +204,11 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m8.encounter.section_amended",
     moduleOwner: "m8",
     description:
-      "One section of a signed visit note was amended by a signed addendum (ADR-0114 VN-D30): one event per amended section, published with `.addendum_signed` in the same transaction. Ids and a Part 2 flag only; never text, a hash or a source id.",
+      "One section of a signed visit note was amended by a signed addendum (ADR-0114 VN-D30): one event per amended section, published with `.addendum_signed` in the same transaction. Ids only; never text, a hash, a source id or a Part 2 flag (the flag would tell a subscriber which section holds Part 2 content: it lives in the audit event of the same name, filed under the Part 2 retention class when it is true).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       addendumId: Type.String({ minLength: 1 }),
       sectionId: Type.String({ minLength: 1 }),
-      part2Derived: Type.Boolean(),
     }),
     declaredConsumers: [],
     seamConsumers: ["m33"],

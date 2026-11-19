@@ -9,7 +9,12 @@
 //   * Part 2 (VN-D13). A viewer without disclosure sees the withheld marker for any version whose row is `part2_derived`, and its sealed text is
 //     never opened. The history of a section whose ORIGINAL was `part2_derived` stays withheld whole for such a viewer, though the current view
 //     still shows that section's latest text when its row is not Part 2.
-// The verdict is asked once, and only when some version is `part2_derived`; a check that fails is 503 `NOTE_VIEW_UNAVAILABLE`, never a denial.
+//   * What a viewer without disclosure is NOT told about a withheld section (S1): its id, who amended it and when. In the current view a withheld
+//     section keeps its place in the array but carries `sectionId`, `amendedByAddendumId` and `signedAt` of `null`; the history OMITS every section
+//     that has a withheld version (and is `null` when none is left), so neither names a Part 2 section nor dates an amendment of one. That a section
+//     is withheld at all, and the marker, are what the viewer is shown. A viewer with disclosure sees every id, author and date.
+// The verdict is asked once per read (`renderNoteVersions`), and only when some version is `part2_derived`; a check that fails is 503
+// `NOTE_VIEW_UNAVAILABLE`, never a denial.
 import { type DbClient, schema } from "@chartwarden/db";
 import { joinBlocks } from "@chartwarden/hearthnote";
 import { and, asc, eq, isNotNull } from "drizzle-orm";
@@ -105,14 +110,17 @@ function latestBySection(amendments: readonly AmendmentRow[]): ReadonlyMap<strin
 
 /** One section of the note as the structured view carries it: the latest signed text, or `text: null` where the reader may not see it. */
 export interface NoteViewSection {
-  /** The section id; `null` for a pin with no sealed rows (finalized, not signed, or signed with the draft off): the whole narrative is one block. */
+  /**
+   * The section id; `null` for a pin with no sealed rows (finalized, not signed, or signed with the draft off: the whole narrative is one block),
+   * and for a section withheld from this reader (`withheld`: its id is not told, S1).
+   */
   readonly sectionId: string | null;
   /** The latest signed text. `null` when withheld: no marker and no content ever reaches a structured consumer as data. */
   readonly text: string | null;
   readonly withheld: boolean;
-  /** The addendum whose amendment is the latest version of the section; `null` when the section is as the note was signed. */
+  /** The addendum whose amendment is the latest version of the section; `null` when the section is as the note was signed, or is withheld. */
   readonly amendedByAddendumId: string | null;
-  /** When the latest version was signed (the addendum's, or the note's own). */
+  /** When the latest version was signed (the addendum's, or the note's own); `null` for a withheld section. */
   readonly signedAt: string | null;
 }
 
@@ -144,7 +152,31 @@ export async function viewNote(
   original: NoteOriginal,
   readers: PinnedNoteReaders,
 ): Promise<NoteView> {
-  const entitled = !hasPart2(note, amendments) || (await mayReadPart2(readers.entitled));
+  return renderNote(
+    note,
+    amendments,
+    original,
+    readers.open,
+    await isEntitled(note, amendments, readers),
+  );
+}
+
+/** Whether the reader may see every version: true when nothing is Part 2 derived (no one is asked), else M39's verdict, asked once. */
+async function isEntitled(
+  note: PinnedNoteRows,
+  amendments: readonly AmendmentRow[],
+  readers: PinnedNoteReaders,
+): Promise<boolean> {
+  return !hasPart2(note, amendments) || (await mayReadPart2(readers.entitled));
+}
+
+async function renderNote(
+  note: PinnedNoteRows,
+  amendments: readonly AmendmentRow[],
+  original: NoteOriginal,
+  open: PinnedNoteReaders["open"],
+  entitled: boolean,
+): Promise<NoteView> {
   const originalSignedAt = original.signedAt?.toISOString() ?? null;
   if (note.sections.length === 0) {
     if (!entitled) {
@@ -154,7 +186,7 @@ export async function viewNote(
         structured: { withheld: true, sections: [] },
       };
     }
-    const text = await readers.open(note.finalCipher);
+    const text = await open(note.finalCipher);
     return {
       text,
       withheld: false,
@@ -179,15 +211,20 @@ export async function viewNote(
     const version = latest.get(row.sectionId) ?? row;
     const amended = latest.get(row.sectionId);
     const hide = version.part2Derived && !entitled;
-    const text = hide ? null : await readers.open(version.textCipher);
-    sections.push({
-      sectionId: row.sectionId,
-      text,
-      withheld: hide,
-      amendedByAddendumId: amended?.addendumId ?? null,
-      signedAt:
-        amended === undefined ? originalSignedAt : (amended.signedAt?.toISOString() ?? null),
-    });
+    const text = hide ? null : await open(version.textCipher);
+    sections.push(
+      hide
+        ? // Position only: no id, no amending addendum and no date for a section the viewer may not read (S1).
+          { sectionId: null, text: null, withheld: true, amendedByAddendumId: null, signedAt: null }
+        : {
+            sectionId: row.sectionId,
+            text,
+            withheld: false,
+            amendedByAddendumId: amended?.addendumId ?? null,
+            signedAt:
+              amended === undefined ? originalSignedAt : (amended.signedAt?.toISOString() ?? null),
+          },
+    );
     blocks.push({ sectionId: row.sectionId, text: text ?? PART2_WITHHELD_MARKER });
   }
   return {
@@ -210,18 +247,15 @@ interface Candidate {
 async function versionOf(
   candidate: Candidate,
   current: boolean,
-  hideAll: boolean,
-  entitled: boolean,
-  readers: PinnedNoteReaders,
+  open: PinnedNoteReaders["open"],
 ): Promise<SectionVersion> {
-  const withheld = !entitled && (hideAll || candidate.part2Derived);
   return {
     kind: candidate.kind,
     addendumId: candidate.addendumId,
     authoredByMembershipId: candidate.authoredByMembershipId,
     signedAt: candidate.signedAt?.toISOString() ?? null,
-    text: withheld ? null : await readers.open(candidate.textCipher),
-    withheld,
+    text: await open(candidate.textCipher),
+    withheld: false,
     current,
     cosignStatus: candidate.cosignStatus,
   };
@@ -234,7 +268,27 @@ export async function viewNoteHistory(
   readers: PinnedNoteReaders,
 ): Promise<NoteHistory | null> {
   if (amendments.length === 0) return null;
-  const entitled = !hasPart2(note, amendments) || (await mayReadPart2(readers.entitled));
+  return renderHistory(
+    note,
+    amendments,
+    original,
+    readers.open,
+    await isEntitled(note, amendments, readers),
+  );
+}
+
+/**
+ * Every version of each amended section. For a reader without disclosure a section with ANY Part 2 derived version (the original or an
+ * amendment) is left out whole: its id, its authors and its dates are what would say that a Part 2 section exists and who amended it (S1). When
+ * every amended section is left out there is no history to show, which reads as `null`.
+ */
+async function renderHistory(
+  note: PinnedNoteRows,
+  amendments: readonly AmendmentRow[],
+  original: NoteOriginal,
+  open: PinnedNoteReaders["open"],
+  entitled: boolean,
+): Promise<NoteHistory | null> {
   const sections: NoteHistory["sections"][number][] = [];
   for (const originalRow of note.sections) {
     const amended = amendments.filter((a) => a.sectionId === originalRow.sectionId);
@@ -243,21 +297,74 @@ export async function viewNoteHistory(
       { ...original, kind: "original", addendumId: null, cosignStatus: null, ...originalRow },
       ...amended.map((a): Candidate => ({ ...a, kind: "amendment" })),
     ];
+    if (!entitled && candidates.some((candidate) => candidate.part2Derived)) continue;
     const versions: SectionVersion[] = [];
     for (const [index, candidate] of candidates.entries()) {
-      versions.push(
-        await versionOf(
-          candidate,
-          index === candidates.length - 1,
-          originalRow.part2Derived,
-          entitled,
-          readers,
-        ),
-      );
+      versions.push(await versionOf(candidate, index === candidates.length - 1, open));
     }
     sections.push({ sectionId: originalRow.sectionId, versions });
   }
-  return { sections };
+  return sections.length === 0 ? null : { sections };
+}
+
+/** The pin, its sealed rows and the signed amendment rows of an encounter as stored, ciphers unopened: what a read needs from the database. */
+export interface NoteVersionRows {
+  readonly note: PinnedNoteRows;
+  readonly amendments: readonly AmendmentRow[];
+}
+
+/** The database half of a read; `null` when nothing is pinned. Opens no cipher and asks no verdict, so a caller can close its transaction first (S3). */
+export async function loadNoteVersionRows(
+  tx: DbClient,
+  encounterId: string,
+): Promise<NoteVersionRows | null> {
+  const note = await loadPinnedNote(tx, encounterId);
+  if (note === null) return null;
+  return { note, amendments: await loadAmendmentRows(tx, encounterId) };
+}
+
+/**
+ * The ids of the sections with ANY Part 2 derived version (the original or an amendment of it): the ones whose existence a reader without
+ * disclosure is not told. Empty for a reader with disclosure and when nothing is Part 2 derived.
+ */
+function withheldSectionIds(rows: NoteVersionRows, entitled: boolean): ReadonlySet<string> {
+  if (entitled) return new Set();
+  const { note, amendments } = rows;
+  return new Set([
+    ...note.sections.filter((s) => s.part2Derived).map((s) => s.sectionId),
+    ...amendments.filter((a) => a.part2Derived).map((a) => a.sectionId),
+  ]);
+}
+
+/** `ids` without the withheld ones: the list of sections an addendum names, for a reader who may not be told a Part 2 section was named (S1). */
+export const visibleSectionIds = (
+  ids: readonly string[],
+  withheld: ReadonlySet<string>,
+): readonly string[] => ids.filter((id) => !withheld.has(id));
+
+/**
+ * The current view and the history of loaded rows for one reader, with the section ids withheld from them. The Part 2 verdict is asked ONCE for
+ * all of it (and only when some version is Part 2 derived), so a read cannot see two different answers or leave two consent-evaluation rows (B4).
+ */
+export async function renderNoteVersions(
+  rows: NoteVersionRows,
+  original: NoteOriginal,
+  readers: PinnedNoteReaders,
+): Promise<{
+  readonly current: NoteView;
+  readonly history: NoteHistory | null;
+  readonly withheldSectionIds: ReadonlySet<string>;
+}> {
+  const { note, amendments } = rows;
+  const entitled = await isEntitled(note, amendments, readers);
+  return {
+    withheldSectionIds: withheldSectionIds(rows, entitled),
+    current: await renderNote(note, amendments, original, readers.open, entitled),
+    history:
+      amendments.length === 0
+        ? null
+        : await renderHistory(note, amendments, original, readers.open, entitled),
+  };
 }
 
 /** The current view of the encounter's pinned note and its history, for one reader; `null` when nothing is pinned. */
@@ -266,14 +373,9 @@ export async function readNoteVersions(
   encounterId: string,
   original: NoteOriginal,
   readers: PinnedNoteReaders,
-): Promise<{ readonly current: NoteView; readonly history: NoteHistory | null } | null> {
-  const note = await loadPinnedNote(tx, encounterId);
-  if (note === null) return null;
-  const amendments = await loadAmendmentRows(tx, encounterId);
-  return {
-    current: await viewNote(note, amendments, original, readers),
-    history: await viewNoteHistory(note, amendments, original, readers),
-  };
+): Promise<Awaited<ReturnType<typeof renderNoteVersions>> | null> {
+  const rows = await loadNoteVersionRows(tx, encounterId);
+  return rows === null ? null : renderNoteVersions(rows, original, readers);
 }
 
 /**

@@ -27,6 +27,7 @@ export {
   COSIGN_OPEN_STATUSES,
   cosignDisplayStatus,
   cosignSubjectOf,
+  eligibleCosigner,
   type CosignDisplayStatus,
   type CosignSubject,
 } from "./subject";

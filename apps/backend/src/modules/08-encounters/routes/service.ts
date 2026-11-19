@@ -9,6 +9,7 @@
 // SCOPE (T09): the route inventory + the §4.5 RBAC gating + the §4.6 cosigner predicate. The heavier
 // authoring surfaces (vitals/mileage, the F2F dual-write happy path) land in M8-T10; here they are lean
 // success handlers over the same optimistic-locked records so the inventory is wired and smoke-tested.
+import type { AuditContext } from "@chartwarden/audit";
 import {
   type AssemblyContext,
   HearthnoteAssemblyError,
@@ -66,6 +67,7 @@ import {
   type CosignatureState,
   transitionCosignature,
 } from "../cosignature/index";
+import { assertMayAmendSectionsOf } from "../drafting/amendment-author";
 import type { NoteHistory, StructuredNoteView } from "../drafting/note-versions";
 import {
   type GateSectionSelection,
@@ -802,8 +804,10 @@ export interface EncounterRouteService {
       reason: string;
       at: LocalDate;
       addendumId?: string;
-      /** The releasing supervisor's membership (the session's); recorded as who released. */
+      /** The releasing supervisor's membership (the session's); recorded as who released, the note's own release included. */
       actorMembershipId?: string;
+      /** The releasing supervisor's M2 USER id (a different id space): the audit actor of the release. */
+      actorUserId?: string;
     },
   ): Promise<{ status: CosignatureState }>;
   createAddendum(
@@ -855,7 +859,11 @@ export interface EncounterRouteService {
     encounterId: string,
     addendumId: string,
     actor: SigningActor,
-    args: { at: LocalDate },
+    args: {
+      at: LocalDate;
+      /** The request's audit context: the explicit `m8.encounter.section_amended` events of an amending addendum are written with it (absent, one is derived from the actor). */
+      audit?: AuditContext;
+    },
   ): Promise<{
     status: "signed";
     signedAt: string;
@@ -1643,6 +1651,11 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         );
         if (taken) throw new ConflictError("that proposal already has an addendum");
       }
+      assertMayAmendSectionsOf(r.authoredByUserId, {
+        membershipId: args.authorMembershipId,
+        roles: args.roles ?? [],
+        namesSections: (args.amendsSectionIds?.length ?? 0) > 0,
+      });
       // The slice holds no sealed rows, so a section named here is never one the note carries (ADR-0114 VN-D30).
       if (args.amendsSectionIds !== undefined && args.amendsSectionIds.length > 0) {
         throw new EncounterStateError(

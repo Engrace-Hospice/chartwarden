@@ -6,7 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type AmendmentRow,
   type NoteOriginal,
+  renderNoteVersions,
   viewNote,
+  visibleSectionIds,
   viewNoteHistory,
 } from "../src/modules/08-encounters/drafting/note-versions";
 import {
@@ -155,13 +157,48 @@ describe("viewNote: the current view", () => {
         "\n\n",
       ),
     );
-    expect(current.structured.sections.find((s) => s.sectionId === "plan")).toMatchObject({
+    // S1: the withheld section keeps its place in the array and nothing else: no id, no amending addendum, no date.
+    expect(current.structured.sections.map((s) => s.withheld)).toEqual([false, false, true]);
+    expect(current.structured.sections[2]).toEqual({
+      sectionId: null,
       text: null,
       withheld: true,
-      amendedByAddendumId: "a1",
+      amendedByAddendumId: null,
+      signedAt: null,
     });
-    expect(JSON.stringify(current.structured)).not.toContain(PART2_WITHHELD_MARKER);
+    const wire = JSON.stringify(current.structured);
+    expect(wire).not.toContain(PART2_WITHHELD_MARKER);
+    expect(wire).not.toContain("plan");
+    expect(wire).not.toContain("a1");
+    expect(wire).not.toContain("2026-11-19");
     expect(opened).not.toContain("cipher-plan-a1");
+  });
+
+  it("a withheld ORIGINAL section is cut the same way, and a viewer with disclosure gets the ids and dates back", async () => {
+    const note: PinnedNoteRows = {
+      ...NOTE,
+      part2Derived: true,
+      sections: [
+        section("chief_concern", false),
+        section("interventions", true),
+        section("plan", false),
+      ],
+    };
+    const withheld = await view(note, [], NOT_ENTITLED);
+    expect(withheld.structured.sections[1]).toEqual({
+      sectionId: null,
+      text: null,
+      withheld: true,
+      amendedByAddendumId: null,
+      signedAt: null,
+    });
+    expect(JSON.stringify(withheld.structured)).not.toContain("interventions");
+    const shown = await view(note, [], ENTITLED);
+    expect(shown.structured.sections[1]).toMatchObject({
+      sectionId: "interventions",
+      withheld: false,
+      signedAt: "2026-11-18T20:00:00.000Z",
+    });
   });
 
   it("shows the Part 2 derived amendment to a viewer with disclosure", async () => {
@@ -215,7 +252,7 @@ describe("viewNote: the current view", () => {
       current.structured.sections.map((s) => [s.sectionId, s.withheld, s.text === null]),
     ).toEqual([
       ["chief_concern", false, false],
-      ["interventions", true, true],
+      [null, true, true],
       ["plan", false, false],
     ]);
   });
@@ -287,13 +324,14 @@ describe("viewNoteHistory", () => {
     expect(history?.sections.map((s) => s.sectionId)).toEqual(["plan"]);
   });
 
-  it("withholds a Part 2 derived version from a viewer without disclosure, by its own row, and never opens it", async () => {
+  it("omits a section that has a Part 2 derived AMENDMENT from a viewer without disclosure, whole, and never opens any version of it", async () => {
     const opened: string[] = [];
     const history = await viewNoteHistory(
       NOTE,
       [
         amendment("plan", "a1", "2026-11-19T10:00:00.000Z", true),
         amendment("plan", "a2", "2026-11-20T10:00:00.000Z", false),
+        amendment("chief_concern", "a3", "2026-11-21T10:00:00.000Z", false),
       ],
       ORIGINAL,
       {
@@ -304,17 +342,16 @@ describe("viewNoteHistory", () => {
         entitled: async () => false,
       },
     );
-    const versions = history?.sections[0]?.versions ?? [];
-    expect(versions.map((v) => [v.addendumId, v.withheld])).toEqual([
-      [null, false],
-      ["a1", true],
-      ["a2", false],
-    ]);
-    expect(versions[1]?.text).toBeNull();
-    expect(opened).not.toContain("cipher-plan-a1");
+    // S1: no id, no author and no date of the Part 2 section reaches the viewer; the section that holds none is listed as before.
+    expect(history?.sections.map((s) => s.sectionId)).toEqual(["chief_concern"]);
+    const wire = JSON.stringify(history);
+    expect(wire).not.toContain("plan");
+    expect(wire).not.toContain("a1");
+    expect(wire).not.toContain("author-a2");
+    expect(opened.every((cipher) => !cipher.includes("plan"))).toBe(true);
   });
 
-  it("the history of a section whose ORIGINAL was Part 2 derived stays withheld for such a viewer, every version of it, though the current view shows the latest", async () => {
+  it("omits a section whose ORIGINAL was Part 2 derived from such a viewer, every version of it, though the current view shows the latest text", async () => {
     const note: PinnedNoteRows = {
       ...NOTE,
       part2Derived: true,
@@ -334,10 +371,8 @@ describe("viewNoteHistory", () => {
     };
     const amendments = [amendment("interventions", "a1", "2026-11-19T10:00:00.000Z", false)];
 
-    const history = await viewNoteHistory(note, amendments, ORIGINAL, readers);
-    const versions = history?.sections[0]?.versions ?? [];
-    expect(versions.map((v) => v.withheld)).toEqual([true, true]);
-    expect(versions.every((v) => v.text === null)).toBe(true);
+    // Nothing is left to list, which reads exactly as "no history" (a null, not an empty list that says something was amended).
+    expect(await viewNoteHistory(note, amendments, ORIGINAL, readers)).toBeNull();
     expect(opened).toEqual([]);
 
     const current = await viewNote(note, amendments, ORIGINAL, readers);
@@ -366,5 +401,77 @@ describe("viewNoteHistory", () => {
       "open(cipher-interventions-a1)",
     ]);
     expect(entitled).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("renderNoteVersions: one verdict per read (B4)", () => {
+  const rowsWithPart2 = {
+    note: {
+      ...NOTE,
+      part2Derived: true,
+      sections: [
+        section("chief_concern", false),
+        section("interventions", true),
+        section("plan", false),
+      ],
+    },
+    amendments: [amendment("plan", "a1", "2026-11-19T10:00:00.000Z", false)],
+  };
+
+  it("asks M39 once for the current view AND the history", async () => {
+    const entitled = vi.fn(async () => true);
+    const rendered = await renderNoteVersions(rowsWithPart2, ORIGINAL, { open, entitled });
+    expect(entitled).toHaveBeenCalledTimes(1);
+    expect(rendered.current.withheld).toBe(false);
+    expect(rendered.history?.sections.map((s) => s.sectionId)).toEqual(["plan"]);
+  });
+
+  it("current view and history agree: a verdict that flips between two asks cannot split them", async () => {
+    const answers = [true, false];
+    const entitled = vi.fn(async () => answers.shift() ?? false);
+    const rendered = await renderNoteVersions(rowsWithPart2, ORIGINAL, { open, entitled });
+    expect(entitled).toHaveBeenCalledTimes(1);
+    expect(rendered.current.withheld).toBe(false);
+    expect(rendered.history).not.toBeNull();
+  });
+
+  it("asks nobody when no version is Part 2 derived, and has no history when nothing was amended", async () => {
+    const entitled = vi.fn(async () => false);
+    const rendered = await renderNoteVersions({ note: NOTE, amendments: [] }, ORIGINAL, {
+      open,
+      entitled,
+    });
+    expect(entitled).not.toHaveBeenCalled();
+    expect(rendered.history).toBeNull();
+  });
+});
+
+describe("the section ids withheld from a reader (S1)", () => {
+  const rows = {
+    note: {
+      ...NOTE,
+      part2Derived: true,
+      sections: [
+        section("chief_concern", false),
+        section("interventions", true),
+        section("plan", false),
+      ],
+    },
+    // `plan` was not Part 2 in the original but its amendment is; `chief_concern` holds none in any version.
+    amendments: [amendment("plan", "a1", "2026-11-19T10:00:00.000Z", true)],
+  };
+
+  it("are the sections with ANY Part 2 derived version, original or amendment, for a reader without disclosure", async () => {
+    const rendered = await renderNoteVersions(rows, ORIGINAL, NOT_ENTITLED);
+    expect([...rendered.withheldSectionIds].sort()).toEqual(["interventions", "plan"]);
+    expect(
+      visibleSectionIds(["chief_concern", "interventions", "plan"], rendered.withheldSectionIds),
+    ).toEqual(["chief_concern"]);
+  });
+
+  it("are none for a reader with disclosure, and none when nothing is Part 2 derived", async () => {
+    expect((await renderNoteVersions(rows, ORIGINAL, ENTITLED)).withheldSectionIds.size).toBe(0);
+    const plain = await renderNoteVersions({ note: NOTE, amendments: [] }, ORIGINAL, NOT_ENTITLED);
+    expect(plain.withheldSectionIds.size).toBe(0);
   });
 });

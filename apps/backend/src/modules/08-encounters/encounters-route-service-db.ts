@@ -20,12 +20,7 @@
 // Layer-2 rows are persisted through the `hearthnote_selection` / `hearthnote_assembled_output` tables.
 import { isStepUpRecent } from "@chartwarden/auth";
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
-import {
-  DEFAULT_HEARTHNOTE_FLAGS,
-  enhanceNarrative,
-  templateKey as hearthnoteTemplateKey,
-  requiredScalesFor,
-} from "@chartwarden/hearthnote";
+import { templateKey as hearthnoteTemplateKey, requiredScalesFor } from "@chartwarden/hearthnote";
 import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@chartwarden/narrative-vocab";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -93,9 +88,15 @@ import {
   releaseCosignature,
   signCosignature,
 } from "./cosignature/db-cosignature";
-import { COSIGN_OPEN_STATUSES, cosignDisplayStatus, cosignSubjectOf } from "./cosignature/index";
+import {
+  COSIGN_OPEN_STATUSES,
+  cosignDisplayStatus,
+  cosignSubjectOf,
+  eligibleCosigner,
+} from "./cosignature/index";
+import { recordSectionsAmended } from "./drafting/amendment-audit";
+import { assertMayAmendSectionsOf } from "./drafting/amendment-author";
 import { createAmendmentFlow } from "./drafting/amendment-flow";
-import { namedSectionIds } from "./drafting/amendment-store";
 import { defaultDraftPorts } from "./drafting/default-ports";
 import { assertResolved, confirmedSectionIds } from "./drafting/note-draft";
 import type { NoteDraft } from "./drafting/note-draft";
@@ -103,8 +104,11 @@ import { createNoteDraftFlow } from "./drafting/note-draft-flow";
 import {
   type NoteHistory,
   type NoteOriginal,
+  type NoteVersionRows,
   type StructuredNoteView,
-  readNoteVersions,
+  loadNoteVersionRows,
+  renderNoteVersions,
+  visibleSectionIds,
 } from "./drafting/note-versions";
 import { readPinnedNote } from "./drafting/pinned-note";
 import { isVisitNoteDraftEnabled } from "./drafting/policy-service";
@@ -124,7 +128,7 @@ import {
 } from "./late-entry/override";
 import { keepOrReplaceReason, reifiableTier, resolveLateEntry } from "./late-entry/resolve";
 import { computeLateEntryTier, daysLate as lateDaysBetween } from "./late-entry/tiers";
-import { LAYER2_TENANT_FACTS_UNBOUND, resolveLayer2Eligibility } from "./layer2";
+import { layer2OutcomeFor, resolveLayer2Eligibility } from "./layer2";
 import { ADDENDUM_GRAPH, type AddendumState, transitionAddendum } from "./lifecycle/addendum";
 import {
   ENCOUNTER_GRAPH,
@@ -141,7 +145,7 @@ import {
   checkVersion,
   checkVocabVersion,
 } from "./lifecycle/validation";
-import { assertNotAuthor, toVitalsView } from "./routes/service";
+import { toVitalsView } from "./routes/service";
 import type {
   CarePlanLinkView,
   EncounterAbacFacts,
@@ -814,7 +818,7 @@ export function createDbEncounterRouteService(
    * one answer, resolved once here — they used to have two different wrong ones, `true` and "the LPN who
    * just signed it".
    *
-   * The signer is excluded explicitly. `patient_assignment.role = 'primary_rn'` already names an RN, and
+   * The excluded members (the signer; for an amendment the note's author as well) are left out explicitly. `patient_assignment.role = 'primary_rn'` already names an RN, and
    * the cosign route independently refuses a non-RN caller, so this should be unreachable — but a note
    * that cosigns itself is the one outcome the whole D3 workflow exists to prevent, and it costs a
    * comparison to make that structural rather than incidental.
@@ -822,7 +826,7 @@ export function createDbEncounterRouteService(
   async function cosignerMembershipIdFor(
     organizationId: string,
     patientId: string,
-    signedByMembershipId: string,
+    excludedMembershipIds: readonly string[],
   ): Promise<string | null> {
     let cosigner: string | null;
     try {
@@ -838,7 +842,7 @@ export function createDbEncounterRouteService(
         })`,
       );
     }
-    return cosigner === signedByMembershipId ? null : cosigner;
+    return eligibleCosigner(cosigner, excludedMembershipIds);
   }
 
   // ── §2.6 the assembled-output pin (#122) ────────────────────────────────────────────────────────
@@ -919,11 +923,7 @@ export function createDbEncounterRouteService(
       assembleSelections(input.encounterType, input.discipline, input.serviceDate, sections);
     // D5's finalize-time reification, through the module's own shipped ladder rather than a literal.
     // Phase 1: the platform flag is off, so this is `kill_switch_active` / `enhanced: false` / final === layer1.
-    const outcome = enhanceNarrative({
-      layer1,
-      flags: DEFAULT_HEARTHNOTE_FLAGS,
-      eligibility: LAYER2_TENANT_FACTS_UNBOUND,
-    });
+    const outcome = layer2OutcomeFor(layer1, input.part2Derived === true);
     const [layer1Cipher, finalCipher] = await withTenantDek(
       "the assembled narrative could not be sealed",
       () =>
@@ -1213,15 +1213,16 @@ export function createDbEncounterRouteService(
       .where(eq(COSIGN.encounterId, parent.id))
       .limit(1);
     if (parentRequest === undefined) return null;
-    const cosigner = await cosignerMembershipIdFor(
-      organizationId,
-      parent.patientId,
+    // The signer AND the note's author are excluded: the cosign service refuses either at acknowledge and sign, so an amendment routed to the
+    // note's author (the only RN on a small caseload, say) would be raised at someone who cannot act on it and stay pending for ever (C3).
+    const cosigner = await cosignerMembershipIdFor(organizationId, parent.patientId, [
       signerMembershipId,
-    );
+      parent.authoredByMembershipId,
+    ]);
     if (cosigner === null) {
       throw new EncounterStateError(
         "NO_ELIGIBLE_COSIGNER",
-        "this note needed a cosignature, so its amendment does too, and no cosignature-eligible RN other than the signer exists on the patient's caseload",
+        "this note needed a cosignature, so its amendment does too, and no cosignature-eligible RN other than the signer and the note's author exists on the patient's caseload",
       );
     }
     return cosigner;
@@ -1326,6 +1327,13 @@ export function createDbEncounterRouteService(
           "addenda can only be authored on signed or cosigned encounters",
         );
       }
+      // Before the addendum is written, and whether or not the tenant has the draft on (so the refusal is no oracle for the switch): a section of
+      // someone else's signed note is replaced only by its author or a supervisor (S2). A free addendum is anyone's with the addendum permission.
+      assertMayAmendSectionsOf(r.authoredByMembershipId, {
+        membershipId: args.authorMembershipId,
+        roles: args.roles ?? [],
+        namesSections: (args.amendsSectionIds?.length ?? 0) > 0,
+      });
       const a = firstOrThrow(
         await t
           .insert(ADDENDUM)
@@ -1418,13 +1426,19 @@ export function createDbEncounterRouteService(
     );
   };
 
+  /** The note's pin, sealed rows and amendment rows as stored (S3: read inside the transaction, opened and judged after it closes), or `null`
+   *  when nothing is pinned yet or no DEK cipher is bound to open it. */
+  async function noteRowsFor(t: DbClient, encounterId: string): Promise<NoteVersionRows | null> {
+    return narrativeCipher ? loadNoteVersionRows(t, encounterId) : null;
+  }
+
   /** The pinned (finalize-time or signed) narrative as `viewer` may see it (VN-D13: Part 2 sections withheld from a viewer without disclosure),
-   *  or `null` when nothing is pinned yet or no DEK cipher is bound to open it. `final_cipher` is sealed under the tenant DEK (#122); never
-   *  project it raw. With amendments (VN-D30) it is the CURRENT view, the latest signed text per section, and the history of each amended
-   *  section comes with it; without any it is the sealed sections joined (the pin's final text, by the invariant the rows keep), or the pin
-   *  itself when it has no sealed rows, and the history is `null`. */
-  async function latestFinalPayload(
-    t: DbClient,
+   *  or nothing when no rows were loaded. `final_cipher` is sealed under the tenant DEK (#122); never project it raw. With amendments (VN-D30)
+   *  it is the CURRENT view, the latest signed text per section, and the history of each amended section comes with it; without any it is the
+   *  sealed sections joined (the pin's final text, by the invariant the rows keep), or the pin itself when it has no sealed rows, and the
+   *  history is `null`. Runs AFTER the read transaction closed: the cipher open and the M39 verdict each use a pooled connection of their own
+   *  (S3), and the verdict is asked once for the view, the history and the addenda's section ids together (B4). */
+  async function renderFinalPayload(
     organizationId: string,
     encounter: {
       readonly id: string;
@@ -1433,24 +1447,29 @@ export function createDbEncounterRouteService(
       readonly signedAt: Date | string | null;
     },
     viewer: DraftViewer,
+    rows: NoteVersionRows | null,
   ): Promise<{
     readonly text: string | null;
     readonly view: StructuredNoteView | null;
     readonly history: NoteHistory | null;
+    readonly withheldSectionIds: ReadonlySet<string>;
   }> {
-    if (!narrativeCipher) return { text: null, view: null, history: null };
+    if (rows === null) {
+      return { text: null, view: null, history: null, withheldSectionIds: new Set() };
+    }
     const original: NoteOriginal = {
       authoredByMembershipId: encounter.authoredByMembershipId,
       signedAt: encounter.signedAt === null ? null : new Date(encounter.signedAt),
     };
-    const versions = await readNoteVersions(t, encounter.id, original, {
+    const versions = await renderNoteVersions(rows, original, {
       open: openPinned(organizationId),
       entitled: part2Entitlement(organizationId, encounter.patientId, viewer),
     });
     return {
-      text: versions?.current.text ?? null,
-      view: versions?.current.structured ?? null,
-      history: versions?.history ?? null,
+      text: versions.current.text,
+      view: versions.current.structured,
+      history: versions.history,
+      withheldSectionIds: versions.withheldSectionIds,
     };
   }
 
@@ -1473,18 +1492,8 @@ export function createDbEncounterRouteService(
     }));
   }
 
-  async function workspaceFieldsFor(
-    t: DbClient,
-    organizationId: string,
-    encounter: {
-      readonly id: string;
-      readonly patientId: string;
-      readonly authoredByMembershipId: string;
-      readonly signedAt: Date | string | null;
-    },
-    viewer: DraftViewer,
-  ) {
-    const encounterId = encounter.id;
+  /** The database half of the workspace fields: every read on the caller's transaction, nothing opened and no seam asked (S3). */
+  async function workspaceRowsFor(t: DbClient, encounterId: string) {
     const [selection] = await t
       .select({ selections: SEL.selections })
       .from(SEL)
@@ -1531,16 +1540,40 @@ export function createDbEncounterRouteService(
       .from(MILEAGE)
       .where(eq(MILEAGE.encounterId, encounterId))
       .limit(1);
-    const final = await latestFinalPayload(t, organizationId, encounter, viewer);
     return {
       selections: (selection?.selections as Record<string, unknown> | undefined) ?? null,
-      finalDocumentation: final.text,
-      finalDocumentationView: final.view,
-      noteHistory: final.history,
+      noteRows: await noteRowsFor(t, encounterId),
       vitals: vital ? { ...vital, capturedAt: iso(vital.capturedAt) } : null,
       mileage: mileage ? { ...mileage, capturedAt: iso(mileage.capturedAt) } : null,
       carePlanLinks: await carePlanLinkRowsFor(t, encounterId),
       addenda: await addendumRowsFor(t, encounterId),
+    };
+  }
+
+  /** The workspace fields of `getEncounter` for `viewer`: the rows read in the transaction, the note rendered after it closed (S3). */
+  async function renderWorkspace(
+    organizationId: string,
+    encounter: {
+      readonly id: string;
+      readonly patientId: string;
+      readonly authoredByMembershipId: string;
+      readonly signedAt: Date | string | null;
+    },
+    viewer: DraftViewer,
+    rows: Awaited<ReturnType<typeof workspaceRowsFor>>,
+  ) {
+    const { noteRows, addenda, ...stored } = rows;
+    const final = await renderFinalPayload(organizationId, encounter, viewer, noteRows);
+    return {
+      ...stored,
+      finalDocumentation: final.text,
+      finalDocumentationView: final.view,
+      noteHistory: final.history,
+      // S1: a reader without disclosure is not told that an addendum named a Part 2 section (signed or not).
+      addenda: addenda.map((a) => ({
+        ...a,
+        amendsSectionIds: visibleSectionIds(a.amendsSectionIds, final.withheldSectionIds),
+      })),
     };
   }
 
@@ -1670,17 +1703,19 @@ export function createDbEncounterRouteService(
   return {
     // ── Encounter reads ────────────────────────────────────────────────────────────────────────────
     async getEncounter(organizationId, encounterId, viewer = ANONYMOUS_VIEWER) {
-      const { view, row } = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const { row, rows } = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [r] = await t.select(encounterCols).from(ENC).where(eq(ENC.id, encounterId)).limit(1);
         if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
-        return {
-          view: { ...toView(r), ...(await workspaceFieldsFor(t, organizationId, r, viewer)) },
-          row: r,
-        };
+        return { row: r, rows: await workspaceRowsFor(t, encounterId) };
       });
-      // Resolved AFTER the read tx: the M18 resolver opens its own tenant context (no nesting).
-      return { ...view, evvBracketPresent: await evvBracketPresentFor(organizationId, row) };
+      // Resolved AFTER the read tx (S3): the M18 resolver, the tenant DEK and the M39 Part 2 verdict each open a pooled connection of their own,
+      // so asked inside the transaction every concurrent read of a note with a Part 2 section would hold one connection and wait for another.
+      return {
+        ...toView(row),
+        ...(await renderWorkspace(organizationId, row, viewer, rows)),
+        evvBracketPresent: await evvBracketPresentFor(organizationId, row),
+      };
     },
     // ── M22 render seam (§4.1 route 31) ────────────────────────────────────────────────────────────
     //
@@ -2137,7 +2172,9 @@ export function createDbEncounterRouteService(
     async captureVitals(organizationId, encounterId, input, actorMembershipId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const r = await loadEnc(t, encounterId);
+        // Locked (B2): the vitals render into the signed narrative, so a capture and a sign of one encounter take turns. Without the lock a
+        // capture that loaded the row `finalized` could commit after sign sealed the note, leaving a vitals row the signed text does not say.
+        const r = await loadEnc(t, encounterId, { lock: true });
         checkMutableForEdit({ status: r.status });
         await stampDraftOpened(t, organizationId, r, actorMembershipId);
         const plan = planVitalsCapture(input); // validates envelopes + CNI reason (§2.2)
@@ -2189,7 +2226,7 @@ export function createDbEncounterRouteService(
     async editVitals(organizationId, encounterId, vitalsId, input, actorMembershipId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const r = await loadEnc(t, encounterId);
+        const r = await loadEnc(t, encounterId, { lock: true }); // locked, as captureVitals (B2)
         checkMutableForEdit({ status: r.status });
         await stampDraftOpened(t, organizationId, r, actorMembershipId);
         const [existing] = await t
@@ -2712,7 +2749,7 @@ export function createDbEncounterRouteService(
         // §2.6 check 10 — resolved ONLY for the disciplines that route a cosignature; an RN/MD/NP note
         // never asks M5 a question whose answer it would not use.
         const cosignerMembershipId = requiresCosignature(r.discipline)
-          ? await cosignerMembershipIdFor(organizationId, r.patientId, signedByMembershipId)
+          ? await cosignerMembershipIdFor(organizationId, r.patientId, [signedByMembershipId])
           : null;
         const trans = transitionEncounter(r.status, {
           type: "sign",
@@ -3004,8 +3041,10 @@ export function createDbEncounterRouteService(
 
     // ── Cosignature-request chain (§2.4 D3) ────────────────────────────────────────────────────────────
     // One workflow, two subjects (the note's own request, or an amending addendum's): ./cosignature/db-cosignature.ts.
+    // The acting user is the audit actor of the request's UPDATE (a `userId` of "" files it as `system`): the acknowledger and the releasing supervisor
+    // are who the audit trail names.
     async cosignAcknowledge(organizationId, encounterId, actor, at, addendumId) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+      return withOrgContext(db, { organizationId, userId: actor.userId ?? "" }, async (tx) =>
         acknowledgeCosignature(
           tx as unknown as DbClient,
           cosignSubjectOf(encounterId, addendumId),
@@ -3027,7 +3066,7 @@ export function createDbEncounterRouteService(
       );
     },
     async supervisorRelease(organizationId, encounterId, args) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+      return withOrgContext(db, { organizationId, userId: args.actorUserId ?? "" }, async (tx) =>
         releaseCosignature(
           tx as unknown as DbClient,
           cosignSubjectOf(encounterId, args.addendumId),
@@ -3283,15 +3322,25 @@ export function createDbEncounterRouteService(
             addenda: [{ addendumId, reason: a.reason, text: "" }],
           },
         });
-        // ADR-0114 VN-D30: one explicit event per amended section (ids and a flag only, never text, a hash or a source id).
+        // ADR-0114 VN-D30: one explicit event per amended section. The OUTBOX event carries ids only (a Part 2 flag would tell a subscriber which
+        // section holds Part 2 content); the AUDIT event carries the flag, filed under the Part 2 retention class when it is true (CW-AC-51).
         for (const section of amendedSections) {
           await emit(t, organizationId, "m8.encounter.section_amended", "encounter", encounterId, {
             encounterId,
             addendumId,
             sectionId: section.sectionId,
-            part2Derived: section.part2Derived,
           });
         }
+        await recordSectionsAmended(
+          t,
+          args.audit ?? {
+            organizationId,
+            userId: actor.userId ?? null,
+            actorKind: "user",
+            correlationId: `m8-sign-addendum:${addendumId}`,
+          },
+          { encounterId, addendumId, sections: amendedSections },
+        );
         const cosignatureRequestId =
           cosignerMembershipId === null
             ? null
