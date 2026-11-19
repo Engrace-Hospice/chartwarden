@@ -4,11 +4,12 @@
 **Owner:** Fabrice V. Adjam
 **Purpose:** Complete architecture lock for ChartWarden, a multi-tenant hospice EHR SaaS. This document is the input spec for the Archon workflow engine driving Claude Code. Per-module spec documents (one per module) follow this document and are produced before each module’s build cycle.
 
-## Pending architecture ratification — mobile renderer (2026-10-16)
+## Architecture ratification — mobile renderer (ratified 2026-11-18)
 
-The fixed product direction is a separately versioned React Native/Expo application in the
-`wardenx-mobile` repository. [ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md)
-proposes formal supersession of ADR-0035. Current architecture sections below are aligned to that
+The product direction (fixed 2026-10-16) is a separately versioned React Native/Expo application in
+the `chartwarden-mobile` repository (written `wardenx-mobile` in older text).
+[ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md) supersedes ADR-0035, and the owner
+ratified that supersession on 2026-11-18. Current architecture sections below are aligned to that
 target so backend contracts do not extend the obsolete Capacitor design; historical changelog rows
 remain historical. The ADR status does not claim that owner ratification or native device controls
 have been completed.
@@ -303,7 +304,7 @@ Organization (tenant — the ChartWarden customer)
 > | `apps/web` | **`apps/web`** |
 > | `apps/backend` | **`apps/backend`** |
 > | `packages/saas` | **`packages/saas-tenant-platform`** |
-> | `apps/mobile/` | **Does not exist in this repository.** The product direction is a separate React Native/Expo repository, `wardenx-mobile`; ADR-0072 proposes the formal supersession of ADR-0035. |
+> | `apps/mobile/` | **Does not exist in this repository.** The product direction is a separate React Native/Expo repository, `wardenx-mobile`; ADR-0072 supersedes ADR-0035 (ratified 2026-11-18). |
 > | `packages/rules-engine` | **Does not exist.** |
 > | §9's `apps/backend/src/{routes,services}` + `packages/db/src/repos` | **Do not exist.** The real layout is per-module vertical slices under `apps/backend/src/modules/NN-name/`. |
 >
@@ -2749,7 +2750,7 @@ These remain genuinely open and need decision before specific modules are spec�
 > records in [`docs/adr/`](../adr/README.md) (`ADR-0001`…): a bare `ADR-003` means row 3 of this
 > table (telehealth vendor — still open), *not* the four-digit `ADR-0003` (room-and-board revenue
 > codes) in `docs/adr/`. When an item here gets decided, it is closed by a four-digit ADR — as already happened
-> for ADR-008 (mobile → **ADR-0035**, with **ADR-0072** proposed as its supersession). Four-digit citations are gate-checked
+> for ADR-008 (mobile → **ADR-0072**, which superseded **ADR-0035** on ratification, 2026-11-18). Four-digit citations are gate-checked
 > (`arch:architecture-docs`); short-register references are not, deliberately.
 
 |ADR    |Title                                                                                                                         |Needed before      |
@@ -2761,7 +2762,7 @@ These remain genuinely open and need decision before specific modules are spec�
 |ADR-005|CAHPS Hospice Survey vendor partnership default                                                                               |Module 30 spec     |
 |ADR-006|EPCS enablement timeline (architecture present, certification kickoff date)                                                   |Module 12 spec     |
 |ADR-007|Map / routing provider (Mapbox vs. OSRM self-hosted)                                                                          |Module 17 spec     |
-|ADR-008|Mobile strategy — **ADR-0035 chose Capacitor; ADR-0072 proposes a separate React Native/Expo app and requires formal ratification**|Ratification pending|
+|ADR-008|Mobile strategy — **ADR-0035 chose Capacitor; ADR-0072 supersedes it with a separate React Native/Expo app (ratified 2026-11-18)**|Ratified 2026-11-18|
 
 -----
 
