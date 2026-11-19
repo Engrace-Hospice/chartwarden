@@ -59,10 +59,56 @@ Common encounter types: `routine_visit`, `admission_visit`, `recert_visit`,
 
 ---
 
+## Drafted Sections (ADR-0114; only while the tenant's draft switch is on)
+
+When the tenant has the visit-note draft switched on (`CHARTWARDEN_UI_VISIT_NOTE_DRAFT_POLICY`) and at least
+one section of the note was drafted from the patient's record, the composer shows, in the Center Workspace
+above that section's statements:
+
+- **The drafted text** of the open section, with **where it came from** (care-plan goals, care-plan
+  interventions, scale readings, vitals, medication changes, by kind only: the source ids are kept in the
+  audit trail and never reach the screen) and a **state chip**.
+- **Confirm section** and **Deselect section**. Confirm binds to exactly the text, hash and phrase-corpus
+  version the clinician saw. Deselect leaves the drafted text out of the note; the clinician's own
+  statements and notes stay in. Editing is the statements and notes below the drafted text: a change to a
+  section changes it, so it must be confirmed again.
+- A **progress strip** under the required-documentation line: "N of M drafted sections resolved", each
+  unresolved section a button that opens it, and, when the server refused a finalize, the sections it named.
+- The **section list** carries each drafted section's state ("Draft: Confirmed").
+
+| State | Chip | What the section says and offers |
+| ----- | ---- | -------------------------------- |
+| `not_drafted` | Nothing to draft | "There is nothing in the record to draft this section from." Never filled with a default phrase. |
+| `unresolved` | Needs your review | The text, "Read this, then confirm it or deselect it. Signing is blocked until every drafted section is resolved." Confirm · Deselect. |
+| `confirmed` | Confirmed | The text. Deselect. |
+| `deselected` | Deselected | The text, marked "Left out of the note". Confirm. |
+| `needs_reconfirmation` | Changed, review again | "The records this section was drafted from changed after you resolved it. Re-read the text below, then confirm it again or deselect it." Confirm again · Deselect. |
+
+Rules the screen keeps:
+
+- **Unsaved edits block resolving.** Confirm and Deselect are off, with the reason, while the note has
+  unsaved changes: what is confirmed is what will be signed. A save re-reads the draft.
+- **Stale is not an error to the clinician.** A confirm or deselect answered 409 `DRAFT_SECTION_STALE`
+  recorded nothing: the draft is re-read, the section shows its new text and says so, and the next confirm
+  carries the new hash.
+- **Deselecting care-plan items unlinks them from this visit** (never from the care plan): the section says so
+  before the click and after it, the care-plan picker re-reads its links, and a section left empty by the
+  deselect reads "Nothing is left to draft in it".
+- A finalized note can still have its drafted sections resolved (the server allows it, since it can only go on
+  to sign); a signed, cosigned or voided note shows them read-only.
+- **No empty frames.** With the switch off, a template with nothing drafted, or a draft the viewer may not
+  read, the composer renders exactly as before and asks for nothing extra. A draft that could not be read
+  (a source failed) is said once with **Try again**; the clinician's own documentation still works.
+- After a resolve lands, **focus** moves to the drafted-section heading and the outcome is announced.
+
 ## Right Panel
 
-- Relevant care-plan problems / goals / interventions (link as addressed)
-- Latest assessment scores + trend (M09)
+- Relevant care-plan goals / interventions as a **picker in the composer** (link / unlink to this visit; the
+  care plan itself is never changed). Linking an item again brings it back into the draft; confirming a
+  drafted section links its items, deselecting unlinks them. Shown with the draft only.
+- Latest assessment scores + trend (M09): the latest PPS and ESAS-r reading up to the visit, the change
+  against the reading before it, and the last few readings. Shown with the draft only; nothing renders without
+  a scored reading or for a viewer who may not read scales.
 - Required HOPE items when a HOPE timepoint (M10)
 - AI narrative enhancement (Layer-2) — per-passage **accept / edit / reject** with diff vs
   Layer-1; provenance + model shown
@@ -90,6 +136,10 @@ The Sign action is blocked until all are satisfied — surface them as a checkli
 - Required clinical scales / HOPE items captured
 - Late-entry tier within the caller's permitted ceiling
 - Care-plan review not overdue (or override active)
+- Every drafted section confirmed or deselected, against the draft as it stands now (tenant draft switch
+  on). The Sign action names the sections still unresolved beside it and waits; a sign refused with 409
+  `DRAFT_SECTION_STALE` shows the sections the server named, re-reads the draft and links to the composer;
+  a finalize refused with the 422 gate list names them the same way
 - Every AI Layer-2 modification has a per-passage decision (none pending)
 - Step-up auth fresh (≤ 5 minutes)
 - Attestation confirmed (language varies by Layer-2 involvement)

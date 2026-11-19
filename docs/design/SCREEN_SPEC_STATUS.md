@@ -56,7 +56,7 @@
 | `screens/clinical/CHARTWARDEN_UI_DOCUMENT_MANAGEMENT.md` | built | `web/22-documents` |  |
 | `screens/clinical/CHARTWARDEN_UI_ELECTION_CERTIFICATION.md` | built | `web/06-admission` | patient-election-cert |
 | `screens/clinical/CHARTWARDEN_UI_ELIGIBILITY_WORKSHEET_CTI.md` | partial | `web/06-admission` | CTI is built under election/certification; the terminal-decline eligibility worksheet is not. |
-| `screens/clinical/CHARTWARDEN_UI_ENCOUNTER_VISIT_DOCUMENTATION.md` | built | `web/08-encounters` |  |
+| `screens/clinical/CHARTWARDEN_UI_ENCOUNTER_VISIT_DOCUMENTATION.md` | built | `web/08-encounters` | Drafted sections, the care-plan picker and the score trend (ADR-0114) show only while the tenant's draft switch is on |
 | `screens/clinical/CHARTWARDEN_UI_EVV.md` | built | `web/18-evv` |  |
 | `screens/clinical/CHARTWARDEN_UI_FIELD_SAFETY.md` | built | `web/20-field-safety` |  |
 | `screens/clinical/CHARTWARDEN_UI_FIELD_SAFETY_INCIDENTS.md` | built | `web/20-field-safety` | incidents |
@@ -107,6 +107,7 @@
 | `screens/clinical/CHARTWARDEN_UI_CLINICAL_NOTE_LIFECYCLE.md` | built | `web/08-encounters` | compose, cosignature-queue, my-drafts |
 | `screens/clinical/CHARTWARDEN_UI_NOTE_CLOSURE_OVERDUE_BOARD.md` | built | `web/08-encounters` | overdue-notes (supervisor board and the grant-override panel; revokes only a grant made in the session, listing earlier overrides is a later route) |
 | `screens/clinical/CHARTWARDEN_UI_NOTE_CLOSURE_POLICY.md` | built | `web/08-encounters` | closure-policy |
+| `screens/clinical/CHARTWARDEN_UI_VISIT_NOTE_DRAFT_POLICY.md` | built | `web/08-encounters` | draft-policy |
 | `screens/clinical/CHARTWARDEN_UI_EPCS_CONTROLLED_SUBSTANCES.md` | partial | `web/12-dosespot` | Prescribing, sign inbox and policy are built; the EPCS two-factor ceremony is gated on the DoseSpot vendor flow. |
 | `screens/clinical/CHARTWARDEN_UI_FACILITY_SUPPLY_OPERATIONS.md` | partial | `web/21-supplies` `web/37-ipu` | IPU equipment and supply dispatch exist; the facility-wide composed operations view does not. |
 | `screens/core/CHARTWARDEN_UI_ROLE_DASHBOARDS.md` | built | `web/33-reporting` | role-dashboard |
