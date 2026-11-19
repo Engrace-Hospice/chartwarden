@@ -71,6 +71,9 @@ export const M8_ERROR_STATUS = {
   /** The note was finalized with drafted text that may hold 42 CFR Part 2 content and the draft is now switched off for the organization,
    *  so sign could not seal it section by section (VN-D13 would then have no section to withhold). Switch the draft back on, then sign. */
   DRAFT_OFF_AFTER_FINALIZE: 409,
+  /** An addendum names a section whose original is 42 CFR Part 2 derived and its author may not read Part 2 content: their redraft would silently
+   *  shorten the note's current view (VN-D30). Refused at naming and again at sign; the error names no section. */
+  AMENDMENT_PART2_NOT_ENTITLED: 422,
   /** A signed note's text could not be shown to this viewer because the 42 CFR Part 2 disclosure check (M39) could not be decided. An
    *  outage is never a silent denial and never a silent disclosure: 503, retry. */
   NOTE_VIEW_UNAVAILABLE: 503,

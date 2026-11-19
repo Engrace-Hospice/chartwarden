@@ -13,8 +13,10 @@ import { NotFoundError } from "@chartwarden/types";
 import type { HearthnoteEnvelopeCipher } from "../hearthnote-crypto";
 import { EncounterStateError } from "../lifecycle/errors";
 import { type AmendedSection, amendedSectionsOf, restrictToNamed } from "./amendment-note";
+import { assertMayAmendPart2 } from "./amendment-part2";
 import {
   type AmendingAddendum,
+  type OriginalSection,
   createAmendmentDraftStore,
   nameSections,
   namedSectionIds,
@@ -27,6 +29,7 @@ import type { FlowEncounter } from "./note-draft-flow";
 import { isVisitNoteDraftEnabled } from "./policy-service";
 import type { DraftSeamPorts, DraftViewer } from "./ports";
 import { serialSeams } from "./serial-seams";
+import { draftUnavailable, guarded } from "./unavailable";
 
 export interface AmendmentFlowDeps {
   readonly clock: () => Date;
@@ -45,7 +48,16 @@ export interface PreparedAmendment {
 }
 
 export interface AmendmentFlow {
-  name(tx: DbClient, addendum: AmendingAddendum, sectionIds: readonly string[]): Promise<void>;
+  /**
+   * `author` is who is naming (the session's roles and membership): a section whose ORIGINAL is Part 2 derived needs an author with Part 2 disclosure
+   * (422 `AMENDMENT_PART2_NOT_ENTITLED`; a verdict that cannot be decided is 503 `DRAFT_UNAVAILABLE`).
+   */
+  name(
+    tx: DbClient,
+    addendum: AmendingAddendum & { readonly patientId: string },
+    sectionIds: readonly string[],
+    author: DraftViewer,
+  ): Promise<void>;
   /** The addendum's amendments ready to seal, or `null` when it names no section. */
   prepare(
     tx: DbClient,
@@ -56,17 +68,39 @@ export interface AmendmentFlow {
   write(tx: DbClient, addendum: AmendingAddendum, prepared: PreparedAmendment): Promise<number>;
 }
 
+/** The named sections whose ORIGINAL row is Part 2 derived. */
+const part2SectionsAmong = (
+  originals: readonly OriginalSection[],
+  named: readonly string[],
+): readonly string[] => {
+  const wanted = new Set(named);
+  return originals.filter((o) => o.part2Derived && wanted.has(o.sectionId)).map((o) => o.sectionId);
+};
+
+/** The draft's own Part 2 verdict for `who` (M7's per-actor decision through the seam, bounded by the draft's source-read timeout). */
+const part2Entitled = (
+  deps: AmendmentFlowDeps,
+  patient: { readonly organizationId: string; readonly patientId: string },
+  who: DraftViewer,
+): Promise<boolean> =>
+  guarded("the Part 2 disclosure check", () =>
+    serialSeams(deps.seams()).part2DisclosureAllowed({
+      organizationId: patient.organizationId,
+      patientId: patient.patientId,
+      viewer: who,
+    }),
+  );
+
 export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
   return {
-    async name(tx, addendum, sectionIds) {
+    async name(tx, addendum, sectionIds, author) {
       if (sectionIds.length === 0) return;
       // Same answer as an absent encounter, so the switch is no existence oracle (design 3.2 "Tenant switch").
       if (!(await isVisitNoteDraftEnabled(tx, addendum.organizationId))) {
         throw new NotFoundError("encounter");
       }
-      const carried = new Set(
-        (await originalSectionsOf(tx, addendum.encounterId)).map((o) => o.sectionId),
-      );
+      const originals = await originalSectionsOf(tx, addendum.encounterId);
+      const carried = new Set(originals.map((o) => o.sectionId));
       const unknown = sectionIds.filter((id) => !carried.has(id));
       if (unknown.length > 0) {
         throw new EncounterStateError(
@@ -76,12 +110,29 @@ export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
             : `section(s) ${unknown.map((id) => `'${id}'`).join(", ")} are not sections of the signed note`,
         );
       }
+      await assertMayAmendPart2({
+        part2Sections: part2SectionsAmong(originals, sectionIds),
+        entitled: () => part2Entitled(deps, addendum, author),
+        unavailable: (cause) => draftUnavailable("the Part 2 disclosure check", cause),
+      });
       await nameSections(tx, addendum, sectionIds);
     },
 
     async prepare(tx, parent, addendumId, viewer) {
       const named = await namedSectionIds(tx, addendumId);
       if (named.length === 0) return null;
+      // Again at sign: the verdict can change between naming and sign, and the signer is who confirmed the redraft.
+      await assertMayAmendPart2({
+        part2Sections: part2SectionsAmong(await originalSectionsOf(tx, parent.id), named),
+        entitled: () => part2Entitled(deps, parent, viewer),
+        unavailable: (cause) =>
+          new EncounterStateError(
+            "COMPLIANCE_GATE_UNAVAILABLE",
+            "the visit-note draft check could not be decided: the Part 2 disclosure check is unavailable",
+            undefined,
+            { cause },
+          ),
+      });
       const now = deps.clock();
       const store = createAmendmentDraftStore(
         tx,

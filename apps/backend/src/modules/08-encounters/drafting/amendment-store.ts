@@ -24,6 +24,8 @@ export interface OriginalSection {
   readonly id: string;
   readonly sectionId: string;
   readonly position: number;
+  /** The row is 42 CFR Part 2 derived: whoever amends it must be able to read Part 2 content (`assertMayAmendPart2`). */
+  readonly part2Derived: boolean;
 }
 
 /** The addendum an amendment belongs to, with the siting the satellite rows copy. */
@@ -48,7 +50,12 @@ export async function originalSectionsOf(
     .limit(1);
   if (pin === undefined) return [];
   return tx
-    .select({ id: SIGNED.id, sectionId: SIGNED.sectionId, position: SIGNED.position })
+    .select({
+      id: SIGNED.id,
+      sectionId: SIGNED.sectionId,
+      position: SIGNED.position,
+      part2Derived: SIGNED.part2Derived,
+    })
     .from(SIGNED)
     .where(and(eq(SIGNED.assembledOutputId, pin.id), isNull(SIGNED.addendumId)))
     .orderBy(asc(SIGNED.position));
