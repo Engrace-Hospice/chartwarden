@@ -49,7 +49,12 @@ export interface DraftSeamPorts {
     asOf: string,
   ): Promise<RelevantCarePlanElements | null>;
   /** M9 `ScaleSeriesProvider.series`: bounds are inclusive and filter on `captured_at`. */
-  scaleSeries(patientId: string, scaleType: ScaleType, from: string, to: string): Promise<ScaleSeries>;
+  scaleSeries(
+    patientId: string,
+    scaleType: ScaleType,
+    from: string,
+    to: string,
+  ): Promise<ScaleSeries>;
   /** M12 `MedicationOrderProvider.getMedicationChangesBetween`: the window `(from, to]`. `isSudTreatment` is NOT redacted. */
   medicationChangesBetween(
     organizationId: string,

@@ -22,8 +22,8 @@ import type {
   ScaleSeriesPoint,
   ScaleType,
 } from "@chartwarden/types";
-import { EncounterStateError } from "../lifecycle/errors";
 import type { DraftEncounter, DraftPorts, DraftViewer } from "./ports";
+import { draftUnavailable, guarded } from "./unavailable";
 
 /** The sources of a draft: `DraftInputs` minus the selection tree and slots, which `computeDraft` loads. */
 export type DraftSourceInputs = Omit<DraftInputs, "selection" | "context">;
@@ -36,27 +36,9 @@ const SERIES_FROM = "1970-01-01T00:00:00.000Z";
 /** The M9 series carries one score per ESAS-r capture: the total, not a symptom, so the phrase names the total. */
 const ESAS_TOTAL_LABEL = "total";
 
-const unavailable = (read: string, cause?: unknown): EncounterStateError =>
-  new EncounterStateError(
-    "DRAFT_UNAVAILABLE",
-    `the visit-note draft could not be computed: ${read} is unavailable`,
-    undefined,
-    cause === undefined ? undefined : { cause },
-  );
-
-/** Run one read; any failure, synchronous or not, becomes `DRAFT_UNAVAILABLE` naming the read. */
-async function guarded<T>(read: string, run: () => Promise<T>): Promise<T> {
-  try {
-    return await run();
-  } catch (cause) {
-    if (cause instanceof EncounterStateError && cause.code === "DRAFT_UNAVAILABLE") throw cause;
-    throw unavailable(read, cause);
-  }
-}
-
 function instantMs(value: unknown, read: string): number {
   const ms = typeof value === "string" ? Date.parse(value) : Number.NaN;
-  if (Number.isNaN(ms)) throw unavailable(`${read} (an instant that is not one)`);
+  if (Number.isNaN(ms)) throw draftUnavailable(`${read} (an instant that is not one)`);
   return ms;
 }
 
@@ -124,7 +106,8 @@ async function readCarePlan(
   ]);
   if (plan === null) return null;
   // A plan that is not this patient's must never reach a note, however the seam came to return it.
-  if (plan.patientId !== encounter.patientId) throw unavailable("the care plan (wrong patient)");
+  if (plan.patientId !== encounter.patientId)
+    throw draftUnavailable("the care plan (wrong patient)");
   return carePlanInput(plan, removed);
 }
 
@@ -163,7 +146,10 @@ async function readScale(
   const previous =
     before === undefined || before.point.score === null
       ? null
-      : { value: before.point.score, recordedOn: localDateInTimeZone(new Date(before.ms), timeZone) };
+      : {
+          value: before.point.score,
+          recordedOn: localDateInTimeZone(new Date(before.ms), timeZone),
+        };
   return {
     id: latest.point.assessmentId,
     scaleType: scale,
@@ -227,7 +213,12 @@ async function readMedicationChanges(
   // No previous signed visit means no change window: an honest empty section (VN-D9), not "everything ever".
   if (previousIso === null) return [];
   const all = await guarded("the medication changes", () =>
-    ports.medicationChangesBetween(encounter.organizationId, encounter.patientId, previousIso, asOf),
+    ports.medicationChangesBetween(
+      encounter.organizationId,
+      encounter.patientId,
+      previousIso,
+      asOf,
+    ),
   );
   const changes = all.filter((c) => instantMs(c.at, "a medication change") <= asOfMs);
   // Fail closed: only the literal `false` proves an order is not SUD treatment. The verdict is asked only when
@@ -270,7 +261,8 @@ async function readPreviousVisitMs(
   if (previous === null) return null;
   const ms = previous.getTime();
   // "Earlier" is the port's contract; a visit after this one would make a backwards window, so refuse it.
-  if (Number.isNaN(ms) || ms > asOfMs) throw unavailable("the previous signed visit (not earlier)");
+  if (Number.isNaN(ms) || ms > asOfMs)
+    throw draftUnavailable("the previous signed visit (not earlier)");
   return ms;
 }
 
@@ -286,7 +278,9 @@ export async function readDraftInputs(
 ): Promise<DraftSourceInputs> {
   const asOfMs = instantMs(asOf, "the visit time");
   const [timeZone, previousMs] = await Promise.all([
-    guarded("the organization time zone", () => ports.organizationTimeZone(encounter.organizationId)),
+    guarded("the organization time zone", () =>
+      ports.organizationTimeZone(encounter.organizationId),
+    ),
     readPreviousVisitMs(ports, encounter, asOfMs),
   ]);
   const previousIso = previousMs === null ? null : isoOf(previousMs);

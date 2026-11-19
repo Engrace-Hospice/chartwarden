@@ -61,7 +61,9 @@ describe("visitAsOf", () => {
 
   it("uses the zone east of UTC when the org is there", () => {
     // Auckland is UTC+13 in November: Nov 10 ends at 10:59:59.999 UTC the same day.
-    expect(visitAsOf({ ...base, orgTimeZone: "Pacific/Auckland" })).toBe("2026-11-10T10:59:59.999Z");
+    expect(visitAsOf({ ...base, orgTimeZone: "Pacific/Auckland" })).toBe(
+      "2026-11-10T10:59:59.999Z",
+    );
   });
 
   it("handles the 25-hour fall-back day", () => {

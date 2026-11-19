@@ -164,9 +164,7 @@ describe("sectionStates over a real compiled draft", () => {
   it("goes stale when a source changed after the confirmation", () => {
     const confirmations = confirmFrom(compileDraft(inputs(72), deps));
     const states = sectionStates(compileDraft(inputs(88), deps), confirmations);
-    expect(states.find((s) => s.sectionId === "vitals_review")?.state).toBe(
-      "needs_reconfirmation",
-    );
+    expect(states.find((s) => s.sectionId === "vitals_review")?.state).toBe("needs_reconfirmation");
   });
 
   it("goes stale when the corpus version differs from the one confirmed against", () => {
@@ -175,9 +173,7 @@ describe("sectionStates over a real compiled draft", () => {
       corpusVersion: "2025.01.0",
     }));
     const states = sectionStates(compileDraft(inputs(72), deps), confirmations);
-    expect(states.find((s) => s.sectionId === "vitals_review")?.state).toBe(
-      "needs_reconfirmation",
-    );
+    expect(states.find((s) => s.sectionId === "vitals_review")?.state).toBe("needs_reconfirmation");
   });
 });
 

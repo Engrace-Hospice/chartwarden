@@ -17,7 +17,8 @@ export interface VisitAsOfInput {
 }
 
 function assertInstant(name: string, value: Date): void {
-  if (Number.isNaN(value.getTime())) throw new RangeError(`visitAsOf: ${name} is not a valid instant`);
+  if (Number.isNaN(value.getTime()))
+    throw new RangeError(`visitAsOf: ${name} is not a valid instant`);
 }
 
 /** The last millisecond of an org-local calendar day: the start of the next local day, minus 1 ms. */
@@ -41,8 +42,6 @@ export function visitAsOf(input: VisitAsOfInput): string {
   if (input.startedAt !== null) assertInstant("startedAt", input.startedAt);
   if (input.clockStartedAt !== null) assertInstant("clockStartedAt", input.clockStartedAt);
   const known =
-    input.startedAt ??
-    input.clockStartedAt ??
-    endOfLocalDay(input.serviceDate, input.orgTimeZone);
+    input.startedAt ?? input.clockStartedAt ?? endOfLocalDay(input.serviceDate, input.orgTimeZone);
   return new Date(Math.min(known.getTime(), input.now.getTime())).toISOString();
 }

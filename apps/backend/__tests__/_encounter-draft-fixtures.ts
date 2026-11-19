@@ -45,11 +45,7 @@ export const viewer = (over: Partial<DraftViewer> = {}): DraftViewer => ({
   ...over,
 });
 
-export const point = (
-  id: string,
-  capturedAt: string,
-  score: number | null,
-): ScaleSeriesPoint => ({
+export const point = (id: string, capturedAt: string, score: number | null): ScaleSeriesPoint => ({
   assessmentId: id as never,
   capturedAt,
   score,

@@ -157,10 +157,7 @@ describe("readDraftInputs: scale readings", () => {
   });
 
   it("includes a reading captured exactly at the visit time and excludes one a millisecond later", async () => {
-    const edge = [
-      point("pps-at", AS_OF, 40),
-      point("pps-later", "2026-11-18T14:30:00.001Z", 20),
-    ];
+    const edge = [point("pps-at", AS_OF, 40), point("pps-later", "2026-11-18T14:30:00.001Z", 20)];
     const ports = fakePorts({ scaleSeries: honestSeries({ pps: edge }) });
     const { scaleReadings } = await readDraftInputs(ports, encounter(), viewer(), AS_OF);
     expect(scaleReadings.map((r) => r.id)).toEqual(["pps-at"]);
@@ -318,7 +315,10 @@ describe("readDraftInputs: medication changes", () => {
       ],
     });
     const out = await readDraftInputs(ports, encounter(), viewer(), AS_OF);
-    expect(out.medicationChanges.map((m) => m.id)).toEqual(["order-a:started", "order-a:discontinued"]);
+    expect(out.medicationChanges.map((m) => m.id)).toEqual([
+      "order-a:started",
+      "order-a:discontinued",
+    ]);
   });
 
   it("drafts a completed course as discontinued (the corpus has no 'completed' phrase)", async () => {
@@ -327,7 +327,10 @@ describe("readDraftInputs: medication changes", () => {
       medicationChangesBetween: async () => [change("completed", "2026-11-14T16:00:00.000Z")],
     });
     const out = await readDraftInputs(ports, encounter(), viewer(), AS_OF);
-    expect(out.medicationChanges[0]).toMatchObject({ id: "order-1:completed", change: "discontinued" });
+    expect(out.medicationChanges[0]).toMatchObject({
+      id: "order-1:completed",
+      change: "discontinued",
+    });
   });
 
   it("drops a change after the visit time even if the seam returned it", async () => {
@@ -391,9 +394,19 @@ describe("readDraftInputs: 42 CFR Part 2 on medication changes", () => {
         id: "order-unknown",
         isSudTreatment: isSudTreatment as never,
       });
-      const denied = await readDraftInputs(withChanges(false, [unknown]), encounter(), viewer(), AS_OF);
+      const denied = await readDraftInputs(
+        withChanges(false, [unknown]),
+        encounter(),
+        viewer(),
+        AS_OF,
+      );
       expect(denied.medicationChanges).toEqual([]);
-      const allowed = await readDraftInputs(withChanges(true, [unknown]), encounter(), viewer(), AS_OF);
+      const allowed = await readDraftInputs(
+        withChanges(true, [unknown]),
+        encounter(),
+        viewer(),
+        AS_OF,
+      );
       expect(allowed.medicationChanges.map((m) => m.sudRelated)).toEqual([true]);
     }
   });
@@ -408,7 +421,9 @@ describe("readDraftInputs: previous visit", () => {
   });
 
   it("refuses a previous visit later than the visit time", async () => {
-    const ports = fakePorts({ previousSignedVisitAt: async () => new Date("2026-11-19T00:00:00.000Z") });
+    const ports = fakePorts({
+      previousSignedVisitAt: async () => new Date("2026-11-19T00:00:00.000Z"),
+    });
     await expect(readDraftInputs(ports, encounter(), viewer(), AS_OF)).rejects.toMatchObject({
       code: "DRAFT_UNAVAILABLE",
     });
@@ -440,7 +455,10 @@ describe("readDraftInputs: seam failure is DRAFT_UNAVAILABLE, never a partial dr
         }),
     ],
     ["vitals", () => fakePorts({ latestVitals: async () => Promise.reject(boom) })],
-    ["previous visit", () => fakePorts({ previousSignedVisitAt: async () => Promise.reject(boom) })],
+    [
+      "previous visit",
+      () => fakePorts({ previousSignedVisitAt: async () => Promise.reject(boom) }),
+    ],
     [
       "removed elements",
       () => fakePorts({ removedCarePlanElementIds: async () => Promise.reject(boom) }),
@@ -489,7 +507,11 @@ describe("readDraftInputs: determinism", () => {
     const ports = fakePorts({
       carePlanAsOf: async () => carePlan(),
       scaleSeries: honestSeries({ pps: [point("pps-now", "2026-11-18T14:10:00.000Z", 50)] }),
-      latestVitals: async () => ({ id: "vitals-1", recordedAt: "2026-11-18T14:20:00.000Z", heartRate: 72 }),
+      latestVitals: async () => ({
+        id: "vitals-1",
+        recordedAt: "2026-11-18T14:20:00.000Z",
+        heartRate: 72,
+      }),
     });
     const first = await readDraftInputs(ports, encounter(), viewer(), AS_OF);
     const second = await readDraftInputs(ports, encounter(), viewer(), AS_OF);
@@ -500,7 +522,12 @@ describe("readDraftInputs: determinism", () => {
   it("does not mutate what the seams returned", async () => {
     const plan = carePlan();
     const before = JSON.stringify(plan);
-    await readDraftInputs(fakePorts({ carePlanAsOf: async () => plan }), encounter(), viewer(), AS_OF);
+    await readDraftInputs(
+      fakePorts({ carePlanAsOf: async () => plan }),
+      encounter(),
+      viewer(),
+      AS_OF,
+    );
     expect(JSON.stringify(plan)).toBe(before);
   });
 });
