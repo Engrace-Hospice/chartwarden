@@ -144,6 +144,16 @@ export async function amendmentConfirmations(
   );
 }
 
+/**
+ * How many named sections the author has confirmed: the only fact of an amendment the addendum's compliance gate reads (a count: a confirmed
+ * section is content, a deselected or unresolved one is not). Read on the caller's transaction, so at sign it is read under the encounter row
+ * lock that every section resolution also takes.
+ */
+export async function confirmedAmendmentCount(tx: DbClient, addendumId: string): Promise<number> {
+  const resolutions = await amendmentConfirmations(tx, addendumId);
+  return resolutions.filter((r) => r.resolution === "confirmed").length;
+}
+
 /** Resolves one named section (confirm again to replace). A section the addendum does not name is `UNKNOWN_TEMPLATE_SECTION`. */
 export async function saveAmendmentResolution(
   tx: DbClient,

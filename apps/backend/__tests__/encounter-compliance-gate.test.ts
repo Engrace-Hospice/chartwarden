@@ -332,7 +332,7 @@ describe("§2.6 Layer-3 gate — check 6, the M7 care-plan review window", () =>
 
 describe("§2.6 Layer-3 gate — addenda", () => {
   it("refuses an addendum with nothing in it", () => {
-    const r = runAddendumComplianceGate([]);
+    const r = runAddendumComplianceGate([], 0);
     expect(r.pass).toBe(false);
     if (!r.pass) expect(r.remediation[0]?.code).toBe("ADDENDUM_EMPTY");
   });
@@ -340,13 +340,30 @@ describe("§2.6 Layer-3 gate — addenda", () => {
   it("accepts one populated section — it is NOT judged against the parent's required set", () => {
     // The parent routine_visit × rn template requires four sections; an addendum documents one finding.
     expect(
-      runAddendumComplianceGate([{ sectionId: "assessment", entryCount: 1, hasFreeText: false }])
+      runAddendumComplianceGate([{ sectionId: "assessment", entryCount: 1, hasFreeText: false }], 0)
         .pass,
     ).toBe(true);
     expect(
-      runAddendumComplianceGate([{ sectionId: "assessment", entryCount: 0, hasFreeText: true }])
+      runAddendumComplianceGate([{ sectionId: "assessment", entryCount: 0, hasFreeText: true }], 0)
         .pass,
     ).toBe(true);
+  });
+
+  it("accepts an amending addendum whose only content is a confirmed amended section (VN-D30)", () => {
+    expect(runAddendumComplianceGate([], 1).pass).toBe(true);
+    expect(runAddendumComplianceGate([], 3).pass).toBe(true);
+  });
+
+  it("still refuses an amending addendum with no confirmed amended section and no selection or annotation (all deselected)", () => {
+    const r = runAddendumComplianceGate([], 0);
+    expect(r.pass).toBe(false);
+    if (!r.pass) expect(r.remediation[0]?.code).toBe("ADDENDUM_EMPTY");
+  });
+
+  it("words the refusal so it also names the amended section as a way to fill the addendum", () => {
+    const r = runAddendumComplianceGate([], 0);
+    if (r.pass) throw new Error("expected a refusal");
+    expect(r.remediation[0]?.message).toMatch(/confirmed amended section/);
   });
 });
 

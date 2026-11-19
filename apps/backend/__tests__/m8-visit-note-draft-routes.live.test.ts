@@ -461,6 +461,7 @@ describe.skipIf(!DB_URL)(
               "encounter.read",
               "encounter.author",
               "encounter.addendum_author",
+              "encounter.addendum_sign",
               "encounter.cosign",
               "encounter.cosign_supervisor_release",
               ...DOMAIN_READS,
@@ -1522,6 +1523,21 @@ describe.skipIf(!DB_URL)(
             sessionId: orgs.A.otherRn.userId,
             userId: orgs.A.otherRn.userId,
             membershipId: orgs.A.otherRn.membershipId,
+            organizationId: orgs.A.orgId,
+            roles: [],
+            providerEntityIds: [],
+            locationIds: [],
+            lastStepUpAt: new Date(),
+            lastStepUpFactor: "webauthn" as const,
+          },
+          // Org A's author over HTTP (the session id is the user id, as `headerAuth` sets it) with a FRESH step-up: an addendum sign needs one.
+          {
+            sessionClass: "staff" as const,
+            portalAccountId: null,
+            sessionPatientId: null,
+            sessionId: orgs.A.author.userId,
+            userId: orgs.A.author.userId,
+            membershipId: orgs.A.author.membershipId,
             organizationId: orgs.A.orgId,
             roles: [],
             providerEntityIds: [],
@@ -3304,6 +3320,135 @@ describe.skipIf(!DB_URL)(
               original?.id,
               original?.id,
             ]);
+          });
+        });
+
+        // ---- the addendum's own gate ------------------------------------------------------------------------------------
+        // Every other amending case above carries a selection (`finalizedAddendum` saves `requireSelections` first), which is what hid an
+        // amending addendum with NO selection: its gate read only the addendum's own selections row and refused one whose only content was the
+        // confirmed amended section. These cases never save a selection, over the real routes.
+        describe("an amending addendum whose only content is its confirmed amended section", () => {
+          const baseUrl = (f: EncounterFixture) => `/api/v1/encounters/${f.encounterId}/addenda`;
+          const send = (
+            method: "POST" | "PUT",
+            url: string,
+            payload?: unknown,
+            headers: Record<string, string> = authorA(),
+          ) => amendApp.inject({ method, url, headers, payload: payload as never });
+          /** Opens an amending addendum over HTTP and saves NO selection or annotation. */
+          async function openOnly(f: EncounterFixture, ids: readonly string[]): Promise<string> {
+            const res = await send("POST", baseUrl(f), { reason: REASON, amendsSectionIds: ids });
+            expect(res.statusCode).toBe(201);
+            return res.json().id as string;
+          }
+          /** The author's resolution through the real PUT. */
+          async function putResolution(
+            f: EncounterFixture,
+            id: string,
+            sectionId: string,
+            resolution: "confirmed" | "deselected",
+          ): Promise<void> {
+            const seen = (await amendDraft(f, id)).sections.find((s) => s.sectionId === sectionId);
+            const res = await send("PUT", `${baseUrl(f)}/${id}/draft/sections/${sectionId}`, {
+              resolution,
+              contentHash: seen?.contentHash,
+              corpusVersion: seen?.corpusVersion,
+            });
+            expect(res.statusCode).toBe(200);
+          }
+          const finalizeOver = (f: EncounterFixture, id: string) =>
+            send("POST", `${baseUrl(f)}/${id}/finalize`);
+          const signOver = (f: EncounterFixture, id: string) =>
+            send("POST", `${baseUrl(f)}/${id}/sign`, { attestationConfirmed: true });
+          const selectionRows = async (id: string) =>
+            (await rows("SELECT 1 FROM hearthnote_selection WHERE addendum_id = $1", [id])).length;
+          /** The envelope's own remediation: what the browser is told. */
+          const remediationOf = (res: { json: () => unknown }) =>
+            (
+              res.json() as {
+                error: { code: string; details?: { code: string; message: string }[] };
+              }
+            ).error;
+
+          it("finalizes (200) and signs (200) with the amendment sealed, and the addendum never carried a selection", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            await putResolution(f, id, "plan", "confirmed");
+            expect(await selectionRows(id)).toBe(0);
+            const finalized = await finalizeOver(f, id);
+            expect(finalized.statusCode).toBe(200);
+            expect(finalized.json()).toEqual({ status: "finalized" });
+            const signed = await signOver(f, id);
+            expect(signed.statusCode, signed.body).toBe(200);
+            expect(signed.json()).toMatchObject({ status: "signed", amendedSectionIds: ["plan"] });
+            expect(await addendumStatus(id)).toBe("signed");
+            const [row, ...others] = await amendmentRowsOf(f);
+            expect(others).toEqual([]);
+            expect(row).toMatchObject({ section_id: "plan", addendum_id: id });
+            expect(await open(ORG_A, row?.text_cipher ?? "")).toContain(GOAL_V2);
+            expect(await selectionRows(id)).toBe(0);
+          });
+
+          it("one confirmed section is enough: another it names that was deselected does not make the addendum empty", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan", "interventions"]);
+            await putResolution(f, id, "plan", "confirmed");
+            await putResolution(f, id, "interventions", "deselected");
+            expect((await finalizeOver(f, id)).statusCode).toBe(200);
+            expect((await signOver(f, id)).statusCode).toBe(200);
+            expect((await amendmentRowsOf(f)).map((r) => r.section_id)).toEqual(["plan"]);
+          });
+
+          it("every named section deselected and nothing else is still empty: finalize is 422 COMPLIANCE_GATE_FAILED carrying ADDENDUM_EMPTY, nothing is written", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            await putResolution(f, id, "plan", "deselected");
+            const res = await finalizeOver(f, id);
+            expect(res.statusCode).toBe(422);
+            const error = remediationOf(res);
+            expect(error.code).toBe("COMPLIANCE_GATE_FAILED");
+            expect(error.details?.map((d) => d.code)).toEqual(["ADDENDUM_EMPTY"]);
+            expect(await addendumStatus(id)).toBe("draft");
+            expect(await amendmentRowsOf(f)).toEqual([]);
+          });
+
+          it("a named section nobody has resolved is not content either: finalize is 422 ADDENDUM_EMPTY", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            const res = await finalizeOver(f, id);
+            expect(res.statusCode).toBe(422);
+            expect(remediationOf(res).details?.map((d) => d.code)).toEqual(["ADDENDUM_EMPTY"]);
+          });
+
+          it("sign decides again from the resolutions as they stand: confirmed at finalize, deselected after, nothing else: sign is 422 ADDENDUM_EMPTY and the addendum stays finalized", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            await putResolution(f, id, "plan", "confirmed");
+            expect((await finalizeOver(f, id)).statusCode).toBe(200);
+            await putResolution(f, id, "plan", "deselected");
+            const res = await signOver(f, id);
+            expect(res.statusCode).toBe(422);
+            const error = remediationOf(res);
+            expect(error.code).toBe("COMPLIANCE_GATE_FAILED");
+            expect(error.details?.map((d) => d.code)).toEqual(["ADDENDUM_EMPTY"]);
+            expect(await addendumStatus(id)).toBe("finalized");
+            expect(await amendmentRowsOf(f)).toEqual([]);
+            expect(await addendumSignatures(id)).toBe(0);
+          });
+
+          it("a free addendum with nothing in it keeps the old rule: finalize is 422 ADDENDUM_EMPTY", async () => {
+            const f = await signedNote();
+            const created = await createAmendment(f, undefined);
+            const error = await a
+              .finalizeAddendum(ORG_A, f.encounterId, created.id)
+              .catch((e: unknown) => e);
+            expect(error).toMatchObject({ code: "COMPLIANCE_GATE_FAILED", statusCode: 422 });
+            expect(detailPairs(error)).toEqual([[undefined, "ADDENDUM_EMPTY"]]);
           });
         });
 

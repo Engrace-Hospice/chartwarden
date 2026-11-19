@@ -1183,7 +1183,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     sections: readonly SelectionSectionInput[],
     at: "finalize" | "sign",
   ): boolean => {
-    const verdict = runAddendumComplianceGate(toGateSections(sections));
+    const verdict = runAddendumComplianceGate(toGateSections(sections), 0); // no amendments here
     assertGatePassed(verdict, at);
     return verdict.pass;
   };

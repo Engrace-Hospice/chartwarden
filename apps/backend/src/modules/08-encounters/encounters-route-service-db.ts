@@ -98,6 +98,7 @@ import { recordSectionsAmended } from "./drafting/amendment-audit";
 import { assertMayAmendSectionsOf } from "./drafting/amendment-author";
 import { cosignerForAmendment } from "./drafting/amendment-cosigner";
 import { createAmendmentFlow } from "./drafting/amendment-flow";
+import { confirmedAmendmentCount } from "./drafting/amendment-store";
 import { defaultDraftPorts } from "./drafting/default-ports";
 import { assertResolved, confirmedSectionIds } from "./drafting/note-draft";
 import type { NoteDraft } from "./drafting/note-draft";
@@ -956,7 +957,10 @@ export function createDbEncounterRouteService(
       .from(SEL)
       .where(eq(SEL.addendumId, addendumId))
       .limit(1);
-    const verdict = runAddendumComplianceGate(gateSections(sel?.selections ?? null));
+    const verdict = runAddendumComplianceGate(
+      gateSections(sel?.selections ?? null),
+      await confirmedAmendmentCount(t, addendumId),
+    );
     assertGatePassed(verdict, at);
     return verdict.pass;
   }

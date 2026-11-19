@@ -202,9 +202,16 @@ export function runEncounterComplianceGate(facts: EncounterGateFacts): GateResul
  * addendum's REQUIRED-section set is undefined — and judging it against the parent's set would demand
  * a full visit note from a one-finding correction. What is defined without that template is that an
  * addendum with nothing in it documents nothing, which is the check run here.
+ *
+ * `confirmedAmendedSections` (ADR-0114 VN-D30) is how many sections the addendum names that its author has CONFIRMED: only a count, never the
+ * text. A confirmed amended section is content (it becomes a sealed amendment row at sign), so an amending addendum whose only content is that
+ * is not empty. One whose sections are all deselected or unresolved, with no selection or annotation, still is.
  */
-export function runAddendumComplianceGate(sections: readonly GateSectionSelection[]): GateResult {
-  if (sections.some(isPopulated)) return { pass: true };
+export function runAddendumComplianceGate(
+  sections: readonly GateSectionSelection[],
+  confirmedAmendedSections: number,
+): GateResult {
+  if (confirmedAmendedSections > 0 || sections.some(isPopulated)) return { pass: true };
   return {
     pass: false,
     remediation: [
@@ -212,7 +219,7 @@ export function runAddendumComplianceGate(sections: readonly GateSectionSelectio
         check: "required_sections",
         code: "ADDENDUM_EMPTY",
         message:
-          "an addendum must carry at least one selection or free-text annotation before it signs",
+          "an addendum must carry at least one selection, free-text annotation or confirmed amended section before it signs",
       },
     ],
   };
