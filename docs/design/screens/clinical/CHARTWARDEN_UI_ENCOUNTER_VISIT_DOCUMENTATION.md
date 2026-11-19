@@ -111,15 +111,74 @@ Rules the screen keeps:
   first render and never hidden while empty. A section opened from the progress strip takes focus to the
   open section's heading, including when it is the section already open.
 
-## The Signed Note's Part 2 View (ADR-0114, S1 PR E1)
+## The Signed Note's Part 2 View (ADR-0114, S1 PRs E1 and E3)
 
-`finalDocumentation` is the note as the signed-in viewer may read it: a viewer without 42 CFR Part 2
-disclosure gets each Part 2 derived section replaced by a generic withheld sentence. When the server cannot
-decide that (503 `NOTE_VIEW_UNAVAILABLE`), the note view, on the encounter record and in the composer of a
-finalized note, is an announced error state, "The note cannot be shown right now", with **Try again**; never
-an empty or partial note, and never a denial. The withheld sentence still arrives as plain note text: the
-response carries no structured "withheld" indicator, so the screen cannot yet style it apart from the
-clinician's own words (it needs one from the API).
+The signed note is read **section by section from the structured view** (`finalDocumentationView`), never from
+the legacy `finalDocumentation` string: that string still carries a generic withheld sentence for a viewer
+without 42 CFR Part 2 disclosure, and nothing on the screen matches on it. The legacy text is shown only when
+the API sent no structured view at all.
+
+- **Sections.** Each sealed section sits under its own heading (the section id in words); a pin with no sealed
+  rows is one block with no heading, as before.
+- **Withheld text is its own kind of block, never note text.** A withheld section (or the whole note, when a
+  finalized pin carries Part 2 text for a viewer without disclosure) is a labelled block: **Withheld**, then
+  "Protected by 42 CFR Part 2. Your access does not include this section / note / version." It has a dashed
+  outline and muted type so it cannot be taken for the clinician's words, is announced as a note, has no
+  text to select or copy and no action, and is never an empty frame. A section the API sent with neither text
+  nor a withheld flag says "No text is recorded for this section."
+- **Amended sections.** A section whose latest version is an amendment shows an **Amended** badge with the
+  date of that version and a **Version history (N versions)** disclosure: the original and every amendment,
+  oldest first, each with its kind, date and author (the membership id, as the page shows authors), the
+  current one marked **Current**; a withheld version is the same labelled block. A section amended but with
+  no history in the response says "Earlier versions are not available."
+- **Cannot be decided.** When the server cannot decide what the viewer may read (503 `NOTE_VIEW_UNAVAILABLE`),
+  the note view, on the encounter record and in the composer of a finalized note, is an announced error
+  state, "The note cannot be shown right now", with **Try again**; never an empty or partial note, and never
+  a denial.
+- **Recent notes (patient chart, Clinical tab).** The summary of each note comes from the same view: a withheld
+  note reads **Withheld** (42 CFR Part 2), a note with some sections withheld shows the readable text and
+  "Some sections withheld". A note whose read was refused 503 `NOTE_VIEW_UNAVAILABLE` keeps its row, says
+  "The note cannot be shown right now" and offers **Try again**, which reads that one note again ("Still not
+  available" if it is refused again); the other rows are not held back.
+
+## Amending a Signed Note (ADR-0114 VN-D30, S1 PR E3)
+
+A signed drafted note is changed only by an **amendment**: an addendum that names the sections it amends. The
+signed text is never overwritten; each amendment is attributed, dated, step-up authenticated and re-confirmed
+per section.
+
+- **Opening it.** In the **Add addendum** dialog, beside the reason, an **Amend sections of this note
+  (optional)** group lists the note's sealed sections as checkboxes (at most 12, "N of 12 chosen"; the rest
+  wait at the limit, with the reason). Choosing none is the free addendum, exactly as before. The group
+  appears only when the visit-note draft is on for the viewer (the draft read the page already holds is
+  "ready") and the note has sealed sections; with the draft off, a pin with no sealed rows or an older API it
+  is the free addendum alone. A withheld section is listed but cannot be chosen, with its reason: nobody amends
+  text they cannot see. The choice starts empty each time the dialog opens.
+- **Reviewing it.** An addendum that names sections lists them in the Addenda rail (**Amends**), and, until it
+  is signed, shows an **Amended sections** region: for each named section the note's own drafted-section
+  panel, fed by the addendum's own draft (its own resolutions, never the note's), with **Confirm section** and
+  **Deselect section**. Confirmed, the status line reads "This section will be amended with the text you
+  confirmed."; deselected, "Deselected: this amends nothing, and the section stays as it was signed."; a
+  section with nothing in the record to redraft says the same, "amends nothing". The line is announced when a
+  choice is made and is still there after a reload.
+- **Signing waits.** **Sign addendum** stays reachable by keyboard but opens nothing, and names the sections
+  still unresolved beside it ("Confirm or deselect the amended sections first: Pain (not confirmed or
+  deselected yet), Plan (changed since you resolved it)."). It waits, too, while the amended sections are
+  being read or could not be read ("Signing waits until the amended sections can be read", with **Try
+  again**). A draft the viewer cannot read (switched off, or the role lacks the source reads) is said once and
+  leaves the sign to the server. A signed amendment says "Addendum signed. N sections amended." and, when the
+  note needed a cosigner, "A cosignature was requested for this amendment."
+- **Cosignature.** When the API sends the status of the cosignature request opened for the amendment, the
+  addendum shows **Cosignature of this amendment** with it; nothing is drawn when it sends none.
+- **Refusals, each with a next step.** Opening: 404 (the draft switch is off; offers the free addendum and
+  names Admin, Visit-note Draft), 422 `UNKNOWN_TEMPLATE_SECTION` (reload and choose again), 422
+  `AMENDMENT_PART2_NOT_ENTITLED` (ask a colleague whose access includes it). Resolving a section: 409
+  `DRAFT_SECTION_STALE` (re-read, confirm again), 422 `UNKNOWN_TEMPLATE_SECTION`, 409 `ILLEGAL_TRANSITION`
+  (already signed or voided). Signing: 409 `DRAFT_SECTION_STALE` names each unresolved or changed section and
+  re-reads the draft; 409 `DRAFT_OFF_AFTER_FINALIZE` (nothing changed; an administrator switches the draft
+  back on, then sign again); 503 `COMPLIANCE_GATE_UNAVAILABLE` (nothing changed; try again); 422
+  `NO_ELIGIBLE_COSIGNER` (nothing changed; a supervisor assigns a case manager); 422
+  `AMENDMENT_PART2_NOT_ENTITLED`.
 
 ---
 
@@ -200,7 +259,8 @@ The Sign action is blocked until all are satisfied — surface them as a checkli
 
 Addenda are first-class and append-only — the original signed note is never edited. Each
 addendum carries its own reason, narrative, and signature, shown chronologically with
-attribution.
+attribution. An addendum that amends sections of a signed drafted note is reviewed and
+signed as described in "Amending a Signed Note" above.
 
 ---
 
