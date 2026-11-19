@@ -52,7 +52,7 @@ describe("the retry of an amendment's review", () => {
     const view = (refreshing: boolean) => (
       <AmendmentReview
         addendumId="add-1"
-        opened="2026-10-01 10:00"
+        addendumName="addendum 1 of 1, opened 2026-10-01 10:00"
         sectionIds={["pain"]}
         draft={unavailable(refreshing, reload)}
       />

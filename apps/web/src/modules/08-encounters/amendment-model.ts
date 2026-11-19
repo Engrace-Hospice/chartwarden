@@ -11,6 +11,15 @@ import {
   needsReview,
 } from "./draft-model";
 import { humanizeSection } from "./sign-draft-notice";
+import { shortStamp } from "./signed-note-model";
+
+/**
+ * What names one addendum among its siblings, in a landmark's name and a section's heading: its place in the list, then when it was opened.
+ * The date alone is not enough (two opened in the same minute read the same), and neither is the place alone (it moves when one is added).
+ */
+export function addendumName(position: number, total: number, createdAt: string): string {
+  return `addendum ${position} of ${total}, opened ${shortStamp(createdAt)}`;
+}
 
 /** The API's limit on sections named by one addendum. */
 export const MAX_AMENDED_SECTIONS = 12;

@@ -416,6 +416,34 @@ describe("two addenda amending the same section", () => {
   });
 });
 
+// Two amendments opened in the same minute show the same date; the position in the list ("addendum 2 of 3") is what tells them apart.
+describe("two addenda amending the same section, opened in the same minute", () => {
+  it("name their review regions and headings apart by their place in the list, keeping the date", async () => {
+    mount([
+      { ...amending, createdAt: "2026-10-01T10:00:05Z" },
+      { ...amending, id: "add-2", createdAt: "2026-10-01T10:00:50Z" },
+      { ...amending, id: "add-3", createdAt: "2026-10-01T10:00:59Z" },
+    ]);
+    const regions = await screen.findAllByRole("region", { name: /^Amended sections/ });
+    const names = regions.map((r) => r.getAttribute("aria-label"));
+    expect(new Set(names).size).toBe(3);
+    names.forEach((name, i) => {
+      expect(name).toContain(`addendum ${i + 1} of 3`);
+      expect(name).toContain("2026-10-01 10:00");
+    });
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("heading", { name: /^Pain: redrafted from the record/ }),
+      ).toHaveLength(3),
+    );
+    const titles = screen
+      .getAllByRole("heading", { name: /^Pain: redrafted from the record/ })
+      .map((h) => h.textContent);
+    expect(new Set(titles).size).toBe(3);
+    expect(titles[1]).toContain("addendum 2 of 3");
+  });
+});
+
 describe("a refused sign", () => {
   async function signRefused(error: { status: number; code: string; details?: unknown }) {
     const user = userEvent.setup();

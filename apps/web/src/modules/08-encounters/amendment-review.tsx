@@ -22,8 +22,8 @@ const NOT_AUTHOR_TEXT =
 
 export interface AmendmentReviewProps {
   readonly addendumId: string;
-  /** When the addendum was opened, as the row shows it: a note can carry several amendments of one section, and each landmark names its own. */
-  readonly opened: string;
+  /** `addendumName`: a note can carry several amendments of one section, and each landmark and heading names its own. */
+  readonly addendumName: string;
   /** The sections the addendum names, in the order the clinician chose them. */
   readonly sectionIds: readonly string[];
   readonly draft: NoteDraft;
@@ -31,7 +31,7 @@ export interface AmendmentReviewProps {
 
 export function AmendmentReview({
   addendumId,
-  opened,
+  addendumName,
   sectionIds,
   draft,
 }: AmendmentReviewProps): JSX.Element {
@@ -67,7 +67,7 @@ export function AmendmentReview({
                     <DraftSectionPanel
                       idPrefix={idPrefix}
                       amending
-                      label={`${name}: redrafted from the record (addendum opened ${opened})`}
+                      label={`${name}: redrafted from the record (${addendumName})`}
                       section={section}
                       note={notes[sectionId] ?? amendedSectionNote(section.state)}
                       busy={busySectionId === sectionId}
@@ -88,7 +88,7 @@ export function AmendmentReview({
   })();
 
   return (
-    <section className="wx-amend" aria-label={`Amended sections, addendum opened ${opened}`}>
+    <section className="wx-amend" aria-label={`Amended sections, ${addendumName}`}>
       {body}
     </section>
   );

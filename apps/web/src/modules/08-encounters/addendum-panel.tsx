@@ -42,6 +42,7 @@ import {
 } from "./addenda-api";
 import { AddendumCosign } from "./addendum-cosign";
 import {
+  addendumName,
   addendumRefusalMessage,
   isSectionRefusal,
   signBlockReason,
@@ -164,11 +165,12 @@ export function AddendaPanel({
         <EmptyState title="No addenda" description="Corrections to this signed note appear here." />
       ) : (
         <ul style={list}>
-          {addenda.map((a) => (
+          {addenda.map((a, index) => (
             <AddendumItem
               key={a.id}
               encounterId={encounterId}
               addendum={a}
+              name={addendumName(index + 1, addenda.length, a.createdAt)}
               noteAuthorId={noteAuthorId}
               busy={busyId === a.id}
               editing={editingId === a.id}
@@ -216,6 +218,8 @@ export function AddendaPanel({
 interface ItemProps {
   readonly encounterId: string;
   readonly addendum: AddendumRow;
+  /** `addendumName`: this addendum among its siblings. */
+  readonly name: string;
   readonly noteAuthorId: string | null;
   readonly busy: boolean;
   /** This addendum's selections editor is open. */
@@ -241,6 +245,7 @@ interface ItemProps {
 function AddendumItem({
   encounterId,
   addendum: a,
+  name,
   noteAuthorId,
   busy,
   editing,
@@ -309,7 +314,7 @@ function AddendumItem({
       {reviewing ? (
         <AmendmentReview
           addendumId={a.id}
-          opened={shortStamp(a.createdAt)}
+          addendumName={name}
           sectionIds={amends}
           draft={amendment}
         />
@@ -318,6 +323,7 @@ function AddendumItem({
         <AddendumCosign
           encounterId={encounterId}
           addendum={a}
+          addendumName={name}
           noteAuthorId={noteAuthorId}
           onChanged={onChanged}
         />

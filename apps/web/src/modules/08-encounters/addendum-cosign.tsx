@@ -21,13 +21,14 @@ import {
   cosignRequestWords,
 } from "./cosign-model";
 import { humanizeSection } from "./sign-draft-notice";
-import { shortStamp } from "./signed-note-model";
 import { useCosignCeremony } from "./use-cosign-ceremony";
 import { useIsMounted } from "./use-is-mounted";
 
 interface Props {
   readonly encounterId: string;
   readonly addendum: AddendumRow;
+  /** `addendumName`: a note can carry several amendments, and a landmark name must tell them apart. */
+  readonly addendumName: string;
   /** The signed note's author (membership id), when the page knows it: the note's author cannot cosign its amendment either. */
   readonly noteAuthorId: string | null;
   /** Read the encounter again after a step lands, so the amendment's status comes from the server again. */
@@ -42,6 +43,7 @@ type RequestRead =
 export function AddendumCosign({
   encounterId,
   addendum,
+  addendumName,
   noteAuthorId,
   onChanged,
 }: Props): JSX.Element | null {
@@ -95,12 +97,12 @@ export function AddendumCosign({
   const amended = (addendum.amendsSectionIds ?? []).map(humanizeSection).join(", ");
 
   return (
-    // Named by when the addendum was opened (a note can carry several amendments, and a landmark name must tell them apart).
+    // Named by its place in the list and when it was opened (a note can carry several amendments, and a landmark name must tell them apart).
     <section
       id={anchorId}
       ref={panel}
       tabIndex={-1}
-      aria-label={`Cosign this amendment, opened ${shortStamp(addendum.createdAt)}`}
+      aria-label={`Cosign this amendment, ${addendumName}`}
       style={box}
     >
       {ability.refusal !== null ? <p style={metaText}>{ability.refusal}</p> : null}

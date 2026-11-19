@@ -92,6 +92,21 @@ const panel = (id = "add-1") =>
 const reads = (GET: ReturnType<typeof mount>["GET"]) =>
   GET.mock.calls.filter(([path]) => path === BASE).length;
 
+describe("the cosigner's panels of two amendments opened in the same minute", () => {
+  it("are named apart by their place in the list, keeping the date", async () => {
+    mount([
+      { ...pending, createdAt: "2026-10-01T10:00:05Z" },
+      { ...pending, id: "add-2", createdAt: "2026-10-01T10:00:50Z" },
+    ]);
+    const regions = await screen.findAllByRole("region", { name: /^Cosign this amendment/ });
+    const names = regions.map((r) => r.getAttribute("aria-label"));
+    expect(new Set(names).size).toBe(2);
+    expect(names[0]).toContain("addendum 1 of 2");
+    expect(names[1]).toContain("addendum 2 of 2");
+    for (const name of names) expect(name).toContain("2026-10-01 10:00");
+  });
+});
+
 describe("the cosigner's panel on a pending amendment", () => {
   it("shows the pending cosignature in words and reads the amendment's own request", async () => {
     const { GET } = mount([pending]);
