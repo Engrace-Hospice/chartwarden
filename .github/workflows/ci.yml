@@ -469,6 +469,9 @@ jobs:
           - { name: "M9 scale series as-of", scripts: "test:m9:series-as-of:live" }
           # ADR-0114 — the visit-note draft's data layer (confirmations, sealed signed sections) and the per-tenant switch, as the NOBYPASSRLS app role.
           - { name: "M8 visit-note drafting", scripts: "test:m8:visit-note-drafting:live" }
+          # ADR-0114 PR C2b1 — the draft's store ports over the real tables, the draft read and section resolution through the real middleware chain
+          # (switch off = 404, stale hash = 409, care-plan link rules, read-audit event landed), as the NOBYPASSRLS app role.
+          - { name: "M8 visit-note draft routes", scripts: "test:m8:visit-note-draft-routes:live" }
           # M36 WP 3.2 — OrderProvider.linkSummary, as the NOBYPASSRLS app role.
           - { name: "M11 link summary seam", scripts: "test:m11:link-summary:live" }
           # M36 WP 3.2 — MedicationOrderProvider.linkSummary (ids + status only), as the NOBYPASSRLS app role.
