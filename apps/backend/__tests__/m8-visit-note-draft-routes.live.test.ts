@@ -1969,6 +1969,301 @@ describe.skipIf(!DB_URL)(
           expect((await signedRowsOf(f)).map((r) => r.section_id)).not.toContain("plan_copy");
         });
       });
+
+      // =============================================================================================================
+      // the encounter row lock: sign, finalize, the picker, the selections save and the section PUT take turns
+      // =============================================================================================================
+      describe("the encounter row lock: sign, finalize, the picker and the section PUT take turns", () => {
+        const DESELECTED_TEXT = "Pain controlled at an acceptable level";
+        type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
+        const settle = <T>(p: Promise<T>): Promise<Settled<T>> =>
+          p.then(
+            (value): Settled<T> => ({ ok: true, value }),
+            (error: unknown): Settled<T> => ({ ok: false, error }),
+          );
+        const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+        /** Resolves once some backend is waiting on a lock: proof the two requests really contend for the encounter row. */
+        async function untilABackendWaitsOnALock(): Promise<void> {
+          for (let attempt = 0; attempt < 200; attempt += 1) {
+            const [waiting] = await rows<{ n: string }>(
+              "SELECT count(*)::text AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+            );
+            if (Number(waiting?.n) > 0) return;
+            await pause(50);
+          }
+          throw new Error(
+            "no backend ever waited on a lock: the requests did not contend for the encounter row",
+          );
+        }
+
+        /** A seam read that parks its first caller (the request that holds the row) until `release()`; every later call answers at once. */
+        function parkFirstCall<A extends unknown[], R>(answer: (...args: A) => Promise<R>) {
+          let release: () => void = () => undefined;
+          let reach: () => void = () => undefined;
+          const open = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          const reached = new Promise<void>((resolve) => {
+            reach = resolve;
+          });
+          let parked = false;
+          return {
+            reached,
+            release: () => release(),
+            read: async (...args: A): Promise<R> => {
+              if (!parked) {
+                parked = true;
+                reach();
+                await open;
+              }
+              return answer(...args);
+            },
+          };
+        }
+
+        const carePlanAnswer = liveSeams().carePlanAsOf;
+        const seenSection = async (f: EncounterFixture, sectionId: string) => {
+          const draft = await draftService.getDraft(callerOf(orgs.A), f.encounterId);
+          const section = draft.sections.find((s) => s.sectionId === sectionId);
+          if (!section?.contentHash || !section.corpusVersion)
+            throw new Error(`section ${sectionId} is not drafted`);
+          return { contentHash: section.contentHash, corpusVersion: section.corpusVersion };
+        };
+        const resolveOne = (
+          f: EncounterFixture,
+          sectionId: string,
+          resolution: "confirmed" | "deselected",
+          seen: { contentHash: string; corpusVersion: string },
+        ) =>
+          draftService.resolveSection(
+            { ...callerOf(orgs.A), membershipId: orgs.A.author.membershipId },
+            f.encounterId,
+            sectionId,
+            { resolution, ...seen },
+            auditOf(orgs.A),
+          );
+
+        /**
+         * A section PUT that deselects `plan` and is parked mid-request holding the row, a second request that starts meanwhile, then the
+         * PUT is released. Returns what each did.
+         */
+        async function deselectPlanWhile(f: EncounterFixture, other: () => Promise<unknown>) {
+          const seen = await seenSection(f, "plan");
+          const park = parkFirstCall(carePlanAnswer);
+          currentSeams = liveSeams({ carePlanAsOf: park.read });
+          const deselect = settle(resolveOne(f, "plan", "deselected", seen));
+          await park.reached;
+          const second = settle(other());
+          await untilABackendWaitsOnALock();
+          park.release();
+          return { deselect: await deselect, second: await second };
+        }
+
+        it("sign recomputes after a deselect that held the row, and never seals the deselected sentences", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          await finalize(orgs.A, f);
+          expect(await open(ORG_A, one(await outputsOf(f)).final_cipher)).toContain(
+            DESELECTED_TEXT,
+          );
+
+          const { deselect, second } = await deselectPlanWhile(f, () =>
+            svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS),
+          );
+
+          expect(deselect.ok).toBe(true);
+          expect(second).toMatchObject({ ok: true, value: { status: "signed" } });
+          const [out] = await outputsOf(f);
+          expect(await open(ORG_A, one(out ? [out] : []).final_cipher)).not.toContain(
+            DESELECTED_TEXT,
+          );
+          const sealed = await signedRowsOf(f);
+          expect(sealed.length).toBeGreaterThan(0);
+          for (const row of sealed) {
+            expect(await open(ORG_A, row.text_cipher)).not.toContain(DESELECTED_TEXT);
+          }
+        });
+
+        it("finalize recomputes after a deselect that held the row, and pins no deselected sentence", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+
+          const { deselect, second } = await deselectPlanWhile(f, () => finalize(orgs.A, f));
+
+          expect(deselect.ok).toBe(true);
+          expect(second).toMatchObject({ ok: true, value: { status: "finalized" } });
+          const [out] = await outputsOf(f);
+          expect(await open(ORG_A, one(out ? [out] : []).final_cipher)).not.toContain(
+            DESELECTED_TEXT,
+          );
+        });
+
+        it("two concurrent signs: one signs, the other is a clean 409 (not a unique-violation 500), and the note is sealed once", async () => {
+          const f = await prepared();
+          await resolveAll(orgs.A, f);
+          await finalize(orgs.A, f);
+
+          const [a, b] = await Promise.all([
+            settle(svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS)),
+            settle(svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS)),
+          ]);
+
+          const signed = [a, b].filter((r) => r.ok);
+          const refused = [a, b].filter((r) => !r.ok);
+          expect(signed).toHaveLength(1);
+          expect(refused).toHaveLength(1);
+          expect(refused[0]).toMatchObject({
+            error: { code: "ILLEGAL_TRANSITION", statusCode: 409 },
+          });
+          expect(await statusOf(f)).toBe("signed");
+          expect(await signaturesOf(f)).toHaveLength(1);
+          const sealed = await signedRowsOf(f);
+          expect(new Set(sealed.map((r) => r.section_id)).size).toBe(sealed.length);
+        });
+
+        it("a picker link holds the row: a section PUT waits for it and then sees the link instead of writing a second one", async () => {
+          const f = await seedDraftWithPrevious();
+          const seen = await seenSection(f, "plan");
+          const picker = parkFirstCall(async (patientId: string) =>
+            carePlan({
+              patientId: patientId as never,
+              goals: [
+                {
+                  goalId: GOAL,
+                  problemId: "problem-1",
+                  text: "Pain controlled at an acceptable level",
+                  source: "clinician",
+                  status: "active",
+                } as never,
+              ],
+            }),
+          );
+          registerSeam("CarePlanReader", {
+            isReviewOverdue: async () => null,
+            relevantElementsForEncounter: picker.read,
+          } as never);
+          const link = settle(
+            svc.addCarePlanLink(
+              ORG_A,
+              orgs.A.author.membershipId,
+              f.encounterId,
+              { goalId: GOAL },
+              ["rn"],
+            ),
+          );
+          await picker.reached;
+          const confirm = settle(resolveOne(f, "plan", "confirmed", seen));
+          await untilABackendWaitsOnALock();
+          picker.release();
+
+          expect((await link).ok).toBe(true);
+          expect((await confirm).ok).toBe(true);
+          const live = (await linksOf(f.encounterId)).filter((l) => l.removed_at === null);
+          expect(live.map((l) => l.goal_id)).toEqual([GOAL]);
+          expect(await confirmationsOf(f.encounterId)).toHaveLength(1);
+        });
+
+        it("links and removes several care-plan elements in one pass: live links, soft-removals and tombstones all land, once each", async () => {
+          const f = await seedEncounter(orgs.A);
+          const encounter = {
+            ...draftEncounter(orgs.A, f),
+            status: "draft" as const,
+            providerEntityId: orgs.A.providerEntityId,
+            locationId: orgs.A.locationId,
+          };
+          const [goalA, goalB, goalC] = [randomUUID(), randomUUID(), randomUUID()];
+          const refs = (...ids: string[]) =>
+            ids.map((id) => ({ kind: "care_plan_goal" as const, id }));
+          const store = (tx: DbClient) => createDbDraftStore(tx, { now: NOW });
+
+          expect(
+            await inOrg(orgs.A, (tx) => store(tx).linkCarePlan(encounter, refs(goalA, goalB))),
+          ).toBe(2);
+          // Re-linking the same two, plus one more: only the new one is written.
+          expect(
+            await inOrg(orgs.A, (tx) =>
+              store(tx).linkCarePlan(encounter, refs(goalA, goalB, goalC)),
+            ),
+          ).toBe(1);
+          // Removing A and B (live: soft-removed together) and D (never linked: a tombstone), in one call.
+          const goalD = randomUUID();
+          expect(
+            await inOrg(orgs.A, (tx) =>
+              store(tx).removeCarePlan(
+                encounter,
+                refs(goalA, goalB, goalD),
+                orgs.A.author.membershipId,
+                NOW,
+              ),
+            ),
+          ).toBe(3);
+
+          const byGoal = new Map((await linksOf(f.encounterId)).map((l) => [l.goal_id, l]));
+          expect(byGoal.size).toBe(4);
+          for (const removed of [goalA, goalB, goalD]) {
+            expect(byGoal.get(removed)).toMatchObject({
+              removed_at: expect.any(Date),
+              removed_by_membership_id: orgs.A.author.membershipId,
+            });
+          }
+          expect(byGoal.get(goalC)).toMatchObject({
+            removed_at: null,
+            removed_by_membership_id: null,
+          });
+          expect(
+            await inOrg(orgs.A, (tx) => store(tx).removedCarePlanElementIds(f.encounterId)),
+          ).toEqual(new Set([goalA, goalB, goalD]));
+        });
+
+        it("a goal deselected and then linked again through the picker needs its clinician to confirm it afresh", async () => {
+          registerSeam("CarePlanReader", {
+            isReviewOverdue: async () => null,
+            relevantElementsForEncounter: async (patientId: string) =>
+              carePlan({
+                patientId: patientId as never,
+                goals: [
+                  {
+                    goalId: GOAL,
+                    problemId: "problem-1",
+                    text: "Pain controlled at an acceptable level",
+                    source: "clinician",
+                    status: "active",
+                  } as never,
+                ],
+              }),
+          } as never);
+          const f = await seedDraftWithPrevious();
+          const seen = await seenSection(f, "plan");
+          await resolveOne(f, "plan", "confirmed", seen);
+          await resolveOne(f, "plan", "deselected", seen);
+          let plan = (await draftService.getDraft(callerOf(orgs.A), f.encounterId)).sections.find(
+            (s) => s.sectionId === "plan",
+          );
+          expect(plan).toMatchObject({ state: "not_drafted" });
+          // The confirmation the clinician left is withdrawn (kept, bound to a hash no section can equal), not left standing.
+          const [withdrawn] = (await confirmationsOf(f.encounterId)).filter(
+            (c) => c.section_id === "plan",
+          );
+          expect(withdrawn).toMatchObject({ resolution: "deselected", source_refs: [] });
+          expect(withdrawn?.content_hash).not.toBe(seen.contentHash);
+
+          await svc.addCarePlanLink(
+            ORG_A,
+            orgs.A.author.membershipId,
+            f.encounterId,
+            { goalId: GOAL },
+            ["rn"],
+          );
+          plan = (await draftService.getDraft(callerOf(orgs.A), f.encounterId)).sections.find(
+            (s) => s.sectionId === "plan",
+          );
+          expect(plan).toMatchObject({
+            state: "needs_reconfirmation",
+            contentHash: seen.contentHash,
+          });
+        });
+      });
     });
   },
 );

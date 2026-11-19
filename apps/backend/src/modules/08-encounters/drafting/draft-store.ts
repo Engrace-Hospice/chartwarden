@@ -50,7 +50,10 @@ export interface DraftResolvedEvent {
   readonly edited: boolean;
   /** The hash the clinician saw (what the request carried and the server matched). */
   readonly contentHash: string;
-  /** The hash the stored confirmation is bound to; `null` when the section was left empty and no row was kept. */
+  /**
+   * The hash the stored confirmation is bound to; `null` when the section was left empty and there was no row to keep. A deselect that
+   * emptied a section the clinician had resolved keeps that row withdrawn: this is then the hash no recomputed section can equal.
+   */
   readonly boundContentHash: string | null;
   readonly corpusVersion: string;
   /** The section's Part 2 verdict: it selects the audit retention class and whether the source ids are recorded. */
@@ -64,7 +67,10 @@ export interface DraftResolvedEvent {
 export interface DraftUnit {
   /** Whether the tenant has the visit-note draft switched on (`isVisitNoteDraftEnabled`). */
   enabled(): Promise<boolean>;
-  /** The encounter, or `null` (absent or another tenant's). `forUpdate` locks the row, serializing the draft writes of one encounter. */
+  /**
+   * The encounter, or `null` (absent or another tenant's). `forUpdate` locks the row (`FOR NO KEY UPDATE`), serializing the draft writes of
+   * one encounter with each other and with finalize, sign, the picker and the selections save, which take the same lock first.
+   */
   encounter(encounterId: string, forUpdate: boolean): Promise<DraftEncounterRow | null>;
   readonly store: DraftStore;
   recordResolved(event: DraftResolvedEvent): Promise<void>;

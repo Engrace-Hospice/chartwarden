@@ -112,7 +112,12 @@ import { keepOrReplaceReason, reifiableTier, resolveLateEntry } from "./late-ent
 import { computeLateEntryTier, daysLate as lateDaysBetween } from "./late-entry/tiers";
 import { LAYER2_TENANT_FACTS_UNBOUND, resolveLayer2Eligibility } from "./layer2";
 import { transitionAddendum } from "./lifecycle/addendum";
-import { requiresCosignature, transitionEncounter } from "./lifecycle/encounter";
+import {
+  ENCOUNTER_GRAPH,
+  type EncounterState,
+  requiresCosignature,
+  transitionEncounter,
+} from "./lifecycle/encounter";
 import { EncounterStateError } from "./lifecycle/errors";
 import {
   checkEncounterDisciplinePair,
@@ -324,6 +329,9 @@ function firstOrThrow<T>(rows: readonly T[], msg: string): T {
   if (!r) throw new EncounterStateError("ILLEGAL_TRANSITION", msg);
   return r;
 }
+
+/** The row lock makes this unreachable today; the status guard on the UPDATE is what keeps a double sign a 409 if a path ever skips it. */
+const SIGN_LOST_RACE = "sign matched no row: the encounter changed status since it was loaded";
 
 /** The encounter columns every read projects (single source of truth for {@link toView}). */
 const encounterCols = {
@@ -1111,11 +1119,34 @@ export function createDbEncounterRouteService(
     return evv.persist ?? {};
   }
 
-  /** Load a tenant-scoped encounter row FOR the write path (RLS-scoped) or raise the non-leaking 404. */
-  async function loadEnc(t: DbClient, encounterId: string): Promise<typeof ENC.$inferSelect> {
-    const [row] = await t.select().from(ENC).where(eq(ENC.id, encounterId)).limit(1);
+  /**
+   * Load a tenant-scoped encounter row FOR the write path (RLS-scoped) or raise the non-leaking 404.
+   *
+   * `lock` takes the row `FOR NO KEY UPDATE`: the one lock every request that decides something from the encounter's draft takes FIRST
+   * (finalize, sign, the picker's link and unlink, the selections save and the draft's section PUT in `drafting/db-draft-unit.ts`), so
+   * they run one after the other and each reads what the one before it committed. Without it a section PUT could commit between sign's
+   * draft read and sign's UPDATE, and sign would seal sentences the PUT had just deselected; two signs would both read `finalized`.
+   * `NO KEY UPDATE` rather than `UPDATE` so the foreign-key checks of the satellite inserts (vitals, mileage, signatures) still run.
+   */
+  async function loadEnc(
+    t: DbClient,
+    encounterId: string,
+    opts: { readonly lock?: boolean } = {},
+  ): Promise<typeof ENC.$inferSelect> {
+    const query = t.select().from(ENC).where(eq(ENC.id, encounterId)).limit(1);
+    const [row] = opts.lock ? await query.for("no key update") : await query;
     if (!row) throw new NotFoundError("encounter");
     return row;
+  }
+
+  /** After the row lock: an encounter another request has already moved on is a 409 here, not an error deep in the transition. */
+  function assertLegalFrom(status: EncounterState, event: "finalize" | "sign"): void {
+    if (!ENCOUNTER_GRAPH[status].includes(event)) {
+      throw new EncounterStateError(
+        "ILLEGAL_TRANSITION",
+        `encounter cannot ${event} from '${status}'`,
+      );
+    }
   }
 
   /** Load an encounter's live cosignature request (the D3 workflow row) or the non-leaking 404. */
@@ -1685,7 +1716,7 @@ export function createDbEncounterRouteService(
       const { stored, prose } = splitFreeText(input.sections);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const r = await loadEnc(t, encounterId);
+        const r = await loadEnc(t, encounterId, { lock: true });
         checkMutableForEdit({ status: r.status });
         checkVersion({ expected: ifVersion, actual: Number(r.version) });
         await stampDraftOpened(t, organizationId, r, actorMembershipId);
@@ -1982,7 +2013,8 @@ export function createDbEncounterRouteService(
     async addCarePlanLink(organizationId, actorMembershipId, encounterId, input, actorRoles) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const r = await loadEnc(t, encounterId);
+        // Locked: the section PUT reads the live links and writes its own, and the duplicate check below must see its committed rows.
+        const r = await loadEnc(t, encounterId, { lock: true });
         checkMutableForEdit({ status: r.status });
         // 422 naming the field, rather than the raw `23514` the `at_least_one` CHECK would raise.
         assertAtLeastOneCarePlanRef(input);
@@ -2075,7 +2107,7 @@ export function createDbEncounterRouteService(
     async removeCarePlanLink(organizationId, actorMembershipId, encounterId, linkId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const r = await loadEnc(t, encounterId);
+        const r = await loadEnc(t, encounterId, { lock: true });
         checkMutableForEdit({ status: r.status });
         const rows = await t
           .update(LINK)
@@ -2140,7 +2172,9 @@ export function createDbEncounterRouteService(
     async finalize(organizationId, encounterId, at, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const r = await loadEnc(t, encounterId);
+        // Locked first: the draft read below, and the pin written from it, must be of what every earlier section PUT committed.
+        const r = await loadEnc(t, encounterId, { lock: true });
+        assertLegalFrom(r.status, "finalize");
         // The finalize route is `IS_AUTHOR`-guarded (only the author reaches it), so the writer here is the author.
         await stampDraftOpened(t, organizationId, r, r.authoredByMembershipId);
         // GAP-013 §2.5 — the tier is COMPUTED here from service_date vs the org-local day and reified on the
@@ -2205,9 +2239,9 @@ export function createDbEncounterRouteService(
               version: Number(r.version) + 1,
               updatedAt: new Date(),
             })
-            .where(eq(ENC.id, encounterId))
+            .where(and(eq(ENC.id, encounterId), eq(ENC.status, r.status)))
             .returning({ version: ENC.version }),
-          "finalize matched no row",
+          "finalize matched no row: the encounter changed status since it was loaded",
         );
         // The `persist_assembled_output` effect the machine has declared since M8-T04 (#122).
         await pinAssembledOutput(t, organizationId, {
@@ -2281,11 +2315,14 @@ export function createDbEncounterRouteService(
       // times, so it must not be audited with a NULL actor (the confirm route does the same).
       return withOrgContext(db, { organizationId, userId: actor.userId ?? "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const r = await loadEnc(t, encounterId);
+        // Locked first: the signer's draft below is read after every section PUT that held the row has committed, and a second sign
+        // of the same encounter waits here and then finds it already signed.
+        const r = await loadEnc(t, encounterId, { lock: true });
         // GAP-028 — defence in depth behind the route's `is_author` guard: only the author signs.
         if (r.authoredByMembershipId !== actor.membershipId) {
           throw new ForbiddenError("only the author of an encounter may sign it");
         }
+        assertLegalFrom(r.status, "sign");
         // Before either status UPDATE below (the stamp only touches open notes): a signed note always carries a clock.
         await stampDraftOpened(t, organizationId, r, actor.membershipId);
         const now = new Date();
@@ -2367,17 +2404,21 @@ export function createDbEncounterRouteService(
           // ADR-0114: the signed note's text and its sealed section rows, in this transaction (no-op with the draft off). BEFORE the status
           // flips: migration 1521 freezes the pinned narrative once the encounter reads signed, so the pin is the last write it accepts.
           await noteDraft.sealSigned(t, r, draft);
-          await t
-            .update(ENC)
-            .set({
-              status: plan.encounter.to,
-              signedAt: now,
-              updatedAt: now,
-              ...lateColumns,
-              ...evvPersistence(evvAtSign),
-              ...delivery,
-            })
-            .where(eq(ENC.id, encounterId));
+          firstOrThrow(
+            await t
+              .update(ENC)
+              .set({
+                status: plan.encounter.to,
+                signedAt: now,
+                updatedAt: now,
+                ...lateColumns,
+                ...evvPersistence(evvAtSign),
+                ...delivery,
+              })
+              .where(and(eq(ENC.id, encounterId), eq(ENC.status, r.status)))
+              .returning({ id: ENC.id }),
+            SIGN_LOST_RACE,
+          );
           await t.insert(SIG).values({
             organizationId,
             ...siting,
@@ -2441,17 +2482,21 @@ export function createDbEncounterRouteService(
         // ADR-0114: the signed note's text and its sealed section rows, in this transaction (no-op with the draft off). BEFORE the status
         // flips: migration 1521 freezes the pinned narrative once the encounter reads signed, so the pin is the last write it accepts.
         await noteDraft.sealSigned(t, r, draft);
-        await t
-          .update(ENC)
-          .set({
-            status: trans.to,
-            signedAt: now,
-            updatedAt: now,
-            ...lateColumns,
-            ...evvPersistence(evvAtSign),
-            ...delivery,
-          })
-          .where(eq(ENC.id, encounterId));
+        firstOrThrow(
+          await t
+            .update(ENC)
+            .set({
+              status: trans.to,
+              signedAt: now,
+              updatedAt: now,
+              ...lateColumns,
+              ...evvPersistence(evvAtSign),
+              ...delivery,
+            })
+            .where(and(eq(ENC.id, encounterId), eq(ENC.status, r.status)))
+            .returning({ id: ENC.id }),
+          SIGN_LOST_RACE,
+        );
         await t.insert(SIG).values({
           organizationId,
           ...siting,

@@ -44,7 +44,9 @@ async function loadEncounter(
     .from(E)
     .where(eq(E.id, encounterId))
     .limit(1);
-  const [row] = forUpdate ? await query.for("update") : await query;
+  // `FOR NO KEY UPDATE`: the same lock finalize, sign, the picker and the selections save take (`loadEnc({ lock: true })`), so these
+  // writes and those take turns, while the foreign-key checks of vitals, mileage and signature inserts (KEY SHARE) are not held up.
+  const [row] = forUpdate ? await query.for("no key update") : await query;
   return row ?? null;
 }
 
