@@ -946,11 +946,16 @@ export function createDbEncounterRouteService(
     });
   }
 
-  /** Run the §2.6 gate for one addendum (the narrower form — see runAddendumComplianceGate). */
+  /**
+   * Run the §2.6 gate for one addendum (the narrower form — see runAddendumComplianceGate). `amendedSections` is how many sections the sign is
+   * about to seal (the confirmed ones that are still drafted); finalize passes none and counts the author's confirmations, as a preview: sign
+   * decides again, under the encounter row lock every resolution also takes.
+   */
   async function gateAddendum(
     t: DbClient,
     addendumId: string,
     at: "finalize" | "sign",
+    amendedSections?: number,
   ): Promise<boolean> {
     const [sel] = await t
       .select({ selections: SEL.selections })
@@ -959,7 +964,7 @@ export function createDbEncounterRouteService(
       .limit(1);
     const verdict = runAddendumComplianceGate(
       gateSections(sel?.selections ?? null),
-      await confirmedAmendmentCount(t, addendumId),
+      amendedSections ?? (await confirmedAmendmentCount(t, addendumId)),
     );
     assertGatePassed(verdict, at);
     return verdict.pass;
@@ -3026,7 +3031,7 @@ export function createDbEncounterRouteService(
         const amendedSections = amending?.sections ?? [];
         const trans = transitionAddendum(a.status as AddendumState, {
           type: "sign",
-          gatePassed: await gateAddendum(t, addendumId, "sign"),
+          gatePassed: await gateAddendum(t, addendumId, "sign", amendedSections.length),
           stepUpFresh: provenance.stepUpFresh,
           at: args.at,
         });

@@ -3441,6 +3441,24 @@ describe.skipIf(!DB_URL)(
             expect(await addendumSignatures(id)).toBe(0);
           });
 
+          it("sign counts what it will seal, not the stored confirmations: a section confirmed and then left with nothing to redraft amends nothing, so sign is 422 ADDENDUM_EMPTY", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            await putResolution(f, id, "plan", "confirmed");
+            expect((await finalizeOver(f, id)).statusCode).toBe(200);
+            // the sources the confirmed section was drafted from are gone: it is `not_drafted` now, and a kept confirmation is ignored
+            currentSeams = liveSeams({
+              carePlanAsOf: async (patientId) =>
+                carePlan({ patientId: patientId as never, goals: [], interventions: [] }),
+            });
+            const res = await signOver(f, id);
+            expect(res.statusCode, res.body).toBe(422);
+            expect(remediationOf(res).details?.map((d) => d.code)).toEqual(["ADDENDUM_EMPTY"]);
+            expect(await addendumStatus(id)).toBe("finalized");
+            expect(await amendmentRowsOf(f)).toEqual([]);
+          });
+
           it("a free addendum with nothing in it keeps the old rule: finalize is 422 ADDENDUM_EMPTY", async () => {
             const f = await signedNote();
             const created = await createAmendment(f, undefined);
