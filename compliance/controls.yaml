@@ -1350,13 +1350,19 @@ controls:
 
   - id: CW-AC-49
     title: >-
-      The per-tenant switch for the visit-note draft and its sign gate (ADR-0114 VN-D17) is a step-up-gated, audited act held by the tenant-level owners. PUT /api/v1/encounters/draft-policy requires encounter.draft_policy_admin (director_of_nursing, don, org_admin, administrator, and superadmin through the full catalog; never clinical_supervisor, clinical_lead or a field role), a fresh step-up and a human (non-AI) actor, and writes visit_note_draft_policy (one row per organization, RLS enabled and FORCEd, no DELETE for the application role) plus an explicit warn-severity m8.encounter.draft_policy_changed event with the previous and new value. An absent row is off, and enabling is refused 409 CORPUS_REVIEW_PENDING until the platform phrase corpus has had its named clinical review (VN-D14); disabling is always allowed.
+      The per-tenant switch for the visit-note draft and its sign gate (ADR-0114 VN-D17) is a step-up-gated, audited act held by the tenant-level owners. PUT /api/v1/encounters/draft-policy requires encounter.draft_policy_admin (director_of_nursing, don, org_admin, administrator, and superadmin through the full catalog; never clinical_supervisor, clinical_lead or a field role), a fresh step-up and a human (non-AI) actor, and writes visit_note_draft_policy (one row per organization, RLS enabled and FORCEd, no DELETE for the application role) plus an explicit warn-severity m8.encounter.draft_policy_changed event with the previous and new value. An absent row is off, and enabling is refused 409 CORPUS_REVIEW_PENDING until the platform phrase corpus has had its named clinical review (VN-D14); disabling is always allowed. The draft routes behind the switch carry their own controls: GET /api/v1/encounters/:encounterId/draft and PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId answer 404 while the switch is off; the PUT refuses an AI principal even one holding the key (an AI may not confirm what it drafted a note from, D13) and writes an explicit m8.encounter.draft_section_resolved audit event carrying the source ids, the hash seen and the hash bound (the response carries source kinds only, never ids); and the draft read is audited as encounter_draft.viewed, attributed to the patient.
     hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)(ii)(B)"]
     soc2: ["CC6.1", "CC6.3", "CC7.2"]
     status: partial
     evidence:
       - script: test:m8:visit-note-drafting:live
       - ci: "M8 visit-note drafting"
+      - script: test:m8:visit-note-draft-routes:live
+      - ci: "M8 visit-note draft routes"
+      - file: apps/backend/src/modules/08-encounters/routes/draft-section-routes.ts
+      - file: apps/backend/__tests__/encounter-draft-routes.test.ts
+      - file: apps/backend/__tests__/encounter-draft-service.test.ts
+      - file: apps/backend/__tests__/m8-visit-note-draft-routes.live.test.ts
       - file: packages/auth/src/roles/visit-note-draft-grants.ts
       - file: apps/backend/__tests__/visit-note-draft-grants.test.ts
       - file: apps/backend/__tests__/visit-note-draft-routes.test.ts
