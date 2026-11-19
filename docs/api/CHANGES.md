@@ -6,6 +6,17 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-19 — Visit-note drafting (M8, ADR-0114): per-viewer Part 2 view of the signed note, `409 DRAFT_OFF_AFTER_FINALIZE`, `503 NOTE_VIEW_UNAVAILABLE`, and gate check 1 counts a confirmed drafted section
+
+**No new route and no new field; response shapes are unchanged. Nothing changes for a tenant with the draft switched off, or for a note with no 42 CFR Part 2 derived section.** (A section is Part 2 derived unless every source behind it is proven not SUD-related; only a note finalized with the draft on can carry one.)
+
+- **`GET /encounters/{encounterId}` (`finalDocumentation`)** is the pinned note as the SESSION viewer may read it. A viewer with Part 2 disclosure, or a note with no Part 2 derived section, gets the note as pinned. Any other viewer (a cosigner, a colleague, the author without disclosure) gets each Part 2 derived section replaced by a generic marker (`[Withheld: this section contains information protected by 42 CFR Part 2 ...]`), never its text. A finalized note that is not signed yet, and whose text carries Part 2 content, is withheld whole for such a viewer (its sections are sealed at sign). **`503 NOTE_VIEW_UNAVAILABLE`** (new) when the Part 2 disclosure check cannot be decided: retry. It is never a silent denial.
+- **`GET /internal/encounters/{encounterId}/render-payload`** (M22, system principal) and the signed-encounters reader seam: for a note with a Part 2 derived section `final` is always the withheld view, the entitled author included, because a rendered document is broadly readable and M22 carries no Part 2 signal for it. A note with no such section is unchanged.
+- **`POST /encounters/{encounterId}/sign`** answers **`409 DRAFT_OFF_AFTER_FINALIZE`** (new) when the note was finalized with drafted text that carries Part 2 content and the draft is switched off for the organization by sign time: nothing could be sealed section by section. Nothing is written and the note stays finalized. Switch the draft back on for the organization and sign again. A note finalized without Part 2 draft text signs with the draft off as before.
+- **`POST /encounters/{encounterId}/finalize` and `/sign`, gate check 1 (`required_sections`)**: with the draft active for the template, a drafted section the author CONFIRMED now counts as populated, so confirming every drafted section no longer leaves `MISSING_SECTION` for the required sections the draft fills. A deselected, unresolved or stale section does not count (the clinician's own selections or free text still do). The remediation entries are unchanged.
+
+---
+
 ## 2026-11-19 — Visit-note drafting rollout (M8, ADR-0114): corpus release `narrative-vocab@2026.11.0`, `409 VOCAB_VERSION_MISMATCH` at finalize for a draft saved before it, and the template menu
 
 **Two behaviour changes that reach every tenant at deploy, whatever its draft switch; no new route and no new field.**
