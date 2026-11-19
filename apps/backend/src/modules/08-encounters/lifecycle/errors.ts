@@ -61,6 +61,9 @@ export const M8_ERROR_STATUS = {
    *  can fix it, 503 means the gate did not run. Refusing is the only safe direction — a signing-blocking
    *  control that passes when it cannot evaluate is the defect this gate was fixed from (#121). */
   COMPLIANCE_GATE_UNAVAILABLE: 503,
+  /** The visit-note draft could not be computed: a seam it reads (care plan, scales, medications, Part 2 verdict)
+   *  failed or returned something unusable. Never a partial draft passed off as complete (VN-D9, design §3.2). */
+  DRAFT_UNAVAILABLE: 503,
   // Visit delivery at sign (migration 1510): the clinician must say how the visit was delivered (Medicare
   // hospice SIA / visit lines count in-person visits only), and any documented start/end must be a real,
   // ordered, past bracket on the service date. Both are fixable by the clinician, hence 422.
