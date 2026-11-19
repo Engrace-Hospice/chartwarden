@@ -3,7 +3,8 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // The §5 Encounters screens that have a backing M8 read route on the generated client: the
 // patient-scoped Encounter Read (§5.2 — now also hosting the Sign/Acknowledge/Cosign-sign/Supervisor-
 // release ceremonies, TASK-031), the Cosignature Queue (§5.5), the author's My Notes (§5.1, route /work/drafts) and, for the
-// 24-hour note-closure clock (ADR-0113), the supervisor Overdue Notes board and the tenant Note Closure Policy. Nav
+// 24-hour note-closure clock (ADR-0113), the supervisor Overdue Notes board and the tenant Note Closure Policy, and for the pre-drafted
+// visit note (ADR-0114) the tenant Visit-note Draft switch (the drafted sections themselves live in the composer). Nav
 // visibility is gated by the matching M8 permission key; the SERVER stays the only enforcement point
 // (no frontend authz).
 //
@@ -35,6 +36,7 @@ const OverdueBoard = lazy(() =>
 const ClosurePolicy = lazy(() =>
   import("./closure-policy").then((m) => ({ default: m.ClosurePolicy })),
 );
+const DraftPolicy = lazy(() => import("./draft-policy").then((m) => ({ default: m.DraftPolicy })));
 const PatientEncounters = lazy(() =>
   import("./patient-encounters").then((m) => ({ default: m.PatientEncounters })),
 );
@@ -104,6 +106,15 @@ export const encounterScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "encounter.closure_policy_admin",
       screen: ClosurePolicy,
+    },
+    {
+      // Tenant switch for the pre-drafted visit note and its sign gate (default off) — step-up on save (ADR-0114 VN-D17).
+      id: "encounter.draft-policy",
+      path: "/admin/draft-policy",
+      title: "Visit-note Draft",
+      navGroup: "Admin",
+      requiredPermission: "encounter.draft_policy_admin",
+      screen: DraftPolicy,
     },
   ],
 };
