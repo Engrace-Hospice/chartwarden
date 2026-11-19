@@ -40,6 +40,7 @@ import {
   saveAddendumSelections,
   signAddendum,
 } from "./addenda-api";
+import { AddendumCosign } from "./addendum-cosign";
 import {
   addendumRefusalMessage,
   isSectionRefusal,
@@ -47,7 +48,8 @@ import {
   signedAmendmentMessage,
 } from "./amendment-model";
 import { AmendmentReview } from "./amendment-review";
-import { COSIGN_TONE, ENCOUNTER_TONE, stateLabel } from "./encounter-status";
+import { amendmentCosignTone, amendmentCosignWords } from "./cosign-model";
+import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
   type TemplateView,
@@ -67,6 +69,8 @@ type Failure = Extract<AddendumResult<unknown>, { ok: false }>;
 interface PanelProps {
   readonly encounterId: string;
   readonly addenda: readonly AddendumRow[];
+  /** The signed note's author (membership id), when known: the cosigner of an amendment is neither the note's author nor the amendment's. */
+  readonly noteAuthorId?: string | null;
   /** Re-read the encounter after any state change so statuses come from the server again. */
   readonly onChanged: () => void;
 }
@@ -106,7 +110,12 @@ const transportFailure: Failure = {
   message: "The connection was interrupted. Your changes are still here; try again.",
 };
 
-export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): JSX.Element {
+export function AddendaPanel({
+  encounterId,
+  addenda,
+  noteAuthorId = null,
+  onChanged,
+}: PanelProps): JSX.Element {
   const client = useApiClient();
   const session = useSession();
   // Coming back from /step-up: reopen the editor whose unsaved selections were stashed.
@@ -156,11 +165,13 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
               key={a.id}
               encounterId={encounterId}
               addendum={a}
+              noteAuthorId={noteAuthorId}
               busy={busyId === a.id}
               editing={editingId === a.id}
               editorLocked={editingId !== null}
               failure={failure?.addendumId === a.id ? failure.error : null}
               signedNote={signedNote?.addendumId === a.id ? signedNote.text : null}
+              onChanged={onChanged}
               onEdit={() => setEditingId(a.id)}
               onCloseEditor={() => {
                 clearStepUpDraft(stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, a.id));
@@ -200,6 +211,7 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
 interface ItemProps {
   readonly encounterId: string;
   readonly addendum: AddendumRow;
+  readonly noteAuthorId: string | null;
   readonly busy: boolean;
   /** This addendum's selections editor is open. */
   readonly editing: boolean;
@@ -209,6 +221,7 @@ interface ItemProps {
   readonly failure: Failure | null;
   /** What its last sign did, for an amending addendum. */
   readonly signedNote: string | null;
+  readonly onChanged: () => void;
   readonly onEdit: () => void;
   readonly onCloseEditor: () => void;
   readonly onFinalize: () => void;
@@ -223,11 +236,13 @@ interface ItemProps {
 function AddendumItem({
   encounterId,
   addendum: a,
+  noteAuthorId,
   busy,
   editing,
   editorLocked,
   failure,
   signedNote,
+  onChanged,
   onEdit,
   onCloseEditor,
   onFinalize,
@@ -239,6 +254,12 @@ function AddendumItem({
   const amendment = useNoteDraft(reviewing ? encounterId : undefined, a.status, a.id);
   const blockReason = reviewing ? signBlockReason(amendment.load) : null;
   const blockId = `amend-block-${a.id}`;
+  // Where the amendment's own cosignature stands, in words (nothing when none was needed), and whether it still awaits a cosigner.
+  const cosignWords = amends.length > 0 ? amendmentCosignWords(a.cosignStatus) : null;
+  const awaitingCosign =
+    amends.length > 0 &&
+    a.status === "signed" &&
+    (a.cosignStatus === "pending" || a.cosignStatus === "released");
   // A sign refused for stale sections says so: read the draft again, so the sections it names show their new state.
   const { reload: reloadAmendment } = amendment;
   useEffect(() => {
@@ -266,15 +287,12 @@ function AddendumItem({
           ...(amends.length > 0
             ? [{ label: "Amends", value: amends.map(humanizeSection).join(", ") }]
             : []),
-          ...(amends.length > 0 && a.cosignStatus
+          ...(cosignWords !== null && a.cosignStatus
             ? [
                 {
                   label: "Cosignature of this amendment",
                   value: (
-                    <StatusPill
-                      label={stateLabel(a.cosignStatus)}
-                      tone={COSIGN_TONE[a.cosignStatus] ?? "neutral"}
-                    />
+                    <StatusPill label={cosignWords} tone={amendmentCosignTone(a.cosignStatus)} />
                   ),
                 },
               ]
@@ -285,6 +303,14 @@ function AddendumItem({
       />
       {reviewing ? (
         <AmendmentReview addendumId={a.id} sectionIds={amends} draft={amendment} />
+      ) : null}
+      {awaitingCosign ? (
+        <AddendumCosign
+          encounterId={encounterId}
+          addendum={a}
+          noteAuthorId={noteAuthorId}
+          onChanged={onChanged}
+        />
       ) : null}
       {a.status !== "signed" ? (
         <div style={actions}>

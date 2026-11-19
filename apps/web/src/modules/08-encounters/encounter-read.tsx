@@ -69,6 +69,8 @@ interface Encounter {
   patientId: string;
   admissionId: string;
   visitId: string | null;
+  /** The note's author (membership id): the note's author cannot cosign an amendment of it. */
+  authoredByUserId: string;
   encounterType: string;
   discipline: string;
   serviceDate: string;
@@ -354,6 +356,7 @@ export function EncounterRead(): JSX.Element {
       patientId: data.patientId,
       admissionId: data.admissionId,
       visitId: data.visitId ?? null,
+      authoredByUserId: data.authoredByUserId,
       encounterType: data.encounterType,
       discipline: data.discipline,
       serviceDate: data.serviceDate,
@@ -1832,6 +1835,7 @@ export function EncounterRead(): JSX.Element {
                   <AddendaPanel
                     encounterId={e.id}
                     addenda={e.addenda}
+                    noteAuthorId={e.authoredByUserId}
                     onChanged={() => void load()}
                   />
                 </div>

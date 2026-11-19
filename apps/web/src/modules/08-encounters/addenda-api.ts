@@ -13,6 +13,7 @@
 //   • The Layer-3 gate at finalize/sign. A 409/422 names what is missing and is shown verbatim.
 import type { ApiClient, operations } from "@chartwarden/ui";
 import { amendCreateRefusal } from "./amendment-model";
+import type { AmendmentCosignStatus } from "./cosign-model";
 import type { UpdateSelectionsBody } from "./encounters-api";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
@@ -36,8 +37,8 @@ export interface AddendumRow {
   readonly version: number;
   /** The sections of the signed note this addendum amends (ADR-0114 VN-D30); absent or empty = a free addendum. */
   readonly amendsSectionIds?: readonly string[];
-  /** The status of the cosignature request opened for this amendment, when the API sends it; shown as it comes. */
-  readonly cosignStatus?: string | null;
+  /** Where the cosignature of this amendment stands, when the API sends it (`not_required` unless its note needed a cosigner). */
+  readonly cosignStatus?: AmendmentCosignStatus | null;
 }
 
 export type AddendumResult<T> =
@@ -78,6 +79,19 @@ export async function loadAddendumSelections(
 ): Promise<AddendumResult<AddendumSelectionsView>> {
   const { data, error, response } = await client.GET(
     "/api/v1/encounters/{encounterId}/addenda/{addendumId}/selections",
+    { params: pathOf(ids) },
+  );
+  if (error || !data) return failure(response?.status, error);
+  return { ok: true, value: data };
+}
+
+/** The state of the cosignature request an amending addendum opened: `null` before any routing (404 for an addendum of another encounter or tenant). */
+export async function loadAddendumCosignature(
+  client: ApiClient,
+  ids: Ids,
+): Promise<AddendumResult<{ status: string | null }>> {
+  const { data, error, response } = await client.GET(
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature",
     { params: pathOf(ids) },
   );
   if (error || !data) return failure(response?.status, error);

@@ -1,9 +1,9 @@
 // The addendum access layer (ADR-0114 VN-D30): opening an amending addendum, and what a refused sign carries back. Synthetic data only.
 import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
-import { openAddendum, signAddendum } from "../addenda-api";
+import { loadAddendumCosignature, openAddendum, signAddendum } from "../addenda-api";
 
-const clientWith = (method: "POST", answer: unknown) => {
+const clientWith = (method: "POST" | "GET", answer: unknown) => {
   const fn = vi.fn(async () => answer);
   return { client: { [method]: fn } as unknown as ApiClient, fn };
 };
@@ -84,6 +84,42 @@ describe("signAddendum", () => {
     expect(await signAddendum(client, { encounterId: "e", addendumId: "a" })).toEqual({
       ok: true,
       value,
+    });
+  });
+});
+
+describe("loadAddendumCosignature", () => {
+  it("reads the state of the amendment's own cosignature request", async () => {
+    const { client, fn } = clientWith("GET", { data: { status: "acknowledged" } });
+    expect(await loadAddendumCosignature(client, { encounterId: "e", addendumId: "a" })).toEqual({
+      ok: true,
+      value: { status: "acknowledged" },
+    });
+    expect(fn).toHaveBeenCalledWith(
+      "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature",
+      { params: { path: { encounterId: "e", addendumId: "a" } } },
+    );
+  });
+
+  it("answers a null status for an amendment with no request routed", async () => {
+    const { client } = clientWith("GET", { data: { status: null } });
+    expect(await loadAddendumCosignature(client, { encounterId: "e", addendumId: "a" })).toEqual({
+      ok: true,
+      value: { status: null },
+    });
+  });
+
+  it("carries a refusal back with its status and code", async () => {
+    const { client } = clientWith("GET", {
+      error: { error: { code: "NOT_FOUND", message: "no" } },
+      response: { status: 404 },
+    });
+    expect(
+      await loadAddendumCosignature(client, { encounterId: "e", addendumId: "a" }),
+    ).toMatchObject({
+      ok: false,
+      status: 404,
+      code: "NOT_FOUND",
     });
   });
 });

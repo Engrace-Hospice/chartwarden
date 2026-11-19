@@ -36,7 +36,7 @@ const NOT_CHANGED = "Nothing was changed.";
 const forbidden = (step: CosignStep, noun: string): string =>
   step === "release"
     ? `Only a clinical supervisor or the director of nursing can release this ${noun}. ${NOT_CHANGED} Ask one of them to release it.`
-    : `You cannot do this: cosigning is for an RN with cosign access who wrote neither the note nor this ${noun}. ${NOT_CHANGED} An RN who wrote neither has to do it.`;
+    : `You cannot do this: only an RN with cosign access who wrote neither the note nor this ${noun} can. ${NOT_CHANGED} Ask that RN to do it.`;
 
 export function cosignRefusalMessage({ status, code, step, subject }: CosignRefusal): string {
   const noun = subject === "addendum" ? "amendment" : "note";

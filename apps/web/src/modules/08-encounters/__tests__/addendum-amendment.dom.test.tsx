@@ -366,11 +366,11 @@ describe("a signed amendment", () => {
 
   it("shows what it amended and its cosignature status, and reads no draft", () => {
     const { GET } = mount([
-      { ...amending, status: "signed", signedAt: "2026-10-02T10:00:00Z", cosignStatus: "routed" },
+      { ...amending, status: "signed", signedAt: "2026-10-02T10:00:00Z", cosignStatus: "cosigned" },
     ]);
     expect(within(row()).getByText("Pain, Plan")).toBeInTheDocument();
     expect(within(row()).getByText("Cosignature of this amendment")).toBeInTheDocument();
-    expect(within(row()).getByText("Routed")).toBeInTheDocument();
+    expect(within(row()).getByText("Cosigned")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Amended sections" })).toBeNull();
     expect(draftReads(GET)).toBe(0);
   });

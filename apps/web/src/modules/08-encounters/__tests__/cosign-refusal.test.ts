@@ -71,8 +71,8 @@ describe("step-up", () => {
 
 describe("403", () => {
   it.each<[CosignStep, RegExp]>([
-    ["acknowledge", /RN who wrote neither/],
-    ["sign", /RN who wrote neither/],
+    ["acknowledge", /RN with cosign access who wrote neither/],
+    ["sign", /RN with cosign access who wrote neither/],
     ["release", /supervisor|director of nursing/i],
   ])("says who can do the %s step", (step, who) => {
     const text = say({ status: 403, code: "FORBIDDEN", step });
