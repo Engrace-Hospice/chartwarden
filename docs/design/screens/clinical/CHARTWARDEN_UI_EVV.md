@@ -100,6 +100,22 @@ Coordinates are encrypted at rest and require a separate `read coords` permissio
 from general EVV read; every coordinate read emits a warn-level audit event. Portal
 projections never expose coordinates.
 
+## Event Evidence and Correction
+
+The stable event-detail route follows `replacesEventId` and `supersededByEventId` to show the immutable
+correction chain from the original event through the current live record. The general event-read contract does
+not return coordinates or correction reasons, so the screen states that limitation instead of implying those
+fields were loaded.
+
+An actor with `evv.correct_record` may file a correction only from the current event. The form creates a complete
+replacement capture and requires a reason of at least 60 characters. It never edits the original event. A stale
+step-up refusal routes through the shared re-verification ceremony and keeps the draft in scoped process memory;
+the server remains authoritative for permission, fresh step-up, event kind, current-head, geofence and atomic
+supersede rules. A successful correction opens the newly created event, while an already-superseded refusal
+directs the supervisor to the current record.
+
+---
+
 ## Mobile / Offline
 
 The server accepts on-device check-in/out and durable offline replay, de-duplicated by device + local id.
@@ -122,6 +138,7 @@ from server receive time.
 - Approve / suspend / retire device
 - Edit geofence policy (tenant / per-address)
 - View coordinates (gated)
+- File append-only event correction (current event, authorized supervisor, fresh step-up)
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Repository destination:** `docs/implementation/ChartWarden_Workflow_10_Electronic_Visit_Verification.md`
 **Executor:** Codex
-**Status:** WP0 APPROVED — 2026-11-19; approved PR-0/PR-1 supervisor-workspace slice implemented
+**Status:** WP0 APPROVED — 2026-11-19; approved PR-0/PR-1 supervisor workspace and PR-2 event-correction slices implemented locally
 **Sequence:** After Workflow 09 (Clinical Visits & Documentation), before Workflow 11 (Medication Orders)
 **Baseline:** The historical ZIP proposal has been superseded by the current-branch WP0 evidence at
 [`evidence/10-evv-current-state.md`](./evidence/10-evv-current-state.md). That audit includes static source
@@ -87,6 +87,22 @@ The audit contains:
 
 **STOP GATE CLEARED:** WP0 evidence and the PR-0/PR-1 scope were explicitly approved. Later slices retain their
 own approval gates.
+
+### 2.1 Approved implementation progress — 2026-11-19
+
+- **PR-0/PR-1:** corrected the implementation documents, repaired the M24 EVV remediation deep link and added
+  one permission-filtered EVV Operations navigation model across the existing supervisor screens.
+- **PR-2:** added an immutable event evidence timeline and wired the existing
+  `POST /api/v1/evv/events/:eventId/correct` contract into event detail. The client sends a complete replacement
+  capture and ≥60-character reason, preserves a scoped in-memory draft across fresh step-up, opens the returned
+  event on success and leaves authorization, current-head checks, kind matching, geofence evaluation and the
+  atomic supersede transaction to the server.
+- The event read contract does not expose coordinates or correction reasons. The UI says so and does not invent
+  a broader read path. No backend, schema, new PHI/location storage, mobile client or vendor integration changed.
+- Read-only browser QA covered the six EVV workspace routes at 375, 768 and 1440 pixels. All routes loaded, all
+  expected navigation links remained available, no horizontal overflow occurred, and the final WCAG A/AA axe
+  scan reported no violations. Visual comparison remains inconclusive because no approved screenshot baseline
+  exists.
 
 ## 3. UX architecture — proposed
 
@@ -248,10 +264,11 @@ Use fictional test data. Adapt expected behavior to actual contracts and applica
 |---|---|---|
 | PR-0 | WP0 audit and approved wireframes only | Human approval required before application edits |
 | PR-1 | Shared EVV UI, status language, routing | Component/accessibility and navigation tests |
-| PR-2 | Visit-embedded clinician capture | API contract, role, idempotency and timing tests |
-| PR-3 | Offline/device UX, only if verified and approved | Real-device sync/privacy/security evidence |
-| PR-4 | Supervisor queue, event detail and corrections | Step-up, concurrency, provenance and audit tests |
-| PR-5 | Submissions, metrics, e2e, rollout docs | Vendor-state truthfulness, tenant isolation, rollback |
+| PR-2 | Event evidence timeline and existing correction route UI | Step-up, permission, provenance and contract tests |
+| PR-3 | Honest aggregator configuration/status presentation and drill-down | Vendor-state truthfulness, tenant isolation and worker/live proof |
+| PR-4 | Mobile/Capacitor capture and device registration, separately approved | Real-device location, attestation and privacy evidence |
+| PR-5 | Offline v2 client queue, only after PR-4 and an approved local PHI model | Encryption, account/device isolation, replay and recovery tests |
+| PR-6 | Vendor/state adapter work, separately approved | BAA/trading-partner, sandbox, production refusal and rollback evidence |
 
 Do not merge large cross-domain changes in one PR. If a backend safety defect is discovered, propose a separate narrow fix with proof, migration impact and approval.
 

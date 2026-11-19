@@ -201,7 +201,8 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
             <LoadingSpinner />
           </div>
         ) : (
-          <div style={tableWrapStyle}>
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: horizontally scrollable evidence must be keyboard-focusable (axe scrollable-region-focusable).
+          <div style={tableWrapStyle} tabIndex={0} aria-label="EVV metric evidence table">
             <table style={tableStyle}>
               <thead>
                 <tr style={headerRowStyle}>

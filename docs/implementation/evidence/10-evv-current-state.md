@@ -388,3 +388,18 @@ Architecture checks passed:
 **STOP GATE AT AUDIT COMPLETION:** No application changes were made during WP0. PR-0/PR-1 were subsequently
 approved on 2026-11-19 and implemented as recorded in the parent plan; later slices still require their own
 approval.
+
+## 18. Post-audit implementation record — 2026-11-19
+
+The user subsequently approved PR-2. Event detail now follows the immutable predecessor/successor links, labels
+the live head, and offers the existing correction-of-record route only as an affordance for a permitted session
+viewing that live head. The correction ceremony requires the route's complete replacement capture and
+60-character reason, preserves the typed draft across a genuine fresh-step-up return, and navigates to the
+server-returned replacement event. Server permission, step-up freshness, kind matching, concurrency and atomic
+provenance remain authoritative.
+
+Focused DOM coverage verifies the evidence chain, permission/live-head affordance, exact correction payload and
+step-up draft restoration. Read-only browser QA of the six EVV workspace routes at 375/768/1440 pixels found no
+fallback screen, horizontal overflow, failed request or final WCAG A/AA axe violation. No screenshot baseline was
+available, so pixel-level visual comparison remains not run. This follow-up did not run a live correction against
+the shared database, real-device/offline tests or a vendor sandbox.
