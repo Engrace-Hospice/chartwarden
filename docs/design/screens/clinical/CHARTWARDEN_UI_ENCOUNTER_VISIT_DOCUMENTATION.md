@@ -54,7 +54,11 @@ Common encounter types: `routine_visit`, `admission_visit`, `recert_visit`,
 - HearthNote section selections (per encounter type × discipline)
 - Deterministic Layer-1 narrative preview (rebuilt on edit)
 - Vitals capture (BP, HR, RR, temp, SpO₂, pain score + scale, weight) — each field either
-  captured or marked **clinically not indicated** with reason
+  captured or marked **clinically not indicated** with reason. A capture or edit that races the sign (the
+  note is signed first) is refused 409 `IMMUTABLE_AFTER_SIGN`, and the panel says, in the app's words keyed on
+  the code (the same on the composer and on the encounter record, and for any other write to a note signed
+  meanwhile): "This note was signed while you were working, so your change was not saved. Reload the page to
+  see the signed note; to add to it, open an addendum."
 - Mileage (odometer / route / manual)
 
 ---
@@ -95,6 +99,12 @@ Rules the screen keeps:
 - **Stale is not an error to the clinician.** A confirm or deselect answered 409 `DRAFT_SECTION_STALE`
   recorded nothing: the draft is re-read, the section shows its new text and says so, and the next confirm
   carries the new hash.
+- **Only the note's author resolves its draft.** Confirm and Deselect answered 403 `FORBIDDEN` (anyone but
+  the encounter's author, a supervisor included: the author signs, so the signer is who confirmed) recorded
+  nothing. The section says, in its own status line, "Only the author of this note can confirm or deselect
+  its drafted sections, because the author is who signs it. Nothing was changed. Ask the author to do it."
+  and stays exactly as it was (same text and state, Confirm and Deselect still offered, the strip's count
+  unchanged, no care-plan link touched). Reading the draft is unchanged.
 - **Deselecting care-plan items unlinks them from this visit** (never from the care plan): the section says so
   before the click and after it, the care-plan picker re-reads its links, and a section left empty by the
   deselect reads "Nothing is left to draft in it". Deselecting the last drafted section keeps the panel
@@ -126,6 +136,13 @@ the API sent no structured view at all.
   outline and muted type so it cannot be taken for the clinician's words, is announced as a note, has no
   text to select or copy and no action, and is never an empty frame. A section the API sent with neither text
   nor a withheld flag says "No text is recorded for this section."
+- **A withheld section is anonymous.** The API keeps its position in the note and sends nothing else about
+  it: no section id, no text, no amending addendum, no date. It sits where it was, under the generic heading
+  **Withheld section** (the same words for every one, so two withheld sections are told apart by nothing),
+  with no name, no DOM id to link to and so no landmark, no **Amended** badge and no date, and nothing to copy
+  (the page offers no copy or print of note text at all). The viewer is told that something is withheld, and
+  never which section it is or whether anyone amended it. A withheld section an older server still sent an id
+  for is shown the same way, never by name.
 - **Amended sections.** A section whose latest version is an amendment shows an **Amended** badge with the
   date of that version and a **Version history (N versions)** disclosure: the original and every amendment,
   oldest first, each with its kind, date and author (the membership id, as the page shows authors), the
@@ -133,7 +150,10 @@ the API sent no structured view at all.
   is not settled says so beside its kind in words (**Pending cosignature**, **Cosigned**, **Released by a
   supervisor**; nothing for the original, or when none was required), a withheld amendment's included: it is a
   status, never the section's text. A section amended but with no history in the response says "Earlier
-  versions are not available."
+  versions are not available." The API leaves out the history of any section with a withheld version (the
+  original or an amendment) and sends no history at all (`null`) when none is left, so the history may list
+  fewer sections than were amended, or none: each amended section opens its own history when it has one and
+  says "Earlier versions are not available." when it has not, never a heading over an empty list.
 - **Cannot be decided.** When the server cannot decide what the viewer may read (503 `NOTE_VIEW_UNAVAILABLE`),
   the note view, on the encounter record and in the composer of a finalized note, is an announced error
   state, "The note cannot be shown right now", with **Try again**; never an empty or partial note, and never
@@ -154,10 +174,19 @@ per section.
   (optional)** group lists the note's sealed sections as checkboxes (at most 12, "N of 12 chosen"; the rest
   wait at the limit, with the reason). Choosing none is the free addendum, exactly as before. The group
   appears only when the visit-note draft is on for the viewer (the draft read the page already holds is
-  "ready") and the note has sealed sections; with the draft off, a pin with no sealed rows or an older API it
-  is the free addendum alone. A withheld section is listed but cannot be chosen, with its reason: nobody amends
-  text they cannot see. The choice starts empty each time the dialog opens.
-- **Reviewing it.** An addendum that names sections lists them in the Addenda rail (**Amends**), and, until it
+  "ready"), the note has sealed sections, and the session does not show that the viewer is neither the
+  signed note's author nor a supervisor: only they may choose sections (the author is compared by membership
+  id, a supervisor by role key, from the session the page already holds, with no extra read). A viewer the
+  session shows to be neither sees the free addendum alone; a viewer the session cannot tell (no membership or
+  no roles known) is offered the group and, if the server refuses, told in words. With the draft off, a pin
+  with no sealed rows or an older API it is the free addendum alone. A section withheld from the viewer has no
+  id and is not listed at all: nobody amends text they cannot see. The choice starts empty each time the
+  dialog opens.
+- **Reviewing it.** An addendum that names sections lists them in the Addenda rail (**Amends**; only the
+  sections the API sent: for a viewer without Part 2 disclosure it leaves out any Part 2 section the addendum
+  named, signed or not, so the list is never read as a total, and no count is derived from it. An addendum
+  whose named sections were all left out reads as a free addendum to that viewer: no **Amends**, no review, no
+  cosignature region), and, until it
   is signed, shows an **Amended sections** region: for each named section the note's own drafted-section
   panel, fed by the addendum's own draft (its own resolutions, never the note's), with **Confirm section** and
   **Deselect section**. Confirmed, the status line reads "This section will be amended with the text you
@@ -175,15 +204,22 @@ per section.
   addendum shows **Cosignature of this amendment** with it in words (**Pending cosignature**, **Cosigned**,
   **Released by a supervisor**); nothing is drawn when none was required or the API sends none. Working that
   request is "Cosigning an Amendment" below.
-- **Refusals, each with a next step.** Opening: 404 (the draft switch is off; offers the free addendum and
-  names Admin, Visit-note Draft), 422 `UNKNOWN_TEMPLATE_SECTION` (reload and choose again), 422
-  `AMENDMENT_PART2_NOT_ENTITLED` (ask a colleague whose access includes it). Resolving a section: 409
+- **Refusals, each with a next step.** Opening: 403 `FORBIDDEN` when sections are named (only the note's
+  author or a supervisor may name them; nothing was changed; open the addendum without choosing sections, or
+  ask the author or a supervisor; the dialog stays open with the reason and the choice), 404 (the draft
+  switch is off; offers the free addendum and names Admin, Visit-note Draft), 422 `UNKNOWN_TEMPLATE_SECTION`
+  (reload and choose again), 422 `AMENDMENT_PART2_NOT_ENTITLED` (ask a colleague whose access includes it;
+  the sentence is the app's, keyed on the code: the server's message is generic and names no section, and is
+  never shown). Resolving a section: 403 `FORBIDDEN` (only the addendum's author can confirm or deselect the
+  sections it amends; nothing was changed; the section stays unresolved and Sign keeps waiting), 409
   `DRAFT_SECTION_STALE` (re-read, confirm again), 422 `UNKNOWN_TEMPLATE_SECTION`, 409 `ILLEGAL_TRANSITION`
   (already signed or voided). Signing: 409 `DRAFT_SECTION_STALE` names each unresolved or changed section and
   re-reads the draft; 409 `DRAFT_OFF_AFTER_FINALIZE` (nothing changed; an administrator switches the draft
   back on, then sign again); 503 `COMPLIANCE_GATE_UNAVAILABLE` (nothing changed; try again); 422
-  `NO_ELIGIBLE_COSIGNER` (nothing changed; a supervisor assigns a case manager); 422
-  `AMENDMENT_PART2_NOT_ENTITLED`.
+  `NO_ELIGIBLE_COSIGNER` (nothing changed; the patient's RN case manager cannot cosign a note or an
+  amendment they wrote themselves, so the cosigner is none when the only eligible RN wrote the note or the
+  amendment; a supervisor assigns an RN case manager who wrote neither); 422
+  `AMENDMENT_PART2_NOT_ENTITLED` (the app's sentence, by code).
 
 ---
 
@@ -212,6 +248,8 @@ is; an amendment never re-opens billing.
   "The cosignature request could not be read right now. Reload the page to try again." and offers no step.
   The cosigner is pointed to the amended sections' **Version history** to review them first; the panel shows
   section names and the author's reason, never any section text, so a Part 2 section is never rendered there.
+  The names are the sections the API sent for this viewer: a Part 2 section the amendment named is left out for
+  a viewer without disclosure (and is no more rendered than named), so the list is never read as a total.
 - **The ceremony** is the note's, written once (acknowledge: "This does not sign it."; sign: the attestation
   tick, "I attest I have reviewed this amendment to the signed documentation and concur as the qualifying
   cosigner.", step-up from the session; release: a reason of at least 40 characters, counted beside the field).
