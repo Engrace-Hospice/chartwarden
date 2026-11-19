@@ -2,7 +2,7 @@
 
 **Repository destination:** `docs/implementation/ChartWarden_Workflow_10_Electronic_Visit_Verification.md`
 **Executor:** Codex
-**Status:** WP0 APPROVED — 2026-11-19; approved PR-0/PR-1 supervisor workspace, PR-2 event correction, and PR-3 honest aggregator evidence slices implemented locally; PR-4/PR-5 mobile source audited cross-repository and release-blocked on device/live evidence
+**Status:** WP0 APPROVED — 2026-11-19; approved PR-0/PR-1 supervisor workspace, PR-2 event correction, and PR-3 honest aggregator evidence slices implemented locally; PR-4/PR-5 mobile source and PR-6 vendor scaffolding audited, with release gates still closed
 **Sequence:** After Workflow 09 (Clinical Visits & Documentation), before Workflow 11 (Medication Orders)
 **Baseline:** The historical ZIP proposal has been superseded by the current-branch WP0 evidence at
 [`evidence/10-evv-current-state.md`](./evidence/10-evv-current-state.md). That audit includes static source
@@ -271,7 +271,7 @@ Use fictional test data. Adapt expected behavior to actual contracts and applica
 | PR-3 | Honest aggregator configuration/status presentation and drill-down | Vendor-state truthfulness, tenant isolation and worker/live proof |
 | PR-4 | React Native/Expo capture and device registration in the separate `chartwarden-mobile` repository | Source implemented; release requires real-device location, attestation and privacy evidence |
 | PR-5 | Default-off offline v2 client queue in `chartwarden-mobile` under the approved encrypted local-PHI model | Source implemented; release requires SQLCipher, account/device isolation, replay and recovery device proof |
-| PR-6 | Vendor/state adapter work, separately approved | BAA/trading-partner, sandbox, production refusal and rollback evidence |
+| PR-6 | Existing Sandata/open-model adapter binding and state rollout, separately approved | Vendor contract remains unverified; requires agreement/BAA, real sandbox conformance, production refusal and rollback evidence |
 
 Do not merge large cross-domain changes in one PR. If a backend safety defect is discovered, propose a separate narrow fix with proof, migration impact and approval.
 
@@ -305,6 +305,20 @@ access-denial cases, accessibility, and live backend reconciliation. This reposi
 `apps/mobile`, Capacitor dependencies, or a competing offline queue. ADR-0072 still records formal owner
 ratification as pending, so any change to renderer ownership or cross-repository contracts remains an
 architecture decision, not an implementation-plan shortcut.
+
+### PR-6 adapter audit note — 2026-11-19
+
+The adapter package, worker flow, configuration binding, per-provider/state credential lookup, retry/poll
+state machine, and fail-closed default already exist. The HTTP transport and its tests explicitly use an
+assumed Sandata contract: `/submissions`, `/submissions/{id}`, Basic authentication, and local response
+field names were tested only through an injected fake fetch. No reachable Sandata sandbox, executed
+state trading-partner agreement/BAA, or verified production payload/response contract is evidenced.
+
+PR-6 is therefore not a request to add another generic adapter. Its next authorized work must begin with
+a named state/provider entity, executed agreement evidence, sandbox credentials through the approved
+secret path, and synthetic conformance fixtures. Until then, leaving `SANDATA_API_BASE_URL` and matching
+credentials absent preserves the deny transport and is the correct production posture. No vendor call or
+credential change was made during this audit.
 
 ## 7. Definition of done
 
