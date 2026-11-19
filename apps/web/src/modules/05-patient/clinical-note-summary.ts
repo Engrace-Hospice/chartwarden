@@ -46,6 +46,8 @@ export function summariseNote(note: SummarisedNote): NoteSummary {
   }
   const readable = view.sections.filter((s) => !s.withheld && s.text !== null);
   const text = flatten(readable.map((s) => s.text).join(" "));
-  if (!text) return { kind: "withheld" };
-  return { kind: "text", text, someWithheld: readable.length < view.sections.length };
+  // Withheld is the server's flag, never an inference from missing text: a section with nothing in it is empty, not withheld.
+  const someWithheld = view.sections.some((s) => s.withheld);
+  if (!text) return someWithheld ? { kind: "withheld" } : NONE;
+  return { kind: "text", text, someWithheld };
 }

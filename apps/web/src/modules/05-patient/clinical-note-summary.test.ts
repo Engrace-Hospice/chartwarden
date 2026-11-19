@@ -50,6 +50,36 @@ describe("summariseNote", () => {
     ).toEqual({ kind: "withheld" });
   });
 
+  it("is nothing, not withheld, when no section holds text and none is withheld", () => {
+    expect(
+      summariseNote({
+        finalDocumentation: null,
+        finalDocumentationView: {
+          withheld: false,
+          sections: [section(null), section("   ")],
+        },
+      }),
+    ).toEqual({ kind: "none" });
+  });
+
+  it("does not say a section was withheld when it was only empty", () => {
+    expect(
+      summariseNote({
+        finalDocumentation: null,
+        finalDocumentationView: { withheld: false, sections: [section("A."), section(null)] },
+      }),
+    ).toEqual({ kind: "text", text: "A.", someWithheld: false });
+  });
+
+  it("is withheld when a section is withheld and the rest are empty", () => {
+    expect(
+      summariseNote({
+        finalDocumentation: null,
+        finalDocumentationView: { withheld: false, sections: [section(null), section(null, true)] },
+      }),
+    ).toEqual({ kind: "withheld" });
+  });
+
   it("is unavailable for a note whose view could not be decided", () => {
     expect(summariseNote({ finalDocumentation: null, viewUnavailable: true })).toEqual({
       kind: "unavailable",
