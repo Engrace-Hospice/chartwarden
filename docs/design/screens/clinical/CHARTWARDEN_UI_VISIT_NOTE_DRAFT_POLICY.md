@@ -46,7 +46,7 @@ The effect of each choice is shown beside it, not behind a help link.
 | Row | Meaning |
 | --- | ------- |
 | **Visit-note draft** | `On` or `Off`. A tenant that has never saved the setting is off. |
-| **Phrase review** | `Approved` or `Pending`: whether the platform's phrase wording has had its clinical review. |
+| **Phrase review** | `Approved` or `Pending`: whether the platform's phrase wording has had its clinical review (a status the screen does not know reads `Unknown`, never `Pending`). |
 | **Reviewer** | The named platform-side reviewer of that wording (VN-D14). |
 
 When the review is **pending**, the screen says so before the admin tries: the server will not let the draft
@@ -94,6 +94,8 @@ Save is disabled until something changes.
 - **Loading**: spinner.
 - **Error**: "Visit-note draft setting unavailable" with **Try again**; the form is not shown with invented defaults.
 - **No permission** (403): "Not available", no retry. The route is gated by the permission key.
+- **Not on this server** (404): "Not available" ("The visit-note draft setting is not available to your organization."), no retry.
+- **An answer that does not say whether the draft is on**: the same error as above, never a form of guessed defaults.
 - **Refusal** (409 and others): the server's sentence or a plain one; the edit is kept.
 - **No answer** (offline): "Could not reach the server"; no success is shown.
 
@@ -101,4 +103,4 @@ Save is disabled until something changes.
 
 ## Actions
 
-- Refresh · Choose On or Off · Save setting · Confirm / Cancel the turn-on dialog
+- Refresh (off while a save is in flight, so an older read cannot put the old setting back) · Choose On or Off · Save setting · Confirm / Cancel the turn-on dialog

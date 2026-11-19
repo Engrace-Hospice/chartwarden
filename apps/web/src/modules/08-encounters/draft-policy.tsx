@@ -19,6 +19,7 @@ import {
   LoadingSpinner,
   Panel,
   StatusPill,
+  type StatusTone,
   useApiClient,
 } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
@@ -46,11 +47,48 @@ export const DRAFT_POLICY_ACTION = "encounters.draft.policy";
 const POLICY_RESOURCE = "policy";
 const POLICY_DRAFT_ACTIONS: readonly string[] = [DRAFT_POLICY_ACTION];
 const FORBIDDEN_STATUS = 403;
+const NOT_FOUND_STATUS = 404;
+
+/** Why the setting could not be read: not for this person, not on this server, or a failure worth another try. */
+type ErrorReason = "forbidden" | "missing" | "failed";
 
 type Load =
   | { readonly status: "loading" }
-  | { readonly status: "error"; readonly forbidden: boolean }
+  | { readonly status: "error"; readonly reason: ErrorReason }
   | { readonly status: "ready"; readonly policy: DraftPolicyView };
+
+const errorReasonOf = (status: number): ErrorReason =>
+  status === FORBIDDEN_STATUS ? "forbidden" : status === NOT_FOUND_STATUS ? "missing" : "failed";
+
+const ERROR_COPY: Readonly<Record<ErrorReason, { title: string; description: string }>> = {
+  forbidden: {
+    title: "Not available",
+    description: "You do not have access to the visit-note draft setting.",
+  },
+  missing: {
+    title: "Not available",
+    description: "The visit-note draft setting is not available to your organization.",
+  },
+  failed: {
+    title: "Visit-note draft setting unavailable",
+    description: "The setting could not be loaded. Nothing has been changed: try again.",
+  },
+};
+
+const UNREADABLE_SAVE_ANSWER =
+  "The setting may have been saved, but the answer could not be read. Refresh to see what is in force.";
+
+/** The phrase review's status as the server reports it; a status this screen does not know is said to be unknown, never "Pending". */
+function reviewPill(status: string): { readonly label: string; readonly tone: StatusTone } {
+  switch (status) {
+    case "approved":
+      return { label: "Approved", tone: "success" };
+    case "pending":
+      return { label: "Pending", tone: "warning" };
+    default:
+      return { label: "Unknown", tone: "neutral" };
+  }
+}
 
 const asDraft = (value: unknown): boolean | null => {
   if (typeof value !== "object" || value === null) return null;
@@ -78,20 +116,29 @@ export function DraftPolicy(): JSX.Element {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [saved, setSaved] = useState<DraftPolicyView | null>(null);
   const inFlight = useRef(false);
+  // A read that started before a save landed holds the setting as it was: its answer is dropped.
+  const readSequence = useRef(0);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a retry trigger; `returning` and `draftKey` are fixed for this mount, and the stashed edit is restored ONCE (then cleared), so a Refresh or Try again shows what the server holds, not the old edit.
   useEffect(() => {
     let active = true;
+    const mine = ++readSequence.current;
     setLoad({ status: "loading" });
     void loadDraftPolicy(client).then((outcome) => {
-      if (!active) return;
+      if (!active || mine !== readSequence.current) return;
       if (!outcome.ok) {
-        setLoad({ status: "error", forbidden: outcome.status === FORBIDDEN_STATUS });
+        setLoad({ status: "error", reason: errorReasonOf(outcome.status) });
+        return;
+      }
+      // A 200 that does not say whether the draft is on is a broken answer: no form of guessed defaults.
+      const enabledNow = asDraft(outcome.data);
+      if (enabledNow === null) {
+        setLoad({ status: "error", reason: "failed" });
         return;
       }
       const restored = returning ? asDraft(peekStepUpDraft<unknown>(draftKey)) : null;
       if (restored !== null) clearStepUpDraft(draftKey); // restored once: a retry must not overwrite the form with it again
-      setEnabled(restored ?? outcome.data.enabled);
+      setEnabled(restored ?? enabledNow);
       setLoad({ status: "ready", policy: outcome.data });
     });
     return () => {
@@ -114,8 +161,14 @@ export function DraftPolicy(): JSX.Element {
     setBusy(false);
     setConfirming(false);
     if (outcome.ok) {
+      const enabledNow = asDraft(outcome.data);
+      if (enabledNow === null) {
+        setRefusal(UNREADABLE_SAVE_ANSWER);
+        return;
+      }
+      readSequence.current += 1; // a read that started before this save would put the old setting back
       setLoad({ status: "ready", policy: outcome.data });
-      setEnabled(outcome.data.enabled);
+      setEnabled(enabledNow);
       setSaved(outcome.data);
       return;
     }
@@ -139,6 +192,7 @@ export function DraftPolicy(): JSX.Element {
 
   // A reload shows what the server holds now, so the "saved" notice for an earlier save goes with it.
   const reload = (): void => {
+    if (inFlight.current) return; // a save is on its way: what it answers is what the server will hold
     setSaved(null);
     setRefusal(null);
     setReloadKey((key) => key + 1);
@@ -171,7 +225,12 @@ export function DraftPolicy(): JSX.Element {
               confirm each drafted section before they can sign.
             </p>
           </div>
-          <Button tone="secondary" loading={load.status === "loading"} onClick={reload}>
+          <Button
+            tone="secondary"
+            loading={load.status === "loading"}
+            disabled={busy}
+            onClick={reload}
+          >
             Refresh
           </Button>
         </header>
@@ -184,18 +243,14 @@ export function DraftPolicy(): JSX.Element {
         {load.status === "error" ? (
           <div className="wx-list-state" role="alert">
             <EmptyState
-              title={load.forbidden ? "Not available" : "Visit-note draft setting unavailable"}
-              description={
-                load.forbidden
-                  ? "You do not have access to the visit-note draft setting."
-                  : "The setting could not be loaded. Nothing has been changed: try again."
-              }
+              title={ERROR_COPY[load.reason].title}
+              description={ERROR_COPY[load.reason].description}
             />
-            {load.forbidden ? null : (
+            {load.reason === "failed" ? (
               <Button tone="secondary" onClick={reload}>
                 Try again
               </Button>
-            )}
+            ) : null}
           </div>
         ) : null}
 
@@ -210,7 +265,7 @@ export function DraftPolicy(): JSX.Element {
               icon="clipboard-check"
               description="What your organization is running today. A tenant that has never saved this setting has it off."
             >
-              <output style={saved ? { display: "block", marginBottom: "0.75rem" } : undefined}>
+              <output className="wx-draft-policy-status">
                 {saved ? (
                   <InlineAlert tone="success" live={false}>
                     {`Setting saved: the visit-note draft is ${settingWords(saved.enabled)}.`}
@@ -228,8 +283,8 @@ export function DraftPolicy(): JSX.Element {
                 <dt>Phrase review</dt>
                 <dd>
                   <StatusPill
-                    label={policy.reviewStatus === "approved" ? "Approved" : "Pending"}
-                    tone={policy.reviewStatus === "approved" ? "success" : "warning"}
+                    label={reviewPill(policy.reviewStatus).label}
+                    tone={reviewPill(policy.reviewStatus).tone}
                   />
                 </dd>
                 <dt>Reviewer</dt>

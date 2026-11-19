@@ -95,6 +95,29 @@ describe("reading the setting", () => {
     expect(await screen.findByText("Not available")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
+
+  it("says the switch is not available, not that it failed, when the server has no such screen (404)", async () => {
+    mount({ read: refusal(404, "NOT_FOUND") });
+    expect(await screen.findByText("Not available")).toBeInTheDocument();
+    expect(screen.getByText(/setting is not available to your organization/i)).toBeInTheDocument();
+    expect(screen.queryByText(/try again/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("shows an error, not a form, for an answer that does not say whether the draft is on", async () => {
+    mount({ read: () => ({ body: { reviewStatus: "approved", reviewer: "ADA" } }) });
+    expect(await screen.findByText("Visit-note draft setting unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+
+  it("does not call a review status it does not know 'Pending'", async () => {
+    mount({ read: () => ({ body: policyBody({ reviewStatus: "withdrawn" }) }) });
+    await ready();
+    const panel = within(inForce());
+    expect(panel.queryByText("Pending")).toBeNull();
+    expect(panel.queryByText("Approved")).toBeNull();
+    expect(panel.getByText("Unknown")).toBeInTheDocument();
+  });
 });
 
 describe("turning it on", () => {
@@ -181,6 +204,61 @@ describe("turning it on", () => {
     await user.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(within(inForce()).getByText("Approved")).toBeInTheDocument());
     expect(screen.queryByText(/phrase wording has not completed/)).toBeNull();
+  });
+});
+
+describe("refreshing while a save is in flight", () => {
+  it("cannot be done: the refresh waits, so an older read cannot put the old setting back over the saved one", async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mount({
+      read: () => ({ body: policyBody({ enabled: true }) }),
+      write: async (call) => {
+        await held;
+        return { body: policyBody(call.body as Record<string, unknown>) };
+      },
+    });
+    await screen.findByRole("radio", { name: "On" });
+    await user.click(radio("Off"));
+    await user.click(save());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled());
+    release();
+    expect(
+      await screen.findByText("Setting saved: the visit-note draft is off."),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+    expect(within(inForce()).getByText("Off")).toBeInTheDocument();
+  });
+
+  it("keeps the saved notice out of an inline style", async () => {
+    const user = userEvent.setup();
+    mount({ read: () => ({ body: policyBody({ enabled: true }) }) });
+    await screen.findByRole("radio", { name: "On" });
+    await user.click(radio("Off"));
+    await user.click(save());
+    await screen.findByText("Setting saved: the visit-note draft is off.");
+    expect(within(inForce()).getByRole("status")).not.toHaveAttribute("style");
+  });
+});
+
+describe("a save whose answer cannot be read", () => {
+  it("shows no success, and says to refresh, instead of guessing the setting", async () => {
+    const user = userEvent.setup();
+    mount({ write: () => ({ body: { reviewStatus: "approved", reviewer: "ADA" } }) });
+    await ready();
+    await user.click(radio("On"));
+    await user.click(save());
+    await user.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Turn on drafts",
+      }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(/answer could not be read/);
+    expect(screen.queryByText(/Setting saved/)).toBeNull();
+    expect(within(inForce()).getByText("Off")).toBeInTheDocument();
   });
 });
 
