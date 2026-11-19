@@ -15,8 +15,11 @@ import { humanizeSection } from "./sign-draft-notice";
 /** The API's limit on sections named by one addendum. */
 export const MAX_AMENDED_SECTIONS = 12;
 
-const PART2_NOT_ENTITLED =
-  "A section you chose holds 42 CFR Part 2 information that your access does not include, so it cannot be amended by you. Nothing was changed. Ask a colleague whose access includes it to amend that section; a free addendum can still add what you need.";
+// The server answers this code for ANY named section whenever the note holds Part 2 text the signer cannot be told of, whatever the section
+// (the answer does not depend on it). The sentence therefore says nothing about a section, nor about what the note holds: it is keyed on the
+// code alone, and a viewer without disclosure learns nothing from it.
+const SECTIONS_NOT_CHOOSABLE =
+  "You cannot choose sections to amend on this note. Nothing was changed. Add an addendum without choosing sections, or ask the note's author.";
 
 /**
  * The role keys the server treats as a supervisor (`SUPERVISOR_ROLE_KEYS` of 08-encounters, the same set as the note-closure grants).
@@ -66,7 +69,7 @@ export function amendCreateRefusal(
   if (code === "UNKNOWN_TEMPLATE_SECTION") {
     return "One of the sections you chose is not part of the signed note. Reload the page, choose the sections again, then open the addendum.";
   }
-  if (code === "AMENDMENT_PART2_NOT_ENTITLED") return PART2_NOT_ENTITLED;
+  if (code === "AMENDMENT_PART2_NOT_ENTITLED") return SECTIONS_NOT_CHOOSABLE;
   return null;
 }
 
@@ -98,7 +101,7 @@ export function addendumRefusalMessage({ code, message, details }: AddendumRefus
     case "NO_ELIGIBLE_COSIGNER":
       return "This note needed a cosigner, so its amendment does too, and no eligible cosigner was found: the patient's RN case manager cannot cosign a note or an amendment they wrote themselves. Nothing was changed. Ask a supervisor to assign an RN case manager who wrote neither the note nor this amendment, then sign again.";
     case "AMENDMENT_PART2_NOT_ENTITLED":
-      return PART2_NOT_ENTITLED;
+      return SECTIONS_NOT_CHOOSABLE;
     case "STEP_UP_AUTH_REQUIRED":
       return "Signing needs a fresh re-authentication, and yours is out of date. Nothing was changed: the addendum is still waiting. Re-authenticate, then sign again.";
     default:
@@ -114,7 +117,8 @@ const reasonOf = (section: DraftSectionView): DraftIssue => ({
 /**
  * Why Sign waits for an amending addendum, or null when it need not. While the amended sections are being read, or could not be, it
  * waits (an unknown draft is not a resolved one); an unresolved or changed section is named. A draft this viewer cannot read ("off") is
- * left to the server, which answers the sign with its own refusal.
+ * left to the server, which answers the sign with its own refusal; one that is the author's alone ("notAuthor") holds Sign back, for the
+ * author alone may sign.
  */
 export function signBlockReason(load: DraftLoad): string | null {
   switch (load.status) {
@@ -124,6 +128,8 @@ export function signBlockReason(load: DraftLoad): string | null {
       return "Signing waits until the amended sections can be read.";
     case "off":
       return null;
+    case "notAuthor":
+      return "Only the author of this addendum can review its sections and sign it.";
     case "ready": {
       const waiting = load.draft.sections.filter(needsReview).map(reasonOf);
       return waiting.length === 0

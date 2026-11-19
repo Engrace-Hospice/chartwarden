@@ -16,6 +16,9 @@ import type { NoteDraft } from "./use-note-draft";
 const OFF_TEXT =
   "The visit-note draft is switched off for your organization, or your role does not include reading it, so the amended sections cannot be shown here. Signing is still checked by the server.";
 const UNAVAILABLE_TEXT = "The amended sections could not be read. Nothing was changed.";
+// The addendum's draft is its author's alone. Worded here, in the app's words: the server's text for the refusal is never shown.
+const NOT_AUTHOR_TEXT =
+  "Only the author of this addendum can review the sections it amends. Nothing was changed. Ask the author to review and sign it, or open your own addendum.";
 
 export interface AmendmentReviewProps {
   readonly addendumId: string;
@@ -41,6 +44,8 @@ export function AmendmentReview({
         return <p className="wx-row-sub">Reading the amended sections…</p>;
       case "off":
         return <InlineAlert tone="info">{OFF_TEXT}</InlineAlert>;
+      case "notAuthor":
+        return <InlineAlert tone="info">{NOT_AUTHOR_TEXT}</InlineAlert>;
       case "unavailable":
         return (
           <>

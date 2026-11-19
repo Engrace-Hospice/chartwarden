@@ -38,13 +38,21 @@ const section = (sectionId: string, state: string, text = `Redrafted ${sectionId
 });
 
 let sections: ReturnType<typeof section>[];
-let draftAnswer: "ok" | "off" | "unavailable";
+let draftAnswer: "ok" | "off" | "unavailable" | "forbidden";
 
 const answerDraft = () => {
   if (draftAnswer === "off") {
     return {
       error: { error: { code: "NOT_FOUND", message: "not found" } },
       response: { status: 404 },
+    };
+  }
+  if (draftAnswer === "forbidden") {
+    return {
+      error: {
+        error: { code: "FORBIDDEN", message: "only the addendum's author may read this draft" },
+      },
+      response: { status: 403 },
     };
   }
   if (draftAnswer === "unavailable") {
@@ -275,6 +283,24 @@ describe("when the amended sections cannot be shown", () => {
     );
   });
 
+  // The addendum's draft is its author's alone (403 for anyone else): the panel says so in the app's own words, never the server's, and is
+  // whole (the region, one sentence, no controls that cannot work, no spinner left behind), and Sign waits with the same reason.
+  it("says the sections are the author's to review, in the app's words, and holds Sign back", async () => {
+    draftAnswer = "forbidden";
+    mount([amending]);
+    const inReview = await review();
+    const said = await inReview.findByText(/Only the author of this addendum can review/);
+    expect(said).toHaveTextContent(/Nothing was changed/);
+    expect(row()).not.toHaveTextContent(/only the addendum's author may read this draft/);
+    expect(row()).not.toHaveTextContent(/switched off|role does not include/);
+    expect(inReview.queryByText(/Reading the amended sections/)).toBeNull();
+    expect(inReview.queryByRole("button")).toBeNull();
+    expect(inReview.queryByRole("heading")).toBeNull();
+    const sign = within(row()).getByRole("button", { name: "Sign addendum" });
+    expect(sign).toHaveAttribute("aria-disabled", "true");
+    expect(sign).toHaveAccessibleDescription(/Only the author of this addendum/);
+  });
+
   it("explains a stale confirmation on resolve and re-reads the draft", async () => {
     const user = userEvent.setup();
     const { GET } = mount([amending], {
@@ -436,11 +462,11 @@ describe("a refused sign", () => {
     ["DRAFT_OFF_AFTER_FINALIZE", 409, /Visit-note Draft/],
     ["COMPLIANCE_GATE_UNAVAILABLE", 503, /Try again in a moment/],
     ["NO_ELIGIBLE_COSIGNER", 422, /cosigner/],
-    ["AMENDMENT_PART2_NOT_ENTITLED", 422, /42 CFR Part 2/],
+    ["AMENDMENT_PART2_NOT_ENTITLED", 422, /cannot choose sections to amend on this note/],
   ])("%s says what happened and what to do", async (code, status, wording) => {
     const { alert, onChanged } = await signRefused({ status, code });
     expect(alert.textContent).toMatch(wording);
-    expect(alert.textContent).toMatch(/Nothing was changed|cannot be amended by you/);
+    expect(alert.textContent).toMatch(/Nothing was changed/);
     expect(onChanged).not.toHaveBeenCalled();
   });
 });

@@ -238,6 +238,16 @@ describe("reading the draft", () => {
     await waitFor(() => expect(result.current.load.status).toBe("unavailable"));
   });
 
+  it("stays off for the note's own 403 (a role without the read): only an addendum's draft is its author's alone", async () => {
+    const { result } = setup({
+      [`GET /api/v1/encounters/${ENC_A}/draft`]: () => ({
+        status: 403,
+        body: { error: { code: "FORBIDDEN" } },
+      }),
+    });
+    await waitFor(() => expect(result.current.load.status).toBe("off"));
+  });
+
   it("reports when a re-read is in flight", async () => {
     const second = gate();
     let reads = 0;
@@ -360,6 +370,22 @@ describe("the draft of an amending addendum", () => {
       [DRAFT_ROUTE]: () => ({ status: 404, body: { error: { code: "NOT_FOUND" } } }),
     });
     await waitFor(() => expect(result.current.load.status).toBe("off"));
+  });
+
+  it("is 'notAuthor' for a 403: the addendum's draft is its author's alone, and no server text is kept", async () => {
+    const { result } = setupAddendum({
+      [DRAFT_ROUTE]: () => ({
+        status: 403,
+        body: {
+          error: {
+            code: "FORBIDDEN",
+            message: "only the author of the addendum may read its draft",
+          },
+        },
+      }),
+    });
+    await waitFor(() => expect(result.current.load.status).toBe("notAuthor"));
+    expect(JSON.stringify(result.current.load)).not.toMatch(/only the author of the addendum/);
   });
 
   it("reads nothing while the addendum is not known", async () => {

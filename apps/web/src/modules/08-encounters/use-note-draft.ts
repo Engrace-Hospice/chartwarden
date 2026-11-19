@@ -2,6 +2,7 @@
 //
 //   off          the tenant has the draft switched off, or this viewer may not read it: the screen is exactly as it was before drafts
 //   unavailable  a source could not be read (503), nothing answered, or the answer is not a draft: say so, never pretend there is no draft
+//   notAuthor    an amending addendum's draft read by anyone but its author (403): the screen says so in its own words
 //   ready        the draft for THIS viewer; each section has a state the server decided
 //
 // The server is the only judge of a state. A resolve that answers 409 DRAFT_SECTION_STALE means the clinician acted on text that is no
@@ -55,8 +56,9 @@ export interface NoteDraft {
 
 const NOT_ALLOWED_STATUSES: readonly number[] = [403, 404];
 const FORBIDDEN_CODE = "FORBIDDEN";
+const FORBIDDEN_STATUS = 403;
 
-function loadStateOf(outcome: Outcome<DraftView>): DraftLoad {
+function loadStateOf(outcome: Outcome<DraftView>, amending: boolean): DraftLoad {
   if (outcome.ok) {
     // A 200 that is not a draft (no sections list, or a section the screens cannot read) is a broken answer, not an empty draft.
     const sections: unknown = outcome.data?.sections;
@@ -64,6 +66,9 @@ function loadStateOf(outcome: Outcome<DraftView>): DraftLoad {
       ? { status: "ready", draft: outcome.data }
       : { status: "unavailable" };
   }
+  // An addendum's draft is read by its author only: a 403 there is "not yours", never the tenant switch or a missing role, and its words
+  // are the app's (the server's text is not kept).
+  if (amending && outcome.status === FORBIDDEN_STATUS) return { status: "notAuthor" };
   return NOT_ALLOWED_STATUSES.includes(outcome.status)
     ? { status: "off" }
     : { status: "unavailable" };
@@ -108,7 +113,7 @@ export function useNoteDraft(
     if (mine !== sequence.current) return;
     reading.current = false;
     setRefreshing(false);
-    setLoad(loadStateOf(outcome));
+    setLoad(loadStateOf(outcome, addendumId !== undefined));
   }, [client, encounterId, addendumId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `refreshKey` is the re-read trigger, not read in the body.

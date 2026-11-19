@@ -10,10 +10,14 @@ import type {
   Resolution,
 } from "./draft-api";
 
-/** What a screen knows of one draft: not yet read, off for this viewer (switch off or no access), unreadable, or the draft itself. */
+/**
+ * What a screen knows of one draft: not yet read, off for this viewer (switch off or no access), unreadable, or the draft itself. An
+ * amending addendum's draft is its author's alone (403 for anyone else): `notAuthor`, which only an addendum's read can be.
+ */
 export type DraftLoad =
   | { readonly status: "loading" }
   | { readonly status: "off" }
+  | { readonly status: "notAuthor" }
   | { readonly status: "unavailable" }
   | { readonly status: "ready"; readonly draft: DraftView };
 

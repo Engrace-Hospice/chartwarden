@@ -57,8 +57,11 @@ describe("amendCreateRefusal", () => {
     );
   });
 
-  it("explains a refusal of a Part 2 section the viewer cannot read", () => {
-    expect(amendCreateRefusal(422, "AMENDMENT_PART2_NOT_ENTITLED")).toMatch(/42 CFR Part 2/);
+  it("says the viewer cannot choose sections on this note, with the next step", () => {
+    const text = amendCreateRefusal(422, "AMENDMENT_PART2_NOT_ENTITLED");
+    expect(text).toMatch(/cannot choose sections to amend on this note/);
+    expect(text).toMatch(/without choosing sections/);
+    expect(text).toMatch(/ask the note's author/);
   });
 
   it("says only the note's author or a supervisor can choose sections for a 403 FORBIDDEN, changing nothing, with the next step", () => {
@@ -176,11 +179,32 @@ describe("addendumRefusalMessage", () => {
         ...refusal("AMENDMENT_PART2_NOT_ENTITLED", undefined, message),
         status: 422,
       });
-      expect(text).toMatch(/42 CFR Part 2/);
+      expect(text).toMatch(/cannot choose sections to amend on this note/);
       expect(text).toMatch(/Nothing was changed/);
       if (message !== "") expect(text).not.toContain(message);
     },
   );
+
+  // The server answers this code for ANY named section whenever the note holds Part 2 text the signer cannot be told of, so the sentence
+  // may not say that a section holds Part 2, nor name the section: a viewer without disclosure learns nothing from the refusal.
+  it("implies nothing about Part 2 content or about which section was named, at opening or at signing", () => {
+    const sentences = [
+      amendCreateRefusal(422, "AMENDMENT_PART2_NOT_ENTITLED"),
+      addendumRefusalMessage({
+        ...refusal(
+          "AMENDMENT_PART2_NOT_ENTITLED",
+          { sectionId: "sud_history" },
+          "sud_history holds Part 2 text",
+        ),
+        status: 422,
+      }),
+    ];
+    for (const text of sentences) {
+      expect(text).not.toMatch(/part\s*2|cfr|protected|withheld|holds|information/i);
+      expect(text).not.toMatch(/sud|history|pain|plan|assessment/i);
+    }
+    expect(sentences[0]).toBe(sentences[1]);
+  });
 
   it("words the machine's stale step-up (412) in the app's own sentence, with the next step", () => {
     const text = addendumRefusalMessage({ ...refusal("STEP_UP_AUTH_REQUIRED"), status: 412 });
@@ -205,6 +229,10 @@ describe("signBlockReason", () => {
 
   it("leaves the server to judge when the draft is off for this viewer", () => {
     expect(signBlockReason({ status: "off" })).toBeNull();
+  });
+
+  it("waits, saying only the author can review and sign, when the draft is the author's alone", () => {
+    expect(signBlockReason({ status: "notAuthor" })).toMatch(/only the author of this addendum/i);
   });
 
   it("names every unresolved or changed section and why", () => {

@@ -200,7 +200,10 @@ per section.
   deselected yet), Plan (changed since you resolved it)."). It waits, too, while the amended sections are
   being read or could not be read ("Signing waits until the amended sections can be read", with **Try
   again**). A draft the viewer cannot read (switched off, or the role lacks the source reads) is said once and
-  leaves the sign to the server. A signed amendment says "Addendum signed. N sections amended." and, when the
+  leaves the sign to the server. The addendum's draft is its author's alone (the read answers 403 to anyone
+  else): the region then says, in the app's own words and never the server's, "Only the author of this
+  addendum can review the sections it amends", with the free addendum or the author as the next step, and
+  **Sign addendum** waits with the same reason (no controls, no spinner). A signed amendment says "Addendum signed. N sections amended." and, when the
   note needed a cosigner, "A cosignature was requested for this amendment."
 - **Cosignature.** When the API sends the status of the cosignature request opened for the amendment, the
   addendum shows **Cosignature of this amendment** with it in words (**Pending cosignature**, **Cosigned**,
@@ -210,10 +213,11 @@ per section.
   author or a supervisor may name them; nothing was changed; open the addendum without choosing sections, or
   ask the author or a supervisor; the dialog stays open with the reason and the choice), 404 (the draft
   switch is off; offers the free addendum and names Admin, Visit-note Draft), 422 `UNKNOWN_TEMPLATE_SECTION`
-  (reload and choose again), 422 `AMENDMENT_PART2_NOT_ENTITLED` (ask a colleague whose access includes it;
-  the sentence is the app's, keyed on the code: the server's message is generic and names no section, and is
-  never shown; the server refuses the same way whichever section is named, so the sentence says that THIS NOTE
-  holds information the viewer's access does not include and never points at the section they chose). Resolving a section: 403 `FORBIDDEN` (only the addendum's author can confirm or deselect the
+  (reload and choose again), 422 `AMENDMENT_PART2_NOT_ENTITLED` ("You cannot choose sections to amend on this
+  note", then the free addendum or the note's author as the next step; the server answers this code for ANY
+  named section whenever the note holds Part 2 text the signer cannot be told of, so the sentence says nothing
+  of a section or of what the note holds; it is the app's, keyed on the code, and the server's message is
+  never shown). Resolving a section: 403 `FORBIDDEN` (only the addendum's author can confirm or deselect the
   sections it amends; nothing was changed; the section stays unresolved and Sign keeps waiting), 409
   `DRAFT_SECTION_STALE` (re-read, confirm again), 422 `UNKNOWN_TEMPLATE_SECTION`, 409 `ILLEGAL_TRANSITION`
   (already signed or voided). Signing: 409 `DRAFT_SECTION_STALE` names each unresolved or changed section and
