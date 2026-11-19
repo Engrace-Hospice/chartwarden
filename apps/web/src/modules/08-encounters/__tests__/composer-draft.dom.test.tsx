@@ -1144,6 +1144,11 @@ describe("the care-plan picker", () => {
 });
 
 describe("the score trend", () => {
+  const pickerOf = async (): Promise<HTMLElement> =>
+    (await screen.findByRole("heading", { name: "Care plan for this visit" })).closest(
+      "section",
+    ) as HTMLElement;
+
   it("shows the latest reading, the change since the one before, and the date", async () => {
     mountComposer();
     await ready();
@@ -1164,6 +1169,53 @@ describe("the score trend", () => {
     const read = callsTo("GET", "/scales/pps/series")[0];
     expect(read?.query.get("from")).toBe("2026-08-19");
     expect(read?.query.get("to")).toBe("2026-11-17");
+  });
+
+  it("does not read the scores again, nor blink, when the draft is re-read at a later time", async () => {
+    // On a same-day visit the draft's `asOf` is "now", so it differs on every read of the draft.
+    let draftReads = 0;
+    const user = userEvent.setup();
+    mountComposer({
+      [`GET ${BASE}/draft`]: () => {
+        draftReads += 1;
+        return { body: { ...draftBody(), asOf: `2026-11-17T12:00:0${draftReads}.000Z` } };
+      },
+    });
+    await ready();
+    await screen.findByRole("heading", { name: "Scores and trend" });
+    const picker = await pickerOf();
+    await user.click(
+      await within(picker).findByRole("checkbox", { name: "Keep the patient comfortable at rest" }),
+    );
+    await waitFor(() => expect(draftReads).toBeGreaterThan(1));
+    await waitFor(() => expect(screen.queryByText(/Saving the change/)).toBeNull());
+    expect(screen.getByRole("heading", { name: "Scores and trend" })).toBeInTheDocument();
+    expect(callsTo("GET", "/scales/pps/series")).toHaveLength(1);
+  });
+
+  it("applies the visit time the draft names now to the readings already read", async () => {
+    let draftReads = 0;
+    const user = userEvent.setup();
+    mountComposer({
+      [`GET ${BASE}/draft`]: () => {
+        draftReads += 1;
+        // The second read describes the patient earlier (before the 16 November reading): only the first reading is left.
+        const asOf = draftReads === 1 ? "2026-11-17T23:59:59.999Z" : "2026-11-12T00:00:00.000Z";
+        return { body: { ...draftBody(), asOf } };
+      },
+    });
+    await ready();
+    const panel = (await screen.findByRole("heading", { name: "Scores and trend" })).closest(
+      "section",
+    ) as HTMLElement;
+    expect(await within(panel).findByText("50%")).toBeInTheDocument();
+    const picker = await pickerOf();
+    await user.click(
+      await within(picker).findByRole("checkbox", { name: "Keep the patient comfortable at rest" }),
+    );
+    expect(await within(panel).findByText("60%")).toBeInTheDocument();
+    expect(within(panel).getByText(/first reading/)).toBeInTheDocument();
+    expect(callsTo("GET", "/scales/pps/series")).toHaveLength(1);
   });
 
   it("shows nothing for a viewer who may not read scales", async () => {

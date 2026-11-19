@@ -10,11 +10,14 @@
 // LINKS KNOWN. The boxes show which elements are linked, so they are offered only once the visit's links have been read: until then (or
 // when that read failed, which says so and offers a retry in place of the boxes) every box would read "not linked", and ticking a linked
 // goal would add it twice.
-// A box that cannot act says why beside it, because a disabled control cannot be focused to find the reason.
+// A box that cannot act says why beside it, because a disabled control cannot be focused to find the reason. While a change is being saved the
+// boxes are not `disabled` for the same reason (the one pressed would drop keyboard focus): they say so with `aria-disabled` and do nothing.
+// ORDER. A re-read of the links that began before a change committed may answer after it: that answer is dropped and the links are read once
+// more when the change has settled, so an older picture never lands over a newer one.
 //
 // NO EMPTY FRAME: a visit with no care plan, no linkable goals or interventions, or a viewer who may not read them shows nothing.
 import { Button, InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
   type CarePlanLink,
@@ -81,6 +84,7 @@ const hasLinkableLists = (
 
 const NOT_A_DRAFT_REASON = "Links can change only while the note is a draft.";
 const LOADING_REASON = "Loading this visit's care-plan links…";
+const SAVING_REASON = "Saving the change to this visit's care-plan links…";
 const LINKS_ERROR_REASON =
   "The care-plan links could not be loaded for this visit, so they cannot be changed right now.";
 const REASON_ID = "care-plan-picker-reason";
@@ -99,6 +103,11 @@ export function ComposerCarePlanPicker({
   const [linksReadKey, setLinksReadKey] = useState(0);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // Moves when a change begins and again when it settles (so a read that began in between is told apart), whether a change is being saved,
+  // and whether a re-read was dropped meanwhile (and so is owed once it settles).
+  const changeEpoch = useRef(0);
+  const saving = useRef(false);
+  const readOwed = useRef(false);
   const { id: encounterId, patientId, admissionId, encounterType, discipline } = encounter;
 
   useEffect(() => {
@@ -130,9 +139,16 @@ export function ComposerCarePlanPicker({
   // biome-ignore lint/correctness/useExhaustiveDependencies: `revision` and `linksReadKey` are the re-read triggers, not read in the body.
   useEffect(() => {
     let active = true;
+    const begunAt = changeEpoch.current;
     setLinksStatus("loading");
     void loadCarePlanLinks(client, encounterId).then((outcome) => {
       if (!active) return;
+      if (saving.current || changeEpoch.current !== begunAt) {
+        // Read before a change committed, answered after it: this picture is older than the one held. Read again once it has settled.
+        if (saving.current) readOwed.current = true;
+        else setLinksReadKey((key) => key + 1);
+        return;
+      }
       const read = outcome.ok ? outcome.data?.links : undefined;
       if (Array.isArray(read)) setLinks(read);
       setLinksStatus(Array.isArray(read) ? "ready" : "error");
@@ -157,6 +173,15 @@ export function ComposerCarePlanPicker({
   const interventions = interventionRows(load.elements);
   if (goals.length + interventions.length === 0 && !load.elements.redacted) return null;
 
+  const reason = !editable
+    ? NOT_A_DRAFT_REASON
+    : linksStatus === "loading"
+      ? LOADING_REASON
+      : pendingKey !== null
+        ? SAVING_REASON
+        : null;
+  const linksLocked = !editable || linksStatus !== "ready";
+
   /** Link or unlink `row`: the change to apply to the held links, or the refusal in words. */
   const send = async (row: Row): Promise<LinksChange | string> => {
     const existing = linkOf(links, row.target);
@@ -173,12 +198,20 @@ export function ComposerCarePlanPicker({
   };
 
   const toggle = async (row: Row): Promise<void> => {
-    if (pendingKey !== null) return;
+    if (pendingKey !== null || linksLocked) return;
     setPendingKey(row.target.id);
     setProblem(null);
+    changeEpoch.current += 1;
+    saving.current = true;
     const result = await send(row);
+    saving.current = false;
+    changeEpoch.current += 1;
     if (!mounted.current) return;
     setPendingKey(null);
+    if (readOwed.current) {
+      readOwed.current = false;
+      setLinksReadKey((key) => key + 1);
+    }
     if (typeof result === "string") {
       setProblem(result);
       return;
@@ -186,9 +219,6 @@ export function ComposerCarePlanPicker({
     setLinks(result);
     onChanged();
   };
-
-  const reason = !editable ? NOT_A_DRAFT_REASON : linksStatus === "loading" ? LOADING_REASON : null;
-  const linksLocked = !editable || linksStatus !== "ready";
 
   const group = (legend: string, rows: readonly Row[]): JSX.Element | null =>
     rows.length === 0 ? null : (
@@ -202,7 +232,8 @@ export function ComposerCarePlanPicker({
                 id={inputId}
                 type="checkbox"
                 checked={linkOf(links, row.target) !== undefined}
-                disabled={linksLocked || pendingKey !== null}
+                disabled={linksLocked}
+                aria-disabled={pendingKey !== null || undefined}
                 aria-describedby={reason ? REASON_ID : undefined}
                 onChange={() => void toggle(row)}
               />

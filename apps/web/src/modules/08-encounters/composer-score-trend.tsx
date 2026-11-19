@@ -4,11 +4,19 @@
 // numbers beside them.
 //
 // NO EMPTY FRAME: with no scored reading, or a viewer who may not read scales (403), nothing renders. A failed read says so once.
+// The readings are read per patient and service date; the visit time the draft names only filters what was read. On a same-day visit that time
+// is "now" and differs on every read of the draft, so it must not be what triggers a read (the panel would blink after every link or resolve).
 import { Button, InlineAlert, Panel, useApiClient } from "@chartwarden/ui";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { TREND_SCALES, type TrendScale, loadScaleSeries } from "./draft-api";
-import { type ScoreTrend, describeChange, trendOf, trendWindow } from "./draft-model";
+import {
+  type ScorePoint,
+  type ScoreTrend,
+  describeChange,
+  trendOf,
+  trendWindow,
+} from "./draft-model";
 
 export interface ComposerScoreTrendProps {
   readonly patientId: string;
@@ -21,7 +29,10 @@ type Load =
   | { readonly status: "loading" }
   | { readonly status: "hidden" }
   | { readonly status: "error" }
-  | { readonly status: "ready"; readonly trends: Readonly<Record<TrendScale, ScoreTrend>> };
+  | {
+      readonly status: "ready";
+      readonly points: Readonly<Record<TrendScale, readonly ScorePoint[]>>;
+    };
 
 const SCALE_LABEL: Readonly<Record<TrendScale, string>> = { pps: "PPS", esas_r: "ESAS-r total" };
 const SCALE_UNIT: Readonly<Record<TrendScale, string>> = { pps: "%", esas_r: "" };
@@ -61,19 +72,21 @@ export function ComposerScoreTrend({
         setLoad({ status: "error" });
         return;
       }
-      const [pps, esas] = outcomes.map((outcome) =>
-        trendOf(outcome.ok ? outcome.data.points : [], visitTime ?? undefined),
+      const [pps = [], esas = []] = outcomes.map((outcome) =>
+        outcome.ok ? outcome.data.points : [],
       );
-      setLoad(
-        pps && esas && (pps.latest || esas.latest)
-          ? { status: "ready", trends: { pps, esas_r: esas } }
-          : { status: "hidden" },
-      );
+      setLoad({ status: "ready", points: { pps, esas_r: esas } });
     });
     return () => {
       active = false;
     };
-  }, [client, patientId, serviceDate, visitTime, reloadKey]);
+  }, [client, patientId, serviceDate, reloadKey]);
+
+  const trends = useMemo((): Readonly<Record<TrendScale, ScoreTrend>> | null => {
+    if (load.status !== "ready") return null;
+    const at = visitTime ?? undefined;
+    return { pps: trendOf(load.points.pps, at), esas_r: trendOf(load.points.esas_r, at) };
+  }, [load, visitTime]);
 
   if (load.status === "loading" || load.status === "hidden") return null;
   if (load.status === "error") {
@@ -87,6 +100,9 @@ export function ComposerScoreTrend({
     );
   }
 
+  // No scored reading up to the visit: nothing to show.
+  if (trends === null || !(trends.pps.latest || trends.esas_r.latest)) return null;
+
   return (
     <Panel
       title="Scores and trend"
@@ -95,7 +111,7 @@ export function ComposerScoreTrend({
     >
       <dl className="wx-kv">
         {TREND_SCALES.map((scale) => {
-          const trend = load.trends[scale];
+          const trend = trends[scale];
           if (!trend.latest) return null;
           const unit = SCALE_UNIT[scale];
           return (
