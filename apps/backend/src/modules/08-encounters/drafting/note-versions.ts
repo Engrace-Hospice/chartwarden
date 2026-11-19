@@ -6,13 +6,12 @@
 //     receives the marker as data. (`viewPinnedNote` stays the ORIGINAL-note view the document consumers read.)
 //   * The HISTORY lists every version of each amended section, oldest first (the original, then each amendment in the order its addendum was
 //     signed), with author, date and, for an amendment, the addendum. The last one is `current`.
-//   * Part 2 (VN-D13). A viewer without disclosure sees the withheld marker for any version whose row is `part2_derived`, and its sealed text is
-//     never opened. The history of a section whose ORIGINAL was `part2_derived` stays withheld whole for such a viewer, though the current view
-//     still shows that section's latest text when its row is not Part 2.
-//   * What a viewer without disclosure is NOT told about a withheld section (S1): its id, who amended it and when. In the current view a withheld
-//     section keeps its place in the array but carries `sectionId`, `amendedByAddendumId` and `signedAt` of `null`; the history OMITS every section
-//     that has a withheld version (and is `null` when none is left), so neither names a Part 2 section nor dates an amendment of one. That a section
-//     is withheld at all, and the marker, are what the viewer is shown. A viewer with disclosure sees every id, author and date.
+//   * Part 2 (VN-D13). One decision for every field (`withheldSectionIds`, computed once per read): a viewer without disclosure gets a section with
+//     a Part 2 derived version AT ANY TIME (the original or any amendment of it, whatever the latest holds) withheld whole, and its sealed text is
+//     never opened. In the current view a withheld section keeps its place in the array and nothing else: `sectionId`, `amendedByAddendumId` and
+//     `signedAt` are `null`. The history OMITS the section (and is `null` when none is left), and an addendum's named ids drop it (an addendum whose
+//     every named section is withheld reads as a free addendum: `addendumVisibleTo`). So no field names a Part 2 section, nor says who amended it or
+//     when. That a section is withheld at all, and the marker, are what the viewer is shown. A viewer with disclosure sees every id, author and date.
 // The verdict is asked once per read (`renderNoteVersions`), and only when some version is `part2_derived`; a check that fails is 503
 // `NOTE_VIEW_UNAVAILABLE`, never a denial.
 import { type DbClient, schema } from "@chartwarden/db";
@@ -141,26 +140,6 @@ export interface NoteView {
   readonly structured: StructuredNoteView;
 }
 
-/**
- * The note as `readers` may see it, once: the legacy string and the structured view come from the same pass over the sealed rows (each is
- * opened once). Without amendments the sections are the note's own rows; with them each amended section is its latest amendment. A pin with
- * no sealed rows is one block, opened from `final_cipher`.
- */
-export async function viewNote(
-  note: PinnedNoteRows,
-  amendments: readonly AmendmentRow[],
-  original: NoteOriginal,
-  readers: PinnedNoteReaders,
-): Promise<NoteView> {
-  return renderNote(
-    note,
-    amendments,
-    original,
-    readers.open,
-    await isEntitled(note, amendments, readers),
-  );
-}
-
 /** Whether the reader may see every version: true when nothing is Part 2 derived (no one is asked), else M39's verdict, asked once. */
 async function isEntitled(
   note: PinnedNoteRows,
@@ -170,12 +149,18 @@ async function isEntitled(
   return !hasPart2(note, amendments) || (await mayReadPart2(readers.entitled));
 }
 
+/**
+ * The note as `readers` may see it, in one pass over the sealed rows (each opened once): the legacy string and the structured view. Without
+ * amendments the sections are the note's own rows; with them each amended section is its latest amendment. A pin with no sealed rows is one
+ * block, opened from `final_cipher`, or withheld whole from a viewer without disclosure when it carries Part 2 text (`entitled` false).
+ */
 async function renderNote(
   note: PinnedNoteRows,
   amendments: readonly AmendmentRow[],
   original: NoteOriginal,
   open: PinnedNoteReaders["open"],
   entitled: boolean,
+  withheld: ReadonlySet<string>,
 ): Promise<NoteView> {
   const originalSignedAt = original.signedAt?.toISOString() ?? null;
   if (note.sections.length === 0) {
@@ -210,7 +195,7 @@ async function renderNote(
   for (const row of note.sections) {
     const version = latest.get(row.sectionId) ?? row;
     const amended = latest.get(row.sectionId);
-    const hide = version.part2Derived && !entitled;
+    const hide = withheld.has(row.sectionId);
     const text = hide ? null : await open(version.textCipher);
     sections.push(
       hide
@@ -240,7 +225,6 @@ interface Candidate {
   readonly authoredByMembershipId: string;
   readonly signedAt: Date | null;
   readonly textCipher: string;
-  readonly part2Derived: boolean;
   readonly cosignStatus: CosignDisplayStatus | null;
 }
 
@@ -261,43 +245,27 @@ async function versionOf(
   };
 }
 
-export async function viewNoteHistory(
-  note: PinnedNoteRows,
-  amendments: readonly AmendmentRow[],
-  original: NoteOriginal,
-  readers: PinnedNoteReaders,
-): Promise<NoteHistory | null> {
-  if (amendments.length === 0) return null;
-  return renderHistory(
-    note,
-    amendments,
-    original,
-    readers.open,
-    await isEntitled(note, amendments, readers),
-  );
-}
-
 /**
- * Every version of each amended section. For a reader without disclosure a section with ANY Part 2 derived version (the original or an
- * amendment) is left out whole: its id, its authors and its dates are what would say that a Part 2 section exists and who amended it (S1). When
- * every amended section is left out there is no history to show, which reads as `null`.
+ * Every version of each amended section. A withheld section (any Part 2 derived version, the original or an amendment) is left out whole: its
+ * id, its authors and its dates are what would say that a Part 2 section exists and who amended it (S1). When every amended section is left out
+ * there is no history to show, which reads as `null`.
  */
 async function renderHistory(
   note: PinnedNoteRows,
   amendments: readonly AmendmentRow[],
   original: NoteOriginal,
   open: PinnedNoteReaders["open"],
-  entitled: boolean,
+  withheld: ReadonlySet<string>,
 ): Promise<NoteHistory | null> {
   const sections: NoteHistory["sections"][number][] = [];
   for (const originalRow of note.sections) {
+    if (withheld.has(originalRow.sectionId)) continue;
     const amended = amendments.filter((a) => a.sectionId === originalRow.sectionId);
     if (amended.length === 0) continue;
     const candidates: Candidate[] = [
       { ...original, kind: "original", addendumId: null, cosignStatus: null, ...originalRow },
       ...amended.map((a): Candidate => ({ ...a, kind: "amendment" })),
     ];
-    if (!entitled && candidates.some((candidate) => candidate.part2Derived)) continue;
     const versions: SectionVersion[] = [];
     for (const [index, candidate] of candidates.entries()) {
       versions.push(await versionOf(candidate, index === candidates.length - 1, open));
@@ -336,11 +304,25 @@ function withheldSectionIds(rows: NoteVersionRows, entitled: boolean): ReadonlyS
   ]);
 }
 
-/** `ids` without the withheld ones: the list of sections an addendum names, for a reader who may not be told a Part 2 section was named (S1). */
-export const visibleSectionIds = (
-  ids: readonly string[],
-  withheld: ReadonlySet<string>,
-): readonly string[] => ids.filter((id) => !withheld.has(id));
+/**
+ * An addendum as a reader without disclosure may see it (S1): the sections it names without the withheld ones. When it named some and EVERY one
+ * is withheld it reads as a free addendum, `cosignStatus` `not_required` included: only an amendment can have a cosignature request, so a
+ * `pending` or `cosigned` status would say that it amended a section, and the viewer is not told which ones. With at least one visible named
+ * section it keeps its status.
+ */
+export function addendumVisibleTo<
+  A extends {
+    readonly amendsSectionIds: readonly string[];
+    readonly cosignStatus: CosignDisplayStatus;
+  },
+>(addendum: A, withheld: ReadonlySet<string>): A {
+  const visible = addendum.amendsSectionIds.filter((id) => !withheld.has(id));
+  return {
+    ...addendum,
+    amendsSectionIds: visible,
+    cosignStatus: visible.length === 0 ? "not_required" : addendum.cosignStatus,
+  };
+}
 
 /**
  * The current view and the history of loaded rows for one reader, with the section ids withheld from them. The Part 2 verdict is asked ONCE for
@@ -357,25 +339,15 @@ export async function renderNoteVersions(
 }> {
   const { note, amendments } = rows;
   const entitled = await isEntitled(note, amendments, readers);
+  const withheld = withheldSectionIds(rows, entitled);
   return {
-    withheldSectionIds: withheldSectionIds(rows, entitled),
-    current: await renderNote(note, amendments, original, readers.open, entitled),
+    withheldSectionIds: withheld,
+    current: await renderNote(note, amendments, original, readers.open, entitled, withheld),
     history:
       amendments.length === 0
         ? null
-        : await renderHistory(note, amendments, original, readers.open, entitled),
+        : await renderHistory(note, amendments, original, readers.open, withheld),
   };
-}
-
-/** The current view of the encounter's pinned note and its history, for one reader; `null` when nothing is pinned. */
-export async function readNoteVersions(
-  tx: DbClient,
-  encounterId: string,
-  original: NoteOriginal,
-  readers: PinnedNoteReaders,
-): Promise<Awaited<ReturnType<typeof renderNoteVersions>> | null> {
-  const rows = await loadNoteVersionRows(tx, encounterId);
-  return rows === null ? null : renderNoteVersions(rows, original, readers);
 }
 
 /**

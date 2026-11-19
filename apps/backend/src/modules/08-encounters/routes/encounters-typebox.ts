@@ -436,7 +436,7 @@ export const EncounterViewResponseSchema = Type.Object({
         version: Type.Integer(),
         /** ADR-0114 VN-D30: the sections the addendum amends; empty for a free addendum. Without the ids of a section with a Part 2 derived version, for a reader without disclosure (S1). */
         amendsSectionIds: Type.Optional(Type.Array(Type.String())),
-        /** ADR-0114 VN-D30: where the addendum's own cosignature stands; `not_required` unless it amended a section of a note that needed a cosigner. */
+        /** ADR-0114 VN-D30: where the addendum's own cosignature stands; `not_required` unless it amended a section of a note that needed a cosigner, and for a reader without disclosure when every section it named is withheld from them (S1). */
         cosignStatus: Type.Optional(COSIGN_DISPLAY_STATUS),
       }),
     ),

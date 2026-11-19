@@ -101,19 +101,11 @@ import { defaultDraftPorts } from "./drafting/default-ports";
 import { assertResolved, confirmedSectionIds } from "./drafting/note-draft";
 import type { NoteDraft } from "./drafting/note-draft";
 import { createNoteDraftFlow } from "./drafting/note-draft-flow";
-import {
-  type NoteHistory,
-  type NoteOriginal,
-  type NoteVersionRows,
-  type StructuredNoteView,
-  loadNoteVersionRows,
-  renderNoteVersions,
-  visibleSectionIds,
-} from "./drafting/note-versions";
 import { readPinnedNote } from "./drafting/pinned-note";
 import { isVisitNoteDraftEnabled } from "./drafting/policy-service";
 import type { DraftSeamPorts, DraftViewer } from "./drafting/ports";
 import { deriveEvvAtSign } from "./evv-at-sign";
+import { createWorkspaceReader } from "./drafting/workspace-read";
 import {
   type GateSectionSelection,
   assertGatePassed,
@@ -174,7 +166,6 @@ const ENC = schema.encounters;
 const LINK = schema.encounterCarePlanLinks;
 const COSIGN = schema.cosignatureRequests;
 const ADDENDUM_COSIGN = schema.addendumCosignatureRequests;
-const AMENDMENT = schema.encounterAmendments;
 const ADDENDUM = schema.encounterAddenda;
 const VITALS = schema.vitals;
 const MILEAGE = schema.mileage;
@@ -1404,74 +1395,9 @@ export function createDbEncounterRouteService(
     return { providerEntityId: m.providerEntityId, locationId: locs[0] as string };
   }
 
-  /**
-   * Whether `viewer` may read this patient's 42 CFR Part 2 content: M39's per-actor verdict, the one the draft asks (a failure is not a "no",
-   * see `readPinnedNote`). A document consumer has no viewer and is never entitled: documents are broadly readable (design 3.1).
-   */
-  const part2Entitlement =
-    (organizationId: string, patientId: string, viewer: DraftViewer | null) =>
-    async (): Promise<boolean> =>
-      viewer !== null && draftSeams().part2DisclosureAllowed({ organizationId, patientId, viewer });
-
-  /** Opens one pinned narrative envelope under the tenant DEK; unbound, the pinned narrative cannot be shown at all. */
-  const openPinned = (organizationId: string) => (cipher: string) => {
-    if (!narrativeCipher) {
-      throw new EncounterStateError(
-        "HEARTHNOTE_CIPHER_UNBOUND",
-        "the encounter's narrative is pinned but no per-tenant DEK envelope is bound to open it",
-      );
-    }
-    return withTenantDek("the pinned narrative could not be opened", () =>
-      narrativeCipher.open(organizationId, cipher),
-    );
-  };
-
-  /** The note's pin, sealed rows and amendment rows as stored (S3: read inside the transaction, opened and judged after it closes), or `null`
-   *  when nothing is pinned yet or no DEK cipher is bound to open it. */
-  async function noteRowsFor(t: DbClient, encounterId: string): Promise<NoteVersionRows | null> {
-    return narrativeCipher ? loadNoteVersionRows(t, encounterId) : null;
-  }
-
-  /** The pinned (finalize-time or signed) narrative as `viewer` may see it (VN-D13: Part 2 sections withheld from a viewer without disclosure),
-   *  or nothing when no rows were loaded. `final_cipher` is sealed under the tenant DEK (#122); never project it raw. With amendments (VN-D30)
-   *  it is the CURRENT view, the latest signed text per section, and the history of each amended section comes with it; without any it is the
-   *  sealed sections joined (the pin's final text, by the invariant the rows keep), or the pin itself when it has no sealed rows, and the
-   *  history is `null`. Runs AFTER the read transaction closed: the cipher open and the M39 verdict each use a pooled connection of their own
-   *  (S3), and the verdict is asked once for the view, the history and the addenda's section ids together (B4). */
-  async function renderFinalPayload(
-    organizationId: string,
-    encounter: {
-      readonly id: string;
-      readonly patientId: string;
-      readonly authoredByMembershipId: string;
-      readonly signedAt: Date | string | null;
-    },
-    viewer: DraftViewer,
-    rows: NoteVersionRows | null,
-  ): Promise<{
-    readonly text: string | null;
-    readonly view: StructuredNoteView | null;
-    readonly history: NoteHistory | null;
-    readonly withheldSectionIds: ReadonlySet<string>;
-  }> {
-    if (rows === null) {
-      return { text: null, view: null, history: null, withheldSectionIds: new Set() };
-    }
-    const original: NoteOriginal = {
-      authoredByMembershipId: encounter.authoredByMembershipId,
-      signedAt: encounter.signedAt === null ? null : new Date(encounter.signedAt),
-    };
-    const versions = await renderNoteVersions(rows, original, {
-      open: openPinned(organizationId),
-      entitled: part2Entitlement(organizationId, encounter.patientId, viewer),
-    });
-    return {
-      text: versions.current.text,
-      view: versions.current.structured,
-      history: versions.history,
-      withheldSectionIds: versions.withheldSectionIds,
-    };
-  }
+  /** The pinned-note readers and the workspace fields of `getEncounter` (ADR-0114 VN-D13, VN-D30): `drafting/workspace-read.ts`. */
+  const workspace = createWorkspaceReader({ narrativeCipher, withTenantDek, draftSeams });
+  const { openPinned, part2Entitlement } = workspace;
 
   async function carePlanLinksFor(
     t: DbClient,
@@ -1489,151 +1415,6 @@ export function createDbEncounterRouteService(
       ...(r.problemId ? { problemId: r.problemId } : {}),
       ...(r.goalId ? { goalId: r.goalId } : {}),
       ...(r.interventionId ? { interventionId: r.interventionId } : {}),
-    }));
-  }
-
-  /** The database half of the workspace fields: every read on the caller's transaction, nothing opened and no seam asked (S3). */
-  async function workspaceRowsFor(t: DbClient, encounterId: string) {
-    const [selection] = await t
-      .select({ selections: SEL.selections })
-      .from(SEL)
-      .where(eq(SEL.encounterId, encounterId))
-      .limit(1);
-    const [vital] = await t
-      .select({
-        vitalsId: VITALS.id,
-        bpSystolic: VITALS.bpSystolic,
-        bpDiastolic: VITALS.bpDiastolic,
-        heartRate: VITALS.heartRate,
-        respiratoryRate: VITALS.respiratoryRate,
-        temperature: VITALS.temperature,
-        temperatureUnit: VITALS.temperatureUnit,
-        spo2: VITALS.spo2,
-        painScore: VITALS.painScore,
-        painScale: VITALS.painScale,
-        weight: VITALS.weight,
-        weightUnit: VITALS.weightUnit,
-        height: VITALS.height,
-        heightUnit: VITALS.heightUnit,
-        bmi: VITALS.bmi,
-        bloodGlucose: VITALS.bloodGlucose,
-        bloodGlucoseUnit: VITALS.bloodGlucoseUnit,
-        clinicallyNotIndicatedFields: VITALS.clinicallyNotIndicatedFields,
-        clinicallyNotIndicatedReason: VITALS.clinicallyNotIndicatedReason,
-        capturedAt: VITALS.capturedAt,
-      })
-      .from(VITALS)
-      .where(eq(VITALS.encounterId, encounterId))
-      .orderBy(desc(VITALS.capturedAt))
-      .limit(1);
-    const [mileage] = await t
-      .select({
-        mileageId: MILEAGE.id,
-        odometerStart: MILEAGE.odometerStart,
-        odometerEnd: MILEAGE.odometerEnd,
-        milesDriven: MILEAGE.milesDriven,
-        source: MILEAGE.milesDrivenSource,
-        manualOverrideReason: MILEAGE.manualOverrideReason,
-        routeProposedMiles: MILEAGE.routeProposedMiles,
-        capturedAt: MILEAGE.createdAt,
-      })
-      .from(MILEAGE)
-      .where(eq(MILEAGE.encounterId, encounterId))
-      .limit(1);
-    return {
-      selections: (selection?.selections as Record<string, unknown> | undefined) ?? null,
-      noteRows: await noteRowsFor(t, encounterId),
-      vitals: vital ? { ...vital, capturedAt: iso(vital.capturedAt) } : null,
-      mileage: mileage ? { ...mileage, capturedAt: iso(mileage.capturedAt) } : null,
-      carePlanLinks: await carePlanLinkRowsFor(t, encounterId),
-      addenda: await addendumRowsFor(t, encounterId),
-    };
-  }
-
-  /** The workspace fields of `getEncounter` for `viewer`: the rows read in the transaction, the note rendered after it closed (S3). */
-  async function renderWorkspace(
-    organizationId: string,
-    encounter: {
-      readonly id: string;
-      readonly patientId: string;
-      readonly authoredByMembershipId: string;
-      readonly signedAt: Date | string | null;
-    },
-    viewer: DraftViewer,
-    rows: Awaited<ReturnType<typeof workspaceRowsFor>>,
-  ) {
-    const { noteRows, addenda, ...stored } = rows;
-    const final = await renderFinalPayload(organizationId, encounter, viewer, noteRows);
-    return {
-      ...stored,
-      finalDocumentation: final.text,
-      finalDocumentationView: final.view,
-      noteHistory: final.history,
-      // S1: a reader without disclosure is not told that an addendum named a Part 2 section (signed or not).
-      addenda: addenda.map((a) => ({
-        ...a,
-        amendsSectionIds: visibleSectionIds(a.amendsSectionIds, final.withheldSectionIds),
-      })),
-    };
-  }
-
-  /** GAP-027 — the encounter's addenda, oldest first; the UI enables edit/finalize/sign off this status. */
-  async function addendumRowsFor(t: DbClient, encounterId: string) {
-    const rows = await t
-      .select({
-        id: ADDENDUM.id,
-        status: ADDENDUM.status,
-        reason: ADDENDUM.reason,
-        authoredByUserId: ADDENDUM.authoredByMembershipId,
-        createdAt: ADDENDUM.createdAt,
-        signedAt: ADDENDUM.signedAt,
-        version: ADDENDUM.version,
-      })
-      .from(ADDENDUM)
-      .where(eq(ADDENDUM.encounterId, encounterId))
-      .orderBy(asc(ADDENDUM.createdAt), asc(ADDENDUM.id));
-    // ADR-0114 VN-D30: where each amendment's own cosignature stands (one read for the encounter), and the sections each addendum names.
-    const cosigns = new Map(
-      (
-        await t
-          .select({ addendumId: ADDENDUM_COSIGN.addendumId, status: ADDENDUM_COSIGN.status })
-          .from(ADDENDUM_COSIGN)
-          .where(eq(ADDENDUM_COSIGN.encounterId, encounterId))
-      ).map((request) => [request.addendumId, request.status]),
-    );
-    const named = await t
-      .select({ addendumId: AMENDMENT.addendumId, sectionId: AMENDMENT.sectionId })
-      .from(AMENDMENT)
-      .where(eq(AMENDMENT.encounterId, encounterId))
-      .orderBy(asc(AMENDMENT.sectionId));
-    return rows.map((a) => ({
-      id: a.id,
-      status: a.status as "draft" | "finalized" | "signed",
-      reason: a.reason,
-      authoredByUserId: a.authoredByUserId,
-      createdAt: iso(a.createdAt) ?? "",
-      signedAt: iso(a.signedAt),
-      version: Number(a.version),
-      amendsSectionIds: named.filter((n) => n.addendumId === a.id).map((n) => n.sectionId),
-      cosignStatus: cosignDisplayStatus(cosigns.get(a.id) ?? null),
-    }));
-  }
-
-  async function carePlanLinkRowsFor(t: DbClient, encounterId: string) {
-    const rows = await t
-      .select({
-        linkId: LINK.id,
-        problemId: LINK.problemId,
-        goalId: LINK.goalId,
-        interventionId: LINK.interventionId,
-      })
-      .from(LINK)
-      .where(and(eq(LINK.encounterId, encounterId), isNull(LINK.removedAt)));
-    return rows.map((r) => ({
-      linkId: r.linkId,
-      problemId: r.problemId ?? null,
-      goalId: r.goalId ?? null,
-      interventionId: r.interventionId ?? null,
     }));
   }
 
@@ -1707,13 +1488,13 @@ export function createDbEncounterRouteService(
         const t = tx as unknown as DbClient;
         const [r] = await t.select(encounterCols).from(ENC).where(eq(ENC.id, encounterId)).limit(1);
         if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
-        return { row: r, rows: await workspaceRowsFor(t, encounterId) };
+        return { row: r, rows: await workspace.rowsFor(t, encounterId) };
       });
       // Resolved AFTER the read tx (S3): the M18 resolver, the tenant DEK and the M39 Part 2 verdict each open a pooled connection of their own,
       // so asked inside the transaction every concurrent read of a note with a Part 2 section would hold one connection and wait for another.
       return {
         ...toView(row),
-        ...(await renderWorkspace(organizationId, row, viewer, rows)),
+        ...(await workspace.render(organizationId, row, viewer, rows)),
         evvBracketPresent: await evvBracketPresentFor(organizationId, row),
       };
     },
