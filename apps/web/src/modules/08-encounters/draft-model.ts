@@ -93,6 +93,16 @@ export function confirmedSectionIds(draft: DraftView | null): ReadonlySet<string
   );
 }
 
+/** The state of the section's drafted text, or undefined when nothing was drafted for it (a section with no draft shows no draft line). */
+export function draftedStateOf(
+  draft: DraftView | null,
+  sectionId: string,
+): DraftSectionView["state"] | undefined {
+  return draft?.sections.find(
+    (candidate) => candidate.sectionId === sectionId && candidate.state !== "not_drafted",
+  )?.state;
+}
+
 export interface ReviewCounts {
   readonly drafted: number;
   readonly resolved: number;

@@ -33,7 +33,7 @@ import {
 } from "./compose-feedback";
 import { gateRefusalWords } from "./compose-gate-refusal";
 import { ComposerDraftRail, ComposerDraftStrip } from "./composer-draft-chrome";
-import { STATE_LABEL, confirmedSectionIds } from "./draft-model";
+import { STATE_LABEL, confirmedSectionIds, draftedStateOf } from "./draft-model";
 import { DraftSectionPanel } from "./draft-section-panel";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
@@ -631,11 +631,7 @@ export function EncounterCompose(): JSX.Element {
                       : missingRequired
                         ? "Required"
                         : "Not started";
-                    const draftedState = drafted?.sections.find(
-                      (candidate) =>
-                        candidate.sectionId === section.sectionId &&
-                        candidate.state !== "not_drafted",
-                    )?.state;
+                    const draftedState = draftedStateOf(drafted, section.sectionId);
 
                     return (
                       <button

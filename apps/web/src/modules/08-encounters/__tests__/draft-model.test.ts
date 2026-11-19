@@ -8,6 +8,7 @@ import {
   draftGateRefusal,
   draftIsActive,
   draftIssuesFrom,
+  draftedStateOf,
   isDraftSectionView,
   replaceSection,
   resolutionNote,
@@ -272,5 +273,21 @@ describe("describeChange", () => {
     expect(describeChange(-10)).toBe("down 10");
     expect(describeChange(0)).toBe("no change");
     expect(describeChange(null)).toBe("first reading");
+  });
+});
+
+describe("draftedStateOf", () => {
+  const draftOf = (...sections: DraftSectionView[]) => ({ sections }) as unknown as DraftView;
+
+  it("is the state of the section's drafted text", () => {
+    const draft = draftOf(section({ sectionId: "plan", state: "confirmed" }));
+    expect(draftedStateOf(draft, "plan")).toBe("confirmed");
+  });
+
+  it("is nothing for a section with nothing drafted, an unknown section, or no draft", () => {
+    const draft = draftOf(section({ sectionId: "plan", state: "not_drafted", text: null }));
+    expect(draftedStateOf(draft, "plan")).toBeUndefined();
+    expect(draftedStateOf(draft, "pain")).toBeUndefined();
+    expect(draftedStateOf(null, "plan")).toBeUndefined();
   });
 });
