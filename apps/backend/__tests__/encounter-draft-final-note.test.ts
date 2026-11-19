@@ -189,9 +189,7 @@ describe("finalNoteOf: what the signed note says", () => {
     const note = finalNoteOf(computed, statesOf(computed, []));
     const template = resolveTemplate("routine_visit", "rn");
     if (template === undefined) throw new Error("no template");
-    expect(note.narrative).toBe(
-      assembleLayer1(template, selection(), computed.context).narrative,
-    );
+    expect(note.narrative).toBe(assembleLayer1(template, selection(), computed.context).narrative);
   });
 
   it("refuses a section that is unresolved or no longer matches its confirmation, naming it", async () => {

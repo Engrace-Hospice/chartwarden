@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   type AssemblyContext,
   HearthnoteAssemblyError,
-  type SelectionState,
   NOTE_BLOCK_SEPARATOR,
+  type SelectionState,
   assemble,
   assembleBlocks,
   assembleLayer1,
@@ -210,7 +210,9 @@ describe("assembleBlocks / joinBlocks — the section blocks Layer 1 joins (ADR-
       "plan",
     ]);
     expect(blocks[0]?.text).toBe("Reason for Visit\nRoutine scheduled visit per care plan.");
-    expect(joinBlocks(blocks)).toBe(assembleLayer1(template, rnRoutineSelection(), CONTEXT).narrative);
+    expect(joinBlocks(blocks)).toBe(
+      assembleLayer1(template, rnRoutineSelection(), CONTEXT).narrative,
+    );
     expect(blocks.map((b) => b.text).join(NOTE_BLOCK_SEPARATOR)).toBe(joinBlocks(blocks));
   });
 
@@ -222,7 +224,9 @@ describe("assembleBlocks / joinBlocks — the section blocks Layer 1 joins (ADR-
     const byId = new Map(blocks.map((b) => [b.sectionId, b.text]));
     expect(byId.get("plan")).toBe("Plan and Next Visit\nDrafted plan text.");
     expect(byId.get("interventions")).toBe("Interventions\nDrafted interventions text.");
-    expect(byId.get("chief_concern")).toBe("Reason for Visit\nRoutine scheduled visit per care plan.");
+    expect(byId.get("chief_concern")).toBe(
+      "Reason for Visit\nRoutine scheduled visit per care plan.",
+    );
     // template order, not selection or override order
     expect(blocks.map((b) => b.sectionId)).toEqual([
       "chief_concern",

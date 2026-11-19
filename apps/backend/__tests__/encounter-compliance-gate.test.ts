@@ -13,6 +13,7 @@ import type {
   EncounterType,
   ScaleType,
 } from "@chartwarden/types";
+import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   EVALUATED_CHECKS,
@@ -23,6 +24,10 @@ import {
   runAddendumComplianceGate,
   runEncounterComplianceGate,
 } from "../src/modules/08-encounters/gate/index";
+import {
+  AttestationSchema,
+  SignEncounterSchema,
+} from "../src/modules/08-encounters/routes/encounters-typebox";
 
 const CODE = "nv.cv.stable";
 
@@ -376,11 +381,28 @@ describe("assertGatePassed — the §2.6 '422 with remediation' contract", () =>
 describe("the §2.6 check register", () => {
   const ids = Object.keys(GATE_CHECKS) as GateCheckId[];
 
-  it("accounts for all twelve checks, once each, at their spec ordinals", () => {
-    expect(ids).toHaveLength(12);
+  it("accounts for the twelve §2.6 checks and the ADR-0114 draft check, once each, at their ordinals", () => {
+    expect(ids).toHaveLength(13);
     expect(ids.map((id) => GATE_CHECKS[id].ordinal).sort((a, b) => a - b)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
+    expect(GATE_CHECKS.draft_sections_resolved.ordinal).toBe(13);
+  });
+
+  it("check 9 is decided by the sign route's schema, which refuses a body that does not carry attestationConfirmed: true", () => {
+    const state = GATE_CHECKS.attestation_confirmed.state;
+    expect(state.kind).toBe("elsewhere");
+    if (state.kind !== "elsewhere") return;
+    expect(state.where).toContain("SignEncounterSchema");
+    expect(state.where).toContain("attestationConfirmed");
+    // The pin: what the register points at really does refuse, on the primary sign and on the cosignature and addendum signatures.
+    const visit = { visitModality: "in_person" };
+    for (const schema of [SignEncounterSchema, AttestationSchema]) {
+      expect(Value.Check(schema, { ...visit, attestationConfirmed: true })).toBe(true);
+      expect(Value.Check(schema, { ...visit, attestationConfirmed: false })).toBe(false);
+      expect(Value.Check(schema, { ...visit })).toBe(false);
+      expect(Value.Check(schema, { ...visit, attestationConfirmed: "true" })).toBe(false);
+    }
   });
 
   it("every deferral carries a blocker AND what would lift it — never a bare absence", () => {
@@ -403,13 +425,14 @@ describe("the §2.6 check register", () => {
     // run (it would produce no remediation) and a deferral cannot quietly start being run.
     expect([...EVALUATED_CHECKS].sort()).toEqual([
       "care_plan_review",
+      "draft_sections_resolved",
       "required_scales",
       "required_sections",
       "required_vitals",
     ]);
 
     // recert_visit × rn: undocumented (check 1), missing a vital (check 2), missing a scale (check 3),
-    // and overdue (check 6) — one call that trips all four evaluated checks at once.
+    // overdue (check 6) and an unresolved drafted section (check 13) — one call that trips all five at once.
     const failing = runEncounterComplianceGate({
       encounterType: "recert_visit",
       discipline: "rn",
@@ -418,11 +441,63 @@ describe("the §2.6 check register", () => {
       vitalsCaptured: NO_VITALS_CAPTURED,
       vitalsClinicallyNotIndicated: NO_CNI,
       scalesPresent: NO_SCALES_PRESENT,
+      draftSectionActions: [{ sectionId: "plan", reason: "unresolved" }],
     });
     expect(failing.pass).toBe(false);
     if (failing.pass) return;
     const cited = new Set(failing.remediation.map((r) => r.check));
     expect([...cited].sort()).toEqual([...EVALUATED_CHECKS].sort());
     for (const c of cited) expect(GATE_CHECKS[c].state.kind).toBe("evaluated");
+  });
+});
+
+describe("§2.6 Layer-3 gate — check 13, every drafted section is resolved (ADR-0114)", () => {
+  const base = {
+    encounterType: "routine_visit",
+    discipline: "rn",
+    sections: documented("routine_visit", "rn"),
+    carePlanOverdue: null,
+    vitalsCaptured: ALL_VITALS_CAPTURED,
+    vitalsClinicallyNotIndicated: NO_CNI,
+    scalesPresent: NO_SCALES_PRESENT,
+  } as const;
+
+  it("does not run when the tenant has no draft: no facts, and the gate is as it was", () => {
+    expect(runEncounterComplianceGate(base)).toEqual({ pass: true });
+  });
+
+  it("passes when the draft was read and nothing is left for the clinician", () => {
+    expect(runEncounterComplianceGate({ ...base, draftSectionActions: [] })).toEqual({
+      pass: true,
+    });
+  });
+
+  it("refuses an unresolved section as DRAFT_SECTION_UNRESOLVED and a changed one as DRAFT_SECTION_STALE, naming each", () => {
+    const r = runEncounterComplianceGate({
+      ...base,
+      draftSectionActions: [
+        { sectionId: "interventions", reason: "unresolved" },
+        { sectionId: "plan", reason: "stale" },
+      ],
+    });
+    expect(r.pass).toBe(false);
+    if (r.pass) return;
+    expect(r.remediation.map((x) => [x.check, x.code, x.field])).toEqual([
+      ["draft_sections_resolved", "DRAFT_SECTION_UNRESOLVED", "interventions"],
+      ["draft_sections_resolved", "DRAFT_SECTION_STALE", "plan"],
+    ]);
+    expect(r.remediation.every((x) => x.message.length > 20)).toBe(true);
+  });
+
+  it("is reported beside the other failures, not instead of them", () => {
+    const r = runEncounterComplianceGate({
+      ...base,
+      sections: [],
+      draftSectionActions: [{ sectionId: "plan", reason: "unresolved" }],
+    });
+    expect(r.pass).toBe(false);
+    if (r.pass) return;
+    const checks = new Set(r.remediation.map((x) => x.check));
+    expect(checks).toEqual(new Set(["required_sections", "draft_sections_resolved"]));
   });
 });

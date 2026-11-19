@@ -38,7 +38,9 @@ export function finalNoteOf(computed: ComputedDraft, states: readonly SectionSta
   const unresolved = unresolvedSections(states);
   if (unresolved.length > 0) throw sectionsNeedResolving(unresolved);
 
-  const confirmedIds = new Set(states.filter((s) => s.state === "confirmed").map((s) => s.sectionId));
+  const confirmedIds = new Set(
+    states.filter((s) => s.state === "confirmed").map((s) => s.sectionId),
+  );
   const confirmed = computed.draft.sections.flatMap((section) =>
     section.state === "drafted" && confirmedIds.has(section.sectionId) ? [section] : [],
   );

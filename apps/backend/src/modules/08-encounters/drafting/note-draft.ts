@@ -1,0 +1,70 @@
+// apps/backend/src/modules/08-encounters/drafting/note-draft.ts — the draft as the sign gate and sign see it (S1 PR C2b2; VN-D7, VN-D12,
+// VN-D17, design §3.2 "Gate" and "Sign"). Orchestration over the seams and the store; no database and no clock of its own.
+//
+// `null` when the tenant has the draft switched off: a tenant with the switch off sees today's gate and today's sign, exactly. Otherwise the
+// draft is recomputed for the VIEWER given (the signer, never the author unless they are the same member), as of the visit time, and set
+// against the stored confirmations. Nothing is cached, so the viewer's own Part 2 redaction decides what they are confirming.
+//
+// Fail closed: a switch that cannot be read, a source that cannot be read or a draft that cannot be compiled is
+// `COMPLIANCE_GATE_UNAVAILABLE` (503, the check did not run), never a pass and never "the draft is off". The one exception is a stored
+// selection the Layer-1 assembly itself refuses (`UNKNOWN_VOCAB_CODE`, `VOCAB_VERSION_MISMATCH`, `INVALID_ENCOUNTER_DISCIPLINE_PAIR`):
+// those are the codes the clinician's own save and finalize already answer with, and they stay as they are.
+import { EncounterStateError } from "../lifecycle/errors";
+import { type ComputedDraft, computeDraft } from "./compute";
+import type { DraftUnit } from "./draft-store";
+import type { DraftEncounter, DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
+import {
+  type SectionAction,
+  type SectionState,
+  sectionStates,
+  unresolvedSections,
+} from "./section-state";
+
+export interface NoteDraft {
+  readonly computed: ComputedDraft;
+  /** One state per template section, against the viewer's recomputed draft. */
+  readonly states: readonly SectionState[];
+  /** The drafted sections that still need the clinician: never confirmed, or no longer current. Empty when the note may sign. */
+  readonly actions: readonly SectionAction[];
+}
+
+function unavailable(what: string, cause: unknown): EncounterStateError {
+  return new EncounterStateError(
+    "COMPLIANCE_GATE_UNAVAILABLE",
+    `the visit-note draft check could not be decided: ${what}`,
+    undefined,
+    { cause },
+  );
+}
+
+/** The assembly codes the clinician's own save already answers with stay as they are; everything else did not run. */
+const KEEPS_ITS_CODE = new Set([
+  "UNKNOWN_VOCAB_CODE",
+  "VOCAB_VERSION_MISMATCH",
+  "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+]);
+
+export async function readNoteDraft(
+  unit: Pick<DraftUnit, "enabled" | "store">,
+  seams: DraftSeamPorts,
+  encounter: DraftEncounter,
+  viewer: DraftViewer,
+  now: Date,
+): Promise<NoteDraft | null> {
+  let enabled: boolean;
+  try {
+    enabled = await unit.enabled();
+  } catch (cause) {
+    throw unavailable("the tenant's draft switch could not be read", cause);
+  }
+  if (!enabled) return null;
+  try {
+    const ports: DraftPorts = { ...seams, ...unit.store };
+    const computed = await computeDraft(ports, encounter, viewer, now);
+    const states = sectionStates(computed.draft, await unit.store.confirmations(encounter.id));
+    return { computed, states, actions: unresolvedSections(states) };
+  } catch (cause) {
+    if (cause instanceof EncounterStateError && KEEPS_ITS_CODE.has(cause.code)) throw cause;
+    throw unavailable("the draft could not be computed", cause);
+  }
+}

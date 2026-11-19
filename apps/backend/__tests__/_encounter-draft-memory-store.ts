@@ -32,6 +32,10 @@ export interface LinkRow extends LinkRowState {
 }
 
 export interface MemoryStoreOptions {
+  /** The stored selection tree and slots the draft renders (default: nothing selected). */
+  readonly selection?: Awaited<ReturnType<DraftStore["loadSelection"]>>;
+  /** A read that fails, by store port name (the draft must then be unavailable, never a pass). */
+  readonly failing?: readonly (keyof DraftStore)[];
   readonly ownText?: readonly string[];
   readonly vitals?: VitalsDraftInput | null;
   readonly previous?: Date | null;
@@ -82,8 +86,11 @@ export function memoryDraftStore(options: MemoryStoreOptions = {}) {
     previousSignedVisitAt: async () => options.previous ?? null,
     latestVitals: async () => options.vitals ?? null,
     removedCarePlanElementIds: async () => removedElementIdsOf(links),
-    loadSelection: async () => EMPTY_SELECTION,
-    confirmations: async () => [...saved.values()],
+    loadSelection: async () => options.selection ?? EMPTY_SELECTION,
+    confirmations: async () => {
+      if (options.failing?.includes("confirmations")) throw new Error("the store is unreachable");
+      return [...saved.values()];
+    },
     ownTextSectionIds: async () => new Set(options.ownText ?? []),
     saveConfirmation: async (write) => {
       saved.set(write.sectionId, write);

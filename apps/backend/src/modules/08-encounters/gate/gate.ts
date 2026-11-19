@@ -6,7 +6,7 @@
 // is resolved by the service and passed in, so the gate is decidable in a unit test and identical in
 // the Drizzle service and the in-memory slice.
 //
-// What each of the twelve §2.6 checks is today — evaluated here, enforced elsewhere in the same
+// What each of the twelve §2.6 checks, and the ADR-0114 draft check, is today — evaluated here, enforced elsewhere in the same
 // transition, or deferred with a named blocker — is the register in ./checks. Read that first; it is
 // the honest inventory, and `gate.test.ts` pins it against what this file actually decides.
 import {
@@ -21,6 +21,7 @@ import type {
   EncounterType,
   ScaleType,
 } from "@chartwarden/types";
+import { ACTION_CODE, type SectionAction } from "../drafting/section-state";
 import { EncounterStateError } from "../lifecycle/errors";
 import type { GateCheckId } from "./checks";
 
@@ -74,6 +75,12 @@ export interface EncounterGateFacts {
    * when the type requires none, in which case this set is never consulted.
    */
   readonly scalesPresent: ReadonlySet<ScaleType>;
+  /**
+   * Check 13 (ADR-0114) — the drafted sections that still need the clinician, from the SIGNER's recomputed draft against the stored
+   * confirmations. ABSENT when the tenant has the draft switched off (the check does not run); an empty list means every drafted
+   * section is resolved. A draft that could not be computed never reaches here: the service refuses with COMPLIANCE_GATE_UNAVAILABLE.
+   */
+  readonly draftSectionActions?: readonly SectionAction[];
 }
 
 /** One structured remediation hint — the §2.6 "422 with remediation" payload, one entry per failure. */
@@ -160,6 +167,19 @@ export function runEncounterComplianceGate(facts: EncounterGateFacts): GateResul
       message: cp.initialOverdue
         ? "the patient's care plan has not had its 5-day initial review"
         : "the patient's care plan is past its 15-day review window",
+    });
+  }
+
+  // ── Check 13 — every drafted section is resolved against the draft as it stands now (ADR-0114) ───────
+  for (const action of facts.draftSectionActions ?? []) {
+    remediation.push({
+      check: "draft_sections_resolved",
+      code: ACTION_CODE[action.reason],
+      field: action.sectionId,
+      message:
+        action.reason === "unresolved"
+          ? `the drafted section '${action.sectionId}' has not been confirmed or deselected`
+          : `the drafted section '${action.sectionId}' changed after it was resolved: review it and resolve it again`,
     });
   }
 

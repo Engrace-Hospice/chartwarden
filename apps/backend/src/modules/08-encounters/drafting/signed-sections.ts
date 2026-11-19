@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/08-encounters/drafting/signed-sections.ts — the sealed per-section rows of a signed note (S1 PR C2b2; design §3.1/§3.2).
 //
 // One row per section of the note, written in the SAME transaction as the sign and as the note's `final_cipher`, which sign (re)writes from
@@ -5,7 +6,6 @@
 // envelope; the row's hash is SHA-256 of the text it seals, so anyone holding the unsealed row can check it. Source ids are ids and kinds only.
 // Part 2 fails closed: a confirmed section's flag is the compiler's; the clinician's own words are not classified (design §3.1).
 import type { DraftSourceRef } from "@chartwarden/hearthnote";
-import { type DbClient, schema } from "@chartwarden/db";
 import { and, desc, eq } from "drizzle-orm";
 import { EncounterStateError } from "../lifecycle/errors";
 import { sha256Hex } from "./compute";

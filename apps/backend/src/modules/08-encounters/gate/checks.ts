@@ -1,8 +1,8 @@
 // apps/backend/src/modules/08-encounters/gate/checks.ts — the §2.6 Layer-3 compliance-gate REGISTER.
 //
-// Spec §2.6 enumerates twelve checks the gate runs before an encounter may sign. This file is the
-// register of all twelve and of what each one is TODAY: evaluated here, enforced elsewhere in the same
-// transaction, or deferred with a named blocker. It exists because the failure this gate was fixed from
+// Spec §2.6 enumerates twelve checks the gate runs before an encounter may sign, and ADR-0114 adds a thirteenth (every drafted section
+// is resolved). This file is the register of all thirteen and of what each one is TODAY: evaluated here, enforced elsewhere in the
+// same transaction, or deferred with a named blocker. It exists because the failure this gate was fixed from
 // (#121) was not a wrong check — it was an ABSENT one that looked present: `transitionEncounter`
 // enforces `gatePreviewPassed`/`gatePassed` correctly, and every caller handed it the literal `true`, so
 // the twelve checks were nowhere and nothing said so.
@@ -13,7 +13,7 @@
 // what {@link runEncounterComplianceGate} actually evaluates in both directions, so a check cannot
 // quietly stop being evaluated and a deferral cannot outlive its reason without a deliberate edit.
 
-/** The twelve §2.6 checks, in spec order. */
+/** The twelve §2.6 checks in spec order, then the ADR-0114 draft check (13). */
 export type GateCheckId =
   | "required_sections" // 1
   | "required_vitals" // 2
@@ -26,7 +26,8 @@ export type GateCheckId =
   | "attestation_confirmed" // 9
   | "eligible_cosigner" // 10
   | "f2f_attested" // 11
-  | "vocab_version_pin"; // 12
+  | "vocab_version_pin" // 12
+  | "draft_sections_resolved"; // 13 (ADR-0114, not in the §2.6 table)
 
 export type GateCheckState =
   /** Decided by {@link runEncounterComplianceGate} from the facts the service resolves for it. */
@@ -112,11 +113,14 @@ export const GATE_CHECKS: Readonly<Record<GateCheckId, GateCheck>> = {
     ordinal: 9,
     spec: "the clinician confirmed the attestation language (one of two texts, depending on Layer-2 involvement)",
     state: {
-      kind: "deferred",
-      blocker:
-        "nothing carries the clinician's confirmation. `encounter_signature.attestation_text` records WHICH text was stamped — the service writes it — and no field anywhere records that the human read it. A gate reading the text the server itself just wrote would confirm its own work.",
-      needs:
-        "an attestation-acknowledged input on the sign route body, distinct from the text the server stamps (M9's CosignatureSchema.attestationConfirmed is the shape, fixed under #117)",
+      kind: "elsewhere",
+      where:
+        "the route schema: `SignEncounterSchema` (and `AttestationSchema` on the cosignature and addendum signatures) in " +
+        "routes/encounters-typebox.ts declares `attestationConfirmed: Type.Literal(true)`, so a body that omits it, sends false or " +
+        "sends anything else is refused with 422 before the service runs. That is the input the check used to say did not exist: a " +
+        "confirmation the client sends and the server never writes for itself, distinct from the attestation TEXT the service stamps on " +
+        "`encounter_signature`. The gate would be re-reading a field the route already refused to proceed without. " +
+        "`encounter-compliance-gate.test.ts` pins that the schema refuses each of those bodies.",
     },
   },
   eligible_cosigner: {
@@ -155,6 +159,15 @@ export const GATE_CHECKS: Readonly<Record<GateCheckId, GateCheck>> = {
         "a real, decodable uuid per corpus version (see `releases.ts` for why the pin is the CORPUS " +
         "release and not an M38 `code_system_version` row — architecture §10.5.2 over spec §2.7).",
     },
+  },
+  draft_sections_resolved: {
+    ordinal: 13,
+    spec: "every drafted section of the visit note is confirmed or deselected against the draft as it stands now (ADR-0114, VN-D7 / VN-D12)",
+    // Runs only when the tenant has the draft switched on; a tenant with it off is judged by the twelve above and nothing else. The facts
+    // are the signer's own recomputed draft against the stored confirmations (drafting/note-draft.ts): a section never resolved is
+    // DRAFT_SECTION_UNRESOLVED, one whose content hash or phrase-corpus version differs from its confirmation is DRAFT_SECTION_STALE, and
+    // a draft that cannot be computed is COMPLIANCE_GATE_UNAVAILABLE (503), never a pass.
+    state: { kind: "evaluated" },
   },
 } as const;
 
