@@ -21,9 +21,21 @@ degradation must not block patient-care documentation or visit signing.
 
 - **M7 care-plan-review gate fails OPEN with a `degraded` marker.** The encounter-sign gate calls M7's
   `careplan.isReviewOverdue`. If M7 is unreachable / 5xx, M8 **allows** the sign and stamps
-  `gate_check: { status: 'degraded', reason: 'M7_UNREACHABLE', checkedAt }` — the compliance gate must
-  never withhold a clinical signature. Only a live M7 200 with `encounterSignBlocked: true` enforces the
-  block; M7's retroactive sweep re-audits `degraded` signs on `m7.service.restored`.
+  `gate_check: { status: 'degraded', reason: 'M7_UNREACHABLE', checkedAt }` — the review-overdue gate must
+  not withhold a clinical signature on M7's account. Only a live M7 200 with `encounterSignBlocked: true`
+  enforces the block; M7's retroactive sweep re-audits `degraded` signs on `m7.service.restored`.
+  **One deliberate exception, the visit-note draft below, fails CLOSED.**
+- **Exception (ADR-0114): the visit-note draft fails CLOSED, and so can withhold a signature.** With a
+  tenant's draft switch ON (absent row = off) and an encounter whose template drafts a section (today only
+  the RN routine visit; every other template behaves as with the switch off: no draft read, no check 13, no
+  sealed rows), finalize and sign recompute the draft for the signer from M7 `relevantElementsAsOf`, M9
+  scale series, M12 medication changes and the M39 Part 2 verdict. If any of those reads fails, or does not
+  answer within `DRAFT_SOURCE_READ_TIMEOUT_MS` (5 s), sign and finalize answer **503
+  `COMPLIANCE_GATE_UNAVAILABLE`** for that tenant and never pass: a section cannot be confirmed or signed
+  against sources that could not be read, and a note must not be signed against a draft computed from
+  fewer sources than its author saw. The trade-off is accepted and bounded by the 5 s timeout and by the
+  switch; a tenant that needs to sign through such an outage switches the draft off
+  (`PUT /api/v1/encounters/draft-policy`, step-up), which restores today's behaviour exactly.
 - **HearthNote Layer 2 (M32/AI) fails CLOSED to Layer 1.** Layer 2 is flag-gated OFF in Phase 1
   (`hearthnote.layer2=false`); even when on, an AI outage simply leaves the deterministic Layer-1
   assembly as the final note (`final === layer1`). Signing is never blocked on AI availability.
@@ -52,6 +64,10 @@ M8 has **no direct external integration of its own** (HearthNote Layer 2 reaches
 | serve | M17 (Scheduling) | `MileagePayrollReader` + `EncounterCreator` seams (plan-only deny-stubs in Phase 1) | yes (ids) |
 | serve | M22 (Documents) | `/internal/encounters/:id/render-payload` — PDF-render payload | yes |
 | consume | M7 (Care Plan) | `CarePlanReader` seam — `relevantElementsForEncounter` element picker + `isReviewOverdue` sign gate (§7.8) | yes (ids) |
+| consume | M7 (Care Plan) | `CarePlanReader.relevantElementsAsOf` — the goals and interventions as of the visit time, per-viewer Part 2 redaction; a draft source (ADR-0114), fails closed | yes (text) |
+| consume | M9 (Assessments) | `ScaleSeriesProvider.series` seam — scored scale series over the visit window; a draft source (ADR-0114), fails closed | yes (scores) |
+| consume | M12 (DoseSpot) | `MedicationOrderProvider.getMedicationChangesBetween` seam — medication changes since the previous visit; `isSudTreatment` is not redacted by the seam, M8 applies the Part 2 verdict; a draft source (ADR-0114), fails closed | yes (names, dates) |
+| consume | M39 (Consent) | the per-actor Part 2 verdict (`evaluateForInternalAccess`, through M7's `sudDisclosureAllowedForActor`) — whether this viewer may read this patient's SUD content; its own errors read as "not allowed" | yes (ids) |
 | consume | M5 (Patient) | `PatientReader` — patient identity / caseload linkage | yes (ids) |
 | consume | M6 (Admission) | admission linkage (encounter belongs to an active election period) | minimal (ids) |
 | consume | M36 (Messaging) | `AlertEmitter` seam — cosignature SLA + late-entry-override alerts | minimal (ids) |
@@ -63,7 +79,7 @@ M8 has **no direct external integration of its own** (HearthNote Layer 2 reaches
 Notes:
 - The M17 visit-seeding path is live; the M18 EVV-bracket path remains a pure decision core / deny-stub
   (M8-T11/T08); the live bindings wire in Wave F. No `dependsOn` edge is created for either (the
-  consumed `m17.*` / `m18.*` strings are not M8-owned events; M8 `dependsOn` stays `[1,6,7,36,38]`).
+  consumed `m17.*` / `m18.*` strings are not M8-owned events; M8 `dependsOn` stays `[1,6,7,9,36,38]`; the draft's M9 / M12 / M39 reads go through the M1 seam registry, no import edge).
 - All logs are PHI-free by construction (Pino redaction §8.4): `encounter_id` / `patient_id` /
   `org_id` / `membership_id` UUIDs + enums only — never `free_text` annotations, `layer1`/`layer2`/
   `final` narrative text, vital numerics, or the override `reason` strings.
@@ -74,7 +90,10 @@ Notes:
   `signature_method`, `signed_at`, `step_up_auth_at`, `attestation_variant`; signing requires a fresh
   step-up session class (D13, > 5 min ⇒ re-auth); the M4 PHI write-audit trigger makes an immutable
   `audit_event` on INSERT. `m8.encounter.signed` records the business attestation. A signed encounter is
-  never UPDATEd or DELETEd — corrections are append-only addenda (§3.6 voided-not-deleted).
+  never UPDATEd or DELETEd — corrections are append-only addenda (§3.6 voided-not-deleted). The pinned
+  narrative (`hearthnote_assembled_output` `layer1_cipher` / `layer2_cipher` / `final_cipher`) is frozen in
+  the database once the encounter is `signed`, `cosign_pending` or `cosigned` (migration 1521): only the
+  eraser's shred sentinel is accepted, and sign pins it BEFORE the status flips.
 - **Elevation (T2):** cosignature is RBAC-gated (`encounter.cosign` ∈ {RN, Clinical Supervisor, DON}) +
   ABAC `cosigner_role_match` (the cosigner must be an RN and NOT the primary author) ∧
   `caseload_membership` ∧ `step_up_fresh`. The administrative >14d override emits
@@ -87,7 +106,7 @@ Notes:
   read/summary/portal-derivation path; SUD-flagged content is dropped regardless of snapshot content and
   the response carries `redacted: true`. The M31 family-portal visit summary is derived from the
   `m8.encounter.signed` payload subject to M39 consent, with SUD content omitted.
-- **Cross-tenant (T5):** RLS on every owned table (the ten above plus the ADR-0113 / ADR-0114 additions) keys on `app.org_id` with `WITH CHECK`; even with
+- **Cross-tenant (T5):** RLS on every owned table (the ten above plus the five ADR-0113 / ADR-0114 additions: `documentation_obligation_policy`, `documentation_obligation_override`, `encounter_draft_confirmation`, `hearthnote_signed_section`, `visit_note_draft_policy`) keys on `app.org_id` with `WITH CHECK`; even with
   RBAC/ABAC stubbed open, RLS alone blocks the cross-tenant read; a forged `encounterId` returns 404 (the
   row is RLS-hidden), never 403 — no existence disclosure. Proven on real Postgres (§9.3 / §9.4).
 
