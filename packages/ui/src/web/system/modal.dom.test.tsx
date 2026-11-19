@@ -2,6 +2,7 @@
 // (tabindex="-1" headings, the card itself), which are not in the Tab-order list the trap compares against.
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { describe, expect, it, vi } from "vitest";
 import { Modal } from "./modal";
@@ -226,5 +227,47 @@ describe("Modal scrim dismissal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Closing hands focus back to the control that opened the dialog, but only while focus is still lost. A screen that has already moved focus
+// to where it belongs (the row a step was taken on) must keep it: the restore runs after the screen's own commit, as an effect cleanup.
+describe("Modal focus on close", () => {
+  function Host({ moveFocusOnClose }: { moveFocusOnClose: boolean }) {
+    const [open, setOpen] = useState(false);
+    const target = useRef<HTMLDivElement>(null);
+    const wasOpen = useRef(false);
+    useLayoutEffect(() => {
+      if (wasOpen.current && !open && moveFocusOnClose) target.current?.focus();
+      wasOpen.current = open;
+    }, [open, moveFocusOnClose]);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Open
+        </button>
+        <div ref={target} tabIndex={-1} aria-label="Where the screen puts focus" />
+        <Modal open={open} onClose={() => setOpen(false)} ariaLabel="Test dialog">
+          <button type="button">Done</button>
+        </Modal>
+      </>
+    );
+  }
+
+  it("returns focus to the control that opened it when nothing else has taken focus", async () => {
+    const user = userEvent.setup();
+    render(<Host moveFocusOnClose={false} />);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "Open" })).toHaveFocus();
+  });
+
+  it("leaves focus where the screen put it when it moved focus as the dialog closed", async () => {
+    const user = userEvent.setup();
+    render(<Host moveFocusOnClose />);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await user.keyboard("{Escape}");
+    expect(screen.getByLabelText("Where the screen puts focus")).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Open" })).not.toHaveFocus();
   });
 });

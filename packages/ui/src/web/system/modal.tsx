@@ -92,7 +92,11 @@ export function Modal({
     const first = card?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? card)?.focus();
     return () => {
-      // Restore focus to the trigger on close (keyboard users don't lose their place).
+      // Restore focus to the trigger on close (keyboard users don't lose their place), but only while focus is still lost: this runs as an
+      // effect cleanup, after the screen's own commit, and a screen that has already put focus where it belongs (the row a step was taken
+      // on) must keep it.
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
       (previouslyFocused.current as HTMLElement | null)?.focus?.();
     };
   }, [open]);
