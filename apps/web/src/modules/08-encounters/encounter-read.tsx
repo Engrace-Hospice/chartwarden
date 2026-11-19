@@ -252,11 +252,8 @@ export function EncounterRead(): JSX.Element {
   const [sectionErrors, setSectionErrors] = useState<Partial<Record<EncounterSection, string>>>({});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [reason, setReason] = useState("");
-  // The sections an amending addendum names (VN-D30): chosen in the addendum dialog, and empty each time it opens.
+  // The sections an amending addendum names (VN-D30): chosen in the addendum dialog, and emptied where it is opened.
   const [amendIds, setAmendIds] = useState<readonly string[]>([]);
-  useEffect(() => {
-    if (utilityModal !== "addendum") setAmendIds([]);
-  }, [utilityModal]);
   const [notice, setNotice] = useState<string | null>(null);
   // The sign ceremony's delivery step (how the visit was delivered + optional documented times).
   const [delivery, setDelivery] = useState<DeliveryDraft>(() => initialDelivery(null));
@@ -1812,7 +1809,10 @@ export function EncounterRead(): JSX.Element {
                   {e.status === "signed" || e.status === "cosigned" ? (
                     <button
                       type="button"
-                      onClick={() => setUtilityModal("addendum")}
+                      onClick={() => {
+                        setAmendIds([]);
+                        setUtilityModal("addendum");
+                      }}
                       style={{
                         ...secondaryBtn,
                         width: "100%",

@@ -86,6 +86,9 @@ export function useNoteDraft(
   const epoch = useRef(0);
   const inFlight = useRef(false);
   const rereadAfterResolve = useRef(false);
+  // A read is out (the `refreshing` state, readable inside `resolve` without waiting for a render): nothing is resolved against text that
+  // is about to change.
+  const reading = useRef(false);
 
   const reload = useCallback(async (): Promise<void> => {
     if (!encounterId) return;
@@ -95,11 +98,13 @@ export function useNoteDraft(
     }
     const mine = ++sequence.current;
     setNotes({});
+    reading.current = true;
     setRefreshing(true);
     const outcome = await (addendumId === undefined
       ? loadDraft(client, encounterId)
       : loadAmendmentDraft(client, encounterId, addendumId));
     if (mine !== sequence.current) return;
+    reading.current = false;
     setRefreshing(false);
     setLoad(loadStateOf(outcome));
   }, [client, encounterId, addendumId]);
@@ -107,6 +112,7 @@ export function useNoteDraft(
   // biome-ignore lint/correctness/useExhaustiveDependencies: `refreshKey` is the re-read trigger, not read in the body.
   useEffect(() => {
     setLoad({ status: "loading" });
+    reading.current = false;
     setRefreshing(false);
     void reload();
     return () => {
@@ -129,7 +135,7 @@ export function useNoteDraft(
 
   const resolve = useCallback(
     async (section: DraftSectionView, resolution: Resolution): Promise<boolean> => {
-      if (!encounterId || inFlight.current) return false;
+      if (!encounterId || inFlight.current || reading.current) return false;
       const startedIn = epoch.current;
       const stillHere = (): boolean => startedIn === epoch.current;
       inFlight.current = true;

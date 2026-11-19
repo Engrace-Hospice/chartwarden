@@ -263,6 +263,49 @@ describe("reading the draft", () => {
   });
 });
 
+describe("a resolve asked for while the draft is being read again", () => {
+  it("records nothing: the text on screen may be about to change, so the PUT is not sent", async () => {
+    const second = gate();
+    let reads = 0;
+    const { result, calls } = setup({
+      [`GET /api/v1/encounters/${ENC_A}/draft`]: async () => {
+        reads += 1;
+        if (reads > 1) await second.promise;
+        return { body: draftOf(ENC_A, drafted("Goal.")) };
+      },
+      [`PUT /api/v1/encounters/${ENC_A}/draft/sections/plan`]: () => ({
+        body: drafted("Goal.", "confirmed"),
+      }),
+    });
+    await waitFor(() => expect(result.current.load.status).toBe("ready"));
+    const section = (result.current.load as { draft: { sections: Section[] } }).draft
+      .sections[0] as Section;
+    let reload: Promise<void> = Promise.resolve();
+    act(() => {
+      reload = result.current.reload();
+    });
+    await waitFor(() => expect(result.current.refreshing).toBe(true));
+
+    let recorded = true;
+    await act(async () => {
+      recorded = await result.current.resolve(section, "confirmed");
+    });
+    expect(recorded).toBe(false);
+    expect(calls.filter((c) => c.method === "PUT")).toHaveLength(0);
+
+    second.open();
+    await act(async () => {
+      await reload;
+    });
+    // Once the read has landed, the same resolve is sent.
+    await act(async () => {
+      recorded = await result.current.resolve(section, "confirmed");
+    });
+    expect(recorded).toBe(true);
+    expect(calls.filter((c) => c.method === "PUT")).toHaveLength(1);
+  });
+});
+
 // An amending addendum's own draft (ADR-0114 VN-D30): the same hook, read and resolved through the addendum's routes, so the note's
 // draft and the addendum's never mix.
 describe("the draft of an amending addendum", () => {
