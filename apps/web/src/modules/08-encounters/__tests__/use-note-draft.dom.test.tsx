@@ -260,7 +260,7 @@ describe("reading the draft", () => {
     });
     await waitFor(() => expect(result.current.load.status).toBe("ready"));
     expect(result.current.refreshing).toBe(false);
-    let reload: Promise<void> = Promise.resolve();
+    let reload: Promise<unknown> = Promise.resolve();
     act(() => {
       reload = result.current.reload();
     });
@@ -290,7 +290,7 @@ describe("a resolve asked for while the draft is being read again", () => {
     await waitFor(() => expect(result.current.load.status).toBe("ready"));
     const section = (result.current.load as { draft: { sections: Section[] } }).draft
       .sections[0] as Section;
-    let reload: Promise<void> = Promise.resolve();
+    let reload: Promise<unknown> = Promise.resolve();
     act(() => {
       reload = result.current.reload();
     });
