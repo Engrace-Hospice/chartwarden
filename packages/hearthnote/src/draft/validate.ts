@@ -27,9 +27,15 @@ export function instantMs(value: unknown, field: string): number {
   return ms;
 }
 
-/** A `YYYY-MM-DD` date string, returned as given. */
+/** Whether a `YYYY-MM-DD` string is a real calendar day: it must round-trip through a UTC date (2026-02-30 and 2026-13-45 do not). */
+function isCalendarDay(value: string): boolean {
+  const [year, month, day] = value.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value;
+}
+
+/** A `YYYY-MM-DD` date string that is a real calendar day, returned as given. */
 export function isoDate(value: unknown, field: string): string {
-  if (typeof value !== "string" || !ISO_DATE.test(value)) {
+  if (typeof value !== "string" || !ISO_DATE.test(value) || !isCalendarDay(value)) {
     throw new DraftInputError(`${field} must be a YYYY-MM-DD date`);
   }
   return value;

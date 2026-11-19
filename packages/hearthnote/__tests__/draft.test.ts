@@ -467,6 +467,33 @@ describe("input validation", () => {
     expect(() => bad({ previous: { value: 60, recordedOn: "10 Nov" } })).toThrow(DraftInputError);
   });
 
+  it("rejects a date that matches the pattern but is not on the calendar (it would compile into a sentence with a valid hash)", () => {
+    const inputs = baseInputs();
+    const withPrevious = (recordedOn: string) =>
+      compileDraft(
+        {
+          ...inputs,
+          scaleReadings: [
+            { ...inputs.scaleReadings[0], previous: { value: 60, recordedOn } } as never,
+          ],
+        },
+        DEPS,
+      );
+    for (const impossible of ["2026-13-45", "2026-02-30", "2026-00-10", "2026-11-31"]) {
+      expect(() => withPrevious(impossible), impossible).toThrow(DraftInputError);
+    }
+    expect(() =>
+      compileDraft(
+        {
+          ...inputs,
+          medicationChanges: [{ ...inputs.medicationChanges[0], changedOn: "2026-13-45" } as never],
+        },
+        DEPS,
+      ),
+    ).toThrow(DraftInputError);
+    expect(() => withPrevious("2028-02-29")).not.toThrow();
+  });
+
   it("rejects an unknown temperature unit and a non-numeric temperature", () => {
     const inputs = baseInputs();
     const vitals = inputs.vitals;
