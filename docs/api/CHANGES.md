@@ -6,6 +6,17 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-19 — Visit-note draft gate and sign (M8, ADR-0114): a drafted section must be resolved to finalize and sign, `409 DRAFT_SECTION_STALE` at sign
+
+**No new route and no new field; nothing changes for a tenant with the draft switched off.** For a tenant with it on, `POST /encounters/{encounterId}/finalize` and `POST /encounters/{encounterId}/sign` read the visit-note draft (the one `GET /encounters/{encounterId}/draft` returns) and require every drafted section to be confirmed or deselected against what it shows now.
+
+- **`POST /encounters/{encounterId}/finalize`** (the gate preview): `422 COMPLIANCE_GATE_FAILED` gains remediation entries from a new thirteenth gate check, `draft_sections_resolved`: `details[].code` is `DRAFT_SECTION_UNRESOLVED` (the section was never confirmed or deselected) or `DRAFT_SECTION_STALE` (its content hash or the phrase-corpus version differs from its confirmation, including a deselected one), with `details[].field` the section id. The draft is read for the finalizing author. A draft that cannot be computed is `503 COMPLIANCE_GATE_UNAVAILABLE`, never a pass. The note's pinned text (`final_cipher`) carries the confirmed draft text, not Layer 1 alone.
+- **`POST /encounters/{encounterId}/sign`**: the draft is recomputed for the SIGNER as of the visit time, inside the sign transaction (the signer's own 42 CFR Part 2 redaction decides, so a confirmation of content the signer cannot see is stale for them). Any drafted section that is unresolved or no longer matches its confirmation is refused with **`409 DRAFT_SECTION_STALE`** before anything is written, each section named in `details` (`field` the section id, `code` `DRAFT_SECTION_UNRESOLVED` or `DRAFT_SECTION_STALE`); refetch the draft, review, resolve those sections again and sign again. `503 COMPLIANCE_GATE_UNAVAILABLE` when the draft cannot be computed. A note finalized before the tenant switched the draft on signs only once its sections are resolved.
+- **The signed text.** A signed note's text is the confirmed draft text for confirmed sections and the clinician's own selections and free text everywhere else; a deselected section adds nothing. At sign it is pinned as the note's final text and sealed section by section in the same transaction (an append-only row per section whose ordered text is the final text), so `renderPayload` returns exactly what was signed. The per-viewer Part 2 view of those rows and amendments of a signed note come in later changes.
+- **Attestation (gate check 9)** is now registered as enforced by the sign body's schema (`attestationConfirmed` must be `true`, else 422): no behavior change.
+
+---
+
 ## 2026-11-19 — Visit-note draft (M8, ADR-0114): `GET /encounters/{encounterId}/draft` and `PUT /encounters/{encounterId}/draft/sections/{sectionId}`, and `409 DRAFT_SECTION_STALE`
 
 **Additive; nothing changes for a tenant until its administrator switches the draft on.** Both routes answer `404 NOT_FOUND` (the same answer as an absent encounter) for a tenant with the switch off, and for an encounter of another tenant. The draft is not stored: it is recomputed on every read, for the reading viewer, so 42 CFR Part 2 redaction is decided per request.
