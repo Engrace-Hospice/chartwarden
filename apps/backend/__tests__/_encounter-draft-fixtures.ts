@@ -123,7 +123,7 @@ export const carePlan = (
   ...over,
 });
 
-const EMPTY_SELECTION = {
+export const EMPTY_SELECTION = {
   selection: {
     templateKey: "routine_visit:rn",
     vocabVersion: VOCAB_VERSION,
