@@ -1,7 +1,8 @@
 // packages/hearthnote/__tests__/templates-draft-wiring.test.ts — VN-D15: phrase categories for the RN routine
 // visit's uncategorized sections (`chief_concern`, `vitals_review`, `plan`), and nothing else changing.
-import { ENCOUNTER_DISCIPLINE_RULES, type EncounterType } from "@chartwarden/types";
+
 import { entriesFor } from "@chartwarden/narrative-vocab";
+import { ENCOUNTER_DISCIPLINE_RULES, type EncounterType } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { TEMPLATES, resolveTemplate } from "../src/index";
 
@@ -63,7 +64,10 @@ describe("RN routine visit category wiring", () => {
     const eligible = entriesFor("routine_visit", "rn");
     for (const id of ["chief_concern", "vitals_review", "plan"]) {
       const allowed = sectionById(id)?.allowedCategories ?? [];
-      expect(eligible.some((e) => allowed.includes(e.category)), id).toBe(true);
+      expect(
+        eligible.some((e) => allowed.includes(e.category)),
+        id,
+      ).toBe(true);
     }
   });
 });

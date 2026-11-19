@@ -6,12 +6,13 @@
 // a discipline base plus the encounter-type-specific required sections the spec §2.2 table enumerates
 // (admission → med-rec/advance-directive/caregiver/baseline; recert → PPS/ESAS/prognosis/summary; F2F →
 // attestation; etc.). Pure data + a couple of resolvers; no IO.
+
+import type { VocabCategory } from "@chartwarden/narrative-vocab";
 import {
   ENCOUNTER_DISCIPLINE_RULES,
   type EncounterDiscipline,
   type EncounterType,
 } from "@chartwarden/types";
-import type { VocabCategory } from "@chartwarden/narrative-vocab";
 import type { HearthnoteTemplate, TemplateSection } from "./types";
 import { templateKey } from "./types";
 
@@ -102,8 +103,10 @@ const ROUTINE_VISIT_RN_CATEGORIES: Readonly<Record<string, readonly VocabCategor
 };
 
 /** Per-template category wiring, keyed by template key then section id. */
-const CATEGORY_WIRING: ReadonlyMap<string, Readonly<Record<string, readonly VocabCategory[]>>> =
-  new Map([[templateKey("routine_visit", "rn"), ROUTINE_VISIT_RN_CATEGORIES]]);
+const CATEGORY_WIRING: ReadonlyMap<
+  string,
+  Readonly<Record<string, readonly VocabCategory[]>>
+> = new Map([[templateKey("routine_visit", "rn"), ROUTINE_VISIT_RN_CATEGORIES]]);
 
 /** The base section ids a discipline documents, before encounter-type specialization. */
 function baseSectionIds(discipline: EncounterDiscipline): readonly string[] {

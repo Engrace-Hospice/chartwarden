@@ -99,8 +99,14 @@ describe("draft entries", () => {
 describe("draft wording (neutral, factual, numbers only)", () => {
   const wording: ReadonlyArray<readonly [string, string]> = [
     ["nv.scale.pps_first", "PPS ${pps_value}%, no earlier reading recorded"],
-    ["nv.scale.pps_down", "PPS ${pps_value}%, down from ${pps_previous_value}% on ${pps_previous_date}"],
-    ["nv.scale.pps_up", "PPS ${pps_value}%, up from ${pps_previous_value}% on ${pps_previous_date}"],
+    [
+      "nv.scale.pps_down",
+      "PPS ${pps_value}%, down from ${pps_previous_value}% on ${pps_previous_date}",
+    ],
+    [
+      "nv.scale.pps_up",
+      "PPS ${pps_value}%, up from ${pps_previous_value}% on ${pps_previous_date}",
+    ],
     [
       "nv.scale.pps_same",
       "PPS ${pps_value}%, unchanged from ${pps_previous_value}% on ${pps_previous_date}",

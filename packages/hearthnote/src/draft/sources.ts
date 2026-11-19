@@ -65,7 +65,10 @@ type SlotMap = Readonly<Record<string, SlotValue>>;
 function sentence(code: string, params: SlotMap): string {
   const entry = getVocabEntry(code);
   if (entry === undefined) {
-    throw new HearthnoteAssemblyError("UNKNOWN_VOCAB_CODE", `draft phrase '${code}' is not in the corpus`);
+    throw new HearthnoteAssemblyError(
+      "UNKNOWN_VOCAB_CODE",
+      `draft phrase '${code}' is not in the corpus`,
+    );
   }
   return finishSentence(interpolate(entry.phrase, params));
 }
@@ -85,7 +88,11 @@ function sortedBy<T>(items: readonly T[], keyOf: (item: T) => readonly string[])
   });
 }
 
-const group = (kind: DraftSourceRef["kind"], source: DraftSourceBase, sentences: readonly string[]): SourceGroup => ({
+const group = (
+  kind: DraftSourceRef["kind"],
+  source: DraftSourceBase,
+  sentences: readonly string[],
+): SourceGroup => ({
   ref: { kind, id: nonBlank(source.id, `${kind} id`) },
   sentences,
   sudRelated: source.sudRelated,
@@ -104,13 +111,23 @@ const SCALE_SPECS: Readonly<Partial<Record<ScaleType, ScaleSpec>>> = {
     sectionId: SECTION.assessment,
     slot: "pps",
     labelled: false,
-    codes: { first: "nv.scale.pps_first", down: "nv.scale.pps_down", up: "nv.scale.pps_up", same: "nv.scale.pps_same" },
+    codes: {
+      first: "nv.scale.pps_first",
+      down: "nv.scale.pps_down",
+      up: "nv.scale.pps_up",
+      same: "nv.scale.pps_same",
+    },
   },
   esas_r: {
     sectionId: SECTION.symptoms,
     slot: "esas",
     labelled: true,
-    codes: { first: "nv.scale.esas_first", down: "nv.scale.esas_down", up: "nv.scale.esas_up", same: "nv.scale.esas_same" },
+    codes: {
+      first: "nv.scale.esas_first",
+      down: "nv.scale.esas_down",
+      up: "nv.scale.esas_up",
+      same: "nv.scale.esas_same",
+    },
   },
 };
 
@@ -131,7 +148,11 @@ function scaleGroup(reading: ScaleReadingInput, spec: ScaleSpec): SourceGroup {
   return group("scale_reading", reading, [sentence(code, params)]);
 }
 
-function scaleGroups(readings: readonly ScaleReadingInput[], scale: ScaleType, asOfMs: number): readonly SourceGroup[] {
+function scaleGroups(
+  readings: readonly ScaleReadingInput[],
+  scale: ScaleType,
+  asOfMs: number,
+): readonly SourceGroup[] {
   const spec = SCALE_SPECS[scale];
   if (spec === undefined) return [];
   const asOf = readings
@@ -199,7 +220,10 @@ function interventionGroups(carePlan: CarePlanDraftInput | null): readonly Sourc
   return sortedBy(carePlan?.interventions ?? [], (i) => [i.id]).map((intervention) =>
     group("care_plan_intervention", intervention, [
       sentence("nv.cp.intervention_performed", {
-        intervention_text: sentenceText(intervention.interventionText, `care-plan intervention '${intervention.id}' text`),
+        intervention_text: sentenceText(
+          intervention.interventionText,
+          `care-plan intervention '${intervention.id}' text`,
+        ),
       }),
     ]),
   );
@@ -212,18 +236,26 @@ const MEDICATION_CODES: Readonly<Record<MedicationChangeKind, string>> = {
   discontinued: "nv.med.discontinued",
 };
 
-function medicationGroups(changes: readonly MedicationChangeInput[], asOfMs: number): readonly SourceGroup[] {
-  const asOf = changes.filter((m) => instantMs(m.changedAt, `medication change '${m.id}' changedAt`) <= asOfMs);
-  return sortedBy(asOf, (m) => [new Date(Date.parse(m.changedAt)).toISOString(), m.id]).map((change) => {
-    const code = MEDICATION_CODES[change.change];
-    if (code === undefined) throw new DraftInputError(`medication change '${change.id}' has an unknown kind`);
-    return group("medication_change", change, [
-      sentence(code, {
-        drug_name: nonBlank(change.drugName, `medication change '${change.id}' drug name`),
-        change_date: isoDate(change.changedOn, `medication change '${change.id}' date`),
-      }),
-    ]);
-  });
+function medicationGroups(
+  changes: readonly MedicationChangeInput[],
+  asOfMs: number,
+): readonly SourceGroup[] {
+  const asOf = changes.filter(
+    (m) => instantMs(m.changedAt, `medication change '${m.id}' changedAt`) <= asOfMs,
+  );
+  return sortedBy(asOf, (m) => [new Date(Date.parse(m.changedAt)).toISOString(), m.id]).map(
+    (change) => {
+      const code = MEDICATION_CODES[change.change];
+      if (code === undefined)
+        throw new DraftInputError(`medication change '${change.id}' has an unknown kind`);
+      return group("medication_change", change, [
+        sentence(code, {
+          drug_name: nonBlank(change.drugName, `medication change '${change.id}' drug name`),
+          change_date: isoDate(change.changedOn, `medication change '${change.id}' date`),
+        }),
+      ]);
+    },
+  );
 }
 
 /** Every section that has at least one source, with its sources in order. Empty sections are absent. */
@@ -237,7 +269,10 @@ export function collectSourceGroups(
     [SECTION.symptoms, scaleGroups(inputs.scaleReadings, "esas_r", asOfMs)],
     [
       SECTION.interventions,
-      [...interventionGroups(inputs.carePlan), ...medicationGroups(inputs.medicationChanges, asOfMs)],
+      [
+        ...interventionGroups(inputs.carePlan),
+        ...medicationGroups(inputs.medicationChanges, asOfMs),
+      ],
     ],
     [SECTION.plan, goalGroups(inputs.carePlan)],
   ];

@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type Draft,
   type DraftDeps,
+  DraftInputError,
   type DraftInputs,
   type DraftSection,
-  DraftInputError,
   HearthnoteAssemblyError,
   compileDraft,
 } from "../src/index";
@@ -108,7 +108,10 @@ describe("a section with no source stays empty (VN-D9)", () => {
 
   it("treats a vitals record with no values as no source", () => {
     const draft = compileDraft(
-      { ...baseInputs(), vitals: { id: "vitals-empty", recordedAt: "2026-11-18T14:05:00Z", sudRelated: false } },
+      {
+        ...baseInputs(),
+        vitals: { id: "vitals-empty", recordedAt: "2026-11-18T14:05:00Z", sudRelated: false },
+      },
       DEPS,
     );
     expect(section(draft, "vitals_review").state).toBe("empty");
@@ -138,7 +141,13 @@ describe("a section with no source stays empty (VN-D9)", () => {
       {
         ...base,
         scaleReadings: [
-          { id: "scale-kps", scaleType: "kps", value: 40, recordedAt: "2026-11-18T14:00:00Z", sudRelated: false },
+          {
+            id: "scale-kps",
+            scaleType: "kps",
+            value: 40,
+            recordedAt: "2026-11-18T14:00:00Z",
+            sudRelated: false,
+          },
         ],
       },
       DEPS,
@@ -164,7 +173,13 @@ describe("a section with no source stays empty (VN-D9)", () => {
 describe("Part 2 fails closed", () => {
   it("is false only when every source behind the section is explicitly not SUD-related", () => {
     const draft = compileDraft(baseInputs(), DEPS);
-    for (const id of ["vitals_review", "assessment", "symptom_management", "interventions", "plan"]) {
+    for (const id of [
+      "vitals_review",
+      "assessment",
+      "symptom_management",
+      "interventions",
+      "plan",
+    ]) {
       expect(part2(draft, id), id).toBe(false);
     }
   });
@@ -229,19 +244,51 @@ describe("Part 2 fails closed", () => {
 describe("contentHash", () => {
   /** Each case changes ONE source value and names the one section whose hash must move. */
   const mutations: ReadonlyArray<readonly [string, string, (i: DraftInputs) => DraftInputs]> = [
-    ["goal text", "plan", (i) => withGoal(i, { goalText: "Caregiver demonstrates safe transfers" })],
-    ["goal progress statement", "plan", (i) => withGoal(i, { progressStatement: "No change since the last visit" })],
+    [
+      "goal text",
+      "plan",
+      (i) => withGoal(i, { goalText: "Caregiver demonstrates safe transfers" }),
+    ],
+    [
+      "goal progress statement",
+      "plan",
+      (i) => withGoal(i, { progressStatement: "No change since the last visit" }),
+    ],
     ["goal id", "plan", (i) => withGoal(i, { id: "goal-z" })],
-    ["intervention text", "interventions", (i) => withIntervention(i, { interventionText: "Teaching on turning schedule" })],
+    [
+      "intervention text",
+      "interventions",
+      (i) => withIntervention(i, { interventionText: "Teaching on turning schedule" }),
+    ],
     ["PPS value", "assessment", (i) => withScale(i, "scale-pps-2", { value: 40 })],
-    ["PPS previous value", "assessment", (i) => withScale(i, "scale-pps-2", { previous: { value: 70, recordedOn: "2026-11-10" } })],
-    ["PPS previous date", "assessment", (i) => withScale(i, "scale-pps-2", { previous: { value: 60, recordedOn: "2026-11-09" } })],
+    [
+      "PPS previous value",
+      "assessment",
+      (i) => withScale(i, "scale-pps-2", { previous: { value: 70, recordedOn: "2026-11-10" } }),
+    ],
+    [
+      "PPS previous date",
+      "assessment",
+      (i) => withScale(i, "scale-pps-2", { previous: { value: 60, recordedOn: "2026-11-09" } }),
+    ],
     ["ESAS value", "symptom_management", (i) => withScale(i, "scale-esas-pain", { value: 7 })],
-    ["ESAS label", "symptom_management", (i) => withScale(i, "scale-esas-pain", { label: "nausea" })],
+    [
+      "ESAS label",
+      "symptom_management",
+      (i) => withScale(i, "scale-esas-pain", { label: "nausea" }),
+    ],
     ["vitals value", "vitals_review", (i) => withVitals(i, { heartRate: 73 })],
     ["vitals source id", "vitals_review", (i) => withVitals(i, { id: "vitals-2" })],
-    ["medication change kind", "interventions", (i) => withMedication(i, { change: "discontinued" })],
-    ["medication change date", "interventions", (i) => withMedication(i, { changedOn: "2026-11-13" })],
+    [
+      "medication change kind",
+      "interventions",
+      (i) => withMedication(i, { change: "discontinued" }),
+    ],
+    [
+      "medication change date",
+      "interventions",
+      (i) => withMedication(i, { changedOn: "2026-11-13" }),
+    ],
     ["medication name", "interventions", (i) => withMedication(i, { drugName: "lorazepam" })],
     ["Part 2 flag", "vitals_review", (i) => withVitals(i, { sudRelated: true })],
     [
@@ -251,7 +298,10 @@ describe("contentHash", () => {
         ...i,
         selection: {
           ...i.selection,
-          sections: [...i.selection.sections, { sectionId: "plan", entries: [], freeText: "Discussed with family." }],
+          sections: [
+            ...i.selection.sections,
+            { sectionId: "plan", entries: [], freeText: "Discussed with family." },
+          ],
         },
       }),
     ],
@@ -339,9 +389,15 @@ describe("as-of the visit time (VN-D11)", () => {
     const inputs = baseInputs();
     const vitals = inputs.vitals;
     if (vitals === null) throw new Error("fixture has vitals");
-    const late = compileDraft({ ...inputs, vitals: { ...vitals, recordedAt: "2026-11-18T14:30:01Z" } }, DEPS);
+    const late = compileDraft(
+      { ...inputs, vitals: { ...vitals, recordedAt: "2026-11-18T14:30:01Z" } },
+      DEPS,
+    );
     expect(section(late, "vitals_review").state).toBe("empty");
-    const exact = compileDraft({ ...inputs, vitals: { ...vitals, recordedAt: "2026-11-18T14:30:00Z" } }, DEPS);
+    const exact = compileDraft(
+      { ...inputs, vitals: { ...vitals, recordedAt: "2026-11-18T14:30:00Z" } },
+      DEPS,
+    );
     expect(section(exact, "vitals_review").state).toBe("drafted");
   });
 
@@ -350,7 +406,10 @@ describe("as-of the visit time (VN-D11)", () => {
     const vitals = inputs.vitals;
     if (vitals === null) throw new Error("fixture has vitals");
     // 09:45-05:00 is 14:45Z, after the 14:30Z visit time.
-    const draft = compileDraft({ ...inputs, vitals: { ...vitals, recordedAt: "2026-11-18T09:45:00-05:00" } }, DEPS);
+    const draft = compileDraft(
+      { ...inputs, vitals: { ...vitals, recordedAt: "2026-11-18T09:45:00-05:00" } },
+      DEPS,
+    );
     expect(section(draft, "vitals_review").state).toBe("empty");
   });
 
@@ -359,8 +418,14 @@ describe("as-of the visit time (VN-D11)", () => {
     const draft = compileDraft(
       {
         ...inputs,
-        scaleReadings: inputs.scaleReadings.map((r) => ({ ...r, recordedAt: "2026-11-19T08:00:00Z" })),
-        medicationChanges: inputs.medicationChanges.map((m) => ({ ...m, changedAt: "2026-11-19T08:00:00Z" })),
+        scaleReadings: inputs.scaleReadings.map((r) => ({
+          ...r,
+          recordedAt: "2026-11-19T08:00:00Z",
+        })),
+        medicationChanges: inputs.medicationChanges.map((m) => ({
+          ...m,
+          changedAt: "2026-11-19T08:00:00Z",
+        })),
         carePlan: null,
       },
       DEPS,
@@ -373,20 +438,31 @@ describe("as-of the visit time (VN-D11)", () => {
 
 describe("input validation", () => {
   it("rejects an asOf that is not an ISO instant with a zone", () => {
-    expect(() => compileDraft({ ...baseInputs(), asOf: "2026-11-18T14:30:00" }, DEPS)).toThrow(DraftInputError);
-    expect(() => compileDraft({ ...baseInputs(), asOf: "yesterday" }, DEPS)).toThrow(DraftInputError);
+    expect(() => compileDraft({ ...baseInputs(), asOf: "2026-11-18T14:30:00" }, DEPS)).toThrow(
+      DraftInputError,
+    );
+    expect(() => compileDraft({ ...baseInputs(), asOf: "yesterday" }, DEPS)).toThrow(
+      DraftInputError,
+    );
   });
 
   it("rejects an ESAS-r reading with no label", () => {
     const inputs = baseInputs();
-    const readings = inputs.scaleReadings.map((r) => (r.scaleType === "esas_r" ? { ...r, label: "" } : r));
-    expect(() => compileDraft({ ...inputs, scaleReadings: readings }, DEPS)).toThrow(DraftInputError);
+    const readings = inputs.scaleReadings.map((r) =>
+      r.scaleType === "esas_r" ? { ...r, label: "" } : r,
+    );
+    expect(() => compileDraft({ ...inputs, scaleReadings: readings }, DEPS)).toThrow(
+      DraftInputError,
+    );
   });
 
   it("rejects a non-finite scale value and a malformed previous date", () => {
     const inputs = baseInputs();
     const bad = (patch: object) =>
-      compileDraft({ ...inputs, scaleReadings: [{ ...inputs.scaleReadings[0], ...patch } as never] }, DEPS);
+      compileDraft(
+        { ...inputs, scaleReadings: [{ ...inputs.scaleReadings[0], ...patch } as never] },
+        DEPS,
+      );
     expect(() => bad({ value: Number.NaN })).toThrow(DraftInputError);
     expect(() => bad({ previous: { value: 60, recordedOn: "10 Nov" } })).toThrow(DraftInputError);
   });
@@ -395,17 +471,33 @@ describe("input validation", () => {
     const inputs = baseInputs();
     const vitals = inputs.vitals;
     if (vitals === null) throw new Error("fixture has vitals");
-    expect(() => compileDraft({ ...inputs, vitals: { ...vitals, temperatureUnit: "k" as never } }, DEPS)).toThrow(DraftInputError);
-    expect(() => compileDraft({ ...inputs, vitals: { ...vitals, temperature: "warm" } }, DEPS)).toThrow(DraftInputError);
+    expect(() =>
+      compileDraft({ ...inputs, vitals: { ...vitals, temperatureUnit: "k" as never } }, DEPS),
+    ).toThrow(DraftInputError);
+    expect(() =>
+      compileDraft({ ...inputs, vitals: { ...vitals, temperature: "warm" } }, DEPS),
+    ).toThrow(DraftInputError);
   });
 
   it("rejects a blank goal, intervention or drug name", () => {
     const inputs = baseInputs();
     expect(() =>
-      compileDraft({ ...inputs, carePlan: { goals: [{ id: "g", goalText: " . ", progressStatement: null, sudRelated: false }], interventions: [] } }, DEPS),
+      compileDraft(
+        {
+          ...inputs,
+          carePlan: {
+            goals: [{ id: "g", goalText: " . ", progressStatement: null, sudRelated: false }],
+            interventions: [],
+          },
+        },
+        DEPS,
+      ),
     ).toThrow(DraftInputError);
     expect(() =>
-      compileDraft({ ...inputs, medicationChanges: [{ ...inputs.medicationChanges[0], drugName: "  " }] }, DEPS),
+      compileDraft(
+        { ...inputs, medicationChanges: [{ ...inputs.medicationChanges[0], drugName: "  " }] },
+        DEPS,
+      ),
     ).toThrow(DraftInputError);
   });
 
@@ -424,12 +516,19 @@ describe("input validation", () => {
       code({
         ...base,
         encounterType: "face_to_face",
-        selection: { ...base.selection, templateKey: "face_to_face:rn", encounterType: "face_to_face" },
+        selection: {
+          ...base.selection,
+          templateKey: "face_to_face:rn",
+          encounterType: "face_to_face",
+        },
       }),
     ).toBe("TEMPLATE_NOT_FOUND");
-    expect(code({ ...base, selection: { ...base.selection, vocabVersion: "narrative-vocab@2026.06.0" } })).toBe(
-      "VOCAB_VERSION_MISMATCH",
-    );
+    expect(
+      code({
+        ...base,
+        selection: { ...base.selection, vocabVersion: "narrative-vocab@2026.06.0" },
+      }),
+    ).toBe("VOCAB_VERSION_MISMATCH");
   });
 });
 
@@ -442,11 +541,11 @@ describe("wording", () => {
 
   it("emits NFC text with LF newlines", () => {
     const inputs = baseInputs();
-    const goals = (inputs.carePlan?.goals ?? []).map((g) => ({ ...g, goalText: "Café visit\r\nplanned" }));
-    const draft = compileDraft(
-      { ...inputs, carePlan: { goals, interventions: [] } },
-      DEPS,
-    );
+    const goals = (inputs.carePlan?.goals ?? []).map((g) => ({
+      ...g,
+      goalText: "Café visit\r\nplanned",
+    }));
+    const draft = compileDraft({ ...inputs, carePlan: { goals, interventions: [] } }, DEPS);
     const plan = section(draft, "plan");
     if (plan.state !== "drafted") throw new Error("plan should be drafted");
     expect(plan.text).toContain("Café visit\nplanned");
@@ -466,7 +565,10 @@ function withIntervention(i: DraftInputs, patch: object): DraftInputs {
 }
 
 function withScale(i: DraftInputs, id: string, patch: object): DraftInputs {
-  return { ...i, scaleReadings: i.scaleReadings.map((r) => (r.id === id ? ({ ...r, ...patch } as typeof r) : r)) };
+  return {
+    ...i,
+    scaleReadings: i.scaleReadings.map((r) => (r.id === id ? ({ ...r, ...patch } as typeof r) : r)),
+  };
 }
 
 function withVitals(i: DraftInputs, patch: object): DraftInputs {
@@ -474,5 +576,8 @@ function withVitals(i: DraftInputs, patch: object): DraftInputs {
 }
 
 function withMedication(i: DraftInputs, patch: object): DraftInputs {
-  return { ...i, medicationChanges: i.medicationChanges.map((m) => ({ ...m, ...patch }) as typeof m) };
+  return {
+    ...i,
+    medicationChanges: i.medicationChanges.map((m) => ({ ...m, ...patch }) as typeof m),
+  };
 }
