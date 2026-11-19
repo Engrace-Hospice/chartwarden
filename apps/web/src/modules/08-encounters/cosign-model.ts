@@ -128,14 +128,22 @@ export function cosignAbility(session: Session | null, authors: CosignAuthors): 
   return { acknowledgeAndSign: true, release, refusal: null };
 }
 
+/** What a cosignature-queue entry says about the request it is for. */
+export interface QueueCosign {
+  readonly subject: CosignSubjectKind;
+  readonly addendumId: string | null;
+  readonly requestId: string | null;
+  /** The request's own status (`routed`, `acknowledged`, ...), or null before any routing. */
+  readonly status: string | null;
+  /** When it was routed: the start of its own 12h/24h/48h clock. */
+  readonly routedAt: string | null;
+}
+
 /** The slice of a cosignature-queue entry the queue's key, label and link are made from; `cosign` is absent on an older server. */
 export interface QueueEntryRef {
   readonly id: string;
   readonly patientId: string;
-  readonly cosign?: {
-    readonly subject: CosignSubjectKind;
-    readonly addendumId: string | null;
-  };
+  readonly cosign?: QueueCosign;
 }
 
 /** An entry is an amendment only when it says so and names the addendum; anything else (including no `cosign`) is the note. */
