@@ -3742,7 +3742,7 @@ describe.skipIf(!DB_URL)(
 
             it("an author WITHOUT disclosure is refused the SAME way whichever section they name, Part 2 or not: the refusal is no oracle for which sections hold Part 2", async () => {
               const f = await signedWithPart2();
-              const sections = (await originalRowsOf(f)).map((r) => r.section_id);
+              const sections = (await originalRowsOf(f)).map((r) => String(r.section_id));
               expect(sections).toEqual(expect.arrayContaining(["interventions", "plan"]));
               const refusals = new Set<string>();
               for (const sectionId of sections) {
