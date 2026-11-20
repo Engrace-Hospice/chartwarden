@@ -17,7 +17,11 @@ export type DraftSourceKind =
   | "weight_reading"
   | "benefit_period"
   | "face_to_face"
-  | "certification";
+  | "certification"
+  // S2b (RN admission visit, design §3.3):
+  | "medication_order"
+  | "caregiver"
+  | "advance_directive_acknowledgment";
 
 // A `type`, not an `interface`: the canonical serializer takes plain data, and only an alias is
 // assignable to its index-signature shape.
@@ -153,6 +157,37 @@ export interface MedicationChangeInput extends DraftSourceBase {
   readonly changedOn: string;
 }
 
+/** One order in effect at the visit time (M12, as of that instant): what it is and how it is taken, never a dose schedule (S2b). */
+export interface MedicationOrderInput extends DraftSourceBase {
+  readonly drugName: string;
+  readonly strength: string;
+  readonly doseForm: string;
+  readonly route: string;
+  /** Whether the order is as-needed; the draft says so and states no frequency. */
+  readonly asNeeded: boolean;
+}
+
+/** The relationship words M5 records on a patient-caregiver link (`patient_caregiver.relationship`). */
+export type CaregiverRelationship =
+  | "spouse"
+  | "child"
+  | "parent"
+  | "sibling"
+  | "other_family"
+  | "friend"
+  | "guardian"
+  | "paid_caregiver";
+
+/** One caregiver on record on the service date (M5): the name and the relationship, never a contact detail (S2b). */
+export interface CaregiverInput extends DraftSourceBase {
+  readonly displayName: string;
+  readonly relationship: CaregiverRelationship;
+  readonly isPrimary: boolean;
+}
+
+/** An advance directive acknowledgment that was on file at the visit time (M39): the fact that it was, never what it says (S2b). */
+export type AdvanceDirectiveAcknowledgmentInput = DraftSourceBase;
+
 export interface DraftInputs {
   readonly encounterType: EncounterType;
   readonly discipline: EncounterDiscipline;
@@ -171,6 +206,12 @@ export interface DraftInputs {
   readonly weight?: WeightDraftInput | null;
   /** S2: the benefit period on the service date; absent or `null` for none. Read by the recertification template only. */
   readonly benefitPeriod?: BenefitPeriodDraftInput | null;
+  /** S2b: the orders in effect at the visit time; absent or empty for none. Read by the RN admission template only. */
+  readonly activeMedications?: readonly MedicationOrderInput[];
+  /** S2b: the caregivers on record on the service date; absent or empty for none. Read by the RN admission template only. */
+  readonly caregivers?: readonly CaregiverInput[];
+  /** S2b: the advance directive acknowledgment on file at the visit time; absent or `null` for none. Read by the RN admission template only. */
+  readonly advanceDirective?: AdvanceDirectiveAcknowledgmentInput | null;
 }
 
 export interface DraftDeps {

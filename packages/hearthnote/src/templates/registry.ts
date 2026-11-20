@@ -160,6 +160,15 @@ const RECERT_VISIT_RN_CATEGORIES: Readonly<Record<string, readonly VocabCategory
   recert_summary: [],
 };
 
+/**
+ * S2b: the RN admission visit's wiring. `vitals_review` and `plan` use the routine visit's categories (their draft phrases are tagged for
+ * this template too); the four admission sections keep the menus they had, since their draft phrases are in a category no menu lists.
+ */
+const ADMISSION_VISIT_RN_CATEGORIES: Readonly<Record<string, readonly VocabCategory[]>> = {
+  vitals_review: ["vitals_review"],
+  plan: ["plan", "care_plan_element"],
+};
+
 /** S2: the face-to-face visit's `prognosis` is drafted too, so its menu is empty for the same reason; its other sections are untouched. */
 const FACE_TO_FACE_CATEGORIES: Readonly<Record<string, readonly VocabCategory[]>> = {
   prognosis: [],
@@ -172,6 +181,7 @@ const CATEGORY_WIRING: ReadonlyMap<
 > = new Map([
   [templateKey("routine_visit", "rn"), ROUTINE_VISIT_RN_CATEGORIES],
   [templateKey("recert_visit", "rn"), RECERT_VISIT_RN_CATEGORIES],
+  [templateKey("admission_visit", "rn"), ADMISSION_VISIT_RN_CATEGORIES],
   [templateKey("face_to_face", "md"), FACE_TO_FACE_CATEGORIES],
   [templateKey("face_to_face", "np"), FACE_TO_FACE_CATEGORIES],
 ]);

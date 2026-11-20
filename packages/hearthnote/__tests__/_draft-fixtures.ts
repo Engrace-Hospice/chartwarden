@@ -191,3 +191,49 @@ export function reverseKeys<T>(value: T): T {
   }
   return value;
 }
+
+/** S2b: the admission visit's own sources (the orders in effect, the caregivers on record, the acknowledgment on file). Fresh copy per call. */
+export function admissionSources(): Pick<
+  DraftInputs,
+  "activeMedications" | "caregivers" | "advanceDirective"
+> {
+  return {
+    activeMedications: [
+      {
+        id: "order-morphine",
+        drugName: "Morphine sulfate",
+        strength: "20 mg/mL",
+        doseForm: "oral solution",
+        route: "oral",
+        asNeeded: true,
+        sudRelated: false,
+      },
+      {
+        id: "order-senna",
+        drugName: "Senna",
+        strength: "8.6 mg",
+        doseForm: "tablet",
+        route: "oral",
+        asNeeded: false,
+        sudRelated: false,
+      },
+    ],
+    caregivers: [
+      {
+        id: "caregiver-link-2",
+        displayName: "Sam Okafor",
+        relationship: "friend",
+        isPrimary: false,
+        sudRelated: false,
+      },
+      {
+        id: "caregiver-link-1",
+        displayName: "Alex Rivera",
+        relationship: "spouse",
+        isPrimary: true,
+        sudRelated: false,
+      },
+    ],
+    advanceDirective: { id: "consent-ad-1", sudRelated: false },
+  };
+}

@@ -1,9 +1,12 @@
 // packages/hearthnote/src/draft/index.ts — S1 PR B. Visit-note draft compiler barrel.
 export type {
+  AdvanceDirectiveAcknowledgmentInput,
   BenefitPeriodDraftInput,
   CarePlanDraftInput,
   CarePlanGoalInput,
   CarePlanInterventionInput,
+  CaregiverInput,
+  CaregiverRelationship,
   CertificationDraftInput,
   Draft,
   DraftDeps,
@@ -17,6 +20,7 @@ export type {
   FaceToFaceDraftInput,
   MedicationChangeInput,
   MedicationChangeKind,
+  MedicationOrderInput,
   PreviousScaleReading,
   ScaleReadingInput,
   VitalsDraftInput,

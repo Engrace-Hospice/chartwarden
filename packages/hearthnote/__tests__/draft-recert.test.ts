@@ -86,21 +86,6 @@ describe("the sections each template drafts (scope is read off the corpus tags)"
     expect(templateHasDraftedSection("face_to_face", "np")).toBe(true);
   });
 
-  it("the admission visit still drafts nothing (VN-D31: its sections follow in a later slice)", () => {
-    expect(templateHasDraftedSection("admission_visit", "rn")).toBe(false);
-    const admission = { ...recertInputs(), encounterType: "admission_visit" } as DraftInputs;
-    expect(
-      draftedIds({
-        ...admission,
-        selection: {
-          ...admission.selection,
-          templateKey: "admission_visit:rn",
-          encounterType: "admission_visit",
-        },
-      }),
-    ).toEqual([]);
-  });
-
   it("compiles every drafted recertification section, and the base sections it does not source stay empty", () => {
     expect(draftedIds(recertInputs()).sort()).toEqual(RECERT_DRAFTED);
     // PPS and ESAS-r feed `pps` and `esas` here, so `assessment` and `symptom_management` never state them a second time.

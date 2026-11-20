@@ -19,6 +19,12 @@
 //   recert_summary       the benefit period and level of care, then the signed certification                   in that order
 //   (`assessment` and `symptom_management` draft nothing here: the recert phrase map gives them no phrase, though the PPS and ESAS-r
 //   phrases are tagged for the template, because `pps` and `esas` are built from them.)
+// The RN admission visit (S2b): vitals_review, interventions and plan as above, and
+//   baseline_symptoms    ESAS-r readings                                                                       by label, then source id
+//   med_reconciliation   the orders in effect at the visit (name, strength, form, route; as needed)            by drug name, then id
+//   advance_directive    the advance directive acknowledgment that was on file (the fact, never its content)   one source
+//   caregiver_overview   the caregivers on record on the service date (name and relationship, no contact)      primary first, then by name
+//   (`assessment` and `symptom_management` draft nothing here, for the reason the recertification's do not.)
 // The face-to-face visit (S2, `md` and `np`): prognosis from the PPS against the period's first reading, then the weight.
 // Every other template is sourced like the routine visit; the corpus tags decide whether it drafts at all (`scope.ts`).
 //
@@ -37,14 +43,17 @@ import { finishSentence, interpolate } from "../assembly/grammar";
 import type { SlotValue } from "../assembly/types";
 import { templateKey } from "../templates/types";
 import type {
+  AdvanceDirectiveAcknowledgmentInput,
   BenefitPeriodDraftInput,
   CarePlanDraftInput,
+  CaregiverInput,
   DraftInputs,
   DraftSourceBase,
   DraftSourceRef,
   FaceToFaceDraftInput,
   MedicationChangeInput,
   MedicationChangeKind,
+  MedicationOrderInput,
   ScaleReadingInput,
   VitalsDraftInput,
   WeightDraftInput,
@@ -496,6 +505,94 @@ function recertPeriodGroups(
   };
 }
 
+// ── RN admission visit (S2b, design §3.3, VN-D35 to VN-D38) ─────────────────────────────────────────
+const ADMISSION_SECTION = {
+  medications: "med_reconciliation",
+  advanceDirective: "advance_directive",
+  caregivers: "caregiver_overview",
+  symptoms: "baseline_symptoms",
+} as const;
+
+const ADMISSION_CODES = {
+  medication: "nv.adm.med_active",
+  medicationAsNeeded: "nv.adm.med_active_prn",
+  acknowledgment: "nv.adm.ad_ack_on_file",
+  caregiverPrimary: "nv.adm.caregiver_primary",
+  caregiverOther: "nv.adm.caregiver_other",
+} as const;
+
+/** The words for M5's caregiver relationships (`patient_caregiver.relationship`); a value it does not hold is a malformed input. */
+const RELATIONSHIP_WORDS: Readonly<Record<string, string>> = {
+  spouse: "spouse",
+  child: "child",
+  parent: "parent",
+  sibling: "sibling",
+  other_family: "other family member",
+  friend: "friend",
+  guardian: "guardian",
+  paid_caregiver: "paid caregiver",
+};
+
+/** The orders in effect at the visit: what each is and how it is taken, in drug-name order. No frequency and no word about reconciliation. */
+function medicationOrderGroups(
+  orders: readonly MedicationOrderInput[] | undefined,
+): readonly SourceGroup[] {
+  return sortedBy(orders ?? [], (o) => [o.drugName, o.id]).map((order) => {
+    const where = `medication order '${order.id}'`;
+    if (typeof order.asNeeded !== "boolean") {
+      throw new DraftInputError(`${where} as-needed flag must be true or false`);
+    }
+    return group("medication_order", order, [
+      sentence(order.asNeeded ? ADMISSION_CODES.medicationAsNeeded : ADMISSION_CODES.medication, {
+        drug_name: nonBlank(order.drugName, `${where} drug name`),
+        strength: nonBlank(order.strength, `${where} strength`),
+        dose_form: nonBlank(order.doseForm, `${where} dose form`),
+        route: nonBlank(order.route, `${where} route`),
+      }),
+    ]);
+  });
+}
+
+/** The acknowledgment that was on file: the fact that it was, and nothing about what it says. */
+function advanceDirectiveGroups(
+  acknowledgment: AdvanceDirectiveAcknowledgmentInput | null | undefined,
+): readonly SourceGroup[] {
+  if (acknowledgment === null || acknowledgment === undefined) return [];
+  return [
+    group("advance_directive_acknowledgment", acknowledgment, [
+      sentence(ADMISSION_CODES.acknowledgment, {}),
+    ]),
+  ];
+}
+
+/** The caregivers on record: the primary first, then the others by name. The name and the relationship only, never a contact detail. */
+function caregiverGroups(
+  caregivers: readonly CaregiverInput[] | undefined,
+): readonly SourceGroup[] {
+  return sortedBy(caregivers ?? [], (c) => [
+    c.isPrimary === true ? "0" : "1",
+    c.displayName,
+    c.id,
+  ]).map((caregiver) => {
+    const where = `caregiver '${caregiver.id}'`;
+    return group("caregiver", caregiver, [
+      sentence(
+        caregiver.isPrimary === true
+          ? ADMISSION_CODES.caregiverPrimary
+          : ADMISSION_CODES.caregiverOther,
+        {
+          caregiver_name: nonBlank(caregiver.displayName, `${where} name`),
+          caregiver_relationship: tableValue(
+            RELATIONSHIP_WORDS,
+            caregiver.relationship,
+            `${where} relationship`,
+          ),
+        },
+      ),
+    ]);
+  });
+}
+
 // ── one map per template ───────────────────────────────────────────────────────────────────────────
 type SectionGroups = ReadonlyArray<readonly [string, readonly SourceGroup[]]>;
 type SourceMap = (inputs: DraftInputs, asOfMs: number) => SectionGroups;
@@ -537,6 +634,14 @@ const recertVisitMap: SourceMap = (inputs, asOfMs) => {
   ];
 };
 
+const admissionVisitMap: SourceMap = (inputs, asOfMs) => [
+  ...baseGroups(inputs, asOfMs),
+  [ADMISSION_SECTION.symptoms, scaleGroups(inputs.scaleReadings, "esas_r", asOfMs)],
+  [ADMISSION_SECTION.medications, medicationOrderGroups(inputs.activeMedications)],
+  [ADMISSION_SECTION.advanceDirective, advanceDirectiveGroups(inputs.advanceDirective)],
+  [ADMISSION_SECTION.caregivers, caregiverGroups(inputs.caregivers)],
+];
+
 const faceToFaceVisitMap: SourceMap = (inputs, asOfMs) => [
   [
     RECERT_SECTION.prognosis,
@@ -547,6 +652,7 @@ const faceToFaceVisitMap: SourceMap = (inputs, asOfMs) => [
 /** The templates S2 sources differently from the routine visit. Every other template is sourced like the routine visit (S1's rule). */
 const SOURCE_MAPS: ReadonlyMap<string, SourceMap> = new Map([
   [templateKey("recert_visit", "rn"), recertVisitMap],
+  [templateKey("admission_visit", "rn"), admissionVisitMap],
   [templateKey("face_to_face", "md"), faceToFaceVisitMap],
   [templateKey("face_to_face", "np"), faceToFaceVisitMap],
 ]);
@@ -597,6 +703,22 @@ const SECTION_PHRASES: ReadonlyMap<string, Readonly<Record<string, readonly stri
         RECERT_CODES.period,
         RECERT_CODES.levelOfCare,
         RECERT_CODES.certification,
+      ],
+    },
+  ],
+  [
+    templateKey("admission_visit", "rn"),
+    {
+      ...baseSectionPhrases,
+      [ADMISSION_SECTION.symptoms]: recertScaleCodes("esas_r"),
+      [ADMISSION_SECTION.medications]: [
+        ADMISSION_CODES.medication,
+        ADMISSION_CODES.medicationAsNeeded,
+      ],
+      [ADMISSION_SECTION.advanceDirective]: [ADMISSION_CODES.acknowledgment],
+      [ADMISSION_SECTION.caregivers]: [
+        ADMISSION_CODES.caregiverPrimary,
+        ADMISSION_CODES.caregiverOther,
       ],
     },
   ],
