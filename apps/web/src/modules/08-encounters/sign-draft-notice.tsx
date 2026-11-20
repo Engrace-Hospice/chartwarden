@@ -10,8 +10,18 @@ import { STATE_LABEL } from "./draft-model";
 /** The id the Sign button's `aria-describedby` points at. */
 export const SIGN_DRAFT_NOTICE_ID = "sign-draft-notice";
 
+/** Section ids whose words read wrong ("Pps", "F2f attestation"): the template's own headings for them. */
+const SECTION_NAME: ReadonlyMap<string, string> = new Map([
+  ["pps", "Palliative Performance Status"],
+  ["esas", "Symptom Assessment (ESAS)"],
+  ["recert_summary", "Recertification Summary"],
+  ["f2f_attestation", "Face-to-Face Attestation"],
+]);
+
 /** The read page has no template, so a section reads as its id in words ("vitals_review" -> "Vitals review"). */
 export function humanizeSection(sectionId: string): string {
+  const named = SECTION_NAME.get(sectionId);
+  if (named !== undefined) return named;
   const words = sectionId.replace(/_/g, " ");
   return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
 }

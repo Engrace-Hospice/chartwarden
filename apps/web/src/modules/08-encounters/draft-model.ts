@@ -46,7 +46,7 @@ export const ORIGIN_LABEL: Readonly<Record<DraftOrigin, string>> = {
   medication_change: "medication and order changes since the last visit",
   // S2 (recertification and face-to-face visits):
   weight_reading: "weight readings across the benefit period",
-  benefit_period: "the benefit period and the level of care on the visit date",
+  benefit_period: "the benefit period (and its level of care on the visit date, when one applies)",
   face_to_face: "the face-to-face encounter's recorded facts",
   certification: "the signed certification of terminal illness",
 };
