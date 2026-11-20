@@ -328,6 +328,14 @@ export interface EvvAggregatorSubmissionDto {
   readonly status: EvvAggregatorSubmissionStatus;
   readonly aggregatorTransactionId: string | null;
   readonly attemptCount: number;
+  /** Safe operational evidence exposed by the audited aggregator read. Optional for seam callers
+   * that only need the billing back-link projection. */
+  readonly lastAttemptAt?: IsoInstant | null;
+  readonly nextRetryAt?: IsoInstant | null;
+  readonly submittedAt?: IsoInstant | null;
+  readonly aggregatorResponseAt?: IsoInstant | null;
+  readonly aggregatorRejectionCode?: string | null;
+  readonly aggregatorRejectionReason?: string | null;
 }
 
 // ── §4.3 seams this module publishes (impls injected at boot in M18-T05; type-checked at boot) ─────────

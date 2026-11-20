@@ -64,7 +64,7 @@ function fixActionHref(action: string | null): string | null {
     case "review_rb_days":
       return "/medicaid/billing/rb-arrangements";
     case "resolve_in_m18":
-      return "/evv/exceptions";
+      return "/evv/missing-resolutions?status=open";
     default:
       return null;
   }

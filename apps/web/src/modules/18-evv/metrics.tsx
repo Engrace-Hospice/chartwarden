@@ -16,6 +16,7 @@ import {
 // The request still sends a 30-day window, but the currently measured backend rows are all-time.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { EvvWorkspaceNav } from "./workspace-nav";
 
 interface EvvMetrics {
   complianceRate: number;
@@ -124,6 +125,7 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
             </Button>
           }
         >
+          <EvvWorkspaceNav />
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review server-provided EVV health indicators without exposing visit coordinates.
           </div>
@@ -199,7 +201,8 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
             <LoadingSpinner />
           </div>
         ) : (
-          <div style={tableWrapStyle}>
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: horizontally scrollable evidence must be keyboard-focusable (axe scrollable-region-focusable).
+          <div style={tableWrapStyle} tabIndex={0} aria-label="EVV metric evidence table">
             <table style={tableStyle}>
               <thead>
                 <tr style={headerRowStyle}>

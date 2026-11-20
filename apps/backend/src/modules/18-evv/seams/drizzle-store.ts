@@ -134,6 +134,12 @@ function toSubmissionDto(s: typeof AGG.$inferSelect): EvvAggregatorSubmissionDto
     status: s.status,
     aggregatorTransactionId: s.aggregatorTransactionId ?? null,
     attemptCount: s.attemptCount,
+    lastAttemptAt: s.lastAttemptAt?.toISOString() ?? null,
+    nextRetryAt: s.nextRetryAt?.toISOString() ?? null,
+    submittedAt: s.submittedAt?.toISOString() ?? null,
+    aggregatorResponseAt: s.aggregatorResponseAt?.toISOString() ?? null,
+    aggregatorRejectionCode: s.aggregatorRejectionCode ?? null,
+    aggregatorRejectionReason: s.aggregatorRejectionReason ?? null,
   } as EvvAggregatorSubmissionDto;
 }
 

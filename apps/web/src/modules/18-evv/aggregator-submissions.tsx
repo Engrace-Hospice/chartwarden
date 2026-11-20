@@ -3,6 +3,7 @@ import {
   EmptyState,
   Glyph,
   LoadingSpinner,
+  Modal,
   OffsetPagination,
   PageHeader,
   StatusPill,
@@ -12,11 +13,10 @@ import {
 // apps/web/src/modules/18-evv — Aggregator Submission Queue (M18 §5.1 `/app/evv/aggregator-submissions`,
 // Track B / ADR-0030).
 //
-// #91 — the two §2.2.5 D7 operator actions are here now. This is the last hop of an EVV visit: the state's
-// aggregator either accepts the submission or the Medicaid claim behind it is denied. A rejection is
-// fixed and RESUBMITTED by a person (§7.9, attempt_count++); a submission for a voided visit is CANCELLED
-// so the state never sees it. Neither had a caller, so a rejected row stayed rejected forever and nothing
-// on this platform could retry it.
+// #91 — the two §2.2.5 D7 operator actions are here now. The state aggregator's response is EVV workflow
+// evidence, not a payer claim decision. A rejection is fixed and RESUBMITTED by a person (§7.9,
+// attempt_count++); a submission for a voided visit is CANCELLED so the state never sees it. Neither had
+// a caller, so a rejected row stayed rejected forever and nothing on this platform could retry it.
 //
 // `submissionActions` narrows which button a row OFFERS — an affordance over the D7 graph, not a gate.
 // Server-side state_code/status narrowing and the transition machine remain authoritative (ADR-0030).
@@ -26,6 +26,7 @@ import { useSearchParams } from "react-router-dom";
 import { type AggregatorSubmissionView, submissionActions } from "./evv-api";
 import { type SubmissionAction, SubmissionActionModal } from "./evv-modals";
 import { EVV_SUBMISSION_TONE, stateLabel } from "./evv-shared";
+import { EvvWorkspaceNav } from "./workspace-nav";
 
 interface SubmissionRow {
   id: string;
@@ -34,6 +35,13 @@ interface SubmissionRow {
   aggregatorVendor: string;
   status: string;
   attemptCount: number;
+  aggregatorTransactionId: string | null;
+  lastAttemptAt?: string | null;
+  nextRetryAt?: string | null;
+  submittedAt?: string | null;
+  aggregatorResponseAt?: string | null;
+  aggregatorRejectionCode?: string | null;
+  aggregatorRejectionReason?: string | null;
 }
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -58,6 +66,7 @@ export function EvvAggregatorSubmissions(): JSX.Element {
     null,
   );
   const [notice, setNotice] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<SubmissionRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,13 +139,7 @@ export function EvvAggregatorSubmissions(): JSX.Element {
   };
 
   const applySubmission = (updated: AggregatorSubmissionView): void => {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === updated.id
-          ? { ...r, status: updated.status, attemptCount: updated.attemptCount }
-          : r,
-      ),
-    );
+    setRows((prev) => prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)));
     setNotice(`Submission ${updated.id.slice(0, 8)} is now ${stateLabel(updated.status)}.`);
   };
 
@@ -153,6 +156,9 @@ export function EvvAggregatorSubmissions(): JSX.Element {
           onDone={applySubmission}
         />
       ) : null}
+      {evidence ? (
+        <SubmissionEvidenceModal row={evidence} onClose={() => setEvidence(null)} />
+      ) : null}
       <WorkQueueLayout
         header={
           <PageHeader
@@ -163,6 +169,7 @@ export function EvvAggregatorSubmissions(): JSX.Element {
               </Button>
             }
           >
+            <EvvWorkspaceNav />
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Monitor state aggregator handoffs, retries, and rejected submissions.
             </div>
@@ -277,6 +284,14 @@ export function EvvAggregatorSubmissions(): JSX.Element {
                 </span>
               </div>
             ) : null}
+            <div role="note" style={readinessNoteStyle}>
+              <StatusPill label="Readiness not verified" tone="warning" />
+              <span>
+                <strong>Configuration status unavailable</strong> — this queue reports submission
+                evidence only. It does not expose tenant credentials, connectivity, or worker
+                health.
+              </span>
+            </div>
           </div>
         }
         table={
@@ -291,11 +306,11 @@ export function EvvAggregatorSubmissions(): JSX.Element {
           ) : sortedRows.length === 0 ? (
             <div style={{ padding: "2rem 1.5rem" }}>
               <EmptyState
-                title={activeFilters > 0 ? "No matching submissions" : "No submissions"}
+                title={activeFilters > 0 ? "No matching submissions" : "No submission records"}
                 description={
                   activeFilters > 0
                     ? "Try adjusting the submission filters."
-                    : "No aggregator submissions match your server-scoped request."
+                    : "An empty queue does not confirm that a state or vendor integration is ready."
                 }
                 action={
                   activeFilters > 0 ? (
@@ -347,6 +362,7 @@ export function EvvAggregatorSubmissions(): JSX.Element {
                       <td style={{ ...tdStyle, textAlign: "right" }}>
                         <SubmissionRowActions
                           row={row}
+                          onEvidence={() => setEvidence(row)}
                           onPick={(action) => setPending({ action, row })}
                         />
                       </td>
@@ -429,6 +445,12 @@ const noteStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.85rem",
 };
+const readinessNoteStyle = {
+  ...noteStyle,
+  alignItems: "flex-start",
+  background: "color-mix(in srgb, var(--color-warning) 10%, var(--color-surface-low))",
+  border: "1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)",
+};
 const errorBannerStyle = {
   padding: "0.625rem 1rem",
   borderRadius: "var(--radius-md)",
@@ -496,13 +518,19 @@ const codeStyle = {
  */
 function SubmissionRowActions({
   row,
+  onEvidence,
   onPick,
-}: { row: SubmissionRow; onPick: (action: SubmissionAction) => void }): JSX.Element {
+}: {
+  row: SubmissionRow;
+  onEvidence: () => void;
+  onPick: (action: SubmissionAction) => void;
+}): JSX.Element {
   const can = submissionActions(row.status);
-  if (!can.resubmit && !can.cancel)
-    return <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>;
   return (
     <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
+      <Button size="sm" tone="secondary" onClick={onEvidence}>
+        View evidence
+      </Button>
       {can.resubmit ? (
         <Button size="sm" onClick={() => onPick("resubmit")}>
           Resubmit
@@ -516,3 +544,140 @@ function SubmissionRowActions({
     </div>
   );
 }
+
+const SUBMISSION_STATUS_EXPLANATION: Record<string, string> = {
+  pending: "Prepared locally; it has not been sent to the aggregator.",
+  queued: "Waiting for an initial attempt or retry; it has not been sent yet.",
+  submitting: "A delivery attempt is currently in progress.",
+  submitted: "The aggregator recorded a transaction, but no final outcome has been received.",
+  accepted:
+    "The vendor accepted this EVV submission. This does not mean a payer accepted or paid a claim.",
+  rejected:
+    "The vendor refused this EVV submission. Review the returned evidence before resubmitting.",
+  timeout: "No final response arrived before the delivery timeout.",
+  cancelled:
+    "ChartWarden stopped this submission locally; this is not proof of vendor cancellation.",
+};
+
+function SubmissionEvidenceModal({
+  row,
+  onClose,
+}: { row: SubmissionRow; onClose: () => void }): JSX.Element {
+  return (
+    <Modal open ariaLabel="Submission evidence" onClose={onClose} width="38rem">
+      <div style={evidenceModalStyle}>
+        <div>
+          <h2 style={evidenceTitleStyle}>Submission evidence</h2>
+          <p style={evidenceLeadStyle}>
+            {SUBMISSION_STATUS_EXPLANATION[row.status] ??
+              "This status was returned by the aggregator workflow."}
+          </p>
+        </div>
+        <dl style={evidenceGridStyle}>
+          <EvidenceItem label="Status" value={stateLabel(row.status)} />
+          <EvidenceItem label="State" value={row.stateCode} />
+          <EvidenceItem label="Vendor" value={stateLabel(row.aggregatorVendor)} />
+          <EvidenceItem label="Attempts" value={String(row.attemptCount)} />
+          <EvidenceItem
+            label="Transaction ID"
+            value={row.aggregatorTransactionId ?? "Not assigned"}
+            mono
+          />
+          <EvidenceItem label="Last attempt" value={formatEvidenceTime(row.lastAttemptAt)} />
+          <EvidenceItem label="Submitted" value={formatEvidenceTime(row.submittedAt)} />
+          <EvidenceItem
+            label="Response received"
+            value={formatEvidenceTime(row.aggregatorResponseAt)}
+          />
+          <EvidenceItem label="Next retry" value={formatEvidenceTime(row.nextRetryAt)} />
+          {row.status === "rejected" ? (
+            <>
+              <EvidenceItem
+                label="Rejection code"
+                value={row.aggregatorRejectionCode ?? "Not returned"}
+                mono
+              />
+              <EvidenceItem
+                label="Rejection reason"
+                value={
+                  row.aggregatorRejectionReason ??
+                  "No rejection detail returned by this integration."
+                }
+                wide
+              />
+            </>
+          ) : null}
+        </dl>
+        <p style={evidenceFootnoteStyle}>
+          This is aggregator workflow evidence only. It is not a payer claim decision or payment
+          status.
+        </p>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button type="button" tone="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function EvidenceItem({
+  label,
+  value,
+  mono = false,
+  wide = false,
+}: { label: string; value: string; mono?: boolean; wide?: boolean }): JSX.Element {
+  return (
+    <div style={{ ...evidenceItemStyle, ...(wide ? { gridColumn: "1 / -1" } : {}) }}>
+      <dt style={evidenceLabelStyle}>{label}</dt>
+      <dd className={mono ? "wx-data-md" : undefined} style={evidenceValueStyle}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function formatEvidenceTime(value: string | null | undefined): string {
+  if (!value) return "Not recorded";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+const evidenceModalStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "1.25rem",
+  padding: "1.5rem",
+};
+const evidenceTitleStyle = { margin: 0, fontSize: "1.25rem", color: "var(--color-on-surface)" };
+const evidenceLeadStyle = {
+  margin: "0.375rem 0 0",
+  color: "var(--color-on-surface-variant)",
+  lineHeight: 1.5,
+};
+const evidenceGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(13rem, 1fr))",
+  gap: "1rem",
+  margin: 0,
+};
+const evidenceItemStyle = { minWidth: 0 };
+const evidenceLabelStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+};
+const evidenceValueStyle = {
+  margin: "0.25rem 0 0",
+  color: "var(--color-on-surface)",
+  overflowWrap: "anywhere" as const,
+};
+const evidenceFootnoteStyle = {
+  margin: 0,
+  padding: "0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8125rem",
+};

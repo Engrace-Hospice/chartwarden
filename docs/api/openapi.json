@@ -159024,7 +159024,13 @@
                       "aggregatorVendor",
                       "status",
                       "aggregatorTransactionId",
-                      "attemptCount"
+                      "attemptCount",
+                      "lastAttemptAt",
+                      "nextRetryAt",
+                      "submittedAt",
+                      "aggregatorResponseAt",
+                      "aggregatorRejectionCode",
+                      "aggregatorRejectionReason"
                     ],
                     "properties": {
                       "id": {
@@ -159087,6 +159093,70 @@
                       },
                       "attemptCount": {
                         "type": "integer"
+                      },
+                      "lastAttemptAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "nextRetryAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "submittedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "aggregatorResponseAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "aggregatorRejectionCode": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "aggregatorRejectionReason": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   }
@@ -159134,7 +159204,13 @@
                     "aggregatorVendor",
                     "status",
                     "aggregatorTransactionId",
-                    "attemptCount"
+                    "attemptCount",
+                    "lastAttemptAt",
+                    "nextRetryAt",
+                    "submittedAt",
+                    "aggregatorResponseAt",
+                    "aggregatorRejectionCode",
+                    "aggregatorRejectionReason"
                   ],
                   "properties": {
                     "id": {
@@ -159197,6 +159273,70 @@
                     },
                     "attemptCount": {
                       "type": "integer"
+                    },
+                    "lastAttemptAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nextRetryAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "submittedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aggregatorResponseAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aggregatorRejectionCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aggregatorRejectionReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -159262,7 +159402,13 @@
                     "aggregatorVendor",
                     "status",
                     "aggregatorTransactionId",
-                    "attemptCount"
+                    "attemptCount",
+                    "lastAttemptAt",
+                    "nextRetryAt",
+                    "submittedAt",
+                    "aggregatorResponseAt",
+                    "aggregatorRejectionCode",
+                    "aggregatorRejectionReason"
                   ],
                   "properties": {
                     "id": {
@@ -159325,6 +159471,70 @@
                     },
                     "attemptCount": {
                       "type": "integer"
+                    },
+                    "lastAttemptAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nextRetryAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "submittedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aggregatorResponseAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aggregatorRejectionCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aggregatorRejectionReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
