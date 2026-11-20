@@ -118,10 +118,14 @@ All DECIDED by the owner, 2026-11-20 (the S2 plan, accepted with its recommendat
 
 | ID | Decision |
 |---|---|
-| VN-D31 | S2's scope is the RN recertification visit (`recert_visit`, `rn`: sections `pps`, `esas`, `prognosis`, `recert_summary`) and the `prognosis` section of the face-to-face visit (`face_to_face`, `md`/`np`). The admission template's four sections (`med_reconciliation`, `advance_directive`, `caregiver_overview`, `baseline_symptoms`) belong to the next slice: their sources (the active medication list, the advance directive, the caregivers) differ from the recertification's. |
+| VN-D31 | S2's scope is the RN recertification visit (`recert_visit`, `rn`: sections `pps`, `esas`, `prognosis`, `recert_summary`) and the `prognosis` section of the face-to-face visit (`face_to_face`, `md`/`np`). The admission template's four sections (`med_reconciliation`, `advance_directive`, `caregiver_overview`, `baseline_symptoms`) belong to the next slice (S2b, VN-D35 to VN-D38): their sources (the active medication list, the advance directive, the caregivers) differ from the recertification's. |
 | VN-D32 | The draft states face-to-face facts only as structured data from module 6 (the performer's role, the date performed and the date attested). It never quotes the physician's F2F attestation or the CTI narrative (VN-D6), and it never states a prognosis, an eligibility conclusion or a life expectancy. The physician's certification narrative stays module 6's and is not drafted. |
 | VN-D33 | v1 decline evidence is the PPS and ESAS-r readings with their baseline and change, the weight change from vitals, and the benefit-period, level-of-care, F2F and CTI facts. FAST, NYHA and the other diagnosis-specific scales, labs and hospitalisations are out: no structured source exists, or the choice of scale is a clinical rule by diagnosis. |
 | VN-D34 | The clinical review of the corpus (VN-D14) is of one release. An approval counts only for the corpus version it names, and the switch cannot be enabled on an approval for another release. |
+| VN-D35 | S2b drafts the four admission sections of the RN admission visit (`admission_visit`, `rn`) from records, and states only what is on record, never an absence or a clinical judgement. `med_reconciliation`: the orders in effect at the visit time, one sentence each, never "reconciled" or "verified". `advance_directive`: that an advance directive acknowledgment was on file at the visit time, never whether the patient has a directive and never code status. `caregiver_overview`: the caregivers on record on the service date by name and relationship, primary first, never a contact detail. `baseline_symptoms`: the ESAS-r readings as of the visit. An empty source drafts nothing. |
+| VN-D36 | S2b reads through existing seams: M12 `getMedicationsAsOf`, M9's scale series, M39 `ConsentEvaluator.evaluate`. The one new seam method is an additive as-of variant of M5's caregiver roster, `caregiversOn`, decided from each link's own involvement dates (S1's as-of rule). No M6 fact is read, and no migration is needed. |
+| VN-D37 | The admission visit's draft needs the read keys of the modules it states facts from, `patient.read` (M5) and `consent.read` (M39), on top of the three every draft needs. They are asked by template, in the same places as S2's (the draft routes, finalize, sign, an addendum's finalize and sign). |
+| VN-D38 | The 16 S1 entries the admission visit shares (vitals, care-plan, medication-change and ESAS-r phrases) are tagged for it, so its `vitals_review`, `interventions` and `plan` draft as in the routine visit; the wording is untouched. The face-to-face visit's `med_reconciliation` stays undrafted. |
 
 ## 3. How a draft works
 
@@ -254,6 +258,27 @@ Designed 2026-11-20 against `main` at `6a527be45`; built in the PRs of the S2 pl
 - **No migration** is planned and the eraser is unchanged. If the weight read needs an index, it is one `-- compat: expand` migration.
 - **Not in S2.** The admission sections (VN-D31), the CTI narrative, FAST, NYHA, labs and hospitalisations (VN-D33), mobile, offline, dictation and AI.
 
+### 3.4 S2b design: the RN admission visit (VN-D35 to VN-D38)
+
+Designed 2026-11-21 against `main` at `096e01f5e`. Within the decisions above; the S1/S2 pipeline (per-author draft recomputed as of the visit time, confirmation bound to the content hash and corpus version, gate check 13, sealed rows, per-viewer Part 2, amendments, the switch, the per-template read keys) is reused unchanged.
+
+- **Which templates draft.** Still read off the corpus tags (`draft/scope.ts`). `admission_visit:rn` drafts `med_reconciliation`, `advance_directive`, `caregiver_overview` and `baseline_symptoms`, and its base `vitals_review`, `interventions` and `plan` from S1's sources. `assessment` and `symptom_management` draft nothing there: the PPS phrases are not tagged for it, and ESAS-r feeds `baseline_symptoms`, so no reading is stated twice.
+- **A source map per template**, as S2's: `admissionVisitMap` in `draft/sources.ts`, with its phrase map. A sentence per source, ordered by a fixed key so a database that returns rows in another order cannot change the draft or its hash.
+
+| Section | Fed by | Rule |
+|---|---|---|
+| `med_reconciliation` | the orders in effect (M12) | one sentence per order: drug, strength, form, route, and "as needed" where it is. No frequency, no dose schedule, no word about reconciliation. A SUD-treatment order is left out for a viewer without Part 2 disclosure (as the medication changes are) and marks the section Part 2. If any order that remains has a blank field or no as-needed flag, no list is drafted: a list with an order missing would read as complete |
+| `advance_directive` | the acknowledgment on file (M39) | one sentence that an advance directive acknowledgment was on file at the visit time. Nothing is drafted when none was. Never whether the patient has or wants a directive, never code status |
+| `caregiver_overview` | the caregivers on record (M5) | name and relationship in words, the primary first, then by name. No phone, email or language. If any entry has a blank name or a relationship the draft has no word for, nothing is drafted |
+| `baseline_symptoms` | ESAS-r readings (M9) | the S1 reading sentences (`nv.scale.esas_*`, retagged), as of the visit time |
+
+- **Reads, as of the visit (VN-D11).** M12 `getMedicationsAsOf(visit instant)` decides from each order's own instants, never its status today. M39 `ConsentEvaluator.evaluate` is a pure read of the active record as of the visit instant (no audit write). M5's roster had only a current-links read, so S2b adds `caregiversOn(day)`: a link counts when `involvement_from <= day` and it has no end or `involvement_to >= day` (the end day is included). Each read takes its turn in `serialSeams`.
+- **Permissions (VN-D37).** `patient.read` is the key of M5's `GET /patients/{id}/caregivers`, `consent.read` of M39's consent reads. The orders need `prescribing.read`, which every draft already asks. The check is by template, after the switch and tenant checks and before any source is read.
+- **Menus.** The new phrases are in a draft-only category (`admission_record`) no menu lists, so no order, caregiver or acknowledgment is typed by hand. The four sections keep the menus they had. The care-plan phrases tagged for this visit share the category `med_reconciliation` already offered its legacy phrases through, so they also appear in that menu with the switch on, as `interventions` and `plan` share it in the routine visit (S1).
+- **The corpus.** `narrative-vocab@2026.12.1`: 5 new phrases (`nv.adm.*`) and the `admission_visit` tag on 16 S1 entries. The wording is draft until ADA reviews it, and the approval names the release (VN-D34). The deploy moves `VOCAB_VERSION` for every tenant, so a draft whose selections were saved before it answers `409 VOCAB_VERSION_MISMATCH` at finalize until they are saved again.
+- **No migration.** The eraser is unchanged.
+- **Not in S2b.** The face-to-face visit's `med_reconciliation`, code status, the content of an advance directive, caregiver contact details, home-medication history, mobile, offline, dictation and AI.
+
 ## 4. Constraints found
 
 ### 4.1 Backend and tenancy
@@ -289,6 +314,7 @@ Two tracks. Each slice is its own PR; pushes are batched (Actions minutes are me
 | S1 | Docs | RN routine visit: draft from the four sources, per-section confirmation, the two gates, composer picker and trend, phrase slots and categories (VN-D15), amendments of signed drafted notes (VN-D30), per-tenant switch default off, as-of seam variants | VN-D1 to VN-D18, VN-D30; ADR-0114 | Live suite proves the draft per author, as of visit time, Part 2 redaction, stale-confirmation rejection, sign blocked until resolved, amendment preserving the signed text; baseline metric collecting |
 | M1 | Mobile | Online parity: draft sections, confirmation, online signing, contract-version header, minimum build, generated contract, minimal CI | S1 contract | An old build gets "update required"; a current build signs a drafted note |
 | S2 | Docs | RN recertification and the F2F visit's `prognosis` (the `pps`, `esas`, `prognosis` and `recert_summary` sections; decline evidence, the top CGS denial reason; VN-D31 to VN-D34, §3.3). The admission sections follow in the next slice | S1 | Recert narrative draft sets the F2F's facts beside the decline evidence |
+| S2b | Docs | The RN admission visit's four sections (`med_reconciliation`, `advance_directive`, `caregiver_overview`, `baseline_symptoms`; VN-D35 to VN-D38, §3.4) | S2 | Admission narrative draft states the orders in effect, the caregivers on record and the acknowledgment on file |
 | M2 | Mobile | On-device dictation into a section's free text, after its spike | M1 | Spike report; no audio retained; transcript is an unsent draft |
 | S3 | Docs | Aide and LPN notes, with cosign | S1 | Care-plan interventions drafted; cosigner sees per-viewer redaction (VN-D13) |
 | S4 | Docs | Social work and chaplain notes | M15 goal link built | Discipline goals draft into the note |
