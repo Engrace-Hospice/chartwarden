@@ -2,7 +2,7 @@
 // (tabindex="-1" headings, the card itself), which are not in the Tab-order list the trap compares against.
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StrictMode, useLayoutEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -293,6 +293,95 @@ describe("Modal focus on close", () => {
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open" }));
       unmount();
     }
+  });
+
+  // A child that takes focus itself (autoFocus fires in the commit, a child effect runs before the Modal's own effect) must not cost the dialog its
+  // trigger: the control that opened it is whatever had focus when it opened, captured before any child runs.
+  describe.each([
+    [
+      "an autoFocus child",
+      // biome-ignore lint/a11y/noAutofocus: the case is a dialog whose child takes focus by itself
+      () => <input aria-label="Name" autoFocus />,
+    ],
+    [
+      "a child effect that focuses itself",
+      () => {
+        const ref = useRef<HTMLInputElement>(null);
+        useEffect(() => ref.current?.focus(), []);
+        return <input aria-label="Name" ref={ref} />;
+      },
+    ],
+  ] as const)("a dialog with %s", (_name, Child) => {
+    function Opens() {
+      const [shown, setShown] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setShown(true)}>
+            Open
+          </button>
+          {shown ? (
+            <Modal open onClose={() => setShown(false)} ariaLabel="Test dialog">
+              <Child />
+            </Modal>
+          ) : null}
+        </>
+      );
+    }
+    it.each([
+      ["", ({ children }: { children: ReactNode }) => <>{children}</>],
+      ["under StrictMode", StrictMode],
+    ] as const)("returns focus to the control that opened it %s", async (_label, Wrapper) => {
+      const user = userEvent.setup();
+      render(<Opens />, { wrapper: Wrapper });
+      await user.click(screen.getByRole("button", { name: "Open" }));
+      expect(document.activeElement).toBe(screen.getByLabelText("Name"));
+      await user.keyboard("{Escape}");
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open" }));
+    });
+  });
+
+  it("restores the control a dialog was opened from THIS time, not one remembered from an earlier open that closed with focus elsewhere", async () => {
+    function Persistent() {
+      const [open, setOpen] = useState(false);
+      const row = useRef<HTMLDivElement>(null);
+      const closing = useRef(false);
+      useLayoutEffect(() => {
+        if (closing.current && !open) row.current?.focus();
+        closing.current = false;
+      }, [open]);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            From A
+          </button>
+          <button type="button" onClick={() => setOpen(true)}>
+            From B
+          </button>
+          <div ref={row} tabIndex={-1} aria-label="Where the screen puts focus" />
+          <Modal open={open} onClose={() => setOpen(false)} ariaLabel="Test dialog">
+            {/* biome-ignore lint/a11y/noAutofocus: the case is a dialog whose child takes focus by itself */}
+            <input aria-label="Name" autoFocus />
+            <button
+              type="button"
+              onClick={() => {
+                closing.current = true;
+                setOpen(false);
+              }}
+            >
+              Close and move
+            </button>
+          </Modal>
+        </>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Persistent />);
+    await user.click(screen.getByRole("button", { name: "From A" }));
+    await user.click(screen.getByRole("button", { name: "Close and move" }));
+    expect(document.activeElement).toBe(screen.getByLabelText("Where the screen puts focus"));
+    await user.click(screen.getByRole("button", { name: "From B" }));
+    await user.keyboard("{Escape}");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "From B" }));
   });
 
   it("leaves focus where the screen put it when it moved focus as the dialog closed", async () => {

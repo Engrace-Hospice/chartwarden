@@ -5,6 +5,7 @@ import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
  * failure states) and the composer action (create dialog, patient-linked channels explain why it is unavailable).
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";
@@ -224,6 +225,18 @@ describe("WP 2.10 poll composer action", () => {
     );
     fireEvent.click(button);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("returns focus to the Poll button when the dialog is dismissed: its Question field takes focus itself, and that must not cost the dialog its trigger", async () => {
+    const user = userEvent.setup();
+    mount({ messages: [] });
+    const button = await screen.findByRole("button", { name: "Poll" });
+    await user.click(button);
+    expect(await screen.findByRole("dialog", { name: "Create a poll" })).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Question" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(button);
   });
 
   it("creates a poll: needs a question and two options, then POSTs with an Idempotency-Key", async () => {

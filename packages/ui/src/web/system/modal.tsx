@@ -2,7 +2,7 @@
 // Glass scrim + centered floating card, focus-trapped, Escape-to-close. Blocking/ceremony dialogs and
 // ConfirmDialog compose this; it is also exported directly (UI-005) so callers needing a bespoke
 // dialog build on the accessible shell instead of copying a scrim+panel by hand.
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useInsertionEffect, useRef } from "react";
 import type { JSX, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { t } from "../theme/tokens";
 
@@ -85,11 +85,16 @@ export function Modal({
     [onClose],
   );
 
+  // The control that opened the dialog is whatever has focus as it opens. Captured in an insertion effect: it runs before any child can take
+  // focus (autoFocus fires in the commit, a child's own effect runs before this component's), and StrictMode does not run it twice, so the
+  // second pass of the effect below cannot capture the card's own control instead.
+  useInsertionEffect(() => {
+    if (open) previouslyFocused.current = document.activeElement;
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const card = cardRef.current;
-    // Only a control outside the card is the one that opened it: StrictMode runs this effect again with focus already inside the card.
-    if (!card?.contains(document.activeElement)) previouslyFocused.current = document.activeElement;
     const first = card?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? card)?.focus();
     return () => {
