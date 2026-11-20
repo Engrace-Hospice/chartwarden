@@ -920,3 +920,54 @@ Risks:
 - `from` links must never reveal a patient or visit id the viewer cannot open; the target page re-checks via the server.
 - Component size: both screens exceed the 800-line soft ceiling; put new code in new files and extract nothing in the same PR (characterization tests first, per prior R4).
 - The note-closure web allowlist mirrors a server list by test (`apps/backend/__tests__/note-closure-allowlist-mirror.test.ts`, named in `note-closure-screens.ts:8-10`); do not add a top-level route.
+
+### 15.6 WP1 and WP3 delivery record (2026-11-20)
+
+**Commits (local, not pushed), on top of PR #1081's branch:** `03259e362` (WP1 modules: visit context header, workflow strip,
+validated return links), `4ea0c9b52` (WP3 modules: blocker panel, review panel, not mounted), `a74e197be` (both mounted in the
+composer and the record screen, entry links, return context, tests). The backend is untouched apart from one new mirror test.
+
+**WP1 delivered**
+- Record screen identity (N2): the patient comes from the encounter; a URL naming another patient is replaced with the right one;
+  the screen is keyed per encounter and a late result from an abandoned load can no longer navigate.
+- One `encounterEntryHref`: a draft opens in the composer from My Visits, Visit Detail, Calendar and the Patient Chart, for users
+  who can author; everyone else (and every non-draft) opens the record. The Chart's separate "Compose note" button is gone.
+- Return context: a validated `?from=` (allowlist of internal screens, rebuilt from parts, nesting capped); composer and record
+  show one "Back to ..." link; My Visits filters and page live in the URL (the search text does not).
+- `VisitContextHeader` in the existing `contextHeader` slot of both screens: banner, type, discipline, service date, status, late-entry
+  tier, visit window and clinician when the visit is readable (best effort), and a Document / Review / Complete strip with the anchors
+  `#visit-document`, `#visit-review`, `#visit-complete`. No new statuses, routes or authorization.
+- N4 (visit lookup limit): the lookup now asks for the visit's service date first, then falls back to the admission's newest 50. The exact
+  fix is a backend change (see the proposals doc).
+
+**WP3 delivered**
+- `BlockerPanel` driven only by the last server response: "Not checked yet" before a finalize attempt, "Blocked" with one actionable row
+  per failure (remedy focuses the field or opens the composer at the named section, vitals or plan), "Unavailable" with a fixed sentence
+  (the raw 503 message is never rendered), "Finalized, not signed". Fixed groups: checked when you finalize, checked when you sign, and
+  not checked by ChartWarden (HOPE items, AI review decisions, and "the server does not record this acknowledgment" for the sign tick).
+  A web mirror of the 13-check register is pinned to `gate/checks.ts` by `apps/backend/__tests__/gate-register-web-mirror.test.ts`.
+- `ReviewPanel`: read-only structured summary of what the note will state (sections, draft section states, recorded vitals, ADLs, nutrition,
+  wounds, fall link, care-plan links) with links to edit.
+- Late-entry reason field on the finalize path (the server already accepts it there). Readiness wording became "entered" (for example
+  "Documentation progress" is now "Entry progress" without a percentage; "Ready for signature" is now "Awaiting signature";
+  "Review & finalize" is now "Finalize note").
+
+**Verification (final tree):** `bun run typecheck` exit 0; `bun run lint` clean; `bun run arch:fitness` 50 of 50; full non-live
+`bun run test`: all pass except two harness tests that spawn a child process and timed out under load (`harness-emergency-ledger-wave13b2`,
+`harness-hard-deadline`; both pass alone, 79 tests). Two fresh reviews (React and code/security) found no critical issue, one HIGH
+(a refused finalize with no blocker list was not visible) and a set of MEDIUM/LOW items; all were fixed in one pass and the fix
+additions were not given a third review round.
+
+**Not verified**
+- No browser pass: no signed-in session was available to the agent. Visual layout, focus order and the announced text are unchecked in a
+  real browser; no keyboard-only or screen-reader pass.
+- `e2e/specs/encounters.spec.ts` was edited (the "Compose note" click, the nav-label regex) and **not run**.
+- No live suite was run (no backend change). The WP0 caveats of §14 still apply.
+
+**Found and left for later (not fixed here)**
+- **WP4:** the sign dialog and sign body cannot carry `lateEntryReason`, so a note whose late-entry tier changes between finalize and
+  sign cannot be signed from the UI; the panel says so instead of offering a dead button. The sign ceremony still shows a placeholder
+  signer (D3, §14.3).
+- Backend proposals, none implemented: [`09-wp1-wp3-backend-proposals.md`](./09-wp1-wp3-backend-proposals.md) (a read-only gate preview
+  and `check` in `details`, the 503 message text, and a visit-to-encounter lookup with a 409 for the one-encounter-per-visit rule).
+- Still open and needing a decision: attestation provenance (§5), the late-entry override author guard (N5), and WP2, WP4, WP5, WP6.

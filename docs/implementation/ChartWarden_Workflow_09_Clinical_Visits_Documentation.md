@@ -2,7 +2,7 @@
 
 **Repository destination:** `docs/implementation/09-clinical-visits-documentation-workflow-redesign.md`  
 **Executor:** Claude Code  
-**Status:** In progress (2026-11-20) — WP0 audit complete (2026-11-17, refreshed 2026-11-20 at `e7588e836`, [evidence §15](./evidence/09-clinical-visits-documentation-current-state.md)); **WP1 and WP3 approved 2026-11-20** and being delivered on `feat/wf09-wp1-wp3-visit-workspace` (not merged); **WP2, WP4, WP5, WP6 and the attestation-provenance fix (evidence §5) still require explicit approval** before product-code changes  
+**Status:** In progress (2026-11-20) — WP0 audit complete (2026-11-17, refreshed 2026-11-20 at `e7588e836`, [evidence §15](./evidence/09-clinical-visits-documentation-current-state.md)); **WP1 and WP3 approved 2026-11-20 and built** on `feat/wf09-wp1-wp3-visit-workspace` (local commits, not pushed or merged; browser, e2e and screen-reader checks not yet run, see [evidence §15.6](./evidence/09-clinical-visits-documentation-current-state.md)); **WP2, WP4, WP5, WP6 and the attestation-provenance fix (evidence §5) still require explicit approval** before product-code changes  
 **Sequence:** After Workflow 08 (Visit Scheduling), before Workflow 10 (Electronic Visit Verification)  
 **Baseline:** Static inspection of user-supplied `chartwarden-main.zip` (November 2026). No authenticated browser session, database execution, or live clinical verification performed.  
 **Scope:** Staff-facing execution of scheduled/authorized hospice visits, clinical encounter authoring, documentation review, finalization, signature, cosignature, late entry, addenda, and handoffs to care plans, EVV, and reporting. Preserve existing backend domain authority and the Lantern design system.
