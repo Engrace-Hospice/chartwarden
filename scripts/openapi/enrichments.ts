@@ -5776,10 +5776,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "PATCH /api/v1/encounters/:encounterId/addenda/:addendumId/selections": {
     summary:
-      "Write an addendum's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored",
+      "Write an addendum's HearthNote selection tree. Returns the Layer-1 assembly of what was stored. Only a draft addendum can be saved: 409 ILLEGAL_TRANSITION for a finalized or signed one, before anything is written. The save takes the encounter row lock first, so it waits for a finalize or sign in progress and then gets that 409. The If-Match header must be present (428 IF_MATCH_REQUIRED) but its value is not compared on this route: the last save wins",
     body: M8UpdateSelectionsSchema,
     response: M8AddendumSelectionsResponseSchema,
-    headers: IF_MATCH_HEADER,
+    headers: {
+      "If-Match": {
+        required: true,
+        description:
+          "The addendum version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; the value is not compared on this route (no STALE_VERSION).",
+      },
+    },
   },
   "GET /api/v1/encounters/:encounterId/addenda/:addendumId/selections": {
     summary: "Read an addendum's stored HearthNote selection tree back, assembled",

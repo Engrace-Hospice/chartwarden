@@ -11749,7 +11749,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Write an addendum's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored */
+        /** Write an addendum's HearthNote selection tree. Returns the Layer-1 assembly of what was stored. Only a draft addendum can be saved: 409 ILLEGAL_TRANSITION for a finalized or signed one, before anything is written. The save takes the encounter row lock first, so it waits for a finalize or sign in progress and then gets that 409. The If-Match header must be present (428 IF_MATCH_REQUIRED) but its value is not compared on this route: the last save wins */
         patch: operations["patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections"];
         trace?: never;
     };
@@ -67354,7 +67354,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
+                /** @description The addendum version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; the value is not compared on this route (no STALE_VERSION). */
                 "If-Match": string;
             };
             path: {

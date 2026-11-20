@@ -98,7 +98,7 @@ export async function loadAddendumCosignature(
   return { ok: true, value: data };
 }
 
-/** The WHOLE tree, with the `If-Match` version of the last read/save (a 409 STALE_VERSION is someone else saving first). */
+/** The WHOLE tree, with the `If-Match` version of the last read/save (the server requires the header but does not compare it: the last save wins; a finalized or signed addendum is 409 ILLEGAL_TRANSITION). */
 export async function saveAddendumSelections(
   client: ApiClient,
   ids: Ids,
