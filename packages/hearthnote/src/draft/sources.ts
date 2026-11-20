@@ -450,7 +450,11 @@ function recertPeriodGroups(
   const length = tableValue(PERIOD_LENGTH_DAYS, period.periodKind, `${where} kind`);
   const start = isoDate(period.startDate, `${where} start date`);
   const end = isoDate(period.endDate, `${where} end date`);
-  const levelOfCare = tableValue(LEVEL_OF_CARE_WORDS, period.levelOfCare, `${where} level of care`);
+  // `null` is "not determinable for the service date": its sentence is left out, the rest of the summary stands.
+  const levelOfCare =
+    period.levelOfCare === null
+      ? null
+      : tableValue(LEVEL_OF_CARE_WORDS, period.levelOfCare, `${where} level of care`);
   if (serviceDate < start || serviceDate > end) {
     throw new DraftInputError(`${where} does not contain the service date`);
   }
@@ -478,7 +482,9 @@ function recertPeriodGroups(
           period_end: end,
           period_day: daysBetween(start, serviceDate) + 1,
         }),
-        sentence(RECERT_CODES.levelOfCare, { level_of_care: levelOfCare }),
+        ...(levelOfCare === null
+          ? []
+          : [sentence(RECERT_CODES.levelOfCare, { level_of_care: levelOfCare })]),
       ]),
       ...certification,
     ],

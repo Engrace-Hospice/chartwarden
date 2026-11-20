@@ -116,11 +116,13 @@ export interface BenefitPeriodDraftInput extends DraftSourceBase {
   /** YYYY-MM-DD; the period must contain the service date. */
   readonly startDate: string;
   readonly endDate: string;
+  /** The level of care on the service date, or `null` when it cannot be determined for that date (its sentence is then left out). */
   readonly levelOfCare:
     | "routine_home_care"
     | "continuous_home_care"
     | "inpatient_respite_care"
-    | "general_inpatient_care";
+    | "general_inpatient_care"
+    | null;
   readonly faceToFace: FaceToFaceDraftInput | null;
   readonly certification: CertificationDraftInput | null;
 }

@@ -260,6 +260,13 @@ describe("the module-6 facts are read as of the visit date (VN-D11)", () => {
     }
   });
 
+  it("a level of care that cannot be determined for the visit date leaves its sentence out and keeps the rest", () => {
+    const text = textOf(withPeriod({ levelOfCare: null }), "recert_summary");
+    expect(text).not.toContain("Level of care");
+    expect(text).toContain("Benefit period 3, 60-day period from 2026-10-15 to 2026-12-13; day 35");
+    expect(text).toContain("Certification of terminal illness");
+  });
+
   it("a ninety-day period says 90, and the day of the period counts from 1 on the start date", () => {
     const ninety = withPeriod({
       periodKind: "ninety_day",
