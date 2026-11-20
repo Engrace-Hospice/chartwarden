@@ -6,7 +6,9 @@
  * override and EVV-missing reasons carry their own length floors in their tier/state). The unit suite drives an in-memory store
  * that has no CHECKs, so it never saw it: on a real database `eraseEncounterRecord` rolled back and a destruction never
  * completed. This suite runs the whole erase (crypto-erase, delete subtree, tombstone) through the Drizzle store over every
- * kind of root the product can hold, and proves what survives: the shell, never the text.
+ * kind of root the product can hold, and proves what survives: the shell, never the text. The signed, cosign_pending and cosigned roots
+ * each carry a Layer-2-involved and a Layer-2-off output: a signed note's ciphers are frozen by the database (migration 1521), and only the
+ * shred sentinel the destruction role writes ("" for layer1/final and for a Layer-2-involved layer2, NULL for a Layer-2-off layer2) may pass.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m8:eraser:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -81,7 +83,23 @@ const PER_ROOT: Record<OwnedKey, number> = {
   hearthnoteAssembledOutputs: 3,
   hearthnoteLlmModifications: 1,
 };
-const PER_ROOT_TOTAL = Object.values(PER_ROOT).reduce((a, b) => a + b, 0);
+
+/**
+ * Roots seeded `signed`, `cosign_pending` and `cosigned`, each with SIGNED_OUTPUTS_PER_ROOT outputs: one Layer-2-involved, one
+ * Layer-2-off. A signed note's ciphers are frozen by the database (migration 1521); only the destruction role's shred sentinel gets through.
+ */
+const SIGNED_STATUSES = ["signed", "cosign_pending", "cosigned"] as const;
+const SIGNED_OUTPUTS_PER_ROOT = 2;
+/** What one party (the target, the other patient, the other tenant) holds: its `seedSatellites` rows plus `signedRoots` signed roots' outputs. */
+const countsWithSignedRoots = (signedRoots: number): Record<OwnedKey, number> => ({
+  ...PER_ROOT,
+  hearthnoteAssembledOutputs:
+    PER_ROOT.hearthnoteAssembledOutputs + signedRoots * SIGNED_OUTPUTS_PER_ROOT,
+});
+/** The target holds all three signed roots; the other patient and the other tenant hold one each. */
+const TARGET_COUNTS = countsWithSignedRoots(SIGNED_STATUSES.length);
+const OTHER_COUNTS = countsWithSignedRoots(1);
+const TARGET_TOTAL = Object.values(TARGET_COUNTS).reduce((a, b) => a + b, 0);
 
 // $1 is always the uuid[] of patient ids. HearthNote rows hang off an encounter OR one of its addenda; modifications off an output.
 const ENCOUNTERS_OF = "SELECT id FROM encounter WHERE patient_id = ANY($1::uuid[])";
@@ -103,6 +121,14 @@ const countsOf = (rows: Record<OwnedKey, Row[]>): Record<OwnedKey, number> =>
   Object.fromEntries(OWNED_KEYS.map((key) => [key, rows[key].length])) as Record<OwnedKey, number>;
 
 const NO_ROWS = Object.fromEntries(OWNED_KEYS.map((key) => [key, 0])) as Record<OwnedKey, number>;
+
+/**
+ * The reported counts for the tables this suite seeds. A branch that gives the eraser more tables to delete from (signed sections, draft
+ * confirmations, amendments) reports more keys; this suite seeds none of them, and `erased` (the sum of every key) is asserted too, so an
+ * unseeded table that reported a row would still fail.
+ */
+const seededCounts = (counts: Record<OwnedKey, number>): Record<OwnedKey, number> =>
+  Object.fromEntries(OWNED_KEYS.map((key) => [key, counts[key]])) as Record<OwnedKey, number>;
 
 /** A synthetic reason of at least `min` characters (the CHECK floors) that carries the marker. */
 const reason = (label: string, min: number, marker = MARKER): string =>
@@ -224,21 +250,83 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
         .rows,
     ).n;
 
+  const siteOf = (org: "A" | "B"): string[] =>
+    org === "A" ? [ORG_A, providerEntityId, locationId] : [ORG_B, providerEntityB, locationB];
+
+  const insertId = async (sqlText: string, values: readonly unknown[]): Promise<string> =>
+    one((await admin.query<{ id: string }>(sqlText, [...values])).rows).id;
+
+  /** One assembled output (envelope-shaped ciphers; a Layer-2-involved one also carries a `layer2_cipher`), seeded as the superuser. */
+  const seedOutput = (
+    org: "A" | "B",
+    parentEncounter: string | null,
+    parentAddendum: string | null,
+    kind: "primary_finalize" | "addendum_finalize",
+    layer2: boolean,
+  ): Promise<string> =>
+    insertId(
+      `INSERT INTO hearthnote_assembled_output (organization_id, provider_entity_id, location_id, encounter_id, addendum_id, kind,
+         layer1_cipher, layer2_cipher, final_cipher, layer2_eligibility, layer2_involved_at_finalize, assembly_template_key, vocab_version_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7,$9,$10,'routine_visit:rn',$11) RETURNING id`,
+      [
+        ...siteOf(org),
+        parentEncounter,
+        parentAddendum,
+        kind,
+        SEALED,
+        layer2 ? SEALED : null,
+        layer2 ? "eligible" : "tenant_flag_off",
+        layer2,
+        PIN,
+      ],
+    );
+
+  /**
+   * A root that ends `status` (signed, cosign_pending or cosigned) holding one Layer-2-involved and one Layer-2-off output. The outputs are
+   * pinned while the note is still `finalized` and the status flips after, the order sign itself uses: migration 1525 refuses a new pin under a
+   * signed encounter, and the shred is what has to cope with the frozen ciphers afterwards.
+   */
+  async function seedSignedRootWithOutputs(
+    org: "A" | "B",
+    patientId: string,
+    status: (typeof SIGNED_STATUSES)[number],
+  ): Promise<string> {
+    const confirmer = org === "A" ? author : authorB;
+    // A signed note whose delivery columns the 1513 freeze trigger guards: the tombstone must not touch them.
+    const encounterId = await seedEncounter(org, patientId, {
+      status: "finalized",
+      vocab_version_id: PIN,
+      signed_at: "2026-01-15T18:00:00Z",
+      started_at: "2026-01-15T14:00:00Z",
+      ended_at: "2026-01-15T15:00:00Z",
+      time_source: "clinician",
+      visit_modality: "in_person",
+      visit_modality_confirmed_at: "2026-01-15T18:00:00Z",
+      visit_modality_confirmed_by: confirmer,
+    });
+    await seedOutput(org, encounterId, null, "primary_finalize", true);
+    await seedOutput(org, encounterId, null, "primary_finalize", false);
+    await admin.query("UPDATE encounter SET status = $2 WHERE id = $1", [encounterId, status]);
+    return encounterId;
+  }
+
+  /** The assembled outputs pinned under one encounter root, whole. */
+  async function outputsUnder(encounterId: string): Promise<Row[]> {
+    const result = await admin.query<{ j: Row }>(
+      "SELECT to_jsonb(o) AS j FROM hearthnote_assembled_output o WHERE o.encounter_id = $1 ORDER BY o.id",
+      [encounterId],
+    );
+    return result.rows.map((r) => r.j);
+  }
+
   /**
    * One row in every table the eraser deletes from, under `encounterId` and one addendum of it, seeded as the superuser
    * (the destruction role holds SELECT/UPDATE/DELETE on these tables and no INSERT). The ciphers are envelope-shaped
    * stand-ins; the Layer-2-involved output carries a `layer2_cipher`, so the shred must not null it.
    */
   async function seedSatellites(org: "A" | "B", encounterId: string): Promise<void> {
-    const orgId = org === "A" ? ORG_A : ORG_B;
-    const site = [
-      orgId,
-      org === "A" ? providerEntityId : providerEntityB,
-      org === "A" ? locationId : locationB,
-    ];
+    const site = siteOf(org);
     const member = org === "A" ? author : authorB;
-    const insertId = async (sqlText: string, values: readonly unknown[]): Promise<string> =>
-      one((await admin.query<{ id: string }>(sqlText, [...values])).rows).id;
 
     const addendumId = await insertId(
       `INSERT INTO encounter_addendum (organization_id, provider_entity_id, location_id, encounter_id, authored_by_membership_id, reason)
@@ -290,31 +378,9 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       );
     }
     // Assembled outputs: Layer 2 off under the encounter, Layer 2 off under the addendum, Layer 2 INVOLVED under the encounter.
-    const output = async (
-      parentEncounter: string | null,
-      parentAddendum: string | null,
-      kind: "primary_finalize" | "addendum_finalize",
-      layer2: boolean,
-    ): Promise<string> =>
-      insertId(
-        `INSERT INTO hearthnote_assembled_output (organization_id, provider_entity_id, location_id, encounter_id, addendum_id, kind,
-           layer1_cipher, layer2_cipher, final_cipher, layer2_eligibility, layer2_involved_at_finalize, assembly_template_key, vocab_version_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7,$9,$10,'routine_visit:rn',$11) RETURNING id`,
-        [
-          ...site,
-          parentEncounter,
-          parentAddendum,
-          kind,
-          SEALED,
-          layer2 ? SEALED : null,
-          layer2 ? "eligible" : "tenant_flag_off",
-          layer2,
-          PIN,
-        ],
-      );
-    await output(encounterId, null, "primary_finalize", false);
-    await output(null, addendumId, "addendum_finalize", false);
-    const layer2Output = await output(encounterId, null, "primary_finalize", true);
+    await seedOutput(org, encounterId, null, "primary_finalize", false);
+    await seedOutput(org, null, addendumId, "addendum_finalize", false);
+    const layer2Output = await seedOutput(org, encounterId, null, "primary_finalize", true);
     await admin.query(
       `INSERT INTO hearthnote_llm_modification (organization_id, provider_entity_id, location_id, assembled_output_id, prompt_template_key,
          prompt_template_version, model_id, tokens_input, tokens_output, latency_ms, diff_json, called_by_membership_id)
@@ -392,22 +458,9 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
         evv_missing_reason: reason("no EVV bracket", 20),
       }),
     );
-    // A signed note whose delivery columns the 1513 freeze trigger guards: the tombstone must not touch them.
-    for (const status of ["signed", "cosign_pending", "cosigned"]) {
-      targets.set(
-        status,
-        await seedEncounter("A", targetPatient, {
-          status,
-          vocab_version_id: PIN,
-          signed_at: "2026-01-15T18:00:00Z",
-          started_at: "2026-01-15T14:00:00Z",
-          ended_at: "2026-01-15T15:00:00Z",
-          time_source: "clinician",
-          visit_modality: "in_person",
-          visit_modality_confirmed_at: "2026-01-15T18:00:00Z",
-          visit_modality_confirmed_by: author,
-        }),
-      );
+    // Signed, cosign_pending and cosigned notes, each with a Layer-2-involved and a Layer-2-off output (their ciphers are frozen).
+    for (const status of SIGNED_STATUSES) {
+      targets.set(status, await seedSignedRootWithOutputs("A", targetPatient, status));
     }
     // Already voided by a human, with free text that must be scrubbed too; the human's attribution stays.
     targets.set(
@@ -438,6 +491,8 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     });
     await seedSatellites("A", otherRoot);
     await seedSatellites("B", orgBRoot);
+    await seedSignedRootWithOutputs("A", otherPatient, "signed");
+    await seedSignedRootWithOutputs("B", orgBPatient, "signed");
 
     await admin.query(
       `ALTER ROLE chartwarden_destruction LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`,
@@ -471,18 +526,46 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
   it("the fixture holds rows in every owned table for every patient, so no delete can pass unseen", async () => {
     const everything = await ownedRows([targetPatient, ...everyoneElse()]);
     for (const key of OWNED_KEYS) {
-      // 3 roots (the target's, the other patient's, the other tenant's), each seeded by seedSatellites.
-      expect(everything[key], `${key} reached from every patient`).toHaveLength(3 * PER_ROOT[key]);
+      // the target's rows plus the other patient's and the other tenant's, each seeded by seedSatellites and the signed roots.
+      const expected = TARGET_COUNTS[key] + 2 * OTHER_COUNTS[key];
+      expect(everything[key], `${key} reached from every patient`).toHaveLength(expected);
       // The scoped query sees every row the table holds: nothing sits outside the three patients.
-      expect(await tableTotal(key), `${key} total`).toBe(3 * PER_ROOT[key]);
+      expect(await tableTotal(key), `${key} total`).toBe(expected);
     }
-    expect(countsOf(await ownedRows([targetPatient]))).toEqual(PER_ROOT);
-    // The row the shred must not null: a Layer-2-involved output with its layer2_cipher.
+    expect(countsOf(await ownedRows([targetPatient]))).toEqual(TARGET_COUNTS);
+    expect(countsOf(await ownedRows([otherPatient]))).toEqual(OTHER_COUNTS);
+    expect(countsOf(await ownedRows([orgBPatient]))).toEqual(OTHER_COUNTS);
+    // The rows the shred must not null: Layer-2-involved outputs with their layer2_cipher (the finalized root's, and one per signed root).
     const involved = (await ownedRows([targetPatient])).hearthnoteAssembledOutputs.filter(
       (row) => row.layer2_involved_at_finalize === true,
     );
-    expect(involved).toHaveLength(1);
-    expect(one(involved).layer2_cipher).toBe(SEALED);
+    expect(involved).toHaveLength(1 + SIGNED_STATUSES.length);
+    for (const row of involved) expect(row.layer2_cipher).toBe(SEALED);
+  });
+
+  it("each signed root carries a Layer-2-involved and a Layer-2-off output, sealed, under a frozen status", async () => {
+    for (const status of SIGNED_STATUSES) {
+      const encounterId = targets.get(status) as string;
+      const root = await admin.query<{ status: string }>(
+        "SELECT status::text AS status FROM encounter WHERE id = $1",
+        [encounterId],
+      );
+      expect(one(root.rows).status).toBe(status);
+      const outputs = await outputsUnder(encounterId);
+      expect(outputs, `${status} outputs`).toHaveLength(SIGNED_OUTPUTS_PER_ROOT);
+      const involved = one(outputs.filter((row) => row.layer2_involved_at_finalize === true));
+      const off = one(outputs.filter((row) => row.layer2_involved_at_finalize === false));
+      expect([involved.layer1_cipher, involved.layer2_cipher, involved.final_cipher]).toEqual([
+        SEALED,
+        SEALED,
+        SEALED,
+      ]);
+      expect([off.layer1_cipher, off.layer2_cipher, off.final_cipher]).toEqual([
+        SEALED,
+        null,
+        SEALED,
+      ]);
+    }
   });
 
   it("another tenant's certificate erases nothing, in either direction", async () => {
@@ -500,14 +583,16 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     expect(await ownedRows(everything)).toEqual(ownedBefore);
   });
 
-  it("the shred blanks the target's ciphertext, keeps the Layer 2 CHECK satisfied, and leaves everyone else's sealed", async () => {
+  it("the shred blanks the target's ciphertext (under signed notes too), keeps the Layer 2 CHECK satisfied, and leaves everyone else's sealed", async () => {
     const othersBefore = await ownedRows(everyoneElse());
 
     // Before the fix this threw 23514 (hearthnote_output_layer2_consistency): a Layer-2-involved output may not have a NULL layer2_cipher.
     await store.cryptoEraseHearthnote(ORG_A, targetPatient);
 
     const target = await ownedRows([targetPatient]);
-    expect(target.hearthnoteAssembledOutputs).toHaveLength(PER_ROOT.hearthnoteAssembledOutputs);
+    expect(target.hearthnoteAssembledOutputs).toHaveLength(
+      TARGET_COUNTS.hearthnoteAssembledOutputs,
+    );
     for (const output of target.hearthnoteAssembledOutputs) {
       expect(output.layer1_cipher).toBe("");
       expect(output.final_cipher).toBe("");
@@ -519,8 +604,31 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       expect(selection.free_text_cipher).toBeNull();
     expect(JSON.stringify(target)).not.toContain(SEALED);
     // the shred deletes nothing, and touches no other patient or tenant
-    expect(countsOf(target)).toEqual(PER_ROOT);
+    expect(countsOf(target)).toEqual(TARGET_COUNTS);
     expect(await ownedRows(everyoneElse())).toEqual(othersBefore);
+
+    // Under a signed, cosign_pending and cosigned note the database freezes the ciphers (migration 1521) and lets only the destruction
+    // role's sentinel through: "" for layer1/final, NULL or "" for layer2. The roots are still in that status here, so the guard was in force.
+    for (const status of SIGNED_STATUSES) {
+      const encounterId = targets.get(status) as string;
+      const root = await admin.query<{ status: string }>(
+        "SELECT status::text AS status FROM encounter WHERE id = $1",
+        [encounterId],
+      );
+      expect(one(root.rows).status).toBe(status);
+      const outputs = await outputsUnder(encounterId);
+      expect(outputs, `${status} outputs`).toHaveLength(SIGNED_OUTPUTS_PER_ROOT);
+      const involved = one(outputs.filter((row) => row.layer2_involved_at_finalize === true));
+      const off = one(outputs.filter((row) => row.layer2_involved_at_finalize === false));
+      // Layer 2 involved: "" in all three (the CHECK keeps layer2_cipher non-null); Layer 2 off: layer2_cipher stays NULL
+      expect([involved.layer1_cipher, involved.layer2_cipher, involved.final_cipher]).toEqual([
+        "",
+        "",
+        "",
+      ]);
+      expect([off.layer1_cipher, off.layer2_cipher, off.final_cipher]).toEqual(["", null, ""]);
+      expect(JSON.stringify(outputs), `${status} ciphertext`).not.toContain(SEALED);
+    }
   });
 
   describe("destroying the target patient", () => {
@@ -548,9 +656,9 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     });
 
     it("completes and reports what it removed, table by table", () => {
-      expect(countsOf(ownedBefore)).toEqual(PER_ROOT);
-      expect(result.counts).toEqual(PER_ROOT);
-      expect(result.erased).toBe(PER_ROOT_TOTAL);
+      expect(countsOf(ownedBefore)).toEqual(TARGET_COUNTS);
+      expect(seededCounts(result.counts)).toEqual(TARGET_COUNTS);
+      expect(result.erased).toBe(TARGET_TOTAL);
     });
 
     it("leaves every root in place, voided, with its structural shell untouched", async () => {
@@ -604,14 +712,14 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       expect(countsOf(await ownedRows([targetPatient]))).toEqual(NO_ROWS);
       // and removed exactly those rows: each table now holds only the other patient's and the other tenant's
       for (const key of OWNED_KEYS) {
-        expect(await tableTotal(key), `${key} total`).toBe(2 * PER_ROOT[key]);
+        expect(await tableTotal(key), `${key} total`).toBe(2 * OTHER_COUNTS[key]);
       }
     });
 
     it("leaves the other patient and the other tenant exactly as they were, satellites included", async () => {
       expect(await ownedRows(everyoneElse())).toEqual(othersOwnedBefore);
       expect(countsOf(await ownedRows(everyoneElse()))).toEqual(
-        Object.fromEntries(OWNED_KEYS.map((key) => [key, 2 * PER_ROOT[key]])),
+        Object.fromEntries(OWNED_KEYS.map((key) => [key, 2 * OTHER_COUNTS[key]])),
       );
       expect(await snapshot(everyoneElse())).toEqual(othersBefore);
       const kept = await admin.query(
@@ -627,7 +735,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       const settledOwned = await ownedRows(everything);
       const again = await eraseEncounterRecord(ORG_A, targetPatient, store);
       expect(again.erased).toBe(0);
-      expect(again.counts).toEqual(NO_ROWS);
+      expect(seededCounts(again.counts)).toEqual(NO_ROWS);
       expect(await snapshot(everything)).toEqual(settled);
       expect(await ownedRows(everything)).toEqual(settledOwned);
     });
