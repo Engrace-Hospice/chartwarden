@@ -29,6 +29,7 @@ import type {
 } from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { SUPERVISORY_OVERRIDE_ROLES } from "../abac-predicates";
 import {
   assertParentElements,
   elementsAudienceFor,
@@ -37,7 +38,6 @@ import {
 } from "../consumers/index";
 import {
   DisciplinePlanStateError,
-  heldSignerRoleKey,
   checkAuthoringDiscipline,
   checkDpoaGoalConsent,
   checkGoalTextVerbatim,
@@ -48,6 +48,7 @@ import {
   computeNextSupervisoryDueAt,
   decideRecordSignature,
   decideRecordSupervisoryVisit,
+  heldSignerRoleKey,
   openDisciplinePlanVersion,
   resolveRequiredSignerSet,
   transitionDisciplineAssessment,
@@ -65,7 +66,6 @@ import {
   decideRevokeGate,
   deriveGateStatus,
 } from "../volunteer/index";
-import { SUPERVISORY_OVERRIDE_ROLES } from "../abac-predicates";
 import type { M15ReadActor, M15WriteActor } from "./actor";
 import {
   AIDE_ROLE_KEYS,

@@ -34,9 +34,7 @@ function ms(iso: string | null | undefined): number | null {
 }
 
 /** The order's own recorded end: the earlier of discontinued / completed, with which one it was. */
-function ownEnd(
-  order: MedicationOrderDto,
-): {
+function ownEnd(order: MedicationOrderDto): {
   readonly ms: number;
   readonly iso: string;
   readonly kind: "discontinued" | "completed";

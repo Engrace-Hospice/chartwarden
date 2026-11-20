@@ -37,7 +37,11 @@ describe("DISCIPLINE_PLAN_DEFAULT_GRANTS", () => {
   });
 
   it("goes to exactly rn, rn_case_manager and chha", () => {
-    expect([...DISCIPLINE_PLAN_GRANTEE_ROLE_KEYS].sort()).toEqual(["chha", "rn", "rn_case_manager"]);
+    expect([...DISCIPLINE_PLAN_GRANTEE_ROLE_KEYS].sort()).toEqual([
+      "chha",
+      "rn",
+      "rn_case_manager",
+    ]);
   });
 
   it("grants only the five read / read_summary / author / finalize / sign keys", () => {
