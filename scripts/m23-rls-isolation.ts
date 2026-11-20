@@ -65,6 +65,22 @@ export function isCompleteM23Qualification(input: {
   );
 }
 
+export function isM23SuiteEntirelySkipped(input: {
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+  todo: number;
+}): boolean {
+  return (
+    input.total > 0 &&
+    input.passed === 0 &&
+    input.failed === 0 &&
+    input.pending === input.total &&
+    input.todo === 0
+  );
+}
+
 /** Emits only allowlisted diagnostic facts, never arbitrary Vitest error text. */
 export function summarizeVitestFailureMessage(message: string): string[] {
   const summary = new Set<string>();
