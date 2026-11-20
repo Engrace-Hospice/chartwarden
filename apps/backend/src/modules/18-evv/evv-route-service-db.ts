@@ -923,6 +923,9 @@ export function createDbEvvBackend(
           .where(eq(EVENT.id, originalEventId))
           .limit(1);
         if (!original) throw new NotFoundError("evv_event", originalEventId);
+        if (input.visitId !== original.visitId) {
+          throw new ValidationError("a correction must remain bound to the original visit", []);
+        }
 
         // Throws EVV_CORRECTION_STEP_UP_REQUIRED / _REASON_TOO_SHORT / EVV_EVENT_ALREADY_SUPERSEDED /
         // _KIND_MISMATCH. All four are refusals the route simply did not have.
@@ -961,7 +964,7 @@ export function createDbEvvBackend(
           .where(and(eq(EVENT.id, supersede.originalEventId), eq(EVENT.eventAt, original.eventAt)));
 
         const created = await captureInTx(tx, orgId, userId, input.kind, {
-          visitId: input.visitId,
+          visitId: original.visitId,
           coords: input.coords,
           accuracyM: input.accuracyM,
           capturedAt: input.capturedAt,
@@ -980,7 +983,7 @@ export function createDbEvvBackend(
         await emit(tx, orgId, "m18.evv.event_corrected", "evv_event", created.eventId, {
           supersededEventId: supersede.originalEventId,
           newEventId: created.eventId,
-          visitId: input.visitId,
+          visitId: original.visitId,
           correctedByMembershipId: userId,
           correctionReason: input.correctionReason,
         });
@@ -994,7 +997,7 @@ export function createDbEvvBackend(
             .from(MR)
             .where(
               and(
-                eq(MR.visitId, input.visitId),
+                eq(MR.visitId, original.visitId),
                 eq(MR.kind, openMarker.resolutionKind),
                 eq(MR.status, "open"),
               ),
@@ -1003,7 +1006,7 @@ export function createDbEvvBackend(
           if (!existing) {
             await tx.insert(MR).values({
               organizationId: orgId,
-              visitId: input.visitId,
+              visitId: original.visitId,
               kind: openMarker.resolutionKind,
               detectedBySource: "correction_of_record",
               status: "open",

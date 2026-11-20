@@ -1188,6 +1188,23 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     await app.close();
   });
 
+  it("refuses to move a correction onto a different visit", async () => {
+    const { app } = makeServer();
+    const originalId = await capture(app);
+    const res = await correct(app, originalId, {
+      newEvent: { ...checkInBody(), visitId: VISIT_OTHER },
+    });
+    expect(res.statusCode).toBe(422);
+
+    const original = await app.inject({
+      method: "GET",
+      url: `/api/v1/evv/events/${originalId}`,
+      headers: SUPERVISOR,
+    });
+    expect(original.json().supersededByEventId).toBeNull();
+    await app.close();
+  });
+
   it("correcting an ALREADY-corrected event is refused — correct the live head of the chain", async () => {
     const { app } = makeServer();
     const originalId = await capture(app);

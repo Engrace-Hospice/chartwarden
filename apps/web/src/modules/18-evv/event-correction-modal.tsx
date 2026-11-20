@@ -1,4 +1,11 @@
-import { Button, Modal, TextAreaField, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  Modal,
+  TextAreaField,
+  TextField,
+  toLocalInput,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import {
@@ -47,8 +54,7 @@ const row = {
 function localDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  return toLocalInput(date);
 }
 
 function emptyDraft(event: EvvEventView): CorrectionDraft {
@@ -110,20 +116,26 @@ export function EventCorrectionModal({
     const newEvent =
       event.kind === "check_in" ? { ...base, serviceTypeCode: event.serviceTypeCode } : base;
     const body: CorrectEventBody = { newEvent, correctionReason: draft.reason.trim() };
-    const result = await correctEventRecord(client, event.id, body);
-    setBusy(false);
-
-    if (!result.ok) {
-      const stepUp =
-        result.code === "STEP_UP_REQUIRED" || result.code === "EVV_CORRECTION_STEP_UP_REQUIRED";
-      if (stepUp) {
-        onStepUp(draft, result.error);
+    try {
+      const result = await correctEventRecord(client, event.id, body);
+      if (!result.ok) {
+        const stepUp =
+          result.code === "STEP_UP_REQUIRED" || result.code === "EVV_CORRECTION_STEP_UP_REQUIRED";
+        if (stepUp) {
+          onStepUp(draft, result.error);
+          return;
+        }
+        setError(result.message);
         return;
       }
-      setError(result.message);
-      return;
+      onDone(result.value);
+    } catch {
+      setError(
+        "The correction could not be submitted because the connection failed. Check the current event before retrying.",
+      );
+    } finally {
+      setBusy(false);
     }
-    onDone(result.value);
   };
 
   return (

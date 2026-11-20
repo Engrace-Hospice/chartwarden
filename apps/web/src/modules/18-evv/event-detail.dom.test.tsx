@@ -1,7 +1,7 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { markStepUpReturn } from "../../shell/step-up-redirect";
@@ -38,10 +38,13 @@ const events = new Map([
   [ORIGINAL, event(ORIGINAL, null, MIDDLE)],
   [MIDDLE, event(MIDDLE, ORIGINAL, HEAD)],
   [HEAD, event(HEAD, MIDDLE, null)],
+  [REPLACEMENT, event(REPLACEMENT, null, null)],
 ]);
 
 let correctionResponse: { status: number; body: unknown };
 let correctionBody: unknown = null;
+let correctionTargetId: string | null = null;
+let fetchImpl = stubFetch;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): Request {
   if (input instanceof Request) return input;
@@ -58,6 +61,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     });
 
   if (request.method === "POST") {
+    correctionTargetId = url.pathname.split("/").at(-2) ?? null;
     correctionBody = await request.clone().json();
     return json(correctionResponse.status, correctionResponse.body);
   }
@@ -81,13 +85,24 @@ function LocationProbe() {
   return <output data-testid="where">{`${location.pathname}${location.search}`}</output>;
 }
 
+function NavigateProbe() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate(`/evv/events/${REPLACEMENT}`)}>Open replacement</button>;
+}
+
 function mount(path = PATH, permissions = SESSION.permissions) {
   return render(
-    <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
+    <ApiClientProvider
+      client={createApiClient({
+        baseUrl: "http://localhost",
+        fetch: (input: Request) => fetchImpl(input),
+      })}
+    >
       <SessionProvider session={{ ...SESSION, permissions }}>
         <ToastProvider>
           <MemoryRouter initialEntries={[path]}>
             <LocationProbe />
+            <NavigateProbe />
             <Routes>
               <Route path="/evv/events/:eventId" element={<EvvEventDetail />} />
               <Route path="/step-up" element={<div>Step-up</div>} />
@@ -117,6 +132,8 @@ async function openAndFillCorrection() {
 
 beforeEach(() => {
   correctionBody = null;
+  correctionTargetId = null;
+  fetchImpl = stubFetch;
   correctionResponse = {
     status: 200,
     body: {
@@ -150,6 +167,42 @@ describe("EVV event evidence timeline", () => {
     mount(PATH, ["evv.read"]);
     await screen.findByText("Correction 2 · Current");
     expect(screen.queryByRole("button", { name: "File correction" })).not.toBeInTheDocument();
+  });
+
+  it("does not let a stale chain load replace the newly selected correction target", async () => {
+    let releaseHead!: (response: Response) => void;
+    let headSettled = false;
+    const delayedHead = new Promise<Response>((resolve) => {
+      releaseHead = resolve;
+    });
+    fetchImpl = async (input, init) => {
+      const request = requestOf(input, init);
+      const id = new URL(request.url, "http://localhost").pathname.split("/").at(-1);
+      if (request.method === "GET" && id === HEAD) {
+        const response = await delayedHead;
+        headSettled = true;
+        return response;
+      }
+      return stubFetch(request);
+    };
+
+    mount();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Open replacement" }));
+    expect(await screen.findByRole("link", { name: /open event 44444444/i })).toBeInTheDocument();
+
+    releaseHead(
+      new Response(JSON.stringify(events.get(HEAD)), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await waitFor(() => expect(headSettled).toBe(true));
+    expect(screen.getByRole("link", { name: /open event 44444444/i })).toBeInTheDocument();
+
+    const correctionUser = await openAndFillCorrection();
+    await correctionUser.click(screen.getByRole("button", { name: "Create correction" }));
+    await waitFor(() => expect(correctionTargetId).toBe(REPLACEMENT));
   });
 });
 
@@ -215,5 +268,20 @@ describe("EVV append-only correction", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/open the current event/i);
     expect(screen.getByTestId("where")).toHaveTextContent(PATH);
+  });
+
+  it("recovers from a correction transport failure", async () => {
+    fetchImpl = async (input, init) => {
+      const request = requestOf(input, init);
+      if (request.method === "POST") throw new TypeError("network unavailable");
+      return stubFetch(request);
+    };
+    mount();
+    const user = await openAndFillCorrection();
+    await user.click(screen.getByRole("button", { name: "Create correction" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/connection failed/i);
+    expect(screen.getByRole("button", { name: "Create correction" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
   });
 });

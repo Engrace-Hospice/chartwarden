@@ -26,6 +26,7 @@ import {
   ForbiddenError,
   IdempotencyConflictError,
   NotFoundError,
+  ValidationError,
 } from "@chartwarden/types";
 import {
   DEFAULT_EVV_WINDOW_AFTER_MS,
@@ -570,6 +571,9 @@ export class EvvRouteService implements EvvAbacResolver {
       (e) => e.organizationId === orgId && e.id === originalEventId,
     );
     if (!original) throw new NotFoundError("evv_event", originalEventId);
+    if (input.visitId !== original.visitId) {
+      throw new ValidationError("a correction must remain bound to the original visit", []);
+    }
     const decision: CorrectionInput = {
       originalEventId,
       originalKind: original.kind,
@@ -582,7 +586,7 @@ export class EvvRouteService implements EvvAbacResolver {
     // _KIND_MISMATCH — the four refusals the route never had.
     correctEvent(decision);
     const result = this.captureUnguarded(orgId, userId, input.kind, {
-      visitId: input.visitId,
+      visitId: original.visitId,
       coords: input.coords,
       accuracyM: input.accuracyM,
       capturedAt: input.capturedAt,

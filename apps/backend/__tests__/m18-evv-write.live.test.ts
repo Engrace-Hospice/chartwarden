@@ -1006,6 +1006,37 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       "idempotency-key": randomUUID(),
     });
 
+    const otherVisit = await seedVisit(ORG_A);
+    const mismatched = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/events/${original.eventId}/correct`,
+      headers: headers(CORRECTION_SESSION_FRESH),
+      payload: { ...payload, newEvent: { ...payload.newEvent, visitId: otherVisit } },
+    });
+    expect(mismatched.statusCode).toBe(422);
+    const mismatchEffects = (
+      await admin.query(
+        `SELECT
+           (SELECT count(*)::int FROM evv_event
+             WHERE organization_id=$1 AND replaces_event_id=$2) AS replacements,
+           (SELECT count(*)::int FROM outbox_event
+             WHERE organization_id=$1 AND event_type='m18.evv.event_corrected'
+               AND payload->>'supersededEventId'=$2) AS envelopes,
+           (SELECT count(*)::int FROM evv_missing_resolution
+             WHERE organization_id=$1 AND visit_id=$3
+               AND detected_by_source='correction_of_record') AS resolutions,
+           (SELECT superseded_at IS NOT NULL FROM evv_event
+             WHERE organization_id=$1 AND id=$2) AS superseded`,
+        [ORG_A, original.eventId, otherVisit],
+      )
+    ).rows[0];
+    expect(mismatchEffects).toMatchObject({
+      replacements: 0,
+      envelopes: 0,
+      resolutions: 0,
+      superseded: false,
+    });
+
     const stale = await app.inject({
       method: "POST",
       url: `/api/v1/evv/events/${original.eventId}/correct`,

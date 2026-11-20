@@ -11,7 +11,7 @@ import {
 // The read contract is intentionally coordinate-free (D10). Corrections are append-only replacements:
 // this surface follows the linked evidence chain and invokes the server-owned correction machine; it
 // never edits an event or decides authorization, step-up freshness, kind matching, or live-head status.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
@@ -51,6 +51,7 @@ export function EvvEventDetail(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionDraft, setCorrectionDraft] = useState<CorrectionDraft | null>(null);
+  const loadGeneration = useRef(0);
   const correctionKey = useMemo(
     () => (eventId ? stepUpDraftKey(owner, CORRECTION_ACTION, eventId) : null),
     [eventId, owner],
@@ -66,11 +67,13 @@ export function EvvEventDetail(): JSX.Element {
     [client],
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (generation: number) => {
     if (!eventId) return;
+    const isCurrent = () => loadGeneration.current === generation;
     setLoading(true);
     setError(null);
     const selected = await loadOne(eventId);
+    if (!isCurrent()) return;
     if (!selected) {
       setEvent(null);
       setEvidence({ events: [], incomplete: false });
@@ -91,6 +94,7 @@ export function EvvEventDetail(): JSX.Element {
         break;
       }
       const previous = await loadOne(cursor.replacesEventId);
+      if (!isCurrent()) return;
       if (!previous) {
         incomplete = true;
         break;
@@ -107,6 +111,7 @@ export function EvvEventDetail(): JSX.Element {
         break;
       }
       const next = await loadOne(cursor.supersededByEventId);
+      if (!isCurrent()) return;
       if (!next) {
         incomplete = true;
         break;
@@ -125,7 +130,11 @@ export function EvvEventDetail(): JSX.Element {
   }, [eventId, loadOne]);
 
   useEffect(() => {
-    void load();
+    const generation = ++loadGeneration.current;
+    void load(generation);
+    return () => {
+      if (loadGeneration.current === generation) loadGeneration.current += 1;
+    };
   }, [load]);
 
   useEffect(() => {
