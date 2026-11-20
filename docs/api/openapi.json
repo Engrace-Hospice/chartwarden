@@ -153782,6 +153782,18 @@
                                 {
                                   "const": "certification",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "medication_order",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "caregiver",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "advance_directive_acknowledgment",
+                                  "type": "string"
                                 }
                               ]
                             }
@@ -153958,6 +153970,18 @@
                           },
                           {
                             "const": "certification",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_order",
+                            "type": "string"
+                          },
+                          {
+                            "const": "caregiver",
+                            "type": "string"
+                          },
+                          {
+                            "const": "advance_directive_acknowledgment",
                             "type": "string"
                           }
                         ]
@@ -156632,6 +156656,18 @@
                                 {
                                   "const": "certification",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "medication_order",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "caregiver",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "advance_directive_acknowledgment",
+                                  "type": "string"
                                 }
                               ]
                             }
@@ -156800,6 +156836,18 @@
                           },
                           {
                             "const": "certification",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_order",
+                            "type": "string"
+                          },
+                          {
+                            "const": "caregiver",
+                            "type": "string"
+                          },
+                          {
+                            "const": "advance_directive_acknowledgment",
                             "type": "string"
                           }
                         ]
