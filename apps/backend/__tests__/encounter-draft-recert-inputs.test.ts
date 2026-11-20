@@ -298,22 +298,21 @@ describe("the weight across the benefit period", () => {
     expect(inputs.weight).toMatchObject({ id: "w-2", baseline: null });
   });
 
-  it("leaves out a weight after the visit time, and a row that does not parse or has no unit", async () => {
+  it("leaves out a weight after the visit time and a row from before the period starts, whatever they hold", async () => {
     const after: WeightRow = {
       id: "w-9",
       recordedAt: "2026-11-19T14:00:00.000Z",
       weight: "100",
       unit: "lb",
     };
-    const junk: WeightRow[] = [
-      { id: "w-a", recordedAt: "2026-11-01T14:00:00.000Z", weight: "heavy", unit: "lb" },
-      { id: "w-b", recordedAt: "2026-11-02T14:00:00.000Z", weight: "0", unit: "lb" },
-      { id: "w-c", recordedAt: "2026-11-03T14:00:00.000Z", weight: "-3", unit: "lb" },
-      { id: "w-d", recordedAt: "2026-11-04T14:00:00.000Z", weight: "120", unit: null },
-      { id: "w-e", recordedAt: "2026-11-05T14:00:00.000Z", weight: "120", unit: "stone" },
-    ];
+    const beforePeriod: WeightRow = {
+      id: "w-0",
+      recordedAt: "2026-10-01T14:00:00.000Z",
+      weight: "heavy",
+      unit: null,
+    };
     const inputs = await readDraftInputs(
-      recertPorts({ weightReadings: async () => [W1, ...junk, W2, after] }),
+      recertPorts({ weightReadings: async () => [beforePeriod, W1, W2, after] }),
       RECERT,
       viewer(),
       AS_OF,
@@ -322,6 +321,35 @@ describe("the weight across the benefit period", () => {
       id: "w-2",
       baseline: { value: "130", recordedOn: "2026-10-16" },
     });
+  });
+
+  it.each([
+    ["text that is not a number", { weight: "heavy", unit: "lb" }],
+    ["a zero", { weight: "0", unit: "lb" }],
+    ["a negative", { weight: "-3", unit: "lb" }],
+    ["a number with its unit in the text", { weight: "150 lb", unit: "lb" }],
+    ["no unit", { weight: "120", unit: null }],
+    ["a unit that is not kg or lb", { weight: "120", unit: "stone" }],
+  ] as const)("is not drafted when one weight inside the period cannot be used (%s): the sentences say 'first' and 'only', and a skipped row would make them false", async (_name, bad) => {
+    const row: WeightRow = { id: "w-x", recordedAt: "2026-11-01T14:00:00.000Z", ...bad };
+    const inputs = await readDraftInputs(
+      recertPorts({ weightReadings: async () => [W1, row, W2] }),
+      RECERT,
+      viewer(),
+      AS_OF,
+    );
+    expect(inputs.weight).toBeNull();
+  });
+
+  it("is not drafted when a weight's time cannot be read", async () => {
+    const row: WeightRow = { id: "w-x", recordedAt: "yesterday", weight: "120", unit: "lb" };
+    const inputs = await readDraftInputs(
+      recertPorts({ weightReadings: async () => [W1, row, W2] }),
+      RECERT,
+      viewer(),
+      AS_OF,
+    );
+    expect(inputs.weight).toBeNull();
   });
 
   it("is not drafted when the period's weights are in more than one unit: no conversion, no false 'only weight'", async () => {

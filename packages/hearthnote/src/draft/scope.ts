@@ -37,6 +37,11 @@ export function draftedSectionIds(
   );
 }
 
+/** Whether a visit's draft reads the benefit period it falls in (S2): the recertification and the face-to-face visit (`md`, `np`). */
+export function readsBenefitPeriod(encounterType: EncounterType): boolean {
+  return encounterType === "recert_visit" || encounterType === "face_to_face";
+}
+
 /** Whether the pair's template has any drafted section. `false` for a pair with no template. */
 export function templateHasDraftedSection(
   encounterType: EncounterType,

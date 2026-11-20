@@ -96,7 +96,9 @@ async function latestVitals(tx: DbClient, encounterId: string, asOf: string) {
 /**
  * S2: the patient's stored weights captured from `from` to `asOf`, oldest first: this encounter's own, and those of the patient's SIGNED
  * encounters (an unsigned draft of another visit is not yet part of the record, and a voided one never is). The text and unit are returned
- * as stored; `inputs.ts` decides what parses. Scoped by the caller's transaction (RLS) and by this organization and patient.
+ * as stored; `inputs.ts` decides what parses. Scoped by the caller's transaction (RLS) and by this organization (on both tables) and patient.
+ * It takes every weight of the patient up to `asOf` when `from` is the epoch (the recertification snapshot, which does not yet know the benefit
+ * period's start): cutting it by a guessed look-back would make "the first weight of the period" wrong for a period that began earlier.
  */
 async function weightReadings(
   tx: DbClient,
@@ -110,6 +112,7 @@ async function weightReadings(
     .innerJoin(E, eq(E.id, V.encounterId))
     .where(
       and(
+        eq(V.organizationId, encounter.organizationId),
         eq(E.organizationId, encounter.organizationId),
         eq(E.patientId, encounter.patientId),
         isNotNull(V.weight),

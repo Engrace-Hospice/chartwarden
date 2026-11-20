@@ -74,6 +74,13 @@ export function positiveInteger(value: unknown, field: string): number {
   return value;
 }
 
+/** The units a weight can be drafted in. Nothing is converted between them. */
+export const WEIGHT_UNITS = ["kg", "lb"] as const;
+export type WeightUnit = (typeof WEIGHT_UNITS)[number];
+export function isWeightUnit(unit: unknown): unit is WeightUnit {
+  return typeof unit === "string" && (WEIGHT_UNITS as readonly string[]).includes(unit);
+}
+
 /** A value the word table holds; a key it does not (or an inherited one such as "constructor") is a malformed input. */
 export function tableValue<T>(table: Readonly<Record<string, T>>, key: unknown, field: string): T {
   if (typeof key !== "string" || !Object.hasOwn(table, key)) {

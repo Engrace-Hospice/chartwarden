@@ -13,6 +13,7 @@ import {
   type SelectionState,
   compileDraft,
   emptyDraft,
+  readsBenefitPeriod,
   templateHasDraftedSection,
 } from "@chartwarden/hearthnote";
 import { ASSEMBLY_ERROR_CODE, EncounterStateError } from "../lifecycle/errors";
@@ -138,8 +139,7 @@ export async function snapshotStorePorts(
     visitAsOf({ serviceDate: encounter.serviceDate, orgTimeZone, now }),
   );
   // S2: only the recertification and face-to-face visits read weights, and only they pay for the read (the routine visit's snapshot is as it was).
-  const readsWeights =
-    encounter.encounterType === "recert_visit" || encounter.encounterType === "face_to_face";
+  const readsWeights = readsBenefitPeriod(encounter.encounterType);
   const [previous, vitals, removed, stored, weights] = await Promise.all([
     guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter)),
     guarded("the vitals", () => store.latestVitals(encounter.id, asOf)),

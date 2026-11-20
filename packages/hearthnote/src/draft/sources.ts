@@ -17,7 +17,8 @@
 //   esas                 ESAS-r readings                                                                       by label, then source id
 //   prognosis            PPS against the benefit period's first reading, weight, the attested face-to-face    in that order
 //   recert_summary       the benefit period and level of care, then the signed certification                   in that order
-//   (`assessment` and `symptom_management` draft nothing here: their PPS and ESAS-r phrases are not tagged for it.)
+//   (`assessment` and `symptom_management` draft nothing here: the recert phrase map gives them no phrase, though the PPS and ESAS-r
+//   phrases are tagged for the template, because `pps` and `esas` are built from them.)
 // The face-to-face visit (S2, `md` and `np`): prognosis from the PPS against the period's first reading, then the weight.
 // Every other template is sourced like the routine visit; the corpus tags decide whether it drafts at all (`scope.ts`).
 //
@@ -50,6 +51,7 @@ import type {
 } from "./types";
 import {
   DraftInputError,
+  WEIGHT_UNITS,
   daysBetween,
   decimalText,
   finiteNumber,
@@ -346,7 +348,9 @@ const PERFORMER_WORDS: Readonly<Record<string, string>> = {
   hospice_md: "physician",
   hospice_np: "nurse practitioner",
 };
-const WEIGHT_UNITS: Readonly<Record<string, string>> = { kg: "kg", lb: "lb" };
+const WEIGHT_UNIT_WORDS: Readonly<Record<string, string>> = Object.fromEntries(
+  WEIGHT_UNITS.map((unit) => [unit, unit]),
+);
 
 /** The PPS reading against the benefit period's first reading, for a reading that carries one (the `prognosis` section). */
 function ppsBaselineGroups(
@@ -383,7 +387,7 @@ function weightGroups(
   if (weight === null || weight === undefined) return [];
   const where = `weight reading '${weight.id}'`;
   const recordedMs = instantMs(weight.recordedAt, `${where} recordedAt`);
-  const unit = tableValue(WEIGHT_UNITS, weight.unit, `${where} unit`);
+  const unit = tableValue(WEIGHT_UNIT_WORDS, weight.unit, `${where} unit`);
   const latest = positiveDecimal(weight.value, `${where} value`);
   const recordedOn = isoDate(weight.recordedOn, `${where} date`);
   const first = weight.baseline ?? null;

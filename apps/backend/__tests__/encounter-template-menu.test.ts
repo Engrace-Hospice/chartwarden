@@ -136,10 +136,15 @@ describe("buildTemplateMenu: the recertification and face-to-face visits (S2)", 
     }
   });
 
-  it("offers every code the write path accepts in a section it lists (menu and write rules agree)", () => {
-    const eligible = new Set(entriesFor("recert_visit", "rn").map((e) => e.code));
+  it("offers a draft phrase only in a section wired to its category: an unwired or free-text-only section offers none", () => {
     for (const section of recertOn.sections)
-      for (const entry of section.entries) expect(eligible.has(entry.code)).toBe(true);
+      for (const entry of section.entries)
+        if (DRAFT_VOCAB_CODES.has(entry.code)) {
+          expect(section.allowedCategories, section.sectionId).toContain(entry.category);
+        }
+    // pps, esas, prognosis and recert_summary are wired to no category: nothing in them is a preset phrase of any kind.
+    for (const id of ["pps", "esas", "prognosis", "recert_summary"])
+      expect(menuCodes(recertOn, id), id).toEqual([]);
   });
 });
 
@@ -153,9 +158,11 @@ describe("buildTemplateMenu: draft wording on (the tenant's switch is on)", () =
     expect(menuCodes(menu, "interventions").some((c) => DRAFT_VOCAB_CODES.has(c))).toBe(true);
   });
 
-  it("offers every code the write path accepts in a section it lists (menu and write rules agree)", () => {
-    const eligible = new Set(entriesFor("routine_visit", "rn").map((e) => e.code));
+  it("offers a draft phrase only in a section wired to its category", () => {
     for (const section of menu.sections)
-      for (const entry of section.entries) expect(eligible.has(entry.code)).toBe(true);
+      for (const entry of section.entries)
+        if (DRAFT_VOCAB_CODES.has(entry.code)) {
+          expect(section.allowedCategories, section.sectionId).toContain(entry.category);
+        }
   });
 });

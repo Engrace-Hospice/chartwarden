@@ -15,6 +15,7 @@ import type {
   VitalsDraftInput,
   WeightDraftInput,
 } from "@chartwarden/hearthnote";
+import { isWeightUnit, readsBenefitPeriod } from "@chartwarden/hearthnote";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import type {
   ElectionPeriodSummary,
@@ -174,16 +175,23 @@ function baselineOf(
   return null;
 }
 
+/** What every scale read of one draft shares: the ports, the visit and the time cuts. */
+interface ScaleReadContext {
+  readonly ports: DraftPorts;
+  readonly encounter: DraftEncounter;
+  readonly asOf: string;
+  readonly asOfMs: number;
+  readonly previousMs: number | null;
+  readonly timeZone: string;
+  /** The benefit period's start (a local date) for a visit that has one: only then does a PPS reading carry a baseline. */
+  readonly periodStart: string | null;
+}
+
 async function readScale(
-  ports: DraftPorts,
-  encounter: DraftEncounter,
+  context: ScaleReadContext,
   scale: ScaleType,
-  asOf: string,
-  asOfMs: number,
-  previousMs: number | null,
-  timeZone: string,
-  periodStart: string | null,
 ): Promise<ScaleReadingInput | null> {
+  const { ports, encounter, asOf, asOfMs, previousMs, timeZone, periodStart } = context;
   const series = await guarded(`the ${scale} scale series`, () =>
     ports.scaleSeries(encounter.patientId, scale, SERIES_FROM, asOf),
   );
@@ -229,11 +237,16 @@ async function readScaleReadings(
   timeZone: string,
   periodStart: string | null,
 ): Promise<readonly ScaleReadingInput[]> {
-  const readings = await Promise.all(
-    DRAFTED_SCALES.map((scale) =>
-      readScale(ports, encounter, scale, asOf, asOfMs, previousMs, timeZone, periodStart),
-    ),
-  );
+  const context: ScaleReadContext = {
+    ports,
+    encounter,
+    asOf,
+    asOfMs,
+    previousMs,
+    timeZone,
+    periodStart,
+  };
+  const readings = await Promise.all(DRAFTED_SCALES.map((scale) => readScale(context, scale)));
   return readings.filter((r): r is ScaleReadingInput => r !== null);
 }
 
@@ -309,7 +322,6 @@ const LEVELS_OF_CARE: readonly LevelOfCare[] = [
 ];
 const ONE_DAY_MS = 86_400_000;
 const STRICT_DECIMAL = /^\d+(\.\d+)?$/;
-const WEIGHT_UNITS: ReadonlySet<string> = new Set(["kg", "lb"]);
 
 /** The benefit period on the service date: M6's own rule (`findActivePeriodForPatient`), the highest sequence when two cover it. */
 function coveringPeriod(
@@ -367,9 +379,10 @@ async function readBenefitPeriod(
 }
 
 /**
- * The patient's latest weight at or before the visit time, with the benefit period's first beside it. A weight that does not parse as a
- * positive decimal, has no `kg`/`lb` unit, falls before the period start (org-local) or after the visit is not drafted. Weights in two
- * units are not drafted at all: nothing is converted, and "the only weight recorded" would be false.
+ * The patient's latest weight at or before the visit time, with the benefit period's first beside it. A weight that falls before the period
+ * start (org-local) or after the visit is not part of the period. Nothing is drafted at all when ANY weight inside the period cannot be used
+ * (not a positive decimal, no `kg`/`lb` unit, an unreadable time) or when the weights are in two units: the sentences say "the only weight
+ * recorded" and "the first", and a row skipped in silence would make them false. Nothing is converted.
  */
 async function readWeight(
   ports: DraftPorts,
@@ -383,33 +396,32 @@ async function readWeight(
   // The row timestamp is an instant and the period start a local date: read from the day before and cut by local date below.
   const from = new Date(Date.parse(`${periodStart}T00:00:00.000Z`) - ONE_DAY_MS).toISOString();
   const rows = await guarded("the weights", () => ports.weightReadings(encounter, from, asOf));
-  const valid = rows
-    .flatMap((row) => {
-      const ms = Date.parse(row.recordedAt);
-      if (Number.isNaN(ms) || ms > asOfMs) return [];
-      const on = localDateInTimeZone(new Date(ms), timeZone);
-      const text = row.weight.trim();
-      const unit = row.unit;
-      const usable =
-        on >= periodStart &&
-        STRICT_DECIMAL.test(text) &&
-        Number(text) > 0 &&
-        unit !== null &&
-        WEIGHT_UNITS.has(unit);
-      return usable ? [{ id: row.id, ms, on, text, unit: unit as "kg" | "lb" }] : [];
-    })
-    .sort((a, b) => a.ms - b.ms || compareIds(a.id, b.id));
-  const latest = valid.at(-1);
-  const first = valid[0];
+  const inPeriod: Array<{ id: string; ms: number; on: string; text: string; unit: "kg" | "lb" }> =
+    [];
+  for (const row of rows) {
+    const ms = Date.parse(row.recordedAt);
+    if (Number.isNaN(ms)) return null;
+    if (ms > asOfMs) continue;
+    const on = localDateInTimeZone(new Date(ms), timeZone);
+    if (on < periodStart) continue;
+    const text = row.weight.trim();
+    const unit = row.unit;
+    const usable = STRICT_DECIMAL.test(text) && Number(text) > 0 && isWeightUnit(unit);
+    if (!usable) return null;
+    inPeriod.push({ id: row.id, ms, on, text, unit });
+  }
+  inPeriod.sort((a, b) => a.ms - b.ms || compareIds(a.id, b.id));
+  const latest = inPeriod.at(-1);
+  const first = inPeriod[0];
   if (latest === undefined || first === undefined) return null;
-  if (new Set(valid.map((w) => w.unit)).size > 1) return null;
+  if (new Set(inPeriod.map((w) => w.unit)).size > 1) return null;
   return {
     id: latest.id,
     recordedAt: isoOf(latest.ms),
     recordedOn: latest.on,
     value: latest.text,
     unit: latest.unit,
-    baseline: valid.length > 1 ? { value: first.text, recordedOn: first.on } : null,
+    baseline: inPeriod.length > 1 ? { value: first.text, recordedOn: first.on } : null,
     // A weight is a vital sign: never SUD content (as `readVitals` states for the rest of the vitals).
     sudRelated: false,
   };
@@ -454,7 +466,7 @@ export async function readDraftInputs(
   // S2: the recertification and face-to-face visits read the benefit period on the service date first, because its start bounds the PPS
   // baseline and the weights. Any other template reads none of it and returns none of the new fields, exactly as before.
   const recert = encounter.encounterType === "recert_visit";
-  const readsPeriod = recert || encounter.encounterType === "face_to_face";
+  const readsPeriod = readsBenefitPeriod(encounter.encounterType);
   const period = readsPeriod ? await readCoveringPeriod(ports, encounter) : null;
   const periodStart = period === null ? null : String(period.startDate);
   const [carePlan, scaleReadings, vitals, medicationChanges, weight, benefitPeriod] =

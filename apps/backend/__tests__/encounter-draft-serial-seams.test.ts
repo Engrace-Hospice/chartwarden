@@ -34,6 +34,19 @@ function measured(ms: number) {
       change("started", "2026-11-12T16:00:00.000Z", { id: "order-a" }),
     ]),
     part2DisclosureAllowed: read("part2", () => true),
+    electionPeriods: read("periods", () => []),
+    levelOfCareOn: read("levelOfCare", () => ({
+      admissionId: "a" as never,
+      range: { from: "2026-11-18" as never, to: "2026-11-18" as never },
+      daysByLevel: {
+        routine_home_care: 1,
+        continuous_home_care: 0,
+        inpatient_respite_care: 0,
+        general_inpatient_care: 0,
+      },
+    })),
+    attestedFaceToFace: read("faceToFace", () => null),
+    activeCertification: read("certification", () => null),
   });
   return { stats, seams: base as unknown as DraftSeamPorts };
 }
@@ -74,6 +87,26 @@ describe("serialSeams", () => {
     expect(scaleB.scaleType).toBe("esas_r");
     expect(meds).toHaveLength(1);
     expect(part2).toBe(true);
+  });
+
+  it("takes the four module-6 reads of a recertification draft in turn too (S2)", async () => {
+    const { stats, seams } = measured(5);
+    const serial = serialSeams(seams);
+
+    await Promise.all([
+      serial.electionPeriods("a"),
+      serial.levelOfCareOn("a", "2026-11-18"),
+      serial.attestedFaceToFace("e"),
+      serial.activeCertification("e"),
+      serial.part2DisclosureAllowed({
+        organizationId: "o",
+        patientId: "p",
+        viewer: { roles: [], membershipId: null },
+      }),
+    ]);
+
+    expect(stats.peak).toBe(1);
+    expect(stats.order).toEqual(["periods", "levelOfCare", "faceToFace", "certification", "part2"]);
   });
 
   it("a read that fails fails only itself: the reads queued behind it still run", async () => {
