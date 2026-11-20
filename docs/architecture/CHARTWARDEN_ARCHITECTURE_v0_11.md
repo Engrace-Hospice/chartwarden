@@ -4,14 +4,24 @@
 **Owner:** Fabrice V. Adjam
 **Purpose:** Complete architecture lock for ChartWarden, a multi-tenant hospice EHR SaaS. This document is the input spec for the Archon workflow engine driving Claude Code. Per-module spec documents (one per module) follow this document and are produced before each module’s build cycle.
 
-## Pending architecture ratification — mobile renderer (2026-10-16)
+## Architecture ratification — mobile renderer (ratified 2026-11-18)
 
-The fixed product direction is a separately versioned React Native/Expo application in the
-`wardenx-mobile` repository. [ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md)
-proposes formal supersession of ADR-0035. Current architecture sections below are aligned to that
+The product direction (fixed 2026-10-16) is a separately versioned React Native/Expo application in
+the `chartwarden-mobile` repository (written `wardenx-mobile` in older text).
+[ADR-0072](../adr/ADR-0072-separate-react-native-expo-mobile-app.md) supersedes ADR-0035, and the owner
+ratified that supersession on 2026-11-18. Current architecture sections below are aligned to that
 target so backend contracts do not extend the obsolete Capacitor design; historical changelog rows
-remain historical. The ADR status does not claim that owner ratification or native device controls
-have been completed.
+remain historical. The ratification does not claim that native device controls have been completed or
+that the security owner has signed ADR-0072 decisions 8-12 as controls.
+
+## Document Control — FireNote and DocLens corrections (2026-11-18)
+
+Two statements in §10.5 and §11 did not match a corpus check on 2026-11-18 and are corrected in place; no decision changes. Decision record: [ADR-0114](../adr/ADR-0114-deterministic-visit-note-drafting.md) (Accepted, 2026-11-19). Design: `docs/implementation/04-visit-note-drafting-redesign.md`.
+
+|Change                                                                                                                                                                                                                  |Driver                                    |
+|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------|
+|§10.5 trademark note: FireNote also markets separate AI tools (“Ember AI”, rolling out one tool at a time, vendor-claimed); the sentence that FireNote explicitly does not offer an LLM layer is replaced.                              |Competitor comparison, 2026-11-18         |
+|§11 row and §10.5 DocLens flow: seeding admission selections from document extractions is marked a design target, not built (nothing in M8 or `packages/hearthnote` seeds from extractions).                            |Code check, 2026-11-18                    |
 
 ## Document Control — Module 41 reconciliation (2026-11-11)
 
@@ -105,7 +115,7 @@ an ADR under `docs/adr/`. Module specs re-lock against these in later phases.
 |Module 22 (Document Management) updated — DocLens is first-class capability                                                                                                                            |Workflow integration                                                                                   |
 |Module 5, 7, 9, 11, 12 updated — extraction-commit entry paths                                                                                                                                         |Receive validated extractions                                                                          |
 |Module 32 (AI Platform) updated — document classifier and Claude verification pass                                                                                                                     |AI capabilities inventory                                                                              |
-|HearthNote integration: extracted H&P findings can seed admission note selections                                                                                                                      |Compound time savings — extraction → narrative                                                         |
+|HearthNote integration: extracted H&P findings can seed admission note selections (design target, not built as of 2026-11-18)                                                                                                                      |Compound time savings — extraction → narrative                                                         |
 |§23.13 (new) DocLens audit and provenance traceability                                                                                                                                                 |Surveyor defensibility of extraction-sourced chart data                                                |
 
 ## Document Control — Changes from v0.4
@@ -303,7 +313,7 @@ Organization (tenant — the ChartWarden customer)
 > | `apps/web` | **`apps/web`** |
 > | `apps/backend` | **`apps/backend`** |
 > | `packages/saas` | **`packages/saas-tenant-platform`** |
-> | `apps/mobile/` | **Does not exist in this repository.** The product direction is a separate React Native/Expo repository, `wardenx-mobile`; ADR-0072 proposes the formal supersession of ADR-0035. |
+> | `apps/mobile/` | **Does not exist in this repository.** The product direction is a separate React Native/Expo repository, `wardenx-mobile`; ADR-0072 supersedes ADR-0035 (ratified 2026-11-18). |
 > | `packages/rules-engine` | **Does not exist.** |
 > | §9's `apps/backend/src/{routes,services}` + `packages/db/src/repos` | **Do not exist.** The real layout is per-module vertical slices under `apps/backend/src/modules/NN-name/`. |
 >
@@ -973,7 +983,7 @@ The AI Platform is module 32, called by other modules through a typed SDK in `pa
 
 HearthNote is ChartWarden’s clinical narrative system. It is **not** generative-AI-first. It is a deterministic, rules-based documentation engine with an optional LLM enhancement layer and a non-negotiable compliance gate. It is the documentation surface for every clinical encounter, every IDG meeting, every discipline-specific note.
 
-> **Trademark note:** HearthNote is the ChartWarden-internal name. RapidChart® is a registered trademark of FireNote and is not used in ChartWarden. The architectural inspiration acknowledges FireNote’s deterministic approach, but HearthNote adds an opt-in LLM enhancement layer that FireNote explicitly does not offer.
+> **Trademark note:** HearthNote is the ChartWarden-internal name. RapidChart® is a registered trademark of FireNote and is not used in ChartWarden. The architectural inspiration acknowledges FireNote’s deterministic approach, but HearthNote adds an opt-in LLM enhancement layer (Layer 2, a deny-stub as built on 2026-11-18). As of 2026-11-18 FireNote also markets AI tools under “Ember AI”, rolling out “one tool at a time” (vendor wording; which are live is not stated; https://firenote.health/ember), and describes its documentation as “non-generative” (vendor-claimed, https://firenote.health/).
 
 ### 10.5.1 Three-layer architecture
 
@@ -1360,7 +1370,7 @@ The most valuable composite workflow:
 1. Admissions nurse uploads referral bundle → DocLens extracts everything
 1. Admissions nurse reviews and approves extractions (15-30 min for a typical bundle)
 1. Approved data populates the chart (demographics, meds, dx, allergies, code status)
-1. Admissions nurse opens the admission HearthNote — Layer 1 selections are *pre-populated* from extracted data
+1. Admissions nurse opens the admission HearthNote — Layer 1 selections are *pre-populated* from extracted data (design target, not built as of 2026-11-18; see `docs/implementation/04-visit-note-drafting-redesign.md`)
 1. Admissions nurse confirms / edits the pre-populated selections, adds her own observations
 1. Layer 2 (if opted in) polishes the narrative
 1. Layer 3 verifies completion
@@ -1730,6 +1740,7 @@ Each module is a complete spec produced as a separate document under `docs/modul
 - **Templates per discipline:** RN routine visit, RN admission, RN recert, LPN visit, CHHA visit, MSW assessment/follow-up, Chaplain assessment/visit, Volunteer visit, MD/NP visit, MD/NP F2F encounter — all built as HearthNote templates
 - **Workflows:** Visit creation from schedule, mid-visit save with selection state preserved, completion, attestation (with explicit confirmation of any LLM-modified content), late-entry handling, cosignature for LPN/CHHA notes
 - **Documentation clock ([ADR-0113](../adr/ADR-0113-visit-note-closure-clock.md)):** a note is closed (`signed`, `cosign_pending` or `cosigned`) within a per-tenant number of hours of the clinician's arrival. The clock starts at the EVV check-in, else the M17 visit start (consumed as `m17.visit.started`), else the first authoring write, else ad-hoc creation, and is stored on the encounter; the deadline and stage are computed on every read, never stored. A per-tenant policy sets off, warn or block (default warn); in block mode a request-time gate in the authenticate pipeline confines a staff session with an overdue note to an exact allowlist of closing and patient-safety routes (fail closed), and a supervisor can lift the block for one clinician for at most 24 hours behind step-up. Visit notes only in the first slice; HOPE windows, CTI and face-to-face follow. The calendar-day late-entry tiers are unchanged.
+- **Visit-note draft ([ADR-0114](../adr/ADR-0114-deterministic-visit-note-drafting.md)):** for a template that has a drafted section (today the RN routine visit), Layer 1 pre-drafts the note from structured records read through seams: the visit's linked care-plan goals and interventions, PPS and ESAS-r readings with their change since the patient's previous signed visit of the same discipline, the encounter's own vitals, and medication changes since that visit. There is no LLM in the draft path (Layer 2 stays a stub) and no text copy-forward. The clinician confirms, edits or deselects each drafted section; a confirmation binds to the snapshot version, the phrase-corpus version and a hash of the section's content, and the Layer 3 gate blocks signing until every drafted section is resolved. A signed note is amended on the addendum path, never overwritten. A per-tenant switch, default off, gates the draft and its sign check.
 - **Audit specifics for HearthNote-authored content:** Selection state, free-text entries, Layer 1 assembled output, Layer 2 modifications (if applicable), clinician accept/edit/reject decisions, final signed version — all retained for surveyor review
 - **Integrations:** EVV check-in/out triggers visit start/stop; Mileage feeds productivity; vital signs feed Module 9 trending (via an **outbox event**, payload type in `packages/types` — not an import edge, ADR-0007)
 - **Compliance:** Layer 3 gate enforces required-element completion before signing per encounter type × discipline. Where the gate must confirm **required assessment scales completed (Module 9)** or **required HOPE items captured (Module 10)**, it consults their **boot-registered completeness seams** (`AssessmentCompletenessProvider`, `HopeCompletenessProvider`, deny-stub default) — **not** a `dependsOn` edge to 9/10, so M8 stays `dependsOn=[6,7,36,38]` and the graph remains a DAG (ADR-0007).
@@ -2749,7 +2760,7 @@ These remain genuinely open and need decision before specific modules are spec�
 > records in [`docs/adr/`](../adr/README.md) (`ADR-0001`…): a bare `ADR-003` means row 3 of this
 > table (telehealth vendor — still open), *not* the four-digit `ADR-0003` (room-and-board revenue
 > codes) in `docs/adr/`. When an item here gets decided, it is closed by a four-digit ADR — as already happened
-> for ADR-008 (mobile → **ADR-0035**, with **ADR-0072** proposed as its supersession). Four-digit citations are gate-checked
+> for ADR-008 (mobile → **ADR-0072**, which superseded **ADR-0035** on ratification, 2026-11-18). Four-digit citations are gate-checked
 > (`arch:architecture-docs`); short-register references are not, deliberately.
 
 |ADR    |Title                                                                                                                         |Needed before      |
@@ -2761,7 +2772,7 @@ These remain genuinely open and need decision before specific modules are spec�
 |ADR-005|CAHPS Hospice Survey vendor partnership default                                                                               |Module 30 spec     |
 |ADR-006|EPCS enablement timeline (architecture present, certification kickoff date)                                                   |Module 12 spec     |
 |ADR-007|Map / routing provider (Mapbox vs. OSRM self-hosted)                                                                          |Module 17 spec     |
-|ADR-008|Mobile strategy — **ADR-0035 chose Capacitor; ADR-0072 proposes a separate React Native/Expo app and requires formal ratification**|Ratification pending|
+|ADR-008|Mobile strategy — **ADR-0035 chose Capacitor; ADR-0072 supersedes it with a separate React Native/Expo app (ratified 2026-11-18)**|Ratified 2026-11-18|
 
 -----
 

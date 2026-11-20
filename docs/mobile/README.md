@@ -85,7 +85,7 @@ Repères précis dans la révision auditée :
 | endpoints de notification | `apps/backend/src/modules/36-messaging/routes/messaging-routes.ts:781` |
 | ports de capacités | `packages/ui/src/core/capabilities/ports.ts` (only `NetworkStatusPort` today) |
 | token bleu clinique | `apps/web/src/index.css:44` |
-| décision historique remplacée à ratifier | `docs/adr/ADR-0072-separate-react-native-expo-mobile-app.md` |
+| décision historique remplacée (ratifiée le 2026-11-18) | `docs/adr/ADR-0072-separate-react-native-expo-mobile-app.md` |
 
 La détection des dépendances API dans le CSV est statique et limitée au composant directement lié par
 `screens.ts`. `À vérifier` signifie qu’aucun endpoint littéral n’a été démontré à cet endroit ; ce n’est
@@ -103,7 +103,7 @@ pas une preuve d’absence d’API. Les appels indirects, clients Better Auth et
   patient `apps/portal` ne sont pas incluses.
 - Le mode offline est borné aux brouillons explicitement conçus pour cela. Il n’existe pas de promesse
   de dossier patient complet hors ligne.
-- ADR-0072 est proposé à ratification. L’historique d’ADR-0035 est conservé et n’est pas réécrit.
+- ADR-0072 est accepté (ratifié le 2026-11-18). L’historique d’ADR-0035 est conservé et n’est pas réécrit.
 
 ## Glossaire
 

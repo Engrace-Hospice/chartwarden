@@ -55,10 +55,13 @@ const EXPECTED_ALLOWLIST = [
   "GET /api/v1/documents/:id/versions/:versionId/content",
   "GET /api/v1/encounters",
   "GET /api/v1/encounters/:encounterId",
+  "GET /api/v1/encounters/:encounterId/addenda/:addendumId/cosignature",
+  "GET /api/v1/encounters/:encounterId/addenda/:addendumId/draft",
   "GET /api/v1/encounters/:encounterId/addenda/:addendumId/selections",
   "GET /api/v1/encounters/:encounterId/care-plan-links",
   "GET /api/v1/encounters/:encounterId/chart-promotions",
   "GET /api/v1/encounters/:encounterId/cosignature",
+  "GET /api/v1/encounters/:encounterId/draft",
   "GET /api/v1/encounters/:encounterId/mileage",
   "GET /api/v1/encounters/:encounterId/selections",
   "GET /api/v1/encounters/:encounterId/template",
@@ -195,6 +198,9 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/breakglass/:id/revoke",
   "POST /api/v1/encounters",
   "POST /api/v1/encounters/:encounterId/addenda",
+  "POST /api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/acknowledge",
+  "POST /api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/sign",
+  "POST /api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/supervisor-release",
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/finalize",
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/sign",
   "POST /api/v1/encounters/:encounterId/administrative-override",
@@ -289,6 +295,8 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/triage-calls/:triageCallId/resume",
   "POST /api/v1/triage-calls/paper-reentry",
   "POST /api/v1/verbal-orders",
+  "PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId",
+  "PUT /api/v1/encounters/:encounterId/draft/sections/:sectionId",
   "PUT /api/v1/medication-orders/:id/coverage-determination",
 ];
 
@@ -397,10 +405,11 @@ const DENIED_CHART_GETS = [
   "GET /api/v1/scales",
 ];
 
-/** Family routes a blocked clinician does NOT get: voiding a note, the closure policy, authoring (not acting on) standing orders and triage protocols, safety administration. */
+/** Family routes a blocked clinician does NOT get: voiding a note, the closure policy, the visit-note draft switch (ADR-0114), authoring (not acting on) standing orders and triage protocols, safety administration. */
 const DENIED_FAMILY_ROUTES = [
   "DELETE /api/v1/safety/supervisor-subscriptions/:subscriptionId",
   "GET /api/v1/encounters/closure-policy",
+  "GET /api/v1/encounters/draft-policy",
   "GET /api/v1/safety/admin/terminus-readiness",
   "GET /api/v1/safety/dashboard",
   "GET /api/v1/safety/high-risk-areas",
@@ -421,6 +430,7 @@ const DENIED_FAMILY_ROUTES = [
   "POST /api/v1/triage-protocols",
   "POST /api/v1/triage-protocols/:protocolId/questions",
   "PUT /api/v1/encounters/closure-policy",
+  "PUT /api/v1/encounters/draft-policy",
 ];
 
 /** Entries that sit under a forbidden root on purpose: a reporter's own incident routes and the comfort kit deployed at the bedside. */
@@ -533,6 +543,8 @@ describe("the note-closure allowlist against the registered route table", () => 
     ["POST", "/api/v1/encounters/:encounterId/void"],
     ["GET", "/api/v1/encounters/closure-policy"],
     ["PUT", "/api/v1/encounters/closure-policy"],
+    ["GET", "/api/v1/encounters/draft-policy"],
+    ["PUT", "/api/v1/encounters/draft-policy"],
     ["POST", "/api/v1/visits"],
     ["POST", "/api/v1/visits/:visitId/start"],
     ["POST", "/api/v1/evv/check-in"],

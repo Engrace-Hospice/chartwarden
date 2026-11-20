@@ -9,6 +9,7 @@
 // SCOPE (T09): the route inventory + the §4.5 RBAC gating + the §4.6 cosigner predicate. The heavier
 // authoring surfaces (vitals/mileage, the F2F dual-write happy path) land in M8-T10; here they are lean
 // success handlers over the same optimistic-locked records so the inventory is wired and smoke-tested.
+import type { AuditContext } from "@chartwarden/audit";
 import {
   type AssemblyContext,
   HearthnoteAssemblyError,
@@ -20,6 +21,7 @@ import {
   resolveTemplate,
 } from "@chartwarden/hearthnote";
 import {
+  DRAFT_VOCAB_CODES,
   VOCAB_VERSION,
   activeNarrativeVocabRelease,
   entriesFor,
@@ -60,7 +62,13 @@ import {
 } from "../chart-promotion";
 import { type WithClosure, myNotesOf } from "../closure/my-notes";
 import { DEFAULT_CLOSURE_POLICY } from "../closure/policy-service";
-import { type CosignatureState, transitionCosignature } from "../cosignature/index";
+import {
+  type CosignDisplayStatus,
+  type CosignatureState,
+  transitionCosignature,
+} from "../cosignature/index";
+import { assertSliceNamesNoSection } from "../drafting/amendment-author";
+import type { NoteHistory, StructuredNoteView } from "../drafting/note-versions";
 import {
   type GateSectionSelection,
   assertGatePassed,
@@ -68,9 +76,9 @@ import {
   runEncounterComplianceGate,
 } from "../gate/index";
 import { type Layer2EnhanceOutcome, resolveLayer2Eligibility } from "../layer2";
-import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
+import { type AddendumState, assertDraftAddendum, transitionAddendum } from "../lifecycle/addendum";
 import { requiresCosignature, transitionEncounter } from "../lifecycle/encounter";
-import { EncounterStateError } from "../lifecycle/errors";
+import { ASSEMBLY_ERROR_CODE, EncounterStateError } from "../lifecycle/errors";
 import {
   checkEncounterDisciplinePair,
   checkMutableForEdit,
@@ -103,6 +111,11 @@ export interface SigningActor {
    * (it becomes `decidedByUserId` on `m8.chart_promotion.decided`); a promoted addendum refuses to sign without it.
    */
   readonly userId?: string;
+  /**
+   * The signer's role keys from the server-assembled session (never the request body). A primary sign recomputes the visit-note draft
+   * for THIS member (ADR-0114), whose Part 2 redaction depends on them; absent, the draft is redacted as for a member with no role.
+   */
+  readonly roles?: readonly string[];
 }
 
 /** The §4.6 owner facts the `m8.cosigner_role_match` predicate resolves for one encounter (RLS-backstopped). */
@@ -302,11 +315,19 @@ export interface EncounterView {
   readonly evvBracketPresent?: boolean;
   readonly selections?: Record<string, unknown> | null;
   readonly finalDocumentation?: string | null;
+  /**
+   * ADR-0114 VN-D30 (single-read only): `finalDocumentation` as structured data, for the same viewer under the same Part 2 rule. The latest signed text
+   * per section; a withheld section (or the whole note, `withheld: true`) carries `text: null`, so no marker string and no content reach a client as data.
+   * `null` when nothing is pinned. `finalDocumentation` stays as it was (the marker is in the string).
+   */
+  readonly finalDocumentationView?: StructuredNoteView | null;
   readonly vitals?: Record<string, unknown> | null;
   readonly mileage?: Record<string, unknown> | null;
   readonly carePlanLinks?: readonly CarePlanLinkResult[];
   /** The encounter's addenda, oldest first (single-read only; §4.1 route 2 — GAP-027). */
   readonly addenda?: readonly AddendumSummary[];
+  /** ADR-0114 VN-D30 (single-read only): every version of each amended section, per viewer; `null` when nothing was amended. */
+  readonly noteHistory?: NoteHistory | null;
 }
 
 /**
@@ -314,6 +335,23 @@ export interface EncounterView {
  * {@link EncounterView} (every other read) does not carry `closure`.
  */
 export type MyNoteView = WithClosure<EncounterView>;
+
+/**
+ * Which cosignature request a queue entry is, so a queue and its screen can tell a NOTE awaiting its cosigner from an AMENDMENT of a signed note
+ * awaiting its own (ADR-0114 VN-D30). The entry is still the encounter, as before; an amendment's carries its parent. Additive.
+ */
+export interface CosignQueueRef {
+  readonly subject: "note" | "addendum";
+  /** The addendum the request is for; `null` for a note's own request. */
+  readonly addendumId: string | null;
+  /** The cosignature request itself (a note awaiting cosignature always has one; `null` only for a legacy row routed before requests were persisted). */
+  readonly requestId: string | null;
+  readonly status: CosignatureState | null;
+  /** When the request was routed: the start of its own 12h/24h/48h clock. */
+  readonly routedAt: string | null;
+}
+
+export type CosignQueueEntry = EncounterView & { readonly cosign: CosignQueueRef };
 
 /**
  * One addendum as the encounter workspace view projects it. `authoredByUserId` is the AUTHOR's membership
@@ -327,6 +365,10 @@ export interface AddendumSummary {
   readonly createdAt: string;
   readonly signedAt: string | null;
   readonly version: number;
+  /** ADR-0114 VN-D30: the sections the addendum amends; empty for a free addendum. */
+  readonly amendsSectionIds?: readonly string[];
+  /** ADR-0114 VN-D30: where the addendum's own cosignature stands (`not_required` unless it amended a section of a note that needed a cosigner). */
+  readonly cosignStatus?: CosignDisplayStatus;
 }
 
 /** One live care-plan link as the encounter workspace view projects it (`GET /encounters/:id`). */
@@ -416,19 +458,6 @@ export function toSelectionState(
 }
 
 /**
- * The §2.7 code each `HearthnoteAssemblyError` maps to. The package documents this mapping in its own
- * `AssemblyErrorCode` union ("mapped to HTTP by the M8 service in T09"); it was never written, because
- * nothing ever called `assemble`. `TEMPLATE_KEY_MISMATCH` cannot occur through these routes — the key is
- * server-derived from the encounter row — but it is mapped rather than left to fall through as a 500.
- */
-const ASSEMBLY_ERROR_CODE = {
-  TEMPLATE_NOT_FOUND: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
-  TEMPLATE_KEY_MISMATCH: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
-  VOCAB_VERSION_MISMATCH: "VOCAB_VERSION_MISMATCH",
-  UNKNOWN_VOCAB_CODE: "UNKNOWN_VOCAB_CODE",
-} as const;
-
-/**
  * Assemble the Layer-1 narrative for a selection tree, refusing anything that cannot become a note.
  *
  * Two failures are checked, and neither is allowed to pass silently:
@@ -455,19 +484,28 @@ const ASSEMBLY_ERROR_CODE = {
  * Slots are derived from each phrase rather than declared, minus the two the assembly context supplies
  * (`patient`, `serviceDate`) — so the client is asked for exactly the `params` keys interpolation needs,
  * and a corpus edit cannot leave it asking for one the phrase no longer has.
+ *
+ * `draftWording` is the tenant's visit-note draft switch (ADR-0114 VN-D17): the draft phrases of `narrative-vocab@2026.11.0` are
+ * unreviewed wording, so they are offered only where the switch is on (it cannot be turned on while the corpus review is pending).
+ * Off, the menu is exactly what it was before that corpus: no draft phrase, and the RN routine visit's three formerly uncategorized
+ * sections as open as they were. The default is off, so a caller that does not know the tenant never leaks the draft wording.
  */
 export function buildTemplateMenu(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
+  options: { readonly draftWording?: boolean } = {},
 ): Omit<EncounterTemplateView, "encounterId"> {
-  const template = resolveTemplate(encounterType, discipline);
+  const draftWording = options.draftWording === true;
+  const template = resolveTemplate(encounterType, discipline, { draftWording });
   if (template === undefined) {
     throw new EncounterStateError(
       "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
       `no HearthNote template for '${hearthnoteTemplateKey(encounterType, discipline)}'`,
     );
   }
-  const eligible = entriesFor(encounterType, discipline);
+  const eligible = entriesFor(encounterType, discipline).filter(
+    (e) => draftWording || !DRAFT_VOCAB_CODES.has(e.code),
+  );
   return {
     templateKey: template.key,
     vocabVersion: VOCAB_VERSION,
@@ -573,7 +611,16 @@ export interface EncounterRouteService {
     actorUserId: string,
     args: CreateEncounterArgs,
   ): Promise<CreatedEncounter>;
-  getEncounter(organizationId: string, encounterId: string): Promise<EncounterView>;
+  /**
+   * `viewer` is the SESSION identity (roles and active membership from the server-assembled session, never the request): a note pinned with a
+   * 42 CFR Part 2 derived section shows its text (`finalDocumentation`) only to a viewer with Part 2 disclosure, any other viewer gets that
+   * section withheld (ADR-0114, VN-D13). Absent, the caller is read as a member with no role and no release (fails closed).
+   */
+  getEncounter(
+    organizationId: string,
+    encounterId: string,
+    viewer?: { readonly roles: readonly string[]; readonly membershipId: string | null },
+  ): Promise<EncounterView>;
   /**
    * `actorMembershipId` (here and on the vitals and mileage writes) is the caller's membership, or `null` for a caller with no acting
    * member (a system or test caller), and it is REQUIRED so no call site can leave it out by accident. ADR-0113: the first authoring
@@ -594,6 +641,8 @@ export interface EncounterRouteService {
     encounterId: string,
     input: VitalsInput,
     actorMembershipId: string | null,
+    /** The acting M2 USER id: the audit actor of the row (absent, the row-trigger image is filed under the system). Same on the writes below. */
+    actorUserId?: string,
   ): Promise<VitalsResult>;
   editVitals(
     organizationId: string,
@@ -601,6 +650,7 @@ export interface EncounterRouteService {
     vitalsId: string,
     input: VitalsInput,
     actorMembershipId: string | null,
+    actorUserId?: string,
   ): Promise<VitalsResult>;
   /**
    * The authoring menu — the resolved template + the vocabulary each section accepts (F-063).
@@ -661,7 +711,15 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     at: LocalDate,
-    args?: { lateEntryReason?: string },
+    args?: {
+      lateEntryReason?: string;
+      actorUserId?: string;
+      /**
+       * The finalizing member (the author), from the server-assembled session. The visit-note draft's gate preview (ADR-0114) reads the
+       * draft for this member; absent, it is redacted as for a member with no role and no Part 2 release.
+       */
+      viewer?: { readonly roles: readonly string[]; readonly membershipId: string | null };
+    },
   ): Promise<{ status: "finalized"; version: number }>;
   /** §2.6 D5 — invoke Layer-2. Returns the ladder's verdict; see {@link Layer2EnhanceOutcome} for why
    *  there is no `enhanced: true` arm to return yet (#123). */
@@ -718,27 +776,43 @@ export interface EncounterRouteService {
     encounterId: string,
     args: { isAdmin: boolean; reason: string; at: LocalDate; actorMembershipId: string },
   ): Promise<{ status: "voided" }>;
+  /**
+   * The four cosignature methods serve two SUBJECTS (ADR-0114 VN-D30): the note's own request, or - with `addendumId` - the request an amending
+   * addendum opened (its parent needed a cosigner). One workflow, one state machine, the same error codes; see ../cosignature/db-cosignature.ts.
+   */
   getCosignature(
     organizationId: string,
     encounterId: string,
+    addendumId?: string,
   ): Promise<{ status: CosignatureState | null }>;
-  /** `actor` is the CALLER: it may never be the encounter's author (GAP-029 — ForbiddenError). */
+  /** `actor` is the CALLER: it may never be the author of what it cosigns, the encounter's or the addendum's (GAP-029 — ForbiddenError). */
   cosignAcknowledge(
     organizationId: string,
     encounterId: string,
     actor: SigningActor,
     at: LocalDate,
+    addendumId?: string,
   ): Promise<{ status: CosignatureState }>;
+  /** Answers the encounter's status: `cosigned` after a note's cosignature, unchanged after an amendment's. */
   cosignSign(
     organizationId: string,
     encounterId: string,
     actor: SigningActor,
-    args: { isQualifiedRn: boolean; at: LocalDate },
+    args: { isQualifiedRn: boolean; at: LocalDate; addendumId?: string },
   ): Promise<{ status: EncounterStatus; cosignedAt: string }>;
   supervisorRelease(
     organizationId: string,
     encounterId: string,
-    args: { isSupervisor: boolean; reason: string; at: LocalDate },
+    args: {
+      isSupervisor: boolean;
+      reason: string;
+      at: LocalDate;
+      addendumId?: string;
+      /** The releasing supervisor's membership (the session's); recorded as who released, the note's own release included. */
+      actorMembershipId?: string;
+      /** The releasing supervisor's M2 USER id (a different id space): the audit actor of the release. */
+      actorUserId?: string;
+    },
   ): Promise<{ status: CosignatureState }>;
   createAddendum(
     organizationId: string,
@@ -749,6 +823,11 @@ export interface EncounterRouteService {
       authorMembershipId: string;
       /** WP 3.7: author this addendum from a proposed secure message (the reviewer still writes their own text). */
       promotion?: AddendumPromotionInput;
+      /** ADR-0114 VN-D30: section ids of the signed note's sealed rows this addendum amends (absent: a free addendum). */
+      amendsSectionIds?: readonly string[];
+      /** The author's session roles (never the request body): the Part 2 verdict for naming a section of a note that holds Part 2 content (VN-D30). */
+      roles?: readonly string[];
+      authorUserId?: string;
     },
   ): Promise<{ id: string; status: "draft" }>;
   /** WP 3.7: the proposals waiting on a reviewer for this encounter's patient (`enabled:false` when the hub flag is off). */
@@ -779,19 +858,31 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     addendumId: string,
+    actor: { userId?: string | undefined; roles: readonly string[]; membershipId: string | null },
   ): Promise<{ status: "finalized" }>;
   signAddendum(
     organizationId: string,
     encounterId: string,
     addendumId: string,
     actor: SigningActor,
-    args: { at: LocalDate },
-  ): Promise<{ status: "signed"; signedAt: string }>;
+    args: {
+      at: LocalDate;
+      /** The request's audit context: the explicit `m8.encounter.section_amended` events of an amending addendum are written with it (absent, one is derived from the actor). */
+      audit?: AuditContext;
+    },
+  ): Promise<{
+    status: "signed";
+    signedAt: string;
+    /** ADR-0114 VN-D30: the sections the addendum amended and the cosignature request it opened (absent for a free addendum). */
+    amendedSectionIds?: readonly string[];
+    cosignatureRequestId?: string | null;
+  }>;
   listEncounters(
     organizationId: string,
     filters?: EncounterListFilters,
   ): Promise<{ encounters: EncounterView[] }>;
-  cosignatureQueue(organizationId: string): Promise<{ encounters: EncounterView[] }>;
+  /** Every open cosignature request of the tenant: each note awaiting its cosigner, and each amendment awaiting its own (`cosign` tells them apart). */
+  cosignatureQueue(organizationId: string): Promise<{ encounters: CosignQueueEntry[] }>;
   /** The author's OPEN notes (draft + finalized), nearest closure deadline first, legacy (clockless) notes last. */
   myDrafts(organizationId: string, actorUserId: string): Promise<{ encounters: MyNoteView[] }>;
   billable(
@@ -1092,9 +1183,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     sections: readonly SelectionSectionInput[],
     at: "finalize" | "sign",
   ): boolean => {
-    const verdict = runAddendumComplianceGate(toGateSections(sections));
-    assertGatePassed(verdict, at);
-    return verdict.pass;
+    assertGatePassed(runAddendumComplianceGate(toGateSections(sections), 0), at); // no amendments here
+    return true;
   };
 
   const service: EncounterRouteService = {
@@ -1500,12 +1590,15 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return { status: "voided" };
     },
 
-    async getCosignature(organizationId, encounterId) {
+    async getCosignature(organizationId, encounterId, addendumId) {
       const r = load(organizationId, encounterId);
+      // The slice never opens an amendment's cosignature request (it has no sealed rows to amend).
+      if (addendumId !== undefined) throw new NotFoundError("cosignature_request");
       return { status: r.cosignature };
     },
-    async cosignAcknowledge(organizationId, encounterId, actor, at) {
+    async cosignAcknowledge(organizationId, encounterId, actor, at, addendumId) {
       const r = load(organizationId, encounterId);
+      if (addendumId !== undefined) throw new NotFoundError("cosignature_request");
       assertNotAuthor(r.authoredByUserId, actor.membershipId);
       const t = transitionCosignature(r.cosignature ?? "routed", { type: "acknowledge", at });
       r.cosignature = t.to;
@@ -1513,6 +1606,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     },
     async cosignSign(organizationId, encounterId, actor, args) {
       const r = load(organizationId, encounterId);
+      if (args.addendumId !== undefined) throw new NotFoundError("cosignature_request");
       assertNotAuthor(r.authoredByUserId, actor.membershipId);
       const ct = transitionCosignature(r.cosignature ?? "routed", {
         type: "sign",
@@ -1530,6 +1624,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     },
     async supervisorRelease(organizationId, encounterId, args) {
       const r = load(organizationId, encounterId);
+      if (args.addendumId !== undefined) throw new NotFoundError("cosignature_request");
       const t = transitionCosignature(r.cosignature ?? "hard_cap_reached", {
         type: "release",
         isSupervisor: args.isSupervisor,
@@ -1561,6 +1656,11 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         );
         if (taken) throw new ConflictError("that proposal already has an addendum");
       }
+      assertSliceNamesNoSection(
+        r.authoredByUserId,
+        { membershipId: args.authorMembershipId, roles: args.roles ?? [] },
+        args.amendsSectionIds,
+      );
       const id = subId();
       r.addenda.set(id, {
         ...(args.promotion ? { promotionRequestId: args.promotion.requestId } : {}),
@@ -1579,6 +1679,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const r = load(organizationId, encounterId);
       const a = r.addenda.get(addendumId);
       if (!a) throw new NotFoundError("addendum");
+      assertDraftAddendum(a.status);
       const layer1Preview = assembleSelections(
         r.encounterType,
         r.discipline,
@@ -1586,8 +1687,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         input.sections,
       );
       a.selections = input.sections;
-      a.version += 1;
-      return { version: a.version, layer1Preview };
+      return { version: ++a.version, layer1Preview };
     },
 
     async getAddendumSelections(organizationId, encounterId, addendumId) {
@@ -1703,7 +1803,16 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return {
         encounters: [...byId.values()]
           .filter((r) => r.organizationId === organizationId && r.status === "cosign_pending")
-          .map(toView),
+          .map((r) => ({
+            ...toView(r),
+            cosign: {
+              subject: "note" as const,
+              addendumId: null,
+              requestId: null,
+              status: r.cosignature,
+              routedAt: null,
+            },
+          })),
       };
     },
     async myDrafts(organizationId, actorUserId) {

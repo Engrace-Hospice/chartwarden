@@ -1,0 +1,702 @@
+// @vitest-environment jsdom
+// An addendum that amends sections of a signed drafted note (ADR-0114 VN-D30, S1 PR E3): each named section shows its redrafted text from
+// the addendum's OWN draft with confirm and deselect, Sign waits (naming the sections) until each is resolved, every refusal has a next
+// step, a deselected section amends nothing and says so, and a free addendum never reads a draft. Synthetic data only.
+import { ApiClientProvider } from "@chartwarden/ui";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SessionProvider } from "../../../shell/session";
+import type { AddendumRow } from "../addenda-api";
+import { AddendaPanel } from "../addendum-panel";
+
+const DRAFT_PATH = "/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft";
+const PUT_PATH = "/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft/sections/{sectionId}";
+const SIGN_PATH = "/api/v1/encounters/{encounterId}/addenda/{addendumId}/sign";
+
+const amending: AddendumRow = {
+  id: "add-1",
+  status: "finalized",
+  reason: "Pain pattern changed after the family call",
+  authoredByUserId: "mem-author",
+  createdAt: "2026-10-01T10:00:00Z",
+  signedAt: null,
+  version: 0,
+  amendsSectionIds: ["pain", "plan"],
+};
+
+const section = (sectionId: string, state: string, text = `Redrafted ${sectionId}.`) => ({
+  sectionId,
+  state,
+  text: state === "not_drafted" ? null : text,
+  contentHash: state === "not_drafted" ? null : `hash-${sectionId}`,
+  corpusVersion: state === "not_drafted" ? null : "2026.1.0",
+  part2Derived: state === "not_drafted" ? null : false,
+  origins: state === "not_drafted" ? [] : ["vitals"],
+});
+
+let sections: ReturnType<typeof section>[];
+let draftAnswer: "ok" | "off" | "unavailable" | "forbidden";
+
+const answerDraft = () => {
+  if (draftAnswer === "off") {
+    return {
+      error: { error: { code: "NOT_FOUND", message: "not found" } },
+      response: { status: 404 },
+    };
+  }
+  if (draftAnswer === "forbidden") {
+    return {
+      error: {
+        error: { code: "FORBIDDEN", message: "only the addendum's author may read this draft" },
+      },
+      response: { status: 403 },
+    };
+  }
+  if (draftAnswer === "unavailable") {
+    return {
+      error: { error: { code: "DRAFT_UNAVAILABLE", message: "no" } },
+      response: { status: 503 },
+    };
+  }
+  return {
+    data: {
+      addendumId: "add-1",
+      encounterId: "enc-1",
+      patientId: "patient-1",
+      templateKey: "routine_visit:rn",
+      asOf: "2026-10-01T23:59:59.999Z",
+      sections,
+    },
+  };
+};
+
+beforeEach(() => {
+  sections = [section("pain", "unresolved"), section("plan", "unresolved")];
+  draftAnswer = "ok";
+});
+afterEach(cleanup);
+
+type PutImpl = (path: string, init: { body: { resolution: string } }) => Promise<unknown>;
+const resolvedPut: PutImpl = async (_path, init) => ({
+  data: {
+    ...section("pain", init.body.resolution === "confirmed" ? "confirmed" : "deselected"),
+  },
+});
+
+function mount(
+  addenda: readonly AddendumRow[],
+  over: { POST?: ReturnType<typeof vi.fn>; PUT?: PutImpl } = {},
+) {
+  const onChanged = vi.fn();
+  const GET = vi.fn(async (path: string) => {
+    if (path === DRAFT_PATH) return answerDraft();
+    return {
+      data: { templateKey: "k", vocabVersion: "v", sections: [], layer1Preview: "", version: 1 },
+    };
+  });
+  const PUT = vi.fn(over.PUT ?? resolvedPut);
+  const POST = over.POST ?? vi.fn(async () => ({ data: { status: "signed" } }));
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: (
+          <ApiClientProvider client={{ GET, PUT, POST, PATCH: vi.fn() } as never}>
+            <SessionProvider session={null}>
+              <AddendaPanel encounterId="enc-1" addenda={addenda} onChanged={onChanged} />
+            </SessionProvider>
+          </ApiClientProvider>
+        ),
+      },
+    ],
+    { initialEntries: ["/patients/patient-1/encounters/enc-1"] },
+  );
+  render(<RouterProvider router={router} />);
+  return { GET, PUT, POST, onChanged };
+}
+
+const row = () => screen.getByLabelText("Addendum add-1");
+const review = async () => within(await screen.findByRole("region", { name: /^Amended sections/ }));
+const draftReads = (GET: ReturnType<typeof mount>["GET"]) =>
+  GET.mock.calls.filter(([path]) => path === DRAFT_PATH).length;
+
+describe("the amended sections of an addendum", () => {
+  it("names them and shows each one's redrafted text from the addendum's own draft", async () => {
+    const { GET } = mount([amending]);
+    const inReview = await review();
+    expect(await inReview.findByText("Redrafted pain.")).toBeInTheDocument();
+    expect(inReview.getByText("Redrafted plan.")).toBeInTheDocument();
+    expect(within(row()).getByText("Pain, Plan")).toBeInTheDocument();
+    expect(GET).toHaveBeenCalledWith(DRAFT_PATH, {
+      params: { path: { encounterId: "enc-1", addendumId: "add-1" } },
+    });
+  });
+
+  it("reads no draft for a free addendum, and offers nothing to review", () => {
+    const { GET } = mount([
+      { ...amending, amendsSectionIds: [] },
+      { ...amending, id: "add-2", amendsSectionIds: undefined },
+    ]);
+    expect(GET.mock.calls.filter(([p]) => p === DRAFT_PATH)).toHaveLength(0);
+    expect(screen.queryByRole("region", { name: /^Amended sections/ })).toBeNull();
+  });
+
+  it("confirms a section against the hash and corpus version it showed", async () => {
+    const user = userEvent.setup();
+    const { PUT } = mount([amending]);
+    const inReview = await review();
+    await inReview.findByText("Redrafted pain.");
+    await user.click(
+      inReview.getAllByRole("button", { name: "Confirm section" })[0] as HTMLElement,
+    );
+    await waitFor(() => expect(PUT).toHaveBeenCalledTimes(1));
+    expect(PUT).toHaveBeenCalledWith(PUT_PATH, {
+      params: { path: { encounterId: "enc-1", addendumId: "add-1", sectionId: "pain" } },
+      body: { resolution: "confirmed", contentHash: "hash-pain", corpusVersion: "2026.1.0" },
+    });
+    expect(
+      await inReview.findByText(/will be amended with the text you confirmed/),
+    ).toBeInTheDocument();
+  });
+
+  it("says a deselected section amends nothing", async () => {
+    const user = userEvent.setup();
+    mount([amending]);
+    const inReview = await review();
+    await inReview.findByText("Redrafted pain.");
+    await user.click(
+      inReview.getAllByRole("button", { name: "Deselect section" })[0] as HTMLElement,
+    );
+    expect(
+      await inReview.findByText(/this amends nothing, and the section stays as it was signed/),
+    ).toBeInTheDocument();
+  });
+
+  it("says a section with nothing to redraft amends nothing", async () => {
+    sections = [section("pain", "confirmed"), section("plan", "not_drafted")];
+    mount([amending]);
+    const inReview = await review();
+    expect(
+      await inReview.findByText(/Nothing in the record to redraft this section/),
+    ).toBeInTheDocument();
+  });
+
+  it("has no axe violations", async () => {
+    mount([amending]);
+    const inReview = await review();
+    await inReview.findByText("Redrafted pain.");
+    expect((await axe.run(row())).violations).toEqual([]);
+  });
+});
+
+describe("Sign waits for the amended sections", () => {
+  it("names the unresolved sections beside Sign, which stays reachable but opens nothing", async () => {
+    const user = userEvent.setup();
+    mount([amending]);
+    const inReview = await review();
+    await inReview.findByText("Redrafted pain.");
+    const sign = within(row()).getByRole("button", { name: "Sign addendum" });
+    expect(sign).toHaveAttribute("aria-disabled", "true");
+    expect(sign).toHaveAccessibleDescription(
+      /Pain \(not confirmed or deselected yet\), Plan \(not confirmed or deselected yet\)/,
+    );
+    sign.focus();
+    expect(sign).toHaveFocus();
+    await user.click(sign);
+    expect(screen.queryByRole("dialog", { name: "Sign addendum" })).toBeNull();
+  });
+
+  it("names a section whose sources changed after it was resolved", async () => {
+    sections = [section("pain", "confirmed"), section("plan", "needs_reconfirmation")];
+    mount([amending]);
+    const sign = await within(row()).findByRole("button", { name: "Sign addendum" });
+    await waitFor(() =>
+      expect(sign).toHaveAccessibleDescription(/Plan \(changed since you resolved it\)/),
+    );
+  });
+
+  it("opens the sign ceremony once every named section is confirmed or deselected", async () => {
+    const user = userEvent.setup();
+    sections = [section("pain", "confirmed"), section("plan", "deselected")];
+    mount([amending]);
+    const sign = await within(row()).findByRole("button", { name: "Sign addendum" });
+    await waitFor(() => expect(sign).not.toHaveAttribute("aria-disabled"));
+    await user.click(sign);
+    expect(screen.getByRole("dialog", { name: "Sign addendum" })).toBeInTheDocument();
+  });
+
+  it("waits while the amended sections are still being read", () => {
+    mount([amending]);
+    expect(within(row()).getByRole("button", { name: "Sign addendum" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("does not hold a free addendum back", () => {
+    mount([{ ...amending, amendsSectionIds: [] }]);
+    expect(within(row()).getByRole("button", { name: "Sign addendum" })).not.toHaveAttribute(
+      "aria-disabled",
+    );
+  });
+
+  it("reviews the sections while the addendum is still a draft, and offers Finalize rather than Sign", async () => {
+    mount([{ ...amending, status: "draft" }]);
+    const inReview = await review();
+    await inReview.findByText("Redrafted pain.");
+    expect(within(row()).getByRole("button", { name: "Finalize addendum" })).toBeInTheDocument();
+    expect(within(row()).queryByRole("button", { name: "Sign addendum" })).toBeNull();
+  });
+});
+
+describe("when the amended sections cannot be shown", () => {
+  it("says they could not be read, offers a retry that reads again, and holds Sign back", async () => {
+    const user = userEvent.setup();
+    draftAnswer = "unavailable";
+    const { GET } = mount([amending]);
+    const inReview = await review();
+    expect(await inReview.findByText(/could not be read/)).toBeInTheDocument();
+    expect(within(row()).getByRole("button", { name: "Sign addendum" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    draftAnswer = "ok";
+    await user.click(inReview.getByRole("button", { name: "Try again" }));
+    expect(await inReview.findByText("Redrafted pain.")).toBeInTheDocument();
+    expect(draftReads(GET)).toBe(2);
+  });
+
+  it("says the draft is off or unreadable for this role, leaving the sign to the server", async () => {
+    draftAnswer = "off";
+    mount([amending]);
+    const inReview = await review();
+    expect(
+      await inReview.findByText(
+        /switched off for your organization, or your role does not include reading it/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(row()).getByRole("button", { name: "Sign addendum" })).not.toHaveAttribute(
+      "aria-disabled",
+    );
+  });
+
+  // The addendum's draft is its author's alone (403 for anyone else): the panel says so in the app's own words, never the server's, and is
+  // whole (the region, one sentence, no controls that cannot work, no spinner left behind), and Sign waits with the same reason.
+  it("says the sections are the author's to review, in the app's words, and holds Sign back", async () => {
+    draftAnswer = "forbidden";
+    mount([amending]);
+    const inReview = await review();
+    const said = await inReview.findByText(/Only the author of this addendum can review/);
+    expect(said).toHaveTextContent(/Nothing was changed/);
+    expect(row()).not.toHaveTextContent(/only the addendum's author may read this draft/);
+    expect(row()).not.toHaveTextContent(/switched off|role does not include/);
+    expect(inReview.queryByText(/Reading the amended sections/)).toBeNull();
+    expect(inReview.queryByRole("button")).toBeNull();
+    expect(inReview.queryByRole("heading")).toBeNull();
+    const sign = within(row()).getByRole("button", { name: "Sign addendum" });
+    expect(sign).toHaveAttribute("aria-disabled", "true");
+    expect(sign).toHaveAccessibleDescription(/Only the author of this addendum/);
+  });
+
+  it("explains a stale confirmation on resolve and re-reads the draft", async () => {
+    const user = userEvent.setup();
+    const { GET } = mount([amending], {
+      PUT: async () => ({
+        error: { error: { code: "DRAFT_SECTION_STALE", message: "stale" } },
+        response: { status: 409 },
+      }),
+    });
+    const inReview = await review();
+    await inReview.findByText("Redrafted pain.");
+    await user.click(
+      inReview.getAllByRole("button", { name: "Confirm section" })[0] as HTMLElement,
+    );
+    expect(await inReview.findByText(/changed after you opened it/)).toBeInTheDocument();
+    await waitFor(() => expect(draftReads(GET)).toBe(2));
+  });
+});
+
+// A reader without Part 2 disclosure is sent only the section ids they may be told of: a Part 2 section an addendum named is left out of
+// `amendsSectionIds`, signed or not. The list is what the page can say; it never says how many sections there were.
+describe("an addendum whose Part 2 sections the API left out of what it amends", () => {
+  it("lists only the sections it was sent and claims no total, signed or not", async () => {
+    sections = [section("pain", "confirmed")];
+    mount([
+      { ...amending, amendsSectionIds: ["pain"] },
+      {
+        ...amending,
+        id: "add-2",
+        status: "signed",
+        signedAt: "2026-10-02T10:00:00Z",
+        amendsSectionIds: ["plan"],
+      },
+    ]);
+    const open = row();
+    expect(within(open).getByText("Pain")).toBeInTheDocument();
+    await review();
+    const signed = screen.getByLabelText("Addendum add-2");
+    expect(within(signed).getByText("Plan")).toBeInTheDocument();
+    for (const item of [open, signed]) {
+      expect(item.textContent).not.toMatch(/\b\d+ (of \d+ )?sections?\b/i);
+      expect(item.textContent).not.toMatch(/part 2|withheld/i);
+    }
+  });
+
+  it("reads as a free addendum, with no review, no draft read and no hole, when every section it named was left out", () => {
+    const { GET } = mount([
+      { ...amending, amendsSectionIds: [], cosignStatus: "pending" },
+      {
+        ...amending,
+        id: "add-2",
+        status: "signed",
+        signedAt: "2026-10-02T10:00:00Z",
+        amendsSectionIds: [],
+        cosignStatus: "pending",
+      },
+    ]);
+    expect(draftReads(GET)).toBe(0);
+    expect(screen.queryByRole("region", { name: /^Amended sections/ })).toBeNull();
+    expect(screen.queryByText("Amends")).toBeNull();
+    expect(screen.queryByText("Cosignature of this amendment")).toBeNull();
+    expect(screen.getAllByText("Pain pattern changed after the family call")).toHaveLength(2);
+  });
+});
+
+describe("a confirmation by someone other than the addendum's author", () => {
+  it("says only the author can confirm or deselect when the API answers 403, and leaves the section unresolved with Sign waiting", async () => {
+    const user = userEvent.setup();
+    const { PUT } = mount([amending], {
+      PUT: async () => ({
+        error: { error: { code: "FORBIDDEN", message: "only the author of an addendum" } },
+        response: { status: 403 },
+      }),
+    });
+    const inReview = await review();
+    await inReview.findByText("Redrafted pain.");
+    await user.click(
+      inReview.getAllByRole("button", { name: "Deselect section" })[0] as HTMLElement,
+    );
+    const note = await inReview.findByText(
+      /Only the author of this addendum can confirm or deselect/,
+    );
+    expect(note).toHaveTextContent(/Nothing was changed/);
+    expect(note).not.toHaveTextContent(/only the author of an addendum/);
+    expect(inReview.queryByText(/You do not have access/)).toBeNull();
+    // No half-resolved state: no outcome line, no state change, and the addendum still cannot be signed.
+    expect(inReview.queryByText(/will be amended|amends nothing/)).toBeNull();
+    expect(inReview.getAllByRole("button", { name: "Confirm section" })).toHaveLength(2);
+    expect(within(row()).getByRole("button", { name: "Sign addendum" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(PUT).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("two addenda amending the same section", () => {
+  it("name their review regions and their sections apart, by when each addendum was opened", async () => {
+    mount([amending, { ...amending, id: "add-2", createdAt: "2026-10-03T09:30:00Z" }]);
+    const regions = await screen.findAllByRole("region", { name: /^Amended sections/ });
+    expect(regions).toHaveLength(2);
+    expect(new Set(regions.map((r) => r.getAttribute("aria-label"))).size).toBe(2);
+    expect(regions[0]?.getAttribute("aria-label")).toContain("2026-10-01 10:00");
+    expect(regions[1]?.getAttribute("aria-label")).toContain("2026-10-03 09:30");
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("heading", { name: /^Pain: redrafted from the record/ }),
+      ).toHaveLength(2),
+    );
+    const titles = screen
+      .getAllByRole("heading", { name: /^Pain: redrafted from the record/ })
+      .map((h) => h.textContent);
+    expect(new Set(titles).size).toBe(2);
+  });
+});
+
+// Two amendments opened in the same minute show the same date; the position in the list ("addendum 2 of 3") is what tells them apart.
+describe("two addenda amending the same section, opened in the same minute", () => {
+  it("name their review regions and headings apart by their place in the list, keeping the date", async () => {
+    mount([
+      { ...amending, createdAt: "2026-10-01T10:00:05Z" },
+      { ...amending, id: "add-2", createdAt: "2026-10-01T10:00:50Z" },
+      { ...amending, id: "add-3", createdAt: "2026-10-01T10:00:59Z" },
+    ]);
+    const regions = await screen.findAllByRole("region", { name: /^Amended sections/ });
+    const names = regions.map((r) => r.getAttribute("aria-label"));
+    expect(new Set(names).size).toBe(3);
+    names.forEach((name, i) => {
+      expect(name).toContain(`addendum ${i + 1} of 3`);
+      expect(name).toContain("2026-10-01 10:00");
+    });
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("heading", { name: /^Pain: redrafted from the record/ }),
+      ).toHaveLength(3),
+    );
+    const titles = screen
+      .getAllByRole("heading", { name: /^Pain: redrafted from the record/ })
+      .map((h) => h.textContent);
+    expect(new Set(titles).size).toBe(3);
+    expect(titles[1]).toContain("addendum 2 of 3");
+  });
+});
+
+describe("a refused sign", () => {
+  async function signRefused(error: { status: number; code: string; details?: unknown }) {
+    const user = userEvent.setup();
+    sections = [section("pain", "confirmed"), section("plan", "confirmed")];
+    const POST = vi.fn(async (path: string) =>
+      path === SIGN_PATH
+        ? {
+            error: { error: { code: error.code, message: "server words", details: error.details } },
+            response: { status: error.status },
+          }
+        : { data: {} },
+    );
+    const mounted = mount([amending], { POST });
+    const sign = await within(row()).findByRole("button", { name: "Sign addendum" });
+    await waitFor(() => expect(sign).not.toHaveAttribute("aria-disabled"));
+    await user.click(sign);
+    await user.click(screen.getByLabelText(/I attest this addendum/));
+    await user.click(screen.getByRole("button", { name: "Sign & commit" }));
+    return { ...mounted, alert: await screen.findByRole("alert") };
+  }
+
+  it("409 DRAFT_SECTION_STALE names the sections and re-reads the draft", async () => {
+    const { alert, GET } = await signRefused({
+      status: 409,
+      code: "DRAFT_SECTION_STALE",
+      details: [{ field: "plan", code: "DRAFT_SECTION_STALE", message: "m" }],
+    });
+    expect(alert.textContent).toContain("Plan (changed since you resolved it)");
+    expect(alert.textContent).toMatch(/sign again/);
+    await waitFor(() => expect(draftReads(GET)).toBe(2));
+  });
+
+  it("412 STEP_UP_AUTH_REQUIRED offers the real re-authentication screen beside an app-worded sentence", async () => {
+    const { alert, onChanged } = await signRefused({ status: 412, code: "STEP_UP_AUTH_REQUIRED" });
+    expect(alert.textContent).toMatch(/re-authenticat/i);
+    expect(alert.textContent).not.toContain("server words");
+    expect(
+      within(alert).getByRole("link", { name: "Re-authenticate" }).getAttribute("href"),
+    ).toMatch(/^\/step-up\?returnTo=/);
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["DRAFT_OFF_AFTER_FINALIZE", 409, /Visit-note Draft/],
+    ["COMPLIANCE_GATE_UNAVAILABLE", 503, /Try again in a moment/],
+    ["NO_ELIGIBLE_COSIGNER", 422, /cosigner/],
+    ["AMENDMENT_PART2_NOT_ENTITLED", 422, /cannot choose sections to amend on this note/],
+  ])("%s says what happened and what to do", async (code, status, wording) => {
+    const { alert, onChanged } = await signRefused({ status, code });
+    expect(alert.textContent).toMatch(wording);
+    expect(alert.textContent).toMatch(/Nothing was changed/);
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe("signing while a sign is in flight", () => {
+  it("sends the sign once however often the commit is pressed, and leaves Cancel available", async () => {
+    const user = userEvent.setup();
+    sections = [section("pain", "confirmed"), section("plan", "confirmed")];
+    let land: (reply: unknown) => void = () => undefined;
+    const reply = new Promise((resolve) => {
+      land = resolve;
+    });
+    const POST = vi.fn(async () => reply);
+    const { onChanged } = mount([amending], { POST });
+    const sign = await within(row()).findByRole("button", { name: "Sign addendum" });
+    await waitFor(() => expect(sign).not.toHaveAttribute("aria-disabled"));
+    await user.click(sign);
+    await user.click(screen.getByLabelText(/I attest this addendum/));
+    const commit = screen.getByRole("button", { name: "Sign & commit" });
+    await user.click(commit);
+    await user.click(screen.getByRole("button", { name: "Signing…" }));
+    await user.click(screen.getByRole("button", { name: "Signing…" }));
+    expect(POST).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Signing…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    land({ data: { status: "signed", amendedSectionIds: [] } });
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("a signed amendment", () => {
+  it("says how many sections it amended and that a cosignature was requested", async () => {
+    const user = userEvent.setup();
+    sections = [section("pain", "confirmed"), section("plan", "deselected")];
+    const POST = vi.fn(async () => ({
+      data: {
+        status: "signed",
+        signedAt: "2026-10-02T10:00:00Z",
+        amendedSectionIds: ["pain"],
+        cosignatureRequestId: "req-1",
+      },
+    }));
+    const { onChanged } = mount([amending], { POST });
+    const sign = await within(row()).findByRole("button", { name: "Sign addendum" });
+    await waitFor(() => expect(sign).not.toHaveAttribute("aria-disabled"));
+    await user.click(sign);
+    await user.click(screen.getByLabelText(/I attest this addendum/));
+    await user.click(screen.getByRole("button", { name: "Sign & commit" }));
+    expect(
+      await screen.findByText(
+        "Addendum signed. 1 section amended. A cosignature was requested for this amendment.",
+      ),
+    ).toBeInTheDocument();
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("says it in a status region that was already on the page, so it is announced", async () => {
+    const user = userEvent.setup();
+    sections = [section("pain", "confirmed"), section("plan", "confirmed")];
+    const POST = vi.fn(async () => ({
+      data: { status: "signed", amendedSectionIds: ["pain"], cosignatureRequestId: null },
+    }));
+    mount([amending], { POST });
+    const sign = await within(row()).findByRole("button", { name: "Sign addendum" });
+    const region = row().querySelector("#signed-note-add-1");
+    expect(region).not.toBeNull();
+    expect(region?.textContent).toBe("");
+    await waitFor(() => expect(sign).not.toHaveAttribute("aria-disabled"));
+    await user.click(sign);
+    await user.click(screen.getByLabelText(/I attest this addendum/));
+    await user.click(screen.getByRole("button", { name: "Sign & commit" }));
+    await waitFor(() => expect(region?.textContent).toBe("Addendum signed. 1 section amended."));
+    expect(row().querySelector("#signed-note-add-1")).toBe(region);
+  });
+
+  it("shows what it amended and its cosignature status, and reads no draft", () => {
+    const { GET } = mount([
+      { ...amending, status: "signed", signedAt: "2026-10-02T10:00:00Z", cosignStatus: "cosigned" },
+    ]);
+    expect(within(row()).getByText("Pain, Plan")).toBeInTheDocument();
+    expect(within(row()).getByText("Cosignature of this amendment")).toBeInTheDocument();
+    expect(within(row()).getByText("Cosigned")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /^Amended sections/ })).toBeNull();
+    expect(draftReads(GET)).toBe(0);
+  });
+
+  it("shows no cosignature row when the API sent no status", () => {
+    mount([{ ...amending, status: "signed", signedAt: "2026-10-02T10:00:00Z" }]);
+    expect(within(row()).queryByText("Cosignature of this amendment")).toBeNull();
+  });
+});
+
+// A refused gate at sign names the addendum's own state in the app's words: with every section resolved and nothing sealed it does not say
+// anything was deselected (a section whose sources are gone was confirmed, not deselected), and it never shows the server's sentence.
+describe("an amending addendum whose sign the server refuses as empty", () => {
+  it("is told no section is left to amend, with a way on, and never that sections were deselected", async () => {
+    sections = [section("pain", "confirmed"), section("plan", "confirmed")];
+    const user = userEvent.setup();
+    mount([amending], {
+      POST: vi.fn(async () => ({
+        error: {
+          error: {
+            code: "COMPLIANCE_GATE_FAILED",
+            message: "the Layer-3 compliance gate did not pass; the encounter cannot be signed",
+            details: [{ code: "ADDENDUM_EMPTY", message: "an addendum must carry something" }],
+          },
+        },
+        response: { status: 422 },
+      })),
+    });
+    await review();
+    await user.click(await within(row()).findByRole("button", { name: "Sign addendum" }));
+    await user.click(screen.getByLabelText(/I attest this addendum/));
+    await user.click(screen.getByRole("button", { name: "Sign & commit" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/nothing in it now: no section is left to amend/);
+    expect(alert.textContent).toMatch(/confirm a redrafted section if one is offered/i);
+    expect(alert.textContent).not.toMatch(/deselect|encounter|Layer-3/i);
+  });
+});
+
+// The editor of an AMENDING draft addendum counts a confirmed amended section as content, as the server's gate does: it only says "nothing
+// here yet" while no finding or note is in, no named section is confirmed, and the addendum's own draft has been read.
+describe("the editor's hint on an amending draft addendum", () => {
+  const TEMPLATE = {
+    encounterId: "enc-1",
+    sections: [
+      {
+        sectionId: "pain",
+        heading: "Pain",
+        required: true,
+        allowedCategories: [],
+        entries: [
+          {
+            code: "pain.controlled",
+            label: "Pain controlled",
+            category: "c",
+            bodySystem: null,
+            slots: [],
+          },
+        ],
+      },
+    ],
+  };
+  const drafting: AddendumRow = { ...amending, status: "draft", amendsSectionIds: ["pain"] };
+  const HINT = /^Nothing here yet\. Before finalizing/;
+
+  async function openEditor(draftState: string, answer: typeof draftAnswer = "ok") {
+    sections = [section("pain", draftState)];
+    draftAnswer = answer;
+    const GET = vi.fn(async (path: string) => {
+      if (path === DRAFT_PATH) return answerDraft();
+      if (path === "/api/v1/encounters/{encounterId}/template") return { data: TEMPLATE };
+      return {
+        data: { templateKey: "k", vocabVersion: "v", sections: [], layer1Preview: "", version: 1 },
+      };
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: (
+            <ApiClientProvider
+              client={{ GET, PUT: vi.fn(), POST: vi.fn(), PATCH: vi.fn() } as never}
+            >
+              <SessionProvider session={null}>
+                <AddendaPanel encounterId="enc-1" addenda={[drafting]} onChanged={vi.fn()} />
+              </SessionProvider>
+            </ApiClientProvider>
+          ),
+        },
+      ],
+      { initialEntries: ["/patients/patient-1/encounters/enc-1"] },
+    );
+    render(<RouterProvider router={router} />);
+    await screen.findByRole("region", { name: /^Amended sections/ });
+    userEvent.setup();
+    await userEvent.click(within(row()).getByRole("button", { name: "Edit draft" }));
+    return screen.findByLabelText("Addendum editor");
+  }
+
+  it("also offers confirming a redrafted section while none is confirmed", async () => {
+    const editor = await openEditor("unresolved");
+    expect(
+      within(editor).getByText(
+        "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section if one is offered.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing once an amended section is confirmed, though no finding or note is in", async () => {
+    const editor = await openEditor("confirmed");
+    expect(within(editor).queryByText(HINT)).toBeNull();
+  });
+
+  it("still asks while the only named section is deselected", async () => {
+    const editor = await openEditor("deselected");
+    expect(within(editor).getByText(HINT)).toBeInTheDocument();
+  });
+
+  it("says nothing when the addendum's own draft could not be read: an unknown count is not an empty one", async () => {
+    const editor = await openEditor("unresolved", "unavailable");
+    expect(within(editor).queryByText(HINT)).toBeNull();
+  });
+});

@@ -83,8 +83,8 @@ function toOutcome<T>(result: Settled<T>): Outcome<T> {
 
 const NO_ANSWER_OUTCOME = { ok: false, status: 0, error: null } as const;
 
-/** A request that throws got no answer at all: the result is `status: 0`, so a screen never has to catch. */
-async function settle<T>(send: () => Promise<Settled<T>>): Promise<Outcome<T>> {
+/** A request that throws got no answer at all: the result is `status: 0`, so a screen never has to catch. Shared with draft-api.ts. */
+export async function settle<T>(send: () => Promise<Settled<T>>): Promise<Outcome<T>> {
   try {
     return toOutcome(await send());
   } catch {

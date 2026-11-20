@@ -222,4 +222,28 @@ export const M8_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: [],
     isPartTwoEligible: false,
   },
+  {
+    action: "m8.encounter.draft_section_resolved",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "A clinician confirmed or deselected one drafted section of a visit note, or the author of an amending addendum one section it names (encounterId, addendumId = set for an amended section only, sectionId, resolution = confirmed | deselected, edited = the section carried the clinician's own text, corpusVersion the resolution is bound to, part2Derived = the compiler's verdict on the section, sourceRefs = the ids and kinds of the section's sources (omitted when part2Derived), carePlanElementsLinked / carePlanElementsRemoved counts; severity info; ids, enums and counts only, never text and never a content hash; the only place a deselection that leaves the section empty is recorded; ADR-0114 VN-D7 / VN-D8). Part 2 eligible: a part2Derived section is filed under compliance_42cfr_part2 (the emitter selects the class per event; the default stays compliance).",
+    denylistCategories: [],
+    isPartTwoEligible: true,
+  },
+  {
+    action: "m8.encounter.section_amended",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "A signed addendum amended sections of a signed visit note (encounterId, addendumId, sectionCount = how many sections the addendum amended; severity info; the addendum id and a count only, never a section id, a Part 2 flag, text, a content hash or a source id; ONE event per signed addendum that amended at least one section, written in its sign transaction beside the sealed amendment rows; filed under the standard compliance class, never the Part 2 class, because audit.read is not Part 2 gated and either would tell a reader which sections hold Part 2 content; the per-section trail is the row trigger of hearthnote_signed_section; the outbox event of the same name is one per section and carries ids only; ADR-0114 VN-D30). Not Part 2 eligible.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m8.encounter.draft_policy_changed",
+    moduleOwner: "m8",
+    defaultRetentionClass: "compliance",
+    description: "A tenant's visit-note draft switch was written (previousEnabled, enabled, enabledAt; severity warn; booleans and an instant only, no free text; ADR-0114 VN-D17). No patient, so never Part 2.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
 ];

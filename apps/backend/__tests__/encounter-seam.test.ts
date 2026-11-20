@@ -221,6 +221,7 @@ describe("boot wiring (registerEncounterSeams)", () => {
   it("M8 CONSUMES M7's CarePlanReader through the registry (boot-validated seam, not a schema import)", () => {
     const carePlan = {
       relevantElementsForEncounter: async () => null,
+      relevantElementsAsOf: async () => null,
       isReviewOverdue: async () => null,
       // The two M30 org rollups the seam also publishes; this case asserts registry round-trip only.
       fifteenDayCycleCountsForOrg: async () => {

@@ -10,21 +10,46 @@ import {
   ageYears,
   cardSurface,
   ghostBorder,
-  sendWrite,
   t,
   useApiClient,
-  useIdempotencyKeeper,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import { useNoteClosure } from "../../shell/note-closure";
 import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assessments-api";
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
-import type { AddendumRow } from "./addenda-api";
+import { openAddendum } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
+import { AmendSectionsPicker } from "./amend-sections-picker";
+import { CosignCeremonyModals } from "./cosign-ceremony-modals";
+import { cosignActionsFor } from "./cosign-model";
+import { draftIsActive, reviewCounts } from "./draft-model";
+import {
+  type AssessmentRow,
+  type CarePlanLink,
+  type CarePlanRelevant,
+  type Encounter,
+  type MileageForm,
+  type PatientSummary,
+  type VitalsForm,
+  readEncounter,
+} from "./encounter-read-load";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
+import { NoteViewUnavailable } from "./note-view-unavailable";
+import {
+  type FieldErrors,
+  errorMessage,
+  fieldErrorsFrom,
+  fieldKeyFromPath,
+  validationDetails,
+} from "./read-errors";
+import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice } from "./sign-draft-notice";
+import { SignedNoteView } from "./signed-note-view";
+import { useAmendableSections } from "./use-amendable-sections";
+import { useCosignCeremony } from "./use-cosign-ceremony";
+import { useNoteDraft } from "./use-note-draft";
 import {
   type DeliveryDraft,
   asVisitModality,
@@ -35,94 +60,11 @@ import {
   unconfirmedSeed,
 } from "./visit-delivery";
 import { VisitDeliveryFields } from "./visit-delivery-fields";
+import { writeRefusalMessage } from "./write-refusal";
 import { authFailureRedirect } from "./write-workflow";
 
-type CeremonyMode = "sign" | "acknowledge" | "cosign-sign" | "supervisor-release" | null;
-
-const REASON_MIN = 40;
-
-interface Encounter {
-  id: string;
-  patientId: string;
-  admissionId: string;
-  visitId: string | null;
-  encounterType: string;
-  discipline: string;
-  serviceDate: string;
-  status: string;
-  lateEntryTier: string;
-  version: number;
-  isF2f: boolean;
-  signedAt: string | null;
-  cosignedAt: string | null;
-  /** How the visit was delivered, as seeded or confirmed; null = unknown. */
-  visitModality?: string | null;
-  /** True only once a clinician confirmed `visitModality`; an unconfirmed one is the scheduler's guess. */
-  visitModalityConfirmed?: boolean;
-  /** An M18 EVV bracket is on file, so the sign ceremony takes no typed times. */
-  evvBracketPresent?: boolean;
-  selections: Record<string, unknown> | null;
-  finalDocumentation: string | null;
-  vitals: Record<string, unknown> | null;
-  mileage: Record<string, unknown> | null;
-  carePlanLinks: CarePlanLink[];
-  addenda: AddendumRow[];
-}
-
-interface PatientSummary {
-  mrn: string;
-  lastName: string;
-  firstName: string;
-  dob: string;
-  status: string;
-}
-
-interface CarePlanProblem {
-  problemId: string;
-  description: string;
-  status: string;
-}
-
-interface CarePlanGoal {
-  goalId: string;
-  problemId: string;
-  text: string;
-  status: string;
-}
-
-interface CarePlanIntervention {
-  interventionId: string;
-  problemId: string;
-  scopeText: string;
-  frequencyText: string;
-  discipline: string;
-  status: string;
-}
-
-interface CarePlanRelevant {
-  problems: CarePlanProblem[];
-  goals: CarePlanGoal[];
-  interventions: CarePlanIntervention[];
-  redacted: boolean;
-}
-
-interface CarePlanLink {
-  linkId?: string;
-  problemId: string | null;
-  goalId: string | null;
-  interventionId: string | null;
-}
-
-interface AssessmentRow {
-  id: string;
-  assessmentId?: string;
-  scaleType?: string;
-  kind?: string;
-  status: string;
-  sourceEncounterId?: string | null;
-  capturedAt?: string;
-  assessmentIdLabel?: string;
-}
+// The sign ceremony; the cosigner's three (acknowledge, sign, supervisor release) are `useCosignCeremony`, shared with an amendment's request.
+type CeremonyMode = "sign" | null;
 
 type EncounterSection =
   | "documentation"
@@ -131,103 +73,6 @@ type EncounterSection =
   | "assessments"
   | "mileage"
   | "global";
-
-function errorMessage(error: unknown, fallback: string): string {
-  const body = error as {
-    message?: string;
-    title?: string;
-    detail?: string;
-    code?: string;
-    error?: {
-      message?: string;
-      title?: string;
-      detail?: string;
-      code?: string;
-    };
-  } | null;
-
-  if (body?.detail) return body.detail;
-  if (body?.message) return body.message;
-  if (body?.title) return body.title;
-  if (body?.error?.detail) return body.error.detail;
-  if (body?.error?.message) return body.error.message;
-  if (body?.error?.title) return body.error.title;
-
-  return fallback;
-}
-
-type FieldErrors = Record<string, string>;
-
-function validationDetails(error: unknown): Array<{ field?: string; message?: string }> {
-  const body = error as {
-    details?: unknown;
-    error?: {
-      details?: unknown;
-    };
-  } | null;
-
-  const raw = body?.error?.details ?? body?.details;
-  if (!Array.isArray(raw)) return [];
-
-  return raw.flatMap((detail) => {
-    if (typeof detail !== "object" || detail === null) return [];
-
-    const row = detail as {
-      field?: unknown;
-      path?: unknown;
-      message?: unknown;
-    };
-
-    const field =
-      typeof row.field === "string"
-        ? row.field
-        : typeof row.path === "string"
-          ? row.path
-          : undefined;
-
-    return [
-      {
-        field,
-        message: typeof row.message === "string" ? row.message : undefined,
-      },
-    ];
-  });
-}
-
-function fieldKeyFromPath(path: string | undefined): string | null {
-  if (!path) return null;
-
-  const normalized = path
-    .replace(/^body\./, "")
-    .replace(/^data\./, "")
-    .replace(/^selections\./, "");
-
-  if (
-    normalized.includes("clinicalSummary") ||
-    normalized === "finalDocumentation" ||
-    normalized === "documentation" ||
-    normalized === "narrative"
-  ) {
-    return "clinicalSummary";
-  }
-
-  return normalized.split(".").filter(Boolean).at(-1) ?? null;
-}
-
-function fieldErrorsFrom(error: unknown, supportedFields: readonly string[]): FieldErrors {
-  const supported = new Set(supportedFields);
-  const result: FieldErrors = {};
-
-  for (const detail of validationDetails(error)) {
-    const key = fieldKeyFromPath(detail.field);
-
-    if (key && supported.has(key) && detail.message && !result[key]) {
-      result[key] = detail.message;
-    }
-  }
-
-  return result;
-}
 
 function FieldError({ message }: { message?: string }): JSX.Element | null {
   if (!message) return null;
@@ -273,9 +118,6 @@ function hasAnyValue(record: Record<string, unknown> | null | undefined): boolea
 
 export function EncounterRead(): JSX.Element {
   const client = useApiClient();
-  // The supervisor release body carries `stepUpAuthAt`, a click-time clock value the route requires (and ignores: step-up provenance
-  // comes from the session). One key and one first-attempt time per intent keeps a retry after a lost reply byte-identical.
-  const releaseKeeper = useIdempotencyKeeper();
   const navigate = useNavigate();
   const { refresh: refreshClosureStatus } = useNoteClosure();
 
@@ -285,6 +127,13 @@ export function EncounterRead(): JSX.Element {
   }>();
 
   const [encounter, setEncounter] = useState<Encounter | null>(null);
+  // ADR-0114: the pre-drafted sections the signer must have resolved. Read once the encounter is known, and again when its status moves.
+  const { load: draftLoad, reload: reloadDraft } = useNoteDraft(
+    encounter ? encounter.id : undefined,
+    encounter?.status,
+  );
+  // The sections an amending addendum may name: offered to this viewer only when the draft is on and the session does not rule them out.
+  const amendable = useAmendableSections(draftLoad, encounter);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [cosignStatus, setCosignStatus] = useState<string | null>(null);
   const [carePlan, setCarePlan] = useState<CarePlanRelevant | null>(null);
@@ -293,6 +142,8 @@ export function EncounterRead(): JSX.Element {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The failed read is the Part 2 note view that could not be decided (503): the screen offers a retry.
+  const [retryable, setRetryable] = useState(false);
 
   const [ceremony, setCeremony] = useState<CeremonyMode>(null);
   const [utilityModal, setUtilityModal] = useState<"void" | "addendum" | "assessment" | null>(null);
@@ -317,13 +168,15 @@ export function EncounterRead(): JSX.Element {
   const [sectionErrors, setSectionErrors] = useState<Partial<Record<EncounterSection, string>>>({});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [reason, setReason] = useState("");
+  // The sections an amending addendum names (VN-D30): chosen in the addendum dialog, and emptied where it is opened.
+  const [amendIds, setAmendIds] = useState<readonly string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   // The sign ceremony's delivery step (how the visit was delivered + optional documented times).
   const [delivery, setDelivery] = useState<DeliveryDraft>(() => initialDelivery(null));
 
   const [noteText, setNoteText] = useState("");
 
-  const [vitals, setVitals] = useState({
+  const [vitals, setVitals] = useState<VitalsForm>({
     bpSystolic: "",
     bpDiastolic: "",
     heartRate: "",
@@ -335,7 +188,7 @@ export function EncounterRead(): JSX.Element {
     painScale: "nrs_0_10",
   });
 
-  const [mileage, setMileage] = useState({
+  const [mileage, setMileage] = useState<MileageForm>({
     odometerStart: "",
     odometerEnd: "",
     milesDriven: "",
@@ -367,203 +220,49 @@ export function EncounterRead(): JSX.Element {
     response: Response;
   }>;
 
-  const load = useCallback(async () => {
-    if (!encounterId) return;
+  // `inPlace` reads the encounter again without replacing the page by a spinner, so what the screen holds (an addendum's result line, an
+  // open editor, the scroll position) survives the read. The promise settles when the screen holds the new read.
+  const load = useCallback(
+    async (inPlace?: boolean) => {
+      if (!encounterId) return;
 
-    setLoading(true);
-    setError(null);
+      if (!inPlace) setLoading(true);
+      setError(null);
+      setRetryable(false);
 
-    const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
-      params: {
-        path: {
-          encounterId,
-        },
-      },
-    });
+      const read = await readEncounter(client, encounterId, patientId);
 
-    if (err || !data?.id) {
-      setError("Could not load the encounter.");
+      if (!read.ok) {
+        setRetryable(read.noteViewUnavailable);
+        setError(read.message);
+        setLoading(false);
+        return;
+      }
+
+      setEncounter(read.encounter);
+      if (read.vitals) setVitals(read.vitals);
+      if (read.mileage) setMileage(read.mileage);
+      setCosignStatus(read.cosignStatus);
+      if (read.patient) setPatient(read.patient);
+      setCarePlan(read.carePlan);
+      setAssessments(read.assessments);
+      setHopeAssessments(read.hopeAssessments);
+      setNoteText(read.noteText);
       setLoading(false);
-      return;
-    }
-
-    const selections =
-      (
-        data as {
-          selections?: Record<string, unknown> | null;
-        }
-      ).selections ?? null;
-
-    const loadedVitals = (
-      data as {
-        vitals?: Record<string, unknown> | null;
-      }
-    ).vitals;
-
-    const loadedMileage = (
-      data as {
-        mileage?: Record<string, unknown> | null;
-      }
-    ).mileage;
-
-    setEncounter({
-      id: data.id,
-      patientId: data.patientId,
-      admissionId: data.admissionId,
-      visitId: data.visitId ?? null,
-      encounterType: data.encounterType,
-      discipline: data.discipline,
-      serviceDate: data.serviceDate,
-      status: data.status,
-      lateEntryTier: data.lateEntryTier,
-      version: data.version,
-      isF2f: data.isF2f,
-      signedAt: data.signedAt ?? null,
-      cosignedAt: data.cosignedAt ?? null,
-      visitModality: data.visitModality ?? null,
-      visitModalityConfirmed: data.visitModalityConfirmed === true,
-      evvBracketPresent: data.evvBracketPresent === true,
-      selections,
-      finalDocumentation:
-        (
-          data as {
-            finalDocumentation?: string | null;
-          }
-        ).finalDocumentation ?? null,
-      vitals: loadedVitals ?? null,
-      mileage: loadedMileage ?? null,
-      carePlanLinks:
-        (
-          data as {
-            carePlanLinks?: CarePlanLink[];
-          }
-        ).carePlanLinks ?? [],
-      addenda: (data as { addenda?: AddendumRow[] }).addenda ?? [],
-    });
-
-    const pid = patientId ?? data.patientId;
-
-    if (loadedVitals) {
-      setVitals({
-        bpSystolic: String(loadedVitals.bpSystolic ?? ""),
-        bpDiastolic: String(loadedVitals.bpDiastolic ?? ""),
-        heartRate: String(loadedVitals.heartRate ?? ""),
-        respiratoryRate: String(loadedVitals.respiratoryRate ?? ""),
-        temperature: String(loadedVitals.temperature ?? ""),
-        temperatureUnit: String(loadedVitals.temperatureUnit ?? "f"),
-        spo2: String(loadedVitals.spo2 ?? ""),
-        painScore: String(loadedVitals.painScore ?? ""),
-        painScale: String(loadedVitals.painScale ?? "nrs_0_10"),
-      });
-    }
-
-    if (loadedMileage) {
-      setMileage({
-        odometerStart: String(loadedMileage.odometerStart ?? ""),
-        odometerEnd: String(loadedMileage.odometerEnd ?? ""),
-        milesDriven: String(loadedMileage.milesDriven ?? ""),
-        source: String(loadedMileage.source ?? "manual_override"),
-        manualOverrideReason: String(loadedMileage.manualOverrideReason ?? ""),
-      });
-    }
-
-    const [cos, pat, cp, ass, hope, sel] = await Promise.all([
-      client.GET("/api/v1/encounters/{encounterId}/cosignature", {
-        params: {
-          path: {
-            encounterId,
-          },
-        },
-      }),
-
-      client.GET("/api/v1/patients/{id}", {
-        params: {
-          path: {
-            id: pid,
-          },
-        },
-      }),
-
-      client.GET(
-        "/api/v1/internal/care-plan/relevant-elements" as never,
-        {
-          params: {
-            query: {
-              patientId: data.patientId,
-              admissionId: data.admissionId,
-              encounterType: data.encounterType,
-              discipline: data.discipline,
-            },
-          },
-        } as never,
-      ),
-
-      client.GET("/api/v1/patients/{patientId}/assessments", {
-        params: {
-          path: {
-            patientId: data.patientId,
-          },
-        },
-      } as never),
-
-      client.GET("/api/v1/patients/{patientId}/hope/assessments", {
-        params: {
-          path: {
-            patientId: data.patientId,
-          },
-        },
-      } as never),
-
-      // #114 — the stored HearthNote tree, assembled (Layer-1). The note is authored in the composer;
-      // this screen shows what it currently reads as.
-      client.GET("/api/v1/encounters/{encounterId}/selections", {
-        params: { path: { encounterId } },
-      }),
-    ]);
-
-    setCosignStatus(cos.data?.status ?? null);
-
-    if (pat.data) {
-      setPatient(pat.data as PatientSummary);
-    }
-
-    setCarePlan((cp.data ?? null) as CarePlanRelevant | null);
-
-    setAssessments(
-      (
-        (
-          ass.data as
-            | {
-                assessments?: AssessmentRow[];
-              }
-            | undefined
-        )?.assessments ?? []
-      ).filter((row) => row.sourceEncounterId === encounterId),
-    );
-
-    setHopeAssessments(
-      ((
-        hope.data as
-          | {
-              assessments?: AssessmentRow[];
-            }
-          | undefined
-      )?.assessments ?? []) as AssessmentRow[],
-    );
-    // A preview only once something is documented — an empty tree still assembles the template's
-    // headings, which would read as a note that says nothing.
-    setNoteText(
-      sel.data?.sections?.some((s) => s.entries.length > 0 || Boolean(s.freeText))
-        ? (sel.data?.layer1Preview ?? "")
-        : "",
-    );
-
-    setLoading(false);
-  }, [client, encounterId, patientId]);
+    },
+    [client, encounterId, patientId],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The cosigner's acknowledge / sign / supervisor release for THIS note's request: one ceremony, shared with an amendment's.
+  const cosignSubject = useMemo(
+    () => ({ kind: "note" as const, encounterId: encounterId ?? "" }),
+    [encounterId],
+  );
+  const cosign = useCosignCeremony(cosignSubject, () => void load());
 
   const clearFieldError = useCallback((field: string) => {
     setFieldErrors((current) => {
@@ -618,187 +317,100 @@ export function EncounterRead(): JSX.Element {
     clearFieldError("reason");
   }, [clearFieldError]);
 
-  const runWrite = useCallback(
-    async (mode: Exclude<CeremonyMode, null>) => {
-      if (!encounterId) return;
+  const runSign = useCallback(async () => {
+    if (!encounterId) return;
 
-      if (mode === "supervisor-release" && reason.trim().length < REASON_MIN) {
-        setActionError(null);
-        setFieldErrors((current) => ({
-          ...current,
-          reason: `Provide a reason of at least ${REASON_MIN} characters.`,
-        }));
-        return;
-      }
+    setBusy(true);
+    setActionError(null);
+    setActionRemediation(null);
 
-      setBusy(true);
-      setActionError(null);
-      setActionRemediation(null);
-      if (mode === "supervisor-release") {
-        clearFieldError("reason");
-      }
-
-      const path =
-        mode === "sign"
-          ? "/api/v1/encounters/{encounterId}/sign"
-          : mode === "acknowledge"
-            ? "/api/v1/encounters/{encounterId}/cosignature/acknowledge"
-            : mode === "cosign-sign"
-              ? "/api/v1/encounters/{encounterId}/cosignature/sign"
-              : "/api/v1/encounters/{encounterId}/cosignature/supervisor-release";
-
-      const body =
-        mode === "sign"
-          ? {
-              attestationConfirmed: true as const,
-              ...(encounter ? deliveryBody(delivery, deliveryContextOf(encounter)) : {}),
-            }
-          : mode === "cosign-sign"
-            ? {
-                attestationConfirmed: true as const,
-              }
-            : mode === "supervisor-release"
-              ? {
-                  reason: reason.trim(),
-                  stepUpAuthAt: "", // replaced by the intent's first-attempt time below
-                }
-              : undefined;
-
-      const init = {
-        params: {
-          path: {
-            encounterId,
-          },
+    const init = {
+      params: {
+        path: {
+          encounterId,
         },
-        ...(body ? { body } : {}),
-      };
+      },
+      body: {
+        attestationConfirmed: true as const,
+        ...(encounter ? deliveryBody(delivery, deliveryContextOf(encounter)) : {}),
+      },
+    };
 
-      type WriteOutcome = {
+    type WriteOutcome = {
+      error?: {
+        message?: string;
         error?: {
+          code?: string;
           message?: string;
-          error?: {
-            code?: string;
-            message?: string;
-          };
+          details?: unknown;
         };
-        response?: Response;
       };
-      let outcome: WriteOutcome;
-      if (mode === "supervisor-release" && body) {
-        const sent = await sendWrite(
-          releaseKeeper,
-          `${encounterId}|supervisor-release|${reason.trim()}`,
-          (key, stampedAt) =>
-            client.POST(
-              path as never,
-              {
-                ...init,
-                body: { ...body, stepUpAuthAt: stampedAt },
-                headers: { "Idempotency-Key": key },
-              } as never,
-            ) as Promise<WriteOutcome>,
-        );
-        if (sent.status === "unreachable") {
-          setBusy(false);
-          setActionError("Could not reach the server. Check your connection and try again.");
-          return;
-        }
-        // A refusal with an empty body (a gateway 5xx) is still a refusal: never read it as a success.
-        outcome =
-          sent.status === "refused" && sent.res.error === undefined
-            ? { ...sent.res, error: { message: "The action was refused." } }
-            : sent.res;
-      } else {
-        try {
-          outcome = (await client.POST(path as never, init as never)) as WriteOutcome;
-        } catch {
-          // An offline/aborted request rejects rather than resolving to an error envelope: never leave `busy` stuck.
-          // A lost reply may mean the action already landed, so say so: retrying an unchanged form is safe (the same
-          // idempotency key replays), but a changed form is a new intent and the server may answer that it is done.
-          setBusy(false);
-          setActionError(
-            "Could not reach the server. Check your connection and try again; if it keeps failing, reload the page to see whether the action already went through.",
-          );
-          return;
-        }
-      }
-      const { error: err, response } = outcome;
+      response?: Response;
+    };
+    let outcome: WriteOutcome;
+    try {
+      outcome = (await client.POST(
+        "/api/v1/encounters/{encounterId}/sign" as never,
+        init as never,
+      )) as WriteOutcome;
+    } catch {
+      // An offline/aborted request rejects rather than resolving to an error envelope: never leave `busy` stuck.
+      // A lost reply may mean the action already landed, so say so: retrying an unchanged form is safe (the same
+      // idempotency key replays), but a changed form is a new intent and the server may answer that it is done.
+      setBusy(false);
+      setActionError(
+        "Could not reach the server. Check your connection and try again; if it keeps failing, reload the page to see whether the action already went through.",
+      );
+      return;
+    }
+    const { error: err, response } = outcome;
 
-      if (err) {
-        const errCode = err?.error?.code;
-        const errMessage = err?.error?.message ?? err?.message;
-        const currentPath = `${window.location.pathname}${window.location.search}`;
+    if (err) {
+      const errCode = err?.error?.code;
+      const errMessage = err?.error?.message ?? err?.message;
+      const currentPath = `${window.location.pathname}${window.location.search}`;
 
-        const redirect = authFailureRedirect(response?.status, errCode, currentPath, errMessage);
+      const redirect = authFailureRedirect(response?.status, errCode, currentPath, errMessage);
 
-        if (redirect) {
-          navigate(redirect);
-          return;
-        }
-
-        setBusy(false);
-
-        const mapped = mode === "supervisor-release" ? fieldErrorsFrom(err, ["reason"]) : {};
-
-        if (Object.keys(mapped).length > 0) {
-          setFieldErrors((current) => ({ ...current, ...mapped }));
-          setActionError(null);
-          return;
-        }
-
-        if (errCode === "MODALITY_CONFIRMATION_REQUIRED") {
-          setActionError("Choose how this visit was delivered, then sign again.");
-        } else if (errCode === "MODALITY_CONFLICTS_WITH_VISIT_TYPE") {
-          setActionError(
-            "This is a telephonic visit type, so it cannot be recorded as in person or video. Choose Telephonic, then sign again.",
-          );
-        } else if (errCode === "VISIT_TIME_INVALID") {
-          setActionError(
-            errMessage ?? "The visit times could not be accepted. Check them and sign again.",
-          );
-        } else if (errCode === "VISIT_TIME_OVERLAP") {
-          setActionError(
-            "These visit times overlap another visit you documented. Correct the times, or clear them and sign without times.",
-          );
-        } else if (errCode === "EVV_BRACKET_UNAVAILABLE") {
-          setActionError(
-            "The visit's check-in/check-out record could not be reached, so typed times cannot be accepted right now. Try again in a moment, or clear the times and sign without them.",
-          );
-        } else if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED") {
-          setActionError("Your step-up expired — try again.");
-        } else if (errCode === "STALE_VERSION") {
-          setActionError("This encounter changed since you opened it — reload to retry.");
-        } else if (response?.status === 403) {
-          setActionError("You do not have permission for this action.");
-        } else {
-          setActionError("The action could not be completed.");
-        }
-
+      if (redirect) {
+        navigate(redirect);
         return;
       }
 
       setBusy(false);
-      closeCeremony();
 
-      void load();
-      // Signing closes the note, so the server may have lifted the author's block: ask the banner's status again now instead of
-      // leaving "your access is limited" up until its next poll.
-      if (mode === "sign") refreshClosureStatus();
-    },
-    [
-      encounterId,
-      encounter,
-      delivery,
-      reason,
-      client,
-      releaseKeeper,
-      navigate,
-      closeCeremony,
-      load,
-      clearFieldError,
-      refreshClosureStatus,
-    ],
-  );
+      // ADR-0114: the signer's drafted sections are not resolved against the draft as it stands now. Re-read it; the message says which.
+      if (errCode === "DRAFT_SECTION_STALE") void reloadDraft();
+      setActionError(
+        writeRefusalMessage({
+          status: response?.status,
+          code: errCode,
+          message: errMessage,
+          details: err?.error?.details,
+        }),
+      );
+
+      return;
+    }
+
+    setBusy(false);
+    closeCeremony();
+
+    void load();
+    // Signing closes the note, so the server may have lifted the author's block: ask the banner's status again now instead of
+    // leaving "your access is limited" up until its next poll.
+    refreshClosureStatus();
+  }, [
+    encounterId,
+    encounter,
+    delivery,
+    client,
+    navigate,
+    closeCeremony,
+    load,
+    refreshClosureStatus,
+    reloadDraft,
+  ]);
 
   async function runMutation(
     action: () => Promise<{
@@ -1052,18 +664,10 @@ export function EncounterRead(): JSX.Element {
     if (!encounterId) return;
 
     await runMutation(
-      () =>
-        post("/api/v1/encounters/{encounterId}/addenda", {
-          params: {
-            path: {
-              encounterId,
-            },
-          },
-          body: {
-            reason: reason.trim(),
-          },
-        }),
-      "Addendum opened.",
+      () => openAddendum(client, encounterId, reason.trim(), amendIds),
+      amendIds.length > 0
+        ? "Addendum opened. Review the redrafted sections in the Addenda panel, then sign it."
+        : "Addendum opened.",
       ["reason"],
     );
   }
@@ -1089,7 +693,11 @@ export function EncounterRead(): JSX.Element {
   if (error || !encounter) {
     return (
       <PatientChartBail banner={bailBanner} patientId={patientId} current="encounters">
-        <EmptyState title="Unavailable" description={error ?? "Not found."} />
+        {retryable && error ? (
+          <NoteViewUnavailable description={error} onRetry={() => void load()} />
+        ) : (
+          <EmptyState title="Unavailable" description={error ?? "Not found."} />
+        )}
       </PatientChartBail>
     );
   }
@@ -1101,13 +709,18 @@ export function EncounterRead(): JSX.Element {
    * These remain unchanged.
    */
   const canSign = e.status === "finalized";
+  // ADR-0114: signing is blocked until every drafted section is resolved; the server is the judge, this only tells the signer first.
+  const draftSections =
+    draftLoad.status === "ready" && draftIsActive(draftLoad.draft) ? draftLoad.draft : null;
+  const sectionsToReview = draftSections ? reviewCounts(draftSections).needReview : [];
+  const signBlockedByDraft = canSign && sectionsToReview.length > 0;
 
-  const canAcknowledge =
-    cosignStatus === "pending" || cosignStatus === "routed" || cosignStatus === "escalated";
-
-  const canCosignSign = cosignStatus === "acknowledged";
-
-  const canSupervisorRelease = cosignStatus === "escalated" || cosignStatus === "hard_cap_reached";
+  // The step the request's status allows (the server's §2.4 graph, shared with an amendment's request).
+  const {
+    acknowledge: canAcknowledge,
+    sign: canCosignSign,
+    release: canSupervisorRelease,
+  } = cosignActionsFor(cosignStatus);
 
   /*
    * UX progress.
@@ -1360,11 +973,15 @@ export function EncounterRead(): JSX.Element {
                   </div>
                 ) : (
                   <div style={readOnlyPanel}>
-                    <p style={noteBody}>
-                      {e.finalDocumentation ||
+                    <SignedNoteView
+                      view={e.finalDocumentationView}
+                      history={e.noteHistory}
+                      fallbackText={
+                        e.finalDocumentation ||
                         noteText ||
-                        "No assembled documentation is available."}
-                    </p>
+                        "No assembled documentation is available."
+                      }
+                    />
                   </div>
                 )}
               </section>
@@ -1810,10 +1427,14 @@ export function EncounterRead(): JSX.Element {
                     </>
                   ) : e.status === "finalized" ? (
                     <>
-                      <strong style={quickActionTitle}>Ready for signature</strong>
+                      <strong style={quickActionTitle}>
+                        {signBlockedByDraft ? "Review before signing" : "Ready for signature"}
+                      </strong>
 
                       <span style={quickActionHelp}>
-                        The encounter has been finalized and can now be signed.
+                        {signBlockedByDraft
+                          ? "The encounter has been finalized. It can be signed once its drafted sections are resolved."
+                          : "The encounter has been finalized and can now be signed."}
                       </span>
                     </>
                   ) : (
@@ -1825,11 +1446,18 @@ export function EncounterRead(): JSX.Element {
                   )}
                 </div>
 
+                {signBlockedByDraft ? (
+                  <SignDraftNotice
+                    sections={sectionsToReview}
+                    composePath={`/patients/${e.patientId}/encounters/${e.id}/compose`}
+                  />
+                ) : null}
+
                 <div style={quickActionButtons}>
                   {canSupervisorRelease ? (
                     <button
                       type="button"
-                      onClick={() => setCeremony("supervisor-release")}
+                      onClick={() => cosign.open("release")}
                       style={{
                         ...secondaryBtn,
                         width: "100%",
@@ -1842,7 +1470,7 @@ export function EncounterRead(): JSX.Element {
                   {canAcknowledge ? (
                     <button
                       type="button"
-                      onClick={() => setCeremony("acknowledge")}
+                      onClick={() => cosign.open("acknowledge")}
                       style={{
                         ...secondaryBtn,
                         width: "100%",
@@ -1855,7 +1483,7 @@ export function EncounterRead(): JSX.Element {
                   {canCosignSign ? (
                     <button
                       type="button"
-                      onClick={() => setCeremony("cosign-sign")}
+                      onClick={() => cosign.open("sign")}
                       style={{
                         ...primaryBtn,
                         width: "100%",
@@ -1868,7 +1496,11 @@ export function EncounterRead(): JSX.Element {
                   {canSign ? (
                     <button
                       type="button"
+                      // aria-disabled, not disabled: the button stays reachable by keyboard so its reason (the notice) is found.
+                      aria-disabled={signBlockedByDraft || undefined}
+                      aria-describedby={signBlockedByDraft ? SIGN_DRAFT_NOTICE_ID : undefined}
                       onClick={() => {
+                        if (signBlockedByDraft) return;
                         setDelivery(
                           initialDelivery(
                             asVisitModality(e.visitModality),
@@ -1880,6 +1512,7 @@ export function EncounterRead(): JSX.Element {
                       style={{
                         ...primaryBtn,
                         width: "100%",
+                        ...(signBlockedByDraft ? { opacity: 0.55, cursor: "not-allowed" } : null),
                       }}
                     >
                       Sign encounter
@@ -1916,7 +1549,10 @@ export function EncounterRead(): JSX.Element {
                   {e.status === "signed" || e.status === "cosigned" ? (
                     <button
                       type="button"
-                      onClick={() => setUtilityModal("addendum")}
+                      onClick={() => {
+                        setAmendIds([]);
+                        setUtilityModal("addendum");
+                      }}
                       style={{
                         ...secondaryBtn,
                         width: "100%",
@@ -1944,7 +1580,8 @@ export function EncounterRead(): JSX.Element {
                   <AddendaPanel
                     encounterId={e.id}
                     addenda={e.addenda}
-                    onChanged={() => void load()}
+                    noteAuthorId={e.authoredByUserId}
+                    onChanged={() => load(true)}
                   />
                 </div>
               ) : null}
@@ -2166,175 +1803,19 @@ export function EncounterRead(): JSX.Element {
         // `commitBlocked`, not `commitDisabled`: a sign request that never settles (flaky mobile data) must not also
         // disable Cancel and trap the clinician in the dialog. Blocking only the commit still stops a double submit.
         commitBlocked={busy || deliveryProblem(delivery, deliveryContextOf(e)) !== null}
-        onCommit={() => void runWrite("sign")}
+        onCommit={() => void runSign()}
         onCancel={closeCeremony}
       />
 
       {/* ─────────────────────────────────────────────────────────────
-          ACKNOWLEDGE COSIGNATURE
+          COSIGNATURE: ACKNOWLEDGE, COSIGN, SUPERVISOR RELEASE
       ────────────────────────────────────────────────────────────── */}
 
-      <CeremonyModal
-        open={ceremony === "acknowledge"}
-        title="Acknowledge cosignature request"
-        attestation={
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.5rem",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.8125rem",
-                color: t.onSurfaceVariant,
-              }}
-            >
-              Confirms you have opened this encounter for cosignature review. This does not sign it.
-            </span>
-
-            {actionError ? (
-              <p role="alert" aria-live="assertive" style={alertStyle}>
-                {actionError}
-              </p>
-            ) : null}
-          </div>
-        }
-        signer={{
-          name: "Cosigner",
-          role: "This session",
-        }}
-        commitLabel={busy ? "Acknowledging…" : "Acknowledge"}
-        commitBlocked={busy}
-        onCommit={() => void runWrite("acknowledge")}
-        onCancel={closeCeremony}
-      />
-
-      {/* ─────────────────────────────────────────────────────────────
-          COSIGN
-      ────────────────────────────────────────────────────────────── */}
-
-      <CeremonyModal
-        open={ceremony === "cosign-sign"}
-        title="Sign cosignature"
-        attestation={
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.5rem",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-              }}
-            >
-              <Glyph name="shield" size={16} />
-
-              <strong>Cosign {stateLabel(e.encounterType)}</strong>
-            </div>
-
-            <RowField label="Service date" value={e.serviceDate} mono />
-
-            {actionError ? (
-              <p role="alert" aria-live="assertive" style={alertStyle}>
-                {actionError}
-              </p>
-            ) : null}
-          </div>
-        }
-        legalText="I attest I have reviewed this documentation and concur as the qualifying cosigner."
-        signer={{
-          name: "Cosigning RN",
-          role: "This session",
-        }}
-        commitLabel={busy ? "Signing…" : "Sign & commit"}
-        commitBlocked={busy}
-        onCommit={() => void runWrite("cosign-sign")}
-        onCancel={closeCeremony}
-      />
-
-      {/* ─────────────────────────────────────────────────────────────
-          SUPERVISOR RELEASE
-      ────────────────────────────────────────────────────────────── */}
-
-      <CeremonyModal
-        open={ceremony === "supervisor-release"}
-        title="Supervisor release"
-        attestation={
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.6rem",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.8125rem",
-                color: t.onSurfaceVariant,
-              }}
-            >
-              Releases this encounter from the 48-hour cosignature hard cap.
-            </span>
-
-            <label
-              htmlFor="supervisor-release-reason"
-              style={{
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                color: t.onSurfaceVariant,
-              }}
-            >
-              Reason (≥ {REASON_MIN} characters)
-            </label>
-
-            <textarea
-              id="supervisor-release-reason"
-              aria-describedby="supervisor-release-reason-count"
-              value={reason}
-              onChange={(event) => {
-                setReason(event.target.value);
-                clearFieldError("reason");
-              }}
-              rows={3}
-              style={{
-                ...textareaStyle,
-                ...(fieldErrors.reason ? fieldControlErrorStyle : null),
-              }}
-              aria-invalid={Boolean(fieldErrors.reason)}
-            />
-            <FieldError message={fieldErrors.reason} />
-
-            <span
-              id="supervisor-release-reason-count"
-              style={{
-                fontSize: "0.7rem",
-                color: reason.trim().length >= REASON_MIN ? t.onSurfaceVariant : t.warning,
-              }}
-            >
-              {reason.trim().length}/{REASON_MIN}
-            </span>
-
-            {actionError ? (
-              <p role="alert" aria-live="assertive" style={alertStyle}>
-                {actionError}
-              </p>
-            ) : null}
-          </div>
-        }
-        signer={{
-          name: "Supervisor",
-          role: "This session",
-        }}
-        commitLabel={busy ? "Releasing…" : "Release"}
-        commitBlocked={busy}
-        onCommit={() => void runWrite("supervisor-release")}
-        onCancel={closeCeremony}
+      <CosignCeremonyModals
+        ceremony={cosign}
+        subject="note"
+        heading={`Cosign ${stateLabel(e.encounterType)}`}
+        facts={[{ label: "Service date", value: e.serviceDate, mono: true }]}
       />
 
       {/* ─────────────────────────────────────────────────────────────
@@ -2378,6 +1859,15 @@ export function EncounterRead(): JSX.Element {
             />
             <FieldError message={fieldErrors.reason} />
           </label>
+
+          {utilityModal === "addendum" && amendable.length > 0 ? (
+            <AmendSectionsPicker
+              sections={amendable}
+              chosen={amendIds}
+              onChange={setAmendIds}
+              disabled={busy}
+            />
+          ) : null}
 
           <div style={modalActions}>
             <button

@@ -847,6 +847,9 @@ export const carePlanReaderDenyStub: CarePlanReader = {
   relevantElementsForEncounter() {
     throw new NotImplementedError("CarePlanReader");
   },
+  relevantElementsAsOf() {
+    throw new NotImplementedError("CarePlanReader");
+  },
   isReviewOverdue() {
     throw new NotImplementedError("CarePlanReader");
   },
@@ -1132,6 +1135,12 @@ export const medicationOrderProviderDenyStub: MedicationOrderProvider = {
     throw new NotImplementedError("MedicationOrderProvider");
   },
   getMedicationsSince() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getMedicationsAsOf() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getMedicationChangesBetween() {
     throw new NotImplementedError("MedicationOrderProvider");
   },
   getMedicationOrder() {

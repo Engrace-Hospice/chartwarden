@@ -1551,3 +1551,215 @@
     justify-content: space-between;
   }
 }
+
+/* Visit-note draft (ADR-0114): a drafted section inside the composer, the strip that counts them, and the score-trend rows. Flat, as the
+   rest of the kit: hairlines and spacing, no card inside a card. Tokens only. */
+.wx-draft {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 0 1rem;
+  border-bottom: 1px solid var(--color-outline-variant);
+}
+.wx-draft-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.wx-draft-title {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+.wx-draft-title:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+.wx-draft-text {
+  margin: 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--color-primary);
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.wx-draft-text.is-left-out {
+  border-left-color: var(--color-outline-variant);
+  color: var(--color-on-surface-variant);
+}
+.wx-draft-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0 0.75rem;
+}
+/* The empty region is a programmatic focus target (tabIndex -1): after a deselect empties a section, focus lands here. */
+.wx-draft-empty:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+/* The status line is a live region that must be in the accessibility tree from the first render, so it is never display: none while
+   empty (a region that appears when it fills is not reliably announced). Empty, it takes no room: zero height, and a negative margin
+   cancels the gap its parent (grid or flex) would put before it. */
+.wx-draft-status {
+  display: block;
+}
+.wx-draft-status:empty {
+  height: 0;
+  margin: -0.5rem 0 0 -0.5rem;
+  overflow: hidden;
+}
+/* The draft switch screen's "saved" line: a live region in the panel from the first render, room only once it has a sentence. */
+.wx-draft-policy-status:not(:empty) {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+.wx-draft-summary {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.25rem 0 0.5rem;
+  font-size: 0.8125rem;
+}
+.wx-draft-summary-line {
+  margin: 0;
+  color: var(--color-on-surface);
+}
+.wx-draft-todo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-draft-todo li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.wx-draft-slot {
+  padding: 0 1.15rem;
+}
+.wx-draft-rail {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+/* The care-plan picker's rows in the composer's right rail read at body size, like the rest of the rail. */
+.wx-draft-rail .wx-action-check {
+  align-items: flex-start;
+  padding-block: 0.375rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.wx-draft-rail .wx-action-check > input[type="checkbox"] {
+  margin-block-start: 0.125rem;
+}
+
+/* The signed note, section by section (ADR-0114 VN-D30). Flat: hairlines and spacing, tokens only. Note text reads as the clinician's
+   words; withheld text is a different thing (a dashed outline, muted, labelled) so it can never be taken for note text. */
+.wx-note {
+  display: grid;
+  gap: 0;
+}
+.wx-note-section {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-outline-variant);
+}
+.wx-note-section:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.wx-note-section-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.wx-note-section-title {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+.wx-note-text {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.wx-note-withheld {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--color-outline);
+  border-radius: 0.375rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.wx-note-withheld > strong {
+  color: var(--color-on-surface);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+.wx-note-history > summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+.wx-note-history > summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+.wx-note-versions {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.5rem 0 0;
+  padding: 0 0 0 0.75rem;
+  border-left: 3px solid var(--color-outline-variant);
+  list-style: none;
+}
+.wx-note-version {
+  display: grid;
+  gap: 0.375rem;
+}
+.wx-note-version-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+}
+.wx-note-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  overflow-wrap: anywhere;
+}
+
+/* The sections an amending addendum names (ADR-0114 VN-D30): each is the note's own drafted-section panel under the section's name. */
+.wx-amend {
+  display: grid;
+  gap: 0.5rem;
+}
+.wx-amend-section {
+  display: grid;
+  gap: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-outline-variant);
+}

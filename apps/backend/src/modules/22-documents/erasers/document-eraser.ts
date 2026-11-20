@@ -11,7 +11,7 @@
 // Under an M4 destruction certificate it (per §8.6 / W14, D12):
 //   1. crypto-erases the document/extraction ciphertext FIRST by destroying the decrypting tenant DEK
 //      material — the ciphertext stays in the rows + MinIO but is irrecoverable the instant the key is gone
-//      (DEK-first, same ordering as M8's `encounter_record` and M36's `messages` erasers);
+//      (DEK-first, the ordering M36's `messages` eraser uses; M8's `encounter_record` eraser also goes first but shreds its cipher columns, not a DEK);
 //   2. SKIPS any document under an active `document_legal_hold` (and the whole associated intake batch) —
 //      the skip + hold metadata is captured by M4 audit, NOT deleted (spec §8.6 "Legal hold interaction");
 //   3. version-aware deletes the remaining MinIO objects (all object versions + delete markers per

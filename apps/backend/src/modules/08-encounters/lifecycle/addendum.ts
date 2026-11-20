@@ -35,6 +35,18 @@ export const ADDENDUM_GRAPH: Readonly<Record<AddendumState, ReadonlyArray<Addend
   };
 
 /**
+ * An addendum's selections are the author's to change only while it is a draft: finalize judges and pins them and sign freezes them, so a save on
+ * any other status is `ILLEGAL_TRANSITION` (409), before any write.
+ */
+export function assertDraftAddendum(status: AddendumState): void {
+  if (status === "draft") return;
+  throw new EncounterStateError(
+    "ILLEGAL_TRANSITION",
+    `the selections of a ${status} addendum cannot be changed`,
+  );
+}
+
+/**
  * The genesis of an addendum: a `draft` row off a non-voided parent (§2.3). The service runs
  * `checkParentNotVoided` before this; here we only emit the create-time side effects (audit only — no
  * outbox until the addendum signs).

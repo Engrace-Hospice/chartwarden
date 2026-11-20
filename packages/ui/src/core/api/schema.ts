@@ -11623,7 +11623,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2) */
+        /** Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2). `finalDocumentation` is the pinned note as the SESSION viewer may read it (ADR-0114, VN-D13): a viewer with 42 CFR Part 2 disclosure, or a note with no Part 2 derived section, gets the note as pinned; any other viewer gets each Part 2 derived section replaced by a generic withheld marker (a finalized note not yet signed, whose sections are not sealed yet, is withheld whole when its text carries Part 2 content). With amendments (VN-D30) it is the CURRENT view, the latest signed text per section. `finalDocumentationView` is the same view as structured data (a withheld section has `text: null`, so no marker string reaches a client as data; `amendedByAddendumId` and `signedAt` say which version each section shows, and a withheld section keeps only its position: `sectionId`, `amendedByAddendumId` and `signedAt` are null), and `noteHistory` lists every version of each amended section (author, date, addendum) under the same per-viewer rule, one decision for every field: a reader without Part 2 disclosure gets a section with a Part 2 derived version at ANY time (the original or any amendment, whatever the latest text holds) withheld whole in the current view, omitted from the history (null when none is left), and dropped from `addenda[].amendsSectionIds`; an addendum whose every named section is withheld reads as a free addendum (`cosignStatus` not_required), one with a visible named section keeps its `cosignStatus`. 503 NOTE_VIEW_UNAVAILABLE when the Part 2 disclosure check cannot be decided (never a silent denial) */
         get: operations["getApiV1EncountersByEncounterId"];
         put?: never;
         post?: never;
@@ -11642,8 +11642,110 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create an addendum draft on a signed encounter */
+        /** Create an addendum draft on a signed encounter. `amendsSectionIds` (ADR-0114 VN-D30) names sections of the note's own sealed rows to amend: the author then confirms the redrafted sections through GET/PUT .../addenda/{addendumId}/draft before the addendum can sign. Only the signed note's author or a supervisor may name sections (403 FORBIDDEN, before anything is written); for a tenant with the visit-note draft on (404 NOT_FOUND when it is off, the same answer as an absent encounter) and a note with sealed rows (422 UNKNOWN_TEMPLATE_SECTION for a section the note does not carry, or a note with none); 422 AMENDMENT_PART2_NOT_ENTITLED, with a generic message that names no section, when the note holds Part 2 content in any section at any version (its pin, an original or an amendment of any section) and the author has no Part 2 disclosure: the same answer whichever section is named, so it does not tell which sections hold Part 2 (the verdict is asked only when the note has Part 2 content; an unknown section id is still 422 UNKNOWN_TEMPLATE_SECTION). Absent, the addendum is a free addendum exactly as before (anyone with the addendum permission) */
         post: operations["postApiV1EncountersByEncounterIdAddenda"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the state of the cosignature request an amending addendum opened (null before any routing; 404 for an addendum of another encounter or tenant) */
+        get: operations["getApiV1EncountersByEncounterIdAddendaByAddendumIdCosignature"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The cosigner acknowledges the request of an amendment (§4.6 cosigner_role_match: an RN who is neither the note's author nor the addendum's author) */
+        post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureAcknowledge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The RN cosigner signs an amendment (D13 step-up; same errors as the note's cosignature: 403 not an RN or the author, 409 ILLEGAL_TRANSITION for a request already signed (a concurrent second sign included), 409 COSIGNATURE_LOCKED past the 48h cap until released). The encounter's own status is unchanged (answered as it stands); publishes m8.encounter.addendum_cosigned, never m8.encounter.cosigned (an amendment never re-opens billing) */
+        post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature/supervisor-release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A supervisor releases an amendment's request past the 48h hard cap (reason of at least 40 characters, fresh step-up); the RN cosigner still has to sign */
+        post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSupervisorrelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The draft of the SIGNED note as an amending addendum's author sees it, recomputed fresh as of the visit time and restricted to the sections the addendum names: each with its `state` against the addendum's own resolutions, the redrafted `text`, the `contentHash` and `corpusVersion` a confirmation binds to, the fail-closed `part2Derived` flag and the kinds of record it was built from. 42 CFR Part 2 content is redacted for this viewer by the sources themselves. The addendum author's view alone: 403 for anyone else (the note's author and a supervisor included), whether the addendum is free, amending or absent. 404 when the tenant has the draft switched off or the author's addendum names no section; 503 DRAFT_UNAVAILABLE when a source cannot be read; encounter.read plus the source domains' read keys */
+        get: operations["getApiV1EncountersByEncounterIdAddendaByAddendumIdDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/draft/sections/{sectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Confirm or deselect one section the addendum names, against the content the author saw (`contentHash` and `corpusVersion` from the amendment draft); 409 DRAFT_SECTION_STALE when either no longer matches. Only the addendum's author, only while the addendum is a draft or finalized (409 ILLEGAL_TRANSITION after), only for a named section (422 UNKNOWN_TEMPLATE_SECTION). Confirming amends the section when the addendum signs; deselecting declines the redraft and leaves the section as signed. The note's care-plan links are never changed. Idempotent. encounter.addendum_author; AI principals refused; 404 when the tenant has the draft switched off */
+        put: operations["putApiV1EncountersByEncounterIdAddendaByAddendumIdDraftSectionsBySectionId"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -11681,7 +11783,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Write an addendum's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored */
+        /** Write an addendum's HearthNote selection tree. Returns the Layer-1 assembly of what was stored. Only a draft addendum can be saved: 409 ILLEGAL_TRANSITION for a finalized or signed one, before anything is written. The save takes the encounter row lock first, so it waits for a finalize or sign in progress and then gets that 409. The If-Match header must be present (428 IF_MATCH_REQUIRED) but its value is not compared on this route: the last save wins */
         patch: operations["patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections"];
         trace?: never;
     };
@@ -11694,7 +11796,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sign an addendum (D13 step-up) */
+        /** Sign an addendum (D13 step-up). An addendum that names sections (ADR-0114 VN-D30) signs only when every named section is confirmed or deselected against the draft as the signer sees it now (409 DRAFT_SECTION_STALE naming each unresolved or stale section; 503 COMPLIANCE_GATE_UNAVAILABLE when a source cannot be read; 409 DRAFT_OFF_AFTER_FINALIZE when the tenant has since switched the draft off). The confirmed sections are sealed as amendment rows of the signed note in the same transaction (the note's original rows are never changed), one m8.encounter.section_amended event is published per amended section (outbox: ids only; the audit event of the same name carries the Part 2 flag), and when the note needed a cosigner its amendment opens its own cosignature request (422 NO_ELIGIBLE_COSIGNER when there is none or the only eligible RN is the signer or the note's author). A second concurrent sign answers 409 ILLEGAL_TRANSITION */
         post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdSign"];
         delete?: never;
         options?: never;
@@ -11856,6 +11958,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The visit-note draft for the calling viewer, computed fresh as of the visit time (the end of the service date in the organization's zone, capped at now): every template section with its `state` (not_drafted | unresolved | confirmed | deselected | needs_reconfirmation), the drafted `text`, the `contentHash` and `corpusVersion` a confirmation binds to, the fail-closed `part2Derived` flag and the kinds of record it was built from (`origins`; source ids are kept in the audit trail only). 42 CFR Part 2 content is redacted for this viewer by the sources themselves. 404 when the tenant has the draft switched off; 503 DRAFT_UNAVAILABLE when a source cannot be read; encounter.read */
+        get: operations["getApiV1EncountersByEncounterIdDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/draft/sections/{sectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Confirm or deselect one drafted section against the content the clinician saw (`contentHash` and `corpusVersion` from the draft). The server recomputes the draft for the same viewer and answers 409 DRAFT_SECTION_STALE when either no longer matches. Confirming links the section's care-plan goals and interventions to the encounter; deselecting removes them from it (a note never changes the care plan), so a deselected section is bound to what remains and a section left empty reads not_drafted. Idempotent. Only on an encounter that is not signed, cosigned or voided; encounter.author and caseload scope as the selections save, but the encounter's AUTHOR only (is_author; 403 for anyone else, a supervisor included: the signer must be who confirmed); AI principals refused; 404 when the tenant has the draft switched off. Answers the section's new state */
+        put: operations["putApiV1EncountersByEncounterIdDraftSectionsBySectionId"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/evv-reconcile": {
         parameters: {
             query?: never;
@@ -11882,7 +12018,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Finalize the encounter (Layer-3 gate preview) */
+        /** Finalize the encounter (Layer-3 gate preview). For a tenant with the visit-note draft switched on (ADR-0114) the gate also checks that every drafted section is resolved for the finalizing author: 422 COMPLIANCE_GATE_FAILED lists each section as DRAFT_SECTION_UNRESOLVED (never confirmed or deselected) or DRAFT_SECTION_STALE (its content or the phrase-corpus version changed after it was resolved), and 503 COMPLIANCE_GATE_UNAVAILABLE says the draft could not be computed (never a pass). The note's pinned text then carries the confirmed draft text. Gate check 1 (required sections) then counts a drafted section the author confirmed as populated, with no selection or free text of their own; a deselected, unresolved or stale one does not. A tenant with the switch off sees the gate exactly as before */
         post: operations["postApiV1EncountersByEncounterIdFinalize"];
         delete?: never;
         options?: never;
@@ -11987,7 +12123,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sign the encounter (Layer-3 gate; D13 step-up); `visitModality` is required (422 MODALITY_CONFIRMATION_REQUIRED) for a Medicare-countable discipline that has no confirmed modality, and in person / video is refused on a telephonic encounter type (422 MODALITY_CONFLICTS_WITH_VISIT_TYPE; telephonic is always allowed); optional `startedAt`/`endedAt` are the clinician's documented visit times, both or neither, each an ISO-8601 date-time with an explicit UTC offset (`Z` or +hh:mm / -hh:mm), ordered, not in the future, starting on the encounter's org-local service date and ending on that date or the next, and at most 8 hours apart (422 VISIT_TIME_INVALID otherwise); they are ignored when an M18 EVV bracket exists (EVV always wins) and never defaulted or padded; typed times are refused with 503 EVV_BRACKET_UNAVAILABLE while the M18 EVV lookup cannot be reached (retry, or sign without times) and with 422 VISIT_TIME_OVERLAP when an in-person / video bracket overlaps another the same author documented */
+        /** Sign the encounter (Layer-3 gate; D13 step-up); `visitModality` is required (422 MODALITY_CONFIRMATION_REQUIRED) for a Medicare-countable discipline that has no confirmed modality, and in person / video is refused on a telephonic encounter type (422 MODALITY_CONFLICTS_WITH_VISIT_TYPE; telephonic is always allowed); optional `startedAt`/`endedAt` are the clinician's documented visit times, both or neither, each an ISO-8601 date-time with an explicit UTC offset (`Z` or +hh:mm / -hh:mm), ordered, not in the future, starting on the encounter's org-local service date and ending on that date or the next, and at most 8 hours apart (422 VISIT_TIME_INVALID otherwise); they are ignored when an M18 EVV bracket exists (EVV always wins) and never defaulted or padded; typed times are refused with 503 EVV_BRACKET_UNAVAILABLE while the M18 EVV lookup cannot be reached (retry, or sign without times) and with 422 VISIT_TIME_OVERLAP when an in-person / video bracket overlaps another the same author documented. For a tenant with the visit-note draft switched on (ADR-0114) the draft is recomputed for the SIGNER as of the visit time, inside the sign transaction: any drafted section that is unresolved or no longer matches its confirmation (including one whose 42 CFR Part 2 redaction differs for the signer) is refused with 409 DRAFT_SECTION_STALE, each section named in `details` with DRAFT_SECTION_UNRESOLVED or DRAFT_SECTION_STALE, and 503 COMPLIANCE_GATE_UNAVAILABLE says the draft could not be computed. A signed note's text is built from the confirmed draft text and the clinician's own selections (a deselected section adds nothing), pinned as the note's final text, and sealed section by section in the same transaction (one append-only row per section whose ordered text is the final text). A note finalized with drafted text that carries 42 CFR Part 2 content cannot be sealed once the draft is switched off for the organization: 409 DRAFT_OFF_AFTER_FINALIZE, switch the draft back on and sign again. A tenant with the switch off is signed exactly as before */
         post: operations["postApiV1EncountersByEncounterIdSign"];
         delete?: never;
         options?: never;
@@ -12157,9 +12293,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** RN/Supervisor cosignature work queue with SLA chips (§5.5) */
+        /** RN/Supervisor cosignature work queue with SLA chips (§5.5): every open cosignature request of the tenant. Each entry is the encounter plus `cosign`, which says which request it is: a NOTE awaiting its cosigner (`subject: note`) or an AMENDMENT of a signed note awaiting its own (`subject: addendum`, with `addendumId`; the entry is then the parent encounter, which stays signed or cosigned), with the request id, its status and when it was routed (the start of its own 12h/24h/48h clock) (ADR-0114 VN-D30) */
         get: operations["getApiV1EncountersCosignaturequeue"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/draft-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's visit-note draft switch (`enabled`, off for an unset tenant) and the phrase corpus's clinical review state (`reviewStatus` pending | approved, `reviewer`); encounter.draft_policy_admin */
+        get: operations["getApiV1EncountersDraftpolicy"];
+        /** Switch the tenant's visit-note draft and its sign gate on or off (needs a fresh step-up; encounter.draft_policy_admin). Enabling is refused with 409 CORPUS_REVIEW_PENDING while the phrase corpus has not had its clinical review; disabling is always allowed. Every write records an m8.encounter.draft_policy_changed audit event (previous and new value) */
+        put: operations["putApiV1EncountersDraftpolicy"];
         post?: never;
         delete?: never;
         options?: never;
@@ -14687,7 +14841,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string) */
+        /** Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string). A document is broadly readable and M22 carries no per-document 42 CFR Part 2 signal, so for a note with a Part 2 derived section (ADR-0114, VN-D13) `final` is ALWAYS the withheld view: each such section replaced by a generic withheld marker, the entitled author included */
         get: operations["getApiV1InternalEncountersByEncounterIdRenderpayload"];
         put?: never;
         post?: never;
@@ -66790,6 +66944,16 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationView?: {
+                                withheld: boolean;
+                                sections: {
+                                    sectionId: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    amendedByAddendumId: string | null;
+                                    signedAt: string | null;
+                                }[];
+                            } | null;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -66810,7 +66974,24 @@ export interface operations {
                                 createdAt: string;
                                 signedAt: string | null;
                                 version: number;
+                                amendsSectionIds?: string[];
+                                cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                             }[];
+                            noteHistory?: {
+                                sections: {
+                                    sectionId: string;
+                                    versions: {
+                                        kind: "original" | "amendment";
+                                        addendumId: string | null;
+                                        authoredByMembershipId: string;
+                                        signedAt: string | null;
+                                        text: string | null;
+                                        withheld: boolean;
+                                        current: boolean;
+                                        cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
+                                    }[];
+                                }[];
+                            } | null;
                         }[];
                     };
                 };
@@ -66908,6 +67089,16 @@ export interface operations {
                             [key: string]: unknown;
                         } | null;
                         finalDocumentation?: string | null;
+                        finalDocumentationView?: {
+                            withheld: boolean;
+                            sections: {
+                                sectionId: string | null;
+                                text: string | null;
+                                withheld: boolean;
+                                amendedByAddendumId: string | null;
+                                signedAt: string | null;
+                            }[];
+                        } | null;
                         vitals?: {
                             [key: string]: unknown;
                         } | null;
@@ -66928,7 +67119,24 @@ export interface operations {
                             createdAt: string;
                             signedAt: string | null;
                             version: number;
+                            amendsSectionIds?: string[];
+                            cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                         }[];
+                        noteHistory?: {
+                            sections: {
+                                sectionId: string;
+                                versions: {
+                                    kind: "original" | "amendment";
+                                    addendumId: string | null;
+                                    authoredByMembershipId: string;
+                                    signedAt: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    current: boolean;
+                                    cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
+                                }[];
+                            }[];
+                        } | null;
                     };
                 };
             };
@@ -66951,6 +67159,7 @@ export interface operations {
                     reason: string;
                     /** Format: uuid */
                     promotionRequestId?: string;
+                    amendsSectionIds?: string[];
                 };
             };
         };
@@ -66965,6 +67174,214 @@ export interface operations {
                         id: string;
                         /** @constant */
                         status: "draft";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdAddendaByAddendumIdCosignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: ("pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed") | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureAcknowledge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    attestationConfirmed: true;
+                    lateEntryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
+                        cosignedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdAddendaByAddendumIdCosignatureSupervisorrelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: date-time */
+                    stepUpAuthAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdAddendaByAddendumIdDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        addendumId: string;
+                        encounterId: string;
+                        patientId: string;
+                        templateKey: string;
+                        /** Format: date-time */
+                        asOf: string;
+                        sections: {
+                            sectionId: string;
+                            state: "not_drafted" | "unresolved" | "confirmed" | "deselected" | "needs_reconfirmation";
+                            text: string | null;
+                            contentHash: string | null;
+                            corpusVersion: string | null;
+                            part2Derived: boolean | null;
+                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change")[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersByEncounterIdAddendaByAddendumIdDraftSectionsBySectionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+                sectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    resolution: "confirmed" | "deselected";
+                    contentHash: string;
+                    corpusVersion: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sectionId: string;
+                        state: "not_drafted" | "unresolved" | "confirmed" | "deselected" | "needs_reconfirmation";
+                        text: string | null;
+                        contentHash: string | null;
+                        corpusVersion: string | null;
+                        part2Derived: boolean | null;
+                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change")[];
                     };
                 };
             };
@@ -67044,7 +67461,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
+                /** @description The addendum version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; the value is not compared on this route (no STALE_VERSION). */
                 "If-Match": string;
             };
             path: {
@@ -67116,6 +67533,8 @@ export interface operations {
                         /** @constant */
                         status: "signed";
                         signedAt: string;
+                        amendedSectionIds?: string[];
+                        cosignatureRequestId?: string | null;
                     };
                 };
             };
@@ -67445,6 +67864,86 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: "pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        encounterId: string;
+                        patientId: string;
+                        templateKey: string;
+                        /** Format: date-time */
+                        asOf: string;
+                        sections: {
+                            sectionId: string;
+                            state: "not_drafted" | "unresolved" | "confirmed" | "deselected" | "needs_reconfirmation";
+                            text: string | null;
+                            contentHash: string | null;
+                            corpusVersion: string | null;
+                            part2Derived: boolean | null;
+                            origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change")[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersByEncounterIdDraftSectionsBySectionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                sectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    resolution: "confirmed" | "deselected";
+                    contentHash: string;
+                    corpusVersion: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sectionId: string;
+                        state: "not_drafted" | "unresolved" | "confirmed" | "deselected" | "needs_reconfirmation";
+                        text: string | null;
+                        contentHash: string | null;
+                        corpusVersion: string | null;
+                        part2Derived: boolean | null;
+                        origins: ("care_plan_goal" | "care_plan_intervention" | "scale_reading" | "vitals" | "medication_change")[];
                     };
                 };
             };
@@ -68349,6 +68848,16 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationView?: {
+                                withheld: boolean;
+                                sections: {
+                                    sectionId: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    amendedByAddendumId: string | null;
+                                    signedAt: string | null;
+                                }[];
+                            } | null;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -68369,8 +68878,90 @@ export interface operations {
                                 createdAt: string;
                                 signedAt: string | null;
                                 version: number;
+                                amendsSectionIds?: string[];
+                                cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                             }[];
+                            noteHistory?: {
+                                sections: {
+                                    sectionId: string;
+                                    versions: {
+                                        kind: "original" | "amendment";
+                                        addendumId: string | null;
+                                        authoredByMembershipId: string;
+                                        signedAt: string | null;
+                                        text: string | null;
+                                        withheld: boolean;
+                                        current: boolean;
+                                        cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
+                                    }[];
+                                }[];
+                            } | null;
+                            cosign: {
+                                subject: "note" | "addendum";
+                                addendumId: string | null;
+                                requestId: string | null;
+                                status: ("pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed") | null;
+                                routedAt: string | null;
+                            };
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersDraftpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        reviewStatus: "pending" | "approved";
+                        reviewer: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersDraftpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        reviewStatus: "pending" | "approved";
+                        reviewer: string;
                     };
                 };
             };
@@ -68418,6 +69009,16 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationView?: {
+                                withheld: boolean;
+                                sections: {
+                                    sectionId: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    amendedByAddendumId: string | null;
+                                    signedAt: string | null;
+                                }[];
+                            } | null;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -68438,7 +69039,24 @@ export interface operations {
                                 createdAt: string;
                                 signedAt: string | null;
                                 version: number;
+                                amendsSectionIds?: string[];
+                                cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                             }[];
+                            noteHistory?: {
+                                sections: {
+                                    sectionId: string;
+                                    versions: {
+                                        kind: "original" | "amendment";
+                                        addendumId: string | null;
+                                        authoredByMembershipId: string;
+                                        signedAt: string | null;
+                                        text: string | null;
+                                        withheld: boolean;
+                                        current: boolean;
+                                        cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
+                                    }[];
+                                }[];
+                            } | null;
                             closure: {
                                 clockStartedAt: string | null;
                                 deadlineAt: string | null;
@@ -75893,6 +76511,16 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationView?: {
+                                withheld: boolean;
+                                sections: {
+                                    sectionId: string | null;
+                                    text: string | null;
+                                    withheld: boolean;
+                                    amendedByAddendumId: string | null;
+                                    signedAt: string | null;
+                                }[];
+                            } | null;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -75913,7 +76541,24 @@ export interface operations {
                                 createdAt: string;
                                 signedAt: string | null;
                                 version: number;
+                                amendsSectionIds?: string[];
+                                cosignStatus?: "not_required" | "pending" | "cosigned" | "released";
                             }[];
+                            noteHistory?: {
+                                sections: {
+                                    sectionId: string;
+                                    versions: {
+                                        kind: "original" | "amendment";
+                                        addendumId: string | null;
+                                        authoredByMembershipId: string;
+                                        signedAt: string | null;
+                                        text: string | null;
+                                        withheld: boolean;
+                                        current: boolean;
+                                        cosignStatus: ("not_required" | "pending" | "cosigned" | "released") | null;
+                                    }[];
+                                }[];
+                            } | null;
                         }[];
                     };
                 };

@@ -277,6 +277,34 @@ describe("M7 sud_disclosure_allowed — resolved per actor through M39", () => {
     }
   });
 
+  it("names the calling module on M39's evaluation, M7 unless the caller says otherwise", async () => {
+    const seen: string[] = [];
+    registerSeam("ConsentEvaluator", {
+      evaluateForInternalAccess: async (args: { callerModule: string }) => {
+        seen.push(args.callerModule);
+        return { redactSubstanceUseDisorderFields: false, basis: "release_names_actor" };
+      },
+    });
+    await sudDisclosureAllowedForPatient(context(), PAT, defaultInternalSudAccessChecker());
+    await sudDisclosureAllowedForPatient(
+      context(),
+      PAT,
+      defaultInternalSudAccessChecker({ callerModule: "m8" }),
+    );
+    expect(seen).toEqual(["m7", "m8"]);
+  });
+
+  it("lets a caller that fails closed itself see the outage: onError 'throw' rethrows, it never reads as a verdict", async () => {
+    const outage = new Error("consent store unavailable");
+    registerSeam("ConsentEvaluator", {
+      evaluateForInternalAccess: async () => {
+        throw outage;
+      },
+    });
+    const checker = defaultInternalSudAccessChecker({ onError: "throw" });
+    await expect(sudDisclosureAllowedForPatient(context(), PAT, checker)).rejects.toBe(outage);
+  });
+
   it("the registered predicate resolves the same way for a SUD problem", async () => {
     registerSeam(
       "ConsentEvaluator",

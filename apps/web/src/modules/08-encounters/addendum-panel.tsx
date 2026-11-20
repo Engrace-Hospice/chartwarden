@@ -13,6 +13,7 @@ import {
   Button,
   CeremonyModal,
   EmptyState,
+  InlineAlert,
   Modal,
   StatusPill,
   TextAreaField,
@@ -20,7 +21,7 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { type BlockerFunction, Link, useBlocker } from "react-router-dom";
 import { useSession } from "../../shell/session";
@@ -39,6 +40,18 @@ import {
   saveAddendumSelections,
   signAddendum,
 } from "./addenda-api";
+import { AddendumCosign } from "./addendum-cosign";
+import {
+  addendumContentHint,
+  addendumName,
+  addendumRefusalMessage,
+  isSectionRefusal,
+  signBlockReason,
+  signedAmendmentMessage,
+} from "./amendment-model";
+import { AmendmentReview } from "./amendment-review";
+import { amendmentCosignTone, amendmentCosignWords } from "./cosign-model";
+import { isStepUpRefusal } from "./cosign-refusal";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
@@ -46,33 +59,52 @@ import {
   loadTemplate,
   toDraft,
   toSelectionsBody,
-  unmetRequiredSections,
 } from "./encounters-api";
 import { ProposedFromMessage } from "./proposed-from-message";
-import { authFailureRedirect } from "./write-workflow";
+import { humanizeSection } from "./sign-draft-notice";
+import { shortStamp } from "./signed-note-model";
+import { useNoteDraft } from "./use-note-draft";
 
 type Failure = Extract<AddendumResult<unknown>, { ok: false }>;
+type Step = "finalize" | "sign";
 
 interface PanelProps {
   readonly encounterId: string;
   readonly addenda: readonly AddendumRow[];
-  /** Re-read the encounter after any state change so statuses come from the server again. */
-  readonly onChanged: () => void;
+  /** The signed note's author (membership id), when known: the cosigner of an amendment is neither the note's author nor the amendment's. */
+  readonly noteAuthorId?: string | null;
+  /**
+   * Re-read the encounter after any state change so statuses come from the server again. May return the read: a sign then holds its row
+   * busy until the page shows the new status.
+   */
+  readonly onChanged: () => void | Promise<void>;
 }
 
 /** A refusal rendered as user-facing prose; step-up gets the real ceremony link. */
-function FailureAlert({ failure }: { failure: Failure }): JSX.Element {
-  const path = `${window.location.pathname}${window.location.search}`;
-  const stepUp = authFailureRedirect(
-    failure.status ?? undefined,
-    failure.code ?? undefined,
-    path,
-    failure.message,
-  );
-  const redirect = stepUp ?? (failure.status === 401 ? "/login" : null);
+function FailureAlert({
+  failure,
+  step,
+  amends,
+}: {
+  failure: Failure;
+  step?: Step;
+  /** The addendum names sections of the note to amend (a refused gate words a free addendum without them). */
+  amends?: boolean;
+}): JSX.Element {
+  const path = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const stepUp = isStepUpRefusal({
+    status: failure.status ?? undefined,
+    code: failure.code ?? undefined,
+    message: failure.message,
+  });
+  const redirect = stepUp
+    ? `/step-up?returnTo=${encodeURIComponent(path)}`
+    : failure.status === 401
+      ? "/login"
+      : null;
   return (
     <div role="alert" style={alertBox}>
-      <span>{failure.message}</span>
+      <span>{addendumRefusalMessage({ ...failure, step, amends })}</span>
       {redirect ? (
         <Link to={redirect} style={alertLink}>
           {failure.status === 401 ? "Sign in again" : "Re-authenticate"}
@@ -95,9 +127,21 @@ const transportFailure: Failure = {
   message: "The connection was interrupted. Your changes are still here; try again.",
 };
 
-export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): JSX.Element {
+export function AddendaPanel({
+  encounterId,
+  addenda,
+  noteAuthorId = null,
+  onChanged,
+}: PanelProps): JSX.Element {
   const client = useApiClient();
   const session = useSession();
+  // Each row, so focus can go to the one that was signed once the Sign button it came from is gone. The request is an object, so asking
+  // again for the same row still moves focus; it is acted on after React has committed the page that no longer has that button.
+  const rows = useRef(new Map<string, HTMLLIElement>());
+  const [focusRow, setFocusRow] = useState<{ readonly addendumId: string } | null>(null);
+  useEffect(() => {
+    if (focusRow) rows.current.get(focusRow.addendumId)?.focus();
+  }, [focusRow]);
   // Coming back from /step-up: reopen the editor whose unsaved selections were stashed.
   const [editingId, setEditingId] = useState<string | null>(() => {
     const stashed = findStepUpDraftResourceId(session, ADDENDUM_DRAFT_ACTION);
@@ -105,25 +149,51 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
   });
   const [signingId, setSigningId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [failure, setFailure] = useState<{ addendumId: string; error: Failure } | null>(null);
+  const [failure, setFailure] = useState<{
+    addendumId: string;
+    error: Failure;
+    step: Step;
+  } | null>(null);
+  // What the last sign of an amending addendum did (sections amended, cosignature requested), until the next action.
+  const [signedNote, setSignedNote] = useState<{ addendumId: string; text: string } | null>(null);
+
+  // After a step that landed: the row stays busy (its buttons wait, still focusable) until the encounter has been read again and shows the
+  // new status; then the button that was pressed is gone, and focus goes to the addendum rather than the page.
+  async function settled(addendumId: string): Promise<void> {
+    try {
+      await onChanged();
+    } finally {
+      setBusyId(null);
+    }
+    setFocusRow({ addendumId });
+  }
 
   async function finalize(addendumId: string): Promise<void> {
+    if (busyId !== null) return;
     setBusyId(addendumId);
     setFailure(null);
+    setSignedNote(null);
     const res = await finalizeAddendum(client, { encounterId, addendumId });
-    setBusyId(null);
-    if (!res.ok) return setFailure({ addendumId, error: res });
-    onChanged();
+    if (!res.ok) {
+      setBusyId(null);
+      return setFailure({ addendumId, error: res, step: "finalize" });
+    }
+    await settled(addendumId);
   }
 
   async function sign(addendumId: string): Promise<void> {
+    if (busyId !== null) return;
     setBusyId(addendumId);
     setFailure(null);
     const res = await signAddendum(client, { encounterId, addendumId });
-    setBusyId(null);
     setSigningId(null);
-    if (!res.ok) return setFailure({ addendumId, error: res });
-    onChanged();
+    if (!res.ok) {
+      setBusyId(null);
+      return setFailure({ addendumId, error: res, step: "sign" });
+    }
+    const text = signedAmendmentMessage(res.value);
+    setSignedNote(text === null ? null : { addendumId, text });
+    await settled(addendumId);
   }
 
   const signing = addenda.find((a) => a.id === signingId) ?? null;
@@ -135,76 +205,36 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
         <EmptyState title="No addenda" description="Corrections to this signed note appear here." />
       ) : (
         <ul style={list}>
-          {addenda.map((a) => (
-            <li key={a.id} style={item} aria-label={`Addendum ${a.id}`}>
-              <StackedRows
-                rows={[
-                  {
-                    label: "Status",
-                    value: (
-                      <StatusPill
-                        label={stateLabel(a.status)}
-                        tone={ENCOUNTER_TONE[a.status] ?? "neutral"}
-                      />
-                    ),
-                  },
-                  {
-                    label: "Author (membership)",
-                    value: <span style={mono}>{a.authoredByUserId}</span>,
-                  },
-                  { label: "Reason", value: a.reason },
-                  { label: "Opened", value: shortStamp(a.createdAt) },
-                  ...(a.signedAt ? [{ label: "Signed", value: shortStamp(a.signedAt) }] : []),
-                ]}
-              />
-              {a.status !== "signed" ? (
-                <div style={actions}>
-                  {a.status === "draft" ? (
-                    <>
-                      {editingId !== a.id ? (
-                        <Button
-                          tone="secondary"
-                          size="sm"
-                          disabled={busyId === a.id || editingId !== null}
-                          onClick={() => setEditingId(a.id)}
-                        >
-                          Edit draft
-                        </Button>
-                      ) : null}
-                      <Button
-                        size="sm"
-                        disabled={busyId === a.id || editingId === a.id}
-                        onClick={() => void finalize(a.id)}
-                      >
-                        {busyId === a.id ? "Working…" : "Finalize addendum"}
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      size="sm"
-                      disabled={busyId === a.id}
-                      onClick={() => {
-                        setFailure(null);
-                        setSigningId(a.id);
-                      }}
-                    >
-                      Sign addendum
-                    </Button>
-                  )}
-                </div>
-              ) : null}
-              {failure?.addendumId === a.id ? <FailureAlert failure={failure.error} /> : null}
-              {editingId === a.id && a.status === "draft" ? (
-                <AddendumEditor
-                  encounterId={encounterId}
-                  addendumId={a.id}
-                  onClose={() => {
-                    clearStepUpDraft(stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, a.id));
-                    setEditingId(null);
-                  }}
-                />
-              ) : null}
-            </li>
+          {addenda.map((a, index) => (
+            <AddendumItem
+              key={a.id}
+              encounterId={encounterId}
+              addendum={a}
+              name={addendumName(index + 1, addenda.length, a.createdAt)}
+              rowRef={(element) => {
+                if (element) rows.current.set(a.id, element);
+                else rows.current.delete(a.id);
+              }}
+              noteAuthorId={noteAuthorId}
+              busy={busyId === a.id}
+              editing={editingId === a.id}
+              editorLocked={editingId !== null}
+              failure={failure?.addendumId === a.id ? failure.error : null}
+              failureStep={failure?.addendumId === a.id ? failure.step : undefined}
+              signedNote={signedNote?.addendumId === a.id ? signedNote.text : null}
+              onChanged={onChanged}
+              onSettled={() => setFocusRow({ addendumId: a.id })}
+              onEdit={() => setEditingId(a.id)}
+              onCloseEditor={() => {
+                clearStepUpDraft(stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, a.id));
+                setEditingId(null);
+              }}
+              onFinalize={() => void finalize(a.id)}
+              onSign={() => {
+                setFailure(null);
+                setSigningId(a.id);
+              }}
+            />
           ))}
         </ul>
       )}
@@ -215,14 +245,12 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
           <div style={stack}>
             <strong>Sign addendum</strong>
             <span style={metaText}>{signing?.reason}</span>
-            {failure && failure.addendumId === signingId ? (
-              <FailureAlert failure={failure.error} />
-            ) : null}
           </div>
         }
         legalText="I attest this addendum is complete and accurate to the best of my knowledge."
         signer={{ name: "Signing clinician", role: "This session" }}
         commitLabel={busyId === signingId && signingId ? "Signing…" : "Sign & commit"}
+        commitBlocked={busyId !== null}
         onCommit={() => signingId && void sign(signingId)}
         onCancel={() => setSigningId(null)}
       />
@@ -230,9 +258,208 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
   );
 }
 
-// Same "YYYY-MM-DD HH:mm" form the Sign-off card uses (UTC wall time from the server string).
-function shortStamp(iso: string): string {
-  return iso.slice(0, 16).replace("T", " ");
+interface ItemProps {
+  readonly encounterId: string;
+  readonly addendum: AddendumRow;
+  /** `addendumName`: this addendum among its siblings. */
+  readonly name: string;
+  readonly rowRef: (element: HTMLLIElement | null) => void;
+  readonly noteAuthorId: string | null;
+  readonly busy: boolean;
+  /** This addendum's selections editor is open. */
+  readonly editing: boolean;
+  /** Some addendum's editor is open: only one at a time. */
+  readonly editorLocked: boolean;
+  /** The last refusal of an action on THIS addendum. */
+  readonly failure: Failure | null;
+  /** The step that `failure` refused (finalize or sign): what a refused compliance gate says depends on it. */
+  readonly failureStep?: Step;
+  /** What its last sign did, for an amending addendum. */
+  readonly signedNote: string | null;
+  readonly onChanged: () => void | Promise<void>;
+  /** The cosigner's step has been read back (the request and the page): focus goes to this addendum. */
+  readonly onSettled: () => void;
+  readonly onEdit: () => void;
+  readonly onCloseEditor: () => void;
+  readonly onFinalize: () => void;
+  readonly onSign: () => void;
+}
+
+/**
+ * One addendum and the next step its server status allows. An addendum that names sections of the signed note (VN-D30) also reads its own
+ * draft (only until it is signed): the named sections are reviewed here, and Sign waits, naming them, until each is confirmed or
+ * deselected. The server still judges the sign; this tells the signer first, so the button is not a dead end.
+ */
+function AddendumItem({
+  encounterId,
+  addendum: a,
+  name,
+  rowRef,
+  noteAuthorId,
+  busy,
+  editing,
+  editorLocked,
+  failure,
+  failureStep,
+  signedNote,
+  onChanged,
+  onSettled,
+  onEdit,
+  onCloseEditor,
+  onFinalize,
+  onSign,
+}: ItemProps): JSX.Element {
+  const amends = a.amendsSectionIds ?? [];
+  const reviewing = amends.length > 0 && a.status !== "signed";
+  // Reads nothing (undefined encounter) for a free or a signed addendum.
+  const amendment = useNoteDraft(reviewing ? encounterId : undefined, a.status, a.id);
+  const blockReason = reviewing ? signBlockReason(amendment.load) : null;
+  // How many named sections the author has confirmed (null until the draft is read): content the addendum's gate counts.
+  const confirmedAmended =
+    amendment.load.status === "ready"
+      ? amendment.load.draft.sections.filter((section) => section.state === "confirmed").length
+      : null;
+  const blockId = `amend-block-${a.id}`;
+  // Where the amendment's own cosignature stands, in words (nothing when none was needed), and whether it still awaits a cosigner.
+  const cosignWords = amends.length > 0 ? amendmentCosignWords(a.cosignStatus) : null;
+  const awaitingCosign =
+    amends.length > 0 &&
+    a.status === "signed" &&
+    (a.cosignStatus === "pending" || a.cosignStatus === "released");
+  // A sign refused for stale sections says so: read the draft again, so the sections it names show their new state.
+  const { reload: reloadAmendment } = amendment;
+  useEffect(() => {
+    if (isSectionRefusal(failure?.code)) void reloadAmendment();
+  }, [failure, reloadAmendment]);
+
+  return (
+    <li style={item} aria-label={`Addendum ${a.id}`} ref={rowRef} tabIndex={-1}>
+      <StackedRows
+        rows={[
+          {
+            label: "Status",
+            value: (
+              <StatusPill
+                label={stateLabel(a.status)}
+                tone={ENCOUNTER_TONE[a.status] ?? "neutral"}
+              />
+            ),
+          },
+          {
+            label: "Author (membership)",
+            value: <span style={mono}>{a.authoredByUserId}</span>,
+          },
+          { label: "Reason", value: a.reason },
+          ...(amends.length > 0
+            ? [{ label: "Amends", value: amends.map(humanizeSection).join(", ") }]
+            : []),
+          ...(cosignWords !== null && a.cosignStatus
+            ? [
+                {
+                  label: "Cosignature of this amendment",
+                  value: (
+                    <StatusPill label={cosignWords} tone={amendmentCosignTone(a.cosignStatus)} />
+                  ),
+                },
+              ]
+            : []),
+          { label: "Opened", value: shortStamp(a.createdAt) },
+          ...(a.signedAt ? [{ label: "Signed", value: shortStamp(a.signedAt) }] : []),
+        ]}
+      />
+      {reviewing ? (
+        <AmendmentReview
+          addendumId={a.id}
+          addendumName={name}
+          sectionIds={amends}
+          locked={busy}
+          draft={amendment}
+        />
+      ) : null}
+      {awaitingCosign ? (
+        <AddendumCosign
+          encounterId={encounterId}
+          addendum={a}
+          addendumName={name}
+          noteAuthorId={noteAuthorId}
+          onChanged={onChanged}
+          onSettled={onSettled}
+        />
+      ) : null}
+      {a.status !== "signed" ? (
+        <div style={actions}>
+          {a.status === "draft" ? (
+            <>
+              {/* Not `disabled` while the row is busy: the one pressed would drop keyboard focus, and a finalize that landed leaves these
+                  on the page until the encounter has been read again. */}
+              {!editing ? (
+                <Button
+                  tone="secondary"
+                  size="sm"
+                  disabled={editorLocked}
+                  aria-disabled={busy || undefined}
+                  style={busy ? WAITING_STYLE : undefined}
+                  onClick={() => {
+                    if (!busy) onEdit();
+                  }}
+                >
+                  Edit draft
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                disabled={editing}
+                aria-disabled={busy || undefined}
+                aria-busy={busy || undefined}
+                style={busy ? WAITING_STYLE : undefined}
+                onClick={() => {
+                  if (!busy) onFinalize();
+                }}
+              >
+                {busy ? "Working…" : "Finalize addendum"}
+              </Button>
+            </>
+          ) : (
+            // Not `disabled` while the row is busy: the ceremony hands focus back to this button, and a disabled one cannot take it.
+            <Button
+              size="sm"
+              aria-disabled={blockReason !== null || busy || undefined}
+              aria-busy={busy || undefined}
+              aria-describedby={blockReason !== null ? blockId : undefined}
+              style={blockReason !== null || busy ? WAITING_STYLE : undefined}
+              onClick={() => {
+                if (blockReason === null && !busy) onSign();
+              }}
+            >
+              Sign addendum
+            </Button>
+          )}
+        </div>
+      ) : null}
+      {blockReason !== null ? (
+        <div id={blockId}>
+          <InlineAlert tone="warning" live={false}>
+            {blockReason}
+          </InlineAlert>
+        </div>
+      ) : null}
+      {/* Always on the page, so the sentence is announced when it is filled in (a region mounted with its text is not). */}
+      <output id={`signed-note-${a.id}`} style={metaText}>
+        {signedNote}
+      </output>
+      {failure ? (
+        <FailureAlert failure={failure} step={failureStep} amends={amends.length > 0} />
+      ) : null}
+      {editing && a.status === "draft" ? (
+        <AddendumEditor
+          encounterId={encounterId}
+          addendumId={a.id}
+          amendment={amends.length > 0 ? { confirmed: confirmedAmended } : null}
+          onClose={onCloseEditor}
+        />
+      ) : null}
+    </li>
+  );
 }
 
 interface StackedRow {
@@ -257,11 +484,13 @@ function StackedRows({ rows }: { readonly rows: readonly StackedRow[] }): JSX.El
 interface EditorProps {
   readonly encounterId: string;
   readonly addendumId: string;
+  /** Null for a free addendum; for an amending one, how many of its sections the author has confirmed (null while unread). */
+  readonly amendment: { readonly confirmed: number | null } | null;
   readonly onClose: () => void;
 }
 
 /** Selection composer for one draft addendum — the parent's template menu, the addendum's own tree. */
-function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.Element {
+function AddendumEditor({ encounterId, addendumId, amendment, onClose }: EditorProps): JSX.Element {
   const client = useApiClient();
   const session = useSession();
   const draftKey = stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, addendumId);
@@ -381,7 +610,8 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
   if (loadError) return <FailureAlert failure={loadError} />;
   if (!template) return <p style={metaText}>Loading addendum…</p>;
 
-  const unmet = unmetRequiredSections(template, draft);
+  // An addendum has no required sections of its own (the note's are not its business): it needs something in it.
+  const contentHint = addendumContentHint(draft, amendment);
 
   return (
     <div style={editor} aria-label="Addendum editor">
@@ -389,10 +619,7 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
         const sec = draft[section.sectionId];
         return (
           <fieldset key={section.sectionId} style={fieldset}>
-            <legend style={legend}>
-              {section.heading}
-              {section.required ? " (required)" : ""}
-            </legend>
+            <legend style={legend}>{section.heading}</legend>
             {section.entries.map((entry) => {
               const picked = sec?.entries.find((e) => e.code === entry.code);
               const id = `${addendumId}-${section.sectionId}-${entry.code}`;
@@ -434,9 +661,7 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
           </fieldset>
         );
       })}
-      {unmet.length > 0 ? (
-        <p style={metaText}>Required before finalizing: {unmet.join(", ")}</p>
-      ) : null}
+      {contentHint !== null ? <p style={metaText}>{contentHint}</p> : null}
       {preview ? (
         <div>
           <strong style={metaText}>Narrative preview</strong>
@@ -504,6 +729,8 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
   );
 }
 
+/** The kit Button sets opacity and cursor inline, so the look of a waiting button has to be inline too. */
+const WAITING_STYLE: CSSProperties = { opacity: 0.6, cursor: "not-allowed" };
 const stack: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.5rem" };
 const shell: CSSProperties = { display: "flex", flexDirection: "column" };
 const rowsList: CSSProperties = { margin: 0, display: "grid", rowGap: "0.55rem" };

@@ -2,7 +2,7 @@
 // a HearthNote template (the Layer-1 deterministic-assembly input). PHI-bearing → three-column tenancy
 // rule (denormalized from the parent encounter/addendum). Belongs to exactly one parent (encounter XOR
 // addendum). `free_text_cipher` holds the only free-text annotations, encrypted per-tenant DEK (PHI
-// minimization; crypto-erased on destruction, §3.6). RLS + the M4 write-audit trigger land in migration
+// minimization; shredded to NULL on destruction, §3.6). RLS + the M4 write-audit trigger land in migration
 // 0031 (M8-T03).
 import { sql } from "drizzle-orm";
 import {

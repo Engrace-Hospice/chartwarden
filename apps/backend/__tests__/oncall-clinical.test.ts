@@ -706,6 +706,12 @@ describe("M19 D15 — the M12 medication and refill surface", () => {
       async getMedicationsSince() {
         return [];
       },
+      async getMedicationsAsOf() {
+        return [];
+      },
+      async getMedicationChangesBetween() {
+        return [];
+      },
       async getMedicationOrder() {
         return byId;
       },

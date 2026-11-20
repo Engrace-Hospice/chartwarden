@@ -8,10 +8,30 @@
 // version it resolves. Expanding the corpus is additive and never edits a shipped phrase's bytes (Layer-1
 // determinism depends on phrase stability).
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
+import { DRAFT_VOCABULARY } from "./draft-entries";
 import type { VocabEntry } from "./types";
 
 /** Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11). */
-export const VOCAB_VERSION = "narrative-vocab@2026.06.0";
+export const VOCAB_VERSION = "narrative-vocab@2026.11.0";
+
+/** Whether the named clinical reviewer has approved the corpus wording. */
+export type ClinicalReviewStatus = "pending" | "approved";
+
+/**
+ * CLINICAL REVIEW GATE (VN-D14, ADR-0114). Every phrase added in `narrative-vocab@2026.11.0` (the 25
+ * visit-note draft entries after the original 23: scale readings, vitals, care-plan goals and
+ * interventions, medication changes, and the RN routine visit's chief-concern and plan phrases) is
+ * DRAFT WORDING. It was written to be neutral and factual (numbers and dates, no clinical judgement), but
+ * it has not been read by a clinician. The platform-side reviewer named by the owner on 2026-11-18 is ADA.
+ *
+ * `status` stays "pending" until ADA approves the wording; the approval is a deliberate edit to this
+ * constant in its own commit. A later PR (the per-tenant switch, VN-D17) REFUSES to enable the draft for
+ * any tenant while `status` is not "approved". Nothing in this package reads it: it is data for that gate.
+ */
+export const CORPUS_CLINICAL_REVIEW: {
+  readonly reviewer: "ADA";
+  readonly status: ClinicalReviewStatus;
+} = { reviewer: "ADA", status: "pending" };
 
 // ── scoping shorthands (kept local so each entry's tags read 1:1 with the encounter model) ───────────
 const NURSING: readonly EncounterDiscipline[] = ["rn", "lpn"];
@@ -34,8 +54,8 @@ const CLINICAL_TYPES: readonly EncounterType[] = [
   "lpn_visit",
 ];
 
-/** The curated corpus (ordering is stable and load-bearing for byte-identical assembly). */
-export const VOCABULARY: readonly VocabEntry[] = [
+/** The 23 entries shipped in narrative-vocab@2026.06.0 (never edited; ordering is load-bearing). */
+const CORE_VOCABULARY: readonly VocabEntry[] = [
   // ── per-body-system observations ───────────────────────────────────────────────────────────────
   {
     code: "nv.cv.stable",
@@ -257,3 +277,6 @@ export const VOCABULARY: readonly VocabEntry[] = [
     encounterTypes: ["face_to_face"],
   },
 ] as const;
+
+/** The curated corpus (ordering is stable and load-bearing for byte-identical assembly). */
+export const VOCABULARY: readonly VocabEntry[] = [...CORE_VOCABULARY, ...DRAFT_VOCABULARY];

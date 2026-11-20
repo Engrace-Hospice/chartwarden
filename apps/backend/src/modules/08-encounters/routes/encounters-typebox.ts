@@ -267,6 +267,19 @@ export const CreateAddendumSchema = Type.Object({
    * unless the proposal is open, for this encounter's patient, and visible to the caller.
    */
   promotionRequestId: Type.Optional(Type.String({ format: "uuid" })),
+  /**
+   * ADR-0114 VN-D30: amend sections of the signed note. Each id is a section of the note's own sealed rows; the author must then confirm
+   * the redrafted section (`GET|PUT .../addenda/{addendumId}/draft`) before the addendum can sign. Only for a tenant with the visit-note draft
+   * on and a note that has sealed rows: 404 for a tenant with the draft off, 422 UNKNOWN_TEMPLATE_SECTION for a section the note does not carry.
+   * Absent, the addendum is a free addendum exactly as before.
+   */
+  amendsSectionIds: Type.Optional(
+    Type.Array(Type.String({ pattern: "^[a-z][a-z0-9_]{0,63}$" }), {
+      minItems: 1,
+      maxItems: 12,
+      uniqueItems: true,
+    }),
+  ),
 });
 
 /** WP 3.7 - params of the reviewer routes on an encounter's chart promotions. */
@@ -332,6 +345,8 @@ const COSIGNATURE_STATUS = [
   "supervisor_released",
   "signed",
 ] as const;
+/** Where an amendment's own cosignature stands, for a screen (mirrors `CosignDisplayStatus`). */
+const COSIGN_DISPLAY_STATUS = lit(["not_required", "pending", "cosigned", "released"] as const);
 
 /** Route 1 — the created draft summary (`{ id, status, templateKey, templateVersion, version }`). */
 export const CreatedEncounterResponseSchema = Type.Object({
@@ -369,6 +384,33 @@ export const EncounterViewResponseSchema = Type.Object({
   evvBracketPresent: Type.Optional(Type.Boolean()),
   selections: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   finalDocumentation: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  /**
+   * `finalDocumentation` as structured data (single-read only), for the same viewer under the same 42 CFR Part 2 rule: the LATEST signed text per section
+   * (an amendment replaces the section it amends). A withheld section carries `text: null` and `withheld: true`, and a note withheld whole (a finalized pin
+   * that carries Part 2 text has no sealed rows to cut by section) is `withheld: true` with no sections, so no marker string reaches a client as data.
+   * `sectionId` is null for a pin with no sealed rows (finalized, or signed with the draft off): the whole narrative is one block. Null when nothing is pinned.
+   * A section WITHHELD from the reader keeps its position and nothing else: `sectionId`, `amendedByAddendumId` and `signedAt` are null too (S1), so
+   * the reader is not told which section is Part 2 or who amended it and when.
+   */
+  finalDocumentationView: Type.Optional(
+    Type.Union([
+      Type.Object({
+        withheld: Type.Boolean(),
+        sections: Type.Array(
+          Type.Object({
+            sectionId: Type.Union([Type.String(), Type.Null()]),
+            text: Type.Union([Type.String(), Type.Null()]),
+            withheld: Type.Boolean(),
+            /** The addendum whose amendment is this section's latest version; null when the section is as the note was signed. */
+            amendedByAddendumId: Type.Union([Type.String(), Type.Null()]),
+            /** When the latest version was signed. */
+            signedAt: Type.Union([Type.String(), Type.Null()]),
+          }),
+        ),
+      }),
+      Type.Null(),
+    ]),
+  ),
   vitals: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   mileage: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   carePlanLinks: Type.Optional(
@@ -392,14 +434,72 @@ export const EncounterViewResponseSchema = Type.Object({
         createdAt: Type.String(),
         signedAt: Type.Union([Type.String(), Type.Null()]),
         version: Type.Integer(),
+        /** ADR-0114 VN-D30: the sections the addendum amends; empty for a free addendum. Without the ids of a section with a Part 2 derived version, for a reader without disclosure (S1). */
+        amendsSectionIds: Type.Optional(Type.Array(Type.String())),
+        /** ADR-0114 VN-D30: where the addendum's own cosignature stands; `not_required` unless it amended a section of a note that needed a cosigner, and for a reader without disclosure when every section it named is withheld from them (S1). */
+        cosignStatus: Type.Optional(COSIGN_DISPLAY_STATUS),
       }),
     ),
   ),
+  /**
+   * ADR-0114 VN-D30, single-read only: the version history of every AMENDED section of a signed note (original first, then each amendment in
+   * the order its addendum was signed, the last one `current`), `null` when nothing was amended. `finalDocumentation` is the CURRENT view
+   * (the latest signed text per section). A reader without Part 2 disclosure gets no entry for a section with a Part 2 derived version (the original or an
+   * amendment): its id, authors and dates would say that a Part 2 section exists (S1); `null` when no section is left to list.
+   */
+  noteHistory: Type.Optional(
+    Type.Union([
+      Type.Object({
+        sections: Type.Array(
+          Type.Object({
+            sectionId: Type.String(),
+            versions: Type.Array(
+              Type.Object({
+                kind: lit(["original", "amendment"] as const),
+                addendumId: Type.Union([Type.String(), Type.Null()]),
+                authoredByMembershipId: Type.String(),
+                signedAt: Type.Union([Type.String(), Type.Null()]),
+                /** The version's signed text; null when the reader may not see it (no marker string is ever sent as data). */
+                text: Type.Union([Type.String(), Type.Null()]),
+                withheld: Type.Boolean(),
+                current: Type.Boolean(),
+                /** An amendment's own cosignature (`not_required | pending | cosigned | released`); null for the original version. */
+                cosignStatus: Type.Union([COSIGN_DISPLAY_STATUS, Type.Null()]),
+              }),
+            ),
+          }),
+        ),
+      }),
+      Type.Null(),
+    ]),
+  ),
 });
 
-/** The `{ encounters }` envelope the list / queue / signed-since reads return. */
+/** The `{ encounters }` envelope the list / signed-since reads return. */
 export const EncounterListResponseSchema = Type.Object({
   encounters: Type.Array(EncounterViewResponseSchema),
+});
+
+/**
+ * Route 27 - the cosignature queue: every open cosignature request of the tenant. Each entry is the encounter (as before) plus `cosign`, which says
+ * which request it is: a NOTE awaiting its cosigner (`subject: "note"`), or an AMENDMENT of a signed note awaiting its own (`subject: "addendum"`, with the
+ * `addendumId`; the entry is then the parent encounter). Additive: a client that reads only the encounter is unaffected.
+ */
+export const CosignatureQueueResponseSchema = Type.Object({
+  encounters: Type.Array(
+    Type.Composite([
+      EncounterViewResponseSchema,
+      Type.Object({
+        cosign: Type.Object({
+          subject: lit(["note", "addendum"] as const),
+          addendumId: Type.Union([Type.String(), Type.Null()]),
+          requestId: Type.Union([Type.String(), Type.Null()]),
+          status: Type.Union([lit(COSIGNATURE_STATUS), Type.Null()]),
+          routedAt: Type.Union([Type.String(), Type.Null()]),
+        }),
+      }),
+    ]),
+  ),
 });
 
 /**
@@ -699,6 +799,10 @@ export const AddendumFinalizeResponseSchema = Type.Object({ status: Type.Literal
 export const AddendumSignResponseSchema = Type.Object({
   status: Type.Literal("signed"),
   signedAt: Type.String(),
+  /** ADR-0114 VN-D30: the sections the signed addendum amended (the author's confirmed ones); absent for a free addendum. */
+  amendedSectionIds: Type.Optional(Type.Array(Type.String())),
+  /** ADR-0114 VN-D30: the cosignature request the signed amendment opened (its parent needed a cosigner); absent or null otherwise. */
+  cosignatureRequestId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
 /** Route 29 — BillableEncounterReader seam projection (M23/M24). */
@@ -720,6 +824,10 @@ type Conforms<T extends V, V> = T;
 type _Created = Conforms<Static<typeof CreatedEncounterResponseSchema>, ServiceCreatedEncounter>;
 type _View = Conforms<Static<typeof EncounterViewResponseSchema>, ServiceEncounterView>;
 type _List = Conforms<Static<typeof EncounterListResponseSchema>, Ret<"listEncounters">>;
+type _CosignQueue = Conforms<
+  Static<typeof CosignatureQueueResponseSchema>,
+  Ret<"cosignatureQueue">
+>;
 type _Vitals = Conforms<Static<typeof VitalsResultResponseSchema>, ServiceVitalsResult>;
 // F-063 — the two reads that had no counterpart write... the other way round: two WRITES that had no read.
 type _Template = Conforms<Static<typeof EncounterTemplateResponseSchema>, Ret<"getTemplate">>;
