@@ -82,7 +82,7 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
 
   it("checks the role, then shreds, then scrubs the root's text, then deletes the satellites — a failed tombstone leaves the satellites for a retry", async () => {
     const calls: string[] = [];
-    const none: EncounterEraseCounts = {
+    const none: Omit<EncounterEraseCounts, "tombstonedRoots"> = {
       signatures: 0,
       addenda: 0,
       carePlanLinks: 0,
