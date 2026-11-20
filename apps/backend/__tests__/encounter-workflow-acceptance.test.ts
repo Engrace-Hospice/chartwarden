@@ -245,6 +245,30 @@ describe("M8-T12 §7 workflow acceptance", () => {
     });
   });
 
+  it("§2.3 — the selections of an addendum are saved only while it is a draft: a finalized or signed one is 409 ILLEGAL_TRANSITION", async () => {
+    const { svc, id } = await draft("rn");
+    await svc.finalize(ORG, id, PAST);
+    await svc.sign(ORG, id, ACTOR, { at: PAST });
+    const add = await svc.createAddendum(ORG, id, {
+      reason: "Correcting signed documentation.",
+      authorMembershipId: ACTOR.membershipId,
+    });
+    await svc.updateAddendumSelections(ORG, id, add.id, ADDENDUM_SELECTIONS);
+    await svc.finalizeAddendum(ORG, id, add.id, AUTHOR);
+    const refused = { code: "ILLEGAL_TRANSITION", statusCode: 409 };
+    const empty = { sections: [] };
+    await expect(svc.updateAddendumSelections(ORG, id, add.id, empty)).rejects.toMatchObject(
+      refused,
+    );
+    await svc.signAddendum(ORG, id, add.id, ACTOR, { at: PAST });
+    await expect(svc.updateAddendumSelections(ORG, id, add.id, empty)).rejects.toMatchObject(
+      refused,
+    );
+    expect((await svc.getAddendumSelections(ORG, id, add.id)).sections).toEqual(
+      ADDENDUM_SELECTIONS.sections,
+    );
+  });
+
   it("§7.14 — concurrency: an edit against a stale version is rejected (optimistic concurrency)", async () => {
     // Undocumented on purpose: this scenario's subject is the If-Match ladder, so the draft starts at
     // version 0 rather than at the 1 that documenting it would leave behind.

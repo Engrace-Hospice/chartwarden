@@ -3663,13 +3663,114 @@ describe.skipIf(!DB_URL)(
             await putResolution(f, id, "plan", "confirmed");
             currentSeams = slow();
             reads = 0;
-            const settled = await Promise.all([finalizeOver(f, id), finalizeOver(f, id)]);
+            // The second request starts only once the first is inside the slow source read, so the two really overlap: it must wait for the lock.
+            const first = finalizeOver(f, id);
+            for (let attempt = 0; attempt < 200 && reads === 0; attempt += 1) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+            expect(reads).toBeGreaterThan(0);
+            const second = finalizeOver(f, id);
+            const settled = await Promise.all([first, second]);
             expect(settled.map((r) => r.statusCode).sort()).toEqual([200, 409]);
             expect(remediationOf(settled.find((r) => r.statusCode === 409) as never).code).toBe(
               "ILLEGAL_TRANSITION",
             );
             expect(await pinRows(id)).toBe(1);
             expect(reads).toBe(readsOfOne);
+          });
+
+          // ---- the selections save is serialized with finalize and refused once the addendum is not a draft -------------------
+          const selectionsOf = async (id: string) =>
+            one(
+              await rows<{ selections: unknown; version: number }>(
+                "SELECT selections, version FROM hearthnote_selection WHERE addendum_id = $1",
+                [id],
+              ),
+            );
+          const EMPTY_SELECTIONS = { sections: [] };
+          const selectionsHolder = (f: EncounterFixture, id: string) =>
+            a.updateAddendumSelections(ORG_A, f.encounterId, id, EMPTY_SELECTIONS);
+
+          it.each([
+            ["finalized", false],
+            ["signed", true],
+          ])(
+            "saving the selections of a %s addendum is 409 ILLEGAL_TRANSITION and changes nothing",
+            async (_state, signIt) => {
+              const f = await signedNote();
+              currentSeams = goalSeams(GOAL_V2);
+              const id = await finalizedAddendum(f, undefined);
+              if (signIt) await signAddendum(f, id);
+              const before = await selectionsOf(id);
+              const version = await rows("SELECT version FROM encounter_addendum WHERE id = $1", [
+                id,
+              ]);
+              const error = await selectionsHolder(f, id).catch((e: unknown) => e);
+              expect(error).toMatchObject({ code: "ILLEGAL_TRANSITION", statusCode: 409 });
+              expect(await selectionsOf(id)).toEqual(before);
+              expect(
+                await rows("SELECT version FROM encounter_addendum WHERE id = $1", [id]),
+              ).toEqual(version);
+            },
+          );
+
+          it("a selections save made while finalize is in flight waits behind it and is then refused: finalized means the pinned narrative is the one the gate judged, never an empty one", async () => {
+            const f = await signedNote();
+            const created = await createAmendment(f, undefined);
+            await a.updateAddendumSelections(ORG_A, f.encounterId, created.id, requireSelections);
+            const holder = new Client({ connectionString: DB_URL });
+            await holder.connect();
+            const waiters = async () =>
+              Number(
+                one(
+                  await rows<{ n: string }>(
+                    "SELECT count(*)::text AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+                  ),
+                ).n,
+              );
+            const until = async (count: number) => {
+              for (let attempt = 0; attempt < 200 && (await waiters()) < count; attempt += 1) {
+                await new Promise((resolve) => setTimeout(resolve, 25));
+              }
+              return waiters();
+            };
+            try {
+              await holder.query("BEGIN");
+              await holder.query("SELECT id FROM encounter WHERE id = $1 FOR NO KEY UPDATE", [
+                f.encounterId,
+              ]);
+              // finalize queues for the encounter row first, then the author's autosave (an empty set) behind it
+              const finalizing = send(
+                "POST",
+                `${baseUrl(f)}/${created.id}/finalize`,
+                undefined,
+                withRoles(["rn"]),
+              );
+              expect(await until(1)).toBeGreaterThanOrEqual(1);
+              const saving = selectionsHolder(f, created.id).then(
+                () => "saved" as const,
+                (e: unknown) => e,
+              );
+              // the save is waiting too: it takes the same row lock, so it cannot slip in between the gate and the pin
+              expect(await until(2)).toBeGreaterThanOrEqual(2);
+              await holder.query("COMMIT");
+              const finalized = await finalizing;
+              expect(finalized.statusCode, finalized.body).toBe(200);
+              expect(await saving).toMatchObject({ code: "ILLEGAL_TRANSITION", statusCode: 409 });
+              expect(JSON.stringify((await selectionsOf(created.id)).selections)).toContain(
+                requireSelections.sections[0]?.sectionId ?? "",
+              );
+              const pin = one(
+                await rows<{ layer1_cipher: string }>(
+                  "SELECT layer1_cipher FROM hearthnote_assembled_output WHERE addendum_id = $1 AND kind = 'addendum_finalize'",
+                  [created.id],
+                ),
+              );
+              expect((await open(ORG_A, pin.layer1_cipher)).trim().length).toBeGreaterThan(0);
+            } finally {
+              await holder.query("ROLLBACK").catch(() => undefined);
+              await holder.end();
+            }
           });
 
           it("an author WITH Part 2 disclosure finalizes and signs an addendum whose only content is a confirmed section of a Part 2 note: finalize judges the session's own viewer, as sign does", async () => {

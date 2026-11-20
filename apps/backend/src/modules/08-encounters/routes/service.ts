@@ -76,7 +76,7 @@ import {
   runEncounterComplianceGate,
 } from "../gate/index";
 import { type Layer2EnhanceOutcome, resolveLayer2Eligibility } from "../layer2";
-import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
+import { type AddendumState, assertDraftAddendum, transitionAddendum } from "../lifecycle/addendum";
 import { requiresCosignature, transitionEncounter } from "../lifecycle/encounter";
 import { ASSEMBLY_ERROR_CODE, EncounterStateError } from "../lifecycle/errors";
 import {
@@ -1679,6 +1679,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const r = load(organizationId, encounterId);
       const a = r.addenda.get(addendumId);
       if (!a) throw new NotFoundError("addendum");
+      assertDraftAddendum(a.status);
       const layer1Preview = assembleSelections(
         r.encounterType,
         r.discipline,
@@ -1686,8 +1687,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         input.sections,
       );
       a.selections = input.sections;
-      a.version += 1;
-      return { version: a.version, layer1Preview };
+      return { version: ++a.version, layer1Preview };
     },
 
     async getAddendumSelections(organizationId, encounterId, addendumId) {

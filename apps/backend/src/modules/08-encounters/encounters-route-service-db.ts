@@ -122,7 +122,12 @@ import {
 import { keepOrReplaceReason, reifiableTier, resolveLateEntry } from "./late-entry/resolve";
 import { computeLateEntryTier, daysLate as lateDaysBetween } from "./late-entry/tiers";
 import { layer2OutcomeFor, resolveLayer2Eligibility } from "./layer2";
-import { ADDENDUM_GRAPH, type AddendumState, transitionAddendum } from "./lifecycle/addendum";
+import {
+  ADDENDUM_GRAPH,
+  type AddendumState,
+  assertDraftAddendum,
+  transitionAddendum,
+} from "./lifecycle/addendum";
 import {
   ENCOUNTER_GRAPH,
   type EncounterState,
@@ -2886,10 +2891,13 @@ export function createDbEncounterRouteService(
       const { stored, prose } = splitFreeText(input.sections);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
+        // Locked first, as finalize and sign lock it: this is what finalize's gate reads and its pin writes, so a save must not land between them
+        // (nor on an addendum that is no longer a draft).
+        const parent = await loadEnc(t, encounterId, { lock: true });
         const a = await loadAddendum(t, encounterId, addendumId);
+        assertDraftAddendum(a.status as AddendumState);
         // The addendum inherits its parent's template — an addendum to an RN routine visit is written
         // against the RN routine-visit template, not one of its own.
-        const parent = await loadEnc(t, encounterId);
         const layer1Preview = assembleSelections(
           parent.encounterType,
           parent.discipline,
