@@ -235,8 +235,9 @@ async function resolveSsviCompositeInput(
   const metrics = {} as Record<SsviMetricKey, unknown>;
   for (const [key, measureCode] of SSVI_METRIC_MEASURE_CODES) {
     const row = await values.findCurrent(measureCode, request.providerEntityId, start, end);
-    // A row stamped with an OLDER calculator version predates a definition change (its points were scored under
-    // the old cut): it is "not yet computed" until the recompute rewrites it, never stale points in the total.
+    // A row stamped with a DIFFERENT calculator version than the catalog's was scored under another definition
+    // (normally an older cut): it is "not yet computed" until the recompute rewrites it, never stale points in
+    // the total.
     metrics[key] =
       row === null || row.calculatorVersion !== CURRENT_CALCULATOR_VERSION.get(measureCode)
         ? null

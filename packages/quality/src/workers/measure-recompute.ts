@@ -22,8 +22,8 @@ import { ALREADY_PROCESSED, type AlreadyProcessedResult, type ProcessingLogPort 
 
 /**
  * One `m30.measure_recompute` job: recompute a single `(measure, provider_entity, period)` value. A calculator-version
- * bump is made visible by the V-8 check in `handleMeasureRecompute` (a current row with an older version is
- * rewritten even when its content is unchanged); the nightly job key does not carry the version.
+ * bump is made visible by the V-8 check in `handleMeasureRecompute` (a current row whose version differs from the
+ * registration's is rewritten even when its content is unchanged); the nightly job key does not carry the version.
  */
 export interface MeasureRecomputeJob {
   /** The BullMQ job id (the `processing_log` idempotency key). */
@@ -37,7 +37,7 @@ export interface MeasureRecomputeJob {
   readonly periodEnd: string;
   /** Why this recompute was enqueued (`nightly_cron` | `incremental_outbox` | `adhoc`). */
   readonly reason: string;
-  /** The calculator version the §2.6 idempotency key dedups on. */
+  /** The calculator version the job was enqueued under (an audit breadcrumb; the job key does not carry it). */
   readonly computeVersion: string;
   /** The membership/system that enqueued it (audit breadcrumb), or null for the cron. */
   readonly enqueuedBy?: string | null;
@@ -232,8 +232,9 @@ export async function handleMeasureRecompute(
   const snapshotContentHash = ports.hashSnapshot(result.computationSnapshot);
 
   // V-8 idempotency: a re-run whose snapshot hash matches the current row is a no-op (no duplicate row) — unless
-  // that row carries an OLDER calculator version. The snapshot hash does not cover the version, so without this a
-  // measure whose value did not move would keep its pre-bump stamp forever; the rewrite makes a bump visible.
+  // that row carries a DIFFERENT calculator version (the running registration is the authority, so a rollback
+  // restamps too). The snapshot hash does not cover the version, so without this a measure whose value did not
+  // move would keep its pre-bump stamp forever; the rewrite makes a bump visible.
   const current = await ports.values.findCurrent(
     job.measureCode,
     job.providerEntityId,
