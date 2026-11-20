@@ -33,6 +33,7 @@ import {
   rejectAiActor,
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { TObject } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { DraftCaller, DraftService } from "../drafting/draft-service";
@@ -55,16 +56,21 @@ export interface DraftSectionRouteDeps {
  * decides which of the admission's read keys (M6) the draft of that template needs (`assertMayReadAdmissionFacts`).
  */
 async function callerOf<Membership extends string | null>(
+  request: FastifyRequest,
   actor: Pick<DraftCaller, "organizationId" | "userId" | "roles"> & {
     readonly membershipId: Membership;
   },
 ): Promise<DraftCaller & { readonly membershipId: Membership }> {
+  // The whole request context, as `requirePermission` resolves it, so a session class that holds its permissions apart from the membership
+  // (portal, funeral home) is resolved here the same way as at the route guard.
+  const context = request.context;
+  if (!context) throw new UnauthorizedError();
   return {
     organizationId: actor.organizationId,
     userId: actor.userId,
     roles: actor.roles,
     membershipId: actor.membershipId,
-    permissions: await resolveActorPermissions(actor),
+    permissions: await resolveActorPermissions(context),
   };
 }
 
@@ -144,7 +150,7 @@ export function registerDraftSectionRoutes(
     async (request) => {
       const { encounterId } = parse(DraftParamsSchema, request.params);
       const actor = actorOf(request);
-      return service.getDraft(await callerOf(actor), encounterId);
+      return service.getDraft(await callerOf(request, actor), encounterId);
     },
   );
 
@@ -165,7 +171,7 @@ export function registerDraftSectionRoutes(
       const { encounterId, sectionId } = parse(DraftSectionParamsSchema, request.params);
       const body = parse(ResolveSectionSchema, request.body);
       return service.resolveSection(
-        await callerOf(actor),
+        await callerOf(request, actor),
         encounterId,
         sectionId,
         body,
@@ -204,7 +210,7 @@ export function registerDraftSectionRoutes(
     async (request) => {
       const { encounterId, addendumId } = parse(AmendmentDraftParamsSchema, request.params);
       const actor = actorOf(request);
-      return service.getAmendmentDraft(await callerOf(actor), encounterId, addendumId);
+      return service.getAmendmentDraft(await callerOf(request, actor), encounterId, addendumId);
     },
   );
 
@@ -228,7 +234,7 @@ export function registerDraftSectionRoutes(
       );
       const body = parse(ResolveSectionSchema, request.body);
       return service.resolveAmendmentSection(
-        await callerOf(actor),
+        await callerOf(request, actor),
         encounterId,
         addendumId,
         sectionId,
