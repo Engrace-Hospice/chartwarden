@@ -259,7 +259,7 @@ describe("Modal focus on close", () => {
     render(<Host moveFocusOnClose={false} />);
     await user.click(screen.getByRole("button", { name: "Open" }));
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("button", { name: "Open" })).toHaveFocus();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open" }));
   });
 
   it("leaves focus where the screen put it when it moved focus as the dialog closed", async () => {
@@ -267,7 +267,7 @@ describe("Modal focus on close", () => {
     render(<Host moveFocusOnClose />);
     await user.click(screen.getByRole("button", { name: "Open" }));
     await user.keyboard("{Escape}");
-    expect(screen.getByLabelText("Where the screen puts focus")).toHaveFocus();
-    expect(screen.getByRole("button", { name: "Open" })).not.toHaveFocus();
+    expect(document.activeElement).toBe(screen.getByLabelText("Where the screen puts focus"));
+    expect(document.activeElement).not.toBe(screen.getByRole("button", { name: "Open" }));
   });
 });
