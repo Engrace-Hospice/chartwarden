@@ -1510,8 +1510,16 @@ describe.skipIf(!DB_URL)(
       });
 
       it.each([
-        ["a later expires_at swept by the patient's death", "2027-01-01T00:00:00Z", "2026-01-18T09:00:00Z"],
-        ["its own expiry after the visit, swept then", "2026-02-01T15:00:00Z", "2026-02-01T15:00:00Z"],
+        [
+          "a later expires_at swept by the patient's death",
+          "2027-01-01T00:00:00Z",
+          "2026-01-18T09:00:00Z",
+        ],
+        [
+          "its own expiry after the visit, swept then",
+          "2026-02-01T15:00:00Z",
+          "2026-02-01T15:00:00Z",
+        ],
       ] as const)(
         "a record that EXPIRED after the visit instant (%s) is drafted",
         async (_label, expiresAt, updatedAt) => {

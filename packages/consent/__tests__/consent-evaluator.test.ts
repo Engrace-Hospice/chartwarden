@@ -227,12 +227,15 @@ describe("ConsentEvaluator.evaluate historical (was it in force at `asOf`)", () 
     ["revoked", "consent_revoked"],
     ["expired", "consent_expired"],
     ["superseded", "no_active_consent_on_file"],
-  ] as const)("a %s record that ended at or before `asOf` is not in force then", async (status, reason) => {
-    for (const endedAtMs of [5000, 4000]) {
-      const result = await evaluateAt([ack({ status, endedAtMs })], 5000, true);
-      expect(result).toMatchObject({ allowed: false, denyReason: reason });
-    }
-  });
+  ] as const)(
+    "a %s record that ended at or before `asOf` is not in force then",
+    async (status, reason) => {
+      for (const endedAtMs of [5000, 4000]) {
+        const result = await evaluateAt([ack({ status, endedAtMs })], 5000, true);
+        expect(result).toMatchObject({ allowed: false, denyReason: reason });
+      }
+    },
+  );
 
   it("a record whose end instant is unknown is not in force then (fail closed)", async () => {
     for (const endedAtMs of [undefined, null]) {
@@ -246,12 +249,17 @@ describe("ConsentEvaluator.evaluate historical (was it in force at `asOf`)", () 
   });
 
   it("never allows a draft record, one effective after `asOf`, or one whose own expiry had passed", async () => {
-    expect((await evaluateAt([ack({ status: "draft", endedAtMs: 9000 })], 5000, true)).allowed).toBe(
-      false,
-    );
     expect(
-      (await evaluateAt([ack({ status: "revoked", endedAtMs: 9000, effectiveAtMs: 5001 })], 5000, true))
-        .allowed,
+      (await evaluateAt([ack({ status: "draft", endedAtMs: 9000 })], 5000, true)).allowed,
+    ).toBe(false);
+    expect(
+      (
+        await evaluateAt(
+          [ack({ status: "revoked", endedAtMs: 9000, effectiveAtMs: 5001 })],
+          5000,
+          true,
+        )
+      ).allowed,
     ).toBe(false);
     expect(
       (
