@@ -43,6 +43,7 @@ export {
   decideRecordSignature,
   isQuorumMet,
   resolveRequiredSignerSet,
+  resolveTightenedSignerSet,
   roleSatisfiesSlot,
   type DisciplineSignatureDecision,
 } from "./required-signer-set";

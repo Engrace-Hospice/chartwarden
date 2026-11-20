@@ -1,4 +1,4 @@
-import { requiredSignersFor } from "@chartwarden/discipline-plans";
+import { REQUIRED_SIGNERS_BY_KIND, requiredSignersFor } from "@chartwarden/discipline-plans";
 // apps/backend/src/modules/15-discipline-care-plans/lifecycle/required-signer-set.ts — M15-T03 (§2.3 / D11).
 //
 // The pure quorum core for `discipline_care_plan_version` sign-off. The §3.5 D11 per-kind sets are pure
@@ -25,6 +25,43 @@ export function resolveRequiredSignerSet(
   versionKind: DisciplinePlanVersionKind,
 ): DisciplineRequiredSignerSet {
   return requiredSignersFor(kind, versionKind);
+}
+
+/** Every signer role some kind's D11 floor names: the only roles a tightened set may add (anything else is unsignable). */
+const KNOWN_SIGNER_ROLES: ReadonlySet<string> = new Set(
+  Object.values(REQUIRED_SIGNERS_BY_KIND).flatMap((byVersionKind) =>
+    [...byVersionKind.initial, ...byVersionKind.idg_review].map((slot) => slot.role),
+  ),
+);
+
+/**
+ * §3.5 D11 — a tenant may TIGHTEN the floor quorum (add a known slot, raise a count) but never loosen it. Every floor slot
+ * must be covered by a requested slot of the same role and acknowledgment flag with at least its count, each role appears
+ * once, and every role is one a signer can fill. Throws `INSUFFICIENT_SIGNERS` (412); returns the set to seal.
+ */
+export function resolveTightenedSignerSet(
+  floor: DisciplineRequiredSignerSet,
+  requested: DisciplineRequiredSignerSet,
+): DisciplineRequiredSignerSet {
+  const roles = requested.map((slot) => slot.role);
+  require_(
+    new Set(roles).size === roles.length && roles.every((role) => KNOWN_SIGNER_ROLES.has(role)),
+    "INSUFFICIENT_SIGNERS",
+    "the requested required-signer set repeats a role or names one no signer can fill",
+  );
+  for (const slot of floor) {
+    require_(
+      requested.some(
+        (r) =>
+          r.role === slot.role &&
+          r.isAcknowledgment === slot.isAcknowledgment &&
+          r.count >= slot.count,
+      ),
+      "INSUFFICIENT_SIGNERS",
+      "the requested required-signer set is below the D11 quorum for this plan kind",
+    );
+  }
+  return requested;
 }
 
 /** Whether `role` fills a single slot. M15's D11 sets use exact roles (no `|`-union slots as in M7 D5). */

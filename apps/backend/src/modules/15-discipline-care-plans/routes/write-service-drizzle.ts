@@ -239,6 +239,16 @@ export function buildDrizzleM15WriteService(
     return row;
   }
 
+  /**
+   * `discipline_scope`, bound to the AUTHENTICATED actor: its roles must be able to author this plan's kind. `addedByDiscipline`
+   * is a body field, so the matrix check on it alone lets an RN author on an MSW plan by naming the MSW. The system actor
+   * (internal callers hold no roles) is exempt.
+   */
+  function requireAuthoringScope(actor: M15ReadActor, plan: { readonly kind: string }): void {
+    if (actor.kind === "system") return;
+    checkPlanKindAuthoringScope(plan.kind as DisciplinePlanKind, actor.roles);
+  }
+
   /** §2.5 — bump a row's optimistic-concurrency `version` after the guard passed. */
   const nextVersion = (current: number): number => current + 1;
 
@@ -516,6 +526,7 @@ export function buildDrizzleM15WriteService(
     async finalizeVersion(actor, planId, versionId, input: FinalizeVersionInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, actor, planId);
+        requireAuthoringScope(actor, plan);
         checkPlanWritable(plan.status);
         const [version] = await tx
           .select()
@@ -651,7 +662,7 @@ export function buildDrizzleM15WriteService(
             // The signer is the SERVER-assembled acting membership — never a body field (§8.6 spoofing).
             signerMembershipId: actor.membershipId,
             signerRole: input.signerRole,
-            isAcknowledgment: input.isAcknowledgment ?? decision.isAcknowledgment,
+            isAcknowledgment: decision.isAcknowledgment,
             signedAt: new Date(now()),
             attestationText: input.attestationText,
             sessionClass: actor.sessionClass,
@@ -749,6 +760,7 @@ export function buildDrizzleM15WriteService(
     // ── 8 — author a discipline goal (parent IPOC problem + DPOA consent resolved through seams) ─────
     async createGoal(actor, planId, input: CreateGoalInput) {
       const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, actor, planId));
+      requireAuthoringScope(actor, plan);
       checkPlanWritable(plan.status);
       checkAuthoringDiscipline(
         plan.kind as DisciplinePlanKind,
@@ -812,6 +824,7 @@ export function buildDrizzleM15WriteService(
     async updateGoal(actor, planId, goalId, input: UpdateGoalInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, actor, planId);
+        requireAuthoringScope(actor, plan);
         checkPlanWritable(plan.status);
         const [row] = await tx
           .select()
@@ -883,6 +896,7 @@ export function buildDrizzleM15WriteService(
     // ── 10 — author a discipline intervention ────────────────────────────────────────────────────────
     async createIntervention(actor, planId, input: CreateInterventionInput) {
       const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, actor, planId));
+      requireAuthoringScope(actor, plan);
       checkPlanWritable(plan.status);
       checkAuthoringDiscipline(
         plan.kind as DisciplinePlanKind,
@@ -922,6 +936,7 @@ export function buildDrizzleM15WriteService(
     async updateIntervention(actor, planId, interventionId, input: UpdateInterventionInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, actor, planId);
+        requireAuthoringScope(actor, plan);
         checkPlanWritable(plan.status);
         const [row] = await tx
           .select()

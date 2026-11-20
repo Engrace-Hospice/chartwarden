@@ -236,6 +236,32 @@ describe("M15 signVersion — the signer role is bound to the authenticated acto
     ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
   });
 
+  it("takes the acknowledgment flag from the sealed slot, never from the request body", async () => {
+    const aideSet = [
+      { role: "rn_case_manager", count: 1, isAcknowledgment: false },
+      { role: "chha_acknowledgment", count: 1, isAcknowledgment: true },
+    ];
+    const body = (signerRole: string, isAcknowledgment: boolean) =>
+      ({
+        expectedVersion: null,
+        signerRole,
+        attestationText: "I attest",
+        isAcknowledgment,
+      }) as never;
+    await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m1", ["chha"]), PLAN, VERSION, body("chha_acknowledgment", false))
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({
+      signerRole: "chha_acknowledgment",
+      isAcknowledgment: true,
+    });
+    inserted = [];
+    await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m2", ["rn"]), PLAN, VERSION, body("rn_case_manager", true))
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({ signerRole: "rn_case_manager", isAcknowledgment: false });
+  });
+
   it("exempts the explicit system actor from the role check (internal callers hold no roles)", async () => {
     await service()
       .signVersion(
