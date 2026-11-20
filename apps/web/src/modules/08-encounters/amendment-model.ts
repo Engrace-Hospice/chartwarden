@@ -91,6 +91,8 @@ export interface AddendumRefusal {
   readonly details?: unknown;
   /** Which step of the addendum was refused, when the caller knows: the words of a refused compliance gate say what to do next at that step. */
   readonly step?: "finalize" | "sign";
+  /** Whether the addendum names sections of the note to amend: a free addendum is never told about sections. Absent reads as free. */
+  readonly amends?: boolean;
 }
 
 /** The sign refusals that mean "a named section is not resolved against the draft as it stands now": the draft is read again. */
@@ -98,11 +100,21 @@ export const isSectionRefusal = (code: string | null | undefined): boolean =>
   code === "DRAFT_SECTION_STALE" || code === "DRAFT_SECTION_UNRESOLVED";
 
 // An addendum is judged by one rule only: it must have something in it (a finding, a note, or a confirmed amended section). The note's own
-// required sections are not its business, and the server's top-level sentence for a refused gate names the ENCOUNTER, so it is never shown.
-const ADDENDUM_EMPTY_AT_FINALIZE =
-  "This addendum has nothing in it yet. Add a finding or a note, or confirm a redrafted section, then finalize it.";
-const ADDENDUM_EMPTY_AT_SIGN =
-  "This addendum has nothing in it now: every section it amends was deselected, and it has no finding or note. Confirm a redrafted section, then sign it.";
+// required sections are not its business, and the server's top-level sentence for a refused gate names the ENCOUNTER, so it is never shown. A
+// free addendum can only hold a finding or a note; one that amends is also told about a redrafted section, "if one is offered" (a section
+// whose sources are gone has none to confirm, and at sign nothing can be added any more).
+const ADDENDUM_EMPTY_WORDS = {
+  finalize: {
+    free: "This addendum has nothing in it yet. Add a finding or a note, then finalize it.",
+    amending:
+      "This addendum has nothing in it yet. Add a finding or a note, or confirm a redrafted section if one is offered, then finalize it.",
+  },
+  sign: {
+    free: "This addendum has nothing in it, so it cannot be signed. Open a new addendum with a finding or a note.",
+    amending:
+      "This addendum has nothing in it now: no section is left to amend, and it has no finding or note. Confirm a redrafted section if one is offered, then sign it. If none is, open a new addendum with a finding or a note.",
+  },
+} as const;
 const GATE_REFUSED_UNSPECIFIED =
   "This addendum did not pass the compliance check. Nothing was changed. Review it, then try again.";
 
@@ -125,10 +137,16 @@ function gateRemediationOf(details: unknown): readonly { code: string; message: 
 }
 
 /** What a refused compliance gate says: the app's words for a remediation it knows, else the server's own detail, never the top-level sentence. */
-function gateRefusalMessage(details: unknown, step: AddendumRefusal["step"]): string {
+function gateRefusalMessage(
+  details: unknown,
+  step: AddendumRefusal["step"],
+  amends: boolean,
+): string {
   const remediation = gateRemediationOf(details);
   if (remediation.some((r) => r.code === "ADDENDUM_EMPTY")) {
-    return step === "sign" ? ADDENDUM_EMPTY_AT_SIGN : ADDENDUM_EMPTY_AT_FINALIZE;
+    return ADDENDUM_EMPTY_WORDS[step === "sign" ? "sign" : "finalize"][
+      amends ? "amending" : "free"
+    ];
   }
   return remediation.length > 0
     ? remediation.map((r) => r.message).join(" ")
@@ -136,10 +154,16 @@ function gateRefusalMessage(details: unknown, step: AddendumRefusal["step"]): st
 }
 
 /** What a refused addendum step says (an amending addendum adds the draft's own refusals to the free addendum's). */
-export function addendumRefusalMessage({ code, message, details, step }: AddendumRefusal): string {
+export function addendumRefusalMessage({
+  code,
+  message,
+  details,
+  step,
+  amends = false,
+}: AddendumRefusal): string {
   switch (code) {
     case "COMPLIANCE_GATE_FAILED":
-      return gateRefusalMessage(details, step);
+      return gateRefusalMessage(details, step, amends);
     case "DRAFT_SECTION_UNRESOLVED":
     case "DRAFT_SECTION_STALE": {
       const issues = draftIssuesFrom(details);
@@ -177,7 +201,7 @@ export function addendumContentHint(
   if (written) return null;
   if (amendment === null) return "Nothing here yet. Before finalizing, add a finding or a note.";
   if (amendment.confirmed === null || amendment.confirmed > 0) return null;
-  return "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section.";
+  return "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section if one is offered.";
 }
 
 const reasonOf = (section: DraftSectionView): DraftIssue => ({

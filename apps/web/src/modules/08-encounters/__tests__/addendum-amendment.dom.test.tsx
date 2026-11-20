@@ -587,6 +587,35 @@ describe("a signed amendment", () => {
   });
 });
 
+// A refused gate at sign names the addendum's own state in the app's words: with every section resolved and nothing sealed it does not say
+// anything was deselected (a section whose sources are gone was confirmed, not deselected), and it never shows the server's sentence.
+describe("an amending addendum whose sign the server refuses as empty", () => {
+  it("is told no section is left to amend, with a way on, and never that sections were deselected", async () => {
+    sections = [section("pain", "confirmed"), section("plan", "confirmed")];
+    const user = userEvent.setup();
+    mount([amending], {
+      POST: vi.fn(async () => ({
+        error: {
+          error: {
+            code: "COMPLIANCE_GATE_FAILED",
+            message: "the Layer-3 compliance gate did not pass; the encounter cannot be signed",
+            details: [{ code: "ADDENDUM_EMPTY", message: "an addendum must carry something" }],
+          },
+        },
+        response: { status: 422 },
+      })),
+    });
+    await review();
+    await user.click(await within(row()).findByRole("button", { name: "Sign addendum" }));
+    await user.click(screen.getByLabelText(/I attest this addendum/));
+    await user.click(screen.getByRole("button", { name: "Sign & commit" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/nothing in it now: no section is left to amend/);
+    expect(alert.textContent).toMatch(/confirm a redrafted section if one is offered/i);
+    expect(alert.textContent).not.toMatch(/deselect|encounter|Layer-3/i);
+  });
+});
+
 // The editor of an AMENDING draft addendum counts a confirmed amended section as content, as the server's gate does: it only says "nothing
 // here yet" while no finding or note is in, no named section is confirmed, and the addendum's own draft has been read.
 describe("the editor's hint on an amending draft addendum", () => {
@@ -651,7 +680,7 @@ describe("the editor's hint on an amending draft addendum", () => {
     const editor = await openEditor("unresolved");
     expect(
       within(editor).getByText(
-        "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section.",
+        "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section if one is offered.",
       ),
     ).toBeInTheDocument();
   });

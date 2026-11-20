@@ -289,7 +289,7 @@ describe("Addendum panel (GAP-027)", () => {
       fireEvent.click(screen.getByRole("button", { name: "Finalize addendum" }));
       const alert = await screen.findByRole("alert");
       expect(alert.textContent).toBe(
-        "This addendum has nothing in it yet. Add a finding or a note, or confirm a redrafted section, then finalize it.",
+        "This addendum has nothing in it yet. Add a finding or a note, then finalize it.",
       );
       expect(alert.textContent).not.toMatch(/encounter|Layer-3/);
       expect(onChanged).not.toHaveBeenCalled();
@@ -303,15 +303,21 @@ describe("Addendum panel (GAP-027)", () => {
       expect((await screen.findByRole("alert")).textContent).toBe("the detail the server gave");
     });
 
-    it("sign: an addendum that became empty is told so, and to confirm a section, in the app's words", async () => {
+    it("finalize: an amending addendum is also told it may confirm a redrafted section, if one is offered", async () => {
+      mount([{ ...draft, amendsSectionIds: ["pain"] }], { POST: gateRefusal(EMPTY) });
+      fireEvent.click(screen.getByRole("button", { name: "Finalize addendum" }));
+      expect((await screen.findAllByRole("alert"))[0]?.textContent).toBe(
+        "This addendum has nothing in it yet. Add a finding or a note, or confirm a redrafted section if one is offered, then finalize it.",
+      );
+    });
+
+    it("sign: a free addendum is never told about sections", async () => {
       mount([{ ...draft, status: "finalized" }], { POST: gateRefusal(EMPTY) });
       fireEvent.click(screen.getByRole("button", { name: "Sign addendum" }));
       fireEvent.click(screen.getByLabelText(/I attest this addendum/));
       fireEvent.click(screen.getByRole("button", { name: "Sign & commit" }));
       const alert = await screen.findByRole("alert");
-      expect(alert.textContent).toMatch(/nothing in it now/);
-      expect(alert.textContent).toMatch(/then sign it\.$/);
-      expect(alert.textContent).not.toMatch(/encounter|Layer-3/);
+      expect(alert.textContent).not.toMatch(/section|deselect|encounter|Layer-3/i);
     });
   });
 

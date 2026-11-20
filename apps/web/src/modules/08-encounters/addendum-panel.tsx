@@ -81,7 +81,16 @@ interface PanelProps {
 }
 
 /** A refusal rendered as user-facing prose; step-up gets the real ceremony link. */
-function FailureAlert({ failure, step }: { failure: Failure; step?: Step }): JSX.Element {
+function FailureAlert({
+  failure,
+  step,
+  amends,
+}: {
+  failure: Failure;
+  step?: Step;
+  /** The addendum names sections of the note to amend (a refused gate words a free addendum without them). */
+  amends?: boolean;
+}): JSX.Element {
   const path = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const stepUp = isStepUpRefusal({
     status: failure.status ?? undefined,
@@ -95,7 +104,7 @@ function FailureAlert({ failure, step }: { failure: Failure; step?: Step }): JSX
       : null;
   return (
     <div role="alert" style={alertBox}>
-      <span>{addendumRefusalMessage({ ...failure, step })}</span>
+      <span>{addendumRefusalMessage({ ...failure, step, amends })}</span>
       {redirect ? (
         <Link to={redirect} style={alertLink}>
           {failure.status === 401 ? "Sign in again" : "Re-authenticate"}
@@ -237,7 +246,11 @@ export function AddendaPanel({
             <strong>Sign addendum</strong>
             <span style={metaText}>{signing?.reason}</span>
             {failure && failure.addendumId === signingId ? (
-              <FailureAlert failure={failure.error} step={failure.step} />
+              <FailureAlert
+                failure={failure.error}
+                step={failure.step}
+                amends={(signing?.amendsSectionIds?.length ?? 0) > 0}
+              />
             ) : null}
           </div>
         }
@@ -441,7 +454,9 @@ function AddendumItem({
       <output id={`signed-note-${a.id}`} style={metaText}>
         {signedNote}
       </output>
-      {failure ? <FailureAlert failure={failure} step={failureStep} /> : null}
+      {failure ? (
+        <FailureAlert failure={failure} step={failureStep} amends={amends.length > 0} />
+      ) : null}
       {editing && a.status === "draft" ? (
         <AddendumEditor
           encounterId={encounterId}

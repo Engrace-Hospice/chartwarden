@@ -156,34 +156,64 @@ describe("addendumRefusalMessage", () => {
 
   describe("a refused compliance gate (COMPLIANCE_GATE_FAILED)", () => {
     const GENERIC = "the Layer-3 compliance gate did not pass; the encounter stays in draft";
-    const gate = (details?: unknown, step?: "finalize" | "sign") => ({
+    const gate = (details?: unknown, step?: "finalize" | "sign", amends = false) => ({
       status: 422,
       code: "COMPLIANCE_GATE_FAILED",
       message: GENERIC,
       details,
+      amends,
       ...(step ? { step } : {}),
     });
     const EMPTY = [{ code: "ADDENDUM_EMPTY", message: "an addendum must carry something" }];
 
-    it("words an empty addendum at finalize: nothing in it yet, what to add, then finalize", () => {
-      expect(addendumRefusalMessage(gate(EMPTY, "finalize"))).toBe(
-        "This addendum has nothing in it yet. Add a finding or a note, or confirm a redrafted section, then finalize it.",
+    it("words an empty FREE addendum at finalize: only a finding or a note, which is all a free addendum can hold", () => {
+      const text = addendumRefusalMessage(gate(EMPTY, "finalize", false));
+      expect(text).toBe(
+        "This addendum has nothing in it yet. Add a finding or a note, then finalize it.",
+      );
+      expect(text).not.toMatch(/section|confirm/i);
+    });
+
+    it("words an empty AMENDING addendum at finalize: a finding or a note, or a redrafted section if one is offered", () => {
+      expect(addendumRefusalMessage(gate(EMPTY, "finalize", true))).toBe(
+        "This addendum has nothing in it yet. Add a finding or a note, or confirm a redrafted section if one is offered, then finalize it.",
       );
     });
 
-    it("words an empty addendum at sign: its amended sections were deselected, confirm one, then sign", () => {
-      const text = addendumRefusalMessage(gate(EMPTY, "sign"));
+    it("words an empty amending addendum at sign without claiming anything was deselected, and with a way on", () => {
+      const text = addendumRefusalMessage(gate(EMPTY, "sign", true));
       expect(text).toMatch(/nothing in it now/);
-      expect(text).toMatch(/confirm a redrafted section/i);
-      expect(text).toMatch(/then sign it\.$/);
+      expect(text).toMatch(/no section is left to amend/);
+      expect(text).toMatch(/confirm a redrafted section if one is offered/i);
+      expect(text).toMatch(/open a new addendum with a finding or a note\.$/);
+      expect(text).not.toMatch(/deselect/i);
+    });
+
+    it("words an empty free addendum at sign without any word about sections", () => {
+      const text = addendumRefusalMessage(gate(EMPTY, "sign", false));
+      expect(text).toMatch(/cannot be signed/);
+      expect(text).not.toMatch(/section|deselect|confirm/i);
+    });
+
+    it("treats a refusal that does not say whether the addendum amends as a free one", () => {
+      expect(
+        addendumRefusalMessage({
+          status: 422,
+          code: "COMPLIANCE_GATE_FAILED",
+          message: GENERIC,
+          details: EMPTY,
+        }),
+      ).toMatch(/Add a finding or a note, then finalize it\.$/);
     });
 
     it("never shows the top-level sentence, which names the encounter, nor the server's text for a code it words itself", () => {
       for (const step of ["finalize", "sign"] as const) {
-        const text = addendumRefusalMessage(gate(EMPTY, step));
-        expect(text).not.toMatch(/encounter/i);
-        expect(text).not.toContain("Layer-3");
-        expect(text).not.toContain("an addendum must carry something");
+        for (const amends of [false, true]) {
+          const text = addendumRefusalMessage(gate(EMPTY, step, amends));
+          expect(text).not.toMatch(/encounter/i);
+          expect(text).not.toContain("Layer-3");
+          expect(text).not.toContain("an addendum must carry something");
+        }
       }
     });
 
@@ -379,7 +409,7 @@ describe("addendumContentHint (the addendum's one rule: it needs content, not th
 
   it("also offers a confirmed redrafted section to an amending addendum", () => {
     expect(addendumContentHint(EMPTY, { confirmed: 0 })).toBe(
-      "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section.",
+      "Nothing here yet. Before finalizing, add a finding or a note, or confirm a redrafted section if one is offered.",
     );
   });
 
