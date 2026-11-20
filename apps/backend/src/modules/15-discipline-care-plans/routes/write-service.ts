@@ -74,6 +74,22 @@ export interface WriteOutboxPort {
   publish(tx: unknown, emission: OutboxEmission): Promise<void>;
 }
 
+/** Route 29 — name the aide an Aide POC directs and the RN who supervises that aide (§2.3). */
+export interface AssignAideTeamInput {
+  /** The plan row `version` read (`If-Match`); a concurrent change loses with 409. */
+  readonly expectedVersion: number;
+  readonly aideMembershipId: string;
+  readonly supervisingRnMembershipId: string;
+}
+
+/** The plan's care-team binding after an assignment: ids only, no names (the roster resolves names). */
+export interface AideAssignmentView {
+  readonly planId: string;
+  readonly aideMembershipId: string;
+  readonly supervisingRnMembershipId: string;
+  readonly version: number;
+}
+
 /** Route 6 — finalize a draft version (`draft → in_review`; seals the snapshot + D11 quorum). */
 export interface FinalizeVersionInput {
   readonly expectedVersion: number | null;
@@ -288,6 +304,12 @@ export interface M15WriteService {
     versionId: string,
     input: SignVersionInput,
   ): Promise<DisciplinePlanVersionDetail>;
+  /** Route 29 — bind the aide and the supervising RN to an Aide POC (both must be on the plan location's roster). */
+  assignAideTeam(
+    actor: M15WriteActor,
+    planId: string,
+    input: AssignAideTeamInput,
+  ): Promise<AideAssignmentView>;
   createGoal(
     actor: M15WriteActor,
     planId: string,

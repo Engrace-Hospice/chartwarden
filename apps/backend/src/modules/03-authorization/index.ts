@@ -309,3 +309,10 @@ export {
   MEMBERSHIP_ROLE_KEYS_MAX_IDS,
   membershipRoleKeysForOrg,
 } from "./membership-role-keys-for-org";
+// Org-explicit, location-scoped staff-by-role read (id + display name + role key), injected into M15's Aide POC
+// supervisory-visit pickers at the composition root.
+export {
+  type StaffAtLocationQuery,
+  type StaffAtLocationRow,
+  staffAtLocationForOrg,
+} from "./staff-at-location-for-org";

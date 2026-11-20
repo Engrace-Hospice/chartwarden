@@ -1231,8 +1231,11 @@ import {
 // response DTOs). The later `Object.assign` (m15-block.ts) wins over the earlier M15 entries.
 import {
   // response DTOs (§4.2)
+  AideAssignmentResponseSchema as M15AideAssignmentResponseSchema,
+  AideSupervisionRosterResponseSchema as M15AideSupervisionRosterResponseSchema,
   AideSupervisoryVisitViewResponseSchema as M15AideSupervisoryVisitViewResponseSchema,
   // request bodies / list queries
+  AssignAideTeamBody as M15AssignAideTeamBody,
   DisciplineAssessmentViewResponseSchema as M15DisciplineAssessmentViewResponseSchema,
   DisciplineGoalViewResponseSchema as M15DisciplineGoalViewResponseSchema,
   DisciplineInterventionViewResponseSchema as M15DisciplineInterventionViewResponseSchema,
@@ -8246,6 +8249,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The patient-shareable summary — both confidential categories always stripped (§7.9; §4.1 #3)",
     response: M15DisciplinePlanSummaryResponseSchema,
   },
+  "GET /api/v1/discipline-plans/:planId/aide-supervision-roster": {
+    summary:
+      "The aides and RN supervisors active at an Aide POC's location — the supervisory-visit pickers; membership id, display name and role key only, readable with discipline_plan.read",
+    response: M15AideSupervisionRosterResponseSchema,
+  },
   "GET /api/v1/discipline-plans/:planId/versions": {
     summary: "The plan's version chain, cursor-paginated by sequence (§4.1 #4)",
     query: M15VersionListQuerySchema,
@@ -8274,6 +8282,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Sign one slot of the sealed quorum — step-up; the last signature flips the version to signed and triggers the plan-PDF render (§4.1 #7)",
     body: M15SignVersionBody,
     response: M15DisciplinePlanVersionDetailResponseSchema,
+  },
+  "PUT /api/v1/discipline-plans/:planId/aide-assignment": {
+    summary:
+      "Bind the aide and the supervising RN to an Aide POC — both must be active staff at the plan's location; If-Match carries the plan version (§2.3)",
+    body: M15AssignAideTeamBody,
+    response: M15AideAssignmentResponseSchema,
   },
   "POST /api/v1/discipline-plans/:planId/goals": {
     summary: "Author a discipline goal refining an IPOC problem (§4.1 #8)",

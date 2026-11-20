@@ -24,7 +24,7 @@ const PLAN_ROW = {
   organizationId: ORG,
   patientId: PATIENT,
   status: "discharged",
-  kind: "ipoc",
+  kind: "aide_poc",
 };
 
 function fakeDb() {
@@ -99,7 +99,8 @@ describe("M15 write service — caseload enforced inside the service", () => {
 
   it("an org-wide scope role passes the gate without a caseload row", async () => {
     await expect(
-      service().createGoal(actor("dir_1", ["medical_director"]), PLAN, ANY),
+      // an org-wide scope role (skips the caseload row) that is also an RN, so the authoring-scope check passes too
+      service().createGoal(actor("dir_1", ["medical_director", "rn"]), PLAN, ANY),
     ).rejects.toBeInstanceOf(DisciplinePlanStateError);
   });
 

@@ -2,6 +2,8 @@
 // The split `{ readService, writeService }` deps each route plugin takes, plus the Drizzle-backed builders
 // the composition root binds (the M24/M25/M26 routes/index.ts precedent).
 export type {
+  AideSupervisionRosterMemberView,
+  AideSupervisionRosterView,
   AideSupervisoryVisitView,
   DisciplineAssessmentView,
   DisciplineGoalView,
@@ -20,6 +22,8 @@ export type {
   VolunteerEffectiveStatusView,
 } from "./read-service";
 export type {
+  AideAssignmentView,
+  AssignAideTeamInput,
   M15WriteService,
   OpenDisciplinePlanVersionView,
   OpenDisciplinePlanVersionKind,
@@ -29,6 +33,12 @@ export type {
   WriteOutboxPort,
 } from "./write-service";
 export { type M15ReadDeps, buildDrizzleM15ReadService } from "./read-service-drizzle";
+export {
+  AIDE_ROLE_KEYS,
+  AIDE_SUPERVISOR_ROLE_KEYS,
+  type AideRosterPort,
+  type AideRosterStaffRow,
+} from "./aide-supervision-roster";
 export { type M15WriteDeps, buildDrizzleM15WriteService } from "./write-service-drizzle";
 export { type M15ReadActor, type M15WriteActor, systemM15Actor } from "./actor";
 export { M15_PAGE_SIZES } from "./read-service";

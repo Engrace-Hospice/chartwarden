@@ -20,7 +20,11 @@ import type {
 } from "@chartwarden/types";
 import { type TransitionResult, result } from "./effects";
 import { DisciplinePlanStateError, require_ } from "./errors";
-import { decideRecordSignature, resolveRequiredSignerSet } from "./required-signer-set";
+import {
+  decideRecordSignature,
+  resolveRequiredSignerSet,
+  resolveTightenedSignerSet,
+} from "./required-signer-set";
 import { checkVolunteerOutOfScopeAcknowledged } from "./validation";
 
 /** The §2.2.2 version states (mirrors `discipline_plan_version_status`). */
@@ -135,8 +139,10 @@ export function transitionDisciplinePlanVersion(
       checkFinalizeReadiness(event.planKind, event.readiness);
       // Seal the snapshot with the (possibly tenant-tightened) D11 quorum. The `discharge` kind resolves
       // to an EMPTY set — that version is auto-built and system-signed on `m6.admission.discharged`.
-      const set =
-        event.requiredSignerSet ?? resolveRequiredSignerSet(event.planKind, event.versionKind);
+      const floor = resolveRequiredSignerSet(event.planKind, event.versionKind);
+      const set = event.requiredSignerSet
+        ? resolveTightenedSignerSet(floor, event.requiredSignerSet)
+        : floor;
       return result(from, event.type, "in_review", [
         { kind: "snapshot", requiredSignerSet: set },
         { kind: "set_timestamp", field: "finalized_at", at: event.at },

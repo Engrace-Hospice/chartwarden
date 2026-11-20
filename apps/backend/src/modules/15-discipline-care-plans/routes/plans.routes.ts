@@ -25,6 +25,7 @@ import { P, STEP_UP, planCaseloadScope } from "./guards";
 import {
   AmendAssessmentBody,
   AssessmentParams,
+  AssignAideTeamBody,
   CreateAssessmentBody,
   CreateGoalBody,
   CreateInterventionBody,
@@ -127,6 +128,29 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
     },
   );
 
+  // The aide-supervision roster — the staff pickers of the Aide POC supervisory-visit modal. Gated like route 2
+  // (`discipline_plan.read` + the read service's org/caseload scope, one non-leaking 404), because an RN cannot
+  // reach the org-admin member list. Names + ids + role only (see `./aide-supervision-roster`). Read-audit is a
+  // reasoned waiver, not `PLAN_READ`: the body is a staff roster with no patient data, and accounting it as a
+  // `discipline_care_plan.viewed` event would record a plan view that never happened (§164.528).
+  app.get(
+    "/api/v1/discipline-plans/:planId/aide-supervision-roster",
+    {
+      preHandler: [P("discipline_plan.read")],
+      config: {
+        auditRead: {
+          none: "staff roster (membership id, display name, role key) for an aide plan's location; no patient data",
+        },
+      },
+    },
+    async (request) => {
+      const { planId } = parse(PlanParams, request.params);
+      const roster = await readService.getAideSupervisionRoster(actorOf(request), planId);
+      if (!roster) throw new NotFoundError("aide plan of care not found");
+      return roster;
+    },
+  );
+
   // 4 — the version chain (cursor-paginated).
   app.get(
     "/api/v1/discipline-plans/:planId/versions",
@@ -220,6 +244,30 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
         isAcknowledgment: body.isAcknowledgment,
       });
       return redactVersionForCaller(signed, await sudAllowedFor(request, planId));
+    },
+  );
+
+  // 29 — bind the aide and the supervising RN to an Aide POC (§2.3). An author of the Aide POC (`discipline_plan.author`,
+  // the plan's caseload scope and, in the service, `discipline_scope`) picks two people the plan location's roster lists;
+  // version-checked (`If-Match`) like every plan-level write. Row-audit trigger on `discipline_care_plan` records the change.
+  app.put(
+    "/api/v1/discipline-plans/:planId/aide-assignment",
+    {
+      preHandler: [
+        P("discipline_plan.author"),
+        ...scope("discipline_plan.author"),
+        IF_MATCH,
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const { planId } = parse(PlanParams, request.params);
+      const body = parse(AssignAideTeamBody, request.body);
+      return writeService.assignAideTeam(writeActorOf(request), planId, {
+        expectedVersion: ifMatchVersionOf(request),
+        aideMembershipId: body.aideMembershipId,
+        supervisingRnMembershipId: body.supervisingRnMembershipId,
+      });
     },
   );
 

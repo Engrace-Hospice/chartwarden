@@ -21,12 +21,25 @@ const session: Session = {
 
 describe("discipline plans summary — print", () => {
   it("wraps the Print and Back controls in .wx-print-hide, with no inline display on the wrapper", async () => {
+    const ok = (data: unknown) => ({
+      data,
+      error: undefined,
+      response: new Response(null, { status: 200 }),
+    });
     const client = {
-      GET: vi.fn(async () => ({
-        data: { data: [], nextCursor: null },
-        error: undefined,
-        response: new Response(null, { status: 200 }),
-      })),
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/patients/{id}"
+          ? ok({
+              id: "p1",
+              organizationId: "org-1",
+              mrn: "MRN-0007",
+              firstName: "June",
+              lastName: "Rivera",
+              dob: "1950-02-14",
+              status: "active",
+            })
+          : ok({ data: [], nextCursor: null }),
+      ),
     } as unknown as ApiClient;
     render(
       <MemoryRouter initialEntries={["/patients/p1/discipline-plans/summary"]}>

@@ -1,4 +1,4 @@
-import { requiredSignersFor } from "@chartwarden/discipline-plans";
+import { REQUIRED_SIGNERS_BY_KIND, requiredSignersFor } from "@chartwarden/discipline-plans";
 // apps/backend/src/modules/15-discipline-care-plans/lifecycle/required-signer-set.ts — M15-T03 (§2.3 / D11).
 //
 // The pure quorum core for `discipline_care_plan_version` sign-off. The §3.5 D11 per-kind sets are pure
@@ -25,6 +25,50 @@ export function resolveRequiredSignerSet(
   versionKind: DisciplinePlanVersionKind,
 ): DisciplineRequiredSignerSet {
   return requiredSignersFor(kind, versionKind);
+}
+
+/** Every signer role some kind's D11 floor names: the only roles a tightened set may add (anything else is unsignable). */
+const KNOWN_SIGNER_ROLES: ReadonlySet<string> = new Set(
+  Object.values(REQUIRED_SIGNERS_BY_KIND).flatMap((byVersionKind) =>
+    [...byVersionKind.initial, ...byVersionKind.idg_review].map((slot) => slot.role),
+  ),
+);
+
+/** A signer role fills ONE slot per version (unique index `discipline_care_plan_signature_version_role_uq`), so a slot that
+ *  asks for more than one signature could never be met and would leave the version in `in_review` for good. */
+const MAX_SLOT_COUNT = 1;
+
+/**
+ * §3.5 D11 — a tenant may TIGHTEN the floor quorum (add a known slot) but never loosen it. Every floor slot must be
+ * covered by a requested slot of the same role and acknowledgment flag, each role appears once, every role is one a signer
+ * can fill, and no slot asks for more signatures than one role can give. Throws `INSUFFICIENT_SIGNERS` (412); returns the
+ * set to seal.
+ */
+export function resolveTightenedSignerSet(
+  floor: DisciplineRequiredSignerSet,
+  requested: DisciplineRequiredSignerSet,
+): DisciplineRequiredSignerSet {
+  const roles = requested.map((slot) => slot.role);
+  require_(
+    new Set(roles).size === roles.length &&
+      roles.every((role) => KNOWN_SIGNER_ROLES.has(role)) &&
+      requested.every((slot) => slot.count <= MAX_SLOT_COUNT),
+    "INSUFFICIENT_SIGNERS",
+    "the requested required-signer set repeats a role, names one no signer can fill or asks for more than one signature per role",
+  );
+  for (const slot of floor) {
+    require_(
+      requested.some(
+        (r) =>
+          r.role === slot.role &&
+          r.isAcknowledgment === slot.isAcknowledgment &&
+          r.count >= slot.count,
+      ),
+      "INSUFFICIENT_SIGNERS",
+      "the requested required-signer set is below the D11 quorum for this plan kind",
+    );
+  }
+  return requested;
 }
 
 /** Whether `role` fills a single slot. M15's D11 sets use exact roles (no `|`-union slots as in M7 D5). */
@@ -125,11 +169,32 @@ const SIGNER_ROLE_KEY_ALIASES: Readonly<Record<string, string>> = {
   chha_acknowledgment: "chha",
 };
 
-/** GAP-045 — whether the authenticated actor's `roles` include the role the claimed signer slot needs. */
+/** The M3 role keys that fill an Aide POC's RN slot: the RN case manager, or any RN of the care team (product decision;
+ *  `caseload_or_scope` still limits WHICH patients). Every other kind's `rn_case_manager` slot stays the case manager's. */
+const AIDE_POC_RN_SLOT_ROLE_KEYS: ReadonlyArray<string> = ["rn_case_manager", "rn"];
+
+/**
+ * GAP-045 — the role key, among those that fill the claimed signer slot, the authenticated actor holds (the slot's own key
+ * first), or null when it holds none. The plan kind matters because the RN slot is wider on an Aide POC than on the MSW and
+ * volunteer plans. This is what the signature row records: the slot name alone cannot tell a case manager from a plain RN.
+ */
+export function heldSignerRoleKey(
+  actorRoles: ReadonlyArray<string>,
+  signerRole: string,
+  planKind: DisciplinePlanKind,
+): string | null {
+  const keys =
+    signerRole === "rn_case_manager" && planKind === "aide_poc"
+      ? AIDE_POC_RN_SLOT_ROLE_KEYS
+      : [SIGNER_ROLE_KEY_ALIASES[signerRole] ?? signerRole];
+  return keys.find((key) => actorRoles.includes(key)) ?? null;
+}
+
+/** Whether the authenticated actor's `roles` include a role that fills the claimed signer slot (GAP-045). */
 export function actorHoldsSignerRole(
   actorRoles: ReadonlyArray<string>,
   signerRole: string,
+  planKind: DisciplinePlanKind,
 ): boolean {
-  const key = SIGNER_ROLE_KEY_ALIASES[signerRole] ?? signerRole;
-  return actorRoles.includes(key);
+  return heldSignerRoleKey(actorRoles, signerRole, planKind) !== null;
 }

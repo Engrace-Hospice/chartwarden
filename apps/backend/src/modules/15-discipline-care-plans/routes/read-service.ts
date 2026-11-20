@@ -260,6 +260,19 @@ export interface SupervisoryCadenceRowView {
   readonly gateEngaged: boolean;
 }
 
+/** One pickable staff member on the aide-supervision roster (minimum necessary: no email, no licence, no patient data). */
+export interface AideSupervisionRosterMemberView {
+  readonly membershipId: string;
+  readonly displayName: string;
+  readonly roleKey: string;
+}
+
+/** The staff an RN may name on a supervisory attestation: the plan location's aides and its RN supervisors. */
+export interface AideSupervisionRosterView {
+  readonly aides: readonly AideSupervisionRosterMemberView[];
+  readonly supervisors: readonly AideSupervisionRosterMemberView[];
+}
+
 /** §4.1 route 1 filters. */
 export interface PlanListQuery {
   readonly patientId?: string;
@@ -311,6 +324,14 @@ export interface M15ReadService {
     planId: string,
     versionId: string,
   ): Promise<DisciplinePlanVersionDetail | null>;
+  /**
+   * The aides + RN supervisors active at the plan's location, for the supervisory-visit pickers. Null = the plan
+   * is absent, cross-tenant, off-caseload or not an Aide POC (the route's single 404).
+   */
+  getAideSupervisionRoster(
+    actor: M15ReadActor,
+    planId: string,
+  ): Promise<AideSupervisionRosterView | null>;
   /** 19 — cursor-paginated compliance gates (`validUntil ASC, id`). */
   listVolunteerGates(
     actor: M15ReadActor,

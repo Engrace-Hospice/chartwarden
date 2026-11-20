@@ -35,6 +35,13 @@ import {
 } from "../volunteer/index";
 import type { M15ReadActor } from "./actor";
 import {
+  AIDE_ROLE_KEYS,
+  AIDE_SUPERVISOR_ROLE_KEYS,
+  type AideRosterPort,
+  assembleAideSupervisionRoster,
+  emptyAideRosterPort,
+} from "./aide-supervision-roster";
+import {
   type CaseloadPort,
   type DisclosureDecision,
   type DisclosurePort,
@@ -80,6 +87,8 @@ export interface M15ReadDeps {
   readonly now?: () => IsoInstant;
   readonly disclosure?: DisclosurePort;
   readonly caseload?: CaseloadPort;
+  /** The M3-owned staff read behind the aide-supervision roster (unbound ⇒ an empty roster, fail closed). */
+  readonly aideRoster?: AideRosterPort;
 }
 
 export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {}): M15ReadService {
@@ -98,6 +107,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
   const now = deps.now ?? (() => new Date().toISOString() as IsoInstant);
   const disclosurePort = deps.disclosure ?? seamDisclosurePort;
   const caseloadPort = deps.caseload ?? seamCaseloadPort;
+  const aideRosterPort = deps.aideRoster ?? emptyAideRosterPort;
 
   const scope = (actor: M15ReadActor) => ({
     organizationId: actor.organizationId,
@@ -503,6 +513,18 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
         };
         return detail;
       });
+    },
+
+    // ── the aide-supervision roster — plan-scoped like route 2 (org via RLS, caseload via the seam) ───
+    async getAideSupervisionRoster(actor, planId) {
+      const plan = await loadReadablePlan(actor, planId);
+      if (!plan || plan.kind !== "aide_poc") return null;
+      const rows = await aideRosterPort.listStaffAtLocation({
+        organizationId: actor.organizationId,
+        locationId: plan.locationId,
+        roleKeys: [...AIDE_ROLE_KEYS, ...AIDE_SUPERVISOR_ROLE_KEYS],
+      });
+      return assembleAideSupervisionRoster(rows);
     },
 
     // ── 3 — the patient-shareable summary (both categories ALWAYS stripped, §7.9) ────────────────────

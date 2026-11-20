@@ -416,6 +416,9 @@ function createM15Backend(): {
         toVersionListItem,
       );
     },
+    async getAideSupervisionRoster(_actor, planId) {
+      return plans.get(planId)?.kind === "aide_poc" ? { aides: [], supervisors: [] } : null;
+    },
     async getVersion(_actor, planId, versionId) {
       const row = versions.get(versionId);
       return row && row.planId === planId ? row : null;
@@ -541,6 +544,16 @@ function createM15Backend(): {
       };
       versions.set(versionId, updated);
       return updated;
+    },
+    async assignAideTeam(_actor, planId, input) {
+      const plan = plans.get(planId);
+      if (!plan) throw new NotFoundError("discipline plan not found");
+      return {
+        planId,
+        aideMembershipId: input.aideMembershipId,
+        supervisingRnMembershipId: input.supervisingRnMembershipId,
+        version: input.expectedVersion + 1,
+      };
     },
     async signVersion(actor, _planId, versionId, input) {
       const row = versions.get(versionId);
@@ -962,6 +975,56 @@ describe("M15 route smoke — the M1 boundary", () => {
     await app.close();
   });
 
+  it("403s the aide-assignment write for a session without discipline_plan.author", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/discipline-plans/${PLAN}/aide-assignment`,
+      headers: { ...NONE_HEADERS, "idempotency-key": "assign-403", "if-match": "1" },
+      payload: {
+        aideMembershipId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        supervisingRnMembershipId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("requires If-Match and a well-formed body before assigning the aide team", async () => {
+    const { app } = makeServer();
+    const url = `/api/v1/discipline-plans/${PLAN}/aide-assignment`;
+    const body = {
+      aideMembershipId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      supervisingRnMembershipId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    };
+    const noIfMatch = await app.inject({
+      method: "PUT",
+      url,
+      headers: { ...SUPER_HEADERS, "idempotency-key": "assign-no-if-match" },
+      payload: body,
+    });
+    expect(noIfMatch.statusCode).toBeGreaterThanOrEqual(400);
+    expect(noIfMatch.statusCode).toBeLessThan(500);
+    for (const payload of [
+      {},
+      { ...body, aideMembershipId: "not-a-uuid" },
+      { aideMembershipId: body.aideMembershipId },
+    ]) {
+      const res = await app.inject({
+        method: "PUT",
+        url,
+        headers: {
+          ...SUPER_HEADERS,
+          "idempotency-key": `assign-bad-${JSON.stringify(payload).length}`,
+          "if-match": "1",
+        },
+        payload,
+      });
+      expect(res.statusCode).toBe(422);
+    }
+    await app.close();
+  });
+
   it("refuses system-owned version kinds on the authoring route", async () => {
     const { app } = makeServer();
     const res = await app.inject({
@@ -1019,7 +1082,7 @@ describe("M15 route smoke — the M1 boundary", () => {
 // ── one legitimately-authorized 2xx call per route (the bulk of the file) ──────────────────────────────
 interface RouteCase {
   readonly label: string;
-  readonly method: "GET" | "POST" | "PATCH";
+  readonly method: "GET" | "POST" | "PATCH" | "PUT";
   readonly url: string;
   readonly headers: Record<string, string>;
   readonly payload?: Record<string, unknown>;
@@ -1064,6 +1127,19 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "GET",
     url: `/api/v1/discipline-plans/${PLAN}/versions/${VERSION}`,
     headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+
+  // 29 — bind the aide and the supervising RN to an Aide POC.
+  {
+    label: "29 PUT .../aide-assignment",
+    method: "PUT",
+    url: `/api/v1/discipline-plans/${PLAN}/aide-assignment`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("k29"), ...IFM },
+    payload: {
+      aideMembershipId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      supervisingRnMembershipId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    },
     expectStatus: 200,
   },
 

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2100,
-    "coveredRoutes": 2100,
-    "directRoutesReferenced": 1903
+    "routes": 2102,
+    "coveredRoutes": 2102,
+    "directRoutesReferenced": 1905
   },
   "modules": [
     {
@@ -66,6 +66,7 @@
         "apps/backend/__tests__/hope-routes.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/m02-rust-bridge-route.test.ts",
+        "apps/backend/__tests__/m15-aide-supervision-roster.live.test.ts",
         "apps/backend/__tests__/m2-auditor-enrolment.live.test.ts",
         "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
         "apps/backend/__tests__/m2-auth-hardening.live.test.ts",
@@ -170,6 +171,7 @@
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
+        "apps/backend/__tests__/m15-aide-supervision-roster.live.test.ts",
         "apps/backend/__tests__/m36-oncall-directory.test.ts",
         "apps/backend/__tests__/m36-role-send.live.test.ts",
         "apps/backend/__tests__/m36-role-send.test.ts",
@@ -304,16 +306,18 @@
     },
     {
       "module": "15-discipline-care-plans",
-      "routes": 29,
+      "routes": 31,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
         "apps/backend/__tests__/discipline-plans-inject.test.ts",
         "apps/backend/__tests__/discipline-plans-snapshot-redaction.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
+        "apps/backend/__tests__/m15-aide-supervision-roster-route.test.ts",
+        "apps/backend/__tests__/m15-aide-supervision-roster.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 29
+      "directRoutesReferenced": 31
     },
     {
       "module": "16-bereavement",

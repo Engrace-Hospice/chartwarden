@@ -15,6 +15,9 @@ export type RequiredSignersByVersionKind = {
  * §3.5 / D11 — RN Case Manager authors + signs; the CHHA ACKNOWLEDGES. The acknowledgment is deliberately
  * not a cosignature: CoP 418.76 grants the supervising RN authorship of the aide's plan of care, and a
  * cosignature would imply an equal authorship the regulation does not give the aide.
+ *
+ * The `rn_case_manager` slot is filled by the RN case manager or any RN of the care team: the backend matches the
+ * caller's role keys (`actorHoldsSignerRole`), so the slot name here is unchanged and sealed sets stay valid.
  */
 export const AIDE_POC_REQUIRED_SIGNERS: RequiredSignersByVersionKind = {
   initial: [
