@@ -52,6 +52,7 @@ import type {
   ElevatedApprovalReader,
   EmergencyServiceJurisdictionReader,
   EncounterCreator,
+  EncounterDraftReader,
   EscalationRouter,
   EvvAggregatorReferenceReader,
   EvvBracketResolver,
@@ -154,6 +155,7 @@ import type {
   VisitReader,
   VolunteerComplianceProvider,
   VolunteerGateExpiryReader,
+  WoundProvider,
 } from "../interfaces";
 
 export class NotImplementedError extends Error {
@@ -755,6 +757,13 @@ export const bereavementEncounterReaderDenyStub: BereavementEncounterReader = {
   },
 };
 
+/** M8 — a visit's patient / status / author (WF09). Denies until M8 registers the real reader (M7 and M9 refuse the write). */
+export const encounterDraftReaderDenyStub: EncounterDraftReader = {
+  draftOf() {
+    throw new NotImplementedError("EncounterDraftReader");
+  },
+};
+
 /** M3 — supervisor / membership location facts. Denies until M3 registers the real reader. */
 export const supervisorReaderDenyStub: SupervisorReader = {
   resolveSupervisedMembershipIds() {
@@ -1007,6 +1016,13 @@ export const scaleSeriesProviderDenyStub: ScaleSeriesProvider = {
   },
   delta() {
     throw new NotImplementedError("ScaleSeriesProvider");
+  },
+};
+
+/** M9 — wound observations recorded at one encounter (M8 visit note). Denies until M9 registers it. */
+export const woundProviderDenyStub: WoundProvider = {
+  listObservationsForEncounter() {
+    throw new NotImplementedError("WoundProvider");
   },
 };
 

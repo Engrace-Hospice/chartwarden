@@ -24,7 +24,11 @@ export function entrySlots(entry: Pick<VocabEntry, "phrase">): string[] {
   return [...found];
 }
 
-export type SelectionIssueCode = "SLOT_INVALID" | "SLOT_INCOMPLETE" | "EXCLUSIVE_CONFLICT";
+export type SelectionIssueCode =
+  | "SLOT_INVALID"
+  | "SLOT_INCOMPLETE"
+  | "SLOT_UNKNOWN"
+  | "EXCLUSIVE_CONFLICT";
 
 /** One reason a selection tree cannot be stored (or finalized). `sectionId` is the field the UI points at. */
 export interface SelectionIssue {
@@ -121,7 +125,21 @@ export function validateSelectionTree(
         });
       }
 
-      for (const slot of entrySlots(entry)) {
+      // A param is a value for ONE of the statement's own `${slot}`s. Any other key (a context slot such as `patient` or
+      // `serviceDate` included, which `entrySlots` never lists) is refused: it would be dead text at best and, for a context
+      // slot, a way to replace what the assembly itself supplies.
+      const declared = entrySlots(entry);
+      for (const key of Object.keys(selected.params ?? {})) {
+        if (declared.includes(key)) continue;
+        issues.push({
+          ...at,
+          slot: key,
+          code: "SLOT_UNKNOWN",
+          message: `"${entry.label}" has no "${key}" value to fill.`,
+        });
+      }
+
+      for (const slot of declared) {
         const spec = entry.slotSpecs?.[slot];
         const value = selected.params?.[slot];
         if (value === undefined || isAbsent(value)) {

@@ -2139,6 +2139,19 @@ import {
   ReturnToDraftSchema as M7ReturnToDraftSchema,
   SignVersionSchema as M7SignVersionSchema,
 } from "../../apps/backend/src/modules/07-care-plan/routes/care-plan-typebox";
+// WF09 — plan changes a visit proposes (M7): record, replace, withdraw, list, accept, dismiss.
+import {
+  AcceptChangeProposalResponseSchema as M7AcceptChangeProposalResponseSchema,
+  CarePlanChangeProposalListResponseSchema as M7CarePlanChangeProposalListResponseSchema,
+  CarePlanChangeProposalViewSchema as M7CarePlanChangeProposalViewSchema,
+  ChangeProposalPatientListQuerySchema as M7ChangeProposalPatientListQuerySchema,
+  ChangeProposalPlanListQuerySchema as M7ChangeProposalPlanListQuerySchema,
+  CreateChangeProposalSchema as M7CreateChangeProposalSchema,
+  DismissChangeProposalResponseSchema as M7DismissChangeProposalResponseSchema,
+  DismissChangeProposalSchema as M7DismissChangeProposalSchema,
+  ReplaceChangeProposalSchema as M7ReplaceChangeProposalSchema,
+  WithdrawChangeProposalResponseSchema as M7WithdrawChangeProposalResponseSchema,
+} from "../../apps/backend/src/modules/07-care-plan/routes/change-proposal-typebox";
 // F-238 dx-writeback — the DocLens problem-proposal accept / dismiss surface.
 import {
   AcceptProblemProposalResponseSchema as M7AcceptProblemProposalResponseSchema,
@@ -2148,6 +2161,16 @@ import {
   ProblemProposalListQuerySchema as M7ProblemProposalListQuerySchema,
   ProblemProposalListResponseSchema as M7ProblemProposalListResponseSchema,
 } from "../../apps/backend/src/modules/07-care-plan/routes/problem-proposal-typebox";
+// WF09 — per-visit ADL, nutrition and weight history (M8).
+import {
+  FindingsAdlInputSchema as M8FindingsAdlInputSchema,
+  FindingsAdlResponseSchema as M8FindingsAdlResponseSchema,
+  FindingsAdlViewSchema as M8FindingsAdlViewSchema,
+  FindingsNutritionInputSchema as M8FindingsNutritionInputSchema,
+  FindingsNutritionResponseSchema as M8FindingsNutritionResponseSchema,
+  FindingsNutritionViewSchema as M8FindingsNutritionViewSchema,
+  FindingsWeightHistoryResponseSchema as M8FindingsWeightHistoryResponseSchema,
+} from "../../apps/backend/src/modules/08-encounters/findings/findings-typebox";
 // ADR-0113 visit-note closure clock (M8).
 import {
   ClosureOverrideResponseSchema as M8ClosureOverrideResponseSchema,
@@ -2246,6 +2269,19 @@ import {
   UpdateLicenseSchema as M9UpdateLicenseSchema,
   UpdateScalePolicySchema as M9UpdateScalePolicySchema,
 } from "../../apps/backend/src/modules/09-assessments/routes/assessments-typebox";
+// WF09 — longitudinal wounds (M9).
+import {
+  CorrectWoundObservationSchema as M9CorrectWoundObservationSchema,
+  CreateWoundSchema as M9CreateWoundSchema,
+  RecordWoundObservationSchema as M9RecordWoundObservationSchema,
+  ResolveWoundSchema as M9ResolveWoundSchema,
+  WoundDetailQuerySchema as M9WoundDetailQuerySchema,
+  WoundDetailResponseSchema as M9WoundDetailResponseSchema,
+  WoundListQuerySchema as M9WoundListQuerySchema,
+  WoundListResponseSchema as M9WoundListResponseSchema,
+  WoundObservationResponseSchema as M9WoundObservationResponseSchema,
+  WoundViewResponseSchema as M9WoundViewResponseSchema,
+} from "../../apps/backend/src/modules/09-assessments/wounds/wounds-typebox";
 import {
   AssembleSubmissionSchema as M10AssembleSubmissionSchema,
   CancelSubmissionSchema as M10CancelSubmissionSchema,
@@ -3287,6 +3323,14 @@ const IF_MATCH_HEADER: RouteEnrichment["headers"] = {
     required: true,
     description:
       "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
+  },
+};
+/** M8 findings (ADLs, nutrition): `If-Match` is OPTIONAL there — the `version` last read (0 = no record yet), checked against the stored record. */
+const FINDINGS_IF_MATCH_HEADER: RouteEnrichment["headers"] = {
+  "If-Match": {
+    required: false,
+    description:
+      "Optional precondition: the `version` last read from this record (also the `ETag` of every GET and PUT response; 0 when no record exists yet). A PUT replaces the whole record, so a stale value is refused with 409 STALE_VERSION and nothing is written; absent, the PUT is unconditioned. A value that is not an integer (quotes and a weak prefix are tolerated) is 400.",
   },
 };
 const IDEMPOTENCY_AND_IF_MATCH_HEADERS: RouteEnrichment["headers"] = {
@@ -5570,6 +5614,46 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: M7ProblemProposalListQuerySchema,
     response: M7ProblemProposalListResponseSchema,
   },
+  "POST /api/v1/care-plans/:planId/change-proposals": {
+    summary:
+      "Record a plan change while documenting a visit (add or resolve a problem, add or update a goal, add or discontinue an intervention). It stays a draft only its author sees until the visit is finalized, then waits on the review list; the signed plan is never edited by this call",
+    body: M7CreateChangeProposalSchema,
+    response: M7CarePlanChangeProposalViewSchema,
+    status: 201,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "PUT /api/v1/care-plans/:planId/change-proposals/:proposalId": {
+    summary: "Replace one of the caller's own draft plan-change proposals",
+    body: M7ReplaceChangeProposalSchema,
+    response: M7CarePlanChangeProposalViewSchema,
+  },
+  "DELETE /api/v1/care-plans/:planId/change-proposals/:proposalId": {
+    summary:
+      "Withdraw one of the caller's own draft plan-change proposals (and any dependent drafts)",
+    response: M7WithdrawChangeProposalResponseSchema,
+  },
+  "GET /api/v1/care-plans/:planId/change-proposals": {
+    summary:
+      "The plan's change proposals for review (pending by default; accepted or dismissed by status). Part 2 proposals are omitted without disclosure and `redacted` says so",
+    query: M7ChangeProposalPlanListQuerySchema,
+    response: M7CarePlanChangeProposalListResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/care-plan-change-proposals": {
+    summary:
+      "Plan-change proposals for a patient. With `sourceEncounterId` it returns that visit's proposals including the caller's own drafts (the note composer's list)",
+    query: M7ChangeProposalPatientListQuerySchema,
+    response: M7CarePlanChangeProposalListResponseSchema,
+  },
+  "POST /api/v1/care-plans/:planId/change-proposals/:proposalId/dismiss": {
+    summary: "Dismiss a pending plan-change proposal with a coded reason",
+    body: M7DismissChangeProposalSchema,
+    response: M7DismissChangeProposalResponseSchema,
+  },
+  "POST /api/v1/care-plans/:planId/change-proposals/:proposalId/accept": {
+    summary:
+      "Accept a pending plan-change proposal: runs the manual route's own operation under the accepter's discipline scope, in one transaction. Idempotent",
+    response: M7AcceptChangeProposalResponseSchema,
+  },
   "POST /api/v1/care-plans/:planId/problem-proposals/:proposalId/accept": {
     summary: "Accept a proposed diagnosis: the clinician sets kind; creates the problem",
     body: M7AcceptProblemProposalSchema,
@@ -5628,7 +5712,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/encounters/:encounterId/fall-incidents": {
     summary:
-      "The patient's recorded falls (Quality incident register) this visit can follow up — id, org-local date and severity only, newest first. `unavailable` is true when the register could not be read",
+      "The patient's recorded falls (Quality incident register) this visit can follow up — id, org-local date and severity only, newest first. `unavailable` is true when the register could not be read. The body names the visit's `patientId`, so the read is accounted against the patient",
     response: M8FallIncidentsResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId/mileage": {
@@ -5637,7 +5721,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8MileageViewResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId/selections": {
-    summary: "Read the stored HearthNote selection tree back, with its assembled Layer-1 narrative",
+    summary:
+      "Read the stored HearthNote selection tree back, with its assembled Layer-1 narrative. The body names the visit's `patientId`, so the read is accounted against the patient. A finalized or signed note answers its pinned text with `editedNarrativeStale: false`",
     response: M8SelectionsViewResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/vitals": {
@@ -5646,7 +5731,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8VitalsResultResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId/vitals": {
-    summary: "Read the vitals sets recorded on an encounter",
+    summary:
+      "Read the vitals sets recorded on an encounter (the body names the `patientId`, so the read is accounted against the patient). `weightUnitMissing` / `heightUnitMissing` are true when a stored weight / height has no usable unit (kg|lb, cm|in; legacy rows): it is never stated in the note or the weight history, so the author must re-enter it with its unit",
     response: M8VitalsListResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/vitals/:vitalId": {
@@ -5654,6 +5740,35 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M8CaptureVitalsSchema,
     response: M8VitalsResultResponseSchema,
     headers: IF_MATCH_HEADER,
+  },
+  "GET /api/v1/encounters/:encounterId/adl": {
+    summary:
+      'The ADL record the clinician made on this visit (functional status per activity, continence, assistive devices), or null before one is recorded. The record carries its `patientId` (the read is accounted against the patient) and its `version`, which is also the `ETag` header ("0" when none is recorded)',
+    response: M8FindingsAdlResponseSchema,
+  },
+  "PUT /api/v1/encounters/:encounterId/adl": {
+    summary:
+      "Record the visit's ADLs. The body replaces the whole record; idempotent. Only a DRAFT takes it: 409 once the note is finalized (NOTE_PINNED_AT_FINALIZE; the note text is pinned) or signed (IMMUTABLE_AFTER_SIGN); 422 FINDING_NOT_IN_NOTE when the visit's note template has no ADL section; 403 for an AI principal. Optional If-Match (the `version` last read) refuses a stale record with 409 STALE_VERSION; the response carries the new `version` and `ETag`",
+    body: M8FindingsAdlInputSchema,
+    response: M8FindingsAdlViewSchema,
+    headers: FINDINGS_IF_MATCH_HEADER,
+  },
+  "GET /api/v1/encounters/:encounterId/nutrition": {
+    summary:
+      'The nutrition and hydration record made on this visit (appetite, meal intake, fluids, swallowing, support), or null before one is recorded. The record carries its `patientId` (the read is accounted against the patient) and its `version`, which is also the `ETag` header ("0" when none is recorded)',
+    response: M8FindingsNutritionResponseSchema,
+  },
+  "PUT /api/v1/encounters/:encounterId/nutrition": {
+    summary:
+      "Record the visit's nutrition and hydration status. The body replaces the whole record; idempotent. Only a DRAFT takes it: 409 once the note is finalized (NOTE_PINNED_AT_FINALIZE; the note text is pinned) or signed (IMMUTABLE_AFTER_SIGN); 422 FINDING_NOT_IN_NOTE when the visit's note template has no nutrition section; 403 for an AI principal. Optional If-Match (the `version` last read) refuses a stale record with 409 STALE_VERSION; the response carries the new `version` and `ETag`",
+    body: M8FindingsNutritionInputSchema,
+    response: M8FindingsNutritionViewSchema,
+    headers: FINDINGS_IF_MATCH_HEADER,
+  },
+  "GET /api/v1/encounters/:encounterId/weight-history": {
+    summary:
+      "The patient's weight on this visit and on earlier SIGNED visits (last six, newest first; another visit's unsigned draft or finalized weight is not counted), so the note can state the change. The body names the `patientId`, so the read is accounted against the patient. `weightUnitMissing` is true when this visit holds a weight with no usable unit (kg|lb): it is left out of the history and the note, so the author must re-enter it with its unit",
+    response: M8FindingsWeightHistoryResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/mileage": {
     summary: "Capture per-encounter mileage (D10)",
@@ -5757,7 +5872,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IF_MATCH_HEADER,
   },
   "GET /api/v1/encounters/:encounterId/addenda/:addendumId/selections": {
-    summary: "Read an addendum's stored HearthNote selection tree back, assembled",
+    summary:
+      "Read an addendum's stored HearthNote selection tree back, assembled. The body names the visit's `patientId`, so the read is accounted against the patient",
     response: M8SelectionsViewResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/finalize": {
@@ -5781,7 +5897,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/internal/encounters/:encounterId/render-payload": {
     summary:
-      "Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string)",
+      "Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string). The body names the visit's `patientId`, so the read is accounted against the patient",
     response: M8RenderPayloadResponseSchema,
   },
   // ADR-0113 — the visit-note closure clock. Static `/encounters/<segment>` paths: they win over `/encounters/:encounterId`.
@@ -5839,6 +5955,47 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
     query: M9AssessmentListQuerySchema,
     response: M9AssessmentListResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/wounds": {
+    summary:
+      "A patient's wounds, each with its latest observation (filter by status; default all: open and resolved)",
+    query: M9WoundListQuerySchema,
+    response: M9WoundListResponseSchema,
+  },
+  "POST /api/v1/patients/:patientId/wounds": {
+    summary:
+      "Register a wound (site, laterality, etiology, onset). Idempotency-Key required, so a retried request cannot register a second open wound; 403 for an AI principal",
+    body: M9CreateWoundSchema,
+    response: M9WoundViewResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "GET /api/v1/patients/:patientId/wounds/:woundId": {
+    summary:
+      "One wound with its observations (newest first), computed area and percent change since the last measured visit",
+    query: M9WoundDetailQuerySchema,
+    response: M9WoundDetailResponseSchema,
+  },
+  "POST /api/v1/patients/:patientId/wounds/:woundId/observations": {
+    summary:
+      "Add a dated wound observation (may carry the visit it was made on: that must be the caller's own open note for the patient, else 404; 409 ENCOUNTER_NOT_DRAFT once finalized; 422 WOUND_NOT_IN_NOTE when the note has no wounds section, e.g. telephonic; a note finalized or voided while the observation is being saved takes it out, and the 201 then shows sourceEncounterId null). Idempotency-Key required, so a retried request cannot record a duplicate observation; 403 for an AI principal",
+    body: M9RecordWoundObservationSchema,
+    response: M9WoundObservationResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/patients/:patientId/wounds/:woundId/observations/:observationId/corrections": {
+    summary:
+      "Correct an observation (append-only supersede; coded reason; If-Match; Idempotency-Key required; 403 for an AI principal; moving it onto another visit follows the same 404 / 409 / 422 WOUND_NOT_IN_NOTE rules as recording one there)",
+    body: M9CorrectWoundObservationSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
+    response: M9WoundObservationResponseSchema,
+    status: 201,
+  },
+  "POST /api/v1/patients/:patientId/wounds/:woundId/resolve": {
+    summary: "Resolve a wound (healed or resolved otherwise; one-way; 403 for an AI principal)",
+    body: M9ResolveWoundSchema,
+    response: M9WoundViewResponseSchema,
   },
   "GET /api/v1/patients/:patientId/assessments/summary": {
     summary: "Per-scale latest-capture summary surface",

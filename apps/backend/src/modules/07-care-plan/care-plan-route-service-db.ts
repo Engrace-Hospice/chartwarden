@@ -162,6 +162,13 @@ const NOOP_OUTBOX: CarePlanWriteOutboxPort = { async publish() {} };
 const firstOrThrow = <T>(rows: readonly T[], msg: string): T =>
   firstRow(rows, msg, () => new CarePlanStateError("ILLEGAL_TRANSITION", msg));
 
+/** A discharged plan is closed: no element of it, and no change proposed against it, may be written (409 CARE_PLAN_CLOSED). */
+export function ensurePlanWritable(plan: { readonly status: string }): void {
+  if (plan.status === "discharged") {
+    throw new CarePlanStateError("CARE_PLAN_CLOSED", "discharged care plans cannot be mutated");
+  }
+}
+
 /**
  * The production, RLS-backed CarePlanRouteService. Reads and writes run under `withOrgContext`; every
  * write drives the pure lifecycle core and emits its `m7.*` event. Org is bound from the request context
@@ -295,12 +302,6 @@ export function createDbCarePlanRouteService(
     const [row] = await (opts.lock ? query.for("update") : query);
     if (!row) throw new NotFoundError("care_plan", planId);
     return row;
-  }
-
-  function ensurePlanWritable(plan: typeof CP.$inferSelect): void {
-    if (plan.status === "discharged") {
-      throw new CarePlanStateError("CARE_PLAN_CLOSED", "discharged care plans cannot be mutated");
-    }
   }
 
   async function activeTerminalProblemCount(tx: DbClient, planId: string): Promise<number> {
@@ -1984,6 +1985,7 @@ export function createDbCarePlanRouteService(
       body: CreateInterventionInput,
       authoring?: AuthoringDisciplineScope,
       actor?: CarePlanWriteActor,
+      viewer?: CarePlanViewer,
     ) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -1998,12 +2000,18 @@ export function createDbCarePlanRouteService(
         await loadProblem(t, planId, body.problemId);
         const goalRefs = [...new Set(body.goalRefs ?? [])];
         if (goalRefs.length > 0) {
+          // §7.6: a goal under a Part 2 problem is as absent to a caller without disclosure as the problem is, so the answer for it is the
+          // same 404 as for a goal that does not exist (a 404-vs-success split would tell them the goal's id is real).
           const found = await t
-            .select({ id: GOAL.id })
+            .select({ id: GOAL.id, sudRelated: PROB.sudRelated })
             .from(GOAL)
+            .innerJoin(PROB, and(eq(PROB.id, GOAL.problemId), eq(PROB.carePlanId, GOAL.carePlanId)))
             .where(and(eq(GOAL.carePlanId, planId), inArray(GOAL.id, goalRefs)));
-          const foundIds = new Set(found.map((g) => g.id));
-          const missing = goalRefs.find((id) => !foundIds.has(id));
+          const disclosed = viewer?.sudDisclosureAllowed ?? false;
+          const visibleIds = new Set(
+            found.filter((g) => !g.sudRelated || disclosed).map((g) => g.id),
+          );
+          const missing = goalRefs.find((id) => !visibleIds.has(id));
           if (missing) throw new NotFoundError("goal", missing);
         }
         const i = firstOrThrow(

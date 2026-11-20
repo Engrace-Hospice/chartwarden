@@ -36,3 +36,5 @@ export {
   type ScaleResponseDetail,
   type ScaleResponseItem,
 } from "./scales/definitions";
+// M9 longitudinal wounds — the pure domain behind `wound` / `wound_observation` (site vocabulary, validation, computed area).
+export * from "./wounds";

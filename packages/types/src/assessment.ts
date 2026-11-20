@@ -312,6 +312,99 @@ export interface ScaleSeriesProvider {
 }
 
 /**
+ * WF09 — one wound observation as the M8 visit note states it. M9 owns the wound record; M8 reads the observations recorded at
+ * its encounter through `WoundProvider` (M9 never imports M8, and `source_encounter_id` is a logical uuid, no FK). The shape
+ * mirrors `@chartwarden/hearthnote` `RecordedWound` field for field (each `?: T | null` there is a required `T | null` here, so a
+ * view is assignable to it); the value sets are pinned to the hearthnote ones by `wounds-value-set-parity.test.ts`.
+ */
+export interface WoundObservationView {
+  readonly observationId: string;
+  readonly woundId: string;
+  /** ISO instant the wound was observed. */
+  readonly observedAt: string;
+  /** The display phrase for the location ("sacrum", "left heel"). */
+  readonly site: string;
+  readonly etiology:
+    | "pressure_injury"
+    | "diabetic_ulcer"
+    | "venous_ulcer"
+    | "arterial_ulcer"
+    | "surgical"
+    | "traumatic"
+    | "skin_tear"
+    | "malignant_fungating"
+    | "moisture_associated"
+    | "other";
+  readonly stage:
+    | "stage_1"
+    | "stage_2"
+    | "stage_3"
+    | "stage_4"
+    | "unstageable"
+    | "deep_tissue_injury"
+    | null;
+  readonly lengthCm: number | null;
+  readonly widthCm: number | null;
+  readonly depthCm: number | null;
+  readonly undermining: boolean | null;
+  readonly woundBed: ReadonlyArray<
+    | "granulation"
+    | "slough"
+    | "eschar"
+    | "epithelializing"
+    | "necrotic"
+    | "hypergranulation"
+    | "bone_or_tendon_exposed"
+  >;
+  readonly exudateAmount: "none" | "scant" | "small" | "moderate" | "large" | null;
+  readonly exudateType: "serous" | "serosanguineous" | "sanguineous" | "purulent" | null;
+  readonly odor: "none" | "mild" | "moderate" | "strong" | null;
+  readonly periwound: ReadonlyArray<
+    "intact" | "erythema" | "macerated" | "indurated" | "edematous" | "warm" | "excoriated"
+  >;
+  readonly painScore: number | null;
+  readonly dressing:
+    | "foam"
+    | "hydrocolloid"
+    | "alginate"
+    | "hydrogel"
+    | "gauze"
+    | "silver"
+    | "transparent_film"
+    | "negative_pressure"
+    | "other"
+    | null;
+  readonly dressingChanged: boolean | null;
+  readonly infectionSigns: boolean | null;
+  readonly trend: "new" | "improving" | "stable" | "worsening" | null;
+}
+
+/** The human a wound seam read is for. Only the user id is needed: it attributes the read's database session. */
+export interface WoundReadActor {
+  readonly userId: string;
+}
+
+/** Narrowing a caller that knows the encounter's patient can ask for. */
+export interface WoundReadOptions {
+  /** When given, observations recorded for any other patient are not returned (a mis-tagged encounter id leaks nothing). */
+  readonly patientId?: string;
+}
+
+/** WF09 — M9's wound read surface for the M8 visit note. Org-explicit: it opens its own tenant context. */
+export interface WoundProvider {
+  /**
+   * The CURRENT (not superseded) wound observations whose `source_encounter_id` is `encounterId`, ordered by `observedAt` then
+   * observation id. Throws on a blank organisation or encounter, returns `[]` when the encounter has none.
+   */
+  listObservationsForEncounter(
+    organizationId: string,
+    encounterId: string,
+    actor: WoundReadActor,
+    options?: WoundReadOptions,
+  ): Promise<readonly WoundObservationView[]>;
+}
+
+/**
  * §2.4 — internal marker the M1 outbox dispatcher uses to type-check M9 subscribers. M9 performs no
  * direct cross-module writes at the boundary; all downstream communication is the `m9.*` outbox.
  */

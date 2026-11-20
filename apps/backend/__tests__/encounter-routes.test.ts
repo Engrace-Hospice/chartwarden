@@ -821,6 +821,31 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
     ]);
   });
 
+  it("refuses a param that is not one of the statement's own slots: a context-slot key cannot replace the patient or the date, and the note never carries it", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    for (const params of [
+      { pain_score: 4, patient: "Jane Roe, who is ordered off hospice," },
+      { pain_score: 4, serviceDate: "1999-01-01" },
+      { pain_score: 4, o2_lpm: 2 }, // another statement's slot
+    ]) {
+      const res = await patchTree(app, id, [
+        { sectionId: "symptom_management", entries: [{ code: "nv.sym.pain_controlled", params }] },
+      ]);
+      expect(res.statusCode, JSON.stringify(params)).toBe(422);
+      expect(res.json().error.code).toBe("INVALID_SELECTION");
+      expect(res.json().error.details).toEqual([
+        expect.objectContaining({ field: "symptom_management", code: "SLOT_UNKNOWN" }),
+      ]);
+    }
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(JSON.stringify(read.json())).not.toContain("Jane Roe");
+  });
+
   it("lets a draft save a half-filled statement, but finalize refuses it", async () => {
     const { app } = makeServer();
     const id = await draft(app);
@@ -963,6 +988,54 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("INVALID_SELECTION");
+    const after = await app.inject({ method: "GET", url: "/api/v1/encounters", headers: RN });
+    expect(after.json()).toEqual(before.json());
+  });
+
+  it("WF09: the reason is saved IN the create, never in a second write that could fail and leave a draft behind", async () => {
+    const { app, backend } = makeServer();
+    const createDraft = vi.spyOn(backend.service, "createDraft");
+    const updateSelections = vi.spyOn(backend.service, "updateSelections");
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+        reasonCode: "nv.reason.pain",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(createDraft).toHaveBeenCalledTimes(1);
+    expect(createDraft.mock.calls[0]?.[2]).toMatchObject({
+      initialSections: [{ entries: [{ code: "nv.reason.pain" }] }],
+    });
+    expect(updateSelections).not.toHaveBeenCalled();
+  });
+
+  it("WF09: a create whose initial selections cannot be saved creates nothing (atomic), so a retry cannot make a second draft", async () => {
+    const { app, backend } = makeServer();
+    const before = await app.inject({ method: "GET", url: "/api/v1/encounters", headers: RN });
+    // Two reasons that contradict each other: the draft-save rule refuses them, and the create goes with them.
+    await expect(
+      backend.service.createDraft(ORG, "rn_1", {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20" as never,
+        initialSections: [
+          {
+            sectionId: "chief_concern",
+            entries: [{ code: "nv.reason.routine" }, { code: "nv.reason.pain" }],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_SELECTION" });
     const after = await app.inject({ method: "GET", url: "/api/v1/encounters", headers: RN });
     expect(after.json()).toEqual(before.json());
   });
@@ -2121,6 +2194,7 @@ describe("WF09 — the fall a follow-up visit follows up", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
+      patientId: PATIENT, // the visit's patient: what attributes the read to them in the §164.528 accounting
       incidents: [
         { incidentId: FALL_A, occurredOn: "2026-06-18", severity: "moderate" },
         { incidentId: FALL_B, occurredOn: "2026-06-01", severity: "minor" },
@@ -2196,7 +2270,8 @@ describe("WF09 — the fall a follow-up visit follows up", () => {
       headers: RN,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ incidents: [], unavailable: true });
+    // Not "no falls": the register could not be read, and the read is still attributed to the patient.
+    expect(res.json()).toEqual({ patientId: PATIENT, incidents: [], unavailable: true });
     expect((await save(app, id, 0, "nv.reason.fall_followup")).statusCode).toBe(200);
   });
 

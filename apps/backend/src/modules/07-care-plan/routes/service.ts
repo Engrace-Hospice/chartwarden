@@ -279,6 +279,8 @@ export interface CarePlanRouteService {
     body: CreateInterventionInput,
     authoring?: AuthoringDisciplineScope,
     actor?: CarePlanWriteActor,
+    /** §7.6: the caller's disclosure verdict. A goal under a Part 2 problem is absent (404) to a caller without it; omitted = no disclosure. */
+    viewer?: CarePlanViewer,
   ): Promise<ElementResult>;
   /** §7.4: pass `authoring` to enforce `discipline_scope` against the intervention's own discipline. */
   patchIntervention(

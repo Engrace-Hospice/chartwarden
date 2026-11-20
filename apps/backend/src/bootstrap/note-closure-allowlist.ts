@@ -43,6 +43,8 @@ const NOTE_CLOSING_ROUTES: readonly string[] = [
   "GET /api/v1/encounters/:encounterId/addenda/:addendumId/selections",
   "PATCH /api/v1/encounters/:encounterId/addenda/:addendumId/selections",
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/sign",
+  "GET /api/v1/encounters/:encounterId/adl",
+  "PUT /api/v1/encounters/:encounterId/adl",
   "POST /api/v1/encounters/:encounterId/administrative-override",
   "GET /api/v1/encounters/:encounterId/care-plan-links",
   "POST /api/v1/encounters/:encounterId/care-plan-links",
@@ -62,6 +64,8 @@ const NOTE_CLOSING_ROUTES: readonly string[] = [
   "GET /api/v1/encounters/:encounterId/mileage",
   "PATCH /api/v1/encounters/:encounterId/mileage",
   "POST /api/v1/encounters/:encounterId/mileage",
+  "GET /api/v1/encounters/:encounterId/nutrition",
+  "PUT /api/v1/encounters/:encounterId/nutrition",
   "GET /api/v1/encounters/:encounterId/selections",
   "PATCH /api/v1/encounters/:encounterId/selections",
   "POST /api/v1/encounters/:encounterId/sign",
@@ -69,6 +73,7 @@ const NOTE_CLOSING_ROUTES: readonly string[] = [
   "GET /api/v1/encounters/:encounterId/vitals",
   "POST /api/v1/encounters/:encounterId/vitals",
   "PATCH /api/v1/encounters/:encounterId/vitals/:vitalId",
+  "GET /api/v1/encounters/:encounterId/weight-history",
   "POST /api/v1/encounters/closure-overrides",
   "POST /api/v1/encounters/closure-overrides/:overrideId/revoke",
   "GET /api/v1/encounters/closure-status",
@@ -76,6 +81,21 @@ const NOTE_CLOSING_ROUTES: readonly string[] = [
   "GET /api/v1/encounters/my-drafts",
   "GET /api/v1/encounters/overdue-notes",
   "GET /api/v1/encounters/visit-reasons",
+  // WF09 — wounds are recorded WHILE documenting the visit (the composer's wound step registers a wound, adds the day's observation,
+  // corrects a mis-entry or resolves a healed wound), so a blocked clinician must still reach them to close the note.
+  "GET /api/v1/patients/:patientId/wounds",
+  "POST /api/v1/patients/:patientId/wounds",
+  "GET /api/v1/patients/:patientId/wounds/:woundId",
+  "POST /api/v1/patients/:patientId/wounds/:woundId/observations",
+  "POST /api/v1/patients/:patientId/wounds/:woundId/observations/:observationId/corrections",
+  "POST /api/v1/patients/:patientId/wounds/:woundId/resolve",
+  // WF09 — plan changes are recorded WHILE documenting the visit (the composer's plan-of-care step lists, records, replaces and withdraws
+  // them). Deciding one (accept / dismiss) is a case manager's call that can wait for the note, so those two are not here.
+  "GET /api/v1/patients/:patientId/care-plan-change-proposals",
+  "GET /api/v1/care-plans/:planId/change-proposals",
+  "POST /api/v1/care-plans/:planId/change-proposals",
+  "PUT /api/v1/care-plans/:planId/change-proposals/:proposalId",
+  "DELETE /api/v1/care-plans/:planId/change-proposals/:proposalId",
 ];
 
 /** eMAR: administering, refusing, witnessing and correcting a dose, and the schedule and missed-dose reads and acknowledgements it needs. */

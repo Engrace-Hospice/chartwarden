@@ -291,7 +291,7 @@ jobs:
               name: "M7 Care Plan",
               scripts:
                 "test:m7:read:live test:m7:write:live test:m7:conformance:live
-                test:m7:consent-wiring:live",
+                test:m7:consent-wiring:live test:m7:change-proposals:live",
             }
           - {
               name: "M8 Encounters",
@@ -302,7 +302,11 @@ jobs:
           # ADR-0113 — the visit-note closure clock as chartwarden_app: policy/override RLS and append-only grants, the evaluator + gate
           # boundaries, the partial-index plans, the alert sweep over the real emitter, the m17.visit.started stamp consumer, the board.
           - { name: "M8 note closure", scripts: "test:m8:note-closure:live" }
+          # WF09 — the per-visit ADL and nutrition records and the weight history as chartwarden_app: RLS, audit, CHECKs, immutability, read events.
+          - { name: "M8 findings", scripts: "test:m8:findings:live" }
           - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
+          # WF09 — longitudinal wounds as chartwarden_app: RLS, append-only observations, audit, CHECKs, the WoundProvider seam, the eraser step.
+          - { name: "M9 Wounds", scripts: "test:wounds:live" }
           # M36 WP 3.2 - LatestAssessmentProvider.linkSummary, as the NOBYPASSRLS app role.
           - { name: "M9 link summary seam", scripts: "test:m9:link-summary:live" }
           - { name: "M10 HOPE", scripts: "test:m10:read:live test:m10:write:live" }

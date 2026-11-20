@@ -29,6 +29,8 @@ export interface CarePlanEraseCounts {
   readonly interventions: number;
   /** F-238 — DocLens problem proposals (pending/accepted/dismissed) on the patient's plans. */
   readonly problemProposals: number;
+  /** WF09 — the proposed plan changes a visit recorded (draft / pending / decided), free text included. */
+  readonly changeProposals: number;
 }
 
 /** The narrow data port the care-plan eraseFn composes over (Drizzle deletes in prod, under RLS). */
@@ -67,6 +69,7 @@ export function createInMemoryCarePlanEraseStore(seed: Partial<CarePlanEraseCoun
     goals: 0,
     interventions: 0,
     problemProposals: 0,
+    changeProposals: 0,
   };
   const counts: CarePlanEraseCounts = { ...zero, ...seed };
   const tombstoned: string[] = [];
@@ -101,6 +104,7 @@ export function createDrizzleCarePlanEraseStore(db: DbClient): CarePlanEraseStor
   const SIG = schema.carePlanSignatures;
   const PROB = schema.problems;
   const PP = schema.problemProposals;
+  const CCP = schema.carePlanChangeProposals;
   const G = schema.goals;
   const I = schema.interventions;
 
@@ -121,6 +125,7 @@ export function createDrizzleCarePlanEraseStore(db: DbClient): CarePlanEraseStor
           goals: 0,
           interventions: 0,
           problemProposals: 0,
+          changeProposals: 0,
         };
         if (planIds.length === 0) return zero; // idempotent: a second erase finds nothing.
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
@@ -152,11 +157,24 @@ export function createDrizzleCarePlanEraseStore(db: DbClient): CarePlanEraseStor
         const problemProposals = await del(() =>
           tx.delete(PP).where(inArray(PP.carePlanId, planIds)).returning({ id: PP.id }),
         );
+        // WF09 — proposed plan changes point at no element row (plain uuids), only at the plan; one statement also clears the
+        // parent_proposal_id self-reference.
+        const changeProposals = await del(() =>
+          tx.delete(CCP).where(inArray(CCP.carePlanId, planIds)).returning({ id: CCP.id }),
+        );
         const problems = await del(() =>
           tx.delete(PROB).where(inArray(PROB.carePlanId, planIds)).returning({ id: PROB.id }),
         );
 
-        return { versions, signatures, problems, goals, interventions, problemProposals };
+        return {
+          versions,
+          signatures,
+          problems,
+          goals,
+          interventions,
+          problemProposals,
+          changeProposals,
+        };
       });
     },
 

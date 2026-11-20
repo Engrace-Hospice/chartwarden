@@ -531,9 +531,15 @@ describe("M8 #92 — GET /encounters/:id/vitals reads back what was written", ()
     expect(read.statusCode).toBe(200);
     const body = read.json() as {
       encounterId: string;
+      patientId: string;
       vitals: Record<string, unknown>[];
     };
     expect(body.encounterId).toBe(id);
+    // The body names the patient, which is what attributes the read to the patient in the §164.528 accounting.
+    expect(typeof body.patientId).toBe("string");
+    expect(body.patientId.length).toBeGreaterThan(0);
+    // Every stored weight/height here has its unit, so nothing is reported as unstatable.
+    expect(read.json()).toMatchObject({ weightUnitMissing: false, heightUnitMissing: false });
     expect(body.vitals).toHaveLength(1);
     const v = body.vitals[0] as Record<string, unknown>;
     expect(v.id).toBe(written.json().vitalsId);

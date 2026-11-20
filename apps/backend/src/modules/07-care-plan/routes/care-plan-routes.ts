@@ -531,6 +531,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
         },
         disciplineScopeOf(request.context),
         writeActorOf(request),
+        await viewerOf(request, organizationId, planIdOf(request)),
       );
       return reply.code(201).send(res);
     },

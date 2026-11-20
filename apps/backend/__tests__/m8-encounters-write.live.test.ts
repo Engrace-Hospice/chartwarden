@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { createInMemorySessionContextStore, createSessionContextResolver } from "@chartwarden/auth";
 import { type StoredConsent, createInMemoryConsentStore } from "@chartwarden/consent";
 import { createDbClient } from "@chartwarden/db";
+import type { RecordedWound } from "@chartwarden/hearthnote";
 import {
   VOCAB_VERSION,
   activeNarrativeVocabRelease,
@@ -42,6 +43,7 @@ import {
   createDrizzleCarePlanReaderStore,
 } from "../src/modules/07-care-plan/index";
 import { createDrizzleEncounterEraseStore } from "../src/modules/08-encounters/erasers/encounter-eraser";
+import { createDrizzleFindingsService } from "../src/modules/08-encounters/findings/index";
 import {
   type EncounterWriteOutboxPort,
   M8_OUTBOX_EVENTS,
@@ -53,6 +55,7 @@ import {
   billableEncountersInRangeForOrg,
   createDrizzleEncounterReaderStore,
 } from "../src/modules/08-encounters/seams/drizzle-store";
+import { noWoundReader } from "../src/modules/08-encounters/wound-reader";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
@@ -115,6 +118,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   let noCipherSvc: ReturnType<typeof createDbEncounterRouteService>;
   /** The same service with a recorded fall in Quality's incident register (WF09), so the link path runs against the TABLE. */
   let fallSvc: ReturnType<typeof createDbEncounterRouteService>;
+  /** A service whose M9 wound reader is counted (`woundReads`: the encounters it was asked about) and scripted (`recordedWounds`). */
+  let woundSvc: ReturnType<typeof createDbEncounterRouteService>;
+  const woundReads: string[] = [];
+  let recordedWounds: readonly RecordedWound[] = [];
   /** What the faked M7 reader answers (see the seam registration in beforeAll). */
   let carePlanOverdue: unknown = null;
   // The audience the stub reader was last asked under (the F-064 care-plan link check passes the ACTOR, R-80).
@@ -319,19 +326,47 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     // GAP-013: the late-entry tier is measured against the org-local day, so the clock is pinned to the
     // day after SERVICE_DATE — every case below that is not about lateness stays in the `normal` tier.
     const liveClock = () => new Date(LIVE_NOW);
-    svc = createDbEncounterRouteService(handle.db, outbox, CIPHERS, liveClock);
-    noCipherSvc = createDbEncounterRouteService(handle.db, outbox, undefined, liveClock);
-    fallSvc = createDbEncounterRouteService(handle.db, outbox, CIPHERS, liveClock, {
-      async recentFalls() {
-        return [
-          {
-            incidentId: RECORDED_FALL,
-            occurredAt: new Date("2026-01-13T15:00:00Z"),
-            severity: "moderate",
-          },
-        ];
+    // No M9 is wired in this suite, so the services state no wounds BY NAME (`noWoundReader`): the production reader fails closed.
+    svc = createDbEncounterRouteService(
+      handle.db,
+      outbox,
+      CIPHERS,
+      liveClock,
+      undefined,
+      noWoundReader,
+    );
+    noCipherSvc = createDbEncounterRouteService(
+      handle.db,
+      outbox,
+      undefined,
+      liveClock,
+      undefined,
+      noWoundReader,
+    );
+    woundSvc = createDbEncounterRouteService(handle.db, outbox, CIPHERS, liveClock, undefined, {
+      async woundsForEncounter({ encounterId }) {
+        woundReads.push(encounterId);
+        return recordedWounds;
       },
     });
+    fallSvc = createDbEncounterRouteService(
+      handle.db,
+      outbox,
+      CIPHERS,
+      liveClock,
+      {
+        async recentFalls() {
+          return [
+            {
+              incidentId: RECORDED_FALL,
+              occurredAt: new Date("2026-01-13T15:00:00Z"),
+              severity: "moderate",
+            },
+          ];
+        },
+      },
+      noWoundReader,
+    );
   }, 120_000);
 
   afterAll(async () => {
@@ -662,6 +697,50 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     ).rejects.toMatchObject({ statusCode: 403 });
   });
 
+  it("G: a create that carries a first reason is ONE write: the reason is on the draft, and a refused one leaves no draft behind", async () => {
+    const base = {
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      encounterType: "routine_visit" as const,
+      discipline: "rn" as const,
+      serviceDate: SERVICE_DATE as never,
+    };
+    const count = async (): Promise<number> =>
+      Number(
+        (
+          await admin.query("SELECT count(*)::int AS n FROM encounter WHERE organization_id=$1", [
+            ORG_A,
+          ])
+        ).rows[0].n,
+      );
+    const before = await count();
+
+    // Two reasons that contradict each other: refused by the draft-save rule INSIDE the create transaction, so nothing is written.
+    await expect(
+      svc.createDraft(ORG_A, membershipOf[ORG_A], {
+        ...base,
+        initialSections: [
+          {
+            sectionId: "chief_concern",
+            entries: [{ code: "nv.reason.routine" }, { code: "nv.reason.pain" }],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_SELECTION" });
+    expect(await count()).toBe(before);
+
+    // A valid one lands the draft and its selection row together, at the version a selections write would have given it.
+    const made = await svc.createDraft(ORG_A, membershipOf[ORG_A], {
+      ...base,
+      initialSections: [{ sectionId: "chief_concern", entries: [{ code: "nv.reason.pain" }] }],
+    });
+    expect(made.version).toBe(1);
+    expect(await count()).toBe(before + 1);
+    const view = await svc.getSelections(ORG_A, made.id);
+    expect(view.version).toBe(1);
+    expect(view.layer1Preview).toContain("This visit is for pain assessment and management.");
+  });
+
   it("addendum on a signed encounter: draft → finalize → sign; emits m8.encounter.addendum_signed", async () => {
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
@@ -731,19 +810,31 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(atFinalize.pinned).toBe(true);
     expect(atFinalize.final).toContain("cardiovascularly stable");
 
-    // Rewrite the inputs underneath the signed note — the shape of a `@chartwarden/narrative-vocab` release
-    // that edits a shipped phrase, or of the `${patient}` slot resolving for the first time. Done in SQL
-    // because the service itself refuses to edit a finalized encounter (§2.7), which is exactly why the
-    // recompute-at-read behaviour was invisible: nothing a CLINICIAN can do changes the tree afterwards.
+    // Rewrite the inputs underneath the pinned note — the shape of a `@chartwarden/narrative-vocab` release that edits a shipped
+    // phrase, or of the `${patient}` slot resolving for the first time. Done in SQL because that is a change the SERVICE did not
+    // make: a signed or later note refuses a selections write (409 IMMUTABLE_AFTER_SIGN), while a finalized-not-yet-signed one still
+    // accepts it today and does not re-pin, which is the other way the stored tree can come to differ from the pinned text.
     await admin.query(
       `UPDATE hearthnote_selection
           SET selections = jsonb_set(selections, '{sections,0,entries,0,code}', '"nv.resp.unlabored"')
         WHERE encounter_id=$1`,
       [id],
     );
-    // The tree really did change — the selections read reflects it, so the two answers now diverge.
+    // The tree really did change: the stored row says so, and the selections read returns the changed tree...
+    expect(
+      (
+        await admin.query(
+          "SELECT selections->'sections'->0->'entries'->0->>'code' AS code FROM hearthnote_selection WHERE encounter_id=$1",
+          [id],
+        )
+      ).rows[0].code,
+    ).toBe("nv.resp.unlabored");
     const tree = await svc.getSelections(ORG_A, id);
-    expect(tree.layer1Preview).not.toBe(atFinalize.final);
+    expect(tree.sections[0]?.entries[0]?.code).toBe("nv.resp.unlabored");
+    // ...but a PINNED note answers its pinned preview (what was assembled at finalize, unedited so equal to the final bytes) and is
+    // never flagged stale: it is not recomputed from the tree, the wounds or the weights as they stand now.
+    expect(tree.layer1Preview).toBe(atFinalize.final);
+    expect(tree.editedNarrativeStale).toBe(false);
 
     const afterEdit = await svc.renderPayload(ORG_A, id);
     expect(afterEdit.final).toBe(atFinalize.final);
@@ -801,6 +892,175 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       (await admin.query("SELECT 1 FROM hearthnote_assembled_output WHERE encounter_id=$1", [id]))
         .rowCount,
     ).toBe(0);
+  });
+
+  // ── a findings PUT and finalize serialise on the encounter row (WF09) ──────────────────────────────────────────────
+  //
+  // Finalize pins the note; a findings PUT (ADLs, nutrition) writes a record the pinned note must state. Both take the same row lock on
+  // the encounter first, so there is no window in which a PUT reads `draft`, finalize pins, and the PUT then commits a record the
+  // signed note does not state: either the PUT lands before finalize reads the findings (and the note states it) or it waits and is
+  // refused (409 NOTE_PINNED_AT_FINALIZE). Vitals and selections writes do not take the lock (they are allowed on a finalized note).
+  describe("a findings PUT and finalize serialise", () => {
+    const ADL_BODY = { items: { bathing: "limited_assist" } } as const;
+    const STATES_ADL = "limited assistance with bathing";
+    const adlRows = async (id: string): Promise<number> =>
+      Number(
+        (
+          await admin.query("SELECT count(*)::int AS n FROM encounter_adl WHERE encounter_id=$1", [
+            id,
+          ])
+        ).rows[0].n,
+      );
+    const holdLock = async (id: string): Promise<Client> => {
+      const holder = new Client({ connectionString: DB_URL });
+      await holder.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT id FROM encounter WHERE id=$1 FOR NO KEY UPDATE", [id]);
+      return holder;
+    };
+    const released = new WeakSet<Client>();
+    /** End the holder's transaction and connection once (a `finally` may call this again after the test already did). */
+    const release = async (holder: Client, how: "COMMIT" | "ROLLBACK"): Promise<void> => {
+      if (released.has(holder)) return;
+      released.add(holder);
+      await holder.query(how).catch(() => undefined);
+      await holder.end();
+    };
+    const parked = async (run: Promise<unknown>): Promise<boolean> => {
+      let settled = false;
+      run.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return !settled;
+    };
+
+    it("finalize waits for a writer that holds the encounter row, and then pins what that writer committed", async () => {
+      const id = await draft("routine_visit", "rn");
+      const holder = await holdLock(id);
+      try {
+        // The writer (a PUT that already read `draft`) commits its record while still holding the lock.
+        await holder.query(
+          `INSERT INTO encounter_adl (organization_id, encounter_id, bathing, created_by_membership_id, updated_by_membership_id)
+           VALUES ($1,$2,'limited_assist',$3,$3)`,
+          [ORG_A, id, membershipOf[ORG_A]],
+        );
+        const finalize = svc.finalize(ORG_A, id, SERVICE_DATE as never);
+        expect(await parked(finalize), "finalize is parked on the encounter row lock").toBe(true);
+        await release(holder, "COMMIT");
+        await finalize;
+      } finally {
+        await release(holder, "ROLLBACK");
+      }
+      const note = await svc.renderPayload(ORG_A, id);
+      expect(note.pinned).toBe(true);
+      expect(note.final).toContain(STATES_ADL);
+    });
+
+    it("a PUT waits for finalize's lock and is then refused: the record is not stored and the pinned note does not state it", async () => {
+      const id = await draft("routine_visit", "rn");
+      const findings = createDrizzleFindingsService({
+        db: handle.db,
+        clock: () => new Date(LIVE_NOW),
+      });
+      const holder = await holdLock(id);
+      let put: Promise<unknown>;
+      try {
+        put = findings.putAdl(ORG_A, id, ADL_BODY, membershipOf[ORG_A]);
+        put.catch(() => undefined);
+        expect(await parked(put), "the PUT is parked on the encounter row lock").toBe(true);
+        // While the lock is held the encounter is finalized (what finalize commits under the same lock).
+        await holder.query(
+          "UPDATE encounter SET status='finalized', vocab_version_id=gen_random_uuid() WHERE id=$1",
+          [id],
+        );
+        await release(holder, "COMMIT");
+        await expect(put).rejects.toMatchObject({
+          code: "NOTE_PINNED_AT_FINALIZE",
+          statusCode: 409,
+        });
+      } finally {
+        await release(holder, "ROLLBACK");
+      }
+      expect(await adlRows(id)).toBe(0);
+    });
+
+    it("racing for real (Promise.all) always ends consistent: either the pinned note states the record, or the PUT was refused 409", async () => {
+      const findings = createDrizzleFindingsService({
+        db: handle.db,
+        clock: () => new Date(LIVE_NOW),
+      });
+      const outcomes = { landed: 0, refused: 0 };
+      for (let round = 0; round < 8; round++) {
+        const id = await draft("routine_visit", "rn");
+        const [put, fin] = await Promise.allSettled([
+          findings.putAdl(ORG_A, id, ADL_BODY, membershipOf[ORG_A]),
+          svc.finalize(ORG_A, id, SERVICE_DATE as never),
+        ]);
+        expect(fin.status, `round ${round}: finalize`).toBe("fulfilled");
+        const note = await svc.renderPayload(ORG_A, id);
+        expect(note.pinned, `round ${round}`).toBe(true);
+        if (put.status === "fulfilled") {
+          outcomes.landed++;
+          expect(await adlRows(id), `round ${round}: stored`).toBe(1);
+          expect(note.final, `round ${round}: the pinned note states what was stored`).toContain(
+            STATES_ADL,
+          );
+        } else {
+          outcomes.refused++;
+          expect(put.reason, `round ${round}`).toMatchObject({ code: "NOTE_PINNED_AT_FINALIZE" });
+          expect(await adlRows(id), `round ${round}: nothing stored`).toBe(0);
+          expect(note.final, `round ${round}: the pinned note does not state it`).not.toContain(
+            STATES_ADL,
+          );
+        }
+      }
+      expect(outcomes.landed + outcomes.refused).toBe(8);
+    });
+  });
+
+  it("§2.6 — a PINNED note reads no wounds, and a wound recorded after sign changes neither its text nor its edit-stale flag", async () => {
+    const id = await draft("routine_visit", "rn");
+    // An unpinned note previews live, so it consults M9 for the wounds the visit recorded.
+    woundReads.length = 0;
+    recordedWounds = [];
+    const draftView = await woundSvc.getSelections(ORG_A, id);
+    expect(woundReads).toEqual([id]);
+    // The author edits the note text, then finalizes and signs it unchanged.
+    await woundSvc.updateSelections(
+      ORG_A,
+      id,
+      draftView.version,
+      { sections: draftView.sections, editedNarrative: "The author's own words about this visit." },
+      membershipOf[ORG_A],
+    );
+    await woundSvc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await woundSvc.sign(ORG_A, id, ACTOR_A, SIGN_ARGS);
+    const before = await woundSvc.getSelections(ORG_A, id);
+
+    // A wound is recorded for the visit afterwards (or one of its observations is corrected): M9's answer is now different.
+    recordedWounds = [{ site: "sacrum", etiology: "pressure_injury", stage: "stage_2" }];
+    woundReads.length = 0;
+    const render = await woundSvc.renderPayload(ORG_A, id);
+    const after = await woundSvc.getSelections(ORG_A, id);
+
+    // The signed note is its pin: no wound read at all (a non-seam M9 error could otherwise turn the render of a legal document into
+    // a 500), the text is what was signed, and the flag a clinician acts on cannot flip on a note that was signed unchanged.
+    expect(woundReads).toEqual([]);
+    expect(render).toMatchObject({
+      pinned: true,
+      clinicianEdited: true,
+      final: "The author's own words about this visit.",
+    });
+    expect(after.editedNarrativeStale).toBe(false);
+    expect(after.layer1Preview).not.toContain("sacrum");
+    expect(after).toEqual(before);
+    recordedWounds = [];
   });
 
   it("§3.6 — the crypto-shred now has something to shred: an erased note's ciphers go empty", async () => {
@@ -965,6 +1225,26 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(oldest.temperature).toBe("37.1");
     expect(oldest.spo2).toBeNull();
     expect(oldest.bmi).toBeNull();
+  });
+
+  it("listVitals reports a legacy weight and height with no usable unit instead of letting them vanish", async () => {
+    const id = await draft("routine_visit", "rn", { captureVitals: false });
+    expect(await svc.listVitals(ORG_A, id)).toMatchObject({
+      weightUnitMissing: false,
+      heightUnitMissing: false,
+    });
+    // `vitals.weight_unit` / `height_unit` are nullable with no CHECK, so rows like this exist from before units were required.
+    await admin.query(
+      `INSERT INTO vitals (organization_id, encounter_id, captured_at, weight, height) VALUES ($1,$2,now(),'150','68')`,
+      [ORG_A, id],
+    );
+    const read = await svc.listVitals(ORG_A, id);
+    expect(read.weightUnitMissing).toBe(true);
+    expect(read.heightUnitMissing).toBe(true);
+    // ...and the note states neither (a unit is never guessed), so the stored values are not silently turned into a BMI.
+    const note = await svc.getSelections(ORG_A, id);
+    expect(note.layer1Preview).not.toContain("150");
+    expect(note.layer1Preview).not.toContain("BMI");
   });
 
   it("#92 listVitals survives the encounter being signed (the record stays retrievable)", async () => {

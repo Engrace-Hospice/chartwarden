@@ -14,5 +14,6 @@ export {
   assertGatePassed,
   runAddendumComplianceGate,
   runEncounterComplianceGate,
+  sectionsPopulatedByFindings,
 } from "./gate";
 export { type VitalsRowFacts, deriveVitalsGateFacts } from "./vitals-facts";

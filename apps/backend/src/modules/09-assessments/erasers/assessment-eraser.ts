@@ -20,6 +20,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { DataEraser } from "@chartwarden/types";
 import { eq, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
+import { eraseWoundSubtree } from "../wounds/erase";
 
 /** The per-table counts an assessment-record destruction removed (recorded on the destruction cert, §8.4 #5). */
 export interface AssessmentEraseCounts {
@@ -28,6 +29,10 @@ export interface AssessmentEraseCounts {
   readonly assessments: number;
   /** `assessment_reassessment_due` rows removed (GAP-181 cadence ledger; patient-keyed, no assessment FK). */
   readonly reassessmentDue?: number;
+  /** WF09 — `wound_observation` rows removed (both ends of a correction chain). */
+  readonly woundObservations?: number;
+  /** WF09 — `wound` rows removed. */
+  readonly wounds?: number;
 }
 
 /** The narrow data port the assessment eraseFn composes over (Drizzle deletes in prod, under RLS). */
@@ -130,12 +135,14 @@ export function createDrizzleAssessmentEraseStore(db: DbClient): AssessmentErase
         const reassessmentDue = (
           await tx.delete(DUE).where(eq(DUE.patientId, patientId)).returning({ id: DUE.id })
         ).length;
+        // WF09 — the longitudinal wound record is patient-keyed too, and goes whether or not any assessment row exists.
+        const wound = await eraseWoundSubtree(tx as unknown as DbClient, patientId);
         // The children are keyed on assessment id (plain uuid — the partitioned parent takes no FK),
         // so resolve the patient's assessment ids first, via the parent (partition-safe).
         const assessmentIds = (
           await tx.select({ id: CA.id }).from(CA).where(eq(CA.patientId, patientId))
         ).map((r) => r.id);
-        if (assessmentIds.length === 0) return { ...zero, reassessmentDue }; // idempotent: a second erase finds nothing.
+        if (assessmentIds.length === 0) return { ...zero, reassessmentDue, ...wound }; // idempotent: a second erase finds nothing.
 
         const cosignatures = (
           await tx
@@ -155,7 +162,7 @@ export function createDrizzleAssessmentEraseStore(db: DbClient): AssessmentErase
           await tx.delete(CA).where(eq(CA.patientId, patientId)).returning({ id: CA.id })
         ).length;
 
-        return { cosignatures, significantChangeEvents, assessments, reassessmentDue };
+        return { cosignatures, significantChangeEvents, assessments, reassessmentDue, ...wound };
       });
     },
   };

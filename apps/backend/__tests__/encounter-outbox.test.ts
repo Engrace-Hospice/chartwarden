@@ -234,6 +234,19 @@ describe("decideVisitSeeding (M17 visit-scheduling consumer, §4.7 / line 65)", 
   });
 });
 
+describe("m8.encounter.voided carries no free text", () => {
+  const voided = M8_OUTBOX_EVENTS.find((e) => e.eventName === "m8.encounter.voided");
+
+  it("names the encounter and who voided it, and no reason: the reason is the clinician's typed text, and a failed delivery copies the payload into the dead-letter queue", () => {
+    expect(
+      Object.keys((voided?.payloadSchema as unknown as { properties: object }).properties).sort(),
+    ).toEqual(["encounterId", "voidedBy"]);
+    expect(Value.Check(voided?.payloadSchema as never, { encounterId: "e1", voidedBy: "m1" })).toBe(
+      true,
+    );
+  });
+});
+
 // ── M18 EVV-bracket forward seam (deny-stub) ───────────────────────────────────────────────────────────
 
 describe("EvvBracketResolver forward seam (§4.7 / D9)", () => {

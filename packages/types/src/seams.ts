@@ -11,7 +11,7 @@ import type {
   LevelOfCareReader,
   ReferralReader,
 } from "./admission";
-import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
+import type { LatestAssessmentProvider, ScaleSeriesProvider, WoundProvider } from "./assessment";
 import type {
   BereavedPortalScopeProvider,
   BereavementAssignmentReader,
@@ -280,6 +280,7 @@ export type SeamName =
   // instead of importing M9's schema.
   | "LatestAssessmentProvider" // M9 — hot latest-active-per-scale read (CTI draft, IDG packet, HOPE context)
   | "ScaleSeriesProvider" // M9 — windowed scored series + latest-vs-window delta (IDG, FHIR, AI trajectory)
+  | "WoundProvider" // M9 — wound observations recorded at one encounter (M8 visit note)
   // M10 (HOPE Engine) owned seams (§2 / D10) — also leaf-typed (interfaces in ./hope), so they are typed
   // here like M6/M7/M8/M9's readers. M14 (open HOPE windows on the IDG packet), M22 (per-admission HOPE
   // timeline PDF), M30 (HQRP on-time / acceptance / Timely-Follow-Up measures), M32 (AI symptom-trajectory +
@@ -406,6 +407,7 @@ export type SeamName =
   // care-log and M30/M33's operational measures had no read path at all. M19-T06 registers the real impls;
   // the deny-stubs stay the fail-closed default for a boot that does not wire M19.
   | "BereavementEncounterReader" // M8 — one encounter's type/status/patient facts (M16 verifies a bereavement visit's source encounter)
+  | "EncounterDraftReader" // M8 — one visit's patient / status / author (M7 change proposals + M9 wounds bind their records to a visit still being written)
   | "PatientSitingReader" // M6 — the location ids of a patient's active admission(s) (M36 care-team channel siting)
   | "SupervisorReader" // M3 — supervision/location facts about a membership (M33 scoping, M36 member admin)
   | "AuditorEngagementReader" // M3 — is an auditor engagement active for this auditor now (M31 auditor view, GAP-093)
@@ -567,6 +569,36 @@ export interface BereavementEncounterFacts {
   readonly isBereavementContact: boolean;
   /** True iff the encounter is signed (signed / cosign_pending / cosigned) and not voided. */
   readonly isSigned: boolean;
+}
+
+/**
+ * WF09 / M8 — the visit (encounter) a record is being bound to while its note is written. M7 change proposals and M9 wound
+ * observations carry the `sourceEncounterId` of the visit they were recorded in; neither module may trust that uuid, so each
+ * asks M8 who owns it. Returns `null` for an unknown or cross-tenant id (never a throw for "no such encounter"; an
+ * unbound/unreadable M8 throws via the deny-stub, which every consumer treats as a refusal). The consumer decides what an
+ * answer allows: it must be this patient's, authored by the caller, and still a `draft`. Opens its own tenant context, so a
+ * consumer calls it OUTSIDE any open transaction. Ids and enums only, no clinical content.
+ */
+export interface EncounterDraftReader {
+  draftOf(input: {
+    organizationId: string;
+    encounterId: string;
+  }): Promise<EncounterDraftFacts | null>;
+}
+
+/** The leaf-safe visit facts behind {@link EncounterDraftReader}. */
+export interface EncounterDraftFacts {
+  readonly patientId: string;
+  /** The §2.3 encounter lifecycle state (`draft` while the note is being written; every other value is a closed note). */
+  readonly status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
+  /** The membership that wrote the note: only its author may bind a record to it. */
+  readonly authoredByMembershipId: string;
+  /**
+   * Whether the visit's note template has a section that states wounds (the hearthnote `woundSummary` section; a telephonic note and a
+   * therapy, social-work or chaplain note have none). A wound observation tied to a note that does not state it would be saved and then left out
+   * of the signed note without a word, so M9 refuses it. M7 does not read this.
+   */
+  readonly templateStatesWounds: boolean;
 }
 
 /**
@@ -1277,6 +1309,7 @@ export interface SeamContracts {
   // them through the typed accessors with no schema import edge.
   LatestAssessmentProvider: LatestAssessmentProvider;
   ScaleSeriesProvider: ScaleSeriesProvider;
+  WoundProvider: WoundProvider;
   // M10's owned seams (§2 / D10) are LEAF-TYPED too — interfaces live in ./hope (this package), so the
   // registry is statically typed against the real contract. M10 registers the real Drizzle-backed impls
   // over the deny-stubs (M10-T05); consumers that list `10` in their manifest `dependsOn` resolve them
@@ -1372,6 +1405,7 @@ export interface SeamContracts {
   // §3.6-denylisted and the per-tenant DEK never leaves M19's boundary (D14).
   PatientSitingReader: PatientSitingReader;
   BereavementEncounterReader: BereavementEncounterReader;
+  EncounterDraftReader: EncounterDraftReader;
   SupervisorReader: SupervisorReader;
   AuditorEngagementReader: AuditorEngagementReader;
   EscalationRouter: EscalationRouter;

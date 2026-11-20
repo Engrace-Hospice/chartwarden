@@ -58,14 +58,16 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     description: "Finalize succeeded (Layer-3 gate passed); the vocab version is pinned (D11).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
+      /** The visit's patient, so a consumer scopes to that patient (M7 releases the plan changes the visit proposed). */
+      patientId: Type.String({ minLength: 1 }),
       vocabVersionId: Type.String({ minLength: 1 }),
       layer2Involved: Type.Boolean(),
       lateEntryTier,
     }),
     // F-115 (#248) — m30 moved to seamConsumers: it reads the org-level late-entry tally via
     // `SignedEncountersReader.lateEntryCountsForOrg` (late_encounter_entry_rate) on its nightly cadence,
-    // not by reacting to this event — no consumer binds it or ever will.
-    declaredConsumers: [],
+    // not by reacting to this event. WF09 — m7 binds it: the plan changes the visit proposed become pending on the plan's review list.
+    declaredConsumers: ["m7"],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
@@ -292,15 +294,16 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m8",
     description:
       "A draft encounter was voided (admin-only terminal state; never flows to `signed`).",
+    // No reason: it is the clinician's typed free text (or a system sentence), kept on the encounter row and in the audit trail, never
+    // in an outbox payload that a failed delivery would copy into the dead-letter queue. No consumer reads it (m7 only needs the id).
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       voidedBy: Type.String({ minLength: 1 }),
-      voidedReason: Type.String({ minLength: 1 }),
     }),
     // F-144 (#248) — m22 REMOVED: `ENCOUNTER_GRAPH` legalizes `void` only from `draft` — a voided
     // encounter can never have had a PDF rendered (M22 renders only off `.signed`), so there is nothing
-    // to suppress. Not in M22's own §4.11 table either.
-    declaredConsumers: [],
+    // to suppress. Not in M22's own §4.11 table either. WF09 — m7 binds it: a voided visit's draft plan-change proposals are withdrawn.
+    declaredConsumers: ["m7"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

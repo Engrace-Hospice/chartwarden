@@ -131,7 +131,6 @@ export function buildM8VisitClosedConsumer(deps: {
             payload: {
               encounterId: encounter.id,
               voidedBy: encounter.authoredByMembershipId,
-              voidedReason: reason,
             },
           });
         },

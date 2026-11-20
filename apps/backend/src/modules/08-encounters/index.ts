@@ -14,6 +14,7 @@ import {
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";
+import { createDrizzleFindingsService, registerFindingsRoutes } from "./findings/index";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
 import { registerClosureRoutes as _registerM8ClosureRoutes } from "./routes/closure-routes";
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
@@ -49,6 +50,7 @@ export function mountEncounterRoutes(
 ): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
   _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox, ciphers) });
+  registerFindingsRoutes(app, { service: createDrizzleFindingsService({ db }) });
   _registerM8ClosureRoutes(app, {
     overrideRateLimit: closure?.overrideRateLimit ?? (async () => {}),
     service: createDbClosureRouteService({
@@ -69,6 +71,19 @@ export {
   CLOSURE_OVERRIDE_STEP_UP_KEY,
   registerClosureRoutes,
 } from "./routes/closure-routes";
+
+export {
+  type FindingsService,
+  createDrizzleFindingsService,
+  registerFindingsRoutes,
+} from "./findings/index";
+
+// WF09 — the visit facts (patient / status / author) M7 change proposals and M9 wounds check before binding a record to a note.
+export {
+  createDrizzleEncounterDraftReader,
+  noteStatesWounds,
+  registerEncounterDraftReader,
+} from "./encounter-draft-reader";
 
 export * from "./lifecycle/index";
 // #121 — the §2.6 Layer-3 compliance gate + the register of what each of its twelve checks is today.

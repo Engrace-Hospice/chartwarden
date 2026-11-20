@@ -11,6 +11,11 @@ import { resolveTemplate } from "../templates/registry";
 import type { HearthnoteTemplate, TemplateSection } from "../templates/types";
 import { templateKey } from "../templates/types";
 import { finishSentence, interpolate, joinSentences } from "./grammar";
+import {
+  describeRecordedAdl,
+  describeRecordedNutrition,
+  describeRecordedWounds,
+} from "./recorded-findings";
 import type {
   AssemblyContext,
   AssemblyResult,
@@ -37,24 +42,30 @@ export class HearthnoteAssemblyError extends Error {
   }
 }
 
-/** Build the merged `${slot}` value map for one entry: context base, then entry-specific params win. */
+/**
+ * Build the merged `${slot}` value map for one entry: the context vitals, then the entry's own params over them. The slots the
+ * assembly itself supplies (`patient`, `serviceDate`, `location`) are laid down LAST, so a param that happens to carry one of
+ * those names can never replace them: a client-sent value must not rewrite who the note is about or when the visit was.
+ */
 function slotValues(
   context: AssemblyContext,
   params: Readonly<Record<string, SlotValue>> | undefined,
 ): Record<string, SlotValue> {
   return {
+    ...(context.vitals ?? {}),
+    ...(params ?? {}),
     patient: context.patient,
     serviceDate: context.serviceDate,
     ...(context.location !== undefined ? { location: context.location } : {}),
-    ...(context.vitals ?? {}),
-    ...(params ?? {}),
   };
 }
 
 /**
- * Render one section's body (recorded vitals, assembled sentences, verbatim free-text), or "" when it has
- * no content. The vitals sentence leads a `vitalsSummary` section and needs no selection to appear; a linked
- * fall's date follows the follow-up-after-a-fall reason in a `fallSummary` section and never appears without it.
+ * Render one section's body (recorded facts, assembled sentences, verbatim free-text), or "" when it has
+ * no content. The vitals sentence leads a `vitalsSummary` section and needs no selection to appear; so do the
+ * recorded ADLs, nutrition and wounds in an `adlSummary`, `nutritionSummary` and `woundSummary` section (a
+ * recorded fact with no such section in the template is not stated). A linked fall's date follows the
+ * follow-up-after-a-fall reason in a `fallSummary` section and never appears without it.
  */
 function renderSection(
   section: SectionSelection,
@@ -64,6 +75,13 @@ function renderSection(
   const sentences: string[] = [];
   if (tmplSection.vitalsSummary === true) {
     sentences.push(describeRecordedVitals(context.recordedVitals));
+  }
+  if (tmplSection.adlSummary === true) sentences.push(describeRecordedAdl(context.recordedAdl));
+  if (tmplSection.nutritionSummary === true) {
+    sentences.push(describeRecordedNutrition(context.recordedNutrition));
+  }
+  if (tmplSection.woundSummary === true) {
+    sentences.push(describeRecordedWounds(context.recordedWounds));
   }
   for (const entry of section.entries) {
     const vocab = getVocabEntry(entry.code);
@@ -142,21 +160,4 @@ export function assemble(selection: SelectionState, context: AssemblyContext): A
     );
   }
   return assembleLayer1(template, selection, context);
-}
-
-/**
- * The required sections that have NO populated selection (the Layer-3 gate's check-1 remediation list).
- * A section counts as populated when it has ≥ 1 entry or non-empty free-text. Template-engine query, kept
- * here so the gate (M8-T04/T09) reads it rather than re-deriving "required".
- */
-export function missingRequiredSections(
-  template: HearthnoteTemplate,
-  selection: SelectionState,
-): readonly string[] {
-  const populated = new Set(
-    selection.sections
-      .filter((s) => s.entries.length > 0 || (s.freeText?.trim().length ?? 0) > 0)
-      .map((s) => s.sectionId),
-  );
-  return template.sections.filter((s) => s.required && !populated.has(s.id)).map((s) => s.id);
 }

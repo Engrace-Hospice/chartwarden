@@ -59,11 +59,36 @@ const SECTION: Record<string, TemplateSection> = {
     allowedCategories: ["care_plan_element"],
   },
   plan: prose("plan", "Plan and Next Visit"),
+  // The recorded ADL, nutrition and wound sections: optional, and free text only. Their content is the visit's
+  // recorded facts, stated by a deterministic sentence (the way `vitals_review` states the recorded vitals).
+  functional_status: {
+    id: "functional_status",
+    heading: "Functional Status",
+    required: false,
+    allowedCategories: [],
+    adlSummary: true,
+  },
+  nutrition: {
+    id: "nutrition",
+    heading: "Nutrition and Hydration",
+    required: false,
+    allowedCategories: [],
+    nutritionSummary: true,
+  },
+  skin_wounds: {
+    id: "skin_wounds",
+    heading: "Skin and Wounds",
+    required: false,
+    allowedCategories: [],
+    woundSummary: true,
+  },
+  // CHHA already has an ADL section (required); it states the recorded ADLs rather than gaining a second one.
   adl: {
     id: "adl",
     heading: "Activities of Daily Living",
     required: true,
     allowedCategories: ["adl"],
+    adlSummary: true,
   },
   psychosocial: {
     id: "psychosocial",
@@ -116,6 +141,9 @@ function baseSectionIds(discipline: EncounterDiscipline): readonly string[] {
         "chief_concern",
         "vitals_review",
         "assessment",
+        "functional_status",
+        "nutrition",
+        "skin_wounds",
         "symptom_management",
         "interventions",
         "plan",
@@ -130,8 +158,16 @@ function baseSectionIds(discipline: EncounterDiscipline): readonly string[] {
     case "ot":
     case "slp":
       // Therapists document a functional assessment and their interventions; like CHHA/MSW they carry no
-      // `vitals_review`, so the §2.6 gate requires no vitals for a therapy visit.
-      return ["chief_concern", "assessment", "interventions", "plan"];
+      // `vitals_review`, so the §2.6 gate requires no vitals for a therapy visit. PT and OT also state the
+      // functional status they assessed (transfers, ambulation, devices; self-care); SLP the swallowing and
+      // intake it assessed. None of the three treats wounds.
+      return [
+        "chief_concern",
+        "assessment",
+        ...(discipline === "slp" ? ["nutrition"] : ["functional_status"]),
+        "interventions",
+        "plan",
+      ];
     case "volunteer":
       return ["chief_concern", "plan"];
   }
@@ -155,13 +191,16 @@ function extraSectionIds(encounterType: EncounterType): readonly string[] {
   }
 }
 
-/** Build the resolved template for one legal pair (telephonic drops the vitals section — §2.2). */
+/** What a telephonic note cannot hold: nothing was measured, so no vitals and no wound measurements (§2.2). */
+const TELEPHONIC_OMITS: ReadonlySet<string> = new Set(["vitals_review", "skin_wounds"]);
+
+/** Build the resolved template for one legal pair (telephonic drops the vitals and wound sections — §2.2). */
 function buildTemplate(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
 ): HearthnoteTemplate {
   const base = baseSectionIds(discipline).filter(
-    (id) => !(id === "vitals_review" && encounterType === "telephonic"),
+    (id) => !(TELEPHONIC_OMITS.has(id) && encounterType === "telephonic"),
   );
   const ordered: string[] = [];
   for (const id of [...base, ...extraSectionIds(encounterType)]) {

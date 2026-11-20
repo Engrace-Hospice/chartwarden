@@ -114,3 +114,35 @@ export async function stampClockIfNull(tx: DbClient, input: StampClockInput): Pr
     .returning({ id: ENC.id });
   return stamped.length > 0;
 }
+
+/**
+ * ADR-0113: a seeded draft that never got an M17 start event gets its documentation clock on the AUTHOR's first authoring write
+ * (and at sign, so a signed note always has one). Only the author's own write counts: the clock is the author's duty, so an edit by
+ * anyone else (a supervisor on an `is_author_or_supervisor` route) never starts it, and a legacy (pre-deploy, clockless) draft is not
+ * clocked by someone else touching it (D9). A `null` `actorMembershipId` (a caller with no acting member) stamps nothing.
+ * Write-once and open-notes-only in the UPDATE itself; the row's own `clockStartedAt` just skips the round trip once it is set.
+ * A GET never calls this. The one implementation behind every authoring write (selections, vitals, mileage, ADLs, nutrition).
+ */
+export async function stampDraftOpened(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly row: {
+      readonly id: string;
+      readonly clockStartedAt: Date | null;
+      readonly authoredByMembershipId: string;
+    };
+    readonly actorMembershipId: string | null;
+    readonly at: Date;
+  },
+): Promise<void> {
+  const { row, actorMembershipId } = input;
+  if (row.clockStartedAt !== null) return;
+  if (actorMembershipId === null || actorMembershipId !== row.authoredByMembershipId) return;
+  await stampClockIfNull(tx, {
+    orgId: input.organizationId,
+    encounterId: row.id,
+    at: input.at,
+    source: "draft_opened",
+  });
+}

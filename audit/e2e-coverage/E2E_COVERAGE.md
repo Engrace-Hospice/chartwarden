@@ -44,7 +44,7 @@
 
 ## Dynamic web screens (#852)
 
-42/121 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
+43/122 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|

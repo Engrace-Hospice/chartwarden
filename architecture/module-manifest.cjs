@@ -481,6 +481,7 @@ exports.MODULES = [
       "intervention",
       "care_plan_idg_decision_application",
       "care_plan_idg_proposed_change",
+      "care_plan_change_proposal", // WF09 — a visit's proposed plan changes (draft → pending → accepted/dismissed)
       "problem_proposal", // F-238 — DocLens-extracted diagnoses awaiting clinician accept/dismiss
     ],
   }, // M07-F02
@@ -502,6 +503,8 @@ exports.MODULES = [
       "cosignature_request",
       "vitals",
       "mileage",
+      "encounter_adl", // WF09 — per-visit ADL record
+      "encounter_nutrition", // WF09 — per-visit nutrition and hydration record
       "hearthnote_selection",
       "hearthnote_assembled_output",
       "hearthnote_llm_modification",
@@ -523,6 +526,8 @@ exports.MODULES = [
       "assessment_cosignature",
       "significant_change_event",
       "assessment_reassessment_due",
+      "wound", // WF09 — longitudinal wound record
+      "wound_observation", // WF09 — dated, append-only wound observation
       "scale_license",
       "scale_policy",
     ],

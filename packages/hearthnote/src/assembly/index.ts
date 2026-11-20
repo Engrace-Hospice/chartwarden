@@ -51,9 +51,13 @@ export {
 export { finishSentence, interpolate, joinSentences } from "./grammar";
 export { describeRecordedVitals } from "./vitals";
 export {
+  describeRecordedAdl,
+  describeRecordedNutrition,
+  describeRecordedWounds,
+} from "./recorded-findings";
+export {
   HearthnoteAssemblyError,
   assemble,
   assembleLayer1,
-  missingRequiredSections,
   type AssemblyErrorCode,
 } from "./assemble";

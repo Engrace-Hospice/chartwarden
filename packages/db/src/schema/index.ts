@@ -287,6 +287,7 @@ export * from "./care-plan/care-plan-versions";
 export * from "./care-plan/care-plan-signatures";
 export * from "./care-plan/problems";
 export * from "./care-plan/problem-proposals";
+export * from "./care-plan/change-proposals";
 export * from "./care-plan/goals";
 export * from "./care-plan/interventions";
 export * from "./care-plan/idg-decision-applications";
@@ -310,6 +311,8 @@ export * from "./encounter/encounter-signatures";
 export * from "./encounter/encounter-care-plan-links";
 export * from "./encounter/cosignature-requests";
 export * from "./encounter/vitals";
+export * from "./encounter/adl-records";
+export * from "./encounter/nutrition-records";
 export * from "./encounter/mileage";
 export * from "./encounter/hearthnote-selections";
 export * from "./encounter/hearthnote-assembled-outputs";
@@ -338,6 +341,8 @@ export * from "./assessment/significant-change-events";
 export * from "./assessment/scale-licenses";
 export * from "./assessment/scale-policies";
 export * from "./assessment/assessment-reassessment-due"; // GAP-181 — the cadence-scan ledger (0481)
+export * from "./assessment/wounds"; // longitudinal wounds: the register (1528)
+export * from "./assessment/wound-observations"; // longitudinal wounds: dated observations, append-only (1529)
 
 // ── Module 10 (HOPE Engine) — the CMS HOPE timepoint + iQIES submission spine (§3.3) ─────────
 // M10 owns 11 tables: the existing HOPE workflow infrastructure (timepoint schedule, partitioned

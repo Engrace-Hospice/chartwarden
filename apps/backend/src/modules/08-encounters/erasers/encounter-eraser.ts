@@ -3,11 +3,13 @@
 //
 // M8 owns the destruction callback for a patient's ENCOUNTER record — the visit-note satellites M8
 // creates around the M5 patient spine: encounter signatures, addenda, care-plan links, cosignature
-// requests, vitals, mileage, and the HearthNote selection / assembled-output / llm-modification rows.
+// requests, vitals, mileage, the recorded ADLs and nutrition, and the HearthNote selection / assembled-output / llm-modification rows.
 // Under an M4 destruction certificate it (1) cryptographically erases the HearthNote ciphertext via the
 // tenant DEK (§3.6 — `hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.*_cipher`),
 // then (2) deletes that subtree for the subject patient while leaving the `encounter` root as a
-// TOMBSTONE (status flip; the PK survives for FK referential integrity) — the same D8 resolver pattern
+// TOMBSTONE (status flip; the PK survives for FK referential integrity). Because the root is NEVER deleted, no ON DELETE CASCADE
+// ever fires: every table keyed by `encounter_id` (the ADL and nutrition records included) must be deleted by name below, or its
+// rows outlive the destroyed patient. The same D8 resolver pattern
 // M5's `clinical_record`, M6's `admission_record`, and M7's `care_plan_record` erasers use. The four
 // erasers are disjoint by table ownership: M5 destroys the patient demographics subtree, M6 the
 // admission subtree, M7 the care-plan subtree, M8 the encounter subtree it owns.
@@ -16,12 +18,30 @@
 // composition root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before
 // validateErasers(), so a real eraser stands over its stub.
 import { type DbClient, schema } from "@chartwarden/db";
+import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@chartwarden/narrative-vocab";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DataEraser } from "@chartwarden/types";
-import { type SQL, eq, inArray, or } from "drizzle-orm";
+import { type SQL, eq, inArray, or, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { registerEraser } from "../../../bootstrap/index";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/**
+ * What a tombstoned root says in every free-text reason column that still held a reason: a fixed, content-free sentence. It is NOT
+ * null, and NOT short, because the encounter CHECKs require a reason of a minimum length wherever one is required (a late-entry or
+ * EVV-missing reason ≥ 20/40 chars, an administrative override reason ≥ 100): the tombstone must keep satisfying them while holding
+ * none of the clinician's words. A column that held no reason stays null.
+ */
+export const TOMBSTONE_REASON =
+  "[erased under a destruction certificate: the clinician's words are gone and this row is kept only as a tombstone for referential integrity]";
+/** The `voided_reason` of a tombstone (`encounter_voided_consistency` requires one of at least 40 characters). */
+export const TOMBSTONE_VOID_REASON =
+  "Content erased under a destruction certificate; the row is kept as a tombstone (D8).";
+
+/** `col` when it is null, else the fixed tombstone reason (see {@link TOMBSTONE_REASON}). */
+const scrubbed = (column: AnyPgColumn): SQL =>
+  sql`CASE WHEN ${column} IS NULL THEN NULL ELSE ${TOMBSTONE_REASON} END`;
 
 /** The per-table counts an encounter-record destruction removed (recorded on the destruction cert). */
 export interface EncounterEraseCounts {
@@ -31,6 +51,8 @@ export interface EncounterEraseCounts {
   readonly cosignatureRequests: number;
   readonly vitals: number;
   readonly mileage: number;
+  readonly adlRecords: number;
+  readonly nutritionRecords: number;
   readonly hearthnoteSelections: number;
   readonly hearthnoteAssembledOutputs: number;
   readonly hearthnoteLlmModifications: number;
@@ -81,6 +103,8 @@ export function createInMemoryEncounterEraseStore(seed: Partial<EncounterEraseCo
     cosignatureRequests: 0,
     vitals: 0,
     mileage: 0,
+    adlRecords: 0,
+    nutritionRecords: 0,
     hearthnoteSelections: 0,
     hearthnoteAssembledOutputs: 0,
     hearthnoteLlmModifications: 0,
@@ -129,6 +153,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
   const COSIGN = schema.cosignatureRequests;
   const VITALS = schema.vitals;
   const MILEAGE = schema.mileage;
+  const ADL = schema.encounterAdlRecords;
+  const NUTRITION = schema.encounterNutritionRecords;
   const SEL = schema.hearthnoteSelections;
   const AO = schema.hearthnoteAssembledOutputs;
   const LLM = schema.hearthnoteLlmModifications;
@@ -185,6 +211,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           cosignatureRequests: 0,
           vitals: 0,
           mileage: 0,
+          adlRecords: 0,
+          nutritionRecords: 0,
           hearthnoteSelections: 0,
           hearthnoteAssembledOutputs: 0,
           hearthnoteLlmModifications: 0,
@@ -196,7 +224,9 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
 
         // FK order: llm_modification → assembled_output; the two hearthnote tables and the signatures
         // reference addenda, so all of them go before `encounter_addendum`; the remaining satellites
-        // (care-plan links / cosignature requests / vitals / mileage) are independent encounter leaves.
+        // (care-plan links / cosignature requests / vitals / mileage / ADLs / nutrition) are independent encounter leaves. The
+        // ADL and nutrition tables declare ON DELETE CASCADE, but the `encounter` root is only tombstoned here, so the cascade
+        // never fires: they are deleted explicitly.
         const hearthnoteLlmModifications = await del(() =>
           tx
             .delete(LLM)
@@ -241,6 +271,15 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
             .where(inArray(MILEAGE.encounterId, encounterIds))
             .returning({ id: MILEAGE.id }),
         );
+        const adlRecords = await del(() =>
+          tx.delete(ADL).where(inArray(ADL.encounterId, encounterIds)).returning({ id: ADL.id }),
+        );
+        const nutritionRecords = await del(() =>
+          tx
+            .delete(NUTRITION)
+            .where(inArray(NUTRITION.encounterId, encounterIds))
+            .returning({ id: NUTRITION.id }),
+        );
 
         return {
           signatures,
@@ -249,6 +288,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           cosignatureRequests,
           vitals,
           mileage,
+          adlRecords,
+          nutritionRecords,
           hearthnoteSelections,
           hearthnoteAssembledOutputs,
           hearthnoteLlmModifications,
@@ -258,17 +299,33 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
 
     async tombstoneEncounters(organizationId, patientId) {
       await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        // D8 tombstone: the root row SURVIVES for FK referential integrity — status flips to the
-        // terminal 'voided' and every free-text reason column on the root is scrubbed.
+        // D8 tombstone: the root row SURVIVES for FK referential integrity — status flips to the terminal 'voided' and every
+        // free-text reason column on the root is scrubbed. The flip has to satisfy the table's own CHECKs, for a DRAFT as much as
+        // for a finalized or signed row:
+        //   encounter_vocab_pinned_when_finalized  a non-draft row carries a vocabulary pin; a draft has none, so it gets the
+        //       release current at the tombstone (a real release, as a void of a draft does, #128), a pinned row keeps its own;
+        //   encounter_voided_consistency           voided_at, voided_by and a voided_reason of at least 40 characters: kept when
+        //       set, else now / the row's author (a membership id, no PHI) / the fixed {@link TOMBSTONE_VOID_REASON};
+        //   the fall link (fall_incident_id, fall_occurred_on): nulled, no CHECK ties them to anything;
+        //   the late-entry / EVV / override reason minimums: a reason that existed is replaced by the fixed {@link TOMBSTONE_REASON}
+        //       of sufficient length instead of being nulled, which those CHECKs would refuse.
+        const pin = activeNarrativeVocabRelease(VOCAB_VERSION).id;
         await tx
           .update(ENC)
           .set({
             status: "voided",
-            evvMissingReason: null,
-            lateEntryReason: null,
-            significantLateOverrideReason: null,
-            administrativeOverrideReason: null,
-            voidedReason: null,
+            vocabVersionId: sql`COALESCE(${ENC.vocabVersionId}, ${pin}::uuid)`,
+            voidedAt: sql`COALESCE(${ENC.voidedAt}, now())`,
+            voidedBy: sql`COALESCE(${ENC.voidedBy}, ${ENC.authoredByMembershipId})`,
+            voidedReason: TOMBSTONE_VOID_REASON,
+            evvMissingReason: scrubbed(ENC.evvMissingReason),
+            lateEntryReason: scrubbed(ENC.lateEntryReason),
+            significantLateOverrideReason: scrubbed(ENC.significantLateOverrideReason),
+            administrativeOverrideReason: scrubbed(ENC.administrativeOverrideReason),
+            // The fall this visit was linked to (a recorded incident id and its date) says something about the destroyed patient, so
+            // the root does not keep it (migration 1517 columns; nothing requires them, so null is always allowed).
+            fallIncidentId: null,
+            fallOccurredOn: null,
           })
           .where(eq(ENC.patientId, patientId));
       });

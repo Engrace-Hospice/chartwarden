@@ -12,8 +12,10 @@ import {
   createDbCarePlanAbacResolver,
   createDbCarePlanRouteService,
 } from "./care-plan-route-service-db";
+import { createDbChangeProposalService } from "./change-proposals-db";
 import { createDbProblemProposalService } from "./problem-proposals-db";
 import { registerCarePlanRoutes as _registerM7Routes } from "./routes/care-plan-routes";
+import { registerChangeProposalRoutes } from "./routes/change-proposal-routes";
 import { registerProblemProposalRoutes } from "./routes/problem-proposal-routes";
 
 export {
@@ -62,6 +64,12 @@ export function mountCarePlanRoutes(
   // F-238 dx-writeback — the clinician's accept / dismiss surface for DocLens-proposed diagnoses.
   registerProblemProposalRoutes(app, {
     service: createDbProblemProposalService(db, outbox),
+    sudDisclosureAllowed,
+  });
+  // WF09 — the plan changes a visit proposes: draft while the note is written, released onto the review list when the visit is finalized
+  // (the `m8.encounter.finalized` consumer, bound at the composition root), accepted through the manual routes' own service operations.
+  registerChangeProposalRoutes(app, {
+    service: createDbChangeProposalService(db, outbox),
     sudDisclosureAllowed,
   });
   _registerM7Routes(app, {
@@ -210,6 +218,24 @@ export {
   createDbProblemProposalService,
 } from "./problem-proposals-db";
 export { registerProblemProposalRoutes } from "./routes/problem-proposal-routes";
+// WF09 — plan-of-care change proposals recorded in a visit note: draft → (visit finalized) pending → accepted / dismissed.
+export {
+  type CarePlanChangeProposalService,
+  type EncounterReleaseScope,
+  type ProposalAcceptor,
+  type ProposalCaller,
+  createDbChangeProposalService,
+} from "./change-proposals-db";
+export {
+  M7_ENCOUNTER_FINALIZED_EVENT,
+  M7_ENCOUNTER_VOIDED_EVENT,
+  buildM7EncounterFinalizedConsumer,
+  buildM7EncounterVoidedConsumer,
+} from "./outbox-consumers/m8-encounter-lifecycle";
+export {
+  type ChangeProposalRouteDeps,
+  registerChangeProposalRoutes,
+} from "./routes/change-proposal-routes";
 
 // M7-T09 — the `care_plan_record` data eraser (§3.6 / §11 D8; M4 destruction-cert workflow). Pure
 // orchestration over an injectable store; registers the REAL eraser over the Phase-0 deny-stub via the

@@ -21,7 +21,7 @@ import {
   requireIfMatch,
 } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { hasSupervisorRole } from "../supervisor-roles";
 
@@ -231,8 +231,9 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         `your roles do not entitle you to author a '${body.discipline}' note`,
       );
     }
-    // A reason chosen at the start of an unscheduled visit: refused BEFORE the draft exists if this pair is not
-    // offered it, then saved on the draft so the composer opens with it already chosen.
+    // A reason chosen at the start of an unscheduled visit: refused BEFORE the draft exists if this pair is not offered it, then
+    // saved on the draft IN THE SAME WRITE that creates it (`initialSections`), so the composer opens with it already chosen and a
+    // failure can never leave a draft behind without it (a retry would otherwise make a second draft).
     const reasonSection =
       body.reasonCode === undefined
         ? undefined
@@ -246,16 +247,9 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       serviceDate: body.serviceDate,
       faceToFaceEncounterId: body.faceToFaceEncounterId,
       bereavementPlanId: body.bereavementPlanId,
+      ...(reasonSection === undefined ? {} : { initialSections: [reasonSection] }),
     });
-    if (reasonSection === undefined) return reply.code(201).send(res);
-    const saved = await service.updateSelections(
-      organizationId,
-      res.id,
-      res.version,
-      { sections: [reasonSection] },
-      userId,
-    );
-    return reply.code(201).send({ ...res, version: saved.version });
+    return reply.code(201).send(res);
   });
 
   // 1b — the reasons for visit this (type × discipline) pair offers, read before the encounter exists (the New
@@ -340,7 +334,13 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId",
     {
       preHandler: [READ, SCOPE_FOR("encounter.read")],
-      config: { auditRead: { resourceKind: "encounter", resourceIdParam: "encounterId" } },
+      config: {
+        auditRead: {
+          resourceKind: "encounter",
+          resourceIdParam: "encounterId",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request) => {
       const { organizationId } = membershipActorOf(request);
@@ -384,6 +384,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         auditRead: {
           resourceKind: "hearthnote_selection",
           resourceIdParam: "encounterId",
+          patientIdPayloadPath: "patientId",
           fields: ["selections", "freeText", "layer1Preview"],
         },
       },
@@ -435,6 +436,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         auditRead: {
           resourceKind: "encounter",
           resourceIdParam: "encounterId",
+          patientIdPayloadPath: "patientId",
           fields: ["fallIncidents"],
         },
       },
@@ -442,18 +444,12 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     async (request) => {
       const { organizationId, userId: actorMembershipId } = membershipActorOf(request);
       parse(EncounterParamsSchema, request.params);
-      try {
-        const { incidents } = await service.listFallIncidents(
-          organizationId,
-          encounterIdOf(request),
-          actorMembershipId,
-        );
-        return { incidents, unavailable: false };
-      } catch (err) {
-        if (err instanceof NotFoundError) throw err;
-        request.log.warn({ err }, "recorded falls could not be read for a visit");
-        return { incidents: [], unavailable: true };
-      }
+      return service.listFallIncidents(
+        organizationId,
+        encounterIdOf(request),
+        actorMembershipId,
+        (err) => request.log.warn({ err }, "recorded falls could not be read for a visit"),
+      );
     },
   );
 
@@ -508,6 +504,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         auditRead: {
           resourceKind: "vitals",
           resourceIdParam: "encounterId",
+          patientIdPayloadPath: "patientId",
           fields: [
             "bpSystolic",
             "bpDiastolic",
@@ -971,6 +968,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         auditRead: {
           resourceKind: "hearthnote_selection",
           resourceIdParam: "addendumId",
+          patientIdPayloadPath: "patientId",
           fields: ["selections", "freeText", "layer1Preview"],
         },
       },
@@ -1058,7 +1056,11 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     {
       preHandler: [READ_PERMISSION_INTERNAL, SYSTEM_ONLY],
       config: {
-        auditRead: { resourceKind: "encounter", resourceIdParam: "encounterId" },
+        auditRead: {
+          resourceKind: "encounter",
+          resourceIdParam: "encounterId",
+          patientIdPayloadPath: "patientId",
+        },
       },
     },
     async (request) => {

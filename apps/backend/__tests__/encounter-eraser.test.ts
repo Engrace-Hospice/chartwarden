@@ -13,6 +13,11 @@ import {
 import { buildServer } from "../src/bootstrap/index";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
 import {
+  TOMBSTONE_REASON,
+  TOMBSTONE_VOID_REASON,
+} from "../src/modules/08-encounters/erasers/encounter-eraser";
+import {
+  createDrizzleEncounterEraseStore,
   eraseEncounterRecord,
   createInMemoryEncounterEraseStore as makeEraseStore,
   registerEncounterErasers,
@@ -29,13 +34,18 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       cosignatureRequests: 1,
       vitals: 4,
       mileage: 1,
+      adlRecords: 2,
+      nutritionRecords: 3,
       hearthnoteSelections: 5,
       hearthnoteAssembledOutputs: 2,
       hearthnoteLlmModifications: 1,
     });
     const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
-    expect(erased).toBe(20);
+    // The recorded ADLs and nutrition are counted: the encounter root is only tombstoned, so no cascade would remove them.
+    expect(erased).toBe(25);
     expect(counts.vitals).toBe(4);
+    expect(counts.adlRecords).toBe(2);
+    expect(counts.nutritionRecords).toBe(3);
     expect(cryptoErased).toEqual(["pat_1"]); // DEK destroyed before structural delete
     expect(tombstoned).toEqual(["pat_1"]);
   });
@@ -64,6 +74,34 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
     const r = await getEraser("encounter_record").erase({ orgId: "org_a" }, "pat_unseeded");
     expect(r.erased).toBe(0);
     await app.close();
+  });
+});
+
+describe("M8-T12 — the tombstone scrubs everything about the destroyed patient the root still holds", () => {
+  it("nulls the fall link (incident id and date) and voids the root with the fixed, content-free reasons", async () => {
+    // A scripted `db`: the tombstone is one UPDATE inside a tenant transaction, so capture the values it sets.
+    let set: Record<string, unknown> | undefined;
+    const tx = {
+      execute: async () => [],
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          set = values;
+          return { where: async () => [] };
+        },
+      }),
+    };
+    const db = { transaction: async (run: (tx: unknown) => unknown) => run(tx) };
+
+    await createDrizzleEncounterEraseStore(db as never).tombstoneEncounters("org_a", "pat_1");
+
+    expect(set).toMatchObject({
+      status: "voided",
+      fallIncidentId: null,
+      fallOccurredOn: null,
+      voidedReason: TOMBSTONE_VOID_REASON,
+    });
+    expect((set?.voidedReason as string).length).toBeGreaterThanOrEqual(40); // encounter_voided_consistency
+    expect(TOMBSTONE_REASON.length).toBeGreaterThanOrEqual(100); // the longest reason minimum (administrative override)
   });
 });
 

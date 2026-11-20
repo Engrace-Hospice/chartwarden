@@ -63,6 +63,30 @@ describe("choice slots", () => {
   });
 });
 
+describe("params outside the statement's own slots", () => {
+  it("refuses a context-slot key, which would replace what the assembly supplies", () => {
+    for (const key of ["patient", "serviceDate"]) {
+      const issues = draft(one("nv.cv.stable", { [key]: "Jane Roe, who is ordered off hospice," }));
+      expect(issues).toEqual([
+        expect.objectContaining({ code: "SLOT_UNKNOWN", slot: key, entryCode: "nv.cv.stable" }),
+      ]);
+    }
+  });
+
+  it("refuses a key the statement has no slot for, at draft and at finalize", () => {
+    const tree = one("nv.cv.edema", { edema_grade: "2+", o2_lpm: 2 });
+    for (const check of [draft, complete]) {
+      expect(check(tree)).toEqual([
+        expect.objectContaining({ code: "SLOT_UNKNOWN", slot: "o2_lpm" }),
+      ]);
+    }
+  });
+
+  it("still accepts exactly the declared slots", () => {
+    expect(draft(one("nv.cv.edema", { edema_grade: "2+" }))).toEqual([]);
+  });
+});
+
 describe("incomplete and free-text slots", () => {
   it("lets a draft carry an empty slot but refuses it at finalize", () => {
     const tree = one("nv.cv.edema", { edema_grade: "" });

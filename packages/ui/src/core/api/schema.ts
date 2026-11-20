@@ -8703,6 +8703,76 @@ export interface paths {
         patch: operations["patchApiV1CapThresholdeventsByEventIdAcknowledge"];
         trace?: never;
     };
+    "/api/v1/care-plans/{planId}/change-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The plan's change proposals for review (pending by default; accepted or dismissed by status). Part 2 proposals are omitted without disclosure and `redacted` says so */
+        get: operations["getApiV1CareplansByPlanIdChangeproposals"];
+        put?: never;
+        /** Record a plan change while documenting a visit (add or resolve a problem, add or update a goal, add or discontinue an intervention). It stays a draft only its author sees until the visit is finalized, then waits on the review list; the signed plan is never edited by this call */
+        post: operations["postApiV1CareplansByPlanIdChangeproposals"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/care-plans/{planId}/change-proposals/{proposalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace one of the caller's own draft plan-change proposals */
+        put: operations["putApiV1CareplansByPlanIdChangeproposalsByProposalId"];
+        post?: never;
+        /** Withdraw one of the caller's own draft plan-change proposals (and any dependent drafts) */
+        delete: operations["deleteApiV1CareplansByPlanIdChangeproposalsByProposalId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/care-plans/{planId}/change-proposals/{proposalId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a pending plan-change proposal: runs the manual route's own operation under the accepter's discipline scope, in one transaction. Idempotent */
+        post: operations["postApiV1CareplansByPlanIdChangeproposalsByProposalIdAccept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/care-plans/{planId}/change-proposals/{proposalId}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss a pending plan-change proposal with a coded reason */
+        post: operations["postApiV1CareplansByPlanIdChangeproposalsByProposalIdDismiss"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/care-plans/{planId}/goals": {
         parameters: {
             query?: never;
@@ -11668,6 +11738,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/adl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The ADL record the clinician made on this visit (functional status per activity, continence, assistive devices), or null before one is recorded. The record carries its `patientId` (the read is accounted against the patient) and its `version`, which is also the `ETag` header ("0" when none is recorded) */
+        get: operations["getApiV1EncountersByEncounterIdAdl"];
+        /** Record the visit's ADLs. The body replaces the whole record; idempotent. Only a DRAFT takes it: 409 once the note is finalized (NOTE_PINNED_AT_FINALIZE; the note text is pinned) or signed (IMMUTABLE_AFTER_SIGN); 422 FINDING_NOT_IN_NOTE when the visit's note template has no ADL section; 403 for an AI principal. Optional If-Match (the `version` last read) refuses a stale record with 409 STALE_VERSION; the response carries the new `version` and `ETag` */
+        put: operations["putApiV1EncountersByEncounterIdAdl"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/administrative-override": {
         parameters: {
             query?: never;
@@ -11943,6 +12031,24 @@ export interface paths {
         patch: operations["patchApiV1EncountersByEncounterIdMileage"];
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/nutrition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The nutrition and hydration record made on this visit (appetite, meal intake, fluids, swallowing, support), or null before one is recorded. The record carries its `patientId` (the read is accounted against the patient) and its `version`, which is also the `ETag` header ("0" when none is recorded) */
+        get: operations["getApiV1EncountersByEncounterIdNutrition"];
+        /** Record the visit's nutrition and hydration status. The body replaces the whole record; idempotent. Only a DRAFT takes it: 409 once the note is finalized (NOTE_PINNED_AT_FINALIZE; the note text is pinned) or signed (IMMUTABLE_AFTER_SIGN); 422 FINDING_NOT_IN_NOTE when the visit's note template has no nutrition section; 403 for an AI principal. Optional If-Match (the `version` last read) refuses a stale record with 409 STALE_VERSION; the response carries the new `version` and `ETag` */
+        put: operations["putApiV1EncountersByEncounterIdNutrition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/selections": {
         parameters: {
             query?: never;
@@ -12019,7 +12125,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read the vitals sets recorded on an encounter */
+        /** Read the vitals sets recorded on an encounter (the body names the `patientId`, so the read is accounted against the patient). `weightUnitMissing` / `heightUnitMissing` are true when a stored weight / height has no usable unit (kg|lb, cm|in; legacy rows): it is never stated in the note or the weight history, so the author must re-enter it with its unit */
         get: operations["getApiV1EncountersByEncounterIdVitals"];
         put?: never;
         /** Capture a vitals set */
@@ -12058,6 +12164,23 @@ export interface paths {
         put?: never;
         /** Void a draft (admin-only; reason >= 40 chars) */
         post: operations["postApiV1EncountersByEncounterIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/weight-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The patient's weight on this visit and on earlier SIGNED visits (last six, newest first; another visit's unsigned draft or finalized weight is not counted), so the note can state the change. The body names the `patientId`, so the read is accounted against the patient. `weightUnitMissing` is true when this visit holds a weight with no usable unit (kg|lb): it is left out of the history and the note, so the author must re-enter it with its unit */
+        get: operations["getApiV1EncountersByEncounterIdWeighthistory"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -21679,6 +21802,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{patientId}/care-plan-change-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Plan-change proposals for a patient. With `sourceEncounterId` it returns that visit's proposals including the caller's own drafts (the note composer's list) */
+        get: operations["getApiV1PatientsByPatientIdCareplanchangeproposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/consents": {
         parameters: {
             query?: never;
@@ -21946,6 +22086,92 @@ export interface paths {
         get: operations["getApiV1PatientsByPatientIdSignificantchanges"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{patientId}/wounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A patient's wounds, each with its latest observation (filter by status; default all: open and resolved) */
+        get: operations["getApiV1PatientsByPatientIdWounds"];
+        put?: never;
+        /** Register a wound (site, laterality, etiology, onset). Idempotency-Key required, so a retried request cannot register a second open wound; 403 for an AI principal */
+        post: operations["postApiV1PatientsByPatientIdWounds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{patientId}/wounds/{woundId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One wound with its observations (newest first), computed area and percent change since the last measured visit */
+        get: operations["getApiV1PatientsByPatientIdWoundsByWoundId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{patientId}/wounds/{woundId}/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a dated wound observation (may carry the visit it was made on: that must be the caller's own open note for the patient, else 404; 409 ENCOUNTER_NOT_DRAFT once finalized; 422 WOUND_NOT_IN_NOTE when the note has no wounds section, e.g. telephonic; a note finalized or voided while the observation is being saved takes it out, and the 201 then shows sourceEncounterId null). Idempotency-Key required, so a retried request cannot record a duplicate observation; 403 for an AI principal */
+        post: operations["postApiV1PatientsByPatientIdWoundsByWoundIdObservations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{patientId}/wounds/{woundId}/observations/{observationId}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct an observation (append-only supersede; coded reason; If-Match; Idempotency-Key required; 403 for an AI principal; moving it onto another visit follows the same 404 / 409 / 422 WOUND_NOT_IN_NOTE rules as recording one there) */
+        post: operations["postApiV1PatientsByPatientIdWoundsByWoundIdObservationsByObservationIdCorrections"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{patientId}/wounds/{woundId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve a wound (healed or resolved otherwise; one-way; 403 for an AI principal) */
+        post: operations["postApiV1PatientsByPatientIdWoundsByWoundIdResolve"];
         delete?: never;
         options?: never;
         head?: never;
@@ -58481,6 +58707,474 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1CareplansByPlanIdChangeproposals: {
+        parameters: {
+            query?: {
+                status?: "pending" | "accepted" | "dismissed";
+            };
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        proposals: {
+                            id: string;
+                            carePlanId: string;
+                            patientId: string;
+                            sourceEncounterId: string;
+                            kind: "problem_add" | "problem_resolve" | "goal_add" | "goal_update" | "intervention_add" | "intervention_discontinue";
+                            status: "draft" | "pending" | "accepted" | "dismissed" | "withdrawn";
+                            sudRelated: boolean;
+                            change: {
+                                description: string | null;
+                                problemKind: ("terminal" | "related" | "unrelated") | null;
+                                problemSource: ("clinical" | "patient_reported" | "family_reported" | "history") | null;
+                                icd10Code: string | null;
+                                snomedCode: string | null;
+                                onsetAt: string | null;
+                                resolutionNote: string | null;
+                                originalText: string | null;
+                                goalSource: ("clinical" | "patient_stated" | "family_stated") | null;
+                                measurableOutcome: string | null;
+                                targetAt: string | null;
+                                revisedText: string | null;
+                                goalStatus: ("in_progress" | "met" | "not_met" | "revised" | "discontinued") | null;
+                                goalRefs: string[];
+                                scopeText: string | null;
+                                frequencyText: string | null;
+                                frequencyValue: string | null;
+                                discipline: ("rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement") | null;
+                                responsibleRole: string | null;
+                                reason: string | null;
+                            };
+                            target: {
+                                type: "problem" | "goal" | "intervention";
+                                id: string | null;
+                                label: string | null;
+                            } | null;
+                            parentProposalId: string | null;
+                            proposedBy: {
+                                membershipId: string;
+                                displayName: string | null;
+                            };
+                            /** Format: date-time */
+                            proposedAt: string;
+                            releasedAt: string | null;
+                            decidedBy: {
+                                membershipId: string;
+                                displayName: string | null;
+                            } | null;
+                            decidedAt: string | null;
+                            dismissalReason: ("not_clinically_appropriate" | "already_addressed" | "duplicate" | "entered_in_error" | "defer_to_idg") | null;
+                            resultElementId: string | null;
+                        }[];
+                        redacted: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1CareplansByPlanIdChangeproposals: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    sourceEncounterId: string;
+                    /** @constant */
+                    kind: "problem_add";
+                    description: string;
+                    problemKind: "terminal" | "related" | "unrelated";
+                    problemSource?: "clinical" | "patient_reported" | "family_reported" | "history";
+                    icd10Code?: string;
+                    snomedCode?: string;
+                    sudRelated?: boolean;
+                    /** Format: date-time */
+                    onsetAt?: string;
+                } | {
+                    /** Format: uuid */
+                    sourceEncounterId: string;
+                    /** @constant */
+                    kind: "problem_resolve";
+                    /** Format: uuid */
+                    problemId: string;
+                    resolutionNote: string;
+                } | {
+                    /** Format: uuid */
+                    sourceEncounterId: string;
+                    /** @constant */
+                    kind: "goal_add";
+                    /** Format: uuid */
+                    problemId?: string;
+                    /** Format: uuid */
+                    parentProposalId?: string;
+                    originalText: string;
+                    goalSource?: "clinical" | "patient_stated" | "family_stated";
+                    measurableOutcome?: string;
+                    /** Format: date-time */
+                    targetAt?: string;
+                } | {
+                    /** Format: uuid */
+                    sourceEncounterId: string;
+                    /** @constant */
+                    kind: "goal_update";
+                    /** Format: uuid */
+                    goalId: string;
+                    revisedText?: string;
+                    measurableOutcome?: string;
+                    goalStatus?: "in_progress" | "met" | "not_met" | "revised" | "discontinued";
+                    /** Format: date-time */
+                    targetAt?: string;
+                } | {
+                    /** Format: uuid */
+                    sourceEncounterId: string;
+                    /** @constant */
+                    kind: "intervention_add";
+                    /** Format: uuid */
+                    problemId?: string;
+                    /** Format: uuid */
+                    parentProposalId?: string;
+                    goalRefs?: string[];
+                    scopeText: string;
+                    frequencyText: string;
+                    frequencyValue: string;
+                    discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement";
+                    responsibleRole?: string;
+                } | {
+                    /** Format: uuid */
+                    sourceEncounterId: string;
+                    /** @constant */
+                    kind: "intervention_discontinue";
+                    /** Format: uuid */
+                    interventionId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        carePlanId: string;
+                        patientId: string;
+                        sourceEncounterId: string;
+                        kind: "problem_add" | "problem_resolve" | "goal_add" | "goal_update" | "intervention_add" | "intervention_discontinue";
+                        status: "draft" | "pending" | "accepted" | "dismissed" | "withdrawn";
+                        sudRelated: boolean;
+                        change: {
+                            description: string | null;
+                            problemKind: ("terminal" | "related" | "unrelated") | null;
+                            problemSource: ("clinical" | "patient_reported" | "family_reported" | "history") | null;
+                            icd10Code: string | null;
+                            snomedCode: string | null;
+                            onsetAt: string | null;
+                            resolutionNote: string | null;
+                            originalText: string | null;
+                            goalSource: ("clinical" | "patient_stated" | "family_stated") | null;
+                            measurableOutcome: string | null;
+                            targetAt: string | null;
+                            revisedText: string | null;
+                            goalStatus: ("in_progress" | "met" | "not_met" | "revised" | "discontinued") | null;
+                            goalRefs: string[];
+                            scopeText: string | null;
+                            frequencyText: string | null;
+                            frequencyValue: string | null;
+                            discipline: ("rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement") | null;
+                            responsibleRole: string | null;
+                            reason: string | null;
+                        };
+                        target: {
+                            type: "problem" | "goal" | "intervention";
+                            id: string | null;
+                            label: string | null;
+                        } | null;
+                        parentProposalId: string | null;
+                        proposedBy: {
+                            membershipId: string;
+                            displayName: string | null;
+                        };
+                        /** Format: date-time */
+                        proposedAt: string;
+                        releasedAt: string | null;
+                        decidedBy: {
+                            membershipId: string;
+                            displayName: string | null;
+                        } | null;
+                        decidedAt: string | null;
+                        dismissalReason: ("not_clinically_appropriate" | "already_addressed" | "duplicate" | "entered_in_error" | "defer_to_idg") | null;
+                        resultElementId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1CareplansByPlanIdChangeproposalsByProposalId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    kind: "problem_add";
+                    description: string;
+                    problemKind: "terminal" | "related" | "unrelated";
+                    problemSource?: "clinical" | "patient_reported" | "family_reported" | "history";
+                    icd10Code?: string;
+                    snomedCode?: string;
+                    sudRelated?: boolean;
+                    /** Format: date-time */
+                    onsetAt?: string;
+                } | {
+                    /** @constant */
+                    kind: "problem_resolve";
+                    /** Format: uuid */
+                    problemId: string;
+                    resolutionNote: string;
+                } | {
+                    /** @constant */
+                    kind: "goal_add";
+                    /** Format: uuid */
+                    problemId?: string;
+                    /** Format: uuid */
+                    parentProposalId?: string;
+                    originalText: string;
+                    goalSource?: "clinical" | "patient_stated" | "family_stated";
+                    measurableOutcome?: string;
+                    /** Format: date-time */
+                    targetAt?: string;
+                } | {
+                    /** @constant */
+                    kind: "goal_update";
+                    /** Format: uuid */
+                    goalId: string;
+                    revisedText?: string;
+                    measurableOutcome?: string;
+                    goalStatus?: "in_progress" | "met" | "not_met" | "revised" | "discontinued";
+                    /** Format: date-time */
+                    targetAt?: string;
+                } | {
+                    /** @constant */
+                    kind: "intervention_add";
+                    /** Format: uuid */
+                    problemId?: string;
+                    /** Format: uuid */
+                    parentProposalId?: string;
+                    goalRefs?: string[];
+                    scopeText: string;
+                    frequencyText: string;
+                    frequencyValue: string;
+                    discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement";
+                    responsibleRole?: string;
+                } | {
+                    /** @constant */
+                    kind: "intervention_discontinue";
+                    /** Format: uuid */
+                    interventionId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        carePlanId: string;
+                        patientId: string;
+                        sourceEncounterId: string;
+                        kind: "problem_add" | "problem_resolve" | "goal_add" | "goal_update" | "intervention_add" | "intervention_discontinue";
+                        status: "draft" | "pending" | "accepted" | "dismissed" | "withdrawn";
+                        sudRelated: boolean;
+                        change: {
+                            description: string | null;
+                            problemKind: ("terminal" | "related" | "unrelated") | null;
+                            problemSource: ("clinical" | "patient_reported" | "family_reported" | "history") | null;
+                            icd10Code: string | null;
+                            snomedCode: string | null;
+                            onsetAt: string | null;
+                            resolutionNote: string | null;
+                            originalText: string | null;
+                            goalSource: ("clinical" | "patient_stated" | "family_stated") | null;
+                            measurableOutcome: string | null;
+                            targetAt: string | null;
+                            revisedText: string | null;
+                            goalStatus: ("in_progress" | "met" | "not_met" | "revised" | "discontinued") | null;
+                            goalRefs: string[];
+                            scopeText: string | null;
+                            frequencyText: string | null;
+                            frequencyValue: string | null;
+                            discipline: ("rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement") | null;
+                            responsibleRole: string | null;
+                            reason: string | null;
+                        };
+                        target: {
+                            type: "problem" | "goal" | "intervention";
+                            id: string | null;
+                            label: string | null;
+                        } | null;
+                        parentProposalId: string | null;
+                        proposedBy: {
+                            membershipId: string;
+                            displayName: string | null;
+                        };
+                        /** Format: date-time */
+                        proposedAt: string;
+                        releasedAt: string | null;
+                        decidedBy: {
+                            membershipId: string;
+                            displayName: string | null;
+                        } | null;
+                        decidedAt: string | null;
+                        dismissalReason: ("not_clinically_appropriate" | "already_addressed" | "duplicate" | "entered_in_error" | "defer_to_idg") | null;
+                        resultElementId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1CareplansByPlanIdChangeproposalsByProposalId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        proposalId: string;
+                        /** @constant */
+                        status: "withdrawn";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1CareplansByPlanIdChangeproposalsByProposalIdAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        proposalId: string;
+                        /** @constant */
+                        status: "accepted";
+                        resultElementType: "problem" | "goal" | "intervention";
+                        resultElementId: string;
+                        /** Format: date-time */
+                        decidedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1CareplansByPlanIdChangeproposalsByProposalIdDismiss: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: "not_clinically_appropriate" | "already_addressed" | "duplicate" | "entered_in_error" | "defer_to_idg";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        proposalId: string;
+                        /** @constant */
+                        status: "dismissed";
+                        /** Format: date-time */
+                        decidedAt: string;
+                        dismissalReason: ("not_clinically_appropriate" | "already_addressed" | "duplicate" | "entered_in_error" | "defer_to_idg") | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1CareplansByPlanIdGoals: {
         parameters: {
             query?: never;
@@ -67062,6 +67756,114 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1EncountersByEncounterIdAdl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        encounterId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        version: number;
+                        items: {
+                            bathing?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            dressing?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            grooming?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            toileting?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            transferring?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            ambulation?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            eating?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                        };
+                        bladder: ("continent" | "occasionally_incontinent" | "frequently_incontinent" | "incontinent" | "catheter_or_ostomy") | null;
+                        bowel: ("continent" | "occasionally_incontinent" | "frequently_incontinent" | "incontinent" | "catheter_or_ostomy") | null;
+                        devices: ("cane" | "walker" | "wheelchair" | "hospital_bed" | "mechanical_lift" | "bedside_commode")[];
+                        /** Format: date-time */
+                        updatedAt: string;
+                    } | null;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersByEncounterIdAdl: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional precondition: the `version` last read from this record (also the `ETag` of every GET and PUT response; 0 when no record exists yet). A PUT replaces the whole record, so a stale value is refused with 409 STALE_VERSION and nothing is written; absent, the PUT is unconditioned. A value that is not an integer (quotes and a weak prefix are tolerated) is 400. */
+                "If-Match"?: string;
+            };
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    items?: {
+                        bathing?: ("independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur") | null;
+                        dressing?: ("independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur") | null;
+                        grooming?: ("independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur") | null;
+                        toileting?: ("independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur") | null;
+                        transferring?: ("independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur") | null;
+                        ambulation?: ("independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur") | null;
+                        eating?: ("independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur") | null;
+                    };
+                    bladder?: ("continent" | "occasionally_incontinent" | "frequently_incontinent" | "incontinent" | "catheter_or_ostomy") | null;
+                    bowel?: ("continent" | "occasionally_incontinent" | "frequently_incontinent" | "incontinent" | "catheter_or_ostomy") | null;
+                    devices?: ("cane" | "walker" | "wheelchair" | "hospital_bed" | "mechanical_lift" | "bedside_commode")[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        encounterId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        version: number;
+                        items: {
+                            bathing?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            dressing?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            grooming?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            toileting?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            transferring?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            ambulation?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                            eating?: "independent" | "supervision" | "limited_assist" | "extensive_assist" | "total_dependence" | "did_not_occur";
+                        };
+                        bladder: ("continent" | "occasionally_incontinent" | "frequently_incontinent" | "incontinent" | "catheter_or_ostomy") | null;
+                        bowel: ("continent" | "occasionally_incontinent" | "frequently_incontinent" | "incontinent" | "catheter_or_ostomy") | null;
+                        devices: ("cane" | "walker" | "wheelchair" | "hospital_bed" | "mechanical_lift" | "bedside_commode")[];
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1EncountersByEncounterIdAdministrativeoverride: {
         parameters: {
             query?: never;
@@ -67711,6 +68513,93 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1EncountersByEncounterIdNutrition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        encounterId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        version: number;
+                        appetite: ("good" | "fair" | "poor" | "none") | null;
+                        mealIntakePercent: number | null;
+                        fluidIntake: ("adequate" | "decreased" | "minimal") | null;
+                        swallowing: ("no_difficulty" | "difficulty_solids" | "difficulty_liquids" | "difficulty_solids_and_liquids" | "unable_to_swallow") | null;
+                        support: ("none" | "oral_supplements" | "tube_feeding" | "parenteral") | null;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    } | null;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1EncountersByEncounterIdNutrition: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional precondition: the `version` last read from this record (also the `ETag` of every GET and PUT response; 0 when no record exists yet). A PUT replaces the whole record, so a stale value is refused with 409 STALE_VERSION and nothing is written; absent, the PUT is unconditioned. A value that is not an integer (quotes and a weak prefix are tolerated) is 400. */
+                "If-Match"?: string;
+            };
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    appetite?: ("good" | "fair" | "poor" | "none") | null;
+                    mealIntakePercent?: number | null;
+                    fluidIntake?: ("adequate" | "decreased" | "minimal") | null;
+                    swallowing?: ("no_difficulty" | "difficulty_solids" | "difficulty_liquids" | "difficulty_solids_and_liquids" | "unable_to_swallow") | null;
+                    support?: ("none" | "oral_supplements" | "tube_feeding" | "parenteral") | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        encounterId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        version: number;
+                        appetite: ("good" | "fair" | "poor" | "none") | null;
+                        mealIntakePercent: number | null;
+                        fluidIntake: ("adequate" | "decreased" | "minimal") | null;
+                        swallowing: ("no_difficulty" | "difficulty_solids" | "difficulty_liquids" | "difficulty_solids_and_liquids" | "unable_to_swallow") | null;
+                        support: ("none" | "oral_supplements" | "tube_feeding" | "parenteral") | null;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1EncountersByEncounterIdSelections: {
         parameters: {
             query?: never;
@@ -67874,6 +68763,7 @@ export interface operations {
                             heading: string;
                             required: boolean;
                             allowedCategories: string[];
+                            recordedPanel: "adl" | "nutrition" | "wounds" | null;
                             entries: {
                                 code: string;
                                 label: string;
@@ -67958,6 +68848,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         encounterId: string;
+                        patientId: string;
+                        weightUnitMissing: boolean;
+                        heightUnitMissing: boolean;
                         vitals: {
                             id: string;
                             encounterId: string;
@@ -68011,9 +68904,9 @@ export interface operations {
                     painScore?: number;
                     painScale?: "nrs_0_10" | "flacc" | "painad" | "verbal_descriptor";
                     weight?: string;
-                    weightUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    weightUnit?: "kg" | "lb";
                     height?: string;
-                    heightUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    heightUnit?: "cm" | "in";
                     bloodGlucose?: number;
                     bloodGlucoseUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
                     clinicallyNotIndicatedFields?: string[];
@@ -68066,9 +68959,9 @@ export interface operations {
                     painScore?: number;
                     painScale?: "nrs_0_10" | "flacc" | "painad" | "verbal_descriptor";
                     weight?: string;
-                    weightUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    weightUnit?: "kg" | "lb";
                     height?: string;
-                    heightUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    heightUnit?: "cm" | "in";
                     bloodGlucose?: number;
                     bloodGlucoseUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
                     clinicallyNotIndicatedFields?: string[];
@@ -68121,6 +69014,52 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         status: "voided";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdWeighthistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        patientId: string;
+                        weightUnitMissing: boolean;
+                        current: {
+                            value: string;
+                            unit: string;
+                            /** Format: date */
+                            on: string;
+                        } | null;
+                        prior: {
+                            value: string;
+                            unit: string;
+                            /** Format: date */
+                            on: string;
+                        } | null;
+                        history: {
+                            value: string;
+                            unit: string;
+                            /** Format: date */
+                            on: string;
+                        }[];
                     };
                 };
             };
@@ -97803,6 +98742,87 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByPatientIdCareplanchangeproposals: {
+        parameters: {
+            query?: {
+                sourceEncounterId?: string;
+                status?: "draft" | "pending" | "accepted" | "dismissed" | "withdrawn";
+            };
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        proposals: {
+                            id: string;
+                            carePlanId: string;
+                            patientId: string;
+                            sourceEncounterId: string;
+                            kind: "problem_add" | "problem_resolve" | "goal_add" | "goal_update" | "intervention_add" | "intervention_discontinue";
+                            status: "draft" | "pending" | "accepted" | "dismissed" | "withdrawn";
+                            sudRelated: boolean;
+                            change: {
+                                description: string | null;
+                                problemKind: ("terminal" | "related" | "unrelated") | null;
+                                problemSource: ("clinical" | "patient_reported" | "family_reported" | "history") | null;
+                                icd10Code: string | null;
+                                snomedCode: string | null;
+                                onsetAt: string | null;
+                                resolutionNote: string | null;
+                                originalText: string | null;
+                                goalSource: ("clinical" | "patient_stated" | "family_stated") | null;
+                                measurableOutcome: string | null;
+                                targetAt: string | null;
+                                revisedText: string | null;
+                                goalStatus: ("in_progress" | "met" | "not_met" | "revised" | "discontinued") | null;
+                                goalRefs: string[];
+                                scopeText: string | null;
+                                frequencyText: string | null;
+                                frequencyValue: string | null;
+                                discipline: ("rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement") | null;
+                                responsibleRole: string | null;
+                                reason: string | null;
+                            };
+                            target: {
+                                type: "problem" | "goal" | "intervention";
+                                id: string | null;
+                                label: string | null;
+                            } | null;
+                            parentProposalId: string | null;
+                            proposedBy: {
+                                membershipId: string;
+                                displayName: string | null;
+                            };
+                            /** Format: date-time */
+                            proposedAt: string;
+                            releasedAt: string | null;
+                            decidedBy: {
+                                membershipId: string;
+                                displayName: string | null;
+                            } | null;
+                            decidedAt: string | null;
+                            dismissalReason: ("not_clinically_appropriate" | "already_addressed" | "duplicate" | "entered_in_error" | "defer_to_idg") | null;
+                            resultElementId: string | null;
+                        }[];
+                        redacted: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByPatientIdConsents: {
         parameters: {
             query?: never;
@@ -98603,6 +99623,409 @@ export interface operations {
                             status: "open" | "acknowledged" | "escalated";
                             severity: "medium" | "high";
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByPatientIdWounds: {
+        parameters: {
+            query?: {
+                status?: ("open" | "healed" | "resolved_other") | "all";
+            };
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wounds: {
+                            id: string;
+                            patientId: string;
+                            siteCode: "sacrum" | "coccyx" | "ischium" | "trochanter" | "buttock" | "hip" | "sacral_perineal" | "spine" | "back" | "scapula" | "shoulder" | "elbow" | "arm" | "hand" | "chest" | "abdomen" | "groin" | "thigh" | "knee" | "calf_shin" | "ankle" | "malleolus" | "heel" | "foot" | "toe" | "ear" | "head" | "face" | "neck" | "other";
+                            laterality: "left" | "right" | "midline" | "bilateral" | "not_applicable";
+                            site: string;
+                            etiology: "pressure_injury" | "diabetic_ulcer" | "venous_ulcer" | "arterial_ulcer" | "surgical" | "traumatic" | "skin_tear" | "malignant_fungating" | "moisture_associated" | "other";
+                            acquired: "present_on_admission" | "acquired_in_care" | "unknown";
+                            onsetOn: string | null;
+                            status: "open" | "healed" | "resolved_other";
+                            closedOn: string | null;
+                            createdAt: string;
+                            latestObservation: {
+                                id: string;
+                                woundId: string;
+                                patientId: string;
+                                observedAt: string;
+                                observedByMembershipId: string;
+                                sourceEncounterId: string | null;
+                                stage: ("stage_1" | "stage_2" | "stage_3" | "stage_4" | "unstageable" | "deep_tissue_injury") | null;
+                                lengthCm: number | null;
+                                widthCm: number | null;
+                                depthCm: number | null;
+                                undermining: boolean | null;
+                                woundBed: ("granulation" | "slough" | "eschar" | "epithelializing" | "necrotic" | "hypergranulation" | "bone_or_tendon_exposed")[];
+                                exudateAmount: ("none" | "scant" | "small" | "moderate" | "large") | null;
+                                exudateType: ("serous" | "serosanguineous" | "sanguineous" | "purulent") | null;
+                                odor: ("none" | "mild" | "moderate" | "strong") | null;
+                                periwound: ("intact" | "erythema" | "macerated" | "indurated" | "edematous" | "warm" | "excoriated")[];
+                                painScore: number | null;
+                                dressing: ("foam" | "hydrocolloid" | "alginate" | "hydrogel" | "gauze" | "silver" | "transparent_film" | "negative_pressure" | "other") | null;
+                                dressingChanged: boolean | null;
+                                infectionSigns: boolean | null;
+                                trend: ("new" | "improving" | "stable" | "worsening") | null;
+                                status: "active" | "superseded";
+                                correctsObservationId: string | null;
+                                correctionReason: ("entered_on_wrong_wound" | "measurement_error" | "assessment_error" | "wrong_visit" | "other") | null;
+                                version: number;
+                                createdAt: string;
+                                areaCm2: number | null;
+                                areaChangePercent: number | null;
+                                areaChangeSinceObservedAt: string | null;
+                            } | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByPatientIdWounds: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    siteCode: "sacrum" | "coccyx" | "ischium" | "trochanter" | "buttock" | "hip" | "sacral_perineal" | "spine" | "back" | "scapula" | "shoulder" | "elbow" | "arm" | "hand" | "chest" | "abdomen" | "groin" | "thigh" | "knee" | "calf_shin" | "ankle" | "malleolus" | "heel" | "foot" | "toe" | "ear" | "head" | "face" | "neck" | "other";
+                    laterality: "left" | "right" | "midline" | "bilateral" | "not_applicable";
+                    etiology: "pressure_injury" | "diabetic_ulcer" | "venous_ulcer" | "arterial_ulcer" | "surgical" | "traumatic" | "skin_tear" | "malignant_fungating" | "moisture_associated" | "other";
+                    acquired?: "present_on_admission" | "acquired_in_care" | "unknown";
+                    onsetOn?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        siteCode: "sacrum" | "coccyx" | "ischium" | "trochanter" | "buttock" | "hip" | "sacral_perineal" | "spine" | "back" | "scapula" | "shoulder" | "elbow" | "arm" | "hand" | "chest" | "abdomen" | "groin" | "thigh" | "knee" | "calf_shin" | "ankle" | "malleolus" | "heel" | "foot" | "toe" | "ear" | "head" | "face" | "neck" | "other";
+                        laterality: "left" | "right" | "midline" | "bilateral" | "not_applicable";
+                        site: string;
+                        etiology: "pressure_injury" | "diabetic_ulcer" | "venous_ulcer" | "arterial_ulcer" | "surgical" | "traumatic" | "skin_tear" | "malignant_fungating" | "moisture_associated" | "other";
+                        acquired: "present_on_admission" | "acquired_in_care" | "unknown";
+                        onsetOn: string | null;
+                        status: "open" | "healed" | "resolved_other";
+                        closedOn: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByPatientIdWoundsByWoundId: {
+        parameters: {
+            query?: {
+                includeSuperseded?: boolean;
+            };
+            header?: never;
+            path: {
+                patientId: string;
+                woundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wound: {
+                            id: string;
+                            patientId: string;
+                            siteCode: "sacrum" | "coccyx" | "ischium" | "trochanter" | "buttock" | "hip" | "sacral_perineal" | "spine" | "back" | "scapula" | "shoulder" | "elbow" | "arm" | "hand" | "chest" | "abdomen" | "groin" | "thigh" | "knee" | "calf_shin" | "ankle" | "malleolus" | "heel" | "foot" | "toe" | "ear" | "head" | "face" | "neck" | "other";
+                            laterality: "left" | "right" | "midline" | "bilateral" | "not_applicable";
+                            site: string;
+                            etiology: "pressure_injury" | "diabetic_ulcer" | "venous_ulcer" | "arterial_ulcer" | "surgical" | "traumatic" | "skin_tear" | "malignant_fungating" | "moisture_associated" | "other";
+                            acquired: "present_on_admission" | "acquired_in_care" | "unknown";
+                            onsetOn: string | null;
+                            status: "open" | "healed" | "resolved_other";
+                            closedOn: string | null;
+                            createdAt: string;
+                        };
+                        observations: {
+                            id: string;
+                            woundId: string;
+                            patientId: string;
+                            observedAt: string;
+                            observedByMembershipId: string;
+                            sourceEncounterId: string | null;
+                            stage: ("stage_1" | "stage_2" | "stage_3" | "stage_4" | "unstageable" | "deep_tissue_injury") | null;
+                            lengthCm: number | null;
+                            widthCm: number | null;
+                            depthCm: number | null;
+                            undermining: boolean | null;
+                            woundBed: ("granulation" | "slough" | "eschar" | "epithelializing" | "necrotic" | "hypergranulation" | "bone_or_tendon_exposed")[];
+                            exudateAmount: ("none" | "scant" | "small" | "moderate" | "large") | null;
+                            exudateType: ("serous" | "serosanguineous" | "sanguineous" | "purulent") | null;
+                            odor: ("none" | "mild" | "moderate" | "strong") | null;
+                            periwound: ("intact" | "erythema" | "macerated" | "indurated" | "edematous" | "warm" | "excoriated")[];
+                            painScore: number | null;
+                            dressing: ("foam" | "hydrocolloid" | "alginate" | "hydrogel" | "gauze" | "silver" | "transparent_film" | "negative_pressure" | "other") | null;
+                            dressingChanged: boolean | null;
+                            infectionSigns: boolean | null;
+                            trend: ("new" | "improving" | "stable" | "worsening") | null;
+                            status: "active" | "superseded";
+                            correctsObservationId: string | null;
+                            correctionReason: ("entered_on_wrong_wound" | "measurement_error" | "assessment_error" | "wrong_visit" | "other") | null;
+                            version: number;
+                            createdAt: string;
+                            areaCm2: number | null;
+                            areaChangePercent: number | null;
+                            areaChangeSinceObservedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByPatientIdWoundsByWoundIdObservations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                patientId: string;
+                woundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    observedAt?: string;
+                    sourceEncounterId?: string | null;
+                    stage?: ("stage_1" | "stage_2" | "stage_3" | "stage_4" | "unstageable" | "deep_tissue_injury") | null;
+                    lengthCm?: number | null;
+                    widthCm?: number | null;
+                    depthCm?: number | null;
+                    undermining?: boolean | null;
+                    woundBed?: ("granulation" | "slough" | "eschar" | "epithelializing" | "necrotic" | "hypergranulation" | "bone_or_tendon_exposed")[];
+                    exudateAmount?: ("none" | "scant" | "small" | "moderate" | "large") | null;
+                    exudateType?: ("serous" | "serosanguineous" | "sanguineous" | "purulent") | null;
+                    odor?: ("none" | "mild" | "moderate" | "strong") | null;
+                    periwound?: ("intact" | "erythema" | "macerated" | "indurated" | "edematous" | "warm" | "excoriated")[];
+                    painScore?: number | null;
+                    dressing?: ("foam" | "hydrocolloid" | "alginate" | "hydrogel" | "gauze" | "silver" | "transparent_film" | "negative_pressure" | "other") | null;
+                    dressingChanged?: boolean | null;
+                    infectionSigns?: boolean | null;
+                    trend?: ("new" | "improving" | "stable" | "worsening") | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        woundId: string;
+                        patientId: string;
+                        observedAt: string;
+                        observedByMembershipId: string;
+                        sourceEncounterId: string | null;
+                        stage: ("stage_1" | "stage_2" | "stage_3" | "stage_4" | "unstageable" | "deep_tissue_injury") | null;
+                        lengthCm: number | null;
+                        widthCm: number | null;
+                        depthCm: number | null;
+                        undermining: boolean | null;
+                        woundBed: ("granulation" | "slough" | "eschar" | "epithelializing" | "necrotic" | "hypergranulation" | "bone_or_tendon_exposed")[];
+                        exudateAmount: ("none" | "scant" | "small" | "moderate" | "large") | null;
+                        exudateType: ("serous" | "serosanguineous" | "sanguineous" | "purulent") | null;
+                        odor: ("none" | "mild" | "moderate" | "strong") | null;
+                        periwound: ("intact" | "erythema" | "macerated" | "indurated" | "edematous" | "warm" | "excoriated")[];
+                        painScore: number | null;
+                        dressing: ("foam" | "hydrocolloid" | "alginate" | "hydrogel" | "gauze" | "silver" | "transparent_film" | "negative_pressure" | "other") | null;
+                        dressingChanged: boolean | null;
+                        infectionSigns: boolean | null;
+                        trend: ("new" | "improving" | "stable" | "worsening") | null;
+                        status: "active" | "superseded";
+                        correctsObservationId: string | null;
+                        correctionReason: ("entered_on_wrong_wound" | "measurement_error" | "assessment_error" | "wrong_visit" | "other") | null;
+                        version: number;
+                        createdAt: string;
+                        areaCm2: number | null;
+                        areaChangePercent: number | null;
+                        areaChangeSinceObservedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByPatientIdWoundsByWoundIdObservationsByObservationIdCorrections: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
+                "If-Match": string;
+            };
+            path: {
+                patientId: string;
+                woundId: string;
+                observationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    observedAt?: string;
+                    sourceEncounterId?: string | null;
+                    stage?: ("stage_1" | "stage_2" | "stage_3" | "stage_4" | "unstageable" | "deep_tissue_injury") | null;
+                    lengthCm?: number | null;
+                    widthCm?: number | null;
+                    depthCm?: number | null;
+                    undermining?: boolean | null;
+                    woundBed?: ("granulation" | "slough" | "eschar" | "epithelializing" | "necrotic" | "hypergranulation" | "bone_or_tendon_exposed")[];
+                    exudateAmount?: ("none" | "scant" | "small" | "moderate" | "large") | null;
+                    exudateType?: ("serous" | "serosanguineous" | "sanguineous" | "purulent") | null;
+                    odor?: ("none" | "mild" | "moderate" | "strong") | null;
+                    periwound?: ("intact" | "erythema" | "macerated" | "indurated" | "edematous" | "warm" | "excoriated")[];
+                    painScore?: number | null;
+                    dressing?: ("foam" | "hydrocolloid" | "alginate" | "hydrogel" | "gauze" | "silver" | "transparent_film" | "negative_pressure" | "other") | null;
+                    dressingChanged?: boolean | null;
+                    infectionSigns?: boolean | null;
+                    trend?: ("new" | "improving" | "stable" | "worsening") | null;
+                    correctionReason: "entered_on_wrong_wound" | "measurement_error" | "assessment_error" | "wrong_visit" | "other";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        woundId: string;
+                        patientId: string;
+                        observedAt: string;
+                        observedByMembershipId: string;
+                        sourceEncounterId: string | null;
+                        stage: ("stage_1" | "stage_2" | "stage_3" | "stage_4" | "unstageable" | "deep_tissue_injury") | null;
+                        lengthCm: number | null;
+                        widthCm: number | null;
+                        depthCm: number | null;
+                        undermining: boolean | null;
+                        woundBed: ("granulation" | "slough" | "eschar" | "epithelializing" | "necrotic" | "hypergranulation" | "bone_or_tendon_exposed")[];
+                        exudateAmount: ("none" | "scant" | "small" | "moderate" | "large") | null;
+                        exudateType: ("serous" | "serosanguineous" | "sanguineous" | "purulent") | null;
+                        odor: ("none" | "mild" | "moderate" | "strong") | null;
+                        periwound: ("intact" | "erythema" | "macerated" | "indurated" | "edematous" | "warm" | "excoriated")[];
+                        painScore: number | null;
+                        dressing: ("foam" | "hydrocolloid" | "alginate" | "hydrogel" | "gauze" | "silver" | "transparent_film" | "negative_pressure" | "other") | null;
+                        dressingChanged: boolean | null;
+                        infectionSigns: boolean | null;
+                        trend: ("new" | "improving" | "stable" | "worsening") | null;
+                        status: "active" | "superseded";
+                        correctsObservationId: string | null;
+                        correctionReason: ("entered_on_wrong_wound" | "measurement_error" | "assessment_error" | "wrong_visit" | "other") | null;
+                        version: number;
+                        createdAt: string;
+                        areaCm2: number | null;
+                        areaChangePercent: number | null;
+                        areaChangeSinceObservedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByPatientIdWoundsByWoundIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+                woundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "healed" | "resolved_other";
+                    /** Format: date */
+                    closedOn?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        siteCode: "sacrum" | "coccyx" | "ischium" | "trochanter" | "buttock" | "hip" | "sacral_perineal" | "spine" | "back" | "scapula" | "shoulder" | "elbow" | "arm" | "hand" | "chest" | "abdomen" | "groin" | "thigh" | "knee" | "calf_shin" | "ankle" | "malleolus" | "heel" | "foot" | "toe" | "ear" | "head" | "face" | "neck" | "other";
+                        laterality: "left" | "right" | "midline" | "bilateral" | "not_applicable";
+                        site: string;
+                        etiology: "pressure_injury" | "diabetic_ulcer" | "venous_ulcer" | "arterial_ulcer" | "surgical" | "traumatic" | "skin_tear" | "malignant_fungating" | "moisture_associated" | "other";
+                        acquired: "present_on_admission" | "acquired_in_care" | "unknown";
+                        onsetOn: string | null;
+                        status: "open" | "healed" | "resolved_other";
+                        closedOn: string | null;
+                        createdAt: string;
                     };
                 };
             };

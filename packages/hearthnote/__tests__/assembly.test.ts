@@ -9,7 +9,6 @@ import {
   type SelectionState,
   assemble,
   assembleLayer1,
-  missingRequiredSections,
   resolveTemplate,
 } from "../src/index";
 
@@ -121,6 +120,30 @@ describe("assembleLayer1 — deterministic core", () => {
     expect(assembleLayer1(template, sel, CONTEXT).narrative).toContain("controlled at 7 of 10");
   });
 
+  it("a param named like a context slot never replaces what the assembly supplies", () => {
+    const sel = rnRoutineSelection({
+      sections: [
+        {
+          sectionId: "symptom_management",
+          entries: [
+            {
+              code: "nv.sym.pain_controlled",
+              params: {
+                pain_score: 3,
+                patient: "Jane Roe, who is ordered off hospice,",
+                serviceDate: "1999-01-01",
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const { narrative } = assembleLayer1(template, sel, CONTEXT);
+    expect(narrative).toContain("controlled at 3 of 10");
+    expect(narrative).not.toContain("Jane Roe");
+    expect(narrative).not.toContain("1999-01-01");
+  });
+
   it("throws UNKNOWN_VOCAB_CODE for a code outside the corpus", () => {
     const sel = rnRoutineSelection({
       sections: [{ sectionId: "assessment", entries: [{ code: "nv.bogus" }] }],
@@ -206,6 +229,201 @@ describe("assembleLayer1 — recorded vitals (WF09)", () => {
   });
 });
 
+describe("assembleLayer1 — recorded ADLs, nutrition and wounds (WF09)", () => {
+  const rn = resolveTemplate("routine_visit", "rn")!;
+  const ADL: AssemblyContext["recordedAdl"] = {
+    items: { bathing: "limited_assist", transferring: "extensive_assist" },
+    devices: ["walker"],
+  };
+  const NUTRITION: AssemblyContext["recordedNutrition"] = {
+    appetite: "poor",
+    support: "oral_supplements",
+  };
+  const WOUNDS: AssemblyContext["recordedWounds"] = [
+    { site: "sacrum", etiology: "pressure_injury", stage: "stage_3", trend: "improving" },
+    { site: "left heel", etiology: "diabetic_ulcer" },
+  ];
+  const ADL_SENTENCE =
+    "Functional status: needed limited assistance with bathing, extensive assistance with transferring; uses a walker.";
+  const NUTRITION_SENTENCE = "Nutrition: appetite poor, receives oral supplements.";
+  const WOUND_SENTENCES =
+    "Sacrum pressure injury, stage 3, trend improving. Left heel diabetic ulcer.";
+  const nothing = rnRoutineSelection({ sections: [] });
+  const blockOf = (narrative: string, heading: string): string | undefined =>
+    narrative.split("\n\n").find((b) => b.startsWith(`${heading}\n`));
+
+  it("renders each recorded finding under its own section with no selection needed", () => {
+    const out = assembleLayer1(rn, nothing, {
+      ...CONTEXT,
+      recordedAdl: ADL,
+      recordedNutrition: NUTRITION,
+      recordedWounds: WOUNDS,
+    });
+    expect(out.sectionsAssembled).toEqual(["functional_status", "nutrition", "skin_wounds"]);
+    expect(out.narrative).toBe(
+      [
+        `Functional Status\n${ADL_SENTENCE}`,
+        `Nutrition and Hydration\n${NUTRITION_SENTENCE}`,
+        `Skin and Wounds\n${WOUND_SENTENCES}`,
+      ].join("\n\n"),
+    );
+  });
+
+  it("places them after Assessment and before Symptom Management", () => {
+    const { narrative } = assembleLayer1(rn, rnRoutineSelection(), {
+      ...CONTEXT,
+      recordedAdl: ADL,
+      recordedNutrition: NUTRITION,
+      recordedWounds: WOUNDS,
+    });
+    const headings = narrative.split("\n\n").map((b) => b.split("\n")[0]);
+    expect(headings).toEqual([
+      "Reason for Visit",
+      "Assessment",
+      "Functional Status",
+      "Nutrition and Hydration",
+      "Skin and Wounds",
+      "Symptom Management",
+      "Plan and Next Visit",
+    ]);
+  });
+
+  it("puts the recorded facts ahead of the clinician's own words", () => {
+    const sel = rnRoutineSelection({
+      sections: [
+        { sectionId: "skin_wounds", entries: [], freeText: "Dressing supplies restocked." },
+      ],
+    });
+    const out = assembleLayer1(rn, sel, { ...CONTEXT, recordedWounds: WOUNDS });
+    expect(out.narrative).toBe(`Skin and Wounds\n${WOUND_SENTENCES} Dressing supplies restocked.`);
+  });
+
+  it("still renders the clinician's own words when nothing was recorded", () => {
+    const sel = rnRoutineSelection({
+      sections: [{ sectionId: "nutrition", entries: [], freeText: "Eating small portions." }],
+    });
+    expect(assembleLayer1(rn, sel, CONTEXT).narrative).toBe(
+      "Nutrition and Hydration\nEating small portions.",
+    );
+  });
+
+  it("renders nothing for a section with neither selections nor recorded facts", () => {
+    const empty: AssemblyContext = {
+      ...CONTEXT,
+      recordedAdl: {},
+      recordedNutrition: { appetite: null },
+      recordedWounds: [],
+    };
+    for (const ctx of [CONTEXT, empty]) {
+      expect(assembleLayer1(rn, nothing, ctx)).toEqual({
+        narrative: "",
+        sectionsAssembled: [],
+        vocabVersion: VOCAB_VERSION,
+      });
+    }
+  });
+
+  it("is byte-identical to the original output when the new context fields are absent", () => {
+    const baseline = assembleLayer1(rn, rnRoutineSelection(), CONTEXT).narrative;
+    const explicit = assembleLayer1(rn, rnRoutineSelection(), {
+      ...CONTEXT,
+      recordedAdl: undefined,
+      recordedNutrition: undefined,
+      recordedWounds: undefined,
+    }).narrative;
+    expect(explicit).toBe(baseline);
+    expect(baseline).not.toContain("Functional Status");
+  });
+
+  it("states a recorded finding only in a template that has its section", () => {
+    const pt = resolveTemplate("pt_visit", "pt")!;
+    const slp = resolveTemplate("slp_visit", "slp")!;
+    const telephonic = resolveTemplate("telephonic", "rn")!;
+    const ctx: AssemblyContext = {
+      ...CONTEXT,
+      recordedAdl: ADL,
+      recordedNutrition: NUTRITION,
+      recordedWounds: WOUNDS,
+    };
+    const sel = (t: typeof pt): SelectionState => ({
+      ...nothing,
+      templateKey: t.key,
+      encounterType: t.encounterType,
+      discipline: t.discipline,
+    });
+    expect(assembleLayer1(pt, sel(pt), ctx).sectionsAssembled).toEqual(["functional_status"]);
+    expect(assembleLayer1(slp, sel(slp), ctx).sectionsAssembled).toEqual(["nutrition"]);
+    expect(assembleLayer1(telephonic, sel(telephonic), ctx).sectionsAssembled).toEqual([
+      "functional_status",
+      "nutrition",
+    ]);
+  });
+
+  it("puts each recorded finding in no other section", () => {
+    const { narrative } = assembleLayer1(rn, rnRoutineSelection(), {
+      ...CONTEXT,
+      recordedAdl: ADL,
+      recordedNutrition: NUTRITION,
+      recordedWounds: WOUNDS,
+    });
+    expect(narrative.match(/Functional status:/g)).toHaveLength(1);
+    expect(narrative.match(/Nutrition:/g)).toHaveLength(1);
+    expect(blockOf(narrative, "Assessment")).not.toContain("Functional status");
+  });
+
+  it("states the recorded ADLs ahead of the ticked statements in CHHA's ADL section", () => {
+    const chha = resolveTemplate("chha_visit", "chha")!;
+    const sel: SelectionState = {
+      templateKey: "chha_visit:chha",
+      vocabVersion: VOCAB_VERSION,
+      encounterType: "chha_visit",
+      discipline: "chha",
+      sections: [
+        {
+          sectionId: "adl",
+          entries: [{ code: "nv.adl.personal_care" }],
+          freeText: "Daughter present.",
+        },
+      ],
+    };
+    const adlBlock = blockOf(
+      assembleLayer1(chha, sel, { ...CONTEXT, recordedAdl: ADL }).narrative,
+      "Activities of Daily Living",
+    )!;
+    expect(adlBlock.startsWith(`Activities of Daily Living\n${ADL_SENTENCE} `)).toBe(true);
+    expect(adlBlock.endsWith(" Daughter present.")).toBe(true);
+  });
+
+  it("assembles the same recorded findings to the same bytes on every run", () => {
+    const ctx: AssemblyContext = {
+      ...CONTEXT,
+      recordedAdl: ADL,
+      recordedNutrition: NUTRITION,
+      recordedWounds: WOUNDS,
+    };
+    expect(assembleLayer1(rn, nothing, ctx).narrative).toBe(
+      assembleLayer1(rn, nothing, ctx).narrative,
+    );
+  });
+
+  it("states height, BMI and the weight change through the vitals section", () => {
+    const ctx: AssemblyContext = {
+      ...CONTEXT,
+      recordedVitals: {
+        weight: "61.2",
+        weightUnit: "kg",
+        height: "170",
+        heightUnit: "cm",
+        bmi: "24.3",
+        priorWeight: { value: "62.5", unit: "kg", on: "2026-11-05" },
+      },
+    };
+    expect(assembleLayer1(rn, nothing, ctx).narrative).toBe(
+      "Vital Signs Review\nVital signs: weight 61.2 kg, 1.3 kg lower than 62.5 kg on 2026-11-05, height 170 cm, BMI 24.3.",
+    );
+  });
+});
+
 describe("assemble — resolves + guards", () => {
   it("assembles a valid selection via its own pair", () => {
     expect(assemble(rnRoutineSelection(), CONTEXT).narrative.length).toBeGreaterThan(0);
@@ -280,26 +498,5 @@ describe("assembleLayer1 — linked fall (WF09)", () => {
     expect(reasonBlock(select("nv.reason.fall_followup"), fall)).toBe(
       reasonBlock(select("nv.reason.fall_followup"), fall),
     );
-  });
-});
-
-describe("missingRequiredSections — Layer-3 check-1 input", () => {
-  const template = resolveTemplate("routine_visit", "rn")!;
-
-  it("lists required sections with no populated selection", () => {
-    const sel = rnRoutineSelection({
-      sections: [{ sectionId: "assessment", entries: [{ code: "nv.cv.stable" }] }],
-    });
-    const missing = missingRequiredSections(template, sel);
-    expect(missing).toContain("chief_concern");
-    expect(missing).toContain("plan");
-    expect(missing).not.toContain("assessment");
-  });
-
-  it("counts a free-text-only section as populated", () => {
-    const sel = rnRoutineSelection({
-      sections: [{ sectionId: "chief_concern", entries: [], freeText: "Per plan." }],
-    });
-    expect(missingRequiredSections(template, sel)).not.toContain("chief_concern");
   });
 });

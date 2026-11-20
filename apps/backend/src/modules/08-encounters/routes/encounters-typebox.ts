@@ -12,10 +12,17 @@ import type {
   EncounterView as ServiceEncounterView,
   MileageResult as ServiceMileageResult,
   EncounterRouteService as ServiceRouteApi,
-  VitalsResult as ServiceVitalsResult,
 } from "./service";
 
 export { parse };
+// The vitals capture body and its responses live in their own file (vitals-typebox.ts); re-exported so the route and the OpenAPI
+// enrichments keep importing them from here.
+export {
+  CaptureVitalsSchema,
+  VitalsListResponseSchema,
+  VitalsResultResponseSchema,
+  VitalsViewResponseSchema,
+} from "./vitals-typebox";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -151,43 +158,8 @@ export const UpdateSelectionsSchema = Type.Object({
   ),
 });
 
-// §2.2 — numeric-direct vitals (the `vitals` row shape; numerics-as-text preserve their unit). "Clinically
-// not indicated" is a first-class value: a non-empty field list carries a documented reason, not a NULL.
-const VITAL_UNIT = [
-  "mmHg",
-  "bpm",
-  "breaths_per_min",
-  "c",
-  "f",
-  "percent_o2",
-  "kg",
-  "lb",
-  "cm",
-  "in",
-  "mg_dl",
-  "mmol_l",
-] as const;
-const PAIN_SCALE = ["nrs_0_10", "flacc", "painad", "verbal_descriptor"] as const;
 const Int = Type.Optional(Type.Integer());
-export const CaptureVitalsSchema = Type.Object({
-  bpSystolic: Int,
-  bpDiastolic: Int,
-  heartRate: Int,
-  respiratoryRate: Int,
-  temperature: Type.Optional(Type.String({ maxLength: 16 })),
-  temperatureUnit: Type.Optional(lit(VITAL_UNIT)),
-  spo2: Int,
-  painScore: Int,
-  painScale: Type.Optional(lit(PAIN_SCALE)),
-  weight: Type.Optional(Type.String({ maxLength: 16 })),
-  weightUnit: Type.Optional(lit(VITAL_UNIT)),
-  height: Type.Optional(Type.String({ maxLength: 16 })),
-  heightUnit: Type.Optional(lit(VITAL_UNIT)),
-  bloodGlucose: Int,
-  bloodGlucoseUnit: Type.Optional(lit(VITAL_UNIT)),
-  clinicallyNotIndicatedFields: Type.Optional(Type.Array(Type.String({ maxLength: 64 }))),
-  clinicallyNotIndicatedReason: Type.Optional(Type.String({ maxLength: 4000 })),
-});
+const NullableStr = Type.Union([Type.String(), Type.Null()]);
 
 // §2.2 D10 — per-encounter mileage; the source picks how `miles_driven` is resolved.
 const MILES_SOURCE = ["odometer", "route_calc", "manual_override"] as const;
@@ -454,53 +426,6 @@ export const MyNotesResponseSchema = Type.Object({
   encounters: Type.Array(MyNoteResponseSchema),
 });
 
-/** Routes 4/5 — a vitals capture/edit result (§4.4 decorators). */
-export const VitalsResultResponseSchema = Type.Object({
-  vitalsId: Type.String(),
-  fieldsCaptured: Type.Array(Type.String()),
-  abnormalFlags: Type.Array(Type.String()),
-  bmi: Type.Union([Type.String(), Type.Null()]),
-});
-
-/**
- * Route 5b — one stored vitals set read back (#92). Nullable rather than optional on every field:
- * the row exists and the measurement is genuinely absent, which is a different clinical statement
- * from "this key was not sent" — a `null` spo2 on a signed encounter says nobody recorded it.
- */
-const NullableInt = Type.Union([Type.Integer(), Type.Null()]);
-const NullableStr = Type.Union([Type.String(), Type.Null()]);
-const NullableUnit = Type.Union([lit(VITAL_UNIT), Type.Null()]);
-export const VitalsViewResponseSchema = Type.Object({
-  id: Type.String(),
-  encounterId: Type.String(),
-  capturedAt: Type.String(),
-  bpSystolic: NullableInt,
-  bpDiastolic: NullableInt,
-  heartRate: NullableInt,
-  respiratoryRate: NullableInt,
-  temperature: NullableStr,
-  temperatureUnit: NullableUnit,
-  spo2: NullableInt,
-  painScore: NullableInt,
-  painScale: Type.Union([lit(PAIN_SCALE), Type.Null()]),
-  weight: NullableStr,
-  weightUnit: NullableUnit,
-  height: NullableStr,
-  heightUnit: NullableUnit,
-  bmi: NullableStr,
-  bloodGlucose: NullableInt,
-  bloodGlucoseUnit: NullableUnit,
-  clinicallyNotIndicatedFields: Type.Union([Type.Array(Type.String()), Type.Null()]),
-  clinicallyNotIndicatedReason: NullableStr,
-  abnormalFlags: Type.Array(Type.String()),
-});
-
-/** Route 5b — the `{ encounterId, vitals }` envelope, newest capture first. */
-export const VitalsListResponseSchema = Type.Object({
-  encounterId: Type.String(),
-  vitals: Type.Array(VitalsViewResponseSchema),
-});
-
 /** Routes 6/7 — the authoritative mileage figure (D10). */
 export const MileageResultResponseSchema = Type.Object({
   mileageId: Type.String(),
@@ -516,6 +441,8 @@ export const SelectionsUpdateResponseSchema = Type.Object({
 
 /** Routes 3b / 23b — read the stored selection tree back, with its assembled Layer-1 narrative (#114). */
 export const SelectionsViewResponseSchema = Type.Object({
+  /** The visit's patient: attributes the read to them in the §164.528 accounting. */
+  patientId: Type.String(),
   templateKey: Type.String(),
   vocabVersion: Type.String(),
   sections: Type.Array(
@@ -555,6 +482,8 @@ export const SelectionsViewResponseSchema = Type.Object({
  * the patient has no recorded fall.
  */
 export const FallIncidentsResponseSchema = Type.Object({
+  /** The visit's patient: attributes the read to them in the §164.528 accounting. */
+  patientId: Type.String(),
   incidents: Type.Array(
     Type.Object({
       incidentId: Type.String(),
@@ -603,6 +532,13 @@ export const EncounterTemplateResponseSchema = Type.Object({
       required: Type.Boolean(),
       /** The categories this section offers; empty means a prose-only section (`entries` is then empty). */
       allowedCategories: Type.Array(Type.String()),
+      /** The structured record the composer offers in this section (ADLs, nutrition, wounds); null for a plain selection section. */
+      recordedPanel: Type.Union([
+        Type.Literal("adl"),
+        Type.Literal("nutrition"),
+        Type.Literal("wounds"),
+        Type.Null(),
+      ]),
       entries: Type.Array(
         Type.Object({
           code: Type.String(),
@@ -784,6 +720,8 @@ export const BillableResponseSchema = Type.Object({
 /** Route 31 — M22 PDF-render payload. */
 export const RenderPayloadResponseSchema = Type.Object({
   encounterId: Type.String(),
+  /** The visit's patient: attributes the read to them in the §164.528 accounting. */
+  patientId: Type.String(),
   final: Type.String(),
   /** True when `final` is the narrative pinned at finalize; false when it is a live re-assembly (#122). */
   pinned: Type.Boolean(),
@@ -797,11 +735,9 @@ type Conforms<T extends V, V> = T;
 type _Created = Conforms<Static<typeof CreatedEncounterResponseSchema>, ServiceCreatedEncounter>;
 type _View = Conforms<Static<typeof EncounterViewResponseSchema>, ServiceEncounterView>;
 type _List = Conforms<Static<typeof EncounterListResponseSchema>, Ret<"listEncounters">>;
-type _Vitals = Conforms<Static<typeof VitalsResultResponseSchema>, ServiceVitalsResult>;
 // F-063 — the two reads that had no counterpart write... the other way round: two WRITES that had no read.
 type _Template = Conforms<Static<typeof EncounterTemplateResponseSchema>, Ret<"getTemplate">>;
 type _MileageView = Conforms<Static<typeof MileageViewResponseSchema>, Ret<"getMileage">>;
-type _VitalsList = Conforms<Static<typeof VitalsListResponseSchema>, Ret<"listVitals">>;
 type _Mileage = Conforms<Static<typeof MileageResultResponseSchema>, ServiceMileageResult>;
 type _Selections = Conforms<Static<typeof SelectionsUpdateResponseSchema>, Ret<"updateSelections">>;
 type _ChartPromotions = Conforms<

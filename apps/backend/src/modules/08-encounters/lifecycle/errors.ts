@@ -46,6 +46,12 @@ export const M8_ERROR_STATUS = {
   PARENT_VOIDED: 409,
   STALE_VERSION: 409,
   IMMUTABLE_AFTER_SIGN: 409,
+  /** A per-visit record (ADLs, nutrition) can only change while the note is a draft: finalize pins the note text, so a later change
+   *  would leave the stored record disagreeing with the note that was pinned (WF09). */
+  NOTE_PINNED_AT_FINALIZE: 409,
+  /** The encounter's note template has no section that states this record, so it would be saved and then silently left out of the
+   *  signed note; the clinician is told instead of documenting something the note will not carry (WF09). */
+  FINDING_NOT_IN_NOTE: 422,
   // §2.6 HearthNote Layer-1 assembly (#114). `@chartwarden/hearthnote` documents its own error codes as
   // "mapped to HTTP by the M8 service in T09" — this is that mapping, which was never written because
   // nothing ever assembled. TEMPLATE_NOT_FOUND and VOCAB_VERSION_MISMATCH already have codes above
