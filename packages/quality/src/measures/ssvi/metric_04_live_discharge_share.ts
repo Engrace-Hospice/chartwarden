@@ -1,6 +1,6 @@
 // @chartwarden/quality — SSVI metric 4: Percentage of total discharges that are live discharges (CMS-1851-F Table 9). Pure. No IO.
 //
-// Point at ≥ 47.5% (75th pct). Rate = live discharges (every discharge type except death: revocation, transfer,
+// Point at or above the 75th-percentile cut (`thresholds.ts`). Rate = live discharges (every discharge type except death: revocation, transfer,
 // no longer terminally ill, moved, for cause) ÷ all discharges. Source: M6 `DischargeReader.ssviDischargeCounts`.
 import type { ComputeMeasureInput, QualityMeasureValueResult } from "../result";
 import { ssviBinaryMetricResult } from "./point_result";

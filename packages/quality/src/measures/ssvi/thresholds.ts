@@ -12,8 +12,10 @@
 //
 // THRESHOLDS ARE PER DATA YEAR. CMS recomputes the percentile cuts every fiscal year from that year's national
 // claims ("We plan to determine the SSVI for individual hospices each FY using that applicable year's data").
-// The values below are the FY2025-claims cuts CMS published with the FY2027 rule — a single reviewed constant
-// PR adds the next year's table when CMS publishes it. Source: docs/research/FY2027_HOSPICE_COP_RESEARCH.md §7.
+// The tables below are the cuts CMS scored each data year with, read from the column headers of the SSVI file CMS
+// posts with the final rule (FY2024 and FY2025 claims) — a single reviewed constant PR adds the next year's table
+// when CMS publishes it. The published Table 9 in the Federal Register is an image and carries earlier-pull values,
+// so it is NOT the source. Source: docs/research/FY2027_HOSPICE_COP_RESEARCH.md §7.
 
 /** The nine SSVI metric keys, in CMS Table 9 order. */
 export type SsviMetricKey =
@@ -64,10 +66,15 @@ export const SSVI_MAX_SCORE = 16;
 /** FR-F: 13 or more points is an outlier (≈ 99th percentile). */
 export const SSVI_OUTLIER_SCORE = 13;
 
-/** FY2025 claims, published with the FY2027 final rule (CMS-1851-F, Table 9). */
+/**
+ * FY2025 claims, as CMS scored them in the SSVI file posted with the FY2027 final rule (CMS-1851-F). Every value
+ * below is read from that file's FY2025 scoring-components column headers — the file that produces the published
+ * scores — and `ssvi-cms-golden.test.ts` reproduces CMS's own per-hospice flags from it.
+ */
 export const SSVI_THRESHOLDS_FY2025_DATA: SsviThresholdTable = {
   dataFiscalYear: 2025,
-  publishedIn: "FY2027 Hospice final rule, CMS-1851-F, 91 FR 49118 (Table 9)",
+  publishedIn:
+    "CMS SSVI file posted with the FY2027 final rule (CMS-1851-F), FY2025 scoring-components headers",
   maxScore: SSVI_MAX_SCORE,
   outlierScore: SSVI_OUTLIER_SCORE,
   metrics: {
@@ -76,25 +83,25 @@ export const SSVI_THRESHOLDS_FY2025_DATA: SsviThresholdTable = {
     metric_01: { direction: "lte", value: 0, label: "no CHC and no GIP provided" },
     // 2. Percentage of RHC days provided in a nursing home or skilled nursing facility — ≥ 40%.
     metric_02: { direction: "gte", value: 0.4, label: "share of RHC days in a NF/SNF ≥ 40%" },
-    // 3. Percent of the last two RHC days of life with visits — ≤ 25th percentile (85.7%).
+    // 3. Percent of the last two RHC days of life with visits — ≤ 25th percentile (87.5%).
     metric_03: {
       direction: "lte",
-      value: 0.857,
-      label: "decedents whose last two RHC days had a skilled visit ≤ 85.7% (25th pct)",
+      value: 0.875,
+      label: "decedents whose last two RHC days had a skilled visit ≤ 87.5% (25th pct)",
     },
-    // 4. Percentage of total discharges that are live discharges — ≥ 75th percentile (47.5%).
-    metric_04: { direction: "gte", value: 0.475, label: "live-discharge share ≥ 47.5% (75th pct)" },
-    // 5. Percentage of discharges with a length of stay over 180 days — ≥ 75th percentile (33.2%).
+    // 4. Percentage of total discharges that are live discharges — ≥ 75th percentile (47.0%).
+    metric_04: { direction: "gte", value: 0.47, label: "live-discharge share ≥ 47.0% (75th pct)" },
+    // 5. Percentage of discharges with a length of stay of 180 days or more — ≥ 75th percentile (33.3%).
     metric_05: {
       direction: "gte",
-      value: 0.332,
-      label: "discharges with LOS > 180 days ≥ 33.2% (75th pct)",
+      value: 0.333,
+      label: "discharges with LOS of 180 days or more ≥ 33.3% (75th pct)",
     },
-    // 6. Average skilled nursing minutes on RHC — ≤ 25th percentile (9.8 minutes per RHC day).
+    // 6. Average skilled nursing minutes on RHC — ≤ 25th percentile (9.9 minutes per RHC day).
     metric_06: {
       direction: "lte",
-      value: 9.8,
-      label: "mean skilled-nursing minutes per RHC day ≤ 9.8 (25th pct)",
+      value: 9.9,
+      label: "mean skilled-nursing minutes per RHC day ≤ 9.9 (25th pct)",
     },
     // 7. Weekend RHC days with a skilled visit as a share of all RHC days — ≤ 25th percentile (4.8%).
     metric_07: {
@@ -102,22 +109,67 @@ export const SSVI_THRESHOLDS_FY2025_DATA: SsviThresholdTable = {
       value: 0.048,
       label: "weekend RHC days with a skilled visit ≤ 4.8% of RHC days (25th pct)",
     },
-    // 8. Live discharges where the beneficiary returns to the same hospice within seven days — ≥ 75th pct (15%).
+    // 8. Live discharges where the beneficiary returns to the same hospice within seven days — ≥ 75th pct (18.2%).
+    metric_08: {
+      direction: "gte",
+      value: 0.182,
+      label: "live discharges readmitted to the same hospice within 7 days ≥ 18.2% (75th pct)",
+    },
+  },
+  // 9. Total non-hospice spending: $6,532.96 / $21,341.05 / $44,437.57 / $79,420.80 / $138,572.14 /
+  //    $253,592.84 / $538,406.00.
+  spendingOctileUpperBoundsCents: [
+    653_296, 2_134_105, 4_443_757, 7_942_080, 13_857_214, 25_359_284, 53_840_600,
+  ],
+};
+
+/** FY2024 claims, as CMS scored them in the same SSVI file (FY2024 scoring-components headers). */
+export const SSVI_THRESHOLDS_FY2024_DATA: SsviThresholdTable = {
+  dataFiscalYear: 2024,
+  publishedIn:
+    "CMS SSVI file posted with the FY2027 final rule (CMS-1851-F), FY2024 scoring-components headers",
+  maxScore: SSVI_MAX_SCORE,
+  outlierScore: SSVI_OUTLIER_SCORE,
+  metrics: {
+    metric_01: { direction: "lte", value: 0, label: "no CHC and no GIP provided" },
+    metric_02: { direction: "gte", value: 0.4, label: "share of RHC days in a NF/SNF ≥ 40%" },
+    metric_03: {
+      direction: "lte",
+      value: 0.857,
+      label: "decedents whose last two RHC days had a skilled visit ≤ 85.7% (25th pct)",
+    },
+    metric_04: { direction: "gte", value: 0.477, label: "live-discharge share ≥ 47.7% (75th pct)" },
+    metric_05: {
+      direction: "gte",
+      value: 0.331,
+      label: "discharges with LOS of 180 days or more ≥ 33.1% (75th pct)",
+    },
+    metric_06: {
+      direction: "lte",
+      value: 9.8,
+      label: "mean skilled-nursing minutes per RHC day ≤ 9.8 (25th pct)",
+    },
+    metric_07: {
+      direction: "lte",
+      value: 0.048,
+      label: "weekend RHC days with a skilled visit ≤ 4.8% of RHC days (25th pct)",
+    },
     metric_08: {
       direction: "gte",
       value: 0.15,
-      label: "live discharges readmitted to the same hospice within 7 days ≥ 15% (75th pct)",
+      label: "live discharges readmitted to the same hospice within 7 days ≥ 15.0% (75th pct)",
     },
   },
-  // 9. Total non-hospice spending: $6,352.84 / $20,612.10 / $42,911.79 / $76,801.05 / $133,440.80 /
-  //    $246,123.10 / $517,204.40.
+  // 9. Total non-hospice spending: $5,964.19 / $19,061.63 / $41,318.35 / $72,896.46 / $124,893.05 /
+  //    $227,185.05 / $520,100.16.
   spendingOctileUpperBoundsCents: [
-    635_284, 2_061_210, 4_291_179, 7_680_105, 13_344_080, 24_612_310, 51_720_440,
+    596_419, 1_906_163, 4_131_835, 7_289_646, 12_489_305, 22_718_505, 52_010_016,
   ],
 };
 
 /** Every published SSVI cut table, keyed by the data fiscal year. */
 const SSVI_THRESHOLD_TABLES: Readonly<Record<number, SsviThresholdTable>> = {
+  [SSVI_THRESHOLDS_FY2024_DATA.dataFiscalYear]: SSVI_THRESHOLDS_FY2024_DATA,
   [SSVI_THRESHOLDS_FY2025_DATA.dataFiscalYear]: SSVI_THRESHOLDS_FY2025_DATA,
 };
 

@@ -139,11 +139,11 @@ describe("SSVI resolvers → calculators", () => {
 
   it("metrics 4/5/8 shape the ONE M6 discharge aggregate", async () => {
     const m4 = await resolveSsviMeasureInput(REQUEST("ssvi_metric_04"), seams());
-    expect(ssviPointsOf(computeSsviMetric04(m4 as never))).toBe(1); // 50% ≥ 47.5%
+    expect(ssviPointsOf(computeSsviMetric04(m4 as never))).toBe(1); // 50% ≥ 47.0%
     const m5 = await resolveSsviMeasureInput(REQUEST("ssvi_metric_05"), seams());
-    expect(ssviPointsOf(computeSsviMetric05(m5 as never))).toBe(1); // 35% ≥ 33.2%
+    expect(ssviPointsOf(computeSsviMetric05(m5 as never))).toBe(1); // 35% ≥ 33.3%
     const m8 = await resolveSsviMeasureInput(REQUEST("ssvi_metric_08"), seams());
-    expect(ssviPointsOf(computeSsviMetric08(m8 as never))).toBe(1); // 20% ≥ 15%
+    expect(ssviPointsOf(computeSsviMetric08(m8 as never))).toBe(1); // 20% ≥ 18.2%
   });
 
   it("metric 7: the Saturday 2026-01-10 visit is 1 of 10 RHC days (10% > 4.8%) → no point", async () => {

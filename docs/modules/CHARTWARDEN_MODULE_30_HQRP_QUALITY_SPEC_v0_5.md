@@ -33,6 +33,17 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
 
 ## Changelog
 
+- **Implementation note (SSVI cuts corrected to CMS's published file, 2026-11-20)** — `SSVI_THRESHOLDS_FY2025_DATA`
+  carried a mix of cut values: metrics 3 (85.7%), 6 (9.8) and 8 (15%) were CMS's FY2024-data cuts, and metrics 4
+  (47.5%), 5 (33.2%) and the spending octiles (from $6,352.84) matched neither CMS data year. Re-scoring CMS's own
+  per-hospice FY2025 values with them disagreed with CMS's published flags for 151 hospices on metric 3 and 170 on
+  metric 8. The table now holds the cuts read from the headers of the
+  SSVI file CMS posts with CMS-1851-F (FY2025: 87.5% / 47.0% / 33.3% / 9.9 / 4.8% / 18.2%, spending $6,532.96 …
+  $538,406.00) and a new `SSVI_THRESHOLDS_FY2024_DATA` (85.7% / 47.7% / 33.1% / 9.8 / 4.8% / 15.0%).
+  `ssvi-cms-golden.test.ts` reproduces CMS's published point flags and spending scores from a public sample
+  (no CCN, no PHI) and pins the web panel's mirrored cut text to the table. See
+  `docs/research/FY2027_HOSPICE_COP_RESEARCH.md` §7 for the source and the definition notes (metric 7 denominator,
+  skilled-visit disciplines, metric 5/4/8 discharge handling).
 - **Implementation note (SSVI family, FY2027, 2026-10-06)** — new `ssvi` measure family (CMS-1851-F §III.B.2,
   Table 9): nine metrics (`ssvi_metric_01`…`09`) + `ssvi_composite`, catalog `activatesFy: 2027`, calculators in
   `packages/quality/src/measures/ssvi/` (the HCI family layout: per-metric files, `thresholds.ts`,

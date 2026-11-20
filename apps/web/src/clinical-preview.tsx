@@ -1374,7 +1374,7 @@ const ssviRows = [
   [
     "ssvi_metric_03",
     "SSVI 3 — Last two RHC days of life with a skilled visit (internal estimate)",
-    ssviValue(61, 70, true),
+    ssviValue(65, 70, true), // 92.9% > the 87.5% cut: no point (the harness does not run the calculators)
   ],
   ["ssvi_metric_04", "SSVI 4 — Live-discharge share (internal estimate)", ssviValue(21, 96, true)],
   [

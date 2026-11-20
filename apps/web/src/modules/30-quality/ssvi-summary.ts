@@ -20,7 +20,11 @@ export interface SsviMeasureRow {
   } | null;
 }
 
-/** CMS Table 9 metric order, short names, the FY2025-data cut CMS published with the FY2027 rule, and max points. */
+/**
+ * CMS Table 9 metric order, short names, the FY2025-data cut CMS scored with (mirrors `SSVI_THRESHOLDS_FY2025_DATA`
+ * in `@chartwarden/quality`, which this app cannot import — `ssvi-cms-golden.test.ts` pins the two together), and
+ * max points.
+ */
 export const SSVI_METRICS: readonly {
   readonly code: string;
   readonly name: string;
@@ -37,20 +41,20 @@ export const SSVI_METRICS: readonly {
   {
     code: "ssvi_metric_03",
     name: "Last two RHC days with a skilled visit",
-    cut: "≤ 85.7%",
+    cut: "≤ 87.5%",
     maxPoints: 1,
   },
-  { code: "ssvi_metric_04", name: "Live-discharge share", cut: "≥ 47.5%", maxPoints: 1 },
+  { code: "ssvi_metric_04", name: "Live-discharge share", cut: "≥ 47.0%", maxPoints: 1 },
   {
     code: "ssvi_metric_05",
     name: "Discharges with LOS over 180 days",
-    cut: "≥ 33.2%",
+    cut: "≥ 33.3%",
     maxPoints: 1,
   },
   {
     code: "ssvi_metric_06",
     name: "Skilled-nursing minutes per RHC day",
-    cut: "≤ 9.8 min",
+    cut: "≤ 9.9 min",
     maxPoints: 1,
   },
   {
@@ -62,7 +66,7 @@ export const SSVI_METRICS: readonly {
   {
     code: "ssvi_metric_08",
     name: "Live discharges back within 7 days",
-    cut: "≥ 15%",
+    cut: "≥ 18.2%",
     maxPoints: 1,
   },
   { code: "ssvi_metric_09", name: "Total non-hospice spending", cut: "Octile, 0–8", maxPoints: 8 },

@@ -1,6 +1,6 @@
 // @chartwarden/quality — SSVI metric 8: Percentage of live discharges where beneficiaries return to the same hospice in seven days (CMS-1851-F Table 9). Pure. No IO.
 //
-// Point at ≥ 15% (75th pct). Rate = live discharges followed by a new admission of the same patient to THIS agency
+// Point at or above the 75th-percentile cut (`thresholds.ts`). Rate = live discharges followed by a new admission of the same patient to THIS agency
 // within 7 days of the discharge date ÷ live discharges. Source: M6 `DischargeReader.ssviDischargeCounts`.
 import type { ComputeMeasureInput, QualityMeasureValueResult } from "../result";
 import { ssviBinaryMetricResult } from "./point_result";

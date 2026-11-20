@@ -40,17 +40,17 @@ const BASE = {
 };
 const r = T.metrics;
 
-describe("SSVI thresholds (FY2025 data, published with the FY2027 rule)", () => {
-  it("carries the Table 9 cuts exactly", () => {
+describe("SSVI thresholds (FY2025 data, as CMS scored them in the SSVI file)", () => {
+  it("carries CMS's FY2025 cuts exactly (the golden test proves them against CMS's per-hospice flags)", () => {
     expect(r.metric_02).toMatchObject({ direction: "gte", value: 0.4 });
-    expect(r.metric_03).toMatchObject({ direction: "lte", value: 0.857 });
-    expect(r.metric_04).toMatchObject({ direction: "gte", value: 0.475 });
-    expect(r.metric_05).toMatchObject({ direction: "gte", value: 0.332 });
-    expect(r.metric_06).toMatchObject({ direction: "lte", value: 9.8 });
+    expect(r.metric_03).toMatchObject({ direction: "lte", value: 0.875 });
+    expect(r.metric_04).toMatchObject({ direction: "gte", value: 0.47 });
+    expect(r.metric_05).toMatchObject({ direction: "gte", value: 0.333 });
+    expect(r.metric_06).toMatchObject({ direction: "lte", value: 9.9 });
     expect(r.metric_07).toMatchObject({ direction: "lte", value: 0.048 });
-    expect(r.metric_08).toMatchObject({ direction: "gte", value: 0.15 });
+    expect(r.metric_08).toMatchObject({ direction: "gte", value: 0.182 });
     expect(T.spendingOctileUpperBoundsCents).toEqual([
-      635_284, 2_061_210, 4_291_179, 7_680_105, 13_344_080, 24_612_310, 51_720_440,
+      653_296, 2_134_105, 4_443_757, 7_942_080, 13_857_214, 25_359_284, 53_840_600,
     ]);
     expect(T.maxScore).toBe(16);
     expect(T.outlierScore).toBe(13);
@@ -59,18 +59,19 @@ describe("SSVI thresholds (FY2025 data, published with the FY2027 rule)", () => 
   it("is a per-FY table: a later FY falls back to the latest published cut, an earlier one to the earliest", () => {
     expect(ssviThresholdsFor(2025)).toBe(T);
     expect(ssviThresholdsFor(2027).dataFiscalYear).toBe(2025);
-    expect(ssviThresholdsFor(2020).dataFiscalYear).toBe(2025);
+    expect(ssviThresholdsFor(2024).dataFiscalYear).toBe(2024);
+    expect(ssviThresholdsFor(2020).dataFiscalYear).toBe(2024);
   });
 
   it("scores non-hospice spending by octile, each band's lower bound exclusive; $0 scores 0", () => {
     const b = T.spendingOctileUpperBoundsCents;
     expect(ssviSpendingPoints(0, b)).toBe(0);
     expect(ssviSpendingPoints(1, b)).toBe(1);
-    expect(ssviSpendingPoints(635_284, b)).toBe(1);
-    expect(ssviSpendingPoints(635_285, b)).toBe(2);
-    expect(ssviSpendingPoints(2_061_210, b)).toBe(2);
-    expect(ssviSpendingPoints(51_720_440, b)).toBe(7);
-    expect(ssviSpendingPoints(51_720_441, b)).toBe(8);
+    expect(ssviSpendingPoints(653_296, b)).toBe(1);
+    expect(ssviSpendingPoints(653_297, b)).toBe(2);
+    expect(ssviSpendingPoints(2_134_105, b)).toBe(2);
+    expect(ssviSpendingPoints(53_840_600, b)).toBe(7);
+    expect(ssviSpendingPoints(53_840_601, b)).toBe(8);
   });
 });
 
@@ -112,24 +113,24 @@ describe("SSVI binary metrics — the point is earned on the CONCERN side, inclu
     expect(ssviPointsOf(below)).toBe(0);
   });
 
-  it("metric 3: ≤ 85.7% of decedents with a skilled visit in the last two RHC days", () => {
+  it("metric 3: ≤ 87.5% of decedents with a skilled visit in the last two RHC days", () => {
     const low = computeSsviMetric03({
       ...BASE,
       decedentsWithLastTwoDaysRhc: 1000,
-      decedentsWithSkilledVisitInLastTwoDays: 857,
+      decedentsWithSkilledVisitInLastTwoDays: 875,
       rule: r.metric_03,
     });
     expect(ssviPointsOf(low)).toBe(1);
     const ok = computeSsviMetric03({
       ...BASE,
       decedentsWithLastTwoDaysRhc: 1000,
-      decedentsWithSkilledVisitInLastTwoDays: 858,
+      decedentsWithSkilledVisitInLastTwoDays: 876,
       rule: r.metric_03,
     });
     expect(ssviPointsOf(ok)).toBe(0);
   });
 
-  it("metric 4: ≥ 47.5% live discharges", () => {
+  it("metric 4: ≥ 47.0% live discharges", () => {
     const pt = (live: number) =>
       ssviPointsOf(
         computeSsviMetric04({
@@ -139,11 +140,11 @@ describe("SSVI binary metrics — the point is earned on the CONCERN side, inclu
           rule: r.metric_04,
         }),
       );
-    expect(pt(95)).toBe(1);
-    expect(pt(94)).toBe(0);
+    expect(pt(94)).toBe(1);
+    expect(pt(93)).toBe(0);
   });
 
-  it("metric 5: ≥ 33.2% of discharges with LOS > 180 days", () => {
+  it("metric 5: ≥ 33.3% of discharges with LOS > 180 days", () => {
     const pt = (n: number) =>
       ssviPointsOf(
         computeSsviMetric05({
@@ -153,25 +154,25 @@ describe("SSVI binary metrics — the point is earned on the CONCERN side, inclu
           rule: r.metric_05,
         }),
       );
-    expect(pt(332)).toBe(1);
-    expect(pt(331)).toBe(0);
+    expect(pt(333)).toBe(1);
+    expect(pt(332)).toBe(0);
   });
 
-  it("metric 6: ≤ 9.8 skilled-nursing minutes per RHC day, decided in minutes, stored ÷ 1440", () => {
+  it("metric 6: ≤ 9.9 skilled-nursing minutes per RHC day, decided in minutes, stored ÷ 1440", () => {
     const low = computeSsviMetric06({
       ...BASE,
       totalRhcDays: 10,
-      skilledNursingMinutesOnRhcDays: 98,
+      skilledNursingMinutesOnRhcDays: 99,
       rule: r.metric_06,
     });
     expect(ssviPointsOf(low)).toBe(1);
-    expect(low.rate).toBeCloseTo(9.8 / 1440);
-    expect(low.thresholdValue).toBeCloseTo(9.8 / 1440);
-    expect(low.computationSnapshot.meanSkilledNursingMinutesPerRhcDay).toBeCloseTo(9.8);
+    expect(low.rate).toBeCloseTo(9.9 / 1440);
+    expect(low.thresholdValue).toBeCloseTo(9.9 / 1440);
+    expect(low.computationSnapshot.meanSkilledNursingMinutesPerRhcDay).toBeCloseTo(9.9);
     const ok = computeSsviMetric06({
       ...BASE,
       totalRhcDays: 10,
-      skilledNursingMinutesOnRhcDays: 99,
+      skilledNursingMinutesOnRhcDays: 100,
       rule: r.metric_06,
     });
     expect(ssviPointsOf(ok)).toBe(0);
@@ -191,18 +192,18 @@ describe("SSVI binary metrics — the point is earned on the CONCERN side, inclu
     expect(pt(49)).toBe(0);
   });
 
-  it("metric 8: ≥ 15% of live discharges back within 7 days", () => {
+  it("metric 8: ≥ 18.2% of live discharges back within 7 days", () => {
     const pt = (n: number) =>
       ssviPointsOf(
         computeSsviMetric08({
           ...BASE,
-          liveDischarges: 100,
+          liveDischarges: 1000,
           liveDischargesReadmittedWithin7Days: n,
           rule: r.metric_08,
         }),
       );
-    expect(pt(15)).toBe(1);
-    expect(pt(14)).toBe(0);
+    expect(pt(182)).toBe(1);
+    expect(pt(181)).toBe(0);
   });
 
   it("an empty population is insufficient_n and earns NO point", () => {
