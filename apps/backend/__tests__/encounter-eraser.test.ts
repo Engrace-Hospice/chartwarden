@@ -25,6 +25,7 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
 
   it("shreds the HearthNote cipher columns first, tombstones the root, deletes the encounter subtree, reports the total", async () => {
     const { store, tombstoned, cryptoErased } = makeEraseStore({
+      tombstonedRoots: 2,
       signatures: 2,
       addenda: 1,
       carePlanLinks: 3,
@@ -40,8 +41,9 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       addendumCosignatureRequests: 1,
     });
     const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
-    expect(erased).toBe(32);
+    expect(erased).toBe(34); // 32 satellites + 2 tombstoned roots
     expect(counts.vitals).toBe(4);
+    expect(counts.tombstonedRoots).toBe(2);
     // ADR-0114: the draft's confirmations and the sealed per-section rows go with the rest of the encounter subtree.
     expect(counts.draftConfirmations).toBe(3);
     expect(counts.signedSections).toBe(6);
@@ -53,12 +55,32 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
   });
 
   it("is idempotent — a second erase removes nothing", async () => {
-    const { store } = makeEraseStore({ signatures: 2, vitals: 1 });
-    expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(3);
+    const { store } = makeEraseStore({ tombstonedRoots: 1, signatures: 2, vitals: 1 });
+    expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(4);
     expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(0);
   });
 
-  it("shreds, then scrubs the root's text, then deletes the satellites — a failed tombstone leaves the satellites for a retry", async () => {
+  it("counts a tombstoned root even when it had no satellites, so the first run's certificate never reports 0 for a voided record", async () => {
+    const { store } = makeEraseStore({ tombstonedRoots: 3 });
+    const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
+    expect(counts.tombstonedRoots).toBe(3);
+    expect(erased).toBe(3);
+  });
+
+  it("refuses before any write unless the connection is the destruction role, and changes nothing", async () => {
+    const { store, tombstoned, cryptoErased } = makeEraseStore(
+      { tombstonedRoots: 1, signatures: 2 },
+      { destructionRole: false },
+    );
+    await expect(eraseEncounterRecord("org_a", "pat_1", store)).rejects.toMatchObject({
+      code: "DEGRADED",
+      statusCode: 503,
+    });
+    expect(cryptoErased).toEqual([]); // nothing shredded
+    expect(tombstoned).toEqual([]); // nothing tombstoned
+  });
+
+  it("checks the role, then shreds, then scrubs the root's text, then deletes the satellites — a failed tombstone leaves the satellites for a retry", async () => {
     const calls: string[] = [];
     const none: EncounterEraseCounts = {
       signatures: 0,
@@ -76,15 +98,19 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       addendumCosignatureRequests: 0,
     };
     const store = {
+      assertDestructionRole: async () => void calls.push("role"),
       cryptoEraseHearthnote: async () => void calls.push("shred"),
-      tombstoneEncounters: async () => void calls.push("tombstone"),
+      tombstoneEncounters: async () => {
+        calls.push("tombstone");
+        return 0;
+      },
       eraseEncounterSubtree: async () => {
         calls.push("delete");
         return none;
       },
     };
     await eraseEncounterRecord("org_a", "pat_1", store);
-    expect(calls).toEqual(["shred", "tombstone", "delete"]);
+    expect(calls).toEqual(["role", "shred", "tombstone", "delete"]);
   });
 
   it("the tombstone placeholder clears the longest reason-length CHECK floor (the live suite proves the CHECKs themselves)", () => {
