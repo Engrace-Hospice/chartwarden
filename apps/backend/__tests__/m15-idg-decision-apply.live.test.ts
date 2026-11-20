@@ -1146,6 +1146,55 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
       expect(sealed).toContain(SUD_IV_TEXT);
     });
 
+    it("a signature row records the role key the signer held: a plain RN fills the Aide POC's RN slot, the CHHA the acknowledgment (migration 1527)", async () => {
+      const plan = await seedPlan(ORG_A, { kind: "aide_poc" });
+      // An Aide POC cannot be finalized before it names its aide and supervising RN.
+      await admin.query(
+        `UPDATE discipline_care_plan SET aide_membership_id=$2, supervising_rn_membership_id=$3 WHERE id=$1`,
+        [plan.planId, randomUUID(), randomUUID()],
+      );
+      const versionId = (
+        await admin.query(
+          `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
+             sequence, status, kind, state_snapshot) VALUES ($1,$2,$3,$4,1,'draft','initial','{}'::jsonb)
+           RETURNING id`,
+          [ORG_A, peOf[ORG_A], locationOf[ORG_A], plan.planId],
+        )
+      ).rows[0].id as string;
+      await write().finalizeVersion(writeActor(), plan.planId, versionId, { expectedVersion: 0 });
+      const userActor = (roles: readonly string[]) => ({
+        organizationId: ORG_A,
+        userId: USER,
+        membershipId: randomUUID(),
+        roles,
+        sessionClass: "staff",
+        actorKind: "user" as const,
+        locationIds: [locationOf[ORG_A]],
+        stepUpRecent: true,
+      });
+      for (const [roles, slot] of [
+        [["rn"], "rn_case_manager"],
+        [["chha"], "chha_acknowledgment"],
+      ] as const) {
+        await write().signVersion(userActor(roles), plan.planId, versionId, {
+          expectedVersion: null,
+          signerRole: slot,
+          attestationText: "Synthetic attestation",
+        });
+      }
+      const rows = (
+        await admin.query(
+          `SELECT signer_role, held_role_key, is_acknowledgment FROM discipline_care_plan_signature
+            WHERE version_id=$1 ORDER BY signer_role`,
+          [versionId],
+        )
+      ).rows;
+      expect(rows).toEqual([
+        { signer_role: "chha_acknowledgment", held_role_key: "chha", is_acknowledgment: true },
+        { signer_role: "rn_case_manager", held_role_key: "rn", is_acknowledgment: false },
+      ]);
+    });
+
     it("a Part 2 goal edit is NOT FOUND for a caller without disclosure: before the version check, and identical to a missing goal", async () => {
       const plan = await seedPlan(ORG_A);
       const missing = await write()

@@ -37,7 +37,7 @@ import {
 } from "../consumers/index";
 import {
   DisciplinePlanStateError,
-  actorHoldsSignerRole,
+  heldSignerRoleKey,
   checkAuthoringDiscipline,
   checkDpoaGoalConsent,
   checkGoalTextVerbatim,
@@ -621,10 +621,11 @@ export function buildDrizzleM15WriteService(
         // GAP-045 — the claimed slot is a BODY field; bind it to the AUTHENTICATED actor. The role must be
         // one the actor holds (the system actor, which holds none by design, is exempt) and one membership
         // fills at most ONE slot per version, so a single person can never satisfy a multi-signer quorum.
-        if (
-          actor.kind !== "system" &&
-          !actorHoldsSignerRole(actor.roles, input.signerRole, plan.kind as DisciplinePlanKind)
-        ) {
+        const heldRoleKey =
+          actor.kind === "system"
+            ? null
+            : heldSignerRoleKey(actor.roles, input.signerRole, plan.kind as DisciplinePlanKind);
+        if (actor.kind !== "system" && heldRoleKey === null) {
           throw new DisciplinePlanStateError(
             "SIGNER_ROLE_MISMATCH",
             "the caller does not hold the requested signer role",
@@ -662,6 +663,9 @@ export function buildDrizzleM15WriteService(
             // The signer is the SERVER-assembled acting membership — never a body field (§8.6 spoofing).
             signerMembershipId: actor.membershipId,
             signerRole: input.signerRole,
+            // The role key the signer held at sign time (the slot name alone cannot tell a case manager from
+            // a plain RN, and role grants change): null only for the system actor.
+            heldRoleKey,
             isAcknowledgment: decision.isAcknowledgment,
             signedAt: new Date(now()),
             attestationText: input.attestationText,

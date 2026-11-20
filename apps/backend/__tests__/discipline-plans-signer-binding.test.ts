@@ -262,6 +262,43 @@ describe("M15 signVersion — the signer role is bound to the authenticated acto
     expect(inserted[0]).toMatchObject({ signerRole: "rn_case_manager", isAcknowledgment: false });
   });
 
+  it("records the role key the signer actually held, not only the slot it filled", async () => {
+    const aideSet = [
+      { role: "rn_case_manager", count: 1, isAcknowledgment: false },
+      { role: "chha_acknowledgment", count: 1, isAcknowledgment: true },
+    ];
+    const signAs = async (roles: readonly string[], slot: string, kind = "aide_poc") => {
+      inserted = [];
+      await service([], aideSet, undefined, kind)
+        .signVersion(actor("m1", roles), PLAN, VERSION, sign(slot))
+        .catch(() => undefined);
+      return inserted[0];
+    };
+    // A plain RN fills the case-manager slot: the slot name says rn_case_manager, the held key says rn.
+    expect(await signAs(["rn"], "rn_case_manager")).toMatchObject({
+      signerRole: "rn_case_manager",
+      heldRoleKey: "rn",
+    });
+    // A holder of both keys is recorded under the slot's own key.
+    expect(await signAs(["rn", "rn_case_manager"], "rn_case_manager")).toMatchObject({
+      heldRoleKey: "rn_case_manager",
+    });
+    // The acknowledgment slot is held through the chha key.
+    expect(await signAs(["chha"], "chha_acknowledgment")).toMatchObject({ heldRoleKey: "chha" });
+  });
+
+  it("records no held role key for the system actor (it holds no role by design)", async () => {
+    await service()
+      .signVersion(
+        systemM15Actor(ORG, { userId: "sys", membershipId: "sysm" }),
+        PLAN,
+        VERSION,
+        sign("msw"),
+      )
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({ heldRoleKey: null });
+  });
+
   it("exempts the explicit system actor from the role check (internal callers hold no roles)", async () => {
     await service()
       .signVersion(

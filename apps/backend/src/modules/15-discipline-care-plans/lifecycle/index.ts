@@ -40,6 +40,7 @@ export {
 export {
   checkQuorumSatisfied,
   actorHoldsSignerRole,
+  heldSignerRoleKey,
   decideRecordSignature,
   isQuorumMet,
   resolveRequiredSignerSet,

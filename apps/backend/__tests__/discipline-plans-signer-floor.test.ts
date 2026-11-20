@@ -3,7 +3,7 @@
 // `discipline_plan.finalize` could seal `[]` (an unsignable version) or drop the CHHA acknowledgment / the MSW slot and sign
 // the rest alone. Pure core: `resolveTightenedSignerSet` and the finalize transition that seals it.
 import { requiredSignersFor } from "@chartwarden/discipline-plans";
-import type { DisciplineRequiredSignerSet } from "@chartwarden/types";
+import type { DisciplineRequiredSignerSet, DisciplineSignerRole } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   resolveRequiredSignerSet,
@@ -22,9 +22,8 @@ const refused = (floor: DisciplineRequiredSignerSet, requested: DisciplineRequir
   );
 
 describe("resolveTightenedSignerSet", () => {
-  it("accepts the floor itself, a raised count and an added known slot", () => {
+  it("accepts the floor itself and an added known slot", () => {
     expect(resolveTightenedSignerSet(AIDE_FLOOR, [rn, chha])).toEqual([rn, chha]);
-    expect(resolveTightenedSignerSet(AIDE_FLOOR, [{ ...rn, count: 2 }, chha])).toHaveLength(2);
     expect(resolveTightenedSignerSet(AIDE_FLOOR, [rn, chha, msw])).toHaveLength(3);
   });
 
@@ -42,7 +41,16 @@ describe("resolveTightenedSignerSet", () => {
   it("refuses a count below the floor, a repeated role and an unknown role", () => {
     refused(AIDE_FLOOR, [{ ...rn, count: 0 }, chha]);
     refused(AIDE_FLOOR, [rn, rn, chha]);
-    refused(AIDE_FLOOR, [rn, chha, { role: "janitor", count: 1, isAcknowledgment: false }]);
+    refused(AIDE_FLOOR, [
+      rn,
+      chha,
+      { role: "janitor" as unknown as DisciplineSignerRole, count: 1, isAcknowledgment: false },
+    ]);
+  });
+
+  it("refuses a count above one: a signer role fills one slot per version (unique index), so it could never be met", () => {
+    refused(AIDE_FLOOR, [{ ...rn, count: 2 }, chha]);
+    refused(AIDE_FLOOR, [rn, chha, { ...msw, count: 3 }]);
   });
 
   it("lets any known set stand over an empty floor (the system-signed discharge version)", () => {

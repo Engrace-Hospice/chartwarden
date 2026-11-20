@@ -34,6 +34,10 @@ export const disciplineCarePlanSignature = pgTable(
 
     signerMembershipId: uuid("signer_membership_id").notNull(), // logical FK → M2 membership
     signerRole: text("signer_role").notNull(), // DisciplineSignerRole (@chartwarden/types)
+    // The M3 role key the signer HELD when signing (migration 1527): the slot name alone cannot tell the Aide POC's RN
+    // case manager from a plain care-team RN, and a grant can change after the fact. Null on rows signed before 1527
+    // and on a system-actor signature (which holds no role by design).
+    heldRoleKey: text("held_role_key"),
     // §3.5 D11: the CHHA Aide-POC row acknowledges, it does not cosign. Spec §3.3 typed this `text`
     // defaulting to 'false' — a slip; the repo convention (and the semantics) is a real boolean.
     isAcknowledgment: boolean("is_acknowledgment").notNull().default(false),

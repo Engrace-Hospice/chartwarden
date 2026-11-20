@@ -34,10 +34,15 @@ const KNOWN_SIGNER_ROLES: ReadonlySet<string> = new Set(
   ),
 );
 
+/** A signer role fills ONE slot per version (unique index `discipline_care_plan_signature_version_role_uq`), so a slot that
+ *  asks for more than one signature could never be met and would leave the version in `in_review` for good. */
+const MAX_SLOT_COUNT = 1;
+
 /**
- * §3.5 D11 — a tenant may TIGHTEN the floor quorum (add a known slot, raise a count) but never loosen it. Every floor slot
- * must be covered by a requested slot of the same role and acknowledgment flag with at least its count, each role appears
- * once, and every role is one a signer can fill. Throws `INSUFFICIENT_SIGNERS` (412); returns the set to seal.
+ * §3.5 D11 — a tenant may TIGHTEN the floor quorum (add a known slot) but never loosen it. Every floor slot must be
+ * covered by a requested slot of the same role and acknowledgment flag, each role appears once, every role is one a signer
+ * can fill, and no slot asks for more signatures than one role can give. Throws `INSUFFICIENT_SIGNERS` (412); returns the
+ * set to seal.
  */
 export function resolveTightenedSignerSet(
   floor: DisciplineRequiredSignerSet,
@@ -45,9 +50,11 @@ export function resolveTightenedSignerSet(
 ): DisciplineRequiredSignerSet {
   const roles = requested.map((slot) => slot.role);
   require_(
-    new Set(roles).size === roles.length && roles.every((role) => KNOWN_SIGNER_ROLES.has(role)),
+    new Set(roles).size === roles.length &&
+      roles.every((role) => KNOWN_SIGNER_ROLES.has(role)) &&
+      requested.every((slot) => slot.count <= MAX_SLOT_COUNT),
     "INSUFFICIENT_SIGNERS",
-    "the requested required-signer set repeats a role or names one no signer can fill",
+    "the requested required-signer set repeats a role, names one no signer can fill or asks for more than one signature per role",
   );
   for (const slot of floor) {
     require_(
@@ -167,17 +174,27 @@ const SIGNER_ROLE_KEY_ALIASES: Readonly<Record<string, string>> = {
 const AIDE_POC_RN_SLOT_ROLE_KEYS: ReadonlyArray<string> = ["rn_case_manager", "rn"];
 
 /**
- * GAP-045 — whether the authenticated actor's `roles` include the role the claimed signer slot needs. The plan kind
- * matters because the RN slot is wider on an Aide POC than on the MSW and volunteer plans.
+ * GAP-045 — the role key, among those that fill the claimed signer slot, the authenticated actor holds (the slot's own key
+ * first), or null when it holds none. The plan kind matters because the RN slot is wider on an Aide POC than on the MSW and
+ * volunteer plans. This is what the signature row records: the slot name alone cannot tell a case manager from a plain RN.
  */
+export function heldSignerRoleKey(
+  actorRoles: ReadonlyArray<string>,
+  signerRole: string,
+  planKind: DisciplinePlanKind,
+): string | null {
+  const keys =
+    signerRole === "rn_case_manager" && planKind === "aide_poc"
+      ? AIDE_POC_RN_SLOT_ROLE_KEYS
+      : [SIGNER_ROLE_KEY_ALIASES[signerRole] ?? signerRole];
+  return keys.find((key) => actorRoles.includes(key)) ?? null;
+}
+
+/** Whether the authenticated actor's `roles` include a role that fills the claimed signer slot (GAP-045). */
 export function actorHoldsSignerRole(
   actorRoles: ReadonlyArray<string>,
   signerRole: string,
   planKind: DisciplinePlanKind,
 ): boolean {
-  const keys =
-    signerRole === "rn_case_manager" && planKind === "aide_poc"
-      ? AIDE_POC_RN_SLOT_ROLE_KEYS
-      : [SIGNER_ROLE_KEY_ALIASES[signerRole] ?? signerRole];
-  return keys.some((key) => actorRoles.includes(key));
+  return heldSignerRoleKey(actorRoles, signerRole, planKind) !== null;
 }
