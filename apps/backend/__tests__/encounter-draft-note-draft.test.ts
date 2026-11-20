@@ -11,11 +11,18 @@ import {
   readNoteDraft,
 } from "../src/modules/08-encounters/drafting/note-draft";
 import { EncounterStateError } from "../src/modules/08-encounters/lifecycle/errors";
-import { NOW, carePlan, change, fakePorts, viewer } from "./_encounter-draft-fixtures";
+import {
+  NOW,
+  carePlan,
+  change,
+  fakePorts,
+  reader,
+  selectionFor,
+} from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
 const encounter = draftEncounterRow();
-const AUTHOR = viewer();
+const AUTHOR = reader();
 /** The store port owns the previous visit: with one, the medication change since it is drafted into `interventions`. */
 const WITH_PREVIOUS = { previous: new Date("2026-11-10T15:00:00.000Z") };
 const MEMBER = "00000000-0000-4000-8000-0000000000aa";
@@ -42,7 +49,7 @@ const seams = (over: Parameters<typeof fakePorts>[0] = {}) =>
 async function read(
   options: Parameters<typeof memoryRunInOrg>[0] = {},
   seamPorts = seams(),
-  who = viewer({ roles: ["rn", "part2"] }),
+  who = reader({ roles: ["rn", "part2"] }),
   confirm: (
     unit: ReturnType<typeof memoryRunInOrg>["unit"],
     hashes: Hashes,
@@ -171,7 +178,7 @@ describe("readNoteDraft: the signer's draft against the confirmations", () => {
 
   it("the signer's own redaction decides: the author's confirmation of content the signer cannot see is stale for the signer", async () => {
     // The author holds the Part 2 disclosure and confirmed the section with the SUD medication change in it.
-    const author = await read({}, seams(), viewer({ roles: ["rn", "part2"] }), confirmAll());
+    const author = await read({}, seams(), reader({ roles: ["rn", "part2"] }), confirmAll());
     expect(author.result?.actions).toEqual([]);
     // The signer does not: the same section, recomputed for the signer, reads differently.
     const harness = memoryRunInOrg(WITH_PREVIOUS);
@@ -180,7 +187,7 @@ describe("readNoteDraft: the signer's draft against the confirmations", () => {
       for (const [id, seen] of Object.entries(author.hashes)) {
         await unit.store.saveConfirmation(confirmation(id, "confirmed", seen));
       }
-      return readNoteDraft(unit, seams(), encounter, viewer({ roles: ["rn"] }), NOW);
+      return readNoteDraft(unit, seams(), encounter, reader({ roles: ["rn"] }), NOW);
     });
     expect(signer?.actions).toEqual([{ sectionId: "interventions", reason: "stale" }]);
   });
@@ -287,5 +294,67 @@ describe("confirmedSectionIds: what gate check 1 counts as populated (owner-conf
       );
     });
     expect([...(confirmedSectionIds(result) ?? [])]).toEqual(["plan"]);
+  });
+});
+
+describe("readNoteDraft: the admission's read keys of a recertification or face-to-face draft (ADR-0114 S2)", () => {
+  const RECERT_KEYS = ["election.read", "cti.read", "f2f.read", "loc.read"];
+  const recert = draftEncounterRow({ encounterType: "recert_visit", discipline: "rn" });
+  const faceToFace = draftEncounterRow({ encounterType: "face_to_face", discipline: "md" });
+
+  /** The recompute finalize, sign and an addendum's finalize and sign make, for a reader holding `keys`. */
+  function recompute(
+    enc: DraftEncounterRow,
+    keys: readonly string[],
+    enabled = true,
+  ): { sources: ReturnType<typeof seams>; result: Promise<unknown> } {
+    const harness = memoryRunInOrg({
+      ...WITH_PREVIOUS,
+      encounter: enc,
+      enabled,
+      selection: selectionFor(enc.encounterType, enc.discipline),
+    });
+    const sources = seams();
+    const scope = { organizationId: enc.organizationId, userId: "u", now: NOW };
+    const result = harness.runInOrg(scope, (unit) =>
+      readNoteDraft(unit, sources, enc, reader({ permissions: new Set(keys) }), NOW),
+    );
+    return { sources, result };
+  }
+
+  it.each(RECERT_KEYS)(
+    "refuses a recertification's recompute to a reader who lacks %s, naming it, before any source is read",
+    async (missing) => {
+      const { sources, result } = recompute(
+        recert,
+        RECERT_KEYS.filter((key) => key !== missing),
+      );
+      await expect(result).rejects.toMatchObject({ statusCode: 403 });
+      await expect(result).rejects.toThrow(missing);
+      expect(sources.electionPeriods).not.toHaveBeenCalled();
+      expect(sources.carePlanAsOf).not.toHaveBeenCalled();
+    },
+  );
+
+  it("recomputes a recertification for a reader who holds all four", async () => {
+    expect(await recompute(recert, RECERT_KEYS).result).not.toBeNull();
+  });
+
+  it("needs only the benefit period's key for a face-to-face visit", async () => {
+    expect(await recompute(faceToFace, ["election.read"]).result).not.toBeNull();
+    await expect(
+      recompute(faceToFace, ["cti.read", "f2f.read", "loc.read"]).result,
+    ).rejects.toMatchObject({
+      statusCode: 403,
+    });
+  });
+
+  it("asks for no key when the tenant switch is off: the draft is off and finalize and sign are what they were", async () => {
+    expect(await recompute(recert, [], false).result).toBeNull();
+  });
+
+  it("asks a routine visit for none of them", async () => {
+    const { result } = recompute(encounter, []);
+    expect(await result).not.toBeNull();
   });
 });

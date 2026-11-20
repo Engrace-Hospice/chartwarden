@@ -1,4 +1,10 @@
-import { hasOrgWideScope, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import {
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+  resolveActorPermissions,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/08-encounters/routes/encounters-routes.ts — M8-T09 the §4.1 route inventory
 // (34 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth,
 // M3) on the §4.5 keys M8 registers into M3's catalog (M8_CONTRIBUTED_PERMISSIONS). Org binding is
@@ -119,6 +125,17 @@ function signingActorOf(request: FastifyRequest): SigningActor {
     roles: ctx.roles ?? [],
     ...(userId !== undefined ? { userId } : {}),
   };
+}
+
+/**
+ * The caller's permission keys, resolved from the whole request context as `requirePermission` resolves them. The routes that RECOMPUTE a
+ * visit-note draft (finalize, sign, an addendum's finalize and sign) pass them on: the draft of a template that reads the admission's facts
+ * (M6) asks the same read keys the draft routes do, so a refusal list never tells a caller what the admission holds that they cannot read.
+ */
+async function permissionsOf(request: FastifyRequest): Promise<ReadonlySet<string>> {
+  const context = request.context;
+  if (!context) throw new UnauthorizedError();
+  return resolveActorPermissions(context);
 }
 
 /** The member acting as the visit-note draft and the signed-note view see them (ADR-0114): the session's roles and active membership, never the body. */
@@ -735,7 +752,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const body = parse(FinalizeEncounterSchema, request.body ?? {});
       return service.finalize(organizationId, encounterIdOf(request), today(), {
         lateEntryReason: body.lateEntryReason,
-        viewer: draftViewerOf(request),
+        viewer: { ...draftViewerOf(request), permissions: await permissionsOf(request) },
         actorUserId: actorUserIdOf(request),
       });
     },
@@ -782,7 +799,8 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const body = parse(SignEncounterSchema, request.body); // the attestation-confirmed shape
-      return service.sign(organizationId, encounterIdOf(request), signingActorOf(request), {
+      const signer = { ...signingActorOf(request), permissions: await permissionsOf(request) };
+      return service.sign(organizationId, encounterIdOf(request), signer, {
         at: today(),
         lateEntryReason: body.lateEntryReason,
         visitModality: body.visitModality,
@@ -1049,6 +1067,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       return service.finalizeAddendum(organizationId, encounterId, addendumId, {
         ...draftViewerOf(request),
         userId: actorUserIdOf(request),
+        permissions: await permissionsOf(request),
       });
     },
   );
@@ -1072,7 +1091,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         organizationId,
         encounterId,
         addendumId,
-        signingActorOf(request),
+        { ...signingActorOf(request), permissions: await permissionsOf(request) },
         { at: today(), audit: auditContextOf(request) },
       );
     },

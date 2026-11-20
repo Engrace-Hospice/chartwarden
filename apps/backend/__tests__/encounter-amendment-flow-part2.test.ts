@@ -33,7 +33,12 @@ const ORG = "00000000-0000-4000-8000-000000000001";
 const PATIENT = "00000000-0000-4000-8000-000000000002";
 const ENCOUNTER = "00000000-0000-4000-8000-000000000004";
 const ADDENDUM = "00000000-0000-4000-8000-0000000000ad";
-const AUTHOR = { roles: ["rn"], membershipId: "00000000-0000-4000-8000-0000000000aa" };
+const AUTHOR = {
+  roles: ["rn"],
+  membershipId: "00000000-0000-4000-8000-0000000000aa",
+  // a routine visit's draft needs none of M6's read keys
+  permissions: new Set<string>(),
+};
 const addendum = {
   id: ADDENDUM,
   organizationId: ORG,

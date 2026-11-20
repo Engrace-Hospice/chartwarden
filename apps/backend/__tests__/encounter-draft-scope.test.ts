@@ -13,7 +13,7 @@ import { computeDraftOverview } from "../src/modules/08-encounters/drafting/comp
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
 import { assertResolved, readNoteDraft } from "../src/modules/08-encounters/drafting/note-draft";
 import { createNoteDraftFlow } from "../src/modules/08-encounters/drafting/note-draft-flow";
-import { NOW, fakePorts, viewer } from "./_encounter-draft-fixtures";
+import { NOW, fakePorts, reader, viewer } from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
 type Pair = readonly [EncounterType, EncounterDiscipline];
@@ -86,7 +86,7 @@ describe("the gate and sign read nothing for a template the corpus does not draf
       const { unit, store, enabled } = brokenUnit();
       const seams = brokenSeams();
       const encounter = draftEncounterRow({ encounterType: pair[0], discipline: pair[1] });
-      const read = await readNoteDraft(unit, seams, encounter, viewer(), NOW);
+      const read = await readNoteDraft(unit, seams, encounter, reader(), NOW);
       expect(read).toBeNull();
       expect(() => assertResolved(read)).not.toThrow();
       expectNoSourceRead(seams, store);
@@ -115,7 +115,7 @@ describe("the gate and sign read nothing for a template the corpus does not draf
       providerEntityId: null,
       locationId: null,
     };
-    const draft = await flow.read(tx, encounter, viewer());
+    const draft = await flow.read(tx, encounter, reader());
     expect(draft).toBeNull();
     expect(flow.narrativeOf(draft)).toBeUndefined();
     await expect(flow.sealSigned(tx, encounter, draft)).resolves.toBeUndefined();
@@ -129,7 +129,7 @@ describe("the gate and sign read nothing for a template the corpus does not draf
       encounterType: "routine_visit",
       discipline: "volunteer",
     });
-    await expect(readNoteDraft(unit, brokenSeams(), encounter, viewer(), NOW)).resolves.toBeNull();
+    await expect(readNoteDraft(unit, brokenSeams(), encounter, reader(), NOW)).resolves.toBeNull();
   });
 });
 

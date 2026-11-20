@@ -13,6 +13,7 @@ import { type Mock, vi } from "vitest";
 import type {
   DraftEncounter,
   DraftPorts,
+  DraftReader,
   DraftViewer,
 } from "../src/modules/08-encounters/drafting/ports";
 
@@ -44,6 +45,11 @@ export const viewer = (over: Partial<DraftViewer> = {}): DraftViewer => ({
   membershipId: "00000000-0000-4000-8000-0000000000aa",
   ...over,
 });
+
+/** A viewer with the permissions a draft RECOMPUTE (finalize, sign, an addendum's) asks for: none unless a test gives some. */
+export const reader = (
+  over: Partial<DraftViewer> & { readonly permissions?: ReadonlySet<string> } = {},
+): DraftReader => ({ ...viewer(over), permissions: over.permissions ?? new Set<string>() });
 
 export const point = (id: string, capturedAt: string, score: number | null): ScaleSeriesPoint => ({
   assessmentId: id as never,

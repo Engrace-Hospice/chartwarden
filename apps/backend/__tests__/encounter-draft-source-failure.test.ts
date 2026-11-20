@@ -15,6 +15,7 @@ import {
   carePlan,
   change,
   fakePorts,
+  reader,
   selectionFor,
   viewer,
 } from "./_encounter-draft-fixtures";
@@ -82,7 +83,7 @@ describe("an RN routine visit whose source fails", () => {
     it(`${source}: the gate and sign read is COMPLIANCE_GATE_UNAVAILABLE (503), never a pass`, async () => {
       const { seams, runInOrg } = harness(source, outage);
       const error = await runInOrg(scope, (unit) =>
-        readNoteDraft(unit, seams, encounter, viewer(), NOW),
+        readNoteDraft(unit, seams, encounter, reader(), NOW),
       ).catch((e: unknown) => e);
       expect(error).toMatchObject({ code: "COMPLIANCE_GATE_UNAVAILABLE", statusCode: 503 });
       expect((error as Error).message).not.toContain("synthetic upstream outage");
@@ -104,7 +105,7 @@ describe("an RN routine visit whose source never answers", () => {
   for (const source of SOURCES) {
     it(`${source}: the gate and sign read gives up after the bound with COMPLIANCE_GATE_UNAVAILABLE`, async () => {
       const { seams, runInOrg } = harness(source, hang);
-      const read = runInOrg(scope, (unit) => readNoteDraft(unit, seams, encounter, viewer(), NOW));
+      const read = runInOrg(scope, (unit) => readNoteDraft(unit, seams, encounter, reader(), NOW));
       expect(await outcomeAfter(read, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
         code: "COMPLIANCE_GATE_UNAVAILABLE",
         statusCode: 503,
@@ -151,6 +152,10 @@ describe("an RN routine visit whose source never answers", () => {
 
 // ── S2: the recertification visit reads the admission's benefit period, level of care, face-to-face and certification (M6) and the weights ──
 const recertEncounter = draftEncounterRow({ encounterType: "recert_visit", discipline: "rn" });
+/** A reader holding the four M6 read keys a recertification draft needs (`assertMayReadAdmissionFacts`). */
+const ADMISSION_READER = reader({
+  permissions: new Set(["election.read", "cti.read", "f2f.read", "loc.read"]),
+});
 const RECERT_SEAM_SOURCES = [
   "electionPeriods",
   "levelOfCareOn",
@@ -191,7 +196,9 @@ describe("an RN recertification visit whose source fails", () => {
     it(`${source}: the gate and sign read is COMPLIANCE_GATE_UNAVAILABLE (503), and the draft read DRAFT_UNAVAILABLE (503)`, async () => {
       const gate = recertHarness(source, outage);
       const gateError = await gate
-        .runInOrg(scope, (unit) => readNoteDraft(unit, gate.seams, recertEncounter, viewer(), NOW))
+        .runInOrg(scope, (unit) =>
+          readNoteDraft(unit, gate.seams, recertEncounter, ADMISSION_READER, NOW),
+        )
         .catch((e: unknown) => e);
       expect(gateError).toMatchObject({ code: "COMPLIANCE_GATE_UNAVAILABLE", statusCode: 503 });
       expect((gateError as Error).message).not.toContain("synthetic upstream outage");
@@ -224,7 +231,7 @@ describe("an RN recertification visit whose source never answers", () => {
     it(`${source}: the gate and sign read gives up after the bound with COMPLIANCE_GATE_UNAVAILABLE`, async () => {
       const { seams, runInOrg } = recertHarness(source, hang);
       const read = runInOrg(scope, (unit) =>
-        readNoteDraft(unit, seams, recertEncounter, viewer(), NOW),
+        readNoteDraft(unit, seams, recertEncounter, ADMISSION_READER, NOW),
       );
       expect(await outcomeAfter(read, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
         code: "COMPLIANCE_GATE_UNAVAILABLE",

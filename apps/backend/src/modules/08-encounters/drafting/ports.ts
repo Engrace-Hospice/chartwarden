@@ -39,6 +39,14 @@ export interface DraftViewer {
   readonly membershipId: string | null;
 }
 
+/**
+ * A viewer with the permissions it holds: what every RECOMPUTE of a draft needs (the section routes, finalize, sign, an addendum's finalize and
+ * sign) to apply the admission read keys of the template's own draft (`assertMayReadAdmissionFacts`). Never request input.
+ */
+export interface DraftReader extends DraftViewer {
+  readonly permissions: ReadonlySet<string>;
+}
+
 /** The sources other modules own, read through their seams. Each answers for the VIEWER and as of an instant. */
 export interface DraftSeamPorts {
   /** M7 `CarePlanReader.relevantElementsAsOf`: redacts Part 2 per viewer itself. */
