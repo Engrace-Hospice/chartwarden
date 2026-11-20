@@ -14,6 +14,7 @@ import { buildServer } from "../src/bootstrap/index";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
 import { ENCOUNTER_ERASED_REASON } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
+  type EncounterEraseCounts,
   eraseEncounterRecord,
   createInMemoryEncounterEraseStore as makeEraseStore,
   registerEncounterErasers,
@@ -59,7 +60,7 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
 
   it("shreds, then scrubs the root's text, then deletes the satellites — a failed tombstone leaves the satellites for a retry", async () => {
     const calls: string[] = [];
-    const none = {
+    const none: EncounterEraseCounts = {
       signatures: 0,
       addenda: 0,
       carePlanLinks: 0,
@@ -69,6 +70,10 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       hearthnoteSelections: 0,
       hearthnoteAssembledOutputs: 0,
       hearthnoteLlmModifications: 0,
+      draftConfirmations: 0,
+      signedSections: 0,
+      amendments: 0,
+      addendumCosignatureRequests: 0,
     };
     const store = {
       cryptoEraseHearthnote: async () => void calls.push("shred"),

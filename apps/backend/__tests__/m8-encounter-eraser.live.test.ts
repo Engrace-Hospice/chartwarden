@@ -7,9 +7,13 @@
  * that has no CHECKs, so it never saw it: on a real database `eraseEncounterRecord` rolled back and a destruction never
  * completed. This suite runs the whole erase (crypto-erase, delete subtree, tombstone) through the Drizzle store over every
  * kind of root the product can hold, and proves what survives: the shell, never the text. The signed, cosign_pending and cosigned roots
- * each carry a Layer-2-involved and a Layer-2-off output. On a database that carries migrations 1521/1525 (the visit-note-drafting branch) a
- * signed note's ciphers are frozen, and only the shred sentinel the destruction role writes ("" for layer1/final and for a Layer-2-involved
- * layer2, NULL for a Layer-2-off layer2) may pass; without them these cases still prove the shred is status-agnostic.
+ * each carry a Layer-2-involved and a Layer-2-off output. Migrations 1521/1525 freeze a signed note's ciphers: only the shred sentinel the
+ * destruction role writes ("" for layer1/final and for a Layer-2-involved layer2, NULL for a Layer-2-off layer2) may pass.
+ *
+ * The four ADR-0114 visit-note tables (draft confirmations, sealed signed sections incl. amendment rows, amendments, addendum cosignature
+ * requests; migrations 1517/1518/1523) are seeded for every party in the order their guards allow (a section or confirmation is written
+ * while the note is still `finalized`, amendments while the addendum is a draft) and the full per-table count object is compared. The
+ * destruction role's DELETE grants, org-scoped policies and the absence of a BEFORE DELETE trigger on them are asserted from the catalog.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m8:eraser:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -23,6 +27,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ENCOUNTER_ERASED_REASON,
+  type EncounterEraseCounts,
   createDrizzleEncounterEraseStore,
   eraseEncounterRecord,
 } from "../src/modules/08-encounters/erasers/encounter-eraser";
@@ -38,6 +43,10 @@ const MARKER = "ERASE-MARKER-7Q3X";
 const KEPT_MARKER = "KEPT-MARKER-4Z8K";
 const SEALED = "v1.dek-1.bm9uY2U.dGFn.U0VZTlRIRVRJQy1DSVBIRVI"; // envelope-shaped, not real ciphertext
 const PIN = activeNarrativeVocabRelease(VOCAB_VERSION).id;
+/** A sealed section's / confirmation's SHA-256 shape (64 lowercase hex): what their CHECKs require; the value is synthetic. */
+const CONTENT_HASH = "ab".repeat(32);
+/** `source_refs` carries ids only, never text. */
+const SOURCE_REFS = (): string => JSON.stringify([{ kind: "vitals", id: randomUUID() }]);
 
 /** The five free-text columns the eraser must scrub, and every column it is allowed to change. */
 const REASON_COLUMNS = [
@@ -57,7 +66,10 @@ const CHANGED_COLUMNS = [
 
 type Row = Record<string, unknown>;
 
-/** Every table the eraser deletes from, keyed as the eraser reports its counts; each is reached from the patient through `encounter`. */
+/**
+ * Every table the eraser deletes from, keyed as the eraser reports its counts; each is reached from the patient through `encounter`.
+ * `satisfies` makes a count key the eraser gains and this suite does not seed a type error, not a silent gap.
+ */
 const OWNED_TABLES = {
   signatures: "encounter_signature",
   addenda: "encounter_addendum",
@@ -68,11 +80,26 @@ const OWNED_TABLES = {
   hearthnoteSelections: "hearthnote_selection",
   hearthnoteAssembledOutputs: "hearthnote_assembled_output",
   hearthnoteLlmModifications: "hearthnote_llm_modification",
-} as const;
+  draftConfirmations: "encounter_draft_confirmation",
+  signedSections: "hearthnote_signed_section",
+  amendments: "encounter_amendment",
+  addendumCosignatureRequests: "addendum_cosignature_request",
+} as const satisfies Record<keyof EncounterEraseCounts, string>;
 type OwnedKey = keyof typeof OWNED_TABLES;
 const OWNED_KEYS = Object.keys(OWNED_TABLES) as OwnedKey[];
+/** The ADR-0114 tables (1517/1518/1523), whose destruction-role grants, policies and delete path this suite proves from the catalog. */
+const VISIT_NOTE_KEYS = [
+  "draftConfirmations",
+  "signedSections",
+  "amendments",
+  "addendumCosignatureRequests",
+] as const satisfies readonly OwnedKey[];
 
-/** What `seedSatellites` plants per root: one of each, plus a second selection (addendum-scoped) and two more outputs (addendum-scoped, Layer-2-involved). */
+/**
+ * What `seedSatellites` plants per root: one of each, plus a second selection (addendum-scoped) and two more outputs (addendum-scoped,
+ * Layer-2-involved); two draft confirmations; four sealed sections (two originals under the primary pin, two amendment rows under the
+ * addendum's own output); the two sections the addendum names; one cosignature request of the amending addendum.
+ */
 const PER_ROOT: Record<OwnedKey, number> = {
   signatures: 1,
   addenda: 1,
@@ -83,19 +110,28 @@ const PER_ROOT: Record<OwnedKey, number> = {
   hearthnoteSelections: 2,
   hearthnoteAssembledOutputs: 3,
   hearthnoteLlmModifications: 1,
+  draftConfirmations: 2,
+  signedSections: 4,
+  amendments: 2,
+  addendumCosignatureRequests: 1,
 };
 
 /**
  * Roots seeded `signed`, `cosign_pending` and `cosigned`, each with SIGNED_OUTPUTS_PER_ROOT outputs: one Layer-2-involved, one
  * Layer-2-off. A signed note's ciphers are frozen by the database (migration 1521); only the destruction role's shred sentinel gets through.
+ * Each output carries one sealed section and the root one draft confirmation, written while the note was still `finalized` (1525).
  */
 const SIGNED_STATUSES = ["signed", "cosign_pending", "cosigned"] as const;
 const SIGNED_OUTPUTS_PER_ROOT = 2;
-/** What one party (the target, the other patient, the other tenant) holds: its `seedSatellites` rows plus `signedRoots` signed roots' outputs. */
+const SIGNED_SECTIONS_PER_ROOT = SIGNED_OUTPUTS_PER_ROOT;
+const SIGNED_CONFIRMATIONS_PER_ROOT = 1;
+/** What one party (the target, the other patient, the other tenant) holds: its `seedSatellites` rows plus `signedRoots` signed roots' rows. */
 const countsWithSignedRoots = (signedRoots: number): Record<OwnedKey, number> => ({
   ...PER_ROOT,
   hearthnoteAssembledOutputs:
     PER_ROOT.hearthnoteAssembledOutputs + signedRoots * SIGNED_OUTPUTS_PER_ROOT,
+  signedSections: PER_ROOT.signedSections + signedRoots * SIGNED_SECTIONS_PER_ROOT,
+  draftConfirmations: PER_ROOT.draftConfirmations + signedRoots * SIGNED_CONFIRMATIONS_PER_ROOT,
 });
 /** The target holds all three signed roots; the other patient and the other tenant hold one each. */
 const TARGET_COUNTS = countsWithSignedRoots(SIGNED_STATUSES.length);
@@ -116,20 +152,16 @@ const OWNED_SCOPE: Record<OwnedKey, string> = {
   hearthnoteSelections: HEARTHNOTE_SCOPE,
   hearthnoteAssembledOutputs: HEARTHNOTE_SCOPE,
   hearthnoteLlmModifications: `assembled_output_id IN (SELECT id FROM hearthnote_assembled_output WHERE ${HEARTHNOTE_SCOPE})`,
+  draftConfirmations: `encounter_id IN (${ENCOUNTERS_OF})`,
+  signedSections: `encounter_id IN (${ENCOUNTERS_OF})`,
+  amendments: `encounter_id IN (${ENCOUNTERS_OF})`,
+  addendumCosignatureRequests: `encounter_id IN (${ENCOUNTERS_OF})`,
 };
 
 const countsOf = (rows: Record<OwnedKey, Row[]>): Record<OwnedKey, number> =>
   Object.fromEntries(OWNED_KEYS.map((key) => [key, rows[key].length])) as Record<OwnedKey, number>;
 
 const NO_ROWS = Object.fromEntries(OWNED_KEYS.map((key) => [key, 0])) as Record<OwnedKey, number>;
-
-/**
- * The reported counts for the tables this suite seeds. A branch that gives the eraser more tables to delete from (signed sections, draft
- * confirmations, amendments, amendment cosignature requests) reports more keys. This suite seeds none of them, so it does NOT cover those
- * tables: when that branch lands, seed them here (FK delete order included) and drop this helper.
- */
-const seededCounts = (counts: Record<OwnedKey, number>): Record<OwnedKey, number> =>
-  Object.fromEntries(OWNED_KEYS.map((key) => [key, counts[key]])) as Record<OwnedKey, number>;
 
 /** A synthetic reason of at least `min` characters (the CHECK floors) that carries the marker. */
 const reason = (label: string, min: number, marker = MARKER): string =>
@@ -283,9 +315,66 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     );
 
   /**
-   * A root that ends `status` (signed, cosign_pending or cosigned) holding one Layer-2-involved and one Layer-2-off output. The outputs are
-   * pinned while the note is still `finalized` and the status flips after, the order sign itself uses: migration 1525 refuses a new pin under a
-   * signed encounter, and the shred is what has to cope with the frozen ciphers afterwards.
+   * A draft confirmation (1517). Its guard refuses an insert once the encounter is signed / cosign_pending / cosigned / voided, so a caller
+   * seeds it while the root is draft or finalized. The hash is 64 hex characters, the only shape the CHECK allows.
+   */
+  const seedConfirmation = (
+    org: "A" | "B",
+    encounterId: string,
+    sectionId: string,
+    resolution: "confirmed" | "deselected",
+  ): Promise<string> =>
+    insertId(
+      `INSERT INTO encounter_draft_confirmation (organization_id, provider_entity_id, location_id, encounter_id, section_id, resolution,
+         content_hash, corpus_version, edited, part2_derived, source_refs, resolved_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'synthetic-corpus-1',false,false,$8::jsonb,$9) RETURNING id`,
+      [
+        ...siteOf(org),
+        encounterId,
+        sectionId,
+        resolution,
+        CONTENT_HASH,
+        SOURCE_REFS(),
+        org === "A" ? author : authorB,
+      ],
+    );
+
+  /**
+   * A sealed section row (1518/1523). An ORIGINAL (no `amends`) is written while its encounter is still `finalized` (1525) under the
+   * encounter's own output; an AMENDMENT names a finalized addendum, that addendum's own output, and the original it amends (same section
+   * id and position).
+   */
+  const seedSignedSection = (
+    org: "A" | "B",
+    encounterId: string,
+    outputId: string,
+    sectionId: string,
+    position: number,
+    amends?: { addendumId: string; originalId: string },
+  ): Promise<string> =>
+    insertId(
+      `INSERT INTO hearthnote_signed_section (organization_id, provider_entity_id, location_id, encounter_id, assembled_output_id,
+         section_id, position, text_cipher, content_hash, part2_derived, source_refs, addendum_id, amends_section_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,false,$10::jsonb,$11,$12) RETURNING id`,
+      [
+        ...siteOf(org),
+        encounterId,
+        outputId,
+        sectionId,
+        position,
+        SEALED,
+        CONTENT_HASH,
+        SOURCE_REFS(),
+        amends?.addendumId ?? null,
+        amends?.originalId ?? null,
+      ],
+    );
+
+  /**
+   * A root that ends `status` (signed, cosign_pending or cosigned) holding one Layer-2-involved and one Layer-2-off output, each with a
+   * sealed section, and one draft confirmation. All of it is written while the note is still `finalized` and the status flips after, the order
+   * sign itself uses: migration 1525 refuses a new pin, sealed section or confirmation under a signed encounter, and the shred is what has to
+   * cope with the frozen ciphers afterwards.
    */
   async function seedSignedRootWithOutputs(
     org: "A" | "B",
@@ -305,8 +394,11 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       visit_modality_confirmed_at: "2026-01-15T18:00:00Z",
       visit_modality_confirmed_by: confirmer,
     });
-    await seedOutput(org, encounterId, null, "primary_finalize", true);
-    await seedOutput(org, encounterId, null, "primary_finalize", false);
+    const involvedOutput = await seedOutput(org, encounterId, null, "primary_finalize", true);
+    const offOutput = await seedOutput(org, encounterId, null, "primary_finalize", false);
+    await seedSignedSection(org, encounterId, involvedOutput, "subjective", 0);
+    await seedSignedSection(org, encounterId, offOutput, "subjective", 0);
+    await seedConfirmation(org, encounterId, "subjective", "confirmed");
     await admin.query("UPDATE encounter SET status = $2 WHERE id = $1", [encounterId, status]);
     // A cosigned note carries its cosignature time; the tombstone must leave it as it found it.
     if (status === "cosigned")
@@ -385,14 +477,64 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       );
     }
     // Assembled outputs: Layer 2 off under the encounter, Layer 2 off under the addendum, Layer 2 INVOLVED under the encounter.
-    await seedOutput(org, encounterId, null, "primary_finalize", false);
-    await seedOutput(org, null, addendumId, "addendum_finalize", false);
+    const primaryOutput = await seedOutput(org, encounterId, null, "primary_finalize", false);
+    const addendumOutput = await seedOutput(org, null, addendumId, "addendum_finalize", false);
     const layer2Output = await seedOutput(org, encounterId, null, "primary_finalize", true);
     await admin.query(
       `INSERT INTO hearthnote_llm_modification (organization_id, provider_entity_id, location_id, assembled_output_id, prompt_template_key,
          prompt_template_version, model_id, tokens_input, tokens_output, latency_ms, diff_json, called_by_membership_id)
        VALUES ($1,$2,$3,$4,'layer2_polish','1','synthetic-model',10,12,30,'{}'::jsonb,$5)`,
       [...site, layer2Output, member],
+    );
+
+    // ADR-0114, in the order the guards allow. The root is `finalized`, so its draft confirmations and its original sealed sections
+    // (written by sign, before the status flips) may still be inserted.
+    await seedConfirmation(org, encounterId, "subjective", "confirmed");
+    await seedConfirmation(org, encounterId, "plan", "deselected");
+    const originals = {
+      subjective: await seedSignedSection(org, encounterId, primaryOutput, "subjective", 0),
+      plan: await seedSignedSection(org, encounterId, primaryOutput, "plan", 1),
+    };
+    // VN-D30 amendments: the sections an addendum names are inserted while it is a draft; the amendment's sealed rows need it `finalized` and
+    // its own output; the author's resolution is written before it is signed (a signed addendum freezes its amendments).
+    for (const sectionId of ["subjective", "plan"]) {
+      await admin.query(
+        `INSERT INTO encounter_amendment (organization_id, provider_entity_id, location_id, encounter_id, addendum_id, section_id)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [...site, encounterId, addendumId, sectionId],
+      );
+    }
+    await admin.query("UPDATE encounter_addendum SET status = 'finalized' WHERE id = $1", [
+      addendumId,
+    ]);
+    for (const [sectionId, position] of [
+      ["subjective", 0],
+      ["plan", 1],
+    ] as const) {
+      await seedSignedSection(org, encounterId, addendumOutput, sectionId, position, {
+        addendumId,
+        originalId: originals[sectionId],
+      });
+      await admin.query(
+        `UPDATE encounter_amendment SET resolution = $3, content_hash = $4, corpus_version = 'synthetic-corpus-1', edited = false,
+           part2_derived = false, resolved_by_membership_id = $5, resolved_at = now() WHERE addendum_id = $1 AND section_id = $2`,
+        [
+          addendumId,
+          sectionId,
+          sectionId === "subjective" ? "confirmed" : "deselected",
+          CONTENT_HASH,
+          member,
+        ],
+      );
+    }
+    await admin.query(
+      `INSERT INTO addendum_cosignature_request (organization_id, provider_entity_id, location_id, encounter_id, addendum_id, routed_to_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [...site, encounterId, addendumId, member],
+    );
+    await admin.query(
+      "UPDATE encounter_addendum SET status = 'signed', signed_at = now() WHERE id = $1",
+      [addendumId],
     );
   }
 
@@ -575,6 +717,71 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     }
   });
 
+  it("the eraser connection is the destruction login, and holds DELETE plus an org-scoped policy on each visit-note table", async () => {
+    // The connection the store runs on: a non-superuser, RLS-bound member of chartwarden_destruction.
+    const who = await destruction.pool.query<{
+      u: string;
+      su: boolean;
+      bypass: boolean;
+      member: boolean;
+    }>(
+      `SELECT current_user AS u, r.rolsuper AS su, r.rolbypassrls AS bypass,
+              pg_has_role(current_user, 'chartwarden_destruction', 'MEMBER') AS member
+         FROM pg_roles r WHERE r.rolname = current_user`,
+    );
+    expect(one(who.rows)).toEqual({
+      u: "chartwarden_destruction",
+      su: false,
+      bypass: false,
+      member: true,
+    });
+    for (const key of VISIT_NOTE_KEYS) {
+      const table = OWNED_TABLES[key];
+      const grants = await admin.query<{ sel: boolean; del: boolean; ins: boolean; upd: boolean }>(
+        `SELECT has_table_privilege('chartwarden_destruction', $1::text, 'SELECT') AS sel,
+                has_table_privilege('chartwarden_destruction', $1::text, 'DELETE') AS del,
+                has_table_privilege('chartwarden_destruction', $1::text, 'INSERT') AS ins,
+                has_table_privilege('chartwarden_destruction', $1::text, 'UPDATE') AS upd
+           FROM (SELECT 1) one`,
+        [table],
+      );
+      // SELECT (for `returning`) and DELETE, and nothing it does not need: no INSERT, and no table-wide UPDATE.
+      expect(one(grants.rows), `${table} grants`).toEqual({
+        sel: true,
+        del: true,
+        ins: false,
+        upd: false,
+      });
+      const rls = await admin.query<{ on: boolean; forced: boolean }>(
+        "SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE oid = $1::regclass",
+        [table],
+      );
+      expect(one(rls.rows), `${table} RLS`).toEqual({ on: true, forced: true });
+      // One FOR ALL policy naming the destruction role, pinned to the canonical org GUC (a certificate never reaches across tenants).
+      const policies = await admin.query<{ cmd: string; qual: string }>(
+        "SELECT cmd, qual FROM pg_policies WHERE tablename = $1 AND 'chartwarden_destruction' = ANY(roles)",
+        [table],
+      );
+      const policy = one(policies.rows);
+      expect(policy.cmd, `${table} policy command`).toBe("ALL");
+      expect(policy.qual, `${table} policy predicate`).toContain("app.org_id");
+      // No row trigger that could refuse a DELETE: the only DELETE trigger is the AFTER audit one (BEFORE bit 2, DELETE bit 8).
+      const before = await admin.query<{ tgname: string }>(
+        `SELECT tgname FROM pg_trigger
+          WHERE tgrelid = $1::regclass AND NOT tgisinternal AND (tgtype & 2) <> 0 AND (tgtype & 8) <> 0`,
+        [table],
+      );
+      expect(before.rows, `${table} BEFORE DELETE triggers`).toEqual([]);
+    }
+    // The sealed sections are append-only for everyone but the shred: the destruction role may write `text_cipher` and no other column.
+    const writable = await admin.query<{ column_name: string }>(
+      `SELECT a.attname AS column_name FROM pg_attribute a
+        WHERE a.attrelid = 'hearthnote_signed_section'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+          AND has_column_privilege('chartwarden_destruction', a.attrelid, a.attnum, 'UPDATE')`,
+    );
+    expect(writable.rows.map((r) => r.column_name)).toEqual(["text_cipher"]);
+  });
+
   it("another tenant's certificate erases nothing, in either direction", async () => {
     const everything = [targetPatient, ...everyoneElse()];
     const rowsBefore = await snapshot(everything);
@@ -609,6 +816,9 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     expect(target.hearthnoteSelections).toHaveLength(PER_ROOT.hearthnoteSelections);
     for (const selection of target.hearthnoteSelections)
       expect(selection.free_text_cipher).toBeNull();
+    // ADR-0114: every sealed section (originals and amendment rows, under signed notes too) shreds to the NOT NULL sentinel "".
+    expect(target.signedSections).toHaveLength(TARGET_COUNTS.signedSections);
+    for (const section of target.signedSections) expect(section.text_cipher).toBe("");
     expect(JSON.stringify(target)).not.toContain(SEALED);
     // the shred deletes nothing, and touches no other patient or tenant
     expect(countsOf(target)).toEqual(TARGET_COUNTS);
@@ -665,7 +875,8 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
 
     it("completes and reports what it removed, table by table", () => {
       expect(countsOf(ownedBefore)).toEqual(TARGET_COUNTS);
-      expect(seededCounts(result.counts)).toEqual(TARGET_COUNTS);
+      // the whole count object: a table the eraser reports but this suite does not seed, or the reverse, fails here
+      expect(result.counts).toEqual(TARGET_COUNTS);
       expect(result.erased).toBe(TARGET_TOTAL);
     });
 
@@ -743,7 +954,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       const settledOwned = await ownedRows(everything);
       const again = await eraseEncounterRecord(ORG_A, targetPatient, store);
       expect(again.erased).toBe(0);
-      expect(seededCounts(again.counts)).toEqual(NO_ROWS);
+      expect(again.counts).toEqual(NO_ROWS);
       expect(await snapshot(everything)).toEqual(settled);
       expect(await ownedRows(everything)).toEqual(settledOwned);
     });
