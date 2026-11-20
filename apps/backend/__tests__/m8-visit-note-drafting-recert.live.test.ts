@@ -79,6 +79,7 @@ import {
   registerEncounterRoutes,
 } from "../src/modules/08-encounters/index";
 import { registerDraftSectionRoutes } from "../src/modules/08-encounters/routes/draft-section-routes";
+import { noWoundReader } from "../src/modules/08-encounters/wound-reader";
 import { carePlan, change, honestSeries, point } from "./_encounter-draft-fixtures";
 import { FIXTURE_VOCAB_CODE, requiredSectionSelections } from "./_hearthnote-fixtures";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
@@ -875,6 +876,9 @@ describe.skipIf(!DB_URL)(
       registerSeam("LatestAssessmentProvider", {
         latestBatch: async () => [{ scaleType: "pps" }, { scaleType: "esas_r" }],
       } as never);
+      // M9's wounds (WF09): the draft and the note's facts read them through this seam, and the production reader fails closed without it.
+      // No wound is recorded on any visit here.
+      registerSeam("WoundProvider", { listObservationsForEncounter: async () => [] } as never);
       sessionStore = createInMemorySessionContextStore([
         {
           sessionClass: "staff" as const,
@@ -950,7 +954,15 @@ describe.skipIf(!DB_URL)(
         }),
       );
       registerAbacRegistry(registry);
-      svc = createDbEncounterRouteService(handle.db, undefined, CIPHERS, () => LIVE_NOW);
+      // No M9 is wired in this suite, so the service states no wounds BY NAME (`noWoundReader`): the production reader fails closed.
+      svc = createDbEncounterRouteService(
+        handle.db,
+        undefined,
+        CIPHERS,
+        () => LIVE_NOW,
+        undefined,
+        noWoundReader,
+      );
 
       app = buildServer({
         db: handle.db,
@@ -1182,6 +1194,9 @@ describe.skipIf(!DB_URL)(
           ["chief_concern", "not_drafted"],
           ["vitals_review", "unresolved"],
           ["assessment", "not_drafted"],
+          ["functional_status", "not_drafted"],
+          ["nutrition", "not_drafted"],
+          ["skin_wounds", "not_drafted"],
           ["symptom_management", "not_drafted"],
           ["interventions", "unresolved"],
           ["plan", "unresolved"],
@@ -1382,6 +1397,9 @@ describe.skipIf(!DB_URL)(
           ["chief_concern", "not_drafted"],
           ["vitals_review", "not_drafted"],
           ["assessment", "not_drafted"],
+          ["functional_status", "not_drafted"],
+          ["nutrition", "not_drafted"],
+          ["skin_wounds", "not_drafted"],
           ["symptom_management", "not_drafted"],
           ["interventions", "not_drafted"],
           ["plan", "not_drafted"],
