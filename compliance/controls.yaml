@@ -1116,6 +1116,10 @@ controls:
       - file: packages/db/migrations/1526_m15_discipline_plan_default_grants.sql
       - file: packages/auth/__tests__/discipline-plan-grants.test.ts
       - file: apps/backend/__tests__/discipline-plan-grants-pin.test.ts
+      # The write service binds the authenticated actor's roles to the plan kind on every authoring method (finalize, goal and
+      # intervention create/update), not only on openVersion, and refuses a finalize whose signer quorum is below the D11 floor.
+      - file: apps/backend/__tests__/discipline-plans-authoring-scope.test.ts
+      - file: apps/backend/__tests__/discipline-plans-signer-floor.test.ts
 
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
