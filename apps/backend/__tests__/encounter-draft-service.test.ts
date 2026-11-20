@@ -1,6 +1,9 @@
 // S1 PR C2b1 — the draft service (ADR-0114): the per-tenant switch answers 404 before anything is read, the draft is computed for the
 // SESSION viewer, a signed note refuses a resolution, and a write records its explicit audit event. Fakes only; the live suite
 // proves the Drizzle unit.
+import { encounterType } from "@chartwarden/db/schema";
+import { readsBenefitPeriod } from "@chartwarden/hearthnote";
+import type { EncounterType } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import { admissionReadsFor } from "../src/modules/08-encounters/drafting/admission-reads";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
@@ -408,6 +411,13 @@ describe("the admission's read keys a recertification or face-to-face draft need
     expect(admissionReadsFor("face_to_face")).toEqual(["election.read"]);
     expect(admissionReadsFor("routine_visit")).toEqual([]);
     expect(admissionReadsFor("constructor")).toEqual([]);
+  });
+
+  it("names at least one key for every visit type whose draft reads the admission's benefit period (the two lists cannot drift apart)", () => {
+    const types = encounterType.enumValues as readonly EncounterType[];
+    const readers = types.filter((type) => readsBenefitPeriod(type));
+    expect(readers.length).toBeGreaterThan(0);
+    for (const type of readers) expect(admissionReadsFor(type), type).not.toEqual([]);
   });
 
   it.each(RECERT_KEYS)(
