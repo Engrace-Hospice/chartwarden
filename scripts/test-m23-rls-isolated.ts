@@ -23,6 +23,11 @@ type VitestReport = {
   numPassedTests?: number;
   numFailedTests?: number;
   numPendingTests?: number;
+  testResults?: {
+    name?: string;
+    status?: string;
+    assertionResults?: { fullName?: string; status?: string }[];
+  }[];
 };
 
 function cleanup(resource: string, command: string, args: readonly string[]): boolean {
@@ -238,7 +243,7 @@ async function main() {
 
     const child = spawnSync(
       process.execPath,
-      ["x", "vitest", "run", TEST_FILE, "--reporter=json", `--outputFile=${reportPath}`],
+      ["run", "vitest", "run", TEST_FILE, "--reporter=json", `--outputFile=${reportPath}`],
       {
         cwd: ROOT,
         encoding: "utf8",
@@ -270,6 +275,19 @@ async function main() {
     console.log(
       `M23 live result: total=${total}, passed=${passed}, failed=${failed}, skipped=${skipped}.`,
     );
+    if (failed !== 0 || skipped !== 0 || passed !== total) {
+      for (const file of report.testResults ?? []) {
+        const nonPassed = (file.assertionResults ?? []).filter((test) => test.status !== "passed");
+        if (file.status !== "passed" || nonPassed.length > 0) {
+          console.error(
+            `Vitest file status: ${file.status ?? "unknown"} (${file.name ?? "unnamed"})`,
+          );
+          for (const test of nonPassed) {
+            console.error(`  ${test.status ?? "unknown"}: ${test.fullName ?? "unnamed test"}`);
+          }
+        }
+      }
+    }
     if (child.status !== 0 || total === 0 || failed !== 0 || skipped !== 0 || passed !== total) {
       throw new Error(
         "M23 live qualification failed or skipped tests; see the Vitest summary above",
