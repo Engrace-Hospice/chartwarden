@@ -168,6 +168,72 @@ describe("ScaleSeriesProvider.series (§4.7 / D4)", () => {
   });
 });
 
+// VN-D11 (visit-note drafting): the draft reads readings "up to the visit time" through this same seam with
+// `to` = the visit time; there is no separate as-of method. This pins the contract that makes that sound:
+// `to` is INCLUSIVE and the window keys on `capturedAt` (the clinical capture instant, which a correction
+// reuses), so a reading captured after the visit time is never in the draft, however late it was recorded.
+describe("ScaleSeriesProvider.series as-of (VN-D11)", () => {
+  const VISIT = "2026-03-10T09:00:00.000Z";
+  const EPOCH = "1970-01-01T00:00:00.000Z";
+  const reading = (assessmentId: string, capturedAt: string, score: number): SeededSeriesPoint => ({
+    patientId: PAT,
+    scaleType: "pps",
+    assessmentId,
+    capturedAt,
+    score,
+    scoreInterpretation: null,
+    significantChange: false,
+  });
+  const asOf = (seeded: readonly SeededSeriesPoint[], to: string) =>
+    createScaleSeriesProvider(createInMemoryAssessmentReaderStore({ points: seeded }).store)
+      .series(PAT, "pps", EPOCH, to)
+      .then((s) => s.points.map((p) => p.assessmentId));
+
+  it("excludes a reading captured after `to`", async () => {
+    const seeded = [
+      reading("before", "2026-03-10T08:59:59.999Z", 60),
+      reading("after", "2026-03-10T09:00:00.001Z", 50),
+    ];
+
+    expect(await asOf(seeded, VISIT)).toEqual(["before"]);
+  });
+
+  it("includes a reading captured exactly at `to` (the upper bound is inclusive)", async () => {
+    const seeded = [reading("at", VISIT, 60)];
+
+    expect(await asOf(seeded, VISIT)).toEqual(["at"]);
+  });
+
+  it("includes a reading captured exactly at `from` (the lower bound is inclusive)", async () => {
+    const provider = createScaleSeriesProvider(
+      createInMemoryAssessmentReaderStore({ points: [reading("at", VISIT, 60)] }).store,
+    );
+
+    const out = await provider.series(PAT, "pps", VISIT, "2026-03-31T00:00:00.000Z");
+
+    expect(out.points.map((p) => p.assessmentId)).toEqual(["at"]);
+  });
+
+  it("returns the series ascending, so the last point is the latest reading as of `to`", async () => {
+    const seeded = [
+      reading("c", "2026-03-09T09:00:00.000Z", 40),
+      reading("a", "2026-03-01T09:00:00.000Z", 70),
+      reading("b", "2026-03-05T09:00:00.000Z", 50),
+      reading("late", "2026-03-20T09:00:00.000Z", 30),
+    ];
+
+    expect(await asOf(seeded, VISIT)).toEqual(["a", "b", "c"]);
+  });
+
+  it("echoes the requested window on the result", async () => {
+    const provider = createScaleSeriesProvider(createInMemoryAssessmentReaderStore().store);
+
+    const out = await provider.series(PAT, "pps", EPOCH, VISIT);
+
+    expect(out).toMatchObject({ patientId: PAT, scaleType: "pps", from: EPOCH, to: VISIT });
+  });
+});
+
 describe("ScaleSeriesProvider.delta (§4.1)", () => {
   it("computes latest-vs-window from the earliest and most recent in-window captures", async () => {
     const provider = createScaleSeriesProvider(store());

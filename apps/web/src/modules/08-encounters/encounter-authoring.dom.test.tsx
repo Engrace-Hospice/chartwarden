@@ -249,6 +249,13 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     encounterStatus = "finalized";
     finalizeSucceeded = true;
   }
+  // ADR-0114: the tenant has the visit-note draft switched off, so its read answers 404 and the composer is exactly as before.
+  if (method === "GET" && path.endsWith("/draft")) {
+    return new Response(JSON.stringify({ error: { code: "NOT_FOUND", message: "not found" } }), {
+      status: 404,
+      headers: { "content-type": "application/json" },
+    });
+  }
   return new Response(JSON.stringify(bodyFor(method, path)), {
     status: 200,
     headers: { "content-type": "application/json" },
@@ -661,6 +668,33 @@ describe("#91 — vitals capture", () => {
     // Not `{bpSystolic: 118, heartRate: NaN, …}` — an empty box means "not taken", and the server's
     // envelope validation would reject a NaN it was never asked to store.
     expect(bodies[0]).toEqual({ bpSystolic: 118, bpDiastolic: 72 });
+  });
+});
+
+describe("vitals recorded while the note is being signed", () => {
+  // A capture racing a sign either lands before the note is sealed or is refused 409 IMMUTABLE_AFTER_SIGN; the server's text is not shown.
+  it("say, in the app's words, that the note was signed and nothing was saved, with the next step", async () => {
+    writeFailure = {
+      status: 409,
+      body: {
+        error: {
+          code: "IMMUTABLE_AFTER_SIGN",
+          message: "encounter is 'signed'; edits are only permitted via an addendum",
+        },
+      },
+    };
+    writeFailurePath = "/vitals";
+    mountCompose();
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Vitals" })));
+    fireEvent.change(await waitFor(() => screen.getByLabelText(/BP systolic/i)), {
+      target: { value: "118" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record vitals" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/signed while you were working/);
+    expect(alert.textContent).toMatch(/not saved/);
+    expect(alert.textContent).toMatch(/Reload/);
+    expect(alert.textContent).not.toMatch(/edits are only permitted/);
   });
 });
 

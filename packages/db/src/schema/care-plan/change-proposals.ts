@@ -16,7 +16,7 @@
 // measurable_outcome, revised_text, resolution_note, scope_text, frequency_text, discontinue_reason) is stored in the clear like
 // the element it becomes, denylisted from the M4 write-audit trigger, and erased by M7's `care_plan_record` eraser. Value sets are
 // text + CHECK (no pg enum); the lists are exported here so the migration, the TypeBox contract and the tests share one source.
-// RLS + grants + the audit trigger land in migration 1530: UPDATE is granted per column (the change, the Part 2 flag and the lifecycle columns), and
+// RLS + grants + the audit trigger land in migration 1532: UPDATE is granted per column (the change, the Part 2 flag and the lifecycle columns), and
 // a guard trigger refuses a change to the row's plan, patient, visit, proposer and creation time, whatever role writes.
 import { sql } from "drizzle-orm";
 import {

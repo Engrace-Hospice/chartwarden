@@ -27,6 +27,7 @@ import { join } from "node:path";
 
 import {
   CARE_PLAN_DEFAULT_GRANTS,
+  DISCIPLINE_PLAN_DEFAULT_GRANTS,
   SYSTEM_LOCKED_FLOORS,
   allPermissionMirrorRows,
 } from "@chartwarden/auth";
@@ -421,6 +422,50 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
       `SELECT count(*)::int AS n, count(DISTINCT resource_id)::int AS distinct_rows FROM audit_event
         WHERE event_type = 'role_permission.insert'
           AND correlation_id = 'migration-1494-care-plan-default-grants'`,
+    );
+    expect(audited[0]).toEqual({ n: inserted, distinct_rows: inserted });
+  });
+
+  // M15 (CW-AC-53) — migration 1526 gives rn, rn_case_manager and chha their default discipline_plan.* keys, the same shape as
+  // 1494: each RN role gets exactly its five keys and the aide only `sign`, a supervisor, an external role and a platform template (no
+  // organization) get none, existing grants survive, a second run adds nothing, and each insert is audited under the
+  // migration's correlation id.
+  it("M15 migration 1526 grants rn, rn_case_manager and chha exactly their discipline_plan keys, idempotently", async () => {
+    const sql = readFileSync(
+      join(MIGRATIONS_DIR, "1526_m15_discipline_plan_default_grants.sql"),
+      "utf8",
+    );
+    const staged: Record<string, string> = {};
+    for (const key of Object.keys(DISCIPLINE_PLAN_DEFAULT_GRANTS))
+      staged[key] = await seedRole(key, []);
+    const supervisor = await seedRole("clinical_supervisor", []);
+    const external = await seedRole("physician_office", ["patient.read"]);
+    const template = await seedRole("rn", [], { organizationId: null });
+    await admin.query(
+      "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,'patient.read')",
+      [ORG_A, staged.rn_case_manager],
+    );
+
+    await admin.query(sql);
+    await admin.query(sql); // idempotent
+
+    for (const [key, id] of Object.entries(staged)) {
+      const expected = [...(DISCIPLINE_PLAN_DEFAULT_GRANTS[key] ?? [])];
+      if (key === "rn_case_manager") expected.push("patient.read"); // the pre-existing grant survives
+      expect(await grantsOf(id), key).toEqual(expected.sort());
+    }
+    expect(await grantsOf(supervisor)).toEqual([]);
+    expect(await grantsOf(external)).toEqual(["patient.read"]);
+    expect(await grantsOf(template)).toEqual([]);
+
+    const inserted = Object.values(DISCIPLINE_PLAN_DEFAULT_GRANTS).reduce(
+      (n, keys) => n + keys.length,
+      0,
+    );
+    const { rows: audited } = await admin.query(
+      `SELECT count(*)::int AS n, count(DISTINCT resource_id)::int AS distinct_rows FROM audit_event
+        WHERE event_type = 'role_permission.insert'
+          AND correlation_id = 'migration-1526-discipline-plan-default-grants'`,
     );
     expect(audited[0]).toEqual({ n: inserted, distinct_rows: inserted });
   });

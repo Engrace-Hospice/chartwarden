@@ -1,7 +1,7 @@
 // apps/backend/__tests__/encounter-eraser.test.ts — M8-T12 the `encounter_record` eraser (§3.6, D7/D8)
 // + the m8 audit-catalog actions (§8.1). Proves M8 registers the REAL encounter_record eraser over the
-// Phase-0 deny-stub (validateErasers passes at boot), the eraser crypto-erases the HearthNote ciphertext
-// FIRST then deletes the encounter subtree + tombstones the encounter root, and the m8 action catalog is
+// Phase-0 deny-stub (validateErasers passes at boot), the eraser shreds the HearthNote cipher columns
+// FIRST, then tombstones the encounter root, then deletes the encounter subtree, and the m8 action catalog is
 // well-formed (namespace + uniqueness) — and disjoint from M5/M6/M7's data classes.
 import { ACTION_CATALOG, M8_ACTION_CATALOG, validateActionCatalog } from "@chartwarden/audit";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -12,11 +12,9 @@ import {
 } from "../src/bootstrap/erasers/registry";
 import { buildServer } from "../src/bootstrap/index";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import { ENCOUNTER_ERASED_REASON } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
-  TOMBSTONE_REASON,
-  TOMBSTONE_VOID_REASON,
-} from "../src/modules/08-encounters/erasers/encounter-eraser";
-import {
+  type EncounterEraseCounts,
   createDrizzleEncounterEraseStore,
   eraseEncounterRecord,
   createInMemoryEncounterEraseStore as makeEraseStore,
@@ -26,8 +24,9 @@ import {
 describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
   beforeEach(() => __resetErasersForTest());
 
-  it("crypto-erases HearthNote first, deletes the encounter subtree, tombstones the root, reports the total", async () => {
+  it("shreds the HearthNote cipher columns first, tombstones the root, deletes the encounter subtree, reports the total", async () => {
     const { store, tombstoned, cryptoErased } = makeEraseStore({
+      tombstonedRoots: 2,
       signatures: 2,
       addenda: 1,
       carePlanLinks: 3,
@@ -39,21 +38,93 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       hearthnoteSelections: 5,
       hearthnoteAssembledOutputs: 2,
       hearthnoteLlmModifications: 1,
+      draftConfirmations: 3,
+      signedSections: 6,
+      amendments: 2,
+      addendumCosignatureRequests: 1,
     });
     const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
-    // The recorded ADLs and nutrition are counted: the encounter root is only tombstoned, so no cascade would remove them.
-    expect(erased).toBe(25);
+    expect(erased).toBe(39); // 37 satellites + 2 tombstoned roots
     expect(counts.vitals).toBe(4);
+    expect(counts.tombstonedRoots).toBe(2);
+    // The recorded ADLs and nutrition are counted: the encounter root is only tombstoned, so no cascade would remove them.
     expect(counts.adlRecords).toBe(2);
     expect(counts.nutritionRecords).toBe(3);
-    expect(cryptoErased).toEqual(["pat_1"]); // DEK destroyed before structural delete
+    // ADR-0114: the draft's confirmations and the sealed per-section rows go with the rest of the encounter subtree.
+    expect(counts.draftConfirmations).toBe(3);
+    expect(counts.signedSections).toBe(6);
+    // ADR-0114 VN-D30: an amendment's naming and resolution rows and the cosignature request an amending addendum opened go with the subtree too.
+    expect(counts.amendments).toBe(2);
+    expect(counts.addendumCosignatureRequests).toBe(1);
+    expect(cryptoErased).toEqual(["pat_1"]); // cipher columns shredded before the tombstone and the deletes
     expect(tombstoned).toEqual(["pat_1"]);
   });
 
   it("is idempotent — a second erase removes nothing", async () => {
-    const { store } = makeEraseStore({ signatures: 2, vitals: 1 });
-    expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(3);
+    const { store } = makeEraseStore({ tombstonedRoots: 1, signatures: 2, vitals: 1 });
+    expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(4);
     expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(0);
+  });
+
+  it("counts a tombstoned root even when it had no satellites, so the first run's certificate never reports 0 for a voided record", async () => {
+    const { store } = makeEraseStore({ tombstonedRoots: 3 });
+    const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
+    expect(counts.tombstonedRoots).toBe(3);
+    expect(erased).toBe(3);
+  });
+
+  it("refuses before any write unless the connection is the destruction role, and changes nothing", async () => {
+    const { store, tombstoned, cryptoErased } = makeEraseStore(
+      { tombstonedRoots: 1, signatures: 2 },
+      { destructionRole: false },
+    );
+    await expect(eraseEncounterRecord("org_a", "pat_1", store)).rejects.toMatchObject({
+      code: "DEGRADED",
+      statusCode: 503,
+    });
+    expect(cryptoErased).toEqual([]); // nothing shredded
+    expect(tombstoned).toEqual([]); // nothing tombstoned
+  });
+
+  it("checks the role, then shreds, then scrubs the root's text, then deletes the satellites — a failed tombstone leaves the satellites for a retry", async () => {
+    const calls: string[] = [];
+    const none: Omit<EncounterEraseCounts, "tombstonedRoots"> = {
+      signatures: 0,
+      addenda: 0,
+      carePlanLinks: 0,
+      cosignatureRequests: 0,
+      vitals: 0,
+      mileage: 0,
+      adlRecords: 0,
+      nutritionRecords: 0,
+      hearthnoteSelections: 0,
+      hearthnoteAssembledOutputs: 0,
+      hearthnoteLlmModifications: 0,
+      draftConfirmations: 0,
+      signedSections: 0,
+      amendments: 0,
+      addendumCosignatureRequests: 0,
+    };
+    const store = {
+      assertDestructionRole: async () => void calls.push("role"),
+      cryptoEraseHearthnote: async () => void calls.push("shred"),
+      tombstoneEncounters: async () => {
+        calls.push("tombstone");
+        return 0;
+      },
+      eraseEncounterSubtree: async () => {
+        calls.push("delete");
+        return none;
+      },
+    };
+    await eraseEncounterRecord("org_a", "pat_1", store);
+    expect(calls).toEqual(["role", "shred", "tombstone", "delete"]);
+  });
+
+  it("the tombstone placeholder clears the longest reason-length CHECK floor (the live suite proves the CHECKs themselves)", () => {
+    // encounter_administrative_override_consistency wants 100 characters; a shorter placeholder would make every
+    // destruction of a root with that tier roll back on a real database (the in-memory store has no CHECKs).
+    expect(ENCOUNTER_ERASED_REASON.length).toBeGreaterThanOrEqual(100);
   });
 
   it("registers over the deny-stub; the boot hook makes validateErasers() pass for the data class", async () => {
@@ -78,7 +149,7 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
 });
 
 describe("M8-T12 — the tombstone scrubs everything about the destroyed patient the root still holds", () => {
-  it("nulls the fall link (incident id and date) and voids the root with the fixed, content-free reasons", async () => {
+  it("nulls the fall link (incident id and date) and voids the root with the one content-free reason", async () => {
     // A scripted `db`: the tombstone is one UPDATE inside a tenant transaction, so capture the values it sets.
     let set: Record<string, unknown> | undefined;
     const tx = {
@@ -86,7 +157,7 @@ describe("M8-T12 — the tombstone scrubs everything about the destroyed patient
       update: () => ({
         set: (values: Record<string, unknown>) => {
           set = values;
-          return { where: async () => [] };
+          return { where: () => ({ returning: async () => [] }) };
         },
       }),
     };
@@ -98,10 +169,9 @@ describe("M8-T12 — the tombstone scrubs everything about the destroyed patient
       status: "voided",
       fallIncidentId: null,
       fallOccurredOn: null,
-      voidedReason: TOMBSTONE_VOID_REASON,
+      voidedReason: ENCOUNTER_ERASED_REASON,
     });
     expect((set?.voidedReason as string).length).toBeGreaterThanOrEqual(40); // encounter_voided_consistency
-    expect(TOMBSTONE_REASON.length).toBeGreaterThanOrEqual(100); // the longest reason minimum (administrative override)
   });
 });
 
@@ -113,8 +183,12 @@ describe("M8-T12 — m8 audit action catalog (§8.1)", () => {
     }
   });
 
-  it("covers all 22 §8.1 events plus the four ADR-0113 closure events (override granted, revoked and denied, policy changed)", () => {
-    expect(M8_ACTION_CATALOG.length).toBe(26);
+  it("covers all 22 §8.1 events, the four ADR-0113 closure events (override granted, revoked and denied, policy changed) and the three ADR-0114 draft events (policy changed, section resolved, section amended)", () => {
+    expect(M8_ACTION_CATALOG.length).toBe(29);
+    const actions = M8_ACTION_CATALOG.map((e) => e.action);
+    expect(actions).toContain("m8.encounter.draft_policy_changed");
+    expect(actions).toContain("m8.encounter.draft_section_resolved");
+    expect(actions).toContain("m8.encounter.section_amended");
   });
 
   it("the reason carriers scrub narrative free text", () => {

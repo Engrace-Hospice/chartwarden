@@ -25,6 +25,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { hasSupervisorRole } from "../supervisor-roles";
 
+import { auditContextOf } from "./audit-context";
+import { AmendmentDraftParamsSchema } from "./draft-section-typebox";
 import {
   AddendumParamsSchema,
   AdministrativeOverrideSchema,
@@ -93,6 +95,12 @@ async function listScopeOf(
   }
 }
 
+/** The session's M2 USER id (a different id space from the membership id): the audit actor of a write's row-trigger images, as the cosign routes pass it. */
+function actorUserIdOf(request: FastifyRequest): string | undefined {
+  const userId = request.context?.userId;
+  return typeof userId === "string" && userId.length > 0 ? userId : undefined;
+}
+
 /** The real caller signing an encounter/cosignature/addendum (§3.3/D13) — membership id + M2 session
  *  id, the `encounter_signature` provenance row's actor. `requireStepUp` (composed on the sign routes)
  *  already denied the request if this session's step-up isn't fresh; the service re-resolves the same
@@ -106,8 +114,26 @@ function signingActorOf(request: FastifyRequest): SigningActor {
   if (typeof membershipId !== "string" || typeof sessionId !== "string")
     throw new UnauthorizedError();
   // The M2 USER id rides along for a promoted addendum's `decidedByUserId` (a different id space from the membership id).
-  const userId = typeof ctx?.userId === "string" && ctx.userId.length > 0 ? ctx.userId : undefined;
-  return { membershipId, sessionId, ...(userId !== undefined ? { userId } : {}) };
+  const userId = actorUserIdOf(request);
+  return {
+    membershipId,
+    sessionId,
+    roles: ctx.roles ?? [],
+    ...(userId !== undefined ? { userId } : {}),
+  };
+}
+
+/** The member acting as the visit-note draft and the signed-note view see them (ADR-0114): the session's roles and active membership, never the body. */
+function draftViewerOf(request: FastifyRequest): {
+  roles: readonly string[];
+  membershipId: string | null;
+} {
+  const ctx = request.context;
+  const membershipId = ctx?.attributes.membershipId;
+  return {
+    roles: ctx?.roles ?? [],
+    membershipId: typeof membershipId === "string" && membershipId.length > 0 ? membershipId : null,
+  };
 }
 
 /** The M2 USER id of the caller (the id space the M36 proposals and the messaging seam use; not the membership id). */
@@ -207,6 +233,10 @@ const SCOPE_CREATE = requireAbac("encounter.author", "encounter.scope", {
 const IS_AUTHOR = (action: string): PreHandler => requireAbac(action, "is_author") as PreHandler;
 const IS_AUTHOR_OR_SUPERVISOR = (action: string): PreHandler =>
   requireAbac(action, "is_author_or_supervisor") as PreHandler;
+/** A malformed encounter or addendum id is a 422 BEFORE the predicates cast it to a uuid (that cast would be a 500). */
+const ADDENDUM_PARAMS_UUID = (async (request: FastifyRequest) => {
+  parse(AmendmentDraftParamsSchema, request.params);
+}) as unknown as PreHandler;
 const IS_ADDENDUM_AUTHOR = (action: string): PreHandler =>
   requireAbac(action, "is_addendum_author") as PreHandler;
 
@@ -216,6 +246,101 @@ const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey
 
 // §7.7 — the selections PATCH carries the read version in If-Match.
 const IF_MATCH = requireIfMatch() as PreHandler;
+
+/**
+ * The handlers and options of the four cosignature routes (18-21), written once and built for each subject (ADR-0114 VN-D30). `addendum` is the same
+ * workflow for the request an amending addendum opened: it adds the path-parameter check and reads the addendum id from the path.
+ */
+function cosignatureRoutes(service: EncounterRouteService, todayOf: () => string) {
+  const forSubject = (addendumScoped: boolean) => {
+    const guard: PreHandler[] = addendumScoped ? [ADDENDUM_PARAMS_UUID] : [];
+    /** The encounter (and, for an amendment's request, the addendum) the route names. */
+    const subjectOf = (request: FastifyRequest): { encounterId: string; addendumId?: string } =>
+      addendumScoped
+        ? parse(AmendmentDraftParamsSchema, request.params)
+        : { encounterId: encounterIdOf(request) };
+    return {
+      // 18 — read cosignature-request state.
+      read: {
+        options: {
+          preHandler: [...guard, READ, SCOPE_FOR("encounter.read")],
+          config: {
+            auditRead: {
+              resourceKind: addendumScoped ? "addendum_cosignature" : "encounter_cosignature",
+              resourceIdParam: addendumScoped ? "addendumId" : "encounterId",
+            },
+          },
+        },
+        handler: async (request: FastifyRequest) => {
+          const { organizationId } = membershipActorOf(request);
+          const { encounterId, addendumId } = subjectOf(request);
+          return service.getCosignature(organizationId, encounterId, addendumId);
+        },
+      },
+      // 19 — cosigner acknowledges (§4.6 m8.cosigner_role_match).
+      acknowledge: {
+        options: { preHandler: [...guard, COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign")] },
+        handler: async (request: FastifyRequest) => {
+          const { organizationId } = membershipActorOf(request);
+          const { encounterId, addendumId } = subjectOf(request);
+          return service.cosignAcknowledge(
+            organizationId,
+            encounterId,
+            signingActorOf(request),
+            todayOf(),
+            addendumId,
+          );
+        },
+      },
+      // 20 — cosigner signs (§4.6 m8.cosigner_role_match; D13 step-up).
+      sign: {
+        options: {
+          preHandler: [
+            ...guard,
+            COSIGN,
+            ABAC_COSIGN,
+            SCOPE_FOR("encounter.cosign"),
+            STEP_UP("encounter.cosign"),
+          ],
+        },
+        handler: async (request: FastifyRequest) => {
+          const { organizationId, roles } = membershipActorOf(request);
+          const { encounterId, addendumId } = subjectOf(request);
+          return service.cosignSign(organizationId, encounterId, signingActorOf(request), {
+            isQualifiedRn: isRn(roles),
+            at: todayOf(),
+            ...(addendumId !== undefined ? { addendumId } : {}),
+          });
+        },
+      },
+      // 21 — supervisor releases past the 48h hard cap.
+      release: {
+        options: {
+          preHandler: [
+            ...guard,
+            COSIGN_RELEASE,
+            SCOPE_FOR("encounter.cosign_supervisor_release"),
+            STEP_UP("encounter.cosign_supervisor_release"),
+          ],
+        },
+        handler: async (request: FastifyRequest, body: { readonly reason: string }) => {
+          const { organizationId, userId, roles } = membershipActorOf(request);
+          const { encounterId, addendumId } = subjectOf(request);
+          const actorUserId = signingActorOf(request).userId;
+          return service.supervisorRelease(organizationId, encounterId, {
+            isSupervisor: isSupervisor(roles),
+            reason: body.reason,
+            at: todayOf(),
+            actorMembershipId: userId,
+            ...(actorUserId !== undefined ? { actorUserId } : {}),
+            ...(addendumId !== undefined ? { addendumId } : {}),
+          });
+        },
+      },
+    };
+  };
+  return { note: forSubject(false), addendum: forSubject(true) };
+}
 
 export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRouteDeps): void {
   const { service } = deps;
@@ -344,7 +469,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
     async (request) => {
       const { organizationId } = membershipActorOf(request);
-      return service.getEncounter(organizationId, encounterIdOf(request));
+      return service.getEncounter(organizationId, encounterIdOf(request), draftViewerOf(request));
     },
   );
 
@@ -465,6 +590,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         encounterIdOf(request),
         body,
         actorMembershipId,
+        actorUserIdOf(request),
       );
       return reply.code(201).send(res);
     },
@@ -485,7 +611,14 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const { organizationId, userId: actorMembershipId } = membershipActorOf(request);
       const { encounterId, vitalId } = parse(VitalParamsSchema, request.params);
       const body = parse(CaptureVitalsSchema, request.body);
-      return service.editVitals(organizationId, encounterId, vitalId, body, actorMembershipId);
+      return service.editVitals(
+        organizationId,
+        encounterId,
+        vitalId,
+        body,
+        actorMembershipId,
+        actorUserIdOf(request),
+      );
     },
   );
 
@@ -674,6 +807,8 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const body = parse(FinalizeEncounterSchema, request.body ?? {});
       return service.finalize(organizationId, encounterIdOf(request), today(), {
         lateEntryReason: body.lateEntryReason,
+        viewer: draftViewerOf(request),
+        actorUserId: actorUserIdOf(request),
       });
     },
   );
@@ -806,71 +941,59 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 18 — read cosignature-request state.
+  // 18-21 — the cosignature workflow: read the request's state, the cosigner acknowledges and signs, a supervisor releases past the 48h hard cap. ONE
+  // implementation for both subjects (ADR-0114 VN-D30): the note's own request, and the request an amending addendum opened (the same four routes under
+  // `/addenda/:addendumId`). The machine, the permissions, the step-up, the ABAC and the error codes are the same; the addendum scope only adds the
+  // path-parameter check and that the cosigner is not the addendum's author either (the predicate reads `addendumId` when the route has one). The paths
+  // stay literal at each registration: the OpenAPI route scanner reads `app.<method>("<path>")` from source.
+  const cosign = cosignatureRoutes(service, today);
   app.get(
     "/api/v1/encounters/:encounterId/cosignature",
-    {
-      preHandler: [READ, SCOPE_FOR("encounter.read")],
-      config: {
-        auditRead: { resourceKind: "encounter_cosignature", resourceIdParam: "encounterId" },
-      },
-    },
-    async (request) => {
-      const { organizationId } = membershipActorOf(request);
-      return service.getCosignature(organizationId, encounterIdOf(request));
-    },
+    cosign.note.read.options,
+    cosign.note.read.handler,
   );
-
-  // 19 — cosigner acknowledges (§4.6 m8.cosigner_role_match).
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/acknowledge",
-    { preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign")] },
-    async (request) => {
-      const { organizationId } = membershipActorOf(request);
-      return service.cosignAcknowledge(
-        organizationId,
-        encounterIdOf(request),
-        signingActorOf(request),
-        today(),
-      );
-    },
+    cosign.note.acknowledge.options,
+    cosign.note.acknowledge.handler,
   );
-
-  // 20 — cosigner signs (§4.6 m8.cosigner_role_match; D13 step-up).
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/sign",
-    {
-      preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign"), STEP_UP("encounter.cosign")],
-    },
+    cosign.note.sign.options,
     async (request) => {
-      const { organizationId, roles } = membershipActorOf(request);
       parse(AttestationSchema, request.body); // validates the attestation-confirmed shape
-      return service.cosignSign(organizationId, encounterIdOf(request), signingActorOf(request), {
-        isQualifiedRn: isRn(roles),
-        at: today(),
-      });
+      return cosign.note.sign.handler(request);
     },
   );
-
-  // 21 — supervisor releases past the 48h hard cap.
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/supervisor-release",
-    {
-      preHandler: [
-        COSIGN_RELEASE,
-        SCOPE_FOR("encounter.cosign_supervisor_release"),
-        STEP_UP("encounter.cosign_supervisor_release"),
-      ],
-    },
+    cosign.note.release.options,
+    async (request) =>
+      cosign.note.release.handler(request, parse(SupervisorReleaseSchema, request.body)),
+  );
+  app.get(
+    "/api/v1/encounters/:encounterId/addenda/:addendumId/cosignature",
+    cosign.addendum.read.options,
+    cosign.addendum.read.handler,
+  );
+  app.post(
+    "/api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/acknowledge",
+    cosign.addendum.acknowledge.options,
+    cosign.addendum.acknowledge.handler,
+  );
+  app.post(
+    "/api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/sign",
+    cosign.addendum.sign.options,
     async (request) => {
-      const { organizationId, roles } = membershipActorOf(request);
-      const body = parse(SupervisorReleaseSchema, request.body);
-      return service.supervisorRelease(organizationId, encounterIdOf(request), {
-        isSupervisor: isSupervisor(roles),
-        reason: body.reason,
-        at: today(),
-      });
+      parse(AttestationSchema, request.body); // validates the attestation-confirmed shape
+      return cosign.addendum.sign.handler(request);
     },
+  );
+  app.post(
+    "/api/v1/encounters/:encounterId/addenda/:addendumId/cosignature/supervisor-release",
+    cosign.addendum.release.options,
+    async (request) =>
+      cosign.addendum.release.handler(request, parse(SupervisorReleaseSchema, request.body)),
   );
 
   // 22 — create addendum draft on a signed encounter.
@@ -878,12 +1001,15 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/addenda",
     { preHandler: [ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")] },
     async (request, reply) => {
-      const { organizationId, userId } = membershipActorOf(request);
+      const { organizationId, userId, roles } = membershipActorOf(request);
       const body = parse(CreateAddendumSchema, request.body);
       // GAP-028 — `userId` here is the caller's membership id: the addendum is THEIRS, not the parent's.
       const res = await service.createAddendum(organizationId, encounterIdOf(request), {
         reason: body.reason,
         authorMembershipId: userId,
+        authorUserId: actorUserIdOf(request),
+        ...(body.amendsSectionIds !== undefined ? { amendsSectionIds: body.amendsSectionIds } : {}),
+        roles,
         ...(body.promotionRequestId !== undefined
           ? {
               promotion: {
@@ -993,7 +1119,10 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
-      return service.finalizeAddendum(organizationId, encounterId, addendumId);
+      return service.finalizeAddendum(organizationId, encounterId, addendumId, {
+        ...draftViewerOf(request),
+        userId: actorUserIdOf(request),
+      });
     },
   );
 
@@ -1017,7 +1146,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         encounterId,
         addendumId,
         signingActorOf(request),
-        { at: today() },
+        { at: today(), audit: auditContextOf(request) },
       );
     },
   );

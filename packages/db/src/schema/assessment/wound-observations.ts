@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @chartwarden/db — `wound_observation` (M9 longitudinal wounds, migration 1529). One dated look at a wound; the visit note
+// @chartwarden/db — `wound_observation` (M9 longitudinal wounds, migration 1531). One dated look at a wound; the visit note
 // (M8) states the ones recorded at its encounter through the WoundProvider seam. `source_encounter_id` is a logical uuid
 // (M9 may not import M8: no FK). Everything is coded or numeric: no free text, so nothing to seal.
 //
@@ -7,7 +7,7 @@ import { sql } from "drizzle-orm";
 // (`corrects_observation_id` + a coded `correction_reason`) and the database flips the target to `superseded`, version + 1.
 // The application role holds no UPDATE on any value column; a BEFORE UPDATE trigger refuses every change but that flip.
 // Lengths are centimetres, numeric(5,1) (returned as strings by the driver). PHI-bearing → the three-column tenancy rule
-// (provider_entity_id / location_id nullable, unset for now). RLS + grants + triggers are in migration 1529.
+// (provider_entity_id / location_id nullable, unset for now). RLS + grants + triggers are in migration 1531.
 import {
   boolean,
   index,

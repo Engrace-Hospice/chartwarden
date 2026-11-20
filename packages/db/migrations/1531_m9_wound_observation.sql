@@ -1,6 +1,6 @@
 -- compat: expand
 -- M9 longitudinal wounds (2 of 2): `wound_observation`, one dated look at a wound. Each visit adds observations to a wound
--- (migration 1528); the visit note (M8) states the ones recorded at its encounter by reading them through the
+-- (migration 1530); the visit note (M8) states the ones recorded at its encounter by reading them through the
 -- WoundProvider seam. M9 may not import M8, so `source_encounter_id` is a logical uuid with no FK.
 --   * Everything is CODED or numeric (no free text), so nothing needs sealing and nothing can hold a typed identifier. Even
 --     the reason for a correction is a code.

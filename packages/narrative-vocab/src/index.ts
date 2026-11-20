@@ -7,8 +7,16 @@ import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import type { VocabEntry } from "./types";
 import { VOCABULARY } from "./vocabulary";
 
+export { DRAFT_VOCAB_CODES } from "./draft-entries";
+
 export type { SlotSpec, VocabBodySystem, VocabCategory, VocabEntry } from "./types";
-export { FALL_FOLLOWUP_CODE, VOCABULARY, VOCAB_VERSION } from "./vocabulary";
+export {
+  CORPUS_CLINICAL_REVIEW,
+  FALL_FOLLOWUP_CODE,
+  VOCABULARY,
+  VOCAB_VERSION,
+  type ClinicalReviewStatus,
+} from "./vocabulary";
 export {
   MAX_TEXT_SLOT_LENGTH,
   entrySlots,

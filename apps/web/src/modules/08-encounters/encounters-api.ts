@@ -31,6 +31,7 @@
 //   • §2.2 the encounter lifecycle, and the late-entry tier the service date implies.
 import { ENCOUNTER_DISCIPLINE_RULES } from "@chartwarden/types";
 import type { ApiClient, operations } from "@chartwarden/ui";
+import { IMMUTABLE_AFTER_SIGN_CODE, SIGNED_WHILE_WORKING_MESSAGE } from "./read-errors";
 
 // ── schema-derived type extraction (the four helpers every module's api layer uses) ─────────────────────
 
@@ -170,24 +171,26 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
   const message =
     code === "VOCAB_VERSION_MISMATCH"
       ? "The clinical vocabulary was updated while this note was open. Reload it before saving again — the wording of an already-selected phrase may have changed."
-      : code === "UNKNOWN_TEMPLATE_SECTION" || code === "UNKNOWN_VOCAB_CODE"
-        ? (detail ??
-          "This note referenced something its template does not contain. Reload and try again.")
-        : code === "NARRATIVE_EDIT_STALE"
-          ? "The selections or vitals changed after you edited the note text. Review the text and apply it again, or discard your edit, then finalize."
-          : code === "INVALID_NARRATIVE_EDIT"
-            ? "The note text is empty. Discard your edit to go back to the generated text."
-            : code === "STALE_VERSION"
-              ? "Someone else saved this note after you opened it. Reload to pick up their changes — saving now would discard them."
-              : httpStatus === 403
-                ? (detail ?? "Your role is not permitted to author on this encounter.")
-                : httpStatus === 409
-                  ? (detail ?? "This encounter changed before your action was applied.")
-                  : httpStatus === 404
-                    ? "That encounter is no longer available to you."
-                    : httpStatus === 422
-                      ? (detail ?? "The server rejected the details supplied.")
-                      : (detail ?? "The action could not be completed.");
+      : code === IMMUTABLE_AFTER_SIGN_CODE
+        ? SIGNED_WHILE_WORKING_MESSAGE
+        : code === "UNKNOWN_TEMPLATE_SECTION" || code === "UNKNOWN_VOCAB_CODE"
+          ? (detail ??
+            "This note referenced something its template does not contain. Reload and try again.")
+          : code === "NARRATIVE_EDIT_STALE"
+            ? "The selections or vitals changed after you edited the note text. Review the text and apply it again, or discard your edit, then finalize."
+            : code === "INVALID_NARRATIVE_EDIT"
+              ? "The note text is empty. Discard your edit to go back to the generated text."
+              : code === "STALE_VERSION"
+                ? "Someone else saved this note after you opened it. Reload to pick up their changes — saving now would discard them."
+                : httpStatus === 403
+                  ? (detail ?? "Your role is not permitted to author on this encounter.")
+                  : httpStatus === 409
+                    ? (detail ?? "This encounter changed before your action was applied.")
+                    : httpStatus === 404
+                      ? "That encounter is no longer available to you."
+                      : httpStatus === 422
+                        ? (detail ?? "The server rejected the details supplied.")
+                        : (detail ?? "The action could not be completed.");
   return { ok: false, status: httpStatus, code, message, details: err?.details };
 }
 
@@ -261,6 +264,9 @@ export function suggestedReasonCode(
   return code !== undefined && offered.some((e) => e.code === code) ? code : null;
 }
 
+/** What the screen holds when the register could not be read: no patient is named, since none was returned. */
+const UNAVAILABLE_FALLS: FallIncidentsView = { patientId: "", incidents: [], unavailable: true };
+
 /**
  * The patient's recorded falls this visit can follow up (WF09). `unavailable` means Quality's register could not be read, which the
  * screen says rather than claiming there are none; a failed request is reported the same way.
@@ -273,9 +279,9 @@ export async function loadFallIncidents(
     const { data } = await client.GET("/api/v1/encounters/{encounterId}/fall-incidents", {
       params: { path: { encounterId } },
     });
-    return data ?? { incidents: [], unavailable: true };
+    return data ?? UNAVAILABLE_FALLS;
   } catch {
-    return { incidents: [], unavailable: true };
+    return UNAVAILABLE_FALLS;
   }
 }
 
@@ -535,6 +541,8 @@ export function sectionHasEmptySlots(
   );
 }
 
+const NO_SECTIONS: ReadonlySet<string> = new Set();
+
 /**
  * The sections a SAVED findings record documents. The server counts a stored ADL or nutrition record as populating the section that
  * states it (`recordedPanel`), so the composer does too: the author documented it in the panel, not in the selections. Wounds are not
@@ -555,39 +563,52 @@ export function sectionsFilledByRecords(
   );
 }
 
-const NO_SECTIONS: ReadonlySet<string> = new Set();
-
 /**
  * The headings that still stand between the author and finalize, in template order: a required section
- * with nothing in it (selections, notes, or a saved findings record, see {@link sectionsFilledByRecords}), or any section holding a
- * half-filled statement. Advice only — the server decides.
+ * with nothing in it (selections, notes, drafted text they confirmed, or a saved findings record, see {@link sectionsFilledByRecords}),
+ * or any section holding a half-filled statement. Advice only — the server decides.
  */
 export function sectionsNeedingAttention(
   template: TemplateView,
   draft: DraftSections,
   filledByRecord: ReadonlySet<string> = NO_SECTIONS,
+  confirmedSectionIds: ReadonlySet<string> = NO_SECTIONS,
 ): readonly string[] {
   return template.sections
     .filter((s) => {
-      const d = draft[s.sectionId];
       const empty =
-        (!d || (d.entries.length === 0 && d.freeText.trim().length === 0)) &&
+        !isSectionPopulated(draft, s.sectionId, confirmedSectionIds) &&
         !filledByRecord.has(s.sectionId);
       return (s.required && empty) || sectionHasEmptySlots(template, draft, s.sectionId);
     })
     .map((s) => s.heading);
 }
 
+/**
+ * Whether a section counts as populated: the clinician's own entries or free text, or drafted text they CONFIRMED (ADR-0114). The same
+ * rule as the server's gate check 1 (`required_sections`): a deselected, unresolved or changed drafted section is not in
+ * `confirmedSectionIds`, so only the clinician's own words count there. A UI hint; the server judges.
+ */
+export function isSectionPopulated(
+  draft: DraftSections,
+  sectionId: string,
+  confirmedSectionIds: ReadonlySet<string> = NO_SECTIONS,
+): boolean {
+  const own = draft[sectionId];
+  return (
+    (own?.entries.length ?? 0) > 0 ||
+    (own?.freeText.trim().length ?? 0) > 0 ||
+    confirmedSectionIds.has(sectionId)
+  );
+}
+
 /** Which required sections are still empty — shown to the author, never used to block the request. */
 export function unmetRequiredSections(
   template: TemplateView,
   draft: DraftSections,
+  confirmedSectionIds: ReadonlySet<string> = NO_SECTIONS,
 ): readonly string[] {
   return template.sections
-    .filter((s) => s.required)
-    .filter((s) => {
-      const d = draft[s.sectionId];
-      return !d || (d.entries.length === 0 && d.freeText.trim().length === 0);
-    })
+    .filter((s) => s.required && !isSectionPopulated(draft, s.sectionId, confirmedSectionIds))
     .map((s) => s.heading);
 }

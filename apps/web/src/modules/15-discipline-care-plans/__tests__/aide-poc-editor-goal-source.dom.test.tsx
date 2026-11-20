@@ -104,6 +104,24 @@ function renderEditor(goals: unknown[] = []) {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/discipline-plans") return ok({ data: [detail], nextCursor: null });
       if (path === "/api/v1/discipline-plans/{planId}") return ok(detail);
+      // The goal form picks its IPOC problem from the patient's M7 care plan.
+      if (path === "/api/v1/patients/{patientId}/care-plan")
+        return ok({
+          id: "care-plan-1",
+          patientId: PATIENT,
+          problems: [{ id: PROBLEM_ID, description: "Impaired skin integrity", status: "active" }],
+        });
+      // The editor wears the shared chart shell, whose banner reads the patient.
+      if (path === "/api/v1/patients/{id}")
+        return ok({
+          id: PATIENT,
+          organizationId: "org-1",
+          mrn: "MRN-0007",
+          firstName: "June",
+          lastName: "Rivera",
+          dob: "1950-02-14",
+          status: "active",
+        });
       return ok({});
     }),
     POST: post,
@@ -134,9 +152,11 @@ const sourceSelect = async () =>
 
 /** Fill the goal form (the select is left as it is) and press "Add goal"; resolve once the form has reloaded. */
 async function submitGoal(): Promise<void> {
-  fireEvent.change(await screen.findByRole("textbox", { name: "IPOC problem id" }), {
-    target: { value: PROBLEM_ID },
-  });
+  const problem = (await screen.findByRole("combobox", {
+    name: "IPOC problem",
+  })) as HTMLSelectElement;
+  await waitFor(() => expect(problem.options.length).toBeGreaterThan(1));
+  fireEvent.change(problem, { target: { value: PROBLEM_ID } });
   fireEvent.change(screen.getByRole("textbox", { name: "Goal text" }), {
     target: { value: GOAL_TEXT },
   });
@@ -179,7 +199,7 @@ describe("Aide POC editor — goal source", () => {
       source: "clinical",
       parentProblemId: PROBLEM_ID,
       originalText: GOAL_TEXT,
-      addedByDiscipline: "aide",
+      addedByDiscipline: "rn",
     });
     await settled();
   });

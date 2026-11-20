@@ -49,12 +49,16 @@ export function presentationForClinicalEvent(
   const encounterId = stringOrNull(payload, "encounterId");
   const patientId = stringOrNull(payload, "patientId");
   const admissionId = stringOrNull(payload, "admissionId");
+  // ADR-0114 VN-D30: the cosignature events of an AMENDMENT of a signed note name its addendum.
+  const addendumId = stringOrNull(payload, "addendumId");
+  const amendment = addendumId !== null;
   const base = {
     eventType,
     visitId,
     encounterId,
     patientId,
     admissionId,
+    addendumId,
     assignedMembershipId:
       stringOrNull(payload, "assignedMembershipId") ??
       stringOrNull(payload, "clinicianMembershipId") ??
@@ -134,25 +138,33 @@ export function presentationForClinicalEvent(
       return {
         ...base,
         deepLink: "/work/cosignatures",
-        message: "An encounter cosignature was routed for review.",
+        message: amendment
+          ? "An amendment to a signed encounter was routed for cosignature."
+          : "An encounter cosignature was routed for review.",
       };
     case "m8.encounter.cosignature_overdue":
       return {
         ...base,
         deepLink: "/work/cosignatures",
-        message: "An encounter cosignature is overdue.",
+        message: amendment
+          ? "An amendment to a signed encounter is awaiting cosignature past its due time."
+          : "An encounter cosignature is overdue.",
       };
     case "m8.encounter.cosignature_escalated":
       return {
         ...base,
         deepLink: "/work/cosignatures",
-        message: "An encounter cosignature has escalated.",
+        message: amendment
+          ? "The cosignature of an amendment to a signed encounter has escalated."
+          : "An encounter cosignature has escalated.",
       };
     case "m8.encounter.cosignature_hard_cap_reached":
       return {
         ...base,
         deepLink: "/work/cosignatures",
-        message: "An encounter cosignature reached its required escalation limit.",
+        message: amendment
+          ? "The cosignature of an amendment to a signed encounter reached its required escalation limit."
+          : "An encounter cosignature reached its required escalation limit.",
       };
     case "m6.admission.discharged":
       return {

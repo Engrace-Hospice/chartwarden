@@ -4,6 +4,7 @@ import {
   LoadingSpinner,
   PageHeader,
   Panel,
+  PatientWorkspaceLayout,
   StatusPill,
   useApiClient,
 } from "@chartwarden/ui";
@@ -21,6 +22,12 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import {
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
 import { useSession } from "../../shell/session";
 import {
   type PlanDetail,
@@ -61,6 +68,7 @@ export function IdgRevisionReview(): JSX.Element {
     kind: string;
     versionId: string;
   }>();
+  const identity = useChartIdentity(patientId);
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [version, setVersion] = useState<VersionDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,10 +125,30 @@ export function IdgRevisionReview(): JSX.Element {
     navigate(`/patients/${patientId}/discipline-plans/${(kind ?? "").replace(/_/g, "-")}`);
   }
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (!plan || !version)
-    return <EmptyState title="Not found" description="This revision is not available." />;
+  // The shared chart banner and Patient Summary rail, so this screen shows the same identity header as
+  // every other discipline-plan screen.
+  const bailBanner = <ChartPatientBanner patientId={patientId} identity={identity} nameAsHeading />;
+  if (loading) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <LoadingSpinner />
+      </PatientChartBail>
+    );
+  }
+  if (error) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <EmptyState title="Unavailable" description={error} />
+      </PatientChartBail>
+    );
+  }
+  if (!plan || !version) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <EmptyState title="Not found" description="This revision is not available." />
+      </PatientChartBail>
+    );
+  }
 
   // The goals/interventions the IDG consumer touched most recently — the revision's visible content. The
   // plan read carries no per-mutation provenance, so the ordering (newest authored first) is the honest
@@ -133,146 +161,160 @@ export function IdgRevisionReview(): JSX.Element {
     .slice(0, 10);
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>{kindLabel(kind)} — IDG revision review</span>}
-        actions={
-          <Link
-            to={`/patients/${patientId}/discipline-plans/${kind}/versions`}
-            style={ghostButtonStyle}
+    <PatientWorkspaceLayout
+      banner={<ChartPatientBanner patientId={patientId} identity={identity} />}
+      rail={<PatientSummaryPanel identity={identity} />}
+    >
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <ChartModuleRail patientId={patientId ?? ""} current="discipline-plans" />
+        <section
+          aria-label={`${kindLabel(kind)} IDG revision review`}
+          className="wx-kit-column"
+          style={{ ...columnStyle, flex: 1, minWidth: 0, overflow: "auto" }}
+        >
+          <PageHeader
+            title={<span style={pageTitleStyle}>{kindLabel(kind)} — IDG revision review</span>}
+            actions={
+              <Link
+                to={`/patients/${patientId}/discipline-plans/${kind}/versions`}
+                style={ghostButtonStyle}
+              >
+                Version history
+              </Link>
+            }
+          />
+
+          <Notice tone="info">
+            The interdisciplinary group's decisions have already been applied to this plan.
+            Reviewing here confirms the record before the revision is finalized and signed — it does
+            not re-decide it.
+          </Notice>
+          {actionError ? (
+            <p role="alert" aria-live="assertive" className="wx-text-error">
+              {actionError}
+            </p>
+          ) : null}
+
+          <Panel
+            stack
+            headingLevel={3}
+            title={`Version ${version.sequence}`}
+            action={
+              <StatusPill
+                label={humanize(version.status)}
+                tone={toneOf(VERSION_STATUS_TONE, version.status)}
+              />
+            }
           >
-            Version history
-          </Link>
-        }
-      />
+            <SummaryGrid>
+              <Field label="Version kind" value={humanize(version.kind)} />
+              <Field label="IDG meeting" value={shortId(version.idgMeetingId)} mono />
+              <Field
+                label="Latest applied IDG decision"
+                value={shortId(plan.actionSummary.idgDecisionId)}
+                mono
+              />
+              <Field label="Finalized" value={dateTime(version.finalizedAt)} />
+              <Field label="Signed" value={dateTime(version.signedAt)} />
+            </SummaryGrid>
+            {version.status === "draft" && canFinalize ? (
+              <Button loading={finalizing} onClick={() => void finalize()}>
+                Finalize revision
+              </Button>
+            ) : version.status === "draft" ? (
+              <span className="wx-text-muted">
+                You can review this draft, but finalizing requires the plan-finalize permission.
+              </span>
+            ) : (
+              <span className="wx-text-muted">
+                This revision is {humanize(version.status).toLowerCase()} — its snapshot is sealed.
+                Signing happens on the plan view.
+              </span>
+            )}
+            {normalizeSignerSet(version.requiredSignerSet).length > 0 ? (
+              <span className="wx-text-muted">
+                Quorum:{" "}
+                {normalizeSignerSet(version.requiredSignerSet)
+                  .map(
+                    (s) => `${humanize(s.role)}${s.isAcknowledgment ? " (ack)" : ""} ×${s.count}`,
+                  )
+                  .join(" · ")}
+              </span>
+            ) : null}
+          </Panel>
 
-      <Notice tone="info">
-        The interdisciplinary group's decisions have already been applied to this plan. Reviewing
-        here confirms the record before the revision is finalized and signed — it does not re-decide
-        it.
-      </Notice>
-      {actionError ? (
-        <p role="alert" aria-live="assertive" className="wx-text-error">
-          {actionError}
-        </p>
-      ) : null}
+          <Panel stack headingLevel={3} title="Most recently authored goals">
+            {recentGoals.length === 0 ? (
+              <span className="wx-text-muted">No goals on this plan.</span>
+            ) : (
+              <TableScroll label="Recently authored goals table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Goal</th>
+                      <th>Source</th>
+                      <th>Added</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentGoals.map((g) => (
+                      <tr key={g.goalId}>
+                        <td>{g.revisedText ?? g.originalText}</td>
+                        <td>{goalSourceLabel(g.source)}</td>
+                        <td>{dateTime(g.addedAt)}</td>
+                        <td>
+                          <StatusPill
+                            label={humanize(g.status)}
+                            tone={toneOf(GOAL_STATUS_TONE, g.status)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+            )}
+          </Panel>
 
-      <Panel
-        stack
-        headingLevel={3}
-        title={`Version ${version.sequence}`}
-        action={
-          <StatusPill
-            label={humanize(version.status)}
-            tone={toneOf(VERSION_STATUS_TONE, version.status)}
-          />
-        }
-      >
-        <SummaryGrid>
-          <Field label="Version kind" value={humanize(version.kind)} />
-          <Field label="IDG meeting" value={shortId(version.idgMeetingId)} mono />
-          <Field
-            label="Latest applied IDG decision"
-            value={shortId(plan.actionSummary.idgDecisionId)}
-            mono
-          />
-          <Field label="Finalized" value={dateTime(version.finalizedAt)} />
-          <Field label="Signed" value={dateTime(version.signedAt)} />
-        </SummaryGrid>
-        {version.status === "draft" && canFinalize ? (
-          <Button loading={finalizing} onClick={() => void finalize()}>
-            Finalize revision
-          </Button>
-        ) : version.status === "draft" ? (
-          <span className="wx-text-muted">
-            You can review this draft, but finalizing requires the plan-finalize permission.
-          </span>
-        ) : (
-          <span className="wx-text-muted">
-            This revision is {humanize(version.status).toLowerCase()} — its snapshot is sealed.
-            Signing happens on the plan view.
-          </span>
-        )}
-        {normalizeSignerSet(version.requiredSignerSet).length > 0 ? (
-          <span className="wx-text-muted">
-            Quorum:{" "}
-            {normalizeSignerSet(version.requiredSignerSet)
-              .map((s) => `${humanize(s.role)}${s.isAcknowledgment ? " (ack)" : ""} ×${s.count}`)
-              .join(" · ")}
-          </span>
-        ) : null}
-      </Panel>
-
-      <Panel stack headingLevel={3} title="Most recently authored goals">
-        {recentGoals.length === 0 ? (
-          <span className="wx-text-muted">No goals on this plan.</span>
-        ) : (
-          <TableScroll label="Recently authored goals table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Goal</th>
-                  <th>Source</th>
-                  <th>Added</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentGoals.map((g) => (
-                  <tr key={g.goalId}>
-                    <td>{g.revisedText ?? g.originalText}</td>
-                    <td>{goalSourceLabel(g.source)}</td>
-                    <td>{dateTime(g.addedAt)}</td>
-                    <td>
-                      <StatusPill
-                        label={humanize(g.status)}
-                        tone={toneOf(GOAL_STATUS_TONE, g.status)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        )}
-      </Panel>
-
-      <Panel stack headingLevel={3} title="Most recently authored interventions">
-        {recentInterventions.length === 0 ? (
-          <span className="wx-text-muted">No interventions on this plan.</span>
-        ) : (
-          <TableScroll label="Recently authored interventions table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Scope</th>
-                  <th>Frequency</th>
-                  <th>Added</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentInterventions.map((iv) => (
-                  <tr key={iv.interventionId}>
-                    <td>{iv.scopeText}</td>
-                    <td>{iv.frequencyText}</td>
-                    <td>{dateTime(iv.addedAt)}</td>
-                    <td>
-                      <StatusPill
-                        label={humanize(iv.status)}
-                        tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        )}
-        <span className="wx-text-muted">
-          Ordered by authorship time; the plan read carries no per-mutation IDG attribution.
-        </span>
-      </Panel>
-    </div>
+          <Panel stack headingLevel={3} title="Most recently authored interventions">
+            {recentInterventions.length === 0 ? (
+              <span className="wx-text-muted">No interventions on this plan.</span>
+            ) : (
+              <TableScroll label="Recently authored interventions table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Scope</th>
+                      <th>Frequency</th>
+                      <th>Added</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentInterventions.map((iv) => (
+                      <tr key={iv.interventionId}>
+                        <td>{iv.scopeText}</td>
+                        <td>{iv.frequencyText}</td>
+                        <td>{dateTime(iv.addedAt)}</td>
+                        <td>
+                          <StatusPill
+                            label={humanize(iv.status)}
+                            tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+            )}
+            <span className="wx-text-muted">
+              Ordered by authorship time; the plan read carries no per-mutation IDG attribution.
+            </span>
+          </Panel>
+        </section>
+      </div>
+    </PatientWorkspaceLayout>
   );
 }

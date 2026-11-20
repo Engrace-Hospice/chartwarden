@@ -20,6 +20,8 @@ const PLAN_ROW = {
   status: "active",
   kind: "msw_plan",
   version: 1,
+  // The assigned aide of an Aide POC: only this membership may fill the CHHA acknowledgment slot.
+  aideMembershipId: "m1",
 };
 const VERSION_ROW = {
   id: VERSION,
@@ -40,10 +42,12 @@ function fakeDb(
   signatures: readonly Record<string, unknown>[],
   requiredSignerSet: unknown = VERSION_ROW.requiredSignerSet,
   insertError?: unknown,
+  planKind: string = PLAN_ROW.kind,
+  planOverrides: Record<string, unknown> = {},
 ) {
   inserted = [];
   const results: unknown[][] = [
-    [PLAN_ROW],
+    [{ ...PLAN_ROW, kind: planKind, ...planOverrides }],
     [{ ...VERSION_ROW, requiredSignerSet }],
     [...signatures],
   ];
@@ -75,8 +79,9 @@ const service = (
   signatures: readonly Record<string, unknown>[] = [],
   requiredSignerSet?: unknown,
   insertError?: unknown,
+  planKind?: string,
 ) =>
-  buildDrizzleM15WriteService(fakeDb(signatures, requiredSignerSet, insertError), {
+  buildDrizzleM15WriteService(fakeDb(signatures, requiredSignerSet, insertError, planKind), {
     isInCaseload: async () => true,
   });
 
@@ -196,6 +201,136 @@ describe("M15 signVersion — the signer role is bound to the authenticated acto
         sign("chha_acknowledgment"),
       ),
     ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
+  });
+
+  it("lets only the plan's assigned aide fill the CHHA acknowledgment slot", async () => {
+    const aideSet = [{ role: "chha_acknowledgment", count: 1, isAcknowledgment: true }];
+    // Another aide of the same org holds the chha role but is not the aide this plan names.
+    const err = await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m9", ["chha"]), PLAN, VERSION, sign("chha_acknowledgment"))
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DisciplinePlanStateError);
+    expect((err as DisciplinePlanStateError).code).toBe("SIGNER_ROLE_MISMATCH");
+    expect((err as DisciplinePlanStateError).statusCode).toBe(403);
+    expect(inserted).toHaveLength(0);
+    // The assigned aide ("m1") signs.
+    await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m1", ["chha"]), PLAN, VERSION, sign("chha_acknowledgment"))
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({
+      signerMembershipId: "m1",
+      signerRole: "chha_acknowledgment",
+    });
+  });
+
+  it("refuses the acknowledgment on a plan that names no aide (fail closed)", async () => {
+    const aideSet = [{ role: "chha_acknowledgment", count: 1, isAcknowledgment: true }];
+    const noAide = buildDrizzleM15WriteService(
+      fakeDb([], aideSet, undefined, "aide_poc", { aideMembershipId: null }),
+      { isInCaseload: async () => true },
+    );
+    await expect(
+      noAide.signVersion(actor("m1", ["chha"]), PLAN, VERSION, sign("chha_acknowledgment")),
+    ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
+  });
+
+  it("lets a plain RN fill the RN slot of an Aide POC, and of no other plan kind", async () => {
+    const aideSet = [
+      { role: "rn_case_manager", count: 1, isAcknowledgment: false },
+      { role: "chha_acknowledgment", count: 1, isAcknowledgment: true },
+    ];
+    await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m1", ["rn"]), PLAN, VERSION, sign("rn_case_manager"))
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({ signerMembershipId: "m1", signerRole: "rn_case_manager" });
+
+    for (const kind of ["msw_plan", "volunteer_plan"]) {
+      inserted = [];
+      await expect(
+        service([], undefined, undefined, kind).signVersion(
+          actor("m2", ["rn"]),
+          PLAN,
+          VERSION,
+          sign("rn_case_manager"),
+        ),
+        kind,
+      ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
+      expect(inserted, kind).toHaveLength(0);
+    }
+  });
+
+  it("still refuses an actor with neither rn nor rn_case_manager the Aide POC RN slot", async () => {
+    await expect(
+      service([], undefined, undefined, "aide_poc").signVersion(
+        actor("m3", ["lpn"]),
+        PLAN,
+        VERSION,
+        sign("rn_case_manager"),
+      ),
+    ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
+  });
+
+  it("takes the acknowledgment flag from the sealed slot, never from the request body", async () => {
+    const aideSet = [
+      { role: "rn_case_manager", count: 1, isAcknowledgment: false },
+      { role: "chha_acknowledgment", count: 1, isAcknowledgment: true },
+    ];
+    const body = (signerRole: string, isAcknowledgment: boolean) =>
+      ({
+        expectedVersion: null,
+        signerRole,
+        attestationText: "I attest",
+        isAcknowledgment,
+      }) as never;
+    await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m1", ["chha"]), PLAN, VERSION, body("chha_acknowledgment", false))
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({
+      signerRole: "chha_acknowledgment",
+      isAcknowledgment: true,
+    });
+    inserted = [];
+    await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m2", ["rn"]), PLAN, VERSION, body("rn_case_manager", true))
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({ signerRole: "rn_case_manager", isAcknowledgment: false });
+  });
+
+  it("records the role key the signer actually held, not only the slot it filled", async () => {
+    const aideSet = [
+      { role: "rn_case_manager", count: 1, isAcknowledgment: false },
+      { role: "chha_acknowledgment", count: 1, isAcknowledgment: true },
+    ];
+    const signAs = async (roles: readonly string[], slot: string, kind = "aide_poc") => {
+      inserted = [];
+      await service([], aideSet, undefined, kind)
+        .signVersion(actor("m1", roles), PLAN, VERSION, sign(slot))
+        .catch(() => undefined);
+      return inserted[0];
+    };
+    // A plain RN fills the case-manager slot: the slot name says rn_case_manager, the held key says rn.
+    expect(await signAs(["rn"], "rn_case_manager")).toMatchObject({
+      signerRole: "rn_case_manager",
+      heldRoleKey: "rn",
+    });
+    // A holder of both keys is recorded under the slot's own key.
+    expect(await signAs(["rn", "rn_case_manager"], "rn_case_manager")).toMatchObject({
+      heldRoleKey: "rn_case_manager",
+    });
+    // The acknowledgment slot is held through the chha key.
+    expect(await signAs(["chha"], "chha_acknowledgment")).toMatchObject({ heldRoleKey: "chha" });
+  });
+
+  it("records no held role key for the system actor (it holds no role by design)", async () => {
+    await service()
+      .signVersion(
+        systemM15Actor(ORG, { userId: "sys", membershipId: "sysm" }),
+        PLAN,
+        VERSION,
+        sign("msw"),
+      )
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({ heldRoleKey: null });
   });
 
   it("exempts the explicit system actor from the role check (internal callers hold no roles)", async () => {

@@ -71,12 +71,17 @@ export function SelectField({
   options,
   onChange,
   disabled,
+  hint,
+  error,
 }: {
   label: string;
   value: string;
-  options: readonly { value: string; label: string }[];
+  options: readonly { value: string; label: string; disabled?: boolean }[];
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** Linked to the select (`aria-describedby`) so a screen reader hears why it is empty or disabled. */
+  hint?: string;
+  error?: string;
 }): JSX.Element {
   return (
     <KitSelectField
@@ -84,6 +89,8 @@ export function SelectField({
       value={value}
       options={options}
       disabled={disabled}
+      hint={hint}
+      error={error}
       onChange={(event) => onChange(event.target.value)}
     />
   );

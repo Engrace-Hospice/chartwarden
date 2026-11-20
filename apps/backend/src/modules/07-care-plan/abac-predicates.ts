@@ -121,6 +121,20 @@ export interface InternalSudVerdict {
   readonly restrictedToNamedWorkforce: boolean;
 }
 
+/** The `callerModule` token M7's own Part 2 reads carry on M39's evaluation audit. */
+const M7_CALLER_MODULE = "m7";
+
+/** How a caller shapes {@link defaultInternalSudAccessChecker}. */
+export interface InternalSudCheckerOptions {
+  /** The `callerModule` token on M39's evaluation audit row: the module that is asking, `"m7"` unless another module reuses this glue. */
+  readonly callerModule?: string;
+  /**
+   * What an M39 failure becomes. `"deny"` (the default, M7's own reads) answers "not allowed, restricted to named workforce". `"throw"`
+   * rethrows, for a caller that must tell an outage from a verdict and fail closed in its own way (the M8 visit-note draft answers 503).
+   */
+  readonly onError?: "deny" | "throw";
+}
+
 /** The per-actor Part 2 checker `sud_disclosure_allowed` resolves through (M39 `evaluateForInternalAccess`). */
 export type InternalSudAccessChecker = (q: {
   organizationId: string;
@@ -139,7 +153,10 @@ export type InternalSudAccessChecker = (q: {
  * "no restriction exists", which would hand the §7.6 role path a disclosure the consent record might
  * forbid.
  */
-export function defaultInternalSudAccessChecker(): InternalSudAccessChecker {
+export function defaultInternalSudAccessChecker(
+  options: InternalSudCheckerOptions = {},
+): InternalSudAccessChecker {
+  const { callerModule = M7_CALLER_MODULE, onError = "deny" } = options;
   return async (q) => {
     try {
       const evaluator = getSeam("ConsentEvaluator") as ConsentEvaluator;
@@ -147,14 +164,15 @@ export function defaultInternalSudAccessChecker(): InternalSudAccessChecker {
         organizationId: q.organizationId,
         patientId: q.patientId,
         actor: { membershipId: q.membershipId },
-        callerModule: "m7",
+        callerModule,
       });
       return {
         allowed: !res.redactSubstanceUseDisorderFields,
         restrictedToNamedWorkforce:
           res.basis === "release_names_others" || res.basis === "actor_unidentified",
       };
-    } catch {
+    } catch (cause) {
+      if (onError === "throw") throw cause;
       return { allowed: false, restrictedToNamedWorkforce: true };
     }
   };

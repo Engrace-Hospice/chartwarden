@@ -1597,12 +1597,12 @@ export type DataClass =
   // `encounter_signature`, `encounter_addendum`, `encounter_care_plan_link`, `cosignature_request`,
   // `vitals`, `mileage`, `hearthnote_selection`, `hearthnote_assembled_output`, and
   // `hearthnote_llm_modification` rows hung off a patient's `encounter` root. Erased by M8's registered
-  // eraser (M8-T12) under an M4 destruction certificate; the HearthNote ciphertext is crypto-erased via
-  // the tenant DEK (§3.6) and the `encounter` root is left a tombstone for FK referential integrity (D8
-  // resolver pattern, same as M5's `clinical_record`, M6's `admission_record`, M7's `care_plan_record`).
+  // eraser (M8-T12) under an M4 destruction certificate; it shreds the HearthNote cipher columns (§3.6),
+  // leaves the `encounter` root a tombstone for FK referential integrity (D8 resolver pattern, same as
+  // M5's `clinical_record`, M6's `admission_record`, M7's `care_plan_record`), then deletes the satellites,
+  // children before parents.
   // `subjectId` is the patient being destroyed — M8 owns its own encounter satellites, distinct from
-  // M5's patient spine and M6/M7's admission/care-plan subtrees (the spec's §3.6 `clinical_record`
-  // mention is reconciled to this disjoint class so the M5 eraser is never double-registered).
+  // M5's patient spine and M6/M7's admission/care-plan subtrees.
   | "encounter_record"
   // M9 (Clinical Assessments Suite) per-patient assessment record: the assessment subtree M9 owns — the
   // `assessment_cosignature` and `significant_change_event` child rows plus the `clinical_assessment` rows

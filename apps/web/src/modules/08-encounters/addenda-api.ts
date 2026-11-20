@@ -12,6 +12,8 @@
 //     `/step-up` screen; the message the server sent is shown, not replaced.
 //   • The Layer-3 gate at finalize/sign. A 409/422 names what is missing and is shown verbatim.
 import type { ApiClient, operations } from "@chartwarden/ui";
+import { amendCreateRefusal } from "./amendment-model";
+import type { AmendmentCosignStatus } from "./cosign-model";
 import type { UpdateSelectionsBody } from "./encounters-api";
 
 type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
@@ -33,6 +35,10 @@ export interface AddendumRow {
   readonly createdAt: string;
   readonly signedAt: string | null;
   readonly version: number;
+  /** The sections of the signed note this addendum amends (ADR-0114 VN-D30); absent or empty = a free addendum. */
+  readonly amendsSectionIds?: readonly string[];
+  /** Where the cosignature of this amendment stands, when the API sends it (`not_required` unless its note needed a cosigner). */
+  readonly cosignStatus?: AmendmentCosignStatus | null;
 }
 
 export type AddendumResult<T> =
@@ -43,12 +49,14 @@ export type AddendumResult<T> =
       readonly code: string | null;
       /** The server's message, verbatim; a generic fallback only when it sent none. */
       readonly message: string;
+      /** The envelope's own `details` (the sections a stale sign names), when it sent any. */
+      readonly details?: unknown;
     };
 
 function failure(status: number | undefined, body: unknown): AddendumResult<never> {
   const err =
     body && typeof body === "object" && "error" in body
-      ? (body as { error?: { code?: unknown; message?: unknown } }).error
+      ? (body as { error?: { code?: unknown; message?: unknown; details?: unknown } }).error
       : undefined;
   return {
     ok: false,
@@ -58,6 +66,7 @@ function failure(status: number | undefined, body: unknown): AddendumResult<neve
       typeof err?.message === "string" && err.message.length > 0
         ? err.message
         : "The action could not be completed.",
+    ...(err?.details === undefined ? {} : { details: err.details }),
   };
 }
 
@@ -76,7 +85,20 @@ export async function loadAddendumSelections(
   return { ok: true, value: data };
 }
 
-/** The WHOLE tree, with the `If-Match` version of the last read/save (a 409 STALE_VERSION is someone else saving first). */
+/** The state of the cosignature request an amending addendum opened: `null` before any routing (404 for an addendum of another encounter or tenant). */
+export async function loadAddendumCosignature(
+  client: ApiClient,
+  ids: Ids,
+): Promise<AddendumResult<{ status: string | null }>> {
+  const { data, error, response } = await client.GET(
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/cosignature",
+    { params: pathOf(ids) },
+  );
+  if (error || !data) return failure(response?.status, error);
+  return { ok: true, value: data };
+}
+
+/** The WHOLE tree, with the `If-Match` version of the last read/save (the server requires the header but does not compare it: the last save wins; a finalized or signed addendum is 409 ILLEGAL_TRANSITION). */
 export async function saveAddendumSelections(
   client: ApiClient,
   ids: Ids,
@@ -103,11 +125,50 @@ export async function finalizeAddendum(
   return { ok: true, value: data };
 }
 
+/**
+ * Open an addendum on a signed note. With `amendsSectionIds` (1 to 12 sections of the note's own sealed rows) it is an amending addendum:
+ * its author then confirms the redrafted sections before it can sign. A refusal that has a next step of its own (the draft switched off,
+ * a section the note does not carry) comes back worded for the person; any other comes back as the server sent it.
+ */
+export async function openAddendum(
+  client: ApiClient,
+  encounterId: string,
+  reason: string,
+  amendsSectionIds: readonly string[],
+): Promise<{ data?: unknown; error?: unknown; response: Response }> {
+  const { data, error, response } = await client.POST("/api/v1/encounters/{encounterId}/addenda", {
+    params: { path: { encounterId } },
+    body:
+      amendsSectionIds.length > 0
+        ? { reason, amendsSectionIds: [...amendsSectionIds] }
+        : { reason },
+  });
+  // A free addendum's refusals are the server's own: the amending wording would misname a missing note as a draft switch.
+  if (!error || amendsSectionIds.length === 0) return { data, error, response };
+  const code = (error as { error?: { code?: unknown } }).error?.code;
+  const wording = amendCreateRefusal(response?.status, typeof code === "string" ? code : null);
+  return {
+    data,
+    error: wording
+      ? { error: { code: typeof code === "string" ? code : "REFUSED", message: wording } }
+      : error,
+    response,
+  };
+}
+
 /** Sign. The body is the attestation flag only; who is signing is whoever the session is. */
 export async function signAddendum(
   client: ApiClient,
   ids: Ids,
-): Promise<AddendumResult<{ status: "signed"; signedAt: string }>> {
+): Promise<
+  AddendumResult<{
+    status: "signed";
+    signedAt: string;
+    /** The sections an amending addendum changed; the cosignature request opened for it, if its note needed one. */
+    amendedSectionIds?: string[];
+    cosignatureRequestId?: string | null;
+  }>
+> {
   const { data, error, response } = await client.POST(
     "/api/v1/encounters/{encounterId}/addenda/{addendumId}/sign",
     { params: pathOf(ids), body: { attestationConfirmed: true } },

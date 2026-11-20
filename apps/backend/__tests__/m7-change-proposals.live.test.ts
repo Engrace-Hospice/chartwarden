@@ -1215,7 +1215,7 @@ describe.skipIf(!DB_URL)("M7 change proposals — LIVE Postgres (WF09)", () => {
       const { planId } = await newPlan();
       const { parent } = await withChildren(planId);
       await as(CM, () => proposals.dismiss(ORG_A, planId, parent.id, {}, caller(CM)));
-      // Migration 1530 makes a dismissed row final (nothing can un-dismiss a child), so the older row is written straight: pending, under it.
+      // Migration 1532 makes a dismissed row final (nothing can un-dismiss a child), so the older row is written straight: pending, under it.
       const old = await row(
         `INSERT INTO care_plan_change_proposal (organization_id, care_plan_id, patient_id, source_encounter_id, proposed_by_membership_id, kind, parent_proposal_id,
            goal_text, goal_source, status, released_at)

@@ -30,7 +30,7 @@ export type Responder = (
   call: Call,
 ) => { status?: number; body?: unknown } | Promise<{ status?: number; body?: unknown }>;
 
-function makeFetch(routes: Record<string, Responder>, calls: Call[]): typeof fetch {
+export function makeFetch(routes: Record<string, Responder>, calls: Call[]): typeof fetch {
   return async (input, init) => {
     const request = new Request(input as RequestInfo, init);
     const url = new URL(request.url);

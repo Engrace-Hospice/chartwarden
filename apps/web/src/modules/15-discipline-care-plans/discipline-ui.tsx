@@ -5,7 +5,7 @@
 // `arch:design-tokens` stays green and the twilight dark mode is automatic.
 import { Button, Modal as SharedModal, t } from "@chartwarden/ui";
 import { useEffect } from "react";
-import type { CSSProperties, JSX, ReactNode } from "react";
+import type { CSSProperties, JSX, MouseEvent, ReactNode } from "react";
 
 /**
  * Keeps clinical tables usable at narrow widths without forcing the whole patient workspace to overflow.
@@ -53,6 +53,30 @@ export function useUnsavedChangesWarning(dirty: boolean): () => boolean {
   }, [dirty]);
 
   return () => !dirty || window.confirm("Discard the unsaved changes on this screen?");
+}
+
+/**
+ * A capture-phase click guard for every in-app link under a screen — the chart rail, the banner and the screen's own
+ * links — because `beforeunload` does not fire on a client-side navigation. Spread it on a wrapper
+ * (`<div style={{ display: "contents" }} {...guardLinkClicks(confirmDiscard)}>`); a declined confirm cancels the click
+ * before the router sees it. Modified clicks and `target` links open elsewhere and are left alone.
+ */
+export function guardLinkClicks(confirmDiscard: () => boolean): {
+  onClickCapture: (event: MouseEvent<HTMLElement>) => void;
+} {
+  return {
+    onClickCapture: (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      const anchor = (event.target as Element).closest?.("a[href]");
+      if (!anchor || anchor.getAttribute("target")) return;
+      if (!confirmDiscard()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    },
+  };
 }
 
 // ── card + section chrome ──────────────────────────────────────────────────────────────────────────────

@@ -1,4 +1,6 @@
 import {
+  DRAFT_POLICY_ADMIN_PERMISSION_KEY,
+  DRAFT_POLICY_ADMIN_SUPERVISOR_ROLE_KEYS,
   NOTE_CLOSURE_POLICY_ADMIN_SUPERVISOR_ROLE_KEYS,
   NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS,
 } from "@chartwarden/auth";
@@ -21,6 +23,9 @@ import {
  * And the two visit-note closure keys (ADR-0113 D7), also categorised `compliance`: the sweep handed both to the auditor and to every
  * field role, aides and volunteers included. `encounter.closure_override` is the four supervisor keys' (the whole-catalog admin roles
  * never get it, see full-catalog-grants.ts); `encounter.closure_policy_admin` is the DON's (the admin roles keep it).
+ *
+ * And `encounter.draft_policy_admin` (ADR-0114 VN-D17), the visit-note draft switch: `compliance` too, with the same owners as the closure
+ * policy (the DON keys; the admin roles keep it).
  */
 const IDG_KEY_ROLES: Readonly<Record<string, ReadonlySet<string>>> = {
   "idg.coordinate": new Set(["clinical_supervisor", "medical_director"]),
@@ -29,6 +34,7 @@ const IDG_KEY_ROLES: Readonly<Record<string, ReadonlySet<string>>> = {
   "encounter.administrative_override": new Set(["clinical_supervisor"]),
   "encounter.closure_override": new Set(NOTE_CLOSURE_SUPERVISOR_ROLE_KEYS),
   "encounter.closure_policy_admin": new Set(NOTE_CLOSURE_POLICY_ADMIN_SUPERVISOR_ROLE_KEYS),
+  [DRAFT_POLICY_ADMIN_PERMISSION_KEY]: new Set(DRAFT_POLICY_ADMIN_SUPERVISOR_ROLE_KEYS),
 };
 
 /** True unless `permissionKey` is a restricted IDG key and `roleKey` is not one of its default roles. */

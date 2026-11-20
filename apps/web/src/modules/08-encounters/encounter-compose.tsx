@@ -27,7 +27,12 @@ import type { JSX } from "react";
 import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
 import { type PanelStatus, withPanelStatus } from "../../shell/panel-status";
 import { PlanOfCareStep } from "../07-care-plan/change-proposals";
-import { TRANSPORT_MESSAGE, humanize, readableValidation } from "./compose-text";
+import { type UiFeedback, feedbackFor, transportFeedback } from "./compose-feedback";
+import { gateRefusalWords } from "./compose-gate-refusal";
+import { humanize } from "./compose-text";
+import { ComposerDraftRail, ComposerDraftStrip } from "./composer-draft-chrome";
+import { STATE_LABEL, confirmedSectionIds, draftedStateOf } from "./draft-model";
+import { DraftSectionPanel } from "./draft-section-panel";
 import {
   attentionCard,
   attentionMark,
@@ -131,10 +136,10 @@ import {
   type SelectionsView,
   type TemplateSection,
   type TemplateView,
-  type WriteResult,
   currentNoteText,
   dropUnofferedEntries,
   finalizeEncounter,
+  isSectionPopulated,
   isSingleChoice,
   loadFallIncidents,
   loadSelections,
@@ -149,44 +154,16 @@ import {
   toSelectionsBody,
 } from "./encounters-api";
 import { FallLinkField } from "./fall-link-field";
+import {
+  NOTE_VIEW_UNAVAILABLE_DESCRIPTION,
+  NoteViewUnavailable,
+  isNoteViewUnavailable,
+} from "./note-view-unavailable";
 import { type RecordedPanelKind, RecordedPanels } from "./recorded-panels";
 import { SlotInput } from "./slot-input";
+import { useComposerDraft } from "./use-composer-draft";
+import { useFocusRequest } from "./use-focus-request";
 import { VitalsPanel } from "./vitals-panel";
-
-const sectionIsFilled = (draft: DraftSections, sectionId: string): boolean => {
-  const value = draft[sectionId];
-  return (value?.entries.length ?? 0) > 0 || (value?.freeText.trim().length ?? 0) > 0;
-};
-
-type UiFeedback = {
-  tone: "success" | "error" | "warning";
-  title: string;
-  message: string;
-  field?: string;
-  /** Names a notice that goes away by itself once what it is about is no longer true. */
-  tag?: "findings-unsaved";
-};
-
-function feedbackFor(result: Extract<WriteResult<unknown>, { ok: false }>): UiFeedback {
-  if (result.code === "STALE_VERSION")
-    return {
-      tone: "warning",
-      title: "This visit note changed",
-      message:
-        "The note was updated after you opened it. Reload the latest version before continuing.",
-    };
-  const first = Array.isArray(result.details) ? result.details[0] : result.details;
-  const field =
-    first && typeof first === "object" && typeof (first as { field?: unknown }).field === "string"
-      ? (first as { field: string }).field
-      : undefined;
-  return {
-    tone: "error",
-    title: "Action needed",
-    message: readableValidation(result.details, result.message),
-    field,
-  };
-}
 
 interface PatientSummary {
   readonly firstName: string;
@@ -201,12 +178,6 @@ const isShellExit = (pathname: string): boolean =>
 
 const serializedDraft = (draft: DraftSections, fallIncidentId: string | null): string =>
   JSON.stringify(toSelectionsBody(draft, fallIncidentId));
-
-const transportFeedback: UiFeedback = {
-  tone: "error",
-  title: "Connection interrupted",
-  message: TRANSPORT_MESSAGE,
-};
 
 /** The note's own words for a part of it that keeps its own form (named in the notice that asks the author to save or discard it). */
 const PANEL_ORDER: readonly PanelKey[] = ["adl", "nutrition", "wounds", "vitals", "plan"];
@@ -261,6 +232,8 @@ export function EncounterCompose(): JSX.Element {
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The failed read is the Part 2 note view that could not be decided (503): the screen offers a retry.
+  const [retryable, setRetryable] = useState(false);
   const [feedback, setFeedback] = useState<UiFeedback | null>(null);
   const [operation, setOperation] = useState<"saving" | "finalizing" | null>(null);
   const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}, null));
@@ -311,6 +284,8 @@ export function EncounterCompose(): JSX.Element {
     [reportPanel],
   );
   const loadSequence = useRef(0);
+  // Focus for the heading of the open section, so a drafted section opened from the strip takes the reader to it.
+  const [sectionHeadingRef, focusSectionHeading] = useFocusRequest<HTMLHeadingElement>();
 
   const load = useCallback(async (): Promise<EncounterView | null> => {
     if (!encounterId) return null;
@@ -319,6 +294,7 @@ export function EncounterCompose(): JSX.Element {
     loadingRef.current = true;
     setLoading(true);
     setError(null);
+    setRetryable(false);
     setEncounter(null);
     setPatient(null);
     setTemplate(null);
@@ -346,7 +322,13 @@ export function EncounterCompose(): JSX.Element {
 
       if (sequence !== loadSequence.current) return null;
       if (enc.error || !enc.data) {
-        setError("Could not load this encounter.");
+        const noteViewUnavailable = isNoteViewUnavailable(enc.error);
+        setRetryable(noteViewUnavailable);
+        setError(
+          noteViewUnavailable
+            ? NOTE_VIEW_UNAVAILABLE_DESCRIPTION
+            : "Could not load this encounter.",
+        );
         loadingRef.current = false;
         setLoading(false);
         return null;
@@ -472,10 +454,6 @@ export function EncounterCompose(): JSX.Element {
         : NO_SECTIONS,
     [template, adlRecorded, nutritionRecorded],
   );
-  const unmet = useMemo(
-    () => (template ? sectionsNeedingAttention(template, draft, filledByRecord) : []),
-    [template, draft, filledByRecord],
-  );
 
   const editable = encounter?.status === "draft" && encounter.id === encounterId;
   // While the author is typing over the note text, the selections and the save and finalize buttons wait: the text is a copy of
@@ -524,6 +502,32 @@ export function EncounterCompose(): JSX.Element {
     [busy, dirty],
   );
   const blocker = useBlocker(shouldBlock);
+  const active =
+    template?.sections.find((s) => s.sectionId === openSection) ?? template?.sections[0];
+  // ADR-0114: the pre-drafted sections. "off" (the tenant switch, or nothing drafted) leaves the composer exactly as it was.
+  const {
+    noteDraft,
+    drafted,
+    pending,
+    panelSection,
+    blockedReason,
+    carePlanRevision,
+    refusal,
+    refuse,
+    resolveSection,
+  } = useComposerDraft({
+    encounterId: encounter?.id,
+    encounterStatus: encounter?.status,
+    activeSectionId: active?.sectionId,
+    saving: busy,
+    dirty,
+  });
+  // The server's check 1 counts drafted text the clinician confirmed as populating a required section; so does every count here.
+  const confirmedIds = useMemo(() => confirmedSectionIds(drafted), [drafted]);
+  const unmet = useMemo(
+    () => (template ? sectionsNeedingAttention(template, draft, filledByRecord, confirmedIds) : []),
+    [template, draft, filledByRecord, confirmedIds],
+  );
 
   useEffect(() => {
     if (!dirty && !busy) return;
@@ -549,7 +553,8 @@ export function EncounterCompose(): JSX.Element {
 
     const completed = template.sections.filter(
       (section) =>
-        (sectionIsFilled(draft, section.sectionId) || filledByRecord.has(section.sectionId)) &&
+        (isSectionPopulated(draft, section.sectionId, confirmedIds) ||
+          filledByRecord.has(section.sectionId)) &&
         !sectionHasEmptySlots(template, draft, section.sectionId),
     ).length;
 
@@ -561,7 +566,7 @@ export function EncounterCompose(): JSX.Element {
       requiredRemaining: unmet.length,
       percent: total > 0 ? Math.round((completed / total) * 100) : 0,
     };
-  }, [draft, template, filledByRecord, unmet.length]);
+  }, [draft, template, filledByRecord, confirmedIds, unmet.length]);
 
   function toggleEntry(sectionId: string, entry: MenuEntry): void {
     // Statements sharing an exclusive group contradict each other and the server refuses two in one note,
@@ -646,6 +651,15 @@ export function EncounterCompose(): JSX.Element {
       return null;
     }
   }, [client, encounterId]);
+
+  const headingOfSection = (sectionId: string): string =>
+    template?.sections.find((section) => section.sectionId === sectionId)?.heading ??
+    humanize(sectionId);
+
+  const openFromSummary = (sectionId: string): void => {
+    setOpenSection(sectionId);
+    focusSectionHeading();
+  };
 
   /** What the server holds for the note's text: the generated preview and the author's edit of it, if any. */
   const applyStored = useCallback((stored: SelectionsView): void => {
@@ -752,6 +766,8 @@ export function EncounterCompose(): JSX.Element {
       previewRead.current += 1;
       setPreviewStale(false);
       setLastSavedDraft(currentDraft);
+      // A save changes the clinician's own words inside a drafted section, so its text, hash and state are re-read.
+      void noteDraft.reload();
       // A saved edit may have gone stale under what was just saved; the server decides.
       if (editedNarrative !== null) await refreshPreview();
       setFeedback({
@@ -804,6 +820,16 @@ export function EncounterCompose(): JSX.Element {
       const res = await finalizeEncounter(client, encounterId);
 
       if (!res.ok) {
+        // The save changed what the draft is built from and the gate may have named drafted sections: one re-read shows what the
+        // server holds now. (A finalize that succeeds reloads the whole note below, and the draft with it.)
+        void noteDraft.reload();
+        const gate = gateRefusalWords(res.details, headingOfSection);
+        if (gate) {
+          // The gate named drafted sections: say which and why, beside the draft strip.
+          refuse(gate.refusal);
+          setFeedback(gate.feedback);
+          return;
+        }
         setFeedback(feedbackFor(res));
         return;
       }
@@ -849,7 +875,11 @@ export function EncounterCompose(): JSX.Element {
   }
 
   if (error) {
-    return <EmptyState title="Unavailable" description={error} />;
+    return retryable ? (
+      <NoteViewUnavailable description={error} onRetry={() => void load()} />
+    ) : (
+      <EmptyState title="Unavailable" description={error} />
+    );
   }
 
   if (encounter !== null && encounter.id !== encounterId) {
@@ -863,8 +893,6 @@ export function EncounterCompose(): JSX.Element {
   if (encounter === null || template === null) {
     return <EmptyState title="Not found" description="This encounter is not available." />;
   }
-
-  const active = template.sections.find((s) => s.sectionId === openSection) ?? template.sections[0];
 
   const activeDraft = active ? draft[active.sectionId] : undefined;
   const activeSelectionCount = activeDraft?.entries.length ?? 0;
@@ -1043,6 +1071,14 @@ export function EncounterCompose(): JSX.Element {
               </section>
             )}
 
+            <ComposerDraftStrip
+              noteDraft={noteDraft}
+              pending={pending}
+              headingOf={headingOfSection}
+              onOpenSection={openFromSummary}
+              refusal={refusal}
+            />
+
             <div hidden={!vitalsOpen}>
               {vitalsMounted ? (
                 <VitalsPanel
@@ -1051,6 +1087,8 @@ export function EncounterCompose(): JSX.Element {
                   onStatusChange={reportVitals}
                   onSaved={() => {
                     setVitalsOpen(false);
+                    // Vitals are a source of the draft: the text, its hash and its state are re-read.
+                    void noteDraft.reload();
                     setFeedback({
                       tone: "success",
                       title: "Vitals recorded",
@@ -1081,7 +1119,7 @@ export function EncounterCompose(): JSX.Element {
                     const needsDetails = sectionHasEmptySlots(template, draft, section.sectionId);
                     // "Documented" means finalize will take it: a statement with an empty slot is not that.
                     const filled =
-                      (sectionIsFilled(draft, section.sectionId) ||
+                      (isSectionPopulated(draft, section.sectionId, confirmedIds) ||
                         filledByRecord.has(section.sectionId)) &&
                       !needsDetails;
                     const isActive = section.sectionId === active?.sectionId;
@@ -1093,6 +1131,7 @@ export function EncounterCompose(): JSX.Element {
                         : needsAttention
                           ? "Required"
                           : "Not started";
+                    const draftedState = draftedStateOf(drafted, section.sectionId);
 
                     return (
                       <button
@@ -1100,7 +1139,9 @@ export function EncounterCompose(): JSX.Element {
                         type="button"
                         onClick={() => setOpenSection(section.sectionId)}
                         aria-current={isActive ? "step" : undefined}
-                        aria-label={`${section.heading}: ${sectionState}`}
+                        aria-label={`${section.heading}: ${sectionState}${
+                          draftedState ? `, draft ${STATE_LABEL[draftedState].toLowerCase()}` : ""
+                        }`}
                         style={{
                           ...sectionNavButton,
                           ...(isActive ? sectionNavButtonActive : null),
@@ -1135,6 +1176,9 @@ export function EncounterCompose(): JSX.Element {
                           >
                             {sectionState}
                           </span>
+                          {draftedState ? (
+                            <span style={sectionNavMeta}>Draft: {STATE_LABEL[draftedState]}</span>
+                          ) : null}
                         </span>
                       </button>
                     );
@@ -1156,7 +1200,9 @@ export function EncounterCompose(): JSX.Element {
                       <div style={{ minWidth: 0 }}>
                         <div style={eyebrow}>Current section</div>
                         <div style={editorTitleRow}>
-                          <h2 style={editorTitle}>{active.heading}</h2>
+                          <h2 ref={sectionHeadingRef} tabIndex={-1} style={editorTitle}>
+                            {active.heading}
+                          </h2>
                           {active.required ? (
                             <span className="wx-encounter-required-badge" style={requiredBadge}>
                               Required
@@ -1181,6 +1227,19 @@ export function EncounterCompose(): JSX.Element {
                         </span>
                       </div>
                     </header>
+
+                    {panelSection ? (
+                      <div className="wx-draft-slot">
+                        <DraftSectionPanel
+                          key={panelSection.sectionId}
+                          section={panelSection}
+                          note={noteDraft.notes[panelSection.sectionId] ?? null}
+                          busy={noteDraft.busySectionId === panelSection.sectionId}
+                          blockedReason={blockedReason}
+                          onResolve={(resolution) => resolveSection(panelSection, resolution)}
+                        />
+                      </div>
+                    ) : null}
 
                     <div style={editorBody}>
                       <RecordedPanels
@@ -1465,6 +1524,16 @@ export function EncounterCompose(): JSX.Element {
                     </footer>
                   ) : null}
                 </section>
+
+                {drafted ? (
+                  <ComposerDraftRail
+                    encounter={encounter}
+                    editable={editable}
+                    drafted={drafted}
+                    carePlanRevision={carePlanRevision}
+                    onLinksChanged={() => void noteDraft.reload()}
+                  />
+                ) : null}
               </aside>
             </div>
 

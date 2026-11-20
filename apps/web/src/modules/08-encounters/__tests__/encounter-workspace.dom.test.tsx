@@ -364,6 +364,43 @@ describe("Encounter workspace web workflow", () => {
     );
   });
 
+  it("says the note was signed while the vitals were being saved (409 IMMUTABLE_AFTER_SIGN), in the app's words", async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === "/api/v1/encounters/{encounterId}") return { data: encounter };
+      if (path === "/api/v1/encounters/{encounterId}/cosignature")
+        return { data: { status: null } };
+      if (path === "/api/v1/patients/{id}")
+        return {
+          data: {
+            firstName: "Ava",
+            lastName: "Stone",
+            dob: "1950-01-01",
+            mrn: "MRN1",
+            status: "active",
+          },
+        };
+      if (path === "/api/v1/internal/care-plan/relevant-elements")
+        return { data: { problems: [], goals: [], interventions: [], redacted: false } };
+      return { data: { assessments: [] } };
+    });
+    const post = vi.fn(async () => ({
+      error: {
+        error: {
+          code: "IMMUTABLE_AFTER_SIGN",
+          message: "encounter is 'signed'; edits are only permitted via an addendum",
+        },
+      },
+      response: new Response(null, { status: 409 }),
+    }));
+    renderEncounter({ GET: get, PATCH: vi.fn(), POST: post });
+
+    fireEvent.change(await screen.findByLabelText(/Heart rate/i), { target: { value: "72" } });
+    fireEvent.click(screen.getByRole("button", { name: /save vitals/i }));
+    expect(await screen.findByText(/signed while you were working/)).toBeTruthy();
+    expect(screen.getByText(/not saved/)).toBeTruthy();
+    expect(screen.queryByText(/edits are only permitted/)).toBeNull();
+  });
+
   it("creates a PRN Encounter without inventing an M17 Visit", async () => {
     const get = vi.fn(async (path: string) => {
       if (path === "/api/v1/encounters") return { data: { encounters: [] } };

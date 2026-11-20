@@ -11,10 +11,13 @@ import { type NowClock, createCarePlanReader } from "./reader";
 import { type CarePlanReaderStore, createInMemoryCarePlanReaderStore } from "./store";
 
 export {
+  type CarePlanAsOfSeed,
   type CarePlanClockRecord,
   type CarePlanElementsRecord,
   type CarePlanReaderSeed,
   type CarePlanReaderStore,
+  type CarePlanVersionAtRecord,
+  type SeededCarePlanVersion,
   type StoredRelevantProblem,
   createInMemoryCarePlanReaderStore,
 } from "./store";

@@ -1,7 +1,7 @@
 // @chartwarden/db — `encounter_nutrition` (M8, WF09). The nutrition and hydration status a clinician records on ONE visit
 // (appetite, share of meals eaten, fluid intake, swallowing, nutrition support). One row per encounter (unique), replaced whole
 // while the encounter is an editable draft. PHI-bearing → three-column tenancy rule (denormalized from the parent encounter,
-// nullable like every M8 satellite since mig 0128). RLS + the write-audit trigger land in migration 1527.
+// nullable like every M8 satellite since mig 0128). RLS + the write-audit trigger land in migration 1529.
 //
 // Value sets are text + CHECK (no pg enum): they mirror the `*_LEVELS` / `NUTRITION_SUPPORTS` constants of
 // @chartwarden/hearthnote, which this package cannot import. findings-schema-parity.test.ts fails when either side drifts.

@@ -8,7 +8,7 @@
 --                        lists mirror the APPETITE_LEVELS / FLUID_INTAKE_LEVELS / SWALLOWING_LEVELS / NUTRITION_SUPPORTS constants of
 --                        @chartwarden/hearthnote and findings-schema-parity.test.ts fails when either side drifts.
 --
--- Tenancy, foreign-key indexes, audit snapshot and roles: exactly as 1526 (encounter_adl). No free-text column.
+-- Tenancy, foreign-key indexes, audit snapshot and roles: exactly as 1528 (encounter_adl). No free-text column.
 CREATE TABLE "encounter_nutrition" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "organization_id" uuid NOT NULL REFERENCES "organization"("id") ON DELETE RESTRICT,

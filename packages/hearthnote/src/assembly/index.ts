@@ -57,7 +57,13 @@ export {
 } from "./recorded-findings";
 export {
   HearthnoteAssemblyError,
+  NOTE_BLOCK_SEPARATOR,
   assemble,
+  assembleBlocks,
   assembleLayer1,
+  joinBlocks,
+  renderSection,
+  resolveSelectionTemplate,
+  type AssembledBlock,
   type AssemblyErrorCode,
 } from "./assemble";

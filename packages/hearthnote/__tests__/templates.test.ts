@@ -6,7 +6,12 @@ import {
 // packages/hearthnote/__tests__/templates.test.ts — M8-T05 (spec §2.6, architecture §10.5.2).
 // The default template registry: one template per legal pair, spec-mandated required sections.
 import { describe, expect, it } from "vitest";
-import { TEMPLATES, requiredSectionIds, resolveTemplate } from "../src/index";
+import {
+  type HearthnoteTemplate,
+  TEMPLATES,
+  requiredSectionIds,
+  resolveTemplate,
+} from "../src/index";
 
 describe("template registry", () => {
   it("has exactly one template per legal (encounterType × discipline) pair", () => {
@@ -101,8 +106,16 @@ describe("template registry", () => {
     "idg_followup",
   ];
 
+  // The tenant's visit-note draft switch is off by default; with it on, the RN routine visit's vitals and plan sections offer the draft
+  // wording instead (`templates-draft-wiring.test.ts`). These pin the base templates, which every other pair always is.
+  const baseTemplates = (): HearthnoteTemplate[] =>
+    [...TEMPLATES.values()].flatMap((t) => {
+      const base = resolveTemplate(t.encounterType, t.discipline, { draftWording: false });
+      return base === undefined ? [] : [base];
+    });
+
   it("prose-only sections declare no statement categories", () => {
-    for (const t of TEMPLATES.values()) {
+    for (const t of baseTemplates()) {
       for (const s of t.sections) {
         if (PROSE_ONLY.includes(s.id)) expect(s.allowedCategories, `${t.key}/${s.id}`).toEqual([]);
       }
@@ -110,7 +123,7 @@ describe("template registry", () => {
   });
 
   it("Reason for Visit offers the visit reasons and nothing else, in every template", () => {
-    for (const t of TEMPLATES.values()) {
+    for (const t of baseTemplates()) {
       const s = t.sections.find((x) => x.id === "chief_concern");
       expect(s?.allowedCategories, t.key).toEqual(["visit_reason"]);
       expect(s?.required, t.key).toBe(true);

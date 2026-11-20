@@ -1,6 +1,6 @@
 -- compat: expand
 -- M9 longitudinal wounds (1 of 2): the `wound` register. A patient has wounds; each wound is observed again and again
--- over its life (`wound_observation`, migration 1529) and is finally resolved. This table is the identity of the wound,
+-- over its life (`wound_observation`, migration 1531) and is finally resolved. This table is the identity of the wound,
 -- not what was seen on a visit: where it is, what caused it, whether it came with the patient, and whether it is still open.
 --   * Everything is CODED. No free text, so there is nothing for a sealing or screening layer to catch.
 --   * Tenancy: the three-column rule. provider_entity_id / location_id are nullable and stay NULL for now (no published seam

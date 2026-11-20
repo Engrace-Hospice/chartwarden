@@ -1,10 +1,10 @@
-// @chartwarden/db — `wound` (M9 longitudinal wounds, migration 1528). The identity of a wound a patient has: where it is,
+// @chartwarden/db — `wound` (M9 longitudinal wounds, migration 1530). The identity of a wound a patient has: where it is,
 // what caused it, whether it came with the patient, and whether it is still open. What was seen on each visit is
-// `wound_observation` (1529). Everything is CODED (text + CHECK; the value sets live in @chartwarden/assessments), no free
+// `wound_observation` (1531). Everything is CODED (text + CHECK; the value sets live in @chartwarden/assessments), no free
 // text. PHI-bearing → the three-column tenancy rule; provider_entity_id / location_id are nullable and unset for now
 // (no published seam carries a patient-level siting — the clinical_assessment precedent). patient_id is the M5 patient
 // (app-validated, no cross-module FK); the creator is an M1 `membership`. The application role can INSERT and can only
-// close a wound (status / closed_on / updated_at, one-way); RLS + grants + the write-audit trigger are in migration 1528.
+// close a wound (status / closed_on / updated_at, one-way); RLS + grants + the write-audit trigger are in migration 1530.
 import { date, index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { locations } from "../locations";
 import { memberships } from "../memberships";

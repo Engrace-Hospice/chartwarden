@@ -4626,3 +4626,13 @@
     gap: 0.75rem;
   }
 }
+
+/* Print: a patient page's own printout is its main content. The chart navigation strips and the right-hand patient-context
+   rail (DOB, masked MRN, payer tails) are chrome and stay off the paper; the patient banner above the content prints. */
+@media print {
+  .wx-patient-rail,
+  .wx-chart-tabs,
+  .wx-chart-subtabs {
+    display: none;
+  }
+}

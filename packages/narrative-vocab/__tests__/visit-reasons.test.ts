@@ -129,13 +129,17 @@ describe("visit reasons", () => {
 
 describe("the release that added them", () => {
   it("is a new release; the one before keeps its id, so signed notes still decode", () => {
-    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.11.0");
+    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.11.1");
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
+      "narrative-vocab@2026.11.1",
     ]);
     expect(narrativeVocabReleaseById("81dcb265-d2ef-456b-b029-1bcce25105e7")?.version).toBe(
       "narrative-vocab@2026.06.0",
+    );
+    expect(narrativeVocabReleaseById("0e92f042-d45f-426c-918a-d3391387dd69")?.version).toBe(
+      "narrative-vocab@2026.11.0",
     );
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-19");
   });

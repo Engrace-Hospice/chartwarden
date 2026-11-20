@@ -273,3 +273,51 @@ describe("first authoring write", () => {
     expect(rec.inserts).toEqual([]);
   });
 });
+
+describe("the acting user of an authoring write (S1: row-trigger audit images are the clinician's, not the system's)", () => {
+  const USER = "99999999-9999-4999-8999-999999999999";
+  const vitals = { heartRate: 72 } as never;
+
+  it("files a vitals capture under the acting user", async () => {
+    const { service, rec } = serviceOver({ encounter: [encounterRow()], vitals: [{ id: "v-1" }] });
+    await service.captureVitals(ORG, ENCOUNTER, vitals, MEMBERSHIP, USER);
+    expect(rec.actorUserIds).toEqual([USER]);
+  });
+
+  it("files a vitals edit under the acting user", async () => {
+    const { service, rec } = serviceOver({ encounter: [encounterRow()], vitals: [{ id: "v-1" }] });
+    await service.editVitals(ORG, ENCOUNTER, "v-1", vitals, MEMBERSHIP, USER);
+    expect(rec.actorUserIds).toEqual([USER]);
+  });
+
+  it("a caller with no user (a system caller) is still filed under no user, never under the membership", async () => {
+    const { service, rec } = serviceOver({ encounter: [encounterRow()], vitals: [{ id: "v-1" }] });
+    await service.captureVitals(ORG, ENCOUNTER, vitals, null);
+    expect(rec.actorUserIds).toEqual([""]);
+  });
+});
+
+describe("the acting user of an addendum's creation", () => {
+  const USER = "99999999-9999-4999-8999-999999999999";
+  const created = (authorUserId?: string) => {
+    const { service, rec } = serviceOver({
+      encounter: [encounterRow({ status: "signed" })],
+      encounter_addendum: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }],
+    });
+    return service
+      .createAddendum(ORG, ENCOUNTER, {
+        reason: "a correction",
+        authorMembershipId: MEMBERSHIP,
+        ...(authorUserId === undefined ? {} : { authorUserId }),
+      })
+      .then(() => rec.actorUserIds);
+  };
+
+  it("files the addendum row (and the sections it names) under its author", async () => {
+    expect(await created(USER)).toEqual([USER]);
+  });
+
+  it("with no user it is filed under no user, never under the membership", async () => {
+    expect(await created()).toEqual([""]);
+  });
+});

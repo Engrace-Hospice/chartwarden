@@ -1,6 +1,6 @@
 // apps/backend/__tests__/care-plan-change-proposal-rules.test.ts — WF09: the pure half of the plan-of-care change proposals (no DB).
 // What a proposal body may carry per kind, how it maps onto the table's columns and back, and that the three places the value sets
-// live (the schema constants, migration 1530's CHECKs, the element enums they mirror) cannot drift apart.
+// live (the schema constants, migration 1532's CHECKs, the element enums they mirror) cannot drift apart.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -43,7 +43,7 @@ const ENCOUNTER = "55555555-5555-4555-8555-555555555555";
 const PARENT = "66666666-6666-4666-8666-666666666666";
 
 const MIGRATION = readFileSync(
-  join(__dirname, "../../../packages/db/migrations/1530_m7_care_plan_change_proposal.sql"),
+  join(__dirname, "../../../packages/db/migrations/1532_m7_care_plan_change_proposal.sql"),
   "utf8",
 );
 
@@ -68,7 +68,7 @@ const ALL_CHANGES: readonly ChangeProposalChange[] = [
   { kind: "intervention_discontinue", interventionId: INTERVENTION, reason: "No longer needed" },
 ];
 
-describe("the value sets cannot drift (schema constants, migration 1530, element enums)", () => {
+describe("the value sets cannot drift (schema constants, migration 1532, element enums)", () => {
   const sets: ReadonlyArray<readonly [string, readonly string[]]> = [
     ["kinds", CARE_PLAN_CHANGE_PROPOSAL_KINDS],
     ["statuses", CARE_PLAN_CHANGE_PROPOSAL_STATUSES],
@@ -81,7 +81,7 @@ describe("the value sets cannot drift (schema constants, migration 1530, element
   ];
 
   it.each(sets)(
-    "migration 1530 lists every %s value in its CHECK, and nothing else",
+    "migration 1532 lists every %s value in its CHECK, and nothing else",
     (_name, values) => {
       // Each value appears quoted in the migration…
       for (const value of values) expect(MIGRATION).toContain(`'${value}'`);
@@ -315,7 +315,7 @@ describe("columnsOf / changeViewOf", () => {
   });
 });
 
-describe("migration 1530 limits what the application role may update", () => {
+describe("migration 1532 limits what the application role may update", () => {
   const columns = getTableColumns(carePlanChangeProposals);
   const columnOf = (key: string): string => (columns as Record<string, { name: string }>)[key].name;
   const granted = new Set(

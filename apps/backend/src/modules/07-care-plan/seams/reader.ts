@@ -8,10 +8,12 @@ import type {
   CarePlanElementsAudience,
   CarePlanReader,
   InterventionDiscipline,
+  IsoInstant,
   PatientId,
   RelevantCarePlanElements,
 } from "@chartwarden/types";
 import { evaluateCarePlanOverdue } from "../lifecycle/index";
+import { projectRelevantElements, relevantElementsFromVersion } from "./relevant-elements";
 import type { CarePlanReaderStore } from "./store";
 
 /** Injected wall clock (ISO instant). Overridable for deterministic tests; defaults to real time. */
@@ -23,7 +25,9 @@ const realClock: NowClock = () => new Date().toISOString();
  * §7.8 CarePlanReader over the store. `relevantElementsForEncounter` populates the encounter form's
  * picker — active problems, the active interventions tagged with `discipline`, and the goals of those
  * interventions' parent problems — with SUD content filtered out (and `redacted=true`) when the caller
- * is not entitled (D7). `isReviewOverdue` is the encounter-sign gate M8 calls: `overdue=true` blocks
+ * is not entitled (D7). `relevantElementsAsOf` (VN-D11) answers the same question for an instant in the past, from
+ * the frozen snapshot of the version in effect then (./relevant-elements.ts holds the one rule both share).
+ * `isReviewOverdue` is the encounter-sign gate M8 calls: `overdue=true` blocks
  * signing with `CARE_PLAN_REVIEW_OVERDUE` (override → Clinical Supervisor + reason).
  */
 export function createCarePlanReader(
@@ -39,37 +43,25 @@ export function createCarePlanReader(
       viewer: CarePlanElementsAudience,
     ): Promise<RelevantCarePlanElements | null> {
       const record = await store.activeCarePlanElements(patientId, admissionId, viewer);
-      if (record === null) return null;
+      return record === null ? null : projectRelevantElements(record, discipline);
+    },
 
-      // D7: when not entitled, SUD problems (and their goals/interventions) never enter the projection.
-      const sudPresent = record.problems.some((p) => p.containsSud);
-      const visibleProblems = record.problems.filter(
-        (p) => p.status === "active" && (record.sudReadAllowed || !p.containsSud),
-      );
-      const visibleProblemIds = new Set(visibleProblems.map((p) => p.problemId));
-
-      // §7.8: active interventions tagged with the requested discipline, scoped to visible problems.
-      const interventions = record.interventions.filter(
-        (i) =>
-          i.status === "active" &&
-          i.discipline === discipline &&
-          visibleProblemIds.has(i.problemId),
-      );
-      // …and the goals of those interventions' PARENT problems (not every goal on the plan).
-      const parentProblemIds = new Set(interventions.map((i) => i.problemId));
-      const goals = record.goals.filter((g) => parentProblemIds.has(g.problemId));
-
-      return {
-        planId: record.planId,
-        patientId: record.patientId,
-        problems: visibleProblems.map(({ containsSud, ...p }) => ({
-          ...p,
-          sudRelated: containsSud,
-        })),
-        goals,
-        interventions,
-        redacted: !record.sudReadAllowed && sudPresent,
-      };
+    async relevantElementsAsOf(
+      patientId: PatientId,
+      _encounterType: string,
+      discipline: InterventionDiscipline,
+      admissionId: string | undefined,
+      viewer: CarePlanElementsAudience,
+      asOf: IsoInstant,
+    ): Promise<RelevantCarePlanElements | null> {
+      // A malformed instant is a caller bug: fail loudly rather than read "no version" or a guessed one.
+      if (Number.isNaN(Date.parse(asOf))) {
+        throw new RangeError(
+          `relevantElementsAsOf: asOf must be an ISO instant, got ${JSON.stringify(asOf)}`,
+        );
+      }
+      const version = await store.carePlanVersionAsOf(patientId, admissionId, asOf, viewer);
+      return version === null ? null : relevantElementsFromVersion(version, discipline);
     },
 
     async fifteenDayCycleCountsForOrg(

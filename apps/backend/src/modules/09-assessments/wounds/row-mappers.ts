@@ -1,6 +1,6 @@
 // apps/backend/src/modules/09-assessments/wounds/row-mappers.ts — Drizzle rows of `wound` / `wound_observation` to the
 // domain records (./projection). The columns are text + CHECK, so a stored value is always inside its value set; the
-// casts below restate what the CHECK constraints (migrations 1528 / 1529) already guarantee. Numeric columns arrive from
+// casts below restate what the CHECK constraints (migrations 1530 / 1531) already guarantee. Numeric columns arrive from
 // the driver as strings and are read as numbers.
 import type {
   ExudateAmount,

@@ -19,7 +19,10 @@
 // reason a UI can render instead.
 import {
   DEFAULT_HEARTHNOTE_FLAGS,
+  type EnhanceRequest,
+  type Layer2Outcome,
   type Layer2TenantEligibility,
+  enhanceNarrative,
   evaluateLayer2Eligibility,
 } from "@chartwarden/hearthnote";
 import type { Layer2EligibilityReason } from "@chartwarden/types";
@@ -47,6 +50,27 @@ export const LAYER2_TENANT_FACTS_UNBOUND: Layer2TenantEligibility = {
 /** The §2.6 D5 verdict for this platform, today. Phase 1: always `kill_switch_active`. */
 export function resolveLayer2Eligibility(): Layer2EligibilityReason {
   return evaluateLayer2Eligibility(DEFAULT_HEARTHNOTE_FLAGS.layer2, LAYER2_TENANT_FACTS_UNBOUND);
+}
+
+/**
+ * What finalize pins as the Layer-2 outcome of `layer1`. A narrative that carries a Part 2 derived section (ADR-0114 VN-D13) is NEVER handed to
+ * Layer 2: the draft's confirmed text goes in as the Layer-1 narrative, and an LLM dispatch (M32, unbuilt, behind a flag that is off) would send
+ * SUD content to a vendor on the strength of a tenant flag. It gets the verdict the ladder gives today and the narrative verbatim, with no
+ * dispatch attempted. `enhance` is injectable so a test can prove it is not called.
+ */
+export function layer2OutcomeFor(
+  layer1: string,
+  part2Derived: boolean,
+  enhance: (request: EnhanceRequest) => Layer2Outcome = enhanceNarrative,
+): Layer2Outcome {
+  if (part2Derived) {
+    return { enhanced: false, reason: resolveLayer2Eligibility(), layer1, final: layer1 };
+  }
+  return enhance({
+    layer1,
+    flags: DEFAULT_HEARTHNOTE_FLAGS,
+    eligibility: LAYER2_TENANT_FACTS_UNBOUND,
+  });
 }
 
 /**

@@ -5,17 +5,17 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 119 documented screen specs · 45 module screen-sets registered · 407 screens wired across web/portal/admin.
+**Coverage:** 120 documented screen specs · 45 module screen-sets registered · 408 screens wired across web/portal/admin.
 - **admin**: 44 screen(s)
 - **portal**: 19 screen(s)
-- **web**: 344 screen(s)
+- **web**: 345 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
 ## Documented surface (by category)
 
 - **admin**: 16 spec(s)
-- **clinical**: 41 spec(s)
+- **clinical**: 42 spec(s)
 - **compliance**: 11 spec(s)
 - **core**: 11 spec(s)
 - **integration**: 2 spec(s)
@@ -83,6 +83,7 @@
 | web | 08-encounters | `encounter.my-drafts` | `/work/drafts` | `encounter.author` | ✅ |
 | web | 08-encounters | `encounter.overdue-notes` | `/work/overdue-notes` | `encounter.closure_override` | ✅ |
 | web | 08-encounters | `encounter.closure-policy` | `/admin/closure-policy` | `encounter.closure_policy_admin` | ✅ |
+| web | 08-encounters | `encounter.draft-policy` | `/admin/draft-policy` | `encounter.draft_policy_admin` | ✅ |
 | web | 09-assessments | `assessment.timeline` | `/patients/:patientId/assessments` | `assessment.read` | ✅ |
 | web | 09-assessments | `assessment.detail` | `/patients/:patientId/assessments/:assessmentId` | `assessment.read` | ✅ |
 | web | 09-assessments | `assessment.scale-trend` | `/patients/:patientId/scales/:scaleType` | `assessment.read_trend` | ✅ |

@@ -160,7 +160,17 @@ export function buildEncounterAbacPredicates(
       // because their fixtures use one id for both (GAP-029; same defect class as M9/M10's fix).
       const caller = membershipIdOf(context);
       if (caller === null) return false; // no active membership → cannot be a cosigner
-      return facts.authoredByUserId !== caller;
+      if (facts.authoredByUserId === caller) return false;
+      // ADR-0114 VN-D30: the request of an AMENDMENT names its addendum, and its cosigner is not that addendum's author either (an absent or
+      // another encounter's addendum fails closed).
+      const addendumId = targetId(target, "addendumId");
+      if (addendumId === null) return true;
+      const addendumAuthor = await resolver.loadAddendumAuthor(
+        context.organizationId,
+        id,
+        addendumId,
+      );
+      return addendumAuthor !== null && addendumAuthor !== caller;
     },
     "encounter.scope": async (context, target) => {
       const patientId = targetId(target, "patientId");

@@ -2,7 +2,7 @@
 // records on ONE visit: an assistance level per ADL item, bladder/bowel continence and the devices in use. One row per
 // encounter (unique), replaced whole while the encounter is an editable draft. PHI-bearing → three-column tenancy rule
 // (denormalized from the parent encounter, nullable like every M8 satellite since mig 0128). RLS + the write-audit trigger
-// land in migration 1526.
+// land in migration 1528.
 //
 // Value sets are text + CHECK (no pg enum): they mirror the `ADL_*` / `CONTINENCE_LEVELS` constants of
 // @chartwarden/hearthnote, which this package cannot import. adl-parity in apps/backend/__tests__/findings-schema-parity.test.ts

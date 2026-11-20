@@ -16,6 +16,7 @@ import {
   resolveTemplate,
 } from "@chartwarden/hearthnote";
 import {
+  DRAFT_VOCAB_CODES,
   type SlotSpec,
   VOCAB_VERSION,
   entriesFor,
@@ -24,7 +25,7 @@ import {
 } from "@chartwarden/narrative-vocab";
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import type { GateSectionSelection } from "../gate/index";
-import { EncounterStateError } from "../lifecycle/errors";
+import { ASSEMBLY_ERROR_CODE, EncounterStateError } from "../lifecycle/errors";
 import type { FallLink } from "./fall-link";
 
 /**
@@ -182,19 +183,6 @@ export function toSelectionState(
 }
 
 /**
- * The §2.7 code each `HearthnoteAssemblyError` maps to. The package documents this mapping in its own
- * `AssemblyErrorCode` union ("mapped to HTTP by the M8 service in T09"); it was never written, because
- * nothing ever called `assemble`. `TEMPLATE_KEY_MISMATCH` cannot occur through these routes — the key is
- * server-derived from the encounter row — but it is mapped rather than left to fall through as a 500.
- */
-const ASSEMBLY_ERROR_CODE = {
-  TEMPLATE_NOT_FOUND: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
-  TEMPLATE_KEY_MISMATCH: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
-  VOCAB_VERSION_MISMATCH: "VOCAB_VERSION_MISMATCH",
-  UNKNOWN_VOCAB_CODE: "UNKNOWN_VOCAB_CODE",
-} as const;
-
-/**
  * Assemble the Layer-1 narrative for a selection tree, refusing anything that cannot become a note.
  *
  * Two failures are checked, and neither is allowed to pass silently:
@@ -225,19 +213,28 @@ const ASSEMBLY_ERROR_CODE = {
  * and a corpus edit cannot leave it asking for one the phrase no longer has. Each slot's constraint
  * (`slotSpecs`) and each statement's `exclusiveGroup` ride along so the client renders the same rules
  * `assertSelectionsValid` enforces.
+ *
+ * `draftWording` is the tenant's visit-note draft switch (ADR-0114 VN-D17): the draft phrases of `narrative-vocab@2026.11.0` are
+ * unreviewed wording, so they are offered only where the switch is on (it cannot be turned on while the corpus review is pending).
+ * Off, the menu is exactly what it was before that corpus: no draft phrase, and the RN routine visit's three formerly uncategorized
+ * sections as open as they were. The default is off, so a caller that does not know the tenant never leaks the draft wording.
  */
 export function buildTemplateMenu(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
+  options: { readonly draftWording?: boolean } = {},
 ): Omit<EncounterTemplateView, "encounterId"> {
-  const template = resolveTemplate(encounterType, discipline);
+  const draftWording = options.draftWording === true;
+  const template = resolveTemplate(encounterType, discipline, { draftWording });
   if (template === undefined) {
     throw new EncounterStateError(
       "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
       `no HearthNote template for '${hearthnoteTemplateKey(encounterType, discipline)}'`,
     );
   }
-  const eligible = entriesFor(encounterType, discipline);
+  const eligible = entriesFor(encounterType, discipline).filter(
+    (e) => draftWording || !DRAFT_VOCAB_CODES.has(e.code),
+  );
   return {
     templateKey: template.key,
     vocabVersion: VOCAB_VERSION,

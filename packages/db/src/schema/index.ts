@@ -320,6 +320,12 @@ export * from "./encounter/hearthnote-llm-modifications";
 // ADR-0113 / migration 1514: the visit-note closure clock's tenant policy and supervisor override (org-level, no patient).
 export * from "./encounter/documentation-obligation-policies";
 export * from "./encounter/documentation-obligation-overrides";
+// ADR-0114 / migrations 1517-1519: the visit-note draft's per-section confirmations, the sealed per-section signed rows, and the per-tenant switch.
+export * from "./encounter/encounter-draft-confirmations";
+export * from "./encounter/hearthnote-signed-sections";
+export * from "./encounter/encounter-amendments"; // ADR-0114 VN-D30: the sections an addendum amends and the author's resolution of each (1523)
+export * from "./encounter/addendum-cosignature-requests"; // ADR-0114 VN-D30: the cosignature request an amending addendum opens (1523)
+export * from "./encounter/visit-note-draft-policies";
 
 // ── Module 9 (Clinical Assessments Suite) — the validated-scale spine (§3.3) ──────────────────
 // M9 owns 5 tables (M9-T02): the shared `clinical_assessment` base table (one row per measurement
@@ -341,8 +347,8 @@ export * from "./assessment/significant-change-events";
 export * from "./assessment/scale-licenses";
 export * from "./assessment/scale-policies";
 export * from "./assessment/assessment-reassessment-due"; // GAP-181 — the cadence-scan ledger (0481)
-export * from "./assessment/wounds"; // longitudinal wounds: the register (1528)
-export * from "./assessment/wound-observations"; // longitudinal wounds: dated observations, append-only (1529)
+export * from "./assessment/wounds"; // longitudinal wounds: the register (1530)
+export * from "./assessment/wound-observations"; // longitudinal wounds: dated observations, append-only (1531)
 
 // ── Module 10 (HOPE Engine) — the CMS HOPE timepoint + iQIES submission spine (§3.3) ─────────
 // M10 owns 11 tables: the existing HOPE workflow infrastructure (timepoint schedule, partitioned

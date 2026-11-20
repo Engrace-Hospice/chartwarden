@@ -48,7 +48,8 @@ export type M15RegisteredAbacPredicate = (typeof M15_ABAC_PREDICATES)[number];
 /** The role key a Volunteer Coordinator holds (M3 role catalog / §6 permissions matrix). */
 const VOLUNTEER_COORDINATOR_ROLE = "volunteer_coordinator";
 /** Roles that may override the named supervising RN on an Aide POC supervisory attestation (§6). */
-const SUPERVISORY_OVERRIDE_ROLES = ["clinical_supervisor", "director_of_nursing"] as const;
+/** The roles that may act as the supervising RN of any aide plan at their location (§6; also the visit-signer override). */
+export const SUPERVISORY_OVERRIDE_ROLES = ["clinical_supervisor", "director_of_nursing"] as const;
 /** The caseload default §4.5 names for family-violence content: "MSW + RN Case Manager only". */
 const FAMILY_VIOLENCE_DEFAULT_ROLES = [
   "msw",

@@ -9,6 +9,9 @@ import type { FastifyInstance } from "fastify";
 import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predicates";
 import { createDbClosureRouteService } from "./closure/closure-route-service";
 import type { ClosurePolicyCache } from "./closure/policy-service";
+import { createDbRunInOrg } from "./drafting/db-draft-unit";
+import { createDraftService } from "./drafting/draft-service";
+import { createDbDraftRouteService } from "./drafting/route-service";
 import {
   type EncounterWriteOutboxPort,
   createDbEncounterAbacResolver,
@@ -17,6 +20,8 @@ import {
 import { createDrizzleFindingsService, registerFindingsRoutes } from "./findings/index";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
 import { registerClosureRoutes as _registerM8ClosureRoutes } from "./routes/closure-routes";
+import { registerDraftSectionRoutes as _registerM8DraftSectionRoutes } from "./routes/draft-section-routes";
+import { registerDraftingRoutes as _registerM8DraftingRoutes } from "./routes/drafting-routes";
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
 
 /**
@@ -28,6 +33,8 @@ import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounter
  * clinical-core scaffold mount for M8.
  *
  * ADR-0113: also mounts the visit-note closure routes (closure-status, overdue-notes, closure-overrides, closure-policy).
+ * ADR-0114: also mounts the visit-note draft switch routes (draft-policy, PR C1) and the draft itself (read the draft, confirm or deselect a
+ * section, PR C2b1; every one answers 404 for a tenant with the switch off).
  * `closure.policyCache` is the policy cache the request-time closure gate reads; pass the SAME instance to both so a policy PUT
  * invalidates what the gate sees. Absent, the closure routes build their own (the gate would then lag a PUT by up to its TTL).
  */
@@ -61,6 +68,10 @@ export function mountEncounterRoutes(
         : {}),
     }),
   });
+  _registerM8DraftingRoutes(app, { service: createDbDraftRouteService({ db }) });
+  _registerM8DraftSectionRoutes(app, {
+    service: createDraftService({ runInOrg: createDbRunInOrg(db, ciphers) }),
+  });
 }
 
 // ADR-0113 — the visit-note closure clock: the pure clock, the tenant policy (+ its cache), the supervisor override, the shared
@@ -84,6 +95,18 @@ export {
   noteStatesWounds,
   registerEncounterDraftReader,
 } from "./encounter-draft-reader";
+
+// ADR-0114 — the visit-note draft: the per-tenant switch (PR C1), the draft and its section resolution (PR C2b1), and the reader PR C2b2 calls to gate sign.
+export * from "./drafting/index";
+export {
+  type DraftingRouteDeps,
+  DRAFT_POLICY_STEP_UP_KEY,
+  registerDraftingRoutes,
+} from "./routes/drafting-routes";
+export {
+  type DraftSectionRouteDeps,
+  registerDraftSectionRoutes,
+} from "./routes/draft-section-routes";
 
 export * from "./lifecycle/index";
 // #121 — the §2.6 Layer-3 compliance gate + the register of what each of its twelve checks is today.
@@ -175,9 +198,9 @@ export {
   runEncounterAttentionCron,
   scheduleM8Jobs,
 } from "./jobs/cron-workers";
-// M8-T12 — the `encounter_record` destruction-cert eraser (§3.6 / D9): crypto-erase the HearthNote
-// ciphertext (tenant DEK), delete the encounter satellites, tombstone the `encounter` root (D8). The
-// composition root calls registerEncounterErasers() over the Phase-0 deny-stub.
+// M8-T12 — the `encounter_record` destruction-cert eraser (§3.6 / D9): shred the HearthNote cipher
+// columns, tombstone the `encounter` root (D8), then delete the encounter satellites, children before
+// parents. The composition root calls registerEncounterErasers() over the Phase-0 deny-stub.
 export {
   type EncounterEraseCounts,
   type EncounterEraseStore,

@@ -1,6 +1,7 @@
 # ADR-0035 — Mobile delivery via Capacitor wrap of `apps/web`; capability-port split of `packages/ui`
 
-- **Status:** **Accepted** — ratified 2026-06-20 by the Frontend/Architecture Owner (per ADR-0030 line 40
+- **Status:** **Superseded by ADR-0072** (2026-11-18; the owner ratified the supersession). Originally
+  **Accepted** — ratified 2026-06-20 by the Frontend/Architecture Owner (per ADR-0030 line 40
   human ratification clause). **Open question resolved: the intra-package carve** (no new
   `packages/ui-core` leaf). Authorizes the `packages/ui` `core`/`web` reorganization + the
   `ui-core-renderer-free` dependency-cruiser rule; Capacitor scaffolding remains a later, separate PR.

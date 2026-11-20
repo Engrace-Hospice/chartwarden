@@ -22,6 +22,12 @@ export const M15_ERROR_STATUS = {
   SUPERVISING_RN_REQUIRED: 422,
   VOLUNTEER_ASSIGNMENT_REQUIRED: 422,
   VOLUNTEER_OUT_OF_SCOPE_UNACKNOWLEDGED: 422,
+  // Aide POC care-team assignment (§2.3): the aide and supervising RN a plan names
+  NOT_AN_AIDE_POC: 422,
+  AIDE_NOT_ELIGIBLE: 422,
+  SUPERVISING_RN_NOT_ELIGIBLE: 422,
+  /** The care team is part of the draft: once a version is out for signature or signed, a revision is opened to change it. */
+  ASSIGNMENT_LOCKED: 409,
   // Required-signer quorum (§2.3 / §3.5 D11)
   INSUFFICIENT_SIGNERS: 412,
   SIGNER_ROLE_MISMATCH: 403,

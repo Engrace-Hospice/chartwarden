@@ -1,4 +1,4 @@
-// apps/backend/__tests__/wounds-migration-parity.test.ts — the CHECK vocabularies in migrations 1528 / 1529 must equal the
+// apps/backend/__tests__/wounds-migration-parity.test.ts — the CHECK vocabularies in migrations 1530 / 1531 must equal the
 // value sets in @chartwarden/assessments, the sets the routes accept and the visit note states. The live suite proves
 // the constraints reject bad values; this one, which needs no database, fails the moment a set moves in only one place.
 import { readFileSync } from "node:fs";
@@ -23,8 +23,8 @@ import {
 import { describe, expect, it } from "vitest";
 
 const MIGRATIONS = join(__dirname, "../../../packages/db/migrations");
-const wound = readFileSync(join(MIGRATIONS, "1528_m9_wound.sql"), "utf8");
-const observation = readFileSync(join(MIGRATIONS, "1529_m9_wound_observation.sql"), "utf8");
+const wound = readFileSync(join(MIGRATIONS, "1530_m9_wound.sql"), "utf8");
+const observation = readFileSync(join(MIGRATIONS, "1531_m9_wound_observation.sql"), "utf8");
 
 const quoted = (list: string): string[] =>
   [...list.matchAll(/'([a-z_0-9]+)'/g)].map((m) => m[1] as string);

@@ -16,6 +16,7 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { RedactedCategory } from "./disclosure";
 import type {
+  AideSupervisionRosterView,
   AideSupervisoryVisitView,
   DisciplineAssessmentView,
   DisciplineGoalView,
@@ -31,8 +32,11 @@ import type {
   VolunteerComplianceGateView,
   VolunteerEffectiveStatusView,
 } from "./read-service";
-import type { VolunteerHourEntryView } from "./write-service";
-import type { OpenDisciplinePlanVersionView } from "./write-service";
+import type {
+  AideAssignmentView,
+  OpenDisciplinePlanVersionView,
+  VolunteerHourEntryView,
+} from "./write-service";
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -177,6 +181,12 @@ export const OpenVersionBody = Type.Object({
   reason: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
 });
 
+/** Route 29 — name the aide an Aide POC directs and the RN who supervises them (both required, both must be on the roster). */
+export const AssignAideTeamBody = Type.Object({
+  aideMembershipId: Uuid,
+  supervisingRnMembershipId: Uuid,
+});
+
 /** Route 6 — the tenant may TIGHTEN the D11 quorum; the pure resolver refuses a loosening set. */
 export const FinalizeVersionBody = Type.Object({
   requiredSignerSet: Type.Optional(
@@ -191,7 +201,8 @@ export const FinalizeVersionBody = Type.Object({
   ),
 });
 
-/** Route 7 — one signature against the SEALED set. The signer MEMBERSHIP is server-side, never here. */
+/** Route 7 — one signature against the SEALED set. The signer MEMBERSHIP is server-side, never here, and so is the
+ *  acknowledgment flag: the sealed slot decides it (`isAcknowledgment` here is accepted for compatibility and ignored). */
 export const SignVersionBody = Type.Object({
   signerRole: Type.String({ minLength: 1, maxLength: 64 }),
   attestationText: Type.String({ minLength: 10, maxLength: 4000 }),
@@ -611,6 +622,28 @@ export const DisciplinePlanSummaryResponseSchema = Type.Object({
   redacted_categories: Type.Array(RedactedCategorySchema),
 });
 
+/**
+ * The Aide POC supervisory-visit pickers: the plan location's aides and RN supervisors. Minimum necessary — a
+ * membership id, the name to show and the role that qualified the person; no email, licence or patient data.
+ */
+const AideSupervisionRosterMemberSchema = Type.Object({
+  membershipId: Str,
+  displayName: Str,
+  roleKey: Str,
+});
+export const AideSupervisionRosterResponseSchema = Type.Object({
+  aides: Type.Array(AideSupervisionRosterMemberSchema),
+  supervisors: Type.Array(AideSupervisionRosterMemberSchema),
+});
+
+/** Route 29 — the plan's care-team binding after the write: ids and the new plan row version, nothing else. */
+export const AideAssignmentResponseSchema = Type.Object({
+  planId: Str,
+  aideMembershipId: Str,
+  supervisingRnMembershipId: Str,
+  version: Type.Integer(),
+});
+
 /** Route 19/20/21/22 — a `volunteer_compliance_gate` row (status re-derived over the validity window). */
 export const VolunteerComplianceGateViewResponseSchema = Type.Object({
   gateId: Str,
@@ -723,6 +756,11 @@ type _PlanListItem = Conforms<
 type _PlanDetail = Conforms<
   Static<typeof DisciplinePlanDetailResponseSchema>,
   DisciplinePlanDetail
+>;
+type _AideAssignment = Conforms<Static<typeof AideAssignmentResponseSchema>, AideAssignmentView>;
+type _AideSupervisionRoster = Conforms<
+  Static<typeof AideSupervisionRosterResponseSchema>,
+  AideSupervisionRosterView
 >;
 type _PlanSummary = Conforms<
   Static<typeof DisciplinePlanSummaryResponseSchema>,

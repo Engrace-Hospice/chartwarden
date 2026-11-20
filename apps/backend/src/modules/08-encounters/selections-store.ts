@@ -8,17 +8,11 @@ import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { EncounterStateError } from "./lifecycle/errors";
 import type { FallLink } from "./routes/fall-link";
 import type { SelectionSectionInput } from "./routes/service";
+import type { StoredSelectionSection } from "./selection-tree";
 
 const ENC = schema.encounters;
 const SEL = schema.hearthnoteSelections;
 const OUT = schema.hearthnoteAssembledOutputs;
-
-/** One section of the stored tree (`hasFreeText` is storage metadata for the §2.6 gate; the prose itself is sealed elsewhere). */
-export interface StoredSelectionSection {
-  readonly sectionId: string;
-  readonly entries: SelectionSectionInput["entries"];
-  readonly hasFreeText?: boolean;
-}
 
 /**
  * Write the encounter's selection row and bump its version together: the one shape for every selections write (the draft save and the
@@ -94,6 +88,7 @@ export async function pinnedOutputFor(t: DbClient, encounterId: string) {
       layer1Cipher: OUT.layer1Cipher,
       finalCipher: OUT.finalCipher,
       clinicianEdited: OUT.clinicianEdited,
+      part2Derived: OUT.part2Derived,
     })
     .from(OUT)
     .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))

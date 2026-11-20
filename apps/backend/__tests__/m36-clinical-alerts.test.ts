@@ -25,6 +25,29 @@ describe("M36 clinical alert presentation", () => {
     });
   });
 
+  it("says so when a cosignature alert is for an AMENDMENT of a signed note (ADR-0114 VN-D30) and names its addendum; the work list is the same", () => {
+    for (const eventType of [
+      "m8.encounter.cosignature_routed",
+      "m8.encounter.cosignature_overdue",
+      "m8.encounter.cosignature_escalated",
+      "m8.encounter.cosignature_hard_cap_reached",
+    ]) {
+      const note = presentationForClinicalEvent(eventType, { encounterId: "e-1" });
+      const amendment = presentationForClinicalEvent(eventType, {
+        encounterId: "e-1",
+        addendumId: "a-1",
+      });
+      expect(amendment, eventType).toMatchObject({
+        addendumId: "a-1",
+        encounterId: "e-1",
+        deepLink: "/work/cosignatures",
+      });
+      expect(String(amendment.message), eventType).toContain("amendment");
+      expect(String(note.message), eventType).not.toContain("amendment");
+      expect(note.addendumId, eventType).toBeNull();
+    }
+  });
+
   it("does not give an admission discharge a scheduling message and uses its admission route", () => {
     expect(
       presentationForClinicalEvent("m6.admission.discharged", { admissionId: "admission-1" }),

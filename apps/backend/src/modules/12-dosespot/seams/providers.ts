@@ -14,6 +14,7 @@ import type {
   RefillInboxProvider,
   RefillRequestDto,
 } from "@chartwarden/types";
+import { medicationChangesBetween, medicationsAsOf, parseInstantOrThrow } from "./as-of";
 import type { DoseSpotSeamStore } from "./store";
 
 /** The temporal anchor `getMedicationsSince` keys on: when the medication became clinically effective
@@ -117,6 +118,22 @@ export function createMedicationOrderProvider(store: DoseSpotSeamStore): Medicat
           const bv = sinceAnchor(b) ?? "";
           return av < bv ? -1 : av > bv ? 1 : 0;
         });
+    },
+    async getMedicationsAsOf(_orgId, patientId, asOfIso) {
+      const asOfMs = parseInstantOrThrow("asOfIso", asOfIso);
+      return medicationsAsOf(await store.medicationOrdersForPatient(patientId), asOfMs);
+    },
+    async getMedicationChangesBetween(_orgId, patientId, fromIso, toIso) {
+      const fromMs = parseInstantOrThrow("fromIso", fromIso);
+      const toMs = parseInstantOrThrow("toIso", toIso);
+      if (fromMs > toMs) {
+        throw new RangeError(`fromIso must not be after toIso, got ${fromIso} > ${toIso}`);
+      }
+      return medicationChangesBetween(
+        await store.medicationOrdersForPatient(patientId),
+        fromMs,
+        toMs,
+      );
     },
     async linkSummary(organizationId, id) {
       // Fail closed: no tenant or no id means no answer, never a guessed one.

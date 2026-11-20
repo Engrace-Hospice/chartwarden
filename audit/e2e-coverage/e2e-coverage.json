@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 222,
-  "e2eReachedCount": 208,
-  "axeReachedCount": 208,
+  "totalStaticWebScreens": 223,
+  "e2eReachedCount": 209,
+  "axeReachedCount": 209,
   "zeroE2eCoverage": [
     {
       "id": "saas.help",
@@ -660,6 +660,14 @@
       "module": "08-encounters",
       "path": "/admin/closure-policy",
       "permission": "encounter.closure_policy_admin",
+      "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "encounter.draft-policy",
+      "module": "08-encounters",
+      "path": "/admin/draft-policy",
+      "permission": "encounter.draft_policy_admin",
       "e2eReached": true,
       "axeReached": true
     },

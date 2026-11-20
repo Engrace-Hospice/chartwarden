@@ -38,7 +38,7 @@ function RecordedPanelsView({
     <>
       {sections.map((section) => {
         const kind = section.recordedPanel;
-        if (kind === null) return null;
+        if (!kind) return null;
         const report = (status: PanelStatus): void => onStatusChange(kind, status);
         return (
           <div key={section.sectionId} hidden={section.sectionId !== activeSectionId}>

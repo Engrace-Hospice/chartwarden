@@ -471,6 +471,7 @@ import {
   registerAuthorizationSeams,
   registerM3CronWorkers,
   scheduleM3Jobs,
+  staffAtLocationForOrg,
   wireM3ReaperTenancy,
 } from "./modules/03-authorization/index";
 import { M3_CLOSE_ENGAGEMENTS_PLATFORM_JOB_ID } from "./modules/03-authorization/jobs/close-engagements";
@@ -8810,6 +8811,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 ),
               }),
           );
+          // M3's location-scoped staff read as M15's locally-declared roster port (M15 imports no authorization code).
+          const m15AideRoster = {
+            listStaffAtLocation: (query: Parameters<typeof staffAtLocationForOrg>[1]) =>
+              staffAtLocationForOrg(dbHandle.db, query),
+          };
           // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE
           // services. Every read opens its own withOrgContext (RLS scopes each statement to app.org_id)
           // and resolves the §7.8/§7.9 SUD + family-violence gates through M39's ConsentEvaluator seam
@@ -8821,9 +8827,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // nightly aggregator (M15-F04, migration 0347); the ratio answers `unavailable` only when it was
           // never computed or no signed visit has a resolved duration, never a fabricated 0%.
           mountM15Routes(app, {
-            readService: buildDrizzleM15ReadService(dbHandle.db),
+            readService: buildDrizzleM15ReadService(dbHandle.db, {
+              // The Aide POC supervisory-visit pickers: M3's location-scoped staff read, bound as a locally-declared
+              // port (M15 imports no authorization code or schema).
+              aideRoster: m15AideRoster,
+            }),
             writeService: buildDrizzleM15WriteService(dbHandle.db, {
               outbox: m15OutboxPublisher,
+              // The same staff read decides who `assignAideTeam` accepts as the plan's aide and supervising RN.
+              aideRoster: m15AideRoster,
             }),
           });
           // M16 (Bereavement) — mount the §4.1 route plugins over the Drizzle READ + WRITE services. Every

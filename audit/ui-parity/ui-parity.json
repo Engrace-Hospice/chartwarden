@@ -1,9 +1,9 @@
 {
-  "documentedSpecs": 119,
+  "documentedSpecs": 120,
   "byCategory": {
     "admin": 16,
     "core": 11,
-    "clinical": 41,
+    "clinical": 42,
     "platform": 5,
     "portal": 11,
     "revenue": 18,
@@ -491,6 +491,14 @@
       "id": "encounter.closure-policy",
       "path": "/admin/closure-policy",
       "permission": "encounter.closure_policy_admin"
+    },
+    {
+      "app": "web",
+      "module": "08-encounters",
+      "moduleId": 8,
+      "id": "encounter.draft-policy",
+      "path": "/admin/draft-policy",
+      "permission": "encounter.draft_policy_admin"
     },
     {
       "app": "web",

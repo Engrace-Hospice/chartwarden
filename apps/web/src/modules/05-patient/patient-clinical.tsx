@@ -23,6 +23,9 @@ import {
 import { type JSX, type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PatientSummaryPanel, medicareTail } from "../../shell/patient-context";
+import { NoteRow } from "./clinical-note-cell";
+import { type EncounterDetail, readNote } from "./clinical-note-read";
+import { summariseNote } from "./clinical-note-summary";
 import {
   EmptyLine,
   Loading,
@@ -59,28 +62,6 @@ interface SignificantChange {
   status: string;
   severity: string;
 }
-interface Vitals {
-  bpSystolic: number | null;
-  bpDiastolic: number | null;
-  heartRate: number | null;
-  respiratoryRate: number | null;
-  temperature: string | null;
-  temperatureUnit: string | null;
-  spo2: number | null;
-  weight: string | null;
-  weightUnit: string | null;
-  capturedAt: string;
-}
-interface EncounterDetail {
-  id: string;
-  serviceDate: string;
-  encounterType: string | null;
-  discipline: string | null;
-  status: string | null;
-  authoredByUserId: string;
-  finalDocumentation: string | null;
-  vitals: Vitals | null;
-}
 interface Consent {
   id: string;
   typeKey: string;
@@ -113,6 +94,8 @@ export interface ClinicalData {
   dpoaRead?: ReadStatus;
   /** Re-runs the clinical reads (wired to the failed-read retry buttons). */
   retry?: () => void;
+  /** Reads one recent note again (a note whose Part 2 view could not be decided); resolves true once it was read. */
+  retryNote?: (encounterId: string) => Promise<boolean>;
 }
 
 type Client = ReturnType<typeof useApiClient>;
@@ -281,15 +264,7 @@ export function useClinicalData(
       .filter((e) => e.status !== "voided")
       .sort((a, b) => b.serviceDate.localeCompare(a.serviceDate))
       .slice(0, 4);
-    void Promise.all(
-      recent.map((e) =>
-        settle<EncounterDetail>(
-          client.GET("/api/v1/encounters/{encounterId}", {
-            params: { path: { encounterId: e.id } },
-          }),
-        ),
-      ),
-    ).then((rows) => {
+    void Promise.all(recent.map((e) => readNote(client, e))).then((rows) => {
       if (active) {
         setData((d) => ({
           ...d,
@@ -302,7 +277,18 @@ export function useClinicalData(
     };
   }, [client, encounters, enabled]);
 
-  return { ...data, retry };
+  const retryNote = useCallback(
+    async (encounterId: string): Promise<boolean> => {
+      const listed = encounters?.find((e) => e.id === encounterId);
+      const row = listed ? await readNote(client, listed) : undefined;
+      if (!row || row.viewUnavailable) return false;
+      setData((d) => ({ ...d, notes: d.notes?.map((n) => (n.id === encounterId ? row : n)) }));
+      return true;
+    },
+    [client, encounters],
+  );
+
+  return { ...data, retry, retryNote };
 }
 
 // ---------- helpers ----------
@@ -1044,12 +1030,6 @@ function FunctionalPanel({
   );
 }
 
-function noteSummary(text: string | null): string {
-  if (!text) return "—";
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > 90 ? `${flat.slice(0, 88)}…` : flat;
-}
-
 function ClinicalNotesPanel({
   patientId,
   data,
@@ -1090,18 +1070,15 @@ function ClinicalNotesPanel({
           </thead>
           <tbody>
             {notes.map((n) => (
-              <tr key={n.id}>
-                <td className="wx-nums" style={{ whiteSpace: "nowrap" }}>
-                  {fmtDate(n.serviceDate)}
-                </td>
-                <td style={{ whiteSpace: "nowrap" }}>
-                  <Link to={`/patients/${patientId}/encounters/${n.id}`}>
-                    {ENCOUNTER_LABEL[n.encounterType ?? ""] ?? "Visit"}
-                  </Link>
-                </td>
-                <td>{memberName(data, n.authoredByUserId) ?? "—"}</td>
-                <td style={{ color: t.onSurfaceVariant }}>{noteSummary(n.finalDocumentation)}</td>
-              </tr>
+              <NoteRow
+                key={n.id}
+                href={`/patients/${patientId}/encounters/${n.id}`}
+                date={fmtDate(n.serviceDate)}
+                typeLabel={ENCOUNTER_LABEL[n.encounterType ?? ""] ?? "Visit"}
+                author={memberName(data, n.authoredByUserId) ?? "—"}
+                summary={summariseNote(n)}
+                onRetry={() => clinical.retryNote?.(n.id) ?? Promise.resolve(false)}
+              />
             ))}
           </tbody>
         </table>

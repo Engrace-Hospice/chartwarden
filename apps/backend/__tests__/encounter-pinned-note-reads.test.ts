@@ -133,7 +133,8 @@ describe("a pinned note reads no wounds and no live facts", () => {
       pinned: true,
     });
     expect(woundReads).toEqual([]);
-    expect(reads).toEqual(["encounter", "assembled_output"]);
+    // The pin through the per-viewer note reader (its row, then its sealed sections: "other"), then the pin's edited flag; nothing else.
+    expect(reads).toEqual(["encounter", "assembled_output", "other", "assembled_output"]);
   });
 
   it("answers the selections read from the pin: the pinned preview, never stale, with no wound or findings read", async () => {

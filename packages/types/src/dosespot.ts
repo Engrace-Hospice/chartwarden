@@ -379,6 +379,9 @@ export interface MedicationOrderDto {
   readonly transmittedAt: IsoInstant | null;
   readonly activatedAt: IsoInstant | null;
   readonly discontinuedAt: IsoInstant | null;
+  /** When a finite course ended (`status = completed`). Optional so a producer that predates it still compiles;
+   * absent or null is read as "no recorded end", which the as-of reads treat fail-closed for a completed order. */
+  readonly completedAt?: IsoInstant | null;
   readonly isControlledSubstance: boolean;
   readonly deaSchedule: DeaSchedule | null;
   readonly isSudTreatment: boolean; // derived from M38 sud_treatment_medication value-set membership
@@ -386,6 +389,22 @@ export interface MedicationOrderDto {
   readonly derivedFromHistoryId: MedicationHistoryRecordId | null;
   readonly replacesMedicationOrderId: MedicationOrderId | null;
   readonly documentId: string | null;
+}
+
+/** How a medication order changed the patient's regimen inside a window (VN-D11, `getMedicationChangesBetween`). */
+export type MedicationChangeKind = "started" | "discontinued" | "completed" | "changed";
+
+/**
+ * One regimen change: an order that became active (`started`), was replaced by a new order of a medication that
+ * had been active (`changed`, reported once on the NEW order), was stopped (`discontinued`) or ended its course
+ * (`completed`). `at` is the instant of the change; `order` is the order the change is about (for `changed`, the
+ * replacement). An order that starts and stops inside the window yields two changes. The order carries
+ * `isSudTreatment`: Part 2 redaction is the caller's, as with every other order read on this seam.
+ */
+export interface MedicationOrderChange {
+  readonly kind: MedicationChangeKind;
+  readonly at: IsoInstant;
+  readonly order: MedicationOrderDto;
 }
 
 /** §2.7 — one refill request's read projection (the `RefillInboxProvider` surface). */
@@ -440,6 +459,30 @@ export interface MedicationOrderProvider extends ClinicalLinkSource {
     patientId: string,
     sinceIso: string,
   ): Promise<MedicationOrderDto[]>;
+  /**
+   * VN-D11: the orders in effect AT `asOfIso`, decided from each order's own instants and never from its status
+   * today. An order is in effect from `activatedAt` (inclusive) until the first of its `discontinuedAt`,
+   * `completedAt` or the `activatedAt` of an activated order that replaces it (exclusive). An order that never
+   * activated is never in effect; one whose status says it ended but that carries no end instant cannot be placed
+   * in time and is left out (fail closed). Throws a `RangeError` when `asOfIso` is not an ISO instant.
+   */
+  getMedicationsAsOf(
+    orgId: string,
+    patientId: string,
+    asOfIso: string,
+  ): Promise<MedicationOrderDto[]>;
+  /**
+   * VN-D11: the regimen changes inside the window `(fromIso, toIso]`, ascending by instant. Half-open on purpose:
+   * a change at `fromIso` is already part of `getMedicationsAsOf(fromIso)` (the previous visit's picture), one at
+   * `toIso` is part of `getMedicationsAsOf(toIso)`, so the as-of picture at `from` plus these changes is the
+   * picture at `to`. Throws a `RangeError` for a bound that is not an ISO instant or a reversed window.
+   */
+  getMedicationChangesBetween(
+    orgId: string,
+    patientId: string,
+    fromIso: string,
+    toIso: string,
+  ): Promise<MedicationOrderChange[]>;
   getMedicationOrder(orgId: string, medicationOrderId: string): Promise<MedicationOrderDto | null>;
   listForAdmission(
     orgId: string,

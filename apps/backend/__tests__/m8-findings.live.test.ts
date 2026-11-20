@@ -50,8 +50,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { createDbEncounterAbacResolver } from "../src/modules/08-encounters/encounters-route-service-db";
 import {
-  TOMBSTONE_REASON,
-  TOMBSTONE_VOID_REASON,
+  ENCOUNTER_ERASED_REASON,
   createDrizzleEncounterEraseStore,
 } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
@@ -1369,16 +1368,16 @@ describe.skipIf(!DB_URL)("M8 findings (ADLs, nutrition, weight history) — LIVE
         // The root survives as a tombstone (that is why no cascade could have removed the rows above) ...
         expect(await countRows("encounter", `id IN (${allIds}) AND status='voided'`)).toBe(3);
         // ... satisfying the table's own CHECKs for a draft (which had no vocabulary pin) and a signed row alike, holding none of the
-        // clinician's words: a reason that existed is the fixed scrub sentence, one that did not stays null.
+        // clinician's words: a reason that existed is the one fixed scrub sentence, one that did not stays null.
         for (const id of [first, second, signed]) {
           const row = await encounterRow(id);
-          expect(row.voided_reason, id).toBe(TOMBSTONE_VOID_REASON);
+          expect(row.voided_reason, id).toBe(ENCOUNTER_ERASED_REASON);
           expect(row.voided_at, id).not.toBeNull();
           expect(row.voided_by, id).not.toBeNull();
           expect(row.vocab_version_id, id).not.toBeNull();
         }
         expect((await encounterRow(signed)).vocab_version_id).toBe(pinnedBefore);
-        expect((await encounterRow(signed)).evv_missing_reason).toBe(TOMBSTONE_REASON);
+        expect((await encounterRow(signed)).evv_missing_reason).toBe(ENCOUNTER_ERASED_REASON);
         expect((await encounterRow(first)).evv_missing_reason).toBeNull();
         for (const id of [first, second, signed]) {
           const row = await encounterRow(id);

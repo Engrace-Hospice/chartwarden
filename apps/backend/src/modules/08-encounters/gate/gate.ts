@@ -6,7 +6,7 @@
 // is resolved by the service and passed in, so the gate is decidable in a unit test and identical in
 // the Drizzle service and the in-memory slice.
 //
-// What each of the twelve §2.6 checks is today — evaluated here, enforced elsewhere in the same
+// What each of the twelve §2.6 checks, and the ADR-0114 draft check, is today — evaluated here, enforced elsewhere in the same
 // transition, or deferred with a named blocker — is the register in ./checks. Read that first; it is
 // the honest inventory, and `gate.test.ts` pins it against what this file actually decides.
 import {
@@ -23,6 +23,7 @@ import type {
   EncounterType,
   ScaleType,
 } from "@chartwarden/types";
+import { ACTION_CODE, type SectionAction } from "../drafting/section-state";
 import { EncounterStateError } from "../lifecycle/errors";
 import type { GateCheckId } from "./checks";
 
@@ -81,6 +82,19 @@ export interface EncounterGateFacts {
    * {@link sectionsPopulatedByFindings}. Resolved upstream; absent means no finding is recorded on the visit.
    */
   readonly findingSections?: ReadonlySet<string>;
+  /**
+   * Check 13 (ADR-0114) — the drafted sections that still need the clinician, from the SIGNER's recomputed draft against the stored
+   * confirmations. ABSENT when the tenant has the draft switched off (the check does not run); an empty list means every drafted
+   * section is resolved. A draft that could not be computed never reaches here: the service refuses with COMPLIANCE_GATE_UNAVAILABLE.
+   */
+  readonly draftSectionActions?: readonly SectionAction[];
+  /**
+   * Check 1 (ADR-0114) — the sections the clinician CONFIRMED drafted text for: confirmed against the signer's recomputed draft (the bound
+   * hash still matches), so that text is what the note will say for the section. Such a section counts as populated even with no selection
+   * or free text of the clinician's own. A deselected, never resolved, stale or undrafted section is not in the set (a deselected section
+   * still passes through the clinician's own selections and free text). ABSENT when the draft is off, and then check 1 is exactly as it was.
+   */
+  readonly draftConfirmedSectionIds?: ReadonlySet<string>;
 }
 
 /** An ADL record populates a section only through an ADL ITEM level (a devices- or continence-only record states no assistance level). */
@@ -154,6 +168,7 @@ export function runEncounterComplianceGate(facts: EncounterGateFacts): GateResul
     const populated = new Set([
       ...facts.sections.filter(isPopulated).map((s) => s.sectionId),
       ...(facts.findingSections ?? []),
+      ...(facts.draftConfirmedSectionIds ?? []),
     ]);
     for (const section of template.sections) {
       if (!section.required || populated.has(section.id)) continue;
@@ -202,6 +217,19 @@ export function runEncounterComplianceGate(facts: EncounterGateFacts): GateResul
     });
   }
 
+  // ── Check 13 — every drafted section is resolved against the draft as it stands now (ADR-0114) ───────
+  for (const action of facts.draftSectionActions ?? []) {
+    remediation.push({
+      check: "draft_sections_resolved",
+      code: ACTION_CODE[action.reason],
+      field: action.sectionId,
+      message:
+        action.reason === "unresolved"
+          ? `the drafted section '${action.sectionId}' has not been confirmed or deselected`
+          : `the drafted section '${action.sectionId}' changed after it was resolved: review it and resolve it again`,
+    });
+  }
+
   return remediation.length === 0 ? { pass: true } : { pass: false, remediation };
 }
 
@@ -211,9 +239,16 @@ export function runEncounterComplianceGate(facts: EncounterGateFacts): GateResul
  * addendum's REQUIRED-section set is undefined — and judging it against the parent's set would demand
  * a full visit note from a one-finding correction. What is defined without that template is that an
  * addendum with nothing in it documents nothing, which is the check run here.
+ *
+ * `confirmedAmendedSections` (ADR-0114 VN-D30) is how many sections the addendum names that its author has CONFIRMED: only a count, never the
+ * text. A confirmed amended section is content (it becomes a sealed amendment row at sign), so an amending addendum whose only content is that
+ * is not empty. One whose sections are all deselected or unresolved, with no selection or annotation, still is.
  */
-export function runAddendumComplianceGate(sections: readonly GateSectionSelection[]): GateResult {
-  if (sections.some(isPopulated)) return { pass: true };
+export function runAddendumComplianceGate(
+  sections: readonly GateSectionSelection[],
+  confirmedAmendedSections: number,
+): GateResult {
+  if (confirmedAmendedSections > 0 || sections.some(isPopulated)) return { pass: true };
   return {
     pass: false,
     remediation: [
@@ -221,7 +256,7 @@ export function runAddendumComplianceGate(sections: readonly GateSectionSelectio
         check: "required_sections",
         code: "ADDENDUM_EMPTY",
         message:
-          "an addendum must carry at least one selection or free-text annotation before it signs",
+          "an addendum must carry at least one selection, free-text annotation or confirmed amended section before it signs",
       },
     ],
   };

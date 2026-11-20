@@ -1,5 +1,5 @@
 // WF09 — the ADL and nutrition value sets live in three places: the @chartwarden/hearthnote constants (the source of truth for the
-// API, the screens and the note), the CHECK constraints of migrations 1526/1527, and the Drizzle schema mirrors of those. This pins
+// API, the screens and the note), the CHECK constraints of migrations 1528/1529, and the Drizzle schema mirrors of those. This pins
 // all three to each other, so widening a set in one place and forgetting the other two fails here instead of at a clinician's
 // first save (a database CHECK violation) or, worse, never (a value the API accepts and the note cannot state).
 import { readFileSync } from "node:fs";
@@ -21,8 +21,8 @@ import { describe, expect, it } from "vitest";
 const ROOT = resolve(__dirname, "../../..");
 const migration = (name: string) =>
   readFileSync(resolve(ROOT, "packages/db/migrations", name), "utf8");
-const ADL_SQL = migration("1526_m8_encounter_adl.sql");
-const NUTRITION_SQL = migration("1527_m8_encounter_nutrition.sql");
+const ADL_SQL = migration("1528_m8_encounter_adl.sql");
+const NUTRITION_SQL = migration("1529_m8_encounter_nutrition.sql");
 const dialect = new PgDialect();
 
 const sorted = (values: readonly string[]) => [...values].sort();

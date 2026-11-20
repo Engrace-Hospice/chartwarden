@@ -1,6 +1,6 @@
 // @chartwarden/db — `hearthnote_assembled_output` (M8 §3.3). The assembled narrative for a finalize (primary
 // or addendum): Layer-1 deterministic text, optional post-hardblock Layer-2 text, and the final signed
-// bytes — all encrypted per-tenant DEK (crypto-erased on destruction, §3.6). PHI-bearing → three-column
+// bytes — all encrypted per-tenant DEK (shredded in place on destruction, §3.6). PHI-bearing → three-column
 // tenancy rule (denormalized from the parent encounter/addendum). Belongs to exactly one parent
 // (encounter XOR addendum). RLS + the M4 write-audit trigger land in migration 0031 (M8-T03).
 import { sql } from "drizzle-orm";
@@ -40,6 +40,9 @@ export const hearthnoteAssembledOutputs = pgTable(
 
     layer2Eligibility: layer2EligibilityReason("layer2_eligibility").notNull(),
     layer2InvolvedAtFinalize: boolean("layer2_involved_at_finalize").notNull().default(false),
+    // Migration 1522 (ADR-0114): the pinned narrative carries a section drafted from sources that may hold 42 CFR Part 2 content (the
+    // compiler's fail-closed flag). Written with the pin at finalize and rewritten at sign; false for a pin with no drafted text.
+    part2Derived: boolean("part2_derived").notNull().default(false),
 
     assemblyTemplateKey: text("assembly_template_key").notNull(),
     // Pinned per D11 — the parent's own pin, resolved once per finalize so the version the bytes were

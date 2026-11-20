@@ -29,6 +29,7 @@ import type {
 } from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { SUPERVISORY_OVERRIDE_ROLES } from "../abac-predicates";
 import {
   assertParentElements,
   elementsAudienceFor,
@@ -37,7 +38,6 @@ import {
 } from "../consumers/index";
 import {
   DisciplinePlanStateError,
-  actorHoldsSignerRole,
   checkAuthoringDiscipline,
   checkDpoaGoalConsent,
   checkGoalTextVerbatim,
@@ -48,6 +48,7 @@ import {
   computeNextSupervisoryDueAt,
   decideRecordSignature,
   decideRecordSupervisoryVisit,
+  heldSignerRoleKey,
   openDisciplinePlanVersion,
   resolveRequiredSignerSet,
   transitionDisciplineAssessment,
@@ -66,6 +67,13 @@ import {
   deriveGateStatus,
 } from "../volunteer/index";
 import type { M15ReadActor, M15WriteActor } from "./actor";
+import {
+  AIDE_ROLE_KEYS,
+  AIDE_SUPERVISOR_ROLE_KEYS,
+  type AideRosterPort,
+  assembleAideSupervisionRoster,
+  emptyAideRosterPort,
+} from "./aide-supervision-roster";
 import type {
   AideSupervisoryVisitView,
   DisciplineAssessmentView,
@@ -77,7 +85,9 @@ import type {
 } from "./read-service";
 import { isSudAnchored, redactDisciplineSnapshot } from "./snapshot-redaction";
 import type {
+  AideAssignmentView,
   AmendAssessmentInput,
+  AssignAideTeamInput,
   CreateAssessmentInput,
   CreateGoalInput,
   CreateHourEntryInput,
@@ -164,6 +174,11 @@ export interface M15WriteDeps {
     userId: string;
     patientId: string;
   }) => Promise<boolean>;
+  /**
+   * The staff read `assignAideTeam` checks the picked aide and supervising RN against (the same port the roster route
+   * reads through). Unbound, nobody is assignable: an unwired port reveals and accepts no staff.
+   */
+  readonly aideRoster?: AideRosterPort;
   /** §2.3 — is an active `dpoa_healthcare` consent on file for this patient (the agent-stated goal gate)? */
   readonly dpoaConsentActive?: (input: {
     organizationId: string;
@@ -194,6 +209,7 @@ export function buildDrizzleM15WriteService(
   // per call, and fail-CLOSED (an unbound or erroring evaluator refuses the goal rather than attributing
   // it to an agent nobody authorized).
   const dpoaActive = deps.dpoaConsentActive ?? dpoaViaSeam;
+  const aideRoster = deps.aideRoster ?? emptyAideRosterPort;
 
   const scope = (actor: M15ReadActor) => ({
     organizationId: actor.organizationId,
@@ -237,6 +253,16 @@ export function buildDrizzleM15WriteService(
       throw new NotFoundError("discipline plan not found");
     }
     return row;
+  }
+
+  /**
+   * `discipline_scope`, bound to the AUTHENTICATED actor: its roles must be able to author this plan's kind. `addedByDiscipline`
+   * is a body field, so the matrix check on it alone lets an RN author on an MSW plan by naming the MSW. The system actor
+   * (internal callers hold no roles) is exempt.
+   */
+  function requireAuthoringScope(actor: M15ReadActor, plan: { readonly kind: string }): void {
+    if (actor.kind === "system") return;
+    checkPlanKindAuthoringScope(plan.kind as DisciplinePlanKind, actor.roles);
   }
 
   /** §2.5 — bump a row's optimistic-concurrency `version` after the guard passed. */
@@ -516,6 +542,7 @@ export function buildDrizzleM15WriteService(
     async finalizeVersion(actor, planId, versionId, input: FinalizeVersionInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, actor, planId);
+        requireAuthoringScope(actor, plan);
         checkPlanWritable(plan.status);
         const [version] = await tx
           .select()
@@ -610,7 +637,11 @@ export function buildDrizzleM15WriteService(
         // GAP-045 — the claimed slot is a BODY field; bind it to the AUTHENTICATED actor. The role must be
         // one the actor holds (the system actor, which holds none by design, is exempt) and one membership
         // fills at most ONE slot per version, so a single person can never satisfy a multi-signer quorum.
-        if (actor.kind !== "system" && !actorHoldsSignerRole(actor.roles, input.signerRole)) {
+        const heldRoleKey =
+          actor.kind === "system"
+            ? null
+            : heldSignerRoleKey(actor.roles, input.signerRole, plan.kind as DisciplinePlanKind);
+        if (actor.kind !== "system" && heldRoleKey === null) {
           throw new DisciplinePlanStateError(
             "SIGNER_ROLE_MISMATCH",
             "the caller does not hold the requested signer role",
@@ -630,6 +661,18 @@ export function buildDrizzleM15WriteService(
           collected.map((s) => s.signerRole as DisciplineSignerRole),
           input.signerRole as DisciplineSignerRole,
         );
+        // The CHHA acknowledgment is the AIDE'S: any member holding the chha role passes the role check above, so
+        // bind the slot to the aide this plan names. A plan that names none refuses it (fail closed).
+        if (
+          actor.kind !== "system" &&
+          decision.isAcknowledgment &&
+          plan.aideMembershipId !== actor.membershipId
+        ) {
+          throw new DisciplinePlanStateError(
+            "SIGNER_ROLE_MISMATCH",
+            "only the aide assigned to this plan may acknowledge it",
+          );
+        }
         const transition = transitionDisciplinePlanVersion(
           version.status as "draft" | "in_review" | "signed" | "superseded",
           {
@@ -648,7 +691,10 @@ export function buildDrizzleM15WriteService(
             // The signer is the SERVER-assembled acting membership — never a body field (§8.6 spoofing).
             signerMembershipId: actor.membershipId,
             signerRole: input.signerRole,
-            isAcknowledgment: input.isAcknowledgment ?? decision.isAcknowledgment,
+            // The role key the signer held at sign time (the slot name alone cannot tell a case manager from
+            // a plain RN, and role grants change): null only for the system actor.
+            heldRoleKey,
+            isAcknowledgment: decision.isAcknowledgment,
             signedAt: new Date(now()),
             attestationText: input.attestationText,
             sessionClass: actor.sessionClass,
@@ -743,9 +789,91 @@ export function buildDrizzleM15WriteService(
       });
     },
 
+    // ── 29 — bind the aide and the supervising RN to an Aide POC (§2.3) ──────────────────────────────
+    async assignAideTeam(actor, planId, input: AssignAideTeamInput): Promise<AideAssignmentView> {
+      return withOrgContext(db, scope(actor), async (tx) => {
+        // The root is the per-plan serialization point (as in openVersion).
+        await tx.execute(
+          sql`select id from discipline_care_plan where id = ${planId} and organization_id = ${actor.organizationId} for update`,
+        );
+        const plan = await planOr404(tx, actor, planId);
+        if (plan.kind !== "aide_poc") {
+          throw new DisciplinePlanStateError(
+            "NOT_AN_AIDE_POC",
+            "only an Aide POC has an assigned aide and supervising RN",
+          );
+        }
+        requireAuthoringScope(actor, plan);
+        checkPlanWritable(plan.status);
+        checkOptimisticConcurrency(input.expectedVersion, plan.version);
+
+        // The care team is part of the DRAFT (§2.3: named before a version can leave `draft`). Once a version is out for
+        // signature or signed, moving the aide would leave the aide's acknowledgment on a plan that names someone else and
+        // move the supervisor's authority silently: a revision is opened (route 6) to change it. A plan with no version yet
+        // is open too (the first assignment).
+        const versions = await tx.select({ status: V.status }).from(V).where(eq(V.planId, planId));
+        if (versions.length > 0 && !versions.some((version) => version.status === "draft")) {
+          throw new DisciplinePlanStateError(
+            "ASSIGNMENT_LOCKED",
+            "the care team can change only while the plan has an open draft; open a revision first",
+          );
+        }
+
+        // Both people must be active staff at THIS plan's location holding the right role right now; the roster port
+        // (M3) decides, so a member who left, was suspended, lost the role or works elsewhere is refused.
+        const roster = assembleAideSupervisionRoster(
+          await aideRoster.listStaffAtLocation({
+            organizationId: actor.organizationId,
+            locationId: plan.locationId,
+            roleKeys: [...AIDE_ROLE_KEYS, ...AIDE_SUPERVISOR_ROLE_KEYS],
+          }),
+        );
+        if (!roster.aides.some((m) => m.membershipId === input.aideMembershipId)) {
+          throw new DisciplinePlanStateError(
+            "AIDE_NOT_ELIGIBLE",
+            "the chosen aide is not an active aide at this plan's location",
+          );
+        }
+        if (!roster.supervisors.some((m) => m.membershipId === input.supervisingRnMembershipId)) {
+          throw new DisciplinePlanStateError(
+            "SUPERVISING_RN_NOT_ELIGIBLE",
+            "the chosen supervising RN is not an active RN at this plan's location",
+          );
+        }
+
+        if (input.aideMembershipId === input.supervisingRnMembershipId) {
+          throw new DisciplinePlanStateError(
+            "SUPERVISING_RN_NOT_ELIGIBLE",
+            "the supervising RN cannot be the aide they supervise",
+          );
+        }
+
+        const [updated] = await tx
+          .update(P)
+          .set({
+            aideMembershipId: input.aideMembershipId,
+            supervisingRnMembershipId: input.supervisingRnMembershipId,
+            updatedAt: new Date(now()),
+            version: nextVersion(plan.version),
+          })
+          .where(and(eq(P.id, planId), eq(P.version, plan.version)))
+          .returning();
+        if (!updated) {
+          throw new DisciplinePlanStateError("STALE_VERSION", "the plan changed concurrently");
+        }
+        return {
+          planId,
+          aideMembershipId: input.aideMembershipId,
+          supervisingRnMembershipId: input.supervisingRnMembershipId,
+          version: updated.version,
+        };
+      });
+    },
+
     // ── 8 — author a discipline goal (parent IPOC problem + DPOA consent resolved through seams) ─────
     async createGoal(actor, planId, input: CreateGoalInput) {
       const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, actor, planId));
+      requireAuthoringScope(actor, plan);
       checkPlanWritable(plan.status);
       checkAuthoringDiscipline(
         plan.kind as DisciplinePlanKind,
@@ -809,6 +937,7 @@ export function buildDrizzleM15WriteService(
     async updateGoal(actor, planId, goalId, input: UpdateGoalInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, actor, planId);
+        requireAuthoringScope(actor, plan);
         checkPlanWritable(plan.status);
         const [row] = await tx
           .select()
@@ -880,6 +1009,7 @@ export function buildDrizzleM15WriteService(
     // ── 10 — author a discipline intervention ────────────────────────────────────────────────────────
     async createIntervention(actor, planId, input: CreateInterventionInput) {
       const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, actor, planId));
+      requireAuthoringScope(actor, plan);
       checkPlanWritable(plan.status);
       checkAuthoringDiscipline(
         plan.kind as DisciplinePlanKind,
@@ -919,6 +1049,7 @@ export function buildDrizzleM15WriteService(
     async updateIntervention(actor, planId, interventionId, input: UpdateInterventionInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, actor, planId);
+        requireAuthoringScope(actor, plan);
         checkPlanWritable(plan.status);
         const [row] = await tx
           .select()
@@ -1253,6 +1384,19 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(SV.id, visitId), eq(SV.planId, planId)))
           .limit(1);
         if (!row) throw new NotFoundError("supervisory visit not found");
+        // The attestation belongs to the RN who recorded it. The route guard only asks "is the caller the plan's CURRENT
+        // supervising RN" (or a covering supervisor), which re-pointing the plan's supervisor can change: so the service
+        // also binds the signer to the visit's own RN, with the same supervisor override.
+        if (
+          actor.kind !== "system" &&
+          row.supervisingRnMembershipId !== actor.membershipId &&
+          !SUPERVISORY_OVERRIDE_ROLES.some((role) => actor.roles.includes(role))
+        ) {
+          throw new DisciplinePlanStateError(
+            "NOT_AIDE_SUPERVISOR",
+            "only the supervising RN who recorded this attestation, or a covering supervisor, may sign it",
+          );
+        }
         if (input.expectedVersion !== null) {
           checkOptimisticConcurrency(input.expectedVersion, row.version);
         }

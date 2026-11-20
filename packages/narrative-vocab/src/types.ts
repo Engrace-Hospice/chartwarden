@@ -30,6 +30,12 @@ export type VocabCategory =
   | "spiritual" // chaplain spiritual finding
   | "adl" // CHHA activities-of-daily-living documentation
   | "attestation" // boilerplate regulatory attestation language
+  // ── visit-note draft categories (S1 PR B, ADR-0114). DRAFT wording until CORPUS_CLINICAL_REVIEW is approved.
+  | "chief_concern" // reason-for-visit phrase (RN routine visit `chief_concern` menu)
+  | "vitals_review" // vital-sign phrase, interpolated from the visit's captured vitals
+  | "plan" // plan / next-visit phrase (RN routine visit `plan` menu)
+  | "scale_reading" // scale reading (PPS, ESAS-r) with its change since the previous reading; draft-only
+  | "medication_change" // medication or order change since the last visit; draft-only
   | "visit_reason"; // why the visit happened — one choice per note (the "Reason for Visit" select)
 
 /**

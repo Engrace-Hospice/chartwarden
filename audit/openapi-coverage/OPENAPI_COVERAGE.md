@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 2125/2125 routes enriched (100%) · **1/1219 mutating routes read a body they publish none for** · 9/852 GETs carry no response schema
+**Totals:** 2137/2137 routes enriched (100%) · **1/1226 mutating routes read a body they publish none for** · 9/857 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. unpublished body` counts a POST/PUT/PATCH whose HANDLER READS a payload and whose contract publishes none — `client:gen` then types that body `never`, so the generated client cannot express the call. It used to count every mutating route with no body schema, which could never honestly reach 0 (an action POST correctly publishes none) and made shipping an empty `{}` schema the cheapest way to move it — 25 routes did exactly that. The reverse direction — a published body no handler reads, which returns 200 and discards the payload — is enforced by `arch:request-body-contract`, not counted here.
 
@@ -17,14 +17,14 @@
 | 05-patient | 49 | 49 (100%) | 0 | 28 | 0 | 21 | 4 |
 | 06-admission | 98 | 98 (100%) | 0 | 72 | 0 | 26 | 0 |
 | 07-care-plan | 32 | 32 (100%) | 0 | 19 | 0 | 12 | 0 |
-| 08-encounters | 53 | 53 (100%) | 0 | 29 | 0 | 23 | 0 |
+| 08-encounters | 63 | 63 (100%) | 0 | 35 | 0 | 27 | 0 |
 | 09-assessments | 26 | 26 (100%) | 0 | 12 | 0 | 14 | 0 |
 | 10-hope | 31 | 31 (100%) | 0 | 16 | 0 | 15 | 1 |
 | 11-orders | 35 | 35 (100%) | 0 | 24 | 0 | 11 | 0 |
 | 12-dosespot | 43 | 43 (100%) | 0 | 30 | 0 | 13 | 0 |
 | 13-emar | 28 | 28 (100%) | 0 | 18 | 0 | 10 | 0 |
 | 14-idg | 39 | 39 (100%) | 0 | 22 | 0 | 14 | 0 |
-| 15-discipline-care-plans | 29 | 29 (100%) | 0 | 18 | 0 | 11 | 0 |
+| 15-discipline-care-plans | 31 | 31 (100%) | 0 | 19 | 0 | 12 | 0 |
 | 16-bereavement | 82 | 82 (100%) | 0 | 54 | 0 | 28 | 0 |
 | 17-scheduling | 39 | 39 (100%) | 0 | 20 | 0 | 17 | 0 |
 | 18-evv | 26 | 26 (100%) | 0 | 16 | 0 | 10 | 0 |

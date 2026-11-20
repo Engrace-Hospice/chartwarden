@@ -14,7 +14,8 @@ import {
 } from "@chartwarden/ui";
 // apps/web/src/modules/08-encounters — Cosignature Queue (M8 §5.5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
-// The RN / Clinical Supervisor cosignature work queue: one row per encounter awaiting cosignature.
+// The RN / Clinical Supervisor cosignature work queue: one row per NOTE awaiting cosignature and one per AMENDMENT of a signed note awaiting its own
+// (ADR-0114 VN-D30; `cosign` tells them apart, an amendment's row opens its parent encounter at that addendum's cosign panel).
 // Reconciled to Lantern (R1): the §5.5 SLA is a §7.5 CountdownChip counting down to the 48h hard cap
 // (warning → alert → overdue), status is a §6.6 StatusPill, ids are mono, the table is No-Line. Reads
 // GET /api/v1/encounters/cosignature-queue via the typed client; the server enforces every scope
@@ -22,9 +23,23 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import { ENCOUNTER_TONE, cosignDueAt, cosignOverdue, stateLabel } from "./encounter-status";
+import {
+  type QueueEntryRef,
+  queueEntryHref,
+  queueEntryKey,
+  queueEntrySubject,
+  queueEntrySubjectLabel,
+} from "./cosign-model";
+import {
+  COSIGN_TONE,
+  ENCOUNTER_TONE,
+  cosignDueAt,
+  cosignOverdue,
+  stateLabel,
+} from "./encounter-status";
 
-interface EncounterRow {
+/** An entry is a note awaiting its cosigner, or (`cosign.subject: addendum`) an amendment of a signed note, whose entry is its parent encounter. */
+interface EncounterRow extends QueueEntryRef {
   id: string;
   patientId: string;
   encounterType: string;
@@ -72,7 +87,7 @@ export function CosignatureQueue(): JSX.Element {
     };
   }, [client]);
 
-  const overdue = items.filter((e) => cosignOverdue(e.signedAt)).length;
+  const overdue = items.filter((e) => cosignOverdue(slaStartOf(e))).length;
   const dueSoon = items.filter((e) => {
     const hours = hoursUntilCosignDue(e);
     return hours != null && hours >= 0 && hours <= 24;
@@ -90,7 +105,7 @@ export function CosignatureQueue(): JSX.Element {
   const statusOptions = useMemo(
     () => [
       { value: "", label: "Any status" },
-      ...Array.from(new Set(items.map((e) => e.status)))
+      ...Array.from(new Set(items.map(statusOf)))
         .sort()
         .map((value) => ({ value, label: stateLabel(value) })),
     ],
@@ -102,11 +117,11 @@ export function CosignatureQueue(): JSX.Element {
       .filter((e) => {
         const hours = hoursUntilCosignDue(e);
         const matchesDiscipline = !disciplineFilter || e.discipline === disciplineFilter;
-        const matchesStatus = !statusFilter || e.status === statusFilter;
+        const matchesStatus = !statusFilter || statusOf(e) === statusFilter;
         const matchesSla =
           !slaFilter ||
           (slaFilter === "overdue"
-            ? cosignOverdue(e.signedAt)
+            ? cosignOverdue(slaStartOf(e))
             : slaFilter === "due_soon"
               ? hours != null && hours >= 0 && hours <= 24
               : !e.signedAt);
@@ -118,8 +133,9 @@ export function CosignatureQueue(): JSX.Element {
             e.encounterType,
             e.discipline,
             e.serviceDate,
-            e.status,
+            statusOf(e),
             e.signedAt ?? "",
+            queueEntrySubjectLabel(e),
           ].some((value) => value.toLowerCase().includes(q));
         return matchesDiscipline && matchesStatus && matchesSla && matchesSearch;
       })
@@ -151,8 +167,8 @@ export function CosignatureQueue(): JSX.Element {
       header={
         <PageHeader title="Cosignatures">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Prioritize encounters awaiting cosignature by discipline, status, and the 48-hour hard
-            cap.
+            Prioritize notes and amendments awaiting cosignature by discipline, status, and the
+            48-hour hard cap.
           </div>
         </PageHeader>
       }
@@ -307,7 +323,7 @@ export function CosignatureQueue(): JSX.Element {
               description={
                 hasActiveFilters
                   ? "No cosignature matches these filters."
-                  : "No encounters are awaiting your cosignature."
+                  : "No notes or amendments are awaiting your cosignature."
               }
               action={
                 hasActiveFilters ? (
@@ -328,17 +344,19 @@ export function CosignatureQueue(): JSX.Element {
             >
               <table style={tableStyle}>
                 <colgroup>
-                  <col style={{ width: "23%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "19%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "15%" }} />
                   <col style={{ width: "13%" }} />
-                  <col style={{ width: "10%" }} />
-                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "11%" }} />
                 </colgroup>
                 <thead>
                   <tr>
                     <th>Encounter</th>
+                    <th>Cosigning</th>
                     <th>Discipline</th>
                     <th>Service date</th>
                     <th>Cosign SLA</th>
@@ -349,7 +367,7 @@ export function CosignatureQueue(): JSX.Element {
                 </thead>
                 <tbody>
                   {pagedItems.map((e) => (
-                    <tr key={e.id}>
+                    <tr key={queueEntryKey(e)}>
                       <td>
                         <div style={primaryCellStyle}>
                           <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
@@ -358,12 +376,20 @@ export function CosignatureQueue(): JSX.Element {
                           <span style={monoMutedStyle}>{e.id.slice(0, 8)}</span>
                         </div>
                       </td>
+                      <td>
+                        <div style={primaryCellStyle}>
+                          <span>{queueEntrySubjectLabel(e)}</span>
+                          {queueEntrySubject(e) === "addendum" ? (
+                            <span style={mutedStyle}>to a signed note</span>
+                          ) : null}
+                        </div>
+                      </td>
                       <td>{stateLabel(e.discipline)}</td>
                       <td className="tabular-nums">{e.serviceDate}</td>
                       <td>
-                        {e.signedAt ? (
+                        {slaStartOf(e) ? (
                           <CountdownChip
-                            dueAt={cosignDueAt(e.signedAt)}
+                            dueAt={cosignDueAt(slaStartOf(e) as string)}
                             warnWithinHours={36}
                             alertWithinHours={24}
                             label="Cosign"
@@ -374,8 +400,12 @@ export function CosignatureQueue(): JSX.Element {
                       </td>
                       <td>
                         <StatusPill
-                          label={stateLabel(e.status)}
-                          tone={ENCOUNTER_TONE[e.status] ?? "neutral"}
+                          label={stateLabel(statusOf(e))}
+                          tone={
+                            (queueEntrySubject(e) === "addendum" ? COSIGN_TONE : ENCOUNTER_TONE)[
+                              statusOf(e)
+                            ] ?? "neutral"
+                          }
                         />
                       </td>
                       <td style={monoMutedStyle}>{e.patientId.slice(0, 8)}</td>
@@ -383,8 +413,8 @@ export function CosignatureQueue(): JSX.Element {
                         <Button
                           size="sm"
                           tone="secondary"
-                          aria-label={`Review ${reviewDisciplineLabel(e.discipline)} ${stateLabel(e.encounterType).toLowerCase()} for patient ${e.patientId.slice(0, 8)} on ${e.serviceDate}`}
-                          onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}`)}
+                          aria-label={`Review ${queueEntrySubject(e) === "addendum" ? "amendment to " : ""}${reviewDisciplineLabel(e.discipline)} ${stateLabel(e.encounterType).toLowerCase()} for patient ${e.patientId.slice(0, 8)} on ${e.serviceDate}`}
+                          onClick={() => navigate(queueEntryHref(e))}
                         >
                           Review
                         </Button>
@@ -413,9 +443,24 @@ export function CosignatureQueue(): JSX.Element {
   );
 }
 
+/** What the entry's 48h clock runs from: a note's primary signature; an amendment's own routing (its request has its own clock). */
+function slaStartOf(entry: EncounterRow): string | null {
+  return queueEntrySubject(entry) === "addendum"
+    ? (entry.cosign?.routedAt ?? null)
+    : entry.signedAt;
+}
+
+/** The status the row shows: a note's encounter status; an amendment's request status (its encounter stays signed). */
+function statusOf(entry: EncounterRow): string {
+  return queueEntrySubject(entry) === "addendum"
+    ? (entry.cosign?.status ?? entry.status)
+    : entry.status;
+}
+
 function hoursUntilCosignDue(encounter: EncounterRow): number | null {
-  if (!encounter.signedAt) return null;
-  return (cosignDueAt(encounter.signedAt).getTime() - Date.now()) / 3_600_000;
+  const start = slaStartOf(encounter);
+  if (!start) return null;
+  return (cosignDueAt(start).getTime() - Date.now()) / 3_600_000;
 }
 
 const filterPanelStyle: CSSProperties = {
@@ -471,7 +516,7 @@ const tableViewportStyle: CSSProperties = {
 
 const tableStyle: CSSProperties = {
   width: "100%",
-  minWidth: "66rem",
+  minWidth: "72rem",
   borderCollapse: "collapse",
   tableLayout: "fixed",
   fontSize: "0.875rem",

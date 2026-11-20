@@ -529,7 +529,7 @@ export function createDbChangeProposalService(
         if (!updated) throw conflict("PROPOSAL_NOT_DRAFT", "this proposal is no longer a draft");
         // The goals / interventions under a problem proposal carry its Part 2 flag: re-flagging the problem re-flags them, or a caller without
         // disclosure would see them (and the problem's text, as their target label) while the problem itself stays hidden. Only the still-draft
-        // ones: a withdrawn row is final (migration 1530's guard), and a released one cannot sit under a draft problem.
+        // ones: a withdrawn row is final (migration 1532's guard), and a released one cannot sit under a draft problem.
         if (updated.kind === "problem_add") {
           await t
             .update(CPCP)
