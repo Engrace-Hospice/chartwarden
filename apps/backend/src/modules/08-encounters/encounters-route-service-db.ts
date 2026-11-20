@@ -92,6 +92,7 @@ import { seedModalityFor } from "./consumers/seed-modality";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
 import { deriveEvvAtSign } from "./evv-at-sign";
+import { seamFallIncidentReader } from "./fall-incident-reader";
 import {
   type GateSectionSelection,
   assertGatePassed,
@@ -118,6 +119,19 @@ import {
   checkVersion,
   checkVocabVersion,
 } from "./lifecycle/validation";
+import {
+  type FallChoice,
+  type FallIncidentReader,
+  fallChoicesFor,
+  fallLookbackStart,
+  nextFallLink,
+} from "./routes/fall-link";
+import {
+  type NarrativeEdit,
+  finalNarrative,
+  isStaleEdit,
+  nextNarrativeEdit,
+} from "./routes/narrative-edit";
 import { assertNotAuthor, toVitalsView } from "./routes/service";
 import type {
   CarePlanLinkView,
@@ -457,6 +471,7 @@ export function createDbEncounterRouteService(
   outbox: EncounterWriteOutboxPort = NOOP_OUTBOX,
   ciphers?: HearthnoteCiphers,
   clock: () => Date = () => new Date(),
+  fallReader: FallIncidentReader = seamFallIncidentReader,
 ): EncounterRouteService {
   /** GAP-013: the org-local calendar day (org timezone, never the request's UTC date) the late-entry tier is measured on. */
   const orgLocalToday = async (t: DbClient, organizationId: string): Promise<LocalDate> =>
@@ -657,6 +672,42 @@ export function createDbEncounterRouteService(
       const text = prose[s.sectionId];
       return text === undefined ? project(s) : { ...project(s), freeText: text };
     });
+  }
+
+  // ── The author's edit of the note text (WF09) ──────────────────────────────────────────────────────
+  //
+  // The edit is the clinician's own words about one patient, so it is sealed in the SAME envelope as their verbatim prose
+  // (`free_text_cipher`, §3.6): under two reserved keys that no template section id can equal, beside the per-section prose. That
+  // keeps it inside what the audit trigger already scrubs and what the §3.6 eraser already shreds, with no second PHI column.
+  const EDIT_TEXT_KEY = "@narrative";
+  const EDIT_BASIS_KEY = "@narrative_basis";
+  const editProse = (edit: NarrativeEdit | null): Record<string, string> =>
+    edit === null ? {} : { [EDIT_TEXT_KEY]: edit.text, [EDIT_BASIS_KEY]: edit.basisHash };
+
+  /** The stored edit, or null when there is none (or no cipher is bound to open it). */
+  async function openEdit(
+    organizationId: string,
+    row: { freeTextCipher: string | null },
+  ): Promise<NarrativeEdit | null> {
+    if (row.freeTextCipher === null || !freeTextCipher) return null;
+    const prose = JSON.parse(
+      await withTenantDek("the clinician's note text could not be opened", () =>
+        freeTextCipher.open(organizationId, row.freeTextCipher as string),
+      ),
+    ) as Record<string, string>;
+    const text = prose[EDIT_TEXT_KEY];
+    const basisHash = prose[EDIT_BASIS_KEY];
+    return text === undefined || basisHash === undefined ? null : { text, basisHash };
+  }
+
+  /** The edit stored on one encounter's draft, or null. */
+  async function storedEditFor(
+    t: DbClient,
+    organizationId: string,
+    encounterId: string,
+  ): Promise<NarrativeEdit | null> {
+    const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
+    return row ? await openEdit(organizationId, row) : null;
   }
 
   // ── §2.6 Layer-3 compliance gate (#121) ───────────────────────────────────────────────────────────
@@ -874,6 +925,15 @@ export function createDbEncounterRouteService(
         ? await noteFactsFor(t, await loadEnc(t, input.encounterId as string))
         : undefined,
     );
+    // The author's own edit of the note text is what is signed, kept beside the generated text and flagged. Only a primary note has
+    // one (an addendum amends, it is not edited), and an edit the note has moved away from refuses here (409), inside the finalize
+    // transaction, so nothing is pinned.
+    const edited = finalNarrative(
+      layer1,
+      input.addendumId === null
+        ? await storedEditFor(t, organizationId, input.encounterId as string)
+        : null,
+    );
     // D5's finalize-time reification, through the module's own shipped ladder rather than a literal.
     // Phase 1: the platform flag is off, so this is `kill_switch_active` / `enhanced: false` / final === layer1.
     const outcome = enhanceNarrative({
@@ -886,7 +946,10 @@ export function createDbEncounterRouteService(
       () =>
         Promise.all([
           narrativeCipher.seal(organizationId, outcome.layer1),
-          narrativeCipher.seal(organizationId, outcome.final),
+          narrativeCipher.seal(
+            organizationId,
+            edited.clinicianEdited ? edited.final : outcome.final,
+          ),
         ]),
     );
     await t.insert(OUT).values({
@@ -898,6 +961,7 @@ export function createDbEncounterRouteService(
       kind: input.kind,
       layer1Cipher,
       finalCipher,
+      clinicianEdited: edited.clinicianEdited,
       // The layer2 pair is derived from the outcome, never asserted: the `hearthnote_output_layer2_consistency`
       // CHECK requires cipher-and-flag to agree, and deriving both from one value is what keeps them agreeing
       // when Layer 2 becomes reachable.
@@ -1140,9 +1204,44 @@ export function createDbEncounterRouteService(
     return recordedVitalsFrom(rows);
   }
 
-  /** What the note states beyond the clinician's selections: the vitals captured on the visit. */
-  async function noteFactsFor(t: DbClient, r: { readonly id: string }): Promise<NoteFacts> {
-    return { recordedVitals: await recordedVitalsFor(t, r.id) };
+  /** What the note states beyond the clinician's selections: the vitals captured on the visit, and the fall it is linked to. */
+  async function noteFactsFor(
+    t: DbClient,
+    r: { readonly id: string; readonly fallOccurredOn: string | null },
+  ): Promise<NoteFacts> {
+    return {
+      recordedVitals: await recordedVitalsFor(t, r.id),
+      ...(r.fallOccurredOn === null ? {} : { linkedFall: { occurredOn: r.fallOccurredOn } }),
+    };
+  }
+
+  /**
+   * The recorded falls this encounter's visit can follow up. M30's seam opens its own tenant context, so it is read OUTSIDE any open
+   * transaction (the rule `createDraft` records for its own seams): one short read for the facts that scope it, then the seam.
+   */
+  async function fallChoicesForEncounter(
+    organizationId: string,
+    encounterId: string,
+    actorMembershipId: string | null,
+  ): Promise<readonly FallChoice[]> {
+    const scope = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const t = tx as unknown as DbClient;
+      const r = await loadEnc(t, encounterId);
+      return {
+        patientId: r.patientId,
+        serviceDate: r.serviceDate,
+        timeZone: await organizationTimezone(t, organizationId),
+      };
+    });
+    const falls = await fallReader.recentFalls({
+      organizationId,
+      patientId: scope.patientId,
+      actorMembershipId,
+      occurredAfter: fallLookbackStart(scope.serviceDate),
+    });
+    return fallChoicesFor(falls, scope.serviceDate, (at) =>
+      localDateInTimeZone(at, scope.timeZone),
+    );
   }
 
   /** Load an encounter's live cosignature request (the D3 workflow row) or the non-leaking 404. */
@@ -1266,17 +1365,18 @@ export function createDbEncounterRouteService(
     t: DbClient,
     organizationId: string,
     encounterId: string,
-  ): Promise<string | null> {
+  ): Promise<{ readonly text: string; readonly clinicianEdited: boolean } | null> {
     const [row] = await t
-      .select({ finalCipher: OUT.finalCipher })
+      .select({ finalCipher: OUT.finalCipher, clinicianEdited: OUT.clinicianEdited })
       .from(OUT)
       .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
       .orderBy(desc(OUT.createdAt))
       .limit(1);
     if (!row || !narrativeCipher) return null;
-    return withTenantDek("the pinned narrative could not be opened", () =>
+    const text = await withTenantDek("the pinned narrative could not be opened", () =>
       narrativeCipher.open(organizationId, row.finalCipher),
     );
+    return { text, clinicianEdited: row.clinicianEdited };
   }
 
   async function carePlanLinksFor(
@@ -1345,9 +1445,11 @@ export function createDbEncounterRouteService(
       .from(MILEAGE)
       .where(eq(MILEAGE.encounterId, encounterId))
       .limit(1);
+    const finalPayload = await latestFinalPayload(t, organizationId, encounterId);
     return {
       selections: (selection?.selections as Record<string, unknown> | undefined) ?? null,
-      finalDocumentation: await latestFinalPayload(t, organizationId, encounterId),
+      finalDocumentation: finalPayload?.text ?? null,
+      finalDocumentationEdited: finalPayload?.clinicianEdited ?? false,
       vitals: vital ? { ...vital, capturedAt: iso(vital.capturedAt) } : null,
       mileage: mileage ? { ...mileage, capturedAt: iso(mileage.capturedAt) } : null,
       carePlanLinks: await carePlanLinkRowsFor(t, encounterId),
@@ -1491,7 +1593,7 @@ export function createDbEncounterRouteService(
         // prints and M28 exposes is what was assembled at finalize, not what the current corpus would
         // produce from the same selections today.
         const [pinned] = await t
-          .select({ finalCipher: OUT.finalCipher })
+          .select({ finalCipher: OUT.finalCipher, clinicianEdited: OUT.clinicianEdited })
           .from(OUT)
           .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
           .orderBy(desc(OUT.createdAt))
@@ -1509,6 +1611,7 @@ export function createDbEncounterRouteService(
               narrativeCipher.open(organizationId, pinned.finalCipher),
             ),
             pinned: true,
+            clinicianEdited: pinned.clinicianEdited,
           };
         }
         // No pin: either a draft (nothing has been finalized, so a live preview is the only answer there
@@ -1516,17 +1619,21 @@ export function createDbEncounterRouteService(
         // wire — a renderer must be able to tell a legal record from a preview of one.
         const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
         if (!row) throw new NotFoundError("hearthnote_selection");
+        const generated = assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          await openProse(organizationId, row),
+          VOCAB_VERSION,
+          await noteFactsFor(t, r),
+        );
+        // A draft's live preview is what finalizing would pin: the author's edit when there is one.
+        const edit = await openEdit(organizationId, row);
         return {
           encounterId: r.id,
-          final: assembleSelections(
-            r.encounterType,
-            r.discipline,
-            r.serviceDate,
-            await openProse(organizationId, row),
-            VOCAB_VERSION,
-            await noteFactsFor(t, r),
-          ),
+          final: edit === null ? generated : edit.text,
           pinned: false,
+          clinicianEdited: edit !== null,
         };
       });
     },
@@ -1712,6 +1819,11 @@ export function createDbEncounterRouteService(
     // shaped for. One row per parent (mig 0225 made that index genuinely unique), so this is an upsert.
     async updateSelections(organizationId, encounterId, ifVersion, input, actorMembershipId) {
       const { stored, prose } = splitFreeText(input.sections);
+      // Linking a DIFFERENT fall needs the patient's recorded falls, read from M30 before the write transaction opens.
+      const choices =
+        typeof input.fallIncidentId === "string"
+          ? await fallChoicesForEncounter(organizationId, encounterId, actorMembershipId)
+          : [];
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
@@ -1721,19 +1833,45 @@ export function createDbEncounterRouteService(
         // Assemble BEFORE the write: an unknown code or section must reject the PATCH, not be stored and
         // discovered by whoever later tries to render the note.
         assertSelectionsValid(input.sections, { requireComplete: false });
+        const fallLink = nextFallLink({
+          sections: input.sections,
+          requested: input.fallIncidentId,
+          current:
+            r.fallIncidentId !== null && r.fallOccurredOn !== null
+              ? { incidentId: r.fallIncidentId, occurredOn: r.fallOccurredOn }
+              : null,
+          choices,
+        });
         const layer1Preview = assembleSelections(
           r.encounterType,
           r.discipline,
           r.serviceDate,
           input.sections,
           VOCAB_VERSION,
-          { recordedVitals: await recordedVitalsFor(t, encounterId) },
+          {
+            recordedVitals: await recordedVitalsFor(t, encounterId),
+            ...(fallLink === null ? {} : { linkedFall: { occurredOn: fallLink.occurredOn } }),
+          },
         );
-        const freeTextCipherValue = await sealProse(organizationId, prose);
+        // The author's edit of the note text: kept, replaced or discarded, against the generated text of THIS write.
+        const edit = nextNarrativeEdit({
+          requested: input.editedNarrative,
+          current: await storedEditFor(t, organizationId, encounterId),
+          generated: layer1Preview,
+        });
+        const freeTextCipherValue = await sealProse(organizationId, {
+          ...prose,
+          ...editProse(edit),
+        });
         const updated = firstOrThrow(
           await t
             .update(ENC)
-            .set({ version: ifVersion + 1, updatedAt: new Date() })
+            .set({
+              version: ifVersion + 1,
+              updatedAt: new Date(),
+              fallIncidentId: fallLink?.incidentId ?? null,
+              fallOccurredOn: fallLink?.occurredOn ?? null,
+            })
             .where(and(eq(ENC.id, encounterId), eq(ENC.version, ifVersion)))
             .returning({ version: ENC.version }),
           "updateSelections matched no row (stale write)",
@@ -1818,24 +1956,38 @@ export function createDbEncounterRouteService(
         const r = await loadEnc(t, encounterId); // non-leaking 404 before the child read
         const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
         const sections = row ? await openProse(organizationId, row) : [];
+        const layer1Preview = assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          sections,
+          VOCAB_VERSION,
+          await noteFactsFor(t, r),
+        );
+        const edit = row ? await openEdit(organizationId, row) : null;
         return {
           templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
           vocabVersion: VOCAB_VERSION,
           sections,
-          layer1Preview: assembleSelections(
-            r.encounterType,
-            r.discipline,
-            r.serviceDate,
-            sections,
-            VOCAB_VERSION,
-            await noteFactsFor(t, r),
-          ),
+          layer1Preview,
+          editedNarrative: edit?.text ?? null,
+          editedNarrativeStale: isStaleEdit(edit, layer1Preview),
           // The If-Match contract protects the encounter aggregate, not its HearthNote child row.
           // `hearthnote_selection.version` remains internal bookkeeping; returning it here causes a
           // false 412 whenever the child and encounter counters differ.
           version: Number(r.version),
+          fallIncident:
+            r.fallIncidentId !== null && r.fallOccurredOn !== null
+              ? { incidentId: r.fallIncidentId, occurredOn: r.fallOccurredOn }
+              : null,
         };
       });
+    },
+
+    async listFallIncidents(organizationId, encounterId, actorMembershipId) {
+      return {
+        incidents: await fallChoicesForEncounter(organizationId, encounterId, actorMembershipId),
+      };
     },
 
     /**

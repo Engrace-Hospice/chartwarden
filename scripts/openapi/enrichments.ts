@@ -2188,6 +2188,7 @@ import {
   EncounterViewResponseSchema as M8EncounterViewResponseSchema,
   EvvReconcileResponseSchema as M8EvvReconcileResponseSchema,
   EvvReconcileSchema as M8EvvReconcileSchema,
+  FallIncidentsResponseSchema as M8FallIncidentsResponseSchema,
   FinalizeEncounterSchema as M8FinalizeEncounterSchema,
   FinalizeResponseSchema as M8FinalizeResponseSchema,
   HearthnoteEnhanceResponseSchema as M8HearthnoteEnhanceResponseSchema,
@@ -2206,6 +2207,8 @@ import {
   SignedSinceQuerySchema as M8SignedSinceQuerySchema,
   SupervisorReleaseSchema as M8SupervisorReleaseSchema,
   UpdateSelectionsSchema as M8UpdateSelectionsSchema,
+  VisitReasonsQuerySchema as M8VisitReasonsQuerySchema,
+  VisitReasonsResponseSchema as M8VisitReasonsResponseSchema,
   VitalsListResponseSchema as M8VitalsListResponseSchema,
   VitalsResultResponseSchema as M8VitalsResultResponseSchema,
   VoidEncounterSchema as M8VoidEncounterSchema,
@@ -5586,6 +5589,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M8CreateEncounterSchema,
     response: M8CreatedEncounterResponseSchema,
   },
+  "GET /api/v1/encounters/visit-reasons": {
+    summary:
+      "The reasons for visit a clinician may choose on one (encounter type × discipline) pair — read by the New Encounter form before the encounter exists, so an unscheduled visit can start with its reason chosen",
+    query: M8VisitReasonsQuerySchema,
+    response: M8VisitReasonsResponseSchema,
+  },
   "GET /api/v1/encounters": {
     summary: "List encounters for the org (filterable)",
     query: M8EncounterListQuerySchema,
@@ -5616,6 +5625,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "The authoring menu (F-063) — the resolved HearthNote template with the vocabulary entries each section accepts for this encounter's (type × discipline) pair. Without it a note composer can only guess at `sectionId`/`code`, which the PATCH carries as free strings",
     response: M8EncounterTemplateResponseSchema,
+  },
+  "GET /api/v1/encounters/:encounterId/fall-incidents": {
+    summary:
+      "The patient's recorded falls (Quality incident register) this visit can follow up — id, org-local date and severity only, newest first. `unavailable` is true when the register could not be read",
+    response: M8FallIncidentsResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId/mileage": {
     summary:

@@ -50,9 +50,11 @@ import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type EncounterDiscipline,
   type EncounterType,
+  type VisitReasonChoice,
   disciplinesForRoles,
   encounterTypesForDisciplines,
   legalDisciplinesFor,
+  loadVisitReasons,
 } from "./encounters-api";
 
 interface EncounterRow {
@@ -420,7 +422,7 @@ const ALL_DISCIPLINES: readonly EncounterDiscipline[] = [
   "slp",
 ];
 
-function PrnEncounterModal({
+export function PrnEncounterModal({
   open,
   patientId,
   onClose,
@@ -469,6 +471,23 @@ function PrnEncounterModal({
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<EncounterCreateFieldErrors>({});
+  // The reason for the visit: chosen here when the clinician starts a visit on site with no schedule behind it, so the
+  // note opens with it already recorded. The choices come from the server for the picked type × discipline.
+  const [reasons, setReasons] = useState<readonly VisitReasonChoice[]>([]);
+  const [reasonCode, setReasonCode] = useState("");
+  useEffect(() => {
+    if (!open || discipline === "") return;
+    let current = true;
+    setReasonCode("");
+    void loadVisitReasons(client, encounterType as EncounterType, discipline as EncounterDiscipline)
+      .catch(() => [] as readonly VisitReasonChoice[])
+      .then((found) => {
+        if (current) setReasons(found);
+      });
+    return () => {
+      current = false;
+    };
+  }, [client, open, encounterType, discipline]);
 
   if (!open) return null;
 
@@ -520,6 +539,7 @@ function PrnEncounterModal({
         encounterType,
         discipline,
         serviceDate,
+        ...(reasonCode === "" ? {} : { reasonCode }),
       },
     } as never);
 
@@ -560,7 +580,7 @@ function PrnEncounterModal({
           <h2 style={{ margin: 0, fontFamily: t.fontDisplay, fontWeight: 500 }}>New Encounter</h2>
           <p style={modalHint}>
             Start an unscheduled encounter for the selected patient. Choose the active admission,
-            visit type, discipline, and service date.
+            visit type, discipline, reason for the visit, and service date.
           </p>
         </div>
 
@@ -631,6 +651,24 @@ function PrnEncounterModal({
           </select>
           <FieldError message={fieldErrors.discipline} />
         </label>
+
+        {reasons.length > 0 ? (
+          <label style={modalField}>
+            <span style={modalLabel}>Reason for visit</span>
+            <select
+              value={reasonCode}
+              onChange={(event) => setReasonCode(event.target.value)}
+              style={selectStyle}
+            >
+              <option value="">Select…</option>
+              {reasons.map((reason) => (
+                <option key={reason.code} value={reason.code}>
+                  {reason.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <label style={modalField}>
           <span style={modalLabel}>Service date</span>

@@ -29,6 +29,11 @@ export interface TemplateSection {
    * typed or ticked), ahead of any statements and the clinician's own words.
    */
   readonly vitalsSummary?: boolean;
+  /**
+   * When true, a section that carries the follow-up-after-a-fall reason also states the date of the fall the
+   * clinician linked, from the stored link (never typed), right after the statements.
+   */
+  readonly fallSummary?: boolean;
 }
 
 /** A fully-resolved template for one legal (encounterType × discipline) pair. */

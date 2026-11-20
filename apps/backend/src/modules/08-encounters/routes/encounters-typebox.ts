@@ -90,6 +90,20 @@ export const CreateEncounterSchema = Type.Object({
   serviceDate: Type.String({ format: "date" }),
   faceToFaceEncounterId: Type.Optional(Type.String({ format: "uuid" })),
   bereavementPlanId: Type.Optional(Type.String({ format: "uuid" })),
+  /** The visit's reason, chosen at the start of an unscheduled visit (a `visit_reason` code the pair is offered). */
+  reasonCode: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+});
+
+/** The reasons for visit offered on one (encounter type × discipline) pair — read before the encounter exists. */
+export const VisitReasonsQuerySchema = Type.Object({
+  encounterType: lit(ENCOUNTER_TYPE),
+  discipline: lit(ENCOUNTER_DISCIPLINE),
+});
+
+export const VisitReasonsResponseSchema = Type.Object({
+  encounterType: lit(ENCOUNTER_TYPE),
+  discipline: lit(ENCOUNTER_DISCIPLINE),
+  reasons: Type.Array(Type.Object({ code: Type.String(), label: Type.String() })),
 });
 
 // §2.6 — the HearthNote selection tree a clinician builds against the template for their
@@ -123,6 +137,18 @@ const SelectionSectionSchema = Type.Object({
 });
 export const UpdateSelectionsSchema = Type.Object({
   sections: Type.Array(SelectionSectionSchema, { maxItems: 100 }),
+  /**
+   * The recorded fall (an M30 fall report for this patient) a follow-up-after-a-fall visit follows up. Absent keeps the link as it
+   * is; null clears it. Only accepted while the reason for the visit is that follow-up.
+   */
+  fallIncidentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  /**
+   * The author's own edit of the note text. Absent keeps the edit as it is; null discards it so the note reads as generated; text is
+   * stored beside the generated text, flagged, and is what gets signed.
+   */
+  editedNarrative: Type.Optional(
+    Type.Union([Type.String({ minLength: 1, maxLength: 20_000 }), Type.Null()]),
+  ),
 });
 
 // §2.2 — numeric-direct vitals (the `vitals` row shape; numerics-as-text preserve their unit). "Clinically
@@ -369,6 +395,8 @@ export const EncounterViewResponseSchema = Type.Object({
   evvBracketPresent: Type.Optional(Type.Boolean()),
   selections: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   finalDocumentation: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  /** True when `finalDocumentation` is the author's own edit of the generated note rather than the generated text. */
+  finalDocumentationEdited: Type.Optional(Type.Boolean()),
   vitals: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   mileage: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   carePlanLinks: Type.Optional(
@@ -508,6 +536,33 @@ export const SelectionsViewResponseSchema = Type.Object({
   /** The Layer-1 assembly of the stored tree — the note as it currently reads. */
   layer1Preview: Type.String(),
   version: Type.Integer(),
+  /** The author's edit of the note text, or null when the note reads as generated. Absent on an addendum's selections. */
+  editedNarrative: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  /** True when the selections or vitals changed after the edit was made, so the edit needs the author's review before finalizing. */
+  editedNarrativeStale: Type.Optional(Type.Boolean()),
+  /** The recorded fall this visit is linked to, or null. Absent on an addendum's selections. */
+  fallIncident: Type.Optional(
+    Type.Union([
+      Type.Object({ incidentId: Type.String(), occurredOn: Type.String({ format: "date" }) }),
+      Type.Null(),
+    ]),
+  ),
+});
+
+/**
+ * Route 3d — the patient's recorded falls this visit can follow up (WF09): id, the org-local date and the severity, never the report's
+ * narrative. `unavailable` is true when Quality's incident register could not be read, so the screen can say so instead of claiming
+ * the patient has no recorded fall.
+ */
+export const FallIncidentsResponseSchema = Type.Object({
+  incidents: Type.Array(
+    Type.Object({
+      incidentId: Type.String(),
+      occurredOn: Type.String({ format: "date" }),
+      severity: Type.String(),
+    }),
+  ),
+  unavailable: Type.Boolean(),
 });
 
 /** One slot's constraint, mirroring `SlotSpec` in `@chartwarden/narrative-vocab`. */
@@ -732,6 +787,8 @@ export const RenderPayloadResponseSchema = Type.Object({
   final: Type.String(),
   /** True when `final` is the narrative pinned at finalize; false when it is a live re-assembly (#122). */
   pinned: Type.Boolean(),
+  /** True when `final` is the author's own edit of the generated note (the generated text is kept beside it). */
+  clinicianEdited: Type.Optional(Type.Boolean()),
 });
 
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).

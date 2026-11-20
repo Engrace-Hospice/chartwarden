@@ -25,6 +25,7 @@ import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal
 import type { AddendumRow } from "./addenda-api";
 import { AddendaPanel } from "./addendum-panel";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
+import { currentNoteText } from "./encounters-api";
 import {
   type DeliveryDraft,
   asVisitModality,
@@ -63,6 +64,8 @@ interface Encounter {
   evvBracketPresent?: boolean;
   selections: Record<string, unknown> | null;
   finalDocumentation: string | null;
+  /** The signed text is the author's own edit of the generated note, not the generated text itself. */
+  finalDocumentationEdited?: boolean;
   vitals: Record<string, unknown> | null;
   mileage: Record<string, unknown> | null;
   carePlanLinks: CarePlanLink[];
@@ -322,6 +325,8 @@ export function EncounterRead(): JSX.Element {
   const [delivery, setDelivery] = useState<DeliveryDraft>(() => initialDelivery(null));
 
   const [noteText, setNoteText] = useState("");
+  // The draft's note text is the author's edit rather than the generated text.
+  const [noteEdited, setNoteEdited] = useState(false);
 
   const [vitals, setVitals] = useState({
     bpSystolic: "",
@@ -430,6 +435,8 @@ export function EncounterRead(): JSX.Element {
             finalDocumentation?: string | null;
           }
         ).finalDocumentation ?? null,
+      finalDocumentationEdited:
+        (data as { finalDocumentationEdited?: boolean }).finalDocumentationEdited === true,
       vitals: loadedVitals ?? null,
       mileage: loadedMileage ?? null,
       carePlanLinks:
@@ -554,8 +561,11 @@ export function EncounterRead(): JSX.Element {
     // headings, which would read as a note that says nothing.
     setNoteText(
       sel.data?.sections?.some((s) => s.entries.length > 0 || Boolean(s.freeText))
-        ? (sel.data?.layer1Preview ?? "")
+        ? currentNoteText(sel.data)
         : "",
+    );
+    setNoteEdited(
+      typeof sel.data?.editedNarrative === "string" && sel.data.editedNarrativeStale !== true,
     );
 
     setLoading(false);
@@ -1353,6 +1363,7 @@ export function EncounterRead(): JSX.Element {
                   Layer-1 note as it currently reads. */}
                 {e.status === "draft" ? (
                   <div style={readOnlyPanel}>
+                    {noteEdited ? <p style={editedTag}>Edited by the author</p> : null}
                     <p style={noteBody}>
                       {noteText ||
                         "Nothing documented yet. Use Compose note to document this visit."}
@@ -1360,6 +1371,11 @@ export function EncounterRead(): JSX.Element {
                   </div>
                 ) : (
                   <div style={readOnlyPanel}>
+                    {e.finalDocumentationEdited ? (
+                      <p style={editedTag}>
+                        Edited by the author. The generated text is kept with the record.
+                      </p>
+                    ) : null}
                     <p style={noteBody}>
                       {e.finalDocumentation ||
                         noteText ||
@@ -3028,6 +3044,13 @@ const sectionExplanation: CSSProperties = {
 /* ──────────────────────────────────────────────────────────────────────────
    DOCUMENTATION
 ────────────────────────────────────────────────────────────────────────── */
+
+const editedTag: CSSProperties = {
+  margin: "0 0 0.5rem",
+  fontSize: "0.7rem",
+  fontWeight: 650,
+  color: "var(--color-on-surface-variant)",
+};
 
 const readOnlyPanel: CSSProperties = {
   padding: "0.75rem",

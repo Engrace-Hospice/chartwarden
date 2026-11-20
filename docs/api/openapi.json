@@ -148676,6 +148676,9 @@
                               }
                             ]
                           },
+                          "finalDocumentationEdited": {
+                            "type": "boolean"
+                          },
                           "vitals": {
                             "anyOf": [
                               {
@@ -149030,6 +149033,11 @@
                   "bereavementPlanId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "reasonCode": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
                   }
                 }
               }
@@ -149355,6 +149363,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "finalDocumentationEdited": {
+                      "type": "boolean"
                     },
                     "vitals": {
                       "anyOf": [
@@ -149727,6 +149738,42 @@
                     },
                     "version": {
                       "type": "integer"
+                    },
+                    "editedNarrative": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "editedNarrativeStale": {
+                      "type": "boolean"
+                    },
+                    "fallIncident": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "incidentId",
+                            "occurredOn"
+                          ],
+                          "properties": {
+                            "incidentId": {
+                              "type": "string"
+                            },
+                            "occurredOn": {
+                              "format": "date",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -149868,6 +149915,29 @@
                         }
                       }
                     }
+                  },
+                  "fallIncidentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "editedNarrative": {
+                    "anyOf": [
+                      {
+                        "minLength": 1,
+                        "maxLength": 20000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -150917,6 +150987,75 @@
         }
       }
     },
+    "/api/v1/encounters/{encounterId}/fall-incidents": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdFallincidents",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The patient's recorded falls (Quality incident register) this visit can follow up — id, org-local date and severity only, newest first. `unavailable` is true when the register could not be read",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "incidents",
+                    "unavailable"
+                  ],
+                  "properties": {
+                    "incidents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "incidentId",
+                          "occurredOn",
+                          "severity"
+                        ],
+                        "properties": {
+                          "incidentId": {
+                            "type": "string"
+                          },
+                          "occurredOn": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/encounters/{encounterId}/finalize": {
       "post": {
         "operationId": "postApiV1EncountersByEncounterIdFinalize",
@@ -151711,6 +151850,42 @@
                     },
                     "version": {
                       "type": "integer"
+                    },
+                    "editedNarrative": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "editedNarrativeStale": {
+                      "type": "boolean"
+                    },
+                    "fallIncident": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "incidentId",
+                            "occurredOn"
+                          ],
+                          "properties": {
+                            "incidentId": {
+                              "type": "string"
+                            },
+                            "occurredOn": {
+                              "format": "date",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -151844,6 +152019,29 @@
                         }
                       }
                     }
+                  },
+                  "fallIncidentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "editedNarrative": {
+                    "anyOf": [
+                      {
+                        "minLength": 1,
+                        "maxLength": 20000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -154520,6 +154718,9 @@
                               }
                             ]
                           },
+                          "finalDocumentationEdited": {
+                            "type": "boolean"
+                          },
                           "vitals": {
                             "anyOf": [
                               {
@@ -154986,6 +155187,9 @@
                               }
                             ]
                           },
+                          "finalDocumentationEdited": {
+                            "type": "boolean"
+                          },
                           "vitals": {
                             "anyOf": [
                               {
@@ -155310,6 +155514,310 @@
                     },
                     "truncated": {
                       "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/visit-reasons": {
+      "get": {
+        "operationId": "getApiV1EncountersVisitreasons",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The reasons for visit a clinician may choose on one (encounter type × discipline) pair — read by the New Encounter form before the encounter exists, so an unscheduled visit can start with its reason chosen",
+        "parameters": [
+          {
+            "name": "encounterType",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "routine_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "admission_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "recert_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "face_to_face",
+                  "type": "string"
+                },
+                {
+                  "const": "telephonic",
+                  "type": "string"
+                },
+                {
+                  "const": "lpn_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "chha_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "msw_assessment",
+                  "type": "string"
+                },
+                {
+                  "const": "msw_followup",
+                  "type": "string"
+                },
+                {
+                  "const": "chaplain_assessment",
+                  "type": "string"
+                },
+                {
+                  "const": "chaplain_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "volunteer_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "bereavement_contact",
+                  "type": "string"
+                },
+                {
+                  "const": "idg_followup",
+                  "type": "string"
+                },
+                {
+                  "const": "pt_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "ot_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "slp_visit",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "discipline",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "rn",
+                  "type": "string"
+                },
+                {
+                  "const": "lpn",
+                  "type": "string"
+                },
+                {
+                  "const": "chha",
+                  "type": "string"
+                },
+                {
+                  "const": "msw",
+                  "type": "string"
+                },
+                {
+                  "const": "chaplain",
+                  "type": "string"
+                },
+                {
+                  "const": "volunteer",
+                  "type": "string"
+                },
+                {
+                  "const": "md",
+                  "type": "string"
+                },
+                {
+                  "const": "np",
+                  "type": "string"
+                },
+                {
+                  "const": "pt",
+                  "type": "string"
+                },
+                {
+                  "const": "ot",
+                  "type": "string"
+                },
+                {
+                  "const": "slp",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "encounterType",
+                    "discipline",
+                    "reasons"
+                  ],
+                  "properties": {
+                    "encounterType": {
+                      "anyOf": [
+                        {
+                          "const": "routine_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "admission_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recert_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "face_to_face",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lpn_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chha_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_followup",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "volunteer_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement_contact",
+                          "type": "string"
+                        },
+                        {
+                          "const": "idg_followup",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pt_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ot_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "slp_visit",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "discipline": {
+                      "anyOf": [
+                        {
+                          "const": "rn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lpn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chha",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain",
+                          "type": "string"
+                        },
+                        {
+                          "const": "volunteer",
+                          "type": "string"
+                        },
+                        {
+                          "const": "md",
+                          "type": "string"
+                        },
+                        {
+                          "const": "np",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pt",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ot",
+                          "type": "string"
+                        },
+                        {
+                          "const": "slp",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "label"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -183627,6 +184135,9 @@
                     },
                     "pinned": {
                       "type": "boolean"
+                    },
+                    "clinicianEdited": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -184042,6 +184553,9 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "finalDocumentationEdited": {
+                            "type": "boolean"
                           },
                           "vitals": {
                             "anyOf": [

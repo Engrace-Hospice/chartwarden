@@ -12,6 +12,7 @@
 import {
   type AssemblyContext,
   HearthnoteAssemblyError,
+  type LinkedFall,
   type RecordedVitals,
   type SelectionState,
   assemble,
@@ -85,6 +86,20 @@ import {
   checkVocabVersion,
 } from "../lifecycle/validation";
 import { assertModalityFitsVisitType } from "../visit-delivery";
+import {
+  type FallChoice,
+  type FallIncidentReader,
+  type FallLink,
+  fallChoicesFor,
+  fallLookbackStart,
+  nextFallLink,
+} from "./fall-link";
+import {
+  type NarrativeEdit,
+  finalNarrative,
+  isStaleEdit,
+  nextNarrativeEdit,
+} from "./narrative-edit";
 
 /**
  * GAP-029 / §4.6 — the service-level no-self-cosign guard, shared by the in-memory and Drizzle services so
@@ -311,6 +326,8 @@ export interface EncounterView {
   readonly evvBracketPresent?: boolean;
   readonly selections?: Record<string, unknown> | null;
   readonly finalDocumentation?: string | null;
+  /** True when `finalDocumentation` is the author's own edit of the generated note, not the generated text (WF09). */
+  readonly finalDocumentationEdited?: boolean;
   readonly vitals?: Record<string, unknown> | null;
   readonly mileage?: Record<string, unknown> | null;
   readonly carePlanLinks?: readonly CarePlanLinkResult[];
@@ -368,6 +385,16 @@ export interface SelectionSectionInput {
  */
 export interface SelectionsInput {
   readonly sections: readonly SelectionSectionInput[];
+  /**
+   * The recorded fall a follow-up-after-a-fall visit follows up. Absent keeps the link as it is; `null` clears it. It is only
+   * accepted while the reason for the visit is that follow-up, and the fall must be one recorded for this patient (WF09).
+   */
+  readonly fallIncidentId?: string | null;
+  /**
+   * The author's own edit of the note text (WF09). Absent keeps the edit as it is; `null` discards it, so the note reads as
+   * generated; a string stores it beside the generated text, flagged, and it is what gets signed.
+   */
+  readonly editedNarrative?: string | null;
 }
 
 /** The stored tree read back, with the Layer-1 assembly of it (routes 3b / 23b). */
@@ -377,6 +404,12 @@ export interface SelectionsView {
   readonly sections: readonly SelectionSectionInput[];
   readonly layer1Preview: string;
   readonly version: number;
+  /** The recorded fall this visit is linked to, or null (a draft's selections read only; absent on an addendum). */
+  readonly fallIncident?: FallLink | null;
+  /** The author's edit of the note text, or null (a draft's selections read only). */
+  readonly editedNarrative?: string | null;
+  /** True when the selections or vitals changed after the edit was made, so the edited text needs the author's review. */
+  readonly editedNarrativeStale?: boolean;
 }
 
 /**
@@ -536,9 +569,10 @@ export function assertSelectionsValid(
   );
 }
 
-/** What a note states about the visit beyond the clinician's own selections: what was recorded on it. */
+/** What a note states about the visit beyond the clinician's own selections: what was recorded on it, and the fall it follows up. */
 export interface NoteFacts {
   readonly recordedVitals?: RecordedVitals;
+  readonly linkedFall?: LinkedFall;
 }
 
 export function assembleSelections(
@@ -569,6 +603,7 @@ export function assembleSelections(
     patient: ASSEMBLY_PATIENT_SLOT,
     serviceDate,
     ...(facts.recordedVitals === undefined ? {} : { recordedVitals: facts.recordedVitals }),
+    ...(facts.linkedFall === undefined ? {} : { linkedFall: facts.linkedFall }),
   };
   try {
     return assemble(toSelectionState(encounterType, discipline, sections, vocabVersion), context)
@@ -581,12 +616,14 @@ export function assembleSelections(
   }
 }
 
-/** What the in-memory encounter's note states: every vitals set captured (newest first). */
+/** What the in-memory encounter's note states: every vitals set captured (newest first) and the fall it is linked to. */
 function noteFacts(r: {
   readonly vitals: ReadonlyMap<string, { input: VitalsInput }>;
+  readonly fallLink: FallLink | null;
 }): NoteFacts {
   return {
     recordedVitals: recordedVitalsFrom([...r.vitals.values()].reverse().map((v) => v.input)),
+    ...(r.fallLink === null ? {} : { linkedFall: { occurredOn: r.fallLink.occurredOn } }),
   };
 }
 
@@ -640,6 +677,15 @@ export interface EncounterRouteService {
   ): Promise<{ version: number; layer1Preview: string }>;
   /** Read the stored selection tree back, assembled (#114 — the round-trip the PATCH never had). */
   getSelections(organizationId: string, encounterId: string): Promise<SelectionsView>;
+  /**
+   * The patient's recorded falls this visit can follow up (WF09), newest first: id, org-local date and severity, never the report's
+   * narrative. Empty when M30's seam has none or cannot answer.
+   */
+  listFallIncidents(
+    organizationId: string,
+    encounterId: string,
+    actorMembershipId: string | null,
+  ): Promise<{ readonly incidents: readonly FallChoice[] }>;
   captureVitals(
     organizationId: string,
     encounterId: string,
@@ -856,7 +902,7 @@ export interface EncounterRouteService {
   renderPayload(
     organizationId: string,
     encounterId: string,
-  ): Promise<{ encounterId: string; final: string; pinned: boolean }>;
+  ): Promise<{ encounterId: string; final: string; pinned: boolean; clinicianEdited?: boolean }>;
 }
 
 // ── in-memory record + slice ────────────────────────────────────────────────────────────────────────
@@ -912,6 +958,12 @@ interface EncounterRecord {
   selections: readonly SelectionSectionInput[];
   /** The narrative pinned at finalize (#122) — undefined while the encounter is still a draft. */
   pinnedNarrative?: string;
+  /** The recorded fall a follow-up visit is linked to (migration 1517); null = none. */
+  fallLink: FallLink | null;
+  /** The author's edit of the note text (draft only); null = the note reads as generated. */
+  narrativeEdit: NarrativeEdit | null;
+  /** True when `pinnedNarrative` is the author's edit rather than the generated text. */
+  pinnedEdited?: boolean;
   /**
    * The corpus release the stored selections were AUTHORED against — the slice's stand-in for
    * `hearthnote_selection.template_version`, restamped on every selections PATCH exactly as the Drizzle
@@ -988,6 +1040,8 @@ export interface EncounterRouteSeed {
    * the slice pretending to know the answer for every patient.
    */
   readonly primaryRnMembershipId?: (organizationId: string, patientId: string) => string | null;
+  /** The patient's recorded falls (M30's incident seam in production). Absent = none recorded. */
+  readonly falls?: FallIncidentReader;
 }
 
 /** Pads `n` to a uuid-shaped id so created ids round-trip through uuid-validated bodies (M6/M8 slice). */
@@ -1021,6 +1075,7 @@ const toView = (r: EncounterRecord): EncounterView => ({
       ? { sections: r.selections.map((s) => ({ sectionId: s.sectionId, entries: s.entries })) }
       : null,
   finalDocumentation: r.pinnedNarrative ?? null,
+  finalDocumentationEdited: r.pinnedEdited === true,
   vitals: null,
   mileage: null,
   carePlanLinks: (r.carePlanLinks ?? [])
@@ -1082,6 +1137,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       cosignature: null,
       addenda: new Map(),
       selections: [],
+      fallLink: null,
+      narrativeEdit: null,
       vitals: new Map(),
       mileage: null,
       ...e,
@@ -1110,6 +1167,21 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     const r = byId.get(encounterId);
     if (!r || r.organizationId !== organizationId) throw new NotFoundError("encounter");
     return r;
+  }
+
+  /** The recorded falls this encounter's visit can follow up, as the slice's injected reader answers them. */
+  async function fallChoices(
+    r: EncounterRecord,
+    actorMembershipId: string | null,
+  ): Promise<readonly FallChoice[]> {
+    if (seed.falls === undefined) return [];
+    const falls = await seed.falls.recentFalls({
+      organizationId: r.organizationId,
+      patientId: r.patientId,
+      actorMembershipId,
+      occurredAfter: fallLookbackStart(r.serviceDate),
+    });
+    return fallChoicesFor(falls, r.serviceDate, (at) => at.toISOString().slice(0, 10));
   }
 
   const subId = () => uuidFromCounter("1", ++subCounter);
@@ -1177,6 +1249,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         cosignature: null,
         addenda: new Map(),
         selections: [],
+        fallLink: null,
+        narrativeEdit: null,
         vitals: new Map(),
         mileage: null,
       });
@@ -1208,21 +1282,34 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       };
     },
 
-    async updateSelections(organizationId, encounterId, ifVersion, input) {
+    async updateSelections(organizationId, encounterId, ifVersion, input, actorMembershipId) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
       checkVersion({ expected: ifVersion, actual: r.version });
       // Assemble BEFORE persisting: an unknown vocabulary code or an illegal pair must reject the write,
       // not be stored and discovered later by whoever tries to render the note.
       assertSelectionsValid(input.sections, { requireComplete: false });
+      const fallLink = nextFallLink({
+        sections: input.sections,
+        requested: input.fallIncidentId,
+        current: r.fallLink,
+        choices:
+          typeof input.fallIncidentId === "string" ? await fallChoices(r, actorMembershipId) : [],
+      });
       const layer1Preview = assembleSelections(
         r.encounterType,
         r.discipline,
         r.serviceDate,
         input.sections,
         VOCAB_VERSION,
-        noteFacts(r),
+        noteFacts({ vitals: r.vitals, fallLink }),
       );
+      r.narrativeEdit = nextNarrativeEdit({
+        requested: input.editedNarrative,
+        current: r.narrativeEdit,
+        generated: layer1Preview,
+      });
+      r.fallLink = fallLink;
       r.selections = input.sections;
       r.selectionsVocabVersion = VOCAB_VERSION;
       r.version += 1;
@@ -1266,7 +1353,15 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         sections: r.selections,
         layer1Preview,
         version: r.version,
+        fallIncident: r.fallLink,
+        editedNarrative: r.narrativeEdit?.text ?? null,
+        editedNarrativeStale: isStaleEdit(r.narrativeEdit, layer1Preview),
       };
+    },
+
+    async listFallIncidents(organizationId, encounterId, actorMembershipId) {
+      const r = load(organizationId, encounterId);
+      return { incidents: await fallChoices(r, actorMembershipId) };
     },
 
     async captureVitals(organizationId, encounterId, input) {
@@ -1417,13 +1512,11 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       }
       // WF09 — a draft may be half-filled; a finalized note may not (an empty slot reads "has  dependent edema").
       assertSelectionsValid(r.selections, { requireComplete: true });
-      r.status = t.to;
-      r.version += 1;
-      r.vocabVersionId ??= pin.id; // set at FIRST finalize, immutable thereafter (D11)
       // The `persist_assembled_output` effect (#122). The slice holds no DEK and no table, so the pin is
       // the assembled string on the record — but it is a PIN: nothing reassembles it afterwards, so a
-      // later edit to the selection tree cannot change what this encounter says.
-      r.pinnedNarrative = assembleSelections(
+      // later edit to the selection tree cannot change what this encounter says. Resolved BEFORE the record
+      // moves (the Drizzle service rolls its transaction back): a refusal must leave the draft a draft.
+      const generated = assembleSelections(
         r.encounterType,
         r.discipline,
         r.serviceDate,
@@ -1431,6 +1524,13 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         VOCAB_VERSION,
         noteFacts(r),
       );
+      // The author's edit is what is signed; one the note has moved away from refuses (409) before anything is pinned.
+      const edited = finalNarrative(generated, r.narrativeEdit);
+      r.status = t.to;
+      r.version += 1;
+      r.vocabVersionId ??= pin.id; // set at FIRST finalize, immutable thereafter (D11)
+      r.pinnedNarrative = edited.final;
+      r.pinnedEdited = edited.clinicianEdited;
       recordOutbox(r.id, t.effects);
       return { status: "finalized", version: r.version };
     },
@@ -1813,7 +1913,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       // The pinned bytes win when they exist (#122) — a finalized note renders what it said, not what the
       // current selection tree would say now.
       if (r.pinnedNarrative !== undefined) {
-        return { encounterId: r.id, final: r.pinnedNarrative, pinned: true };
+        return {
+          encounterId: r.id,
+          final: r.pinnedNarrative,
+          pinned: true,
+          clinicianEdited: r.pinnedEdited === true,
+        };
       }
       // Was `final: ""` unconditionally. An empty string is a RENDERABLE answer, so a bound M22 renderer
       // would have produced an empty note and reported success; a 404 is the truthful answer when the
@@ -1821,15 +1926,18 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       if (r.selections.length === 0) throw new NotFoundError("hearthnote_selection");
       return {
         encounterId: r.id,
-        final: assembleSelections(
-          r.encounterType,
-          r.discipline,
-          r.serviceDate,
-          r.selections,
-          VOCAB_VERSION,
-          noteFacts(r),
-        ),
+        final:
+          r.narrativeEdit?.text ??
+          assembleSelections(
+            r.encounterType,
+            r.discipline,
+            r.serviceDate,
+            r.selections,
+            VOCAB_VERSION,
+            noteFacts(r),
+          ),
         pinned: false,
+        clinicianEdited: r.narrativeEdit !== null,
       };
     },
   };

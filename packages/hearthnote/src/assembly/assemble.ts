@@ -6,7 +6,7 @@
 // context/params map, free-text appended verbatim. Pure and total — same inputs always yield the same
 // bytes (architecture §10.5.2 "Properties"). The convenience `assemble` resolves the template and enforces
 // the D11 vocab-version pin + the legal-pair guard, raising typed errors the M8 service maps to HTTP.
-import { VOCAB_VERSION, getVocabEntry } from "@chartwarden/narrative-vocab";
+import { FALL_FOLLOWUP_CODE, VOCAB_VERSION, getVocabEntry } from "@chartwarden/narrative-vocab";
 import { resolveTemplate } from "../templates/registry";
 import type { HearthnoteTemplate, TemplateSection } from "../templates/types";
 import { templateKey } from "../templates/types";
@@ -53,7 +53,8 @@ function slotValues(
 
 /**
  * Render one section's body (recorded vitals, assembled sentences, verbatim free-text), or "" when it has
- * no content. The vitals sentence leads a `vitalsSummary` section and needs no selection to appear.
+ * no content. The vitals sentence leads a `vitalsSummary` section and needs no selection to appear; a linked
+ * fall's date follows the follow-up-after-a-fall reason in a `fallSummary` section and never appears without it.
  */
 function renderSection(
   section: SectionSelection,
@@ -73,6 +74,13 @@ function renderSection(
       );
     }
     sentences.push(finishSentence(interpolate(vocab.phrase, slotValues(context, entry.params))));
+  }
+  if (
+    tmplSection.fallSummary === true &&
+    context.linkedFall !== undefined &&
+    section.entries.some((entry) => entry.code === FALL_FOLLOWUP_CODE)
+  ) {
+    sentences.push(`The fall occurred on ${context.linkedFall.occurredOn}.`);
   }
   const assembled = joinSentences(sentences);
   const free = section.freeText?.trim() ?? "";

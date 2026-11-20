@@ -1,3 +1,13 @@
+// apps/web/src/modules/08-encounters — the HearthNote composer (M8 §5.2/§2.6, Track B / ADR-0030; #91).
+//
+// The server remains the source of truth for:
+// - template vocabulary,
+// - narrative assembly,
+// - finalization eligibility,
+// - optimistic concurrency.
+//
+// This page only improves the authoring experience around that contract.
+import { visitPurposeLabel } from "@chartwarden/types";
 import {
   Button,
   EmptyState,
@@ -13,15 +23,6 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
-// apps/web/src/modules/08-encounters — the HearthNote composer (M8 §5.2/§2.6, Track B / ADR-0030; #91).
-//
-// The server remains the source of truth for:
-// - template vocabulary,
-// - narrative assembly,
-// - finalization eligibility,
-// - optimistic concurrency.
-//
-// This page only improves the authoring experience around that contract.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
@@ -29,19 +30,26 @@ import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
   type EncounterView,
+  FALL_FOLLOWUP_CODE,
+  type FallIncidentsView,
   type MenuEntry,
+  type SelectionsView,
   type TemplateSection,
   type TemplateView,
   type WriteResult,
   captureVitals,
+  currentNoteText,
   dropUnofferedEntries,
   finalizeEncounter,
   isSingleChoice,
+  loadFallIncidents,
   loadSelections,
   loadTemplate,
+  loadVisitPurpose,
   saveSelections,
   sectionHasEmptySlots,
   sectionsNeedingAttention,
+  suggestedReasonCode,
   toDraft,
   toSelectionsBody,
 } from "./encounters-api";
@@ -94,13 +102,17 @@ const SHELL_EXIT_PATHS = new Set(["/expired", "/error", "/maintenance", "/tenant
 const isShellExit = (pathname: string): boolean =>
   SHELL_EXIT_PATHS.has(pathname) || pathname === "/login" || pathname.startsWith("/login/");
 
-const serializedDraft = (draft: DraftSections): string => JSON.stringify(toSelectionsBody(draft));
+const serializedDraft = (draft: DraftSections, fallIncidentId: string | null): string =>
+  JSON.stringify(toSelectionsBody(draft, fallIncidentId));
 
 const transportFeedback: UiFeedback = {
   tone: "error",
   title: "Connection interrupted",
   message: "The connection was interrupted. Your changes are still here; try again.",
 };
+
+/** The template section a visit reason is recorded in. */
+const REASON_SECTION_ID = "chief_concern";
 
 const VITAL_LABELS: Record<string, string> = {
   bpSystolic: "Systolic blood pressure",
@@ -139,8 +151,22 @@ export function EncounterCompose(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<UiFeedback | null>(null);
   const [operation, setOperation] = useState<"saving" | "finalizing" | null>(null);
-  const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}));
+  const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}, null));
+  // The recorded fall a follow-up-after-a-fall visit follows up: the stored link, the author's current choice, and the falls on offer.
+  const [linkedFall, setLinkedFall] = useState<{ incidentId: string; occurredOn: string } | null>(
+    null,
+  );
+  const [fallIncidentId, setFallIncidentId] = useState<string | null>(null);
+  const [fallChoices, setFallChoices] = useState<FallIncidentsView | null>(null);
+  // The author's own edit of the note text: the saved edit (null = the note reads as generated), whether the note moved underneath
+  // it since, and the text box while they are changing it.
+  const [editedNarrative, setEditedNarrative] = useState<string | null>(null);
+  const [editStale, setEditStale] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState("");
   const [vitalsOpen, setVitalsOpen] = useState(false);
+  // The reason the scheduled visit's purpose suggested, held as an UNSAVED choice until the clinician saves it.
+  const [suggestion, setSuggestion] = useState<{ code: string; from: string } | null>(null);
   const loadSequence = useRef(0);
 
   const load = useCallback(async (): Promise<EncounterView | null> => {
@@ -155,7 +181,14 @@ export function EncounterCompose(): JSX.Element {
     setDraft({});
     setPreview("");
     setVersion(0);
-    setLastSavedDraft(serializedDraft({}));
+    setLastSavedDraft(serializedDraft({}, null));
+    setLinkedFall(null);
+    setFallIncidentId(null);
+    setFallChoices(null);
+    setEditedNarrative(null);
+    setEditStale(false);
+    setEditing(false);
+    setEditText("");
     setOpenSection(null);
 
     try {
@@ -195,7 +228,9 @@ export function EncounterCompose(): JSX.Element {
       const { draft: offeredDraft, dropped } = dropUnofferedEntries(tmpl, loadedDraft);
       setDraft(offeredDraft);
       // The saved baseline stays the STORED tree, so a removal reads as an unsaved change the author applies.
-      setLastSavedDraft(serializedDraft(loadedDraft));
+      setLastSavedDraft(serializedDraft(loadedDraft, sel.fallIncident?.incidentId ?? null));
+      setLinkedFall(sel.fallIncident ?? null);
+      setFallIncidentId(sel.fallIncident?.incidentId ?? null);
       if (dropped > 0) {
         setFeedback({
           tone: "warning",
@@ -204,6 +239,8 @@ export function EncounterCompose(): JSX.Element {
         });
       }
       setPreview(sel.layer1Preview);
+      setEditedNarrative(sel.editedNarrative ?? null);
+      setEditStale(sel.editedNarrativeStale === true);
       setVersion(sel.version);
 
       setOpenSection((prev) => prev ?? tmpl.sections[0]?.sectionId ?? null);
@@ -224,14 +261,74 @@ export function EncounterCompose(): JSX.Element {
     };
   }, [load]);
 
+  // A note that came from the schedule suggests the reason its visit purpose implies (a routine visit, an MSW or
+  // chaplain assessment). Only into an empty Reason for Visit, and only as an unsaved choice: the clinician
+  // confirms it by saving, or picks another.
+  useEffect(() => {
+    const visitId = encounter?.visitId;
+    const reasonSection = template?.sections.find((s) => s.sectionId === REASON_SECTION_ID);
+    if (encounter?.status !== "draft" || !visitId || reasonSection === undefined) return;
+    let current = true;
+    void loadVisitPurpose(client, visitId).then((purpose) => {
+      if (!current || purpose === null) return;
+      const code = suggestedReasonCode(purpose, reasonSection.entries);
+      if (code === null) return;
+      setDraft((prev) => {
+        const held = prev[REASON_SECTION_ID];
+        if (held !== undefined && (held.entries.length > 0 || held.freeText.trim() !== "")) {
+          return prev;
+        }
+        setSuggestion({ code, from: visitPurposeLabel(purpose) ?? purpose });
+        return {
+          ...prev,
+          [REASON_SECTION_ID]: { freeText: held?.freeText ?? "", entries: [{ code, params: {} }] },
+        };
+      });
+    });
+    return () => {
+      current = false;
+    };
+  }, [client, encounter, template]);
+
+  // The link only means something beside the follow-up-after-a-fall reason; anywhere else the note carries none.
+  const reasonIsFall =
+    draft[REASON_SECTION_ID]?.entries.some((e) => e.code === FALL_FOLLOWUP_CODE) === true;
+  const effectiveFallId = reasonIsFall ? fallIncidentId : null;
+  // The falls on offer are read once the author picks the follow-up reason: the list is a disclosure from Quality's register, so
+  // it is not fetched for a note that never asks for it.
+  useEffect(() => {
+    if (!encounterId || encounter?.status !== "draft" || !reasonIsFall || fallChoices !== null) {
+      return;
+    }
+    let current = true;
+    void loadFallIncidents(client, encounterId).then((found) => {
+      if (current) setFallChoices(found);
+    });
+    return () => {
+      current = false;
+    };
+  }, [client, encounterId, encounter?.status, reasonIsFall, fallChoices]);
+
   const unmet = useMemo(
     () => (template ? sectionsNeedingAttention(template, draft) : []),
     [template, draft],
   );
 
   const editable = encounter?.status === "draft" && encounter.id === encounterId;
-  const currentDraft = useMemo(() => serializedDraft(draft), [draft]);
-  const dirty = editable && currentDraft !== lastSavedDraft;
+  // While the author is typing over the note text, the selections and the save and finalize buttons wait: the text is a copy of
+  // the note as it reads, so changing what it was made from underneath it would leave the two disagreeing.
+  const frozen = !editable || editing;
+  const currentDraft = useMemo(
+    () => serializedDraft(draft, effectiveFallId),
+    [draft, effectiveFallId],
+  );
+  // The note as it reads now. An edit made on an older version of the note no longer says what the note says (it misses what was
+  // documented since), so a stale edit is never shown as the note: the generated text is, and the old edit is offered beside it.
+  const editInForce = editedNarrative !== null && !editStale;
+  const noteText = editInForce ? editedNarrative : preview;
+  // Text typed into the edit box and not yet applied counts as unsaved, like a ticked statement does.
+  const editDirty = editing && editText !== noteText;
+  const dirty = editable && (currentDraft !== lastSavedDraft || editDirty);
   const busy = operation !== null;
   const shouldBlock = useCallback<BlockerFunction>(
     ({ nextLocation }) => (dirty || busy) && !isShellExit(nextLocation.pathname),
@@ -354,33 +451,98 @@ export function EncounterCompose(): JSX.Element {
   async function refreshPreview(): Promise<void> {
     if (!encounterId) return;
     const stored = await loadSelections(client, encounterId);
-    if (stored) setPreview(stored.layer1Preview);
+    if (stored) applyStored(stored);
   }
 
-  async function save(): Promise<void> {
+  /** What the server holds for the note's text: the generated preview and the author's edit of it, if any. */
+  function applyStored(stored: SelectionsView): void {
+    setPreview(stored.layer1Preview);
+    setEditedNarrative(stored.editedNarrative ?? null);
+    setEditStale(stored.editedNarrativeStale === true);
+  }
+
+  /** Edit the note text. Unsaved selections are saved first, so the text being edited is the note as it now reads. */
+  async function startEdit(): Promise<void> {
     if (!encounterId) return;
+    if (dirty && !(await save())) return;
+    const stored = await loadSelections(client, encounterId);
+    if (!stored) {
+      setFeedback(transportFeedback);
+      return;
+    }
+    applyStored(stored);
+    setEditText(currentNoteText(stored));
+    setEditing(true);
+  }
+
+  /** Apply (text) or discard (null) the author's edit of the note text, then show the note as the server now holds it. */
+  async function writeEdit(next: string | null): Promise<void> {
+    if (!encounterId) return;
+    setOperation("saving");
+    setFeedback(null);
+    try {
+      const res = await saveSelections(
+        client,
+        encounterId,
+        version,
+        toSelectionsBody(draft, effectiveFallId, next),
+      );
+      if (!res.ok) {
+        setFeedback(feedbackFor(res));
+        return;
+      }
+      setVersion(res.value.version);
+      setLastSavedDraft(currentDraft);
+      setEditing(false);
+      await refreshPreview();
+      setFeedback({
+        tone: "success",
+        title: next === null ? "Edit discarded" : "Note text updated",
+        message:
+          next === null
+            ? "The note reads as generated from your selections."
+            : "Your edited text is what will be signed. The generated text is kept beside it.",
+      });
+    } catch {
+      setFeedback(transportFeedback);
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  async function save(): Promise<boolean> {
+    if (!encounterId) return false;
 
     setOperation("saving");
     setFeedback(null);
 
     try {
-      const res = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
+      const res = await saveSelections(
+        client,
+        encounterId,
+        version,
+        toSelectionsBody(draft, effectiveFallId),
+      );
 
       if (!res.ok) {
         setFeedback(feedbackFor(res));
-        return;
+        return false;
       }
 
       setVersion(res.value.version);
       setPreview(res.value.layer1Preview);
       setLastSavedDraft(currentDraft);
+      // A saved edit may have gone stale under what was just saved; the server decides.
+      if (editedNarrative !== null) await refreshPreview();
       setFeedback({
         tone: "success",
         title: "Draft saved",
         message: "Your visit note changes were saved.",
       });
+      return true;
     } catch {
       setFeedback(transportFeedback);
+      return false;
     } finally {
       setOperation(null);
     }
@@ -394,7 +556,12 @@ export function EncounterCompose(): JSX.Element {
     let finalizationAttempted = false;
 
     try {
-      const saved = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
+      const saved = await saveSelections(
+        client,
+        encounterId,
+        version,
+        toSelectionsBody(draft, effectiveFallId),
+      );
 
       if (!saved.ok) {
         setFeedback(feedbackFor(saved));
@@ -508,16 +675,16 @@ export function EncounterCompose(): JSX.Element {
                 <Button
                   tone="tertiary"
                   onClick={() => setVitalsOpen((v) => !v)}
-                  disabled={!editable || busy}
+                  disabled={frozen || busy}
                 >
                   {vitalsOpen ? "Close vitals" : "Vitals"}
                 </Button>
 
-                <Button tone="tertiary" onClick={() => void save()} disabled={busy || !editable}>
+                <Button tone="tertiary" onClick={() => void save()} disabled={busy || frozen}>
                   {operation === "saving" ? "Saving…" : "Save draft"}
                 </Button>
 
-                <Button onClick={() => void finalize()} disabled={busy || !editable}>
+                <Button onClick={() => void finalize()} disabled={busy || frozen}>
                   Finalize note
                 </Button>
               </div>
@@ -777,16 +944,36 @@ export function EncounterCompose(): JSX.Element {
                           </p>
                         </div>
                       ) : isSingleChoice(active.entries) ? (
-                        <SelectField
-                          label={active.heading}
-                          value={draft[active.sectionId]?.entries[0]?.code ?? ""}
-                          disabled={!editable || busy}
-                          onChange={(e) => chooseOne(active, e.target.value)}
-                          options={[
-                            { value: "", label: "Select…" },
-                            ...active.entries.map((e) => ({ value: e.code, label: e.label })),
-                          ]}
-                        />
+                        <>
+                          <SelectField
+                            label={active.heading}
+                            value={draft[active.sectionId]?.entries[0]?.code ?? ""}
+                            disabled={frozen || busy}
+                            onChange={(e) => chooseOne(active, e.target.value)}
+                            options={[
+                              { value: "", label: "Select…" },
+                              ...active.entries.map((e) => ({ value: e.code, label: e.label })),
+                            ]}
+                          />
+                          {active.sectionId === REASON_SECTION_ID &&
+                          suggestion !== null &&
+                          dirty &&
+                          draft[active.sectionId]?.entries[0]?.code === suggestion.code ? (
+                            <p style={freeTextHint}>
+                              Suggested from the scheduled visit ({suggestion.from}). Save to keep
+                              it, or choose another.
+                            </p>
+                          ) : null}
+                          {active.sectionId === REASON_SECTION_ID && reasonIsFall ? (
+                            <FallLinkField
+                              choices={fallChoices}
+                              linked={linkedFall}
+                              value={fallIncidentId}
+                              disabled={frozen || busy}
+                              onChange={setFallIncidentId}
+                            />
+                          ) : null}
+                        </>
                       ) : (
                         <div style={entryGrid}>
                           {active.entries.map((entry) => {
@@ -816,7 +1003,7 @@ export function EncounterCompose(): JSX.Element {
                                   <input
                                     type="checkbox"
                                     checked={selected}
-                                    disabled={!editable || busy || elsewhere !== undefined}
+                                    disabled={frozen || busy || elsewhere !== undefined}
                                     onChange={() => toggleEntry(active.sectionId, entry)}
                                     style={entryCheckbox}
                                   />
@@ -855,7 +1042,7 @@ export function EncounterCompose(): JSX.Element {
                                           onChange={(value) =>
                                             setSlot(active.sectionId, entry.code, slot, value)
                                           }
-                                          disabled={!editable || busy}
+                                          disabled={frozen || busy}
                                         />
                                       ))}
                                     </div>
@@ -887,7 +1074,7 @@ export function EncounterCompose(): JSX.Element {
                           value={draft[active.sectionId]?.freeText ?? ""}
                           onChange={(e) => setFreeText(active.sectionId, e.target.value)}
                           rows={5}
-                          disabled={!editable || busy}
+                          disabled={frozen || busy}
                         />
                       </div>
                     </div>
@@ -904,12 +1091,41 @@ export function EncounterCompose(): JSX.Element {
                     </div>
 
                     <span style={previewStatus}>
-                      {preview.trim().length > 0 ? "Available" : "Not saved"}
+                      {editing
+                        ? "Editing"
+                        : editInForce
+                          ? "Edited by you"
+                          : editedNarrative !== null
+                            ? "Edit out of date"
+                            : preview.trim().length > 0
+                              ? "Available"
+                              : "Not saved"}
                     </span>
                   </header>
 
+                  {editedNarrative !== null && editStale && !editing ? (
+                    <div role="alert" style={staleEditNotice}>
+                      <strong>The note changed after you edited this text.</strong> Below is the
+                      note as it now reads; your earlier edit is not used. Edit it again to keep
+                      your wording, or discard the old edit. The note cannot be finalized until you
+                      do.
+                      <details>
+                        <summary>Your earlier edit</summary>
+                        <p style={previewText}>{editedNarrative}</p>
+                      </details>
+                    </div>
+                  ) : null}
+
                   <div style={previewBody}>
-                    {preview.trim().length === 0 ? (
+                    {editing ? (
+                      <TextAreaField
+                        label="Note text"
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        rows={14}
+                        disabled={busy}
+                      />
+                    ) : noteText.trim().length === 0 ? (
                       <div style={previewEmpty}>
                         <strong style={previewEmptyTitle}>No assembled narrative yet</strong>
                         <p style={previewEmptyText}>
@@ -918,16 +1134,71 @@ export function EncounterCompose(): JSX.Element {
                         </p>
                       </div>
                     ) : (
-                      <p style={previewText}>{preview}</p>
+                      <p style={previewText}>{noteText}</p>
                     )}
                   </div>
 
                   {editable ? (
                     <footer style={previewFooter}>
-                      <span style={previewFooterText}>Preview updates after saving.</span>
-                      <Button tone="tertiary" onClick={() => void save()} disabled={busy}>
-                        {busy ? "Saving…" : "Save & refresh preview"}
-                      </Button>
+                      <span style={previewFooterText}>
+                        {editing
+                          ? "Your text is what will be signed; the generated text is kept beside it."
+                          : editInForce
+                            ? "Your edited text will be signed."
+                            : editedNarrative !== null
+                              ? "Apply a new edit or discard the old one to finalize."
+                              : "Preview updates after saving."}
+                      </span>
+                      <span style={previewActions}>
+                        {editing ? (
+                          <>
+                            <Button
+                              tone="tertiary"
+                              onClick={() => setEditing(false)}
+                              disabled={busy}
+                            >
+                              Cancel
+                            </Button>
+                            {editedNarrative !== null ? (
+                              <Button
+                                tone="tertiary"
+                                onClick={() => void writeEdit(null)}
+                                disabled={busy}
+                              >
+                                Discard edit
+                              </Button>
+                            ) : null}
+                            <Button
+                              onClick={() => void writeEdit(editText)}
+                              disabled={busy || editText.trim().length === 0}
+                            >
+                              {busy ? "Saving…" : "Apply edit"}
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            {editedNarrative !== null ? (
+                              <Button
+                                tone="tertiary"
+                                onClick={() => void writeEdit(null)}
+                                disabled={busy}
+                              >
+                                Discard edit
+                              </Button>
+                            ) : null}
+                            <Button
+                              tone="tertiary"
+                              onClick={() => void startEdit()}
+                              disabled={busy}
+                            >
+                              Edit
+                            </Button>
+                            <Button tone="tertiary" onClick={() => void save()} disabled={busy}>
+                              {busy ? "Saving…" : "Save & refresh preview"}
+                            </Button>
+                          </>
+                        )}
+                      </span>
                     </footer>
                   ) : null}
                 </section>
@@ -958,6 +1229,59 @@ export function EncounterCompose(): JSX.Element {
         </div>
       </Modal>
     </PatientWorkspaceLayout>
+  );
+}
+
+/**
+ * The recorded fall a follow-up-after-a-fall visit follows up (WF09). Picking one links it, and the note states its date; leaving it
+ * unlinked is a complete note too, so a patient with no recorded fall, or a register that cannot be read, never blocks the reason.
+ */
+function FallLinkField({
+  choices,
+  linked,
+  value,
+  disabled,
+  onChange,
+}: {
+  choices: FallIncidentsView | null;
+  linked: { incidentId: string; occurredOn: string } | null;
+  value: string | null;
+  disabled: boolean;
+  onChange: (incidentId: string | null) => void;
+}): JSX.Element {
+  const incidents = choices?.incidents ?? [];
+  // A fall linked earlier that the list no longer offers (older than the window) stays selectable, so saving does not drop it.
+  const keptLink =
+    linked !== null && !incidents.some((f) => f.incidentId === linked.incidentId) ? linked : null;
+  const hint =
+    choices === null
+      ? "Loading the patient's recorded falls…"
+      : choices.unavailable
+        ? "Recorded falls could not be loaded. The reason is saved without a link; describe the fall in the notes below."
+        : incidents.length === 0 && keptLink === null
+          ? "No fall is recorded for this patient in the 90 days before this visit. Describe it in the notes below."
+          : "Choose the recorded fall this visit follows up. The note states its date.";
+
+  return (
+    <>
+      <SelectField
+        label="Which fall?"
+        value={value ?? ""}
+        disabled={disabled || choices === null}
+        onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
+        options={[
+          { value: "", label: "No fall linked" },
+          ...incidents.map((f) => ({
+            value: f.incidentId,
+            label: `${f.occurredOn} — ${humanize(f.severity)}`,
+          })),
+          ...(keptLink === null
+            ? []
+            : [{ value: keptLink.incidentId, label: `${keptLink.occurredOn} — linked earlier` }]),
+        ]}
+      />
+      <p style={freeTextHint}>{hint}</p>
+    </>
   );
 }
 
@@ -1711,6 +2035,22 @@ const previewFooter: CSSProperties = {
   padding: "0.7rem 0.85rem",
   borderTop: hairline,
   background: "var(--color-surface-container-low)",
+};
+
+const previewActions: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+  gap: "0.35rem",
+};
+
+const staleEditNotice: CSSProperties = {
+  padding: "0.7rem 1rem",
+  borderBottom: hairline,
+  background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
+  color: "var(--color-on-surface)",
+  fontSize: "0.72rem",
+  lineHeight: 1.45,
 };
 
 const previewFooterText: CSSProperties = {

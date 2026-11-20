@@ -58,6 +58,7 @@ const NOTE_CLOSING_ROUTES: readonly string[] = [
   "POST /api/v1/encounters/:encounterId/hearthnote/enhance",
   "PATCH /api/v1/encounters/:encounterId/hearthnote/modifications/:modId/decisions",
   "POST /api/v1/encounters/:encounterId/late-entry-override",
+  "GET /api/v1/encounters/:encounterId/fall-incidents",
   "GET /api/v1/encounters/:encounterId/mileage",
   "PATCH /api/v1/encounters/:encounterId/mileage",
   "POST /api/v1/encounters/:encounterId/mileage",
@@ -74,6 +75,7 @@ const NOTE_CLOSING_ROUTES: readonly string[] = [
   "GET /api/v1/encounters/cosignature-queue",
   "GET /api/v1/encounters/my-drafts",
   "GET /api/v1/encounters/overdue-notes",
+  "GET /api/v1/encounters/visit-reasons",
 ];
 
 /** eMAR: administering, refusing, witnessing and correcting a dose, and the schedule and missed-dose reads and acknowledgements it needs. */

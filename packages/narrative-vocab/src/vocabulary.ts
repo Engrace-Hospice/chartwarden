@@ -46,6 +46,9 @@ const WOUND_STAGE: SlotSpec = {
   label: "Pressure injury stage",
 };
 
+/** The reason a visit follows up a recorded fall: the one reason a fall can be linked to. */
+export const FALL_FOLLOWUP_CODE = "nv.reason.fall_followup";
+
 /** Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11). */
 export const VOCAB_VERSION = "narrative-vocab@2026.11.0";
 
@@ -73,16 +76,66 @@ const CLINICAL_TYPES: readonly EncounterType[] = [
 /** Visits a reason for visit is chosen on: what nurses and providers document, plus their phone visits. */
 const REASON_TYPES: readonly EncounterType[] = [...CLINICAL_TYPES, "telephonic"];
 
-/** One "Reason for Visit" choice. All share a group, so a note carries exactly one primary reason. */
-function reason(code: string, label: string, phrase: string): VocabEntry {
+/** Every visit type except the two that are not a clinician's own visit (a bereavement contact, an IDG follow-up). */
+const ALL_VISIT_TYPES: readonly EncounterType[] = [
+  ...REASON_TYPES,
+  "chha_visit",
+  "msw_assessment",
+  "msw_followup",
+  "chaplain_assessment",
+  "chaplain_visit",
+  "volunteer_visit",
+  "pt_visit",
+  "ot_visit",
+  "slp_visit",
+];
+const ALL_DISCIPLINES: readonly EncounterDiscipline[] = [
+  "rn",
+  "lpn",
+  "chha",
+  "msw",
+  "chaplain",
+  "volunteer",
+  "md",
+  "np",
+  "pt",
+  "ot",
+  "slp",
+];
+const THERAPY: readonly EncounterDiscipline[] = ["pt", "ot", "slp"];
+const THERAPY_TYPES: readonly EncounterType[] = ["pt_visit", "ot_visit", "slp_visit"];
+const SOCIAL_WORK_TYPES: readonly EncounterType[] = [
+  "msw_assessment",
+  "msw_followup",
+  "telephonic",
+];
+const CHAPLAIN_TYPES: readonly EncounterType[] = [
+  "chaplain_assessment",
+  "chaplain_visit",
+  "telephonic",
+];
+
+/**
+ * One "Reason for Visit" choice. All share a group, so a note carries exactly one primary reason. A reason
+ * is offered to nurses and providers on their visits unless it says otherwise.
+ */
+function reason(
+  code: string,
+  label: string,
+  phrase: string,
+  scope: {
+    readonly disciplines?: readonly EncounterDiscipline[];
+    readonly encounterTypes?: readonly EncounterType[];
+  } = {},
+): VocabEntry {
   return {
     code,
     label,
     phrase,
     category: "visit_reason",
     exclusiveGroup: "visit-reason",
-    disciplines: SKILLED,
-    encounterTypes: REASON_TYPES,
+    disciplines: scope.disciplines ?? SKILLED,
+    encounterTypes: scope.encounterTypes ?? REASON_TYPES,
   };
 }
 
@@ -329,11 +382,16 @@ export const VOCABULARY: readonly VocabEntry[] = [
     "nv.reason.routine",
     "Routine scheduled visit",
     "this is a routine scheduled visit per the plan of care",
+    { disciplines: ALL_DISCIPLINES, encounterTypes: ALL_VISIT_TYPES },
   ),
   reason(
-    "nv.reason.fall_followup",
+    FALL_FOLLOWUP_CODE,
     "Follow-up after a fall",
     "this visit is a follow-up after a recent fall",
+    {
+      disciplines: [...SKILLED, "pt", "ot"],
+      encounterTypes: [...REASON_TYPES, "pt_visit", "ot_visit"],
+    },
   ),
   reason(
     "nv.reason.pain",
@@ -349,6 +407,10 @@ export const VOCABULARY: readonly VocabEntry[] = [
     "nv.reason.condition_change",
     "Decline or change in condition",
     "this visit is for a decline or change in condition",
+    {
+      disciplines: [...SKILLED, "msw", "chaplain", ...THERAPY],
+      encounterTypes: [...REASON_TYPES, ...SOCIAL_WORK_TYPES, ...CHAPLAIN_TYPES, ...THERAPY_TYPES],
+    },
   ),
   reason(
     "nv.reason.medication",
@@ -360,15 +422,134 @@ export const VOCABULARY: readonly VocabEntry[] = [
     "nv.reason.post_hospital",
     "Follow-up after ER visit or hospital stay",
     "this visit follows an emergency department visit or hospital stay",
+    {
+      disciplines: [...SKILLED, "msw"],
+      encounterTypes: [...REASON_TYPES, ...SOCIAL_WORK_TYPES],
+    },
   ),
   reason(
     "nv.reason.caregiver",
     "Caregiver concern",
     "this visit is to address a caregiver concern",
+    {
+      disciplines: ALL_DISCIPLINES.filter((d) => d !== "volunteer"),
+      encounterTypes: ALL_VISIT_TYPES.filter((t) => t !== "volunteer_visit"),
+    },
   ),
   reason(
     "nv.reason.family_request",
     "Patient or family request",
     "this visit was requested by the patient or family",
+    { disciplines: ALL_DISCIPLINES, encounterTypes: ALL_VISIT_TYPES },
+  ),
+
+  // ── visit reasons for the other disciplines (2026.11.0) ────────────────────────────────────────────
+  reason("nv.reason.personal_care", "Personal care", "this visit is for personal care", {
+    disciplines: ["chha"],
+    encounterTypes: ["chha_visit"],
+  }),
+  reason("nv.reason.respite", "Caregiver respite", "this visit is to give the caregiver a break", {
+    disciplines: ["chha", "volunteer"],
+    encounterTypes: ["chha_visit", "volunteer_visit"],
+  }),
+  reason(
+    "nv.reason.psychosocial",
+    "Psychosocial assessment",
+    "this visit is for a psychosocial assessment",
+    { disciplines: ["msw"], encounterTypes: SOCIAL_WORK_TYPES },
+  ),
+  reason(
+    "nv.reason.advance_care_planning",
+    "Advance care planning",
+    "this visit is for advance care planning",
+    { disciplines: ["msw"], encounterTypes: SOCIAL_WORK_TYPES },
+  ),
+  reason(
+    "nv.reason.resources",
+    "Financial or resource need",
+    "this visit is to address a financial or resource need",
+    { disciplines: ["msw"], encounterTypes: SOCIAL_WORK_TYPES },
+  ),
+  reason(
+    "nv.reason.grief",
+    "Anticipatory grief support",
+    "this visit is for anticipatory grief support",
+    {
+      disciplines: ["msw", "chaplain"],
+      encounterTypes: [...SOCIAL_WORK_TYPES, ...CHAPLAIN_TYPES],
+    },
+  ),
+  reason("nv.reason.crisis", "Crisis intervention", "this visit is for crisis intervention", {
+    disciplines: ["msw", "chaplain"],
+    encounterTypes: [...SOCIAL_WORK_TYPES, ...CHAPLAIN_TYPES],
+  }),
+  reason(
+    "nv.reason.spiritual_assessment",
+    "Spiritual assessment",
+    "this visit is for a spiritual assessment",
+    { disciplines: ["chaplain"], encounterTypes: CHAPLAIN_TYPES },
+  ),
+  reason(
+    "nv.reason.spiritual_support",
+    "Spiritual support",
+    "this visit is for spiritual support",
+    { disciplines: ["chaplain"], encounterTypes: CHAPLAIN_TYPES },
+  ),
+  reason(
+    "nv.reason.ritual",
+    "Ritual or sacrament",
+    "this visit is for a requested ritual or sacrament",
+    { disciplines: ["chaplain"], encounterTypes: CHAPLAIN_TYPES },
+  ),
+  reason("nv.reason.companionship", "Companionship", "this visit is for companionship", {
+    disciplines: ["volunteer"],
+    encounterTypes: ["volunteer_visit"],
+  }),
+  reason("nv.reason.practical_help", "Practical help", "this visit is to provide practical help", {
+    disciplines: ["volunteer"],
+    encounterTypes: ["volunteer_visit"],
+  }),
+  reason("nv.reason.vigil", "Bedside vigil", "this visit is for a bedside vigil", {
+    disciplines: ["volunteer"],
+    encounterTypes: ["volunteer_visit"],
+  }),
+  reason(
+    "nv.reason.therapy_evaluation",
+    "Therapy evaluation",
+    "this visit is for a therapy evaluation",
+    { disciplines: THERAPY, encounterTypes: THERAPY_TYPES },
+  ),
+  reason(
+    "nv.reason.function_change",
+    "Change in mobility or function",
+    "this visit is for a change in mobility or function",
+    { disciplines: THERAPY, encounterTypes: THERAPY_TYPES },
+  ),
+  reason(
+    "nv.reason.home_safety",
+    "Home safety assessment",
+    "this visit is for a home safety assessment",
+    { disciplines: ["pt", "ot"], encounterTypes: ["pt_visit", "ot_visit"] },
+  ),
+  reason(
+    "nv.reason.caregiver_training",
+    "Caregiver training",
+    "this visit is for caregiver training",
+    {
+      disciplines: THERAPY,
+      encounterTypes: THERAPY_TYPES,
+    },
+  ),
+  reason(
+    "nv.reason.swallowing",
+    "Swallowing assessment",
+    "this visit is for a swallowing assessment",
+    { disciplines: ["slp"], encounterTypes: ["slp_visit"] },
+  ),
+  reason(
+    "nv.reason.communication",
+    "Communication assessment",
+    "this visit is for a communication assessment",
+    { disciplines: ["slp"], encounterTypes: ["slp_visit"] },
   ),
 ] as const;

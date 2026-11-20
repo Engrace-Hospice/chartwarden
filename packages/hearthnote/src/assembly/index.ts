@@ -3,6 +3,7 @@ export type {
   AssemblyContext,
   AssemblyResult,
   EntrySelection,
+  LinkedFall,
   RecordedVitals,
   SectionSelection,
   SelectionState,

@@ -8,7 +8,7 @@ import type { VocabEntry } from "./types";
 import { VOCABULARY } from "./vocabulary";
 
 export type { SlotSpec, VocabBodySystem, VocabCategory, VocabEntry } from "./types";
-export { VOCABULARY, VOCAB_VERSION } from "./vocabulary";
+export { FALL_FOLLOWUP_CODE, VOCABULARY, VOCAB_VERSION } from "./vocabulary";
 export {
   MAX_TEXT_SLOT_LENGTH,
   entrySlots,

@@ -11839,6 +11839,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/fall-incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The patient's recorded falls (Quality incident register) this visit can follow up — id, org-local date and severity only, newest first. `unavailable` is true when the register could not be read */
+        get: operations["getApiV1EncountersByEncounterIdFallincidents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/finalize": {
         parameters: {
             query?: never;
@@ -12159,6 +12176,23 @@ export interface paths {
         };
         /** Supervisor board: at-risk, overdue and escalated clocked open notes, oldest first (org-wide scope sees every site; otherwise the caller's sites plus any note with no site; encounter.closure_override). Read-audited as a multi-patient read: one `encounter.viewed` event per distinct patient on the page; an empty page writes none */
         get: operations["getApiV1EncountersOverduenotes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/visit-reasons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The reasons for visit a clinician may choose on one (encounter type × discipline) pair — read by the New Encounter form before the encounter exists, so an unscheduled visit can start with its reason chosen */
+        get: operations["getApiV1EncountersVisitreasons"];
         put?: never;
         post?: never;
         delete?: never;
@@ -66683,6 +66717,7 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationEdited?: boolean;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -66736,6 +66771,7 @@ export interface operations {
                     faceToFaceEncounterId?: string;
                     /** Format: uuid */
                     bereavementPlanId?: string;
+                    reasonCode?: string;
                 };
             };
         };
@@ -66801,6 +66837,7 @@ export interface operations {
                             [key: string]: unknown;
                         } | null;
                         finalDocumentation?: string | null;
+                        finalDocumentationEdited?: boolean;
                         vitals?: {
                             [key: string]: unknown;
                         } | null;
@@ -66926,6 +66963,13 @@ export interface operations {
                         }[];
                         layer1Preview: string;
                         version: number;
+                        editedNarrative?: string | null;
+                        editedNarrativeStale?: boolean;
+                        fallIncident?: {
+                            incidentId: string;
+                            /** Format: date */
+                            occurredOn: string;
+                        } | null;
                     };
                 };
             };
@@ -66959,6 +67003,8 @@ export interface operations {
                         }[];
                         freeText?: string;
                     }[];
+                    fallIncidentId?: string | null;
+                    editedNarrative?: string | null;
                 };
             };
         };
@@ -67377,6 +67423,38 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1EncountersByEncounterIdFallincidents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        incidents: {
+                            incidentId: string;
+                            /** Format: date */
+                            occurredOn: string;
+                            severity: string;
+                        }[];
+                        unavailable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1EncountersByEncounterIdFinalize: {
         parameters: {
             query?: never;
@@ -67665,6 +67743,13 @@ export interface operations {
                         }[];
                         layer1Preview: string;
                         version: number;
+                        editedNarrative?: string | null;
+                        editedNarrativeStale?: boolean;
+                        fallIncident?: {
+                            incidentId: string;
+                            /** Format: date */
+                            occurredOn: string;
+                        } | null;
                     };
                 };
             };
@@ -67697,6 +67782,8 @@ export interface operations {
                         }[];
                         freeText?: string;
                     }[];
+                    fallIncidentId?: string | null;
+                    editedNarrative?: string | null;
                 };
             };
         };
@@ -68257,6 +68344,7 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationEdited?: boolean;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -68326,6 +68414,7 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationEdited?: boolean;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;
@@ -68396,6 +68485,38 @@ export interface operations {
                             hoursOverdue: number;
                         }[];
                         truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersVisitreasons: {
+        parameters: {
+            query: {
+                encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
+                        reasons: {
+                            code: string;
+                            label: string;
+                        }[];
                     };
                 };
             };
@@ -75722,6 +75843,7 @@ export interface operations {
                         encounterId: string;
                         final: string;
                         pinned: boolean;
+                        clinicianEdited?: boolean;
                     };
                 };
             };
@@ -75801,6 +75923,7 @@ export interface operations {
                                 [key: string]: unknown;
                             } | null;
                             finalDocumentation?: string | null;
+                            finalDocumentationEdited?: boolean;
                             vitals?: {
                                 [key: string]: unknown;
                             } | null;

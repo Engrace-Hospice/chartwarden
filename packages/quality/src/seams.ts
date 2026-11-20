@@ -56,8 +56,8 @@ export interface QualityMeasureProvider {
 
 // -----------------------------------------------------------------------------
 // Seam 2: IncidentRegisterProvider
-//   Consumers: M22 (incident reports), M28 (FHIR AdverseEvent),
-//              M33 (incident dashboards).
+//   Consumers: M8 (the recorded falls a follow-up visit can link — id, date and severity only),
+//              M22 (incident reports), M28 (FHIR AdverseEvent), M33 (incident dashboards).
 //   Read scope: PHI — caller must hold patient-level permission for patient rows.
 // -----------------------------------------------------------------------------
 export interface IncidentRegisterProvider {

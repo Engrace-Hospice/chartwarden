@@ -71,6 +71,8 @@ const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const SERVICE_DATE = "2026-01-15";
 /** A primary sign: the clinician confirms the visit was in person (required for the Medicare-countable disciplines). */
 const SIGN_ARGS = { at: SERVICE_DATE as never, visitModality: "in_person" as const };
+/** A fall recorded for the patient two days before SERVICE_DATE (Quality's incident register, faked at the port). */
+const RECORDED_FALL = "f1111111-1111-4111-8111-111111111111";
 const LIVE_NOW = "2026-01-16T17:00:00Z"; // org-local (America/New_York) 2026-01-16, one day after SERVICE_DATE
 // `encounter_signature.session_id` is a uuid column — session ids in this system are uuids.
 const SESSION_A = "66666666-6666-6666-6666-666666666666";
@@ -111,6 +113,8 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   let svc: ReturnType<typeof createDbEncounterRouteService>;
   /** The same service with NO DEK envelope bound — the §3.6 / §2.6 refusal paths. */
   let noCipherSvc: ReturnType<typeof createDbEncounterRouteService>;
+  /** The same service with a recorded fall in Quality's incident register (WF09), so the link path runs against the TABLE. */
+  let fallSvc: ReturnType<typeof createDbEncounterRouteService>;
   /** What the faked M7 reader answers (see the seam registration in beforeAll). */
   let carePlanOverdue: unknown = null;
   // The audience the stub reader was last asked under (the F-064 care-plan link check passes the ACTOR, R-80).
@@ -317,6 +321,17 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const liveClock = () => new Date(LIVE_NOW);
     svc = createDbEncounterRouteService(handle.db, outbox, CIPHERS, liveClock);
     noCipherSvc = createDbEncounterRouteService(handle.db, outbox, undefined, liveClock);
+    fallSvc = createDbEncounterRouteService(handle.db, outbox, CIPHERS, liveClock, {
+      async recentFalls() {
+        return [
+          {
+            incidentId: RECORDED_FALL,
+            occurredAt: new Date("2026-01-13T15:00:00Z"),
+            severity: "moderate",
+          },
+        ];
+      },
+    });
   }, 120_000);
 
   afterAll(async () => {
@@ -1232,6 +1247,146 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const pinned = await svc.renderPayload(ORG_A, id);
     expect(pinned.pinned).toBe(true);
     expect(pinned.final).toContain("heart rate 91 bpm");
+  });
+
+  it("WF09 — a linked fall is stored on the row, stated in the note, pinned at finalize, and cleared with the reason", async () => {
+    const id = await draft("routine_visit", "rn");
+    const row = async () =>
+      (
+        await admin.query(
+          "SELECT fall_incident_id, to_char(fall_occurred_on, 'YYYY-MM-DD') AS on FROM encounter WHERE id=$1",
+          [id],
+        )
+      ).rows[0] as { fall_incident_id: string | null; on: string | null };
+    const read = await fallSvc.getSelections(ORG_A, id);
+    const withReason = (code: string) =>
+      read.sections.map((s) =>
+        s.sectionId === "chief_concern" ? { ...s, entries: [{ code }] } : s,
+      );
+
+    expect((await fallSvc.listFallIncidents(ORG_A, id, null)).incidents).toEqual([
+      { incidentId: RECORDED_FALL, occurredOn: "2026-01-13", severity: "moderate" },
+    ]);
+
+    // Linking a fall the register does not hold for this patient is refused, and nothing is stored.
+    await expect(
+      fallSvc.updateSelections(
+        ORG_A,
+        id,
+        read.version,
+        {
+          sections: withReason("nv.reason.fall_followup"),
+          fallIncidentId: "f9999999-9999-4999-8999-999999999999",
+        },
+        null,
+      ),
+    ).rejects.toMatchObject({ statusCode: 422, code: "INVALID_SELECTION" });
+    expect(await row()).toEqual({ fall_incident_id: null, on: null });
+
+    const saved = await fallSvc.updateSelections(
+      ORG_A,
+      id,
+      read.version,
+      { sections: withReason("nv.reason.fall_followup"), fallIncidentId: RECORDED_FALL },
+      null,
+    );
+    expect(saved.layer1Preview).toContain(
+      "This visit is a follow-up after a recent fall. The fall occurred on 2026-01-13.",
+    );
+    expect(await row()).toEqual({ fall_incident_id: RECORDED_FALL, on: "2026-01-13" });
+    expect((await fallSvc.getSelections(ORG_A, id)).fallIncident).toEqual({
+      incidentId: RECORDED_FALL,
+      occurredOn: "2026-01-13",
+    });
+
+    // Another reason clears the link, in the row and in what the note says.
+    const other = await fallSvc.updateSelections(
+      ORG_A,
+      id,
+      saved.version,
+      { sections: withReason("nv.reason.pain") },
+      null,
+    );
+    expect(other.layer1Preview).not.toContain("The fall occurred");
+    expect(await row()).toEqual({ fall_incident_id: null, on: null });
+
+    // Back to the fall: the date is in the bytes pinned at finalize.
+    const relinked = await fallSvc.updateSelections(
+      ORG_A,
+      id,
+      other.version,
+      { sections: withReason("nv.reason.fall_followup"), fallIncidentId: RECORDED_FALL },
+      null,
+    );
+    expect(relinked.layer1Preview).toContain("The fall occurred on 2026-01-13.");
+    await fallSvc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const pinned = await fallSvc.renderPayload(ORG_A, id);
+    expect(pinned.pinned).toBe(true);
+    expect(pinned.final).toContain("The fall occurred on 2026-01-13.");
+  });
+
+  it("WF09 — the author's edit of the note text is sealed with the draft, refused when stale, and is what is pinned and flagged at finalize", async () => {
+    const id = await draft("routine_visit", "rn");
+    const EDIT = "Mrs. W was seen at home. She is comfortable and her daughter is at the bedside.";
+    const read0 = await svc.getSelections(ORG_A, id);
+    const save = (version: number, body: Record<string, unknown>) =>
+      svc.updateSelections(ORG_A, id, version, { sections: read0.sections, ...body }, null);
+
+    const saved = await save(read0.version, { editedNarrative: EDIT });
+    const view = await svc.getSelections(ORG_A, id);
+    expect(view.editedNarrative).toBe(EDIT);
+    expect(view.editedNarrativeStale).toBe(false);
+    expect(view.layer1Preview).toBe(saved.layer1Preview); // the generated text is untouched
+
+    // The edit is sealed: the prose column never holds it in the clear.
+    const cipher = (
+      await admin.query("SELECT free_text_cipher FROM hearthnote_selection WHERE encounter_id=$1", [
+        id,
+      ])
+    ).rows[0].free_text_cipher as string;
+    expect(cipher).not.toContain("daughter");
+
+    // The vitals change after the edit: it is stale, and finalizing on it is refused with the row still a draft.
+    await svc.captureVitals(ORG_A, id, { heartRate: 88 }, null);
+    expect((await svc.getSelections(ORG_A, id)).editedNarrativeStale).toBe(true);
+    await expect(svc.finalize(ORG_A, id, SERVICE_DATE as never)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "NARRATIVE_EDIT_STALE",
+    });
+    expect(
+      (await admin.query("SELECT status FROM encounter WHERE id=$1", [id])).rows[0].status,
+    ).toBe("draft");
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM hearthnote_assembled_output WHERE encounter_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+
+    // Applying the text again rebases it; finalize pins the author's text, flagged, with the generated text kept beside it.
+    await save((await svc.getSelections(ORG_A, id)).version, { editedNarrative: EDIT });
+    expect((await svc.getSelections(ORG_A, id)).editedNarrativeStale).toBe(false);
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const pinned = await svc.renderPayload(ORG_A, id);
+    expect(pinned).toMatchObject({ final: EDIT, pinned: true, clinicianEdited: true });
+    const row = (
+      await admin.query(
+        "SELECT clinician_edited FROM hearthnote_assembled_output WHERE encounter_id=$1",
+        [id],
+      )
+    ).rows[0];
+    expect(row.clinician_edited).toBe(true);
+    expect((await svc.getEncounter(ORG_A, id)).finalDocumentationEdited).toBe(true);
+  });
+
+  it("WF09 — a note that was never edited pins the generated text, unflagged", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const pinned = await svc.renderPayload(ORG_A, id);
+    expect(pinned.clinicianEdited).toBe(false);
+    expect((await svc.getEncounter(ORG_A, id)).finalDocumentationEdited).toBe(false);
   });
 
   it("§2.6 check 2 (#125) — a routine_visit missing a required vital is refused at finalize, per field; clinically_not_indicated is a real escape", async () => {

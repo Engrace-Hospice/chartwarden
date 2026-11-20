@@ -51,8 +51,25 @@ export type EncounterView = Ok<operations["getApiV1EncountersByEncounterId"]>;
 export type TemplateView = Ok<operations["getApiV1EncountersByEncounterIdTemplate"]>;
 export type TemplateSection = TemplateView["sections"][number];
 export type MenuEntry = TemplateSection["entries"][number];
+export type FallIncidentsView = Ok<operations["getApiV1EncountersByEncounterIdFallincidents"]>;
+export type FallChoice = FallIncidentsView["incidents"][number];
+/** The reason a recorded fall can be linked to (the corpus code; the browser carries no corpus, so it is named once here). */
+export const FALL_FOLLOWUP_CODE = "nv.reason.fall_followup";
+export type VisitReasonChoice = Ok<operations["getApiV1EncountersVisitreasons"]>["reasons"][number];
 export type SelectionsView = Ok<operations["getApiV1EncountersByEncounterIdSelections"]>;
 export type SelectionSection = SelectionsView["sections"][number];
+
+/**
+ * The note as it reads now: the author's edit while it still matches the note, otherwise the generated text. An edit made before
+ * the note moved (a statement, a vital, the reason) misses what was documented since, so it is never shown as the note.
+ */
+export function currentNoteText(
+  sel: Pick<SelectionsView, "layer1Preview" | "editedNarrative" | "editedNarrativeStale">,
+): string {
+  return typeof sel.editedNarrative === "string" && sel.editedNarrativeStale !== true
+    ? sel.editedNarrative
+    : sel.layer1Preview;
+}
 export type VitalsListView = Ok<operations["getApiV1EncountersByEncounterIdVitals"]>;
 export type MileageView = Ok<operations["getApiV1EncountersByEncounterIdMileage"]>;
 
@@ -156,17 +173,21 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
       : code === "UNKNOWN_TEMPLATE_SECTION" || code === "UNKNOWN_VOCAB_CODE"
         ? (detail ??
           "This note referenced something its template does not contain. Reload and try again.")
-        : code === "STALE_VERSION"
-          ? "Someone else saved this note after you opened it. Reload to pick up their changes — saving now would discard them."
-          : httpStatus === 403
-            ? (detail ?? "Your role is not permitted to author on this encounter.")
-            : httpStatus === 409
-              ? (detail ?? "This encounter changed before your action was applied.")
-              : httpStatus === 404
-                ? "That encounter is no longer available to you."
-                : httpStatus === 422
-                  ? (detail ?? "The server rejected the details supplied.")
-                  : (detail ?? "The action could not be completed.");
+        : code === "NARRATIVE_EDIT_STALE"
+          ? "The selections or vitals changed after you edited the note text. Review the text and apply it again, or discard your edit, then finalize."
+          : code === "INVALID_NARRATIVE_EDIT"
+            ? "The note text is empty. Discard your edit to go back to the generated text."
+            : code === "STALE_VERSION"
+              ? "Someone else saved this note after you opened it. Reload to pick up their changes — saving now would discard them."
+              : httpStatus === 403
+                ? (detail ?? "Your role is not permitted to author on this encounter.")
+                : httpStatus === 409
+                  ? (detail ?? "This encounter changed before your action was applied.")
+                  : httpStatus === 404
+                    ? "That encounter is no longer available to you."
+                    : httpStatus === 422
+                      ? (detail ?? "The server rejected the details supplied.")
+                      : (detail ?? "The action could not be completed.");
   return { ok: false, status: httpStatus, code, message, details: err?.details };
 }
 
@@ -183,6 +204,79 @@ export async function loadTemplate(
     params: { path: { encounterId } },
   });
   return (data ?? null) as TemplateView | null;
+}
+
+/**
+ * The reasons for visit this (type × discipline) pair offers, for the New Encounter form — read before the
+ * encounter exists, from the same server scoping the composer's menu uses. A failed read is an empty list:
+ * the reason is optional there and is still chosen in the note.
+ */
+export async function loadVisitReasons(
+  client: ApiClient,
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+): Promise<readonly VisitReasonChoice[]> {
+  const { data } = await client.GET("/api/v1/encounters/visit-reasons", {
+    params: { query: { encounterType, discipline } },
+  });
+  return data?.reasons ?? [];
+}
+
+/**
+ * The scheduled visit's purpose (M17), or `null` when it cannot be read. Only ever a SUGGESTION for the reason, so
+ * a visit the caller cannot see, or a failed read, simply means nothing is suggested.
+ */
+export async function loadVisitPurpose(client: ApiClient, visitId: string): Promise<string | null> {
+  try {
+    const { data } = await client.GET("/api/v1/visits/{visitId}", {
+      params: { path: { visitId } },
+    });
+    return data?.visitPurpose ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The scheduled purposes whose reason is not a judgement: a routine visit IS a "routine scheduled visit", and an
+ * MSW or chaplain assessment IS a psychosocial or spiritual assessment. Everything else (a PRN visit, an admission,
+ * a face-to-face, a recert kickoff, a level-of-care change ...) says what KIND of visit it is, not why the clinician
+ * is there, so it suggests nothing and the clinician chooses.
+ */
+const REASON_FOR_PURPOSE: Readonly<Record<string, string>> = {
+  routine_visit: "nv.reason.routine",
+  aide_poc: "nv.reason.routine",
+  chaplain_visit: "nv.reason.routine",
+  volunteer_visit: "nv.reason.routine",
+  msw_assessment: "nv.reason.psychosocial",
+  chaplain_assessment: "nv.reason.spiritual_assessment",
+};
+
+/** The reason code a scheduled `purpose` suggests, if this visit's menu actually offers it. */
+export function suggestedReasonCode(
+  purpose: string,
+  offered: readonly { readonly code: string }[],
+): string | null {
+  const code = Object.hasOwn(REASON_FOR_PURPOSE, purpose) ? REASON_FOR_PURPOSE[purpose] : undefined;
+  return code !== undefined && offered.some((e) => e.code === code) ? code : null;
+}
+
+/**
+ * The patient's recorded falls this visit can follow up (WF09). `unavailable` means Quality's register could not be read, which the
+ * screen says rather than claiming there are none; a failed request is reported the same way.
+ */
+export async function loadFallIncidents(
+  client: ApiClient,
+  encounterId: string,
+): Promise<FallIncidentsView> {
+  try {
+    const { data } = await client.GET("/api/v1/encounters/{encounterId}/fall-incidents", {
+      params: { path: { encounterId } },
+    });
+    return data ?? { incidents: [], unavailable: true };
+  } catch {
+    return { incidents: [], unavailable: true };
+  }
 }
 
 /** The stored selection tree plus its assembled Layer-1 narrative and the version `If-Match` needs. */
@@ -353,7 +447,11 @@ export function toDraft(sections: readonly SelectionSection[]): DraftSections {
  * persist rows that can never render. A section carrying only free text IS sent — verbatim prose is
  * content, and assembly preserves it exactly.
  */
-export function toSelectionsBody(draft: DraftSections): UpdateSelectionsBody {
+export function toSelectionsBody(
+  draft: DraftSections,
+  fallIncidentId?: string | null,
+  editedNarrative?: string | null,
+): UpdateSelectionsBody {
   const sections = Object.entries(draft)
     .filter(([, v]) => v.entries.length > 0 || v.freeText.trim().length > 0)
     .map(([sectionId, v]) => ({
@@ -363,7 +461,11 @@ export function toSelectionsBody(draft: DraftSections): UpdateSelectionsBody {
       ),
       ...(v.freeText.trim().length > 0 ? { freeText: v.freeText.trim() } : {}),
     }));
-  return { sections } as UpdateSelectionsBody;
+  return {
+    sections,
+    ...(fallIncidentId === undefined ? {} : { fallIncidentId }),
+    ...(editedNarrative === undefined ? {} : { editedNarrative }),
+  } as UpdateSelectionsBody;
 }
 
 /**

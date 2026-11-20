@@ -37,6 +37,7 @@ const SECTION: Record<string, TemplateSection> = {
     heading: "Reason for Visit",
     required: true,
     allowedCategories: ["visit_reason"],
+    fallSummary: true,
   },
   vitals_review: { ...prose("vitals_review", "Vital Signs Review"), vitalsSummary: true },
   assessment: {

@@ -246,6 +246,43 @@ describe("assemble — resolves + guards", () => {
   });
 });
 
+describe("assembleLayer1 — linked fall (WF09)", () => {
+  const template = resolveTemplate("routine_visit", "rn")!;
+  const select = (code: string | undefined): SelectionState =>
+    rnRoutineSelection({
+      sections: [{ sectionId: "chief_concern", entries: code === undefined ? [] : [{ code }] }],
+    });
+  const reasonBlock = (selection: SelectionState, linkedFall?: { occurredOn: string }): string =>
+    assembleLayer1(template, selection, { ...CONTEXT, ...(linkedFall ? { linkedFall } : {}) })
+      .narrative;
+
+  it("states the date of the linked fall right after the follow-up reason", () => {
+    expect(reasonBlock(select("nv.reason.fall_followup"), { occurredOn: "2026-06-18" })).toBe(
+      "Reason for Visit\nThis visit is a follow-up after a recent fall. The fall occurred on 2026-06-18.",
+    );
+  });
+
+  it("states nothing extra when no fall is linked", () => {
+    expect(reasonBlock(select("nv.reason.fall_followup"))).toBe(
+      "Reason for Visit\nThis visit is a follow-up after a recent fall.",
+    );
+  });
+
+  it("never states a fall beside a different reason, even if a link is still present", () => {
+    expect(reasonBlock(select("nv.reason.pain"), { occurredOn: "2026-06-18" })).not.toContain(
+      "The fall occurred",
+    );
+    expect(reasonBlock(select(undefined), { occurredOn: "2026-06-18" })).toBe("");
+  });
+
+  it("is byte-identical on a re-render", () => {
+    const fall = { occurredOn: "2026-06-18" };
+    expect(reasonBlock(select("nv.reason.fall_followup"), fall)).toBe(
+      reasonBlock(select("nv.reason.fall_followup"), fall),
+    );
+  });
+});
+
 describe("missingRequiredSections — Layer-3 check-1 input", () => {
   const template = resolveTemplate("routine_visit", "rn")!;
 

@@ -56,6 +56,11 @@ export interface RecordedVitals {
   readonly weightUnit?: string | null;
 }
 
+/** The recorded fall a follow-up visit is linked to: the incident's org-local date, copied when the link was made. */
+export interface LinkedFall {
+  readonly occurredOn: string;
+}
+
 /** The resolved patient/visit context interpolated into phrases (the `${slot}` value source of record). */
 export interface AssemblyContext {
   /** How the patient is referred to in the narrative (Layer-1 uses the real name; Layer-2 minimizes). */
@@ -67,6 +72,8 @@ export interface AssemblyContext {
   readonly vitals?: Readonly<Record<string, SlotValue>>;
   /** The vitals captured on this visit. Rendered once, under the template's vitals-summary section. */
   readonly recordedVitals?: RecordedVitals;
+  /** The fall this visit follows up, if the clinician linked one. Stated only beside the follow-up-after-a-fall reason. */
+  readonly linkedFall?: LinkedFall;
 }
 
 /** The deterministic Layer-1 output. */
