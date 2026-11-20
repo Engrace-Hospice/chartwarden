@@ -158,6 +158,16 @@ describe("SSVI binary metrics — the point is earned on the CONCERN side, inclu
     expect(pt(332)).toBe(0);
   });
 
+  it("metric 5: the snapshot says the length of stay is this admission only, not CMS's lifetime days", () => {
+    const result = computeSsviMetric05({
+      ...BASE,
+      totalDischarges: 10,
+      dischargesWithLos180OrMore: 1,
+      rule: r.metric_05,
+    });
+    expect(result.computationSnapshot).toMatchObject({ lengthOfStayScope: "this_admission" });
+  });
+
   it("metric 6: ≤ 9.9 skilled-nursing minutes per RHC day, decided in minutes, stored ÷ 1440", () => {
     const low = computeSsviMetric06({
       ...BASE,

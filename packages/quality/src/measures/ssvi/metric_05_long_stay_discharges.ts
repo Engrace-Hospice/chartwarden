@@ -27,6 +27,9 @@ export function computeSsviMetric05(input: SsviMetric05Input): QualityMeasureVal
     snapshot: {
       totalDischarges: input.totalDischarges,
       dischargesWithLos180OrMore: input.dischargesWithLos180OrMore,
+      // CMS counts lifetime hospice days across hospices and one final discharge per beneficiary per year; this
+      // estimate has this agency's admission only, so a readmitted or transferred-in patient is under-counted.
+      lengthOfStayScope: "this_admission",
     },
   });
 }
