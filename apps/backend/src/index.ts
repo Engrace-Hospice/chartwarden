@@ -35,6 +35,7 @@ import {
   resolveWebTrustedOrigins,
 } from "@chartwarden/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@chartwarden/auth";
+import type { ClaimReader } from "@chartwarden/billing";
 import { type DbClient, createDbClient, schema } from "@chartwarden/db";
 // F-172 (#248) — the M35 `patient_pseudonym_key` platform-singleton KEK ring (distinct secret from
 // M34_TENANT_KEK — see `packages/subscription-billing/src/pseudonym/key-envelope.ts`'s own header for why
@@ -614,7 +615,11 @@ import {
 import { cahpsDeathCandidatesForOrg } from "./modules/06-admission/seams/cahps-death-candidates-for-org";
 import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
 import { deathDischargeFactsForOrg } from "./modules/06-admission/seams/death-discharge-facts-for-org";
-import { levelOfCarePeriodsForPatientForOrg } from "./modules/06-admission/seams/loc-periods-for-patient";
+import {
+  levelOfCarePeriodsForPatientForOrg,
+  levelOfCarePeriodsForPatientInTransaction,
+  lockPatientAdmissionsInTransaction,
+} from "./modules/06-admission/seams/loc-periods-for-patient";
 import { orderTriggeredRecordsForOrg } from "./modules/06-admission/seams/order-triggered-records-for-org";
 import { patientSiteForOrg } from "./modules/06-admission/seams/patient-site-for-org";
 // F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
@@ -8715,6 +8720,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   (state) => state !== "OR" || m24OregonGateway !== null,
                   m24LocPeriodReader,
                   m24AdapterRegistry,
+                  () => getSeam("ClaimReader") as ClaimReader,
                 ),
               }),
           );
@@ -11848,6 +11854,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     const m24RevalidateWorker = registerM24RevalidateWorker({
       connection: queueConnection,
       db: dbHandle.db,
+      coverages: getSeam("PatientCoverageReader"),
+      admissions: m24LocPeriodReader,
       outbox: m24OutboxPublisher,
     });
     app.addHook("onClose", async () => {
@@ -11869,9 +11877,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       activeOrgs: m24CronActiveOrgs,
       rbDaySweep: buildDrizzleRbDaySweepStore({
         db: dbHandle.db,
+        coverages: getSeam("PatientCoverageReader"),
         locPeriods: {
           periodsForPatient: (organizationId, patientId, range) =>
             levelOfCarePeriodsForPatientForOrg(dbHandle.db, organizationId, patientId, range),
+          periodsForPatientInTransaction: (transaction, organizationId, patientId, range) =>
+            levelOfCarePeriodsForPatientInTransaction(
+              transaction,
+              organizationId,
+              patientId,
+              range,
+            ),
+          lockPatientAdmissionsInTransaction,
         },
       }),
       eligibilityWatchdog: buildDrizzleEligibilityWatchdogStore(dbHandle.db),
@@ -15735,12 +15752,21 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             locPeriods: {
               periodsForPatient: (organizationId, patientId, range) =>
                 levelOfCarePeriodsForPatientForOrg(dbHandle.db, organizationId, patientId, range),
+              periodsForPatientInTransaction: (transaction, organizationId, patientId, range) =>
+                levelOfCarePeriodsForPatientInTransaction(
+                  transaction,
+                  organizationId,
+                  patientId,
+                  range,
+                ),
+              lockPatientAdmissionsInTransaction,
             },
             admissions: {
               patientIdForAdmission: async (organizationId, admissionId) =>
                 (await admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId))
                   ?.patientId ?? null,
             },
+            revalidate: m24RevalidateEnqueue.port,
           }),
           // F-172 (#248, m24 group) — the m24 `handlers-unbound` group's last two events:
           // `mark-claim-paid` / `mark-claim-denied`, the Medicaid sibling of M23's own GAP-037

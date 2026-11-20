@@ -103,8 +103,43 @@ attempt index (payer de-dupes).
 ## Billing Patterns
 
 - Sequential monthly interim billing (812 → 813 → 814; 811 if admit+discharge same month).
-- Payer routing: Medicare → MAC by jurisdiction; Medicaid → per-state adapter; dual-eligible
-  → Medicare primary then Medicaid R&B secondary.
+- Payer routing: Medicare → MAC by jurisdiction; Medicaid → per-state adapter. Medicare-primary
+  secondary Medicaid R&B and combined claim formats remain unavailable until the applicable
+  state billing policy and COB requirements are confirmed. This is a claim-format restriction,
+  not a determination that the patient is Medicaid-ineligible.
+
+## Medicaid Claim Assembly Wizard (#876 L3)
+
+The wizard is a four-step, server-preview-driven draft workflow: **Patient & dates → Claim kind →
+Coverage & coordination → Review**. The operator selects a patient, admission, authorized provider
+entity, and service range. The server checks the admission identity and returns a read-only preview
+of full-range primary and Medicaid coverage, eligibility-check context matched to the selected Medicaid
+coverage/provider and marked current or stale, applicable R&B arrangements and day candidates, and any
+provider/admission/resolved-Medicare-coverage/date-scoped Medicare claim evidence.
+The preview is advisory and does not reserve days or authorize submission; the assembly mutation
+revalidates coverage and R&B ownership transactionally.
+
+Claim-kind availability comes from the backend payer-policy result. Primary Medicaid may proceed
+to draft assembly when its other clinical, rate, admission, arrangement and line-family checks pass.
+Medicare-primary hospice services remain in M23. Medicare-primary secondary R&B-only and combined
+Medicaid claims remain blocked with explicit format/COB guidance. Other-primary, tertiary, missing,
+ambiguous, or changing coverage remains unresolved or blocked rather than prompting the user to
+alter payer ranking.
+
+Initial product priority is ordinary Oregon Medicaid hospice billing for tenant-enrolled providers,
+with EOCCO as the first payer target. Route claims through the tenant-selected Stedi or Claim.MD
+clearinghouse only after the applicable payer, enrollment, format, and technical qualification gates pass.
+The customer-reported priority does not mean EOCCO is configured or qualified. Secondary R&B/COB remains
+tracked separately under #1073; its deferral preserves existing primary-Medicaid R&B workflows.
+
+The coordination panel distinguishes recorded coverage from benefit eligibility and technical
+acknowledgment from adjudication/remittance evidence. A matching Medicare claim is shown only when
+the server resolves it within the organization, patient, provider entity, admission and overlapping
+service window. Partial overlap is identified as such; multiple candidates are ambiguous. Missing
+financial amounts are shown as unavailable, never `$0.00`; a remittance reference is not rendered
+as a payment amount. The final action is **Assemble draft**. Medicaid electronic submission is
+unavailable. Input changes invalidate the prior preview; loading, failure and unavailable evidence
+states are announced accessibly.
 
 ---
 

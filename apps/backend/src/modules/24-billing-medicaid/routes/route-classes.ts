@@ -13,6 +13,7 @@ export type IsVoidClaim = (organizationId: string, claimId: string) => Promise<b
 export function m24RouteClasses(isVoidClaim?: IsVoidClaim): readonly RouteClassRule[] {
   return [
     { cls: "new_work", method: "POST", path: "/api/v1/medicaid-claims" },
+    { cls: "open", method: "POST", path: "/api/v1/medicaid-claims/assembly-preview" },
     {
       cls: "new_work",
       method: "POST",

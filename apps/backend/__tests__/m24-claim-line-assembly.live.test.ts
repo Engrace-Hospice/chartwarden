@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildProviderEntityCcnResolver } from "../src/bootstrap/provider-entity-resolver";
 import { createAdmissionLocPeriodsReader } from "../src/modules/06-admission";
 import {
+  type AdmissionCadenceReaderPort,
   type LevelOfCarePeriodReaderPort,
   type SignedEncounterWindowReaderPort,
   buildDrizzleM24WriteService as buildProductionM24WriteService,
@@ -37,11 +38,47 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const RB_PATIENT = "66666666-6666-6666-6666-666666666666";
 const RB_ADMISSION = "77777777-7777-7777-7777-777777777777";
+const STATUS_READER_PATIENT = "abababab-abab-abab-abab-abababababab";
+const PREVIEW_ADMISSION = "abababab-abab-abab-abab-abababababac";
+const PREVIEW_OTHER_PE_PAYER = "abababab-abab-abab-abab-abababababad";
 const LOC_1 = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
 const LOC_2 = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 let TEST_PE_ID = "";
 
-function buildDrizzleM24WriteService(
+const testCadenceReader: AdmissionCadenceReaderPort = {
+  previewSnapshotInTransaction: async (_tx, _org, admissionId) => ({
+    patientId: admissionId === RB_ADMISSION ? RB_PATIENT : PATIENT,
+    providerEntityId: TEST_PE_ID,
+    dischargedAt: null,
+    status: "active",
+    stayEndFacts: {
+      dischargeDate: null,
+      dischargeReason: null,
+      deceasedDate: null,
+      pendingDischargeDates: [],
+      transferOut: null,
+      revocationDate: null,
+    },
+  }),
+  cadenceSnapshotInTransaction: async (_tx, _org, admissionId) => ({
+    patientId: admissionId === RB_ADMISSION ? RB_PATIENT : PATIENT,
+    providerEntityId: TEST_PE_ID,
+    dischargedAt: null,
+    status: "active",
+    stayEndFacts: {
+      dischargeDate: null,
+      dischargeReason: null,
+      deceasedDate: null,
+      pendingDischargeDates: [],
+      transferOut: null,
+      revocationDate: null,
+    },
+  }),
+  periodsForAdmissionInTransaction: async () => [],
+};
+
+function buildDrizzleM24WriteServiceWithCadence(
+  cadenceReader: AdmissionCadenceReaderPort,
   ...args: Parameters<typeof buildProductionM24WriteService>
 ): ReturnType<typeof buildProductionM24WriteService> {
   return buildProductionM24WriteService(
@@ -56,17 +93,17 @@ function buildDrizzleM24WriteService(
     args[8],
     args[9],
     args[10],
-    {
-      cadenceSnapshotInTransaction: async (_tx, _org, admissionId) => ({
-        patientId: admissionId === RB_ADMISSION ? RB_PATIENT : PATIENT,
-        providerEntityId: TEST_PE_ID,
-        dischargedAt: null,
-      }),
-    },
-    {
+    args[11] ?? cadenceReader,
+    args[12] ?? {
       adapterForState: () => ({ replacementTob: () => "817", voidTob: () => "818" }),
     },
   );
+}
+
+function buildDrizzleM24WriteService(
+  ...args: Parameters<typeof buildProductionM24WriteService>
+): ReturnType<typeof buildProductionM24WriteService> {
+  return buildDrizzleM24WriteServiceWithCadence(testCadenceReader, ...args);
 }
 
 describe.skipIf(!DB_URL)(
@@ -121,28 +158,60 @@ describe.skipIf(!DB_URL)(
     const NOOP_OUTBOX = { async publish() {} };
     const OPEN_CIPHER = { seal: (_o: string, p: string) => p, open: (_o: string, c: string) => c };
     const PAYER = "dddddddd-dddd-dddd-dddd-dddddddddddd";
-    const coverage = {
-      async activeMedicaidCoverage() {
-        return { id: PAYER, payerId: PAYER, subscriberId: "sub-1", rank: 1 };
-      },
-      async activeMedicaidCoverageInTransaction() {
-        return { id: PAYER, payerId: PAYER, subscriberId: "sub-1", rank: 1 };
-      },
-    };
+    const coverageForRank = (rank: number) => ({
+      id: PAYER,
+      patientId: PATIENT,
+      payerId: PAYER,
+      rank,
+      coverageKind: "medicaid",
+      subscriberId: "synthetic-member-0001",
+      groupNumber: null,
+      current: true,
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    });
+    const resolution = (coverageRow: ReturnType<typeof coverageForRank>) => ({
+      status: "uniform" as const,
+      coverage: coverageRow,
+    });
+    function makeCoverage(preflightRank: number, lockedRank = preflightRank) {
+      const preflightMedicaid = coverageForRank(preflightRank);
+      const lockedMedicaid = coverageForRank(lockedRank);
+      const medicarePrimary = {
+        ...preflightMedicaid,
+        id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        payerId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        rank: 1,
+        coverageKind: "medicare_ffs",
+        subscriberId: "synthetic-member-0002",
+      };
+      return {
+        async activeMedicaidCoverage() {
+          return { id: PAYER, payerId: PAYER, subscriberId: "synthetic-member-0001", rank: 1 };
+        },
+        async claimCoverageForRange() {
+          return {
+            medicaid: resolution(preflightMedicaid),
+            primary: resolution(preflightRank === 1 ? preflightMedicaid : medicarePrimary),
+          };
+        },
+        async claimCoverageSnapshotInTransaction() {
+          return {
+            medicaid: resolution(lockedMedicaid),
+            primary: resolution(lockedRank === 1 ? lockedMedicaid : medicarePrimary),
+            patientLifecycle: { status: "active", deceasedDate: null },
+          };
+        },
+      };
+    }
+    const coverage = makeCoverage(1);
     const ccnReader = {
       async ccnForProviderEntity() {
         return "123456";
       },
     };
     function coverageWithRanks(preflightRank: number, lockedRank = preflightRank) {
-      return {
-        async activeMedicaidCoverage() {
-          return { id: PAYER, payerId: PAYER, subscriberId: "sub-1", rank: preflightRank };
-        },
-        async activeMedicaidCoverageInTransaction() {
-          return { id: PAYER, payerId: PAYER, subscriberId: "sub-1", rank: lockedRank };
-        },
-      };
+      return makeCoverage(preflightRank, lockedRank);
     }
 
     beforeAll(async () => {
@@ -192,7 +261,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-01-01"),
-            endedAt: new Date("2026-01-31"),
+            endedAt: new Date("2026-02-01"),
           },
         ]),
         noEncounters(),
@@ -225,7 +294,93 @@ describe.skipIf(!DB_URL)(
       });
     });
 
-    it("refuses hospice_only when Medicaid is secondary in the range preflight", async () => {
+    it("assembly preview scopes eligibility to provider and selected coverage, marks stale evidence, and writes no billing rows", async () => {
+      const otherPe = await admin.query(
+        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,'654322','PE-preview-other','9876543211','enc','0930') RETURNING id`,
+        [ORG],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_eligibility_check
+         (organization_id, provider_entity_id, patient_id, patient_payer_id, service_state,
+          as_of_service_date, outcome, checked_at, stale_at)
+         VALUES
+         ($1,$2,$3,$4,'OR','2026-08-05','active','2026-08-05','2099-01-01'),
+         ($1,$2,$3,$5,'OR','2026-08-15','inactive','2026-08-15','2099-01-01'),
+         ($1,$6,$3,$4,'OR','2026-08-20','inactive','2026-08-20','2099-01-01'),
+         ($1,$2,$3,$4,'OR','2026-09-05','active','2026-09-05','2026-10-01')`,
+        [ORG, peId, PATIENT, PAYER, PREVIEW_OTHER_PE_PAYER, otherPe.rows[0].id],
+      );
+      const svc = buildDrizzleM24WriteService(
+        handle.db,
+        NOOP_OUTBOX,
+        OPEN_CIPHER,
+        coverage,
+        ccnReader,
+        locPeriodReader([]),
+        noEncounters(),
+      );
+      const actor = { organizationId: ORG, userId: USER, roles: [] } as const;
+      const countBusinessRows = async () => {
+        const result = await admin.query(
+          `SELECT
+             (SELECT count(*)::int FROM medicaid_claim) AS claims,
+             (SELECT count(*)::int FROM medicaid_claim_line) AS lines,
+             (SELECT count(*)::int FROM rb_day) AS rb_days,
+             (SELECT count(*)::int FROM outbox_event WHERE organization_id=$1) AS outbox`,
+          [ORG],
+        );
+        return result.rows[0];
+      };
+      const before = await countBusinessRows();
+      const current = await svc.previewClaimAssembly(actor, {
+        patientId: PATIENT,
+        admissionId: PREVIEW_ADMISSION,
+        providerEntityId: peId,
+        serviceFrom: "2026-08-01",
+        serviceTo: "2026-08-31",
+      });
+      expect(current.recordedEligibility).toMatchObject({
+        status: "current",
+        outcome: "active",
+        asOfServiceDate: "2026-08-05",
+      });
+      expect(current.medicareEvidence.match).toBe("not_applicable");
+
+      const stale = await svc.previewClaimAssembly(actor, {
+        patientId: PATIENT,
+        admissionId: PREVIEW_ADMISSION,
+        providerEntityId: peId,
+        serviceFrom: "2026-09-01",
+        serviceTo: "2026-09-30",
+      });
+      expect(stale.recordedEligibility).toMatchObject({ status: "stale", outcome: "active" });
+      expect(await countBusinessRows()).toEqual(before);
+
+      const refreshed = await svc.refreshEligibility(actor, {
+        patientId: PATIENT,
+        patientPayerId: PAYER,
+        providerEntityId: peId,
+        asOfServiceDate: "2026-10-15",
+      });
+      const refreshedEvidence = await admin.query(
+        "SELECT provider_entity_id FROM medicaid_eligibility_check WHERE id=$1",
+        [refreshed.checkId],
+      );
+      expect(refreshedEvidence.rows[0]?.provider_entity_id).toBe(peId);
+
+      await expect(
+        svc.previewClaimAssembly(actor, {
+          patientId: PATIENT,
+          admissionId: PREVIEW_ADMISSION,
+          providerEntityId: "00000000-0000-4000-8000-000000000000",
+          serviceFrom: "2026-08-01",
+          serviceTo: "2026-08-31",
+        }),
+      ).rejects.toMatchObject({ code: "MEDICAID_ADMISSION_IDENTITY_MISMATCH", statusCode: 409 });
+    });
+
+    it("refuses hospice_only when Medicare is the rank-1 payer in the range preflight", async () => {
       const before = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
       const svc = buildDrizzleM24WriteService(
         handle.db,
@@ -249,12 +404,12 @@ describe.skipIf(!DB_URL)(
             kind: "hospice_only",
           },
         ),
-      ).rejects.toMatchObject({ code: "MEDICAID_PRIMARY_PAYER_REQUIRED", statusCode: 409 });
+      ).rejects.toMatchObject({ code: "MEDICARE_PRIMARY_HOSPICE_RESPONSIBILITY", statusCode: 409 });
       const after = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
       expect(after.rows[0].n).toBe(before.rows[0].n);
     });
 
-    it("rechecks the hospice_only primary-payer rule on the locked transaction snapshot", async () => {
+    it("refuses when the selected Medicaid coverage changes in the locked transaction snapshot", async () => {
       const before = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
       const svc = buildDrizzleM24WriteService(
         handle.db,
@@ -278,12 +433,109 @@ describe.skipIf(!DB_URL)(
             kind: "hospice_only",
           },
         ),
-      ).rejects.toMatchObject({ code: "MEDICAID_PRIMARY_PAYER_REQUIRED", statusCode: 409 });
+      ).rejects.toMatchObject({ code: "MEDICAID_COVERAGE_CHANGED", statusCode: 409 });
       const after = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
       expect(after.rows[0].n).toBe(before.rows[0].n);
     });
 
-    it("allows combined hospice and R&B assembly when active Medicaid is secondary", async () => {
+    it("refuses assembly after M5 records death, before writing a claim or outbox event", async () => {
+      const before = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
+      const base = coverageWithRanks(1);
+      const deceasedCoverage = {
+        ...base,
+        async claimCoverageSnapshotInTransaction() {
+          return {
+            medicaid: resolution(coverageForRank(1)),
+            primary: resolution(coverageForRank(1)),
+            patientLifecycle: { status: "deceased", deceasedDate: "2026-03-03" },
+          };
+        },
+      };
+      const published: string[] = [];
+      const svc = buildDrizzleM24WriteServiceWithCadence(
+        testCadenceReader,
+        handle.db,
+        {
+          async publish(_tx, event) {
+            published.push(event.eventName);
+          },
+        },
+        OPEN_CIPHER,
+        deceasedCoverage,
+        ccnReader,
+        locPeriodReader([]),
+        noEncounters(),
+      );
+
+      await expect(
+        svc.assembleClaim(
+          { organizationId: ORG, userId: USER, roles: [] },
+          {
+            patientId: PATIENT,
+            admissionId: ADMISSION,
+            providerEntityId: peId,
+            serviceFrom: "2026-03-01",
+            serviceTo: "2026-03-05",
+            kind: "hospice_only",
+          },
+        ),
+      ).rejects.toMatchObject({ code: "MEDICAID_CLAIM_AFTER_PATIENT_DEATH", statusCode: 409 });
+      const after = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
+      expect(after.rows[0].n).toBe(before.rows[0].n);
+      expect(published).toHaveLength(0);
+    });
+
+    it("refuses when only the actual primary coverage identity changes in the locked snapshot", async () => {
+      const before = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
+      const unchangedMedicaid = coverageForRank(1);
+      const changedPrimary = {
+        ...unchangedMedicaid,
+        id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        payerId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        subscriberId: "synthetic-member-0003",
+      };
+      const baseCoverage = coverageWithRanks(1);
+      const coverageWithPrimaryIdentityChange = {
+        ...baseCoverage,
+        async claimCoverageSnapshotInTransaction() {
+          return {
+            medicaid: resolution(unchangedMedicaid),
+            primary: resolution(changedPrimary),
+            patientLifecycle: { status: "active", deceasedDate: null },
+          };
+        },
+      };
+      const svc = buildDrizzleM24WriteService(
+        handle.db,
+        NOOP_OUTBOX,
+        OPEN_CIPHER,
+        coverageWithPrimaryIdentityChange,
+        ccnReader,
+        locPeriodReader([]),
+        noEncounters(),
+      );
+
+      await expect(
+        svc.assembleClaim(
+          { organizationId: ORG, userId: USER, roles: [] },
+          {
+            patientId: PATIENT,
+            admissionId: "21212121-2121-2121-2121-212121212121",
+            providerEntityId: peId,
+            serviceFrom: "2026-01-01",
+            serviceTo: "2026-01-31",
+            kind: "hospice_only",
+          },
+        ),
+      ).rejects.toMatchObject({ code: "MEDICAID_COVERAGE_CHANGED", statusCode: 409 });
+      const after = await admin.query("SELECT count(*)::int AS n FROM medicaid_claim");
+      expect(after.rows[0].n).toBe(before.rows[0].n);
+    });
+
+    it("refuses unverified combined secondary-Medicaid format before any claim rows are written", async () => {
+      const before = await admin.query(
+        "SELECT (SELECT count(*)::int FROM medicaid_claim) AS claims, (SELECT count(*)::int FROM medicaid_claim_line) AS lines",
+      );
       const svc = buildDrizzleM24WriteService(
         handle.db,
         NOOP_OUTBOX,
@@ -301,20 +553,27 @@ describe.skipIf(!DB_URL)(
         noEncounters(),
       );
 
-      const claim = await svc.assembleClaim(
-        { organizationId: ORG, userId: USER, roles: [] },
-        {
-          patientId: PATIENT,
-          admissionId: "30303030-3030-3030-3030-303030303030",
-          providerEntityId: peId,
-          serviceFrom: "2026-08-01",
-          serviceTo: "2026-08-05",
-          kind: "combined_hospice_rb",
-        },
+      await expect(
+        svc.assembleClaim(
+          { organizationId: ORG, userId: USER, roles: [] },
+          {
+            patientId: PATIENT,
+            admissionId: "30303030-3030-3030-3030-303030303030",
+            providerEntityId: peId,
+            serviceFrom: "2026-08-01",
+            serviceTo: "2026-08-05",
+            kind: "combined_hospice_rb",
+            rbArrangementId: "30303030-3030-3030-3030-303030303031",
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "MEDICAID_SECONDARY_COMBINED_FORMAT_UNVERIFIED",
+        statusCode: 409,
+      });
+      const after = await admin.query(
+        "SELECT (SELECT count(*)::int FROM medicaid_claim) AS claims, (SELECT count(*)::int FROM medicaid_claim_line) AS lines",
       );
-
-      expect(claim.kind).toBe("combined_hospice_rb");
-      expect(claim.tob).toBe("812");
+      expect(after.rows[0]).toEqual(before.rows[0]);
     });
 
     it("serializes concurrent original-claim cadence on the M6 admission row", async () => {
@@ -534,13 +793,13 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-02-01"),
-            endedAt: new Date("2026-02-10"),
+            endedAt: new Date("2026-02-11"),
           },
           {
             id: LOC_2,
             levelOfCare: "general_inpatient_care",
             effectiveAt: new Date("2026-02-11"),
-            endedAt: new Date("2026-02-15"),
+            endedAt: new Date("2026-02-16"),
           },
         ]),
         noEncounters(),
@@ -595,7 +854,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-07-01"),
-            endedAt: new Date("2026-07-05"),
+            endedAt: new Date("2026-07-06"),
           },
         ]),
         noEncounters(),
@@ -644,7 +903,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_2,
             levelOfCare: "general_inpatient_care",
             effectiveAt: new Date("2026-07-10"),
-            endedAt: new Date("2026-07-12"),
+            endedAt: new Date("2026-07-13"),
             facilityId,
             ipuBedAssignmentId: "ipu-bed-1",
           },
@@ -684,7 +943,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-03-01"),
-            endedAt: new Date("2026-03-05"),
+            endedAt: new Date("2026-03-06"),
           },
         ]),
         { encountersInWindow: async () => [{ encounterId, serviceDate: "2026-03-03" }] },
@@ -750,8 +1009,8 @@ describe.skipIf(!DB_URL)(
       // surface as a billable LOC period. This proves that exact predicate against real Postgres, not just
       // that the fake reader this suite otherwise uses behaves as scripted.
       const adm = await admin.query(
-        "INSERT INTO admission (organization_id, patient_id) VALUES ($1,$2) RETURNING id",
-        [ORG, PATIENT],
+        "INSERT INTO admission (organization_id, patient_id, status) VALUES ($1,$2,'closed') RETURNING id",
+        [ORG, STATUS_READER_PATIENT],
       );
       const admissionId = adm.rows[0].id;
       // `lcp_adm_open_idx` permits only one open (ended_at IS NULL) period per admission — end this one so
@@ -778,29 +1037,62 @@ describe.skipIf(!DB_URL)(
     });
 
     it("rb_only with primary Medicaid writes each billable rb_day and links it back", async () => {
+      await admin.query(
+        `INSERT INTO admission (id, organization_id, patient_id, provider_entity_id, status, admission_at)
+         VALUES ($1,$2,$3,$4,'active','2026-05-01')`,
+        [RB_ADMISSION, ORG, RB_PATIENT, peId],
+      );
+      await admin.query(
+        `INSERT INTO level_of_care_period (id, organization_id, admission_id, level_of_care, status, effective_at)
+         VALUES ($1,$2,$3,'routine_home_care','active','2026-05-01')`,
+        [LOC_1, ORG, RB_ADMISSION],
+      );
       const arrangement = await admin.query(
         `INSERT INTO rb_arrangement (organization_id, patient_id, provider_entity_id, nf_facility_mdm_id,
-         nf_facility_name_snapshot, effective_from, nf_per_diem_routine_cents, nf_per_diem_resp_cents,
-         nf_per_diem_gip_cents, pass_through_pct, retention_pct, created_by_membership_id, updated_by_membership_id)
-       VALUES ($1,$2,$3,gen_random_uuid(),'NF','2026-05-01',20000,25000,80000,95,5,$4,$4) RETURNING id`,
+         nf_facility_name_snapshot, effective_from, contract_document_id, contract_started_at,
+         nf_per_diem_routine_cents, nf_per_diem_resp_cents, nf_per_diem_gip_cents, pass_through_pct,
+         retention_pct, state, created_by_membership_id, updated_by_membership_id)
+       VALUES ($1,$2,$3,gen_random_uuid(),'NF','2026-05-01',gen_random_uuid(),'2026-05-01',
+         20000,25000,80000,95,5,'ACTIVE',$4,$4) RETURNING id`,
         [ORG, RB_PATIENT, peId, USER],
       );
       const arrangementId = arrangement.rows[0].id;
+      const location = await admin.query(
+        `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+         VALUES ($1,'Synthetic R&B Site','1 Test Way','Test City','OR','97000','America/Los_Angeles')
+         RETURNING id`,
+        [peId],
+      );
+      const locationId = location.rows[0].id as string;
+      await admin.query("UPDATE rb_arrangement SET location_id=$2 WHERE id=$1", [
+        arrangementId,
+        locationId,
+      ]);
+      const rbLocPeriodReader = locPeriodReader([
+        {
+          id: LOC_1,
+          levelOfCare: "routine_home_care",
+          effectiveAt: new Date("2026-05-01"),
+          endedAt: null,
+        },
+      ]);
       const rbDay = await admin.query(
-        `INSERT INTO rb_day (organization_id, provider_entity_id, patient_id, rb_arrangement_id, service_date,
+        `INSERT INTO rb_day (organization_id, provider_entity_id, location_id, patient_id, rb_arrangement_id, service_date,
          loc_of_day, loc_period_id_snapshot, per_diem_cents_snapshot, status)
-       VALUES ($1,$2,$3,$4,'2026-05-05','NF_RB',gen_random_uuid(),20000,'billable') RETURNING id`,
-        [ORG, peId, RB_PATIENT, arrangementId],
+       VALUES ($1,$2,$3,$4,$5,'2026-05-05','RHC',$6,20000,'billable') RETURNING id`,
+        [ORG, peId, locationId, RB_PATIENT, arrangementId, LOC_1],
       );
       const rbDayId = rbDay.rows[0].id;
+      const m6Reader = createAdmissionLocPeriodsReader(handle.db);
 
-      const svc = buildDrizzleM24WriteService(
+      const svc = buildDrizzleM24WriteServiceWithCadence(
+        m6Reader,
         handle.db,
         NOOP_OUTBOX,
         OPEN_CIPHER,
         coverage,
         ccnReader,
-        locPeriodReader([]),
+        rbLocPeriodReader,
         noEncounters(),
       );
       const claim = await svc.assembleClaim(
@@ -816,7 +1108,7 @@ describe.skipIf(!DB_URL)(
         },
       );
       const lines = await admin.query(
-        "SELECT id, revenue_code, q_code, level_of_care, is_rb, rb_day_id, rate_at_assembly_cents, state_rate_schedule_id_snapshot FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
+        "SELECT id, revenue_code, q_code, level_of_care, is_rb, rb_day_id, location_id, rate_at_assembly_cents, state_rate_schedule_id_snapshot FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
         [claim.id],
       );
       expect(lines.rows).toHaveLength(1);
@@ -826,6 +1118,7 @@ describe.skipIf(!DB_URL)(
         level_of_care: "NF_RB",
         is_rb: true,
         rb_day_id: rbDayId,
+        location_id: locationId,
         rate_at_assembly_cents: 20000,
         state_rate_schedule_id_snapshot: null,
       });
@@ -835,6 +1128,23 @@ describe.skipIf(!DB_URL)(
       );
       expect(rbDayAfter.rows[0].status).toBe("billed");
       expect(rbDayAfter.rows[0].medicaid_claim_line_id).toBe(lines.rows[0].id);
+
+      await admin.query(
+        "UPDATE level_of_care_period SET level_of_care='general_inpatient_care' WHERE organization_id=$1 AND id=$2",
+        [ORG, LOC_1],
+      );
+      const validationRunsBefore = await admin.query(
+        "SELECT count(*)::int AS n FROM medicaid_validation_run WHERE organization_id=$1 AND medicaid_claim_id=$2",
+        [ORG, claim.id],
+      );
+      await expect(
+        svc.validateClaim({ organizationId: ORG, userId: USER, roles: [] }, claim.id),
+      ).rejects.toMatchObject({ code: "MEDICAID_RB_DAY_LOC_SNAPSHOT_STALE", statusCode: 409 });
+      const validationRunsAfter = await admin.query(
+        "SELECT count(*)::int AS n FROM medicaid_validation_run WHERE organization_id=$1 AND medicaid_claim_id=$2",
+        [ORG, claim.id],
+      );
+      expect(validationRunsAfter.rows[0].n).toBe(validationRunsBefore.rows[0].n);
     });
 
     it("fails closed for an R&B-only claim with secondary Medicaid", async () => {
@@ -857,9 +1167,10 @@ describe.skipIf(!DB_URL)(
             serviceFrom: "2026-06-01",
             serviceTo: "2026-06-30",
             kind: "rb_only",
+            rbArrangementId: "77777777-7777-4777-8777-777777777778",
           },
         ),
-      ).rejects.toMatchObject({ code: "MEDICAID_PRIMARY_PAYER_REQUIRED", statusCode: 409 });
+      ).rejects.toMatchObject({ code: "MEDICAID_SECONDARY_RB_FORMAT_UNVERIFIED", statusCode: 409 });
     });
 
     it("a state with a plan code but no rate schedule → MEDICAID_STATE_RATE_SCHEDULE_MISSING", async () => {
@@ -887,7 +1198,24 @@ describe.skipIf(!DB_URL)(
         [ORG, waPeId, USER],
       );
       const admissionId = "cccccccc-cccc-cccc-cccc-cccccccccccc";
-      const svc = buildDrizzleM24WriteService(
+      const waCadenceReader: AdmissionCadenceReaderPort = {
+        cadenceSnapshotInTransaction: async () => ({
+          patientId: PATIENT,
+          providerEntityId: waPeId,
+          dischargedAt: null,
+          status: "active",
+          stayEndFacts: {
+            dischargeDate: null,
+            dischargeReason: null,
+            deceasedDate: null,
+            pendingDischargeDates: [],
+            transferOut: null,
+            revocationDate: null,
+          },
+        }),
+      };
+      const svc = buildDrizzleM24WriteServiceWithCadence(
+        waCadenceReader,
         handle.db,
         NOOP_OUTBOX,
         OPEN_CIPHER,
@@ -898,7 +1226,7 @@ describe.skipIf(!DB_URL)(
             id: LOC_1,
             levelOfCare: "routine_home_care",
             effectiveAt: new Date("2026-06-01"),
-            endedAt: new Date("2026-06-05"),
+            endedAt: new Date("2026-06-06"),
           },
         ]),
         noEncounters(),
@@ -925,16 +1253,19 @@ describe.skipIf(!DB_URL)(
       const ESC_LOC_ASSIGNING = "cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd";
 
       beforeAll(async () => {
-        // `level_of_care_period` FKs an admission this suite never builds; replica mode skips the FK
-        // triggers for the fixture rows only — the reads under test still run as `chartwarden_app` under RLS.
-        await admin.query("SET session_replication_role = replica");
+        // Seed the real synthetic admission so the production cadence reader verifies the same patient and
+        // provider identity as the request, and the LOC reader can follow the actual M6 relationship.
+        await admin.query(
+          `INSERT INTO admission (id, organization_id, provider_entity_id, patient_id, status, admission_at)
+           VALUES ($1,$2,$3,$4,'active','2026-03-01')`,
+          [ESC_ADMISSION, ORG, peId, ESC_PATIENT],
+        );
         await admin.query(
           `INSERT INTO level_of_care_period (id, organization_id, admission_id, level_of_care, effective_at, ended_at, status)
            VALUES ($1,$3,$4,'routine_home_care','2026-03-01','2026-03-31','active'),
                   ($2,$3,$4,'general_inpatient_care','2026-03-15',NULL,'assigning')`,
           [ESC_LOC, ESC_LOC_ASSIGNING, ORG, ESC_ADMISSION],
         );
-        await admin.query("SET session_replication_role = DEFAULT");
       });
 
       it("ccnReader reads provider_entity under the org's RLS context (was a 22P02 500 with no app.org_id)", async () => {
@@ -952,7 +1283,8 @@ describe.skipIf(!DB_URL)(
       });
 
       it("assembleClaim with both real readers writes the line (the dev-seed M24 assemble 500)", async () => {
-        const svc = buildDrizzleM24WriteService(
+        const svc = buildDrizzleM24WriteServiceWithCadence(
+          createAdmissionLocPeriodsReader(handle.db),
           handle.db,
           NOOP_OUTBOX,
           OPEN_CIPHER,
@@ -968,7 +1300,7 @@ describe.skipIf(!DB_URL)(
             admissionId: ESC_ADMISSION,
             providerEntityId: peId,
             serviceFrom: "2026-03-01",
-            serviceTo: "2026-03-31",
+            serviceTo: "2026-03-30",
             kind: "hospice_only",
           },
         );
@@ -976,7 +1308,7 @@ describe.skipIf(!DB_URL)(
           "SELECT level_of_care, units FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
           [claim.id],
         );
-        expect(lines.rows).toEqual([{ level_of_care: "RHC", units: 31 }]);
+        expect(lines.rows).toEqual([{ level_of_care: "RHC", units: 30 }]);
       });
     });
     describe("S11 (#711): submit refused for states without a Medicaid gateway", () => {
@@ -1001,7 +1333,7 @@ describe.skipIf(!DB_URL)(
               id: LOC_1,
               levelOfCare: "routine_home_care",
               effectiveAt: new Date("2026-06-01"),
-              endedAt: new Date("2026-06-10"),
+              endedAt: new Date("2026-06-11"),
             },
           ]),
           noEncounters(),
@@ -1096,7 +1428,7 @@ describe.skipIf(!DB_URL)(
                 id: LOC_1,
                 levelOfCare: "routine_home_care",
                 effectiveAt: new Date("2026-05-01"),
-                endedAt: new Date("2026-05-10"),
+                endedAt: new Date("2026-05-11"),
               },
             ]),
             noEncounters(),

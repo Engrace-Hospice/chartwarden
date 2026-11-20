@@ -435,6 +435,7 @@ export function buildDrizzleM24ReadService(
             customOverrideRole: o?.customOverrideRole ?? null,
             overrideRoleRequired: rule.overrideRoleRequired ?? null,
             regulatoryRequired: rule.regulatoryRequired,
+            platformRequired: rule.platformRequired ?? false,
             parametersOverlay: o?.parametersOverlay ?? null,
             version: o?.version ?? null,
             platformDefault: {
@@ -442,6 +443,7 @@ export function buildDrizzleM24ReadService(
               category: rule.category,
               severity: rule.severity,
               regulatoryRequired: rule.regulatoryRequired,
+              platformRequired: rule.platformRequired ?? false,
               applicableStates: rule.applicableStates,
             },
           });
@@ -457,6 +459,7 @@ export function buildDrizzleM24ReadService(
               customOverrideRole: o.customOverrideRole ?? null,
               overrideRoleRequired: null, // custom rules are not in the registry; the server refuses to override them
               regulatoryRequired: o.regulatoryRequiredSnapshot,
+              platformRequired: false,
               parametersOverlay: o.parametersOverlay ?? null,
               version: o.version,
             });

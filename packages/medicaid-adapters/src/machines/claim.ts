@@ -89,6 +89,13 @@ export const MEDICAID_CLAIM_TRANSITIONS: readonly MedicaidClaimTransition[] = [
   { from: "ACK_ACCEPTED", event: "replacement_accepted", to: "REPLACED" },
   { from: "ACK_ACCEPTED", event: "void_accepted", to: "VOIDED" },
 
+  // Pre-submission claims may be archived without deleting their immutable assembly evidence.
+  // The service additionally refuses this transition when a submission record or reserved R&B day exists.
+  { from: "DRAFT", event: "abandon", to: "ABANDONED" },
+  { from: "FAILED_VALIDATION", event: "abandon", to: "ABANDONED" },
+  { from: "READY", event: "abandon", to: "ABANDONED" },
+  { from: "FAILED_MEDICARE_PRIMARY", event: "abandon", to: "ABANDONED" },
+
   { from: "ACK_REJECTED", event: "revalidate", to: "VALIDATING" },
   { from: "ACK_REJECTED", event: "abandon", to: "ABANDONED" },
 

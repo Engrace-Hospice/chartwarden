@@ -162,6 +162,7 @@ export interface RuleConfigView {
   /** The role the server requires to override this rule (registry value; null = not overridable). */
   overrideRoleRequired: string | null;
   regulatoryRequired: boolean;
+  platformRequired: boolean;
   parametersOverlay: unknown;
   version: number | null;
   /** Present only for platform-floor rules (the §4.6 registry projection). */
@@ -170,6 +171,7 @@ export interface RuleConfigView {
     category: string;
     severity: string;
     regulatoryRequired: boolean;
+    platformRequired: boolean;
     applicableStates: readonly string[];
   };
 }

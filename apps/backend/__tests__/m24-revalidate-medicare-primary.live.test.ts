@@ -13,8 +13,10 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import type { PatientCoverage, PatientCoverageReader } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createAdmissionLocPeriodsReader } from "../src/modules/06-admission";
 import { runMedicaidRevalidate } from "../src/modules/24-billing-medicaid/jobs/revalidate-jobs";
 import { buildM24MedicarePrimaryAckConsumer } from "../src/modules/24-billing-medicaid/outbox-consumers/m24-medicare-primary-ack";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
@@ -77,11 +79,18 @@ describe.skipIf(!DB_URL)(
       readonly orgId: string;
       readonly providerEntityId: string;
       readonly state: string;
+      readonly kind?: "hospice_only" | "rb_only" | "combined_hospice_rb";
       readonly patientId?: string;
+      readonly admissionId?: string;
       readonly medicareClaimId?: string | null;
-    }): Promise<{ readonly id: string; readonly patientId: string }> {
+    }): Promise<{
+      readonly id: string;
+      readonly patientId: string;
+      readonly patientPayerId: string;
+    }> {
       const claimId = randomUUID();
       const patientId = args.patientId ?? randomUUID();
+      const patientPayerId = randomUUID();
       const controlNumber = `CN-${claimId.slice(0, 8)}`;
       await admin.query(
         `INSERT INTO medicaid_claim
@@ -91,25 +100,28 @@ describe.skipIf(!DB_URL)(
             medicaid_claim_control_number, state, version, created_by_membership_id, updated_by_membership_id)
          VALUES
            ($1,$2,$3,$4,$5,$6,
-            'OR','hospice_only','811','2026-01-01','2026-01-31',$7,
-            'OHP-STD',$8,$9,
-            $10,$11,1,$12,$12)`,
+            'OR',$7,'811','2026-01-01','2026-01-31',$8,
+            'OHP-STD',$9,$10,
+            $11,$12,1,$13,$13)`,
         [
           claimId,
           args.orgId,
           args.providerEntityId,
           patientId,
-          randomUUID(),
-          randomUUID(),
+          patientPayerId,
+          args.admissionId ?? randomUUID(),
+          args.kind ?? "hospice_only",
           randomUUID(),
           args.medicareClaimId ?? null,
-          args.medicareClaimId ? JSON.stringify({ paidAmountCents: 0 }) : null,
+          args.medicareClaimId
+            ? JSON.stringify({ syntheticFixture: true, evidenceStatus: "unknown" })
+            : null,
           controlNumber,
           args.state,
           USER,
         ],
       );
-      return { id: claimId, patientId };
+      return { id: claimId, patientId, patientPayerId };
     }
 
     async function loadClaim(claimId: string) {
@@ -225,6 +237,285 @@ describe.skipIf(!DB_URL)(
       });
     });
 
+    it("runMedicaidRevalidate: an R&B claim cannot return to READY without a current transactional day and LOC snapshot", async () => {
+      const claim = await seedClaim({
+        orgId: ORG_A,
+        providerEntityId: peA,
+        state: "READY",
+        kind: "rb_only",
+      });
+      const outbox = fakeOutbox();
+
+      await withTx(ORG_A, async (tx) => {
+        await runMedicaidRevalidate(
+          tx,
+          { connection: {} as never, db: handle.db, outbox: outbox.port },
+          {
+            organizationId: ORG_A,
+            eventId: randomUUID(),
+            eventName: "m6.level_of_care.changed",
+            patientId: claim.patientId,
+          },
+        );
+      });
+
+      const after = await loadClaim(claim.id);
+      expect(after.state).toBe("FAILED_VALIDATION");
+      const result = await admin.query(
+        "SELECT rule_key, outcome FROM medicaid_validation_result WHERE medicaid_validation_run_id=$1 AND organization_id=$2",
+        [after.validation_run_id_latest, ORG_A],
+      );
+      expect(result.rows).toContainEqual({
+        rule_key: "medicaid_rb_claim_snapshot_verified",
+        outcome: "fail",
+      });
+      expect(outbox.published.map((event) => event.eventName)).not.toContain(
+        "m24.medicaid_claim.ready_for_submission",
+      );
+      expect(outbox.published.map((event) => event.eventName)).toContain(
+        "m24.medicaid_claim.validation_failed",
+      );
+    });
+
+    it("runMedicaidRevalidate: a retroactive M6 LOC change blocks a stale hospice line from READY", async () => {
+      const admissionId = randomUUID();
+      const locPeriodId = randomUUID();
+      const claim = await seedClaim({
+        orgId: ORG_A,
+        providerEntityId: peA,
+        state: "READY",
+        admissionId,
+      });
+      await admin.query(
+        `INSERT INTO admission (id, organization_id, provider_entity_id, patient_id, status, admission_at)
+         VALUES ($1,$2,$3,$4,'active','2026-01-01')`,
+        [admissionId, ORG_A, peA, claim.patientId],
+      );
+      await admin.query(
+        `INSERT INTO level_of_care_period
+           (id, organization_id, admission_id, level_of_care, status, effective_at)
+         VALUES ($1,$2,$3,'continuous_home_care','active','2026-01-01')`,
+        [locPeriodId, ORG_A, admissionId],
+      );
+      await admin.query(
+        `INSERT INTO medicaid_claim_line
+           (organization_id, provider_entity_id, medicaid_claim_id, line_number, service_date,
+            revenue_code, q_code, level_of_care, loc_period_id, units, rate_at_assembly_cents,
+            state_rate_schedule_id_snapshot, charges_cents, is_rb)
+         VALUES ($1,$2,$3,1,'2026-01-01','0651','Q5001','RHC',$4,31,10000,$5,310000,false)`,
+        [ORG_A, peA, claim.id, locPeriodId, randomUUID()],
+      );
+      // Simulate an M6 retroactive LOC correction after line assembly. The admission reader below is the
+      // production reader and fetches the corrected period inside the worker's NOBYPASSRLS transaction.
+      await admin.query(
+        `UPDATE level_of_care_period SET level_of_care='general_inpatient_care'
+         WHERE organization_id=$1 AND id=$2`,
+        [ORG_A, locPeriodId],
+      );
+      const coverage: PatientCoverage = {
+        id: claim.patientPayerId,
+        patientId: claim.patientId,
+        payerId: randomUUID(),
+        rank: 1,
+        coverageKind: "medicaid",
+        subscriberId: "synthetic-member-0001",
+        groupNumber: null,
+        current: true,
+        effectiveFrom: "2026-01-01",
+        effectiveTo: null,
+      };
+      const coverages: Pick<PatientCoverageReader, "coverageSnapshotForRangeInTransaction"> = {
+        async coverageSnapshotForRangeInTransaction() {
+          return {
+            coverages: [coverage],
+            patientLifecycle: { status: "active", deceasedDate: null },
+            resolution: { status: "uniform", coverage },
+            primaryResolution: { status: "uniform", coverage },
+          };
+        },
+      };
+      const outbox = fakeOutbox();
+      await withTx(ORG_A, async (tx) => {
+        await runMedicaidRevalidate(
+          tx,
+          {
+            connection: {} as never,
+            db: handle.db,
+            outbox: outbox.port,
+            coverages,
+            admissions: createAdmissionLocPeriodsReader(handle.db),
+          },
+          {
+            organizationId: ORG_A,
+            eventId: randomUUID(),
+            eventName: "m6.level_of_care.changed",
+            patientId: claim.patientId,
+          },
+        );
+      });
+
+      const after = await loadClaim(claim.id);
+      expect(after.state).toBe("FAILED_VALIDATION");
+      const result = await admin.query(
+        "SELECT rule_key, outcome FROM medicaid_validation_result WHERE medicaid_validation_run_id=$1 AND organization_id=$2",
+        [after.validation_run_id_latest, ORG_A],
+      );
+      expect(result.rows).toContainEqual({
+        rule_key: "medicaid_hospice_claim_snapshot_verified",
+        outcome: "fail",
+      });
+      expect(outbox.published.map((event) => event.eventName)).not.toContain(
+        "m24.medicaid_claim.ready_for_submission",
+      );
+      expect(outbox.published.map((event) => event.eventName)).toContain(
+        "m24.medicaid_claim.validation_failed",
+      );
+    });
+
+    it("runMedicaidRevalidate: a legacy Medicare link cannot become ready despite resolved primary Medicaid", async () => {
+      const claim = await seedClaim({
+        orgId: ORG_A,
+        providerEntityId: peA,
+        state: "READY",
+        medicareClaimId: randomUUID(),
+      });
+      const outbox = fakeOutbox();
+      const coverage: PatientCoverage = {
+        id: claim.patientPayerId,
+        patientId: claim.patientId,
+        payerId: randomUUID(),
+        rank: 1,
+        coverageKind: "medicaid",
+        subscriberId: "synthetic-member-0001",
+        groupNumber: null,
+        current: true,
+        effectiveFrom: "2026-01-01",
+        effectiveTo: null,
+      };
+      const coverages: Pick<PatientCoverageReader, "coverageSnapshotForRangeInTransaction"> = {
+        async coverageSnapshotForRangeInTransaction(_transaction, input) {
+          expect(input.patientId).toBe(claim.patientId);
+          return {
+            coverages: [coverage],
+            patientLifecycle: { status: "active", deceasedDate: null },
+            resolution: { status: "uniform", coverage },
+            primaryResolution: { status: "uniform", coverage },
+          };
+        },
+      };
+
+      await withTx(ORG_A, async (tx) => {
+        await runMedicaidRevalidate(
+          tx,
+          { connection: {} as never, db: handle.db, outbox: outbox.port, coverages },
+          {
+            organizationId: ORG_A,
+            eventId: randomUUID(),
+            eventName: "m5.patient.updated",
+            patientId: claim.patientId,
+          },
+        );
+      });
+
+      const after = await loadClaim(claim.id);
+      expect(after.state).toBe("FAILED_VALIDATION");
+      const result = await admin.query(
+        "SELECT rule_key, outcome FROM medicaid_validation_result WHERE medicaid_validation_run_id=$1 AND organization_id=$2",
+        [after.validation_run_id_latest, ORG_A],
+      );
+      expect(result.rows).toContainEqual({
+        rule_key: "medicaid_medicare_linkage_supported",
+        outcome: "fail",
+      });
+      expect(outbox.published.map((event) => event.eventName)).toContain(
+        "m24.medicaid_claim.validation_failed",
+      );
+      expect(outbox.published.map((event) => event.eventName)).not.toContain(
+        "m24.medicaid_claim.ready_for_submission",
+      );
+    });
+
+    it("runMedicaidRevalidate: an M6 death fact blocks READY while the M5 death cascade is still pending", async () => {
+      const claim = await seedClaim({ orgId: ORG_A, providerEntityId: peA, state: "READY" });
+      const outbox = fakeOutbox();
+      const coverage: PatientCoverage = {
+        id: claim.patientPayerId,
+        patientId: claim.patientId,
+        payerId: randomUUID(),
+        rank: 1,
+        coverageKind: "medicaid",
+        subscriberId: "synthetic-member-0001",
+        groupNumber: null,
+        current: true,
+        effectiveFrom: "2026-01-01",
+        effectiveTo: null,
+      };
+      const coverages: Pick<PatientCoverageReader, "coverageSnapshotForRangeInTransaction"> = {
+        async coverageSnapshotForRangeInTransaction() {
+          return {
+            coverages: [coverage],
+            patientLifecycle: { status: "active", deceasedDate: null },
+            resolution: { status: "uniform", coverage },
+            primaryResolution: { status: "uniform", coverage },
+          };
+        },
+      };
+      const admissions = {
+        async cadenceSnapshotInTransaction(_tx: unknown, _orgId: string, admissionId: string) {
+          expect(admissionId).toBeTruthy();
+          return {
+            patientId: claim.patientId,
+            providerEntityId: peA,
+            status: "discharged" as const,
+            stayEndFacts: {
+              dischargeDate: "2026-01-15",
+              dischargeReason: "death",
+              deceasedDate: "2026-01-15",
+              pendingDischargeDates: [],
+              transferOut: null,
+              revocationDate: null,
+            },
+          };
+        },
+      };
+
+      await withTx(ORG_A, async (tx) => {
+        await runMedicaidRevalidate(
+          tx,
+          {
+            connection: {} as never,
+            db: handle.db,
+            outbox: outbox.port,
+            coverages,
+            admissions,
+          },
+          {
+            organizationId: ORG_A,
+            eventId: randomUUID(),
+            eventName: "m6.admission.discharge_completed",
+            patientId: claim.patientId,
+          },
+        );
+      });
+
+      const after = await loadClaim(claim.id);
+      expect(after.state).toBe("FAILED_VALIDATION");
+      const result = await admin.query(
+        "SELECT rule_key, outcome FROM medicaid_validation_result WHERE medicaid_validation_run_id=$1 AND organization_id=$2",
+        [after.validation_run_id_latest, ORG_A],
+      );
+      expect(result.rows).toContainEqual({
+        rule_key: "medicaid_payer_responsibility_resolved",
+        outcome: "fail",
+      });
+      expect(outbox.published.map((event) => event.eventName)).not.toContain(
+        "m24.medicaid_claim.ready_for_submission",
+      );
+      expect(outbox.published.map((event) => event.eventName)).toContain(
+        "m24.medicaid_claim.validation_failed",
+      );
+    });
+
     it("runMedicaidRevalidate: a DRAFT claim (not revalidate-eligible) is silently skipped", async () => {
       const claim = await seedClaim({ orgId: ORG_A, providerEntityId: peA, state: "DRAFT" });
       const outbox = fakeOutbox();
@@ -249,7 +540,7 @@ describe.skipIf(!DB_URL)(
       expect(await historyFor(claim.id)).toHaveLength(0);
     });
 
-    it("medicare-primary-ack: an AWAITING_MEDICARE_PRIMARY claim resolves to READY and emits medicare_primary_resolved", async () => {
+    it("medicare-primary-ack: a technical acknowledgment does not advance an awaiting Medicaid claim", async () => {
       const medicareClaimId = randomUUID();
       const claim = await seedClaim({
         orgId: ORG_A,
@@ -276,30 +567,12 @@ describe.skipIf(!DB_URL)(
       });
 
       const after = await loadClaim(claim.id);
-      expect(after.state).toBe("READY");
-      const hist = await historyFor(claim.id);
-      expect(hist).toHaveLength(1);
-      expect(hist[0]).toMatchObject({
-        from_state: "AWAITING_MEDICARE_PRIMARY",
-        to_state: "READY",
-        trigger_source: "consumer",
-        actor_membership_id: null,
-        reason: "medicare_primary_acknowledged",
-      });
-      expect(outbox.published).toEqual([
-        {
-          eventName: "m24.medicaid_claim.medicare_primary_resolved",
-          payload: {
-            organizationId: ORG_A,
-            claimId: claim.id,
-            medicareClaimId,
-            medicareClaimState: "ACK_ACCEPTED",
-          },
-        },
-      ]);
+      expect(after.state).toBe("AWAITING_MEDICARE_PRIMARY");
+      expect(await historyFor(claim.id)).toHaveLength(0);
+      expect(outbox.published).toHaveLength(0);
     });
 
-    it("medicare-primary-ack: FAILED_MEDICARE_PRIMARY also resolves to READY (the machine's other legal source)", async () => {
+    it("medicare-primary-ack: a technical acknowledgment does not clear FAILED_MEDICARE_PRIMARY", async () => {
       const medicareClaimId = randomUUID();
       const claim = await seedClaim({
         orgId: ORG_A,
@@ -325,7 +598,9 @@ describe.skipIf(!DB_URL)(
         createdAt: new Date(),
       });
 
-      expect((await loadClaim(claim.id)).state).toBe("READY");
+      expect((await loadClaim(claim.id)).state).toBe("FAILED_MEDICARE_PRIMARY");
+      expect(outbox.published).toHaveLength(0);
+      expect(await historyFor(claim.id)).toHaveLength(0);
     });
 
     it("medicare-primary-ack: a PAID claim sharing the same medicare_claim_id is left alone (not eligible)", async () => {
@@ -391,10 +666,11 @@ describe.skipIf(!DB_URL)(
         createdAt: new Date(),
       });
 
-      expect((await loadClaim(claimA.id)).state).toBe("READY");
+      expect((await loadClaim(claimA.id)).state).toBe("AWAITING_MEDICARE_PRIMARY");
       expect((await loadClaim(claimB.id)).state).toBe("AWAITING_MEDICARE_PRIMARY");
-      expect(outbox.published).toHaveLength(1);
-      expect(outbox.published[0]?.payload.claimId).toBe(claimA.id);
+      expect(outbox.published).toHaveLength(0);
+      expect(await historyFor(claimA.id)).toHaveLength(0);
+      expect(await historyFor(claimB.id)).toHaveLength(0);
     });
 
     /** Run `fn` inside a real `withOrgContext`-shaped transaction for the given org — `runMedicaidRevalidate`

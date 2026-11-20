@@ -162,6 +162,33 @@ describe("read-audit emission (preSerialization)", () => {
  * than patient id (M39's `/consents/:consentId`) names its patient in the response instead.
  */
 describe("read-audit emission — patient attribution (GAP-079)", () => {
+  it("attributes a read-only POST preview to the patient id in its request body", async () => {
+    const app = makeApp();
+    app.post(
+      "/api/v1/patients/assembly-preview",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "claim_assembly_preview",
+            patientIdBodyPath: "patientId",
+            fields: ["coverage", "eligibility"],
+          },
+        },
+      },
+      async () => ({ available: true }),
+    );
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/patients/assembly-preview",
+      payload: { patientId: "p_from_body", sensitivePayload: "must not be audited" },
+    });
+    expect(captured).toHaveLength(1);
+    expect(captured[0].eventType).toBe("claim_assembly_preview.viewed");
+    expect(captured[0].resourceId).toBe("p_from_body");
+    expect(captured[0].context?.patientId).toBe("p_from_body");
+    expect(JSON.stringify(captured[0])).not.toContain("must not be audited");
+  });
+
   it("prefers the route param when the route names its patient in the path", async () => {
     const app = makeApp();
     app.get(

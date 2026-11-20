@@ -4,13 +4,22 @@
 // the §8.6 `actor_kind='ai_*'` reject, and the §F08 Idempotency-Key. Org/actor binding is server-side.
 
 import { rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
-import { NotFoundError } from "@chartwarden/types";
+import { DegradedError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { m24ActorOf } from "./actor";
-import { ABAC_BODY_PE, ABAC_CLAIM, ABAC_RESULT, P, STEP_UP, optionalIfMatch } from "./guards";
+import {
+  ABAC_BODY_PATIENT,
+  ABAC_BODY_PE,
+  ABAC_CLAIM,
+  ABAC_RESULT,
+  P,
+  STEP_UP,
+  optionalIfMatch,
+} from "./guards";
 import {
   ApplyOverrideBody,
   AssembleClaimBody,
+  AssemblyPreviewBody,
   ClaimListQuery,
   ProviderEntityQuery,
   ReplaceClaimBody,
@@ -39,6 +48,41 @@ const pParam = (request: { params: unknown }, key: string): string =>
 
 export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps): void {
   const { readService, writeService } = deps;
+
+  // Read-only capability snapshot; it never creates a claim, reserves R&B days or emits an outbox event.
+  app.post(
+    "/api/v1/medicaid-claims/assembly-preview",
+    {
+      preHandler: [
+        P("medicaid.claim.assemble"),
+        ABAC_BODY_PE("medicaid.claim.assemble", "provider_entity_medicaid_billing_scope"),
+        ABAC_BODY_PATIENT("medicaid.claim.assemble"),
+      ],
+      config: {
+        auditRead: {
+          resourceKind: "medicaid_claim_assembly_preview",
+          patientIdBodyPath: "patientId",
+          fields: ["coverage", "eligibility", "room_and_board", "medicare_coordination"],
+        },
+      },
+    },
+    async (request, reply) => {
+      const preview = writeService.previewClaimAssembly;
+      if (!preview) {
+        throw new DegradedError(
+          "MEDICAID_ASSEMBLY_PREVIEW_UNBOUND",
+          "the server-authoritative Medicaid assembly preview is not bound in this environment",
+        );
+      }
+      return reply.send(
+        await preview.call(
+          writeService,
+          m24ActorOf(request),
+          parse(AssemblyPreviewBody, request.body),
+        ),
+      );
+    },
+  );
 
   // 1 — assemble
   app.post(
