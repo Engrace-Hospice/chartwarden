@@ -246,6 +246,25 @@ describe("My notes", () => {
     );
   });
 
+  it("sends My Notes as the way back from a note opened out of it (Workflow 09, WP1)", async () => {
+    response = {
+      status: 200,
+      body: { encounters: [note("e-draft", { encounterType: "ot_visit" })] },
+    };
+    const router = mount();
+    fireEvent.click(
+      within(rowOf(await screen.findByText("Ot Visit"))).getByRole("button", {
+        name: "Continue Documentation",
+      }),
+    );
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        `/patients/${PATIENT}/encounters/e-draft/compose`,
+      ),
+    );
+    expect(router.state.location.search).toBe(`?from=${encodeURIComponent("/work/drafts")}`);
+  });
+
   it("filters to overdue notes from the KPI card and by the Closure select, and clears", async () => {
     response = {
       status: 200,

@@ -29,15 +29,27 @@ function LocationProbe() {
   return <output aria-label="location">{location.pathname}</output>;
 }
 
-function renderMyVisits(client: { GET: ReturnType<typeof vi.fn>; POST: ReturnType<typeof vi.fn> }) {
+/** Path and query, for the screens whose way back is part of what is being checked. */
+function FullLocationProbe() {
+  const location = useLocation();
+  return <output aria-label="full location">{`${location.pathname}${location.search}`}</output>;
+}
+
+const AUTHOR_PERMISSIONS = ["visit.read", "visit.start", "visit.create", "encounter.author"];
+
+function renderMyVisits(
+  client: { GET: ReturnType<typeof vi.fn>; POST: ReturnType<typeof vi.fn> },
+  initialPath = "/me/visits",
+  permissions: string[] = AUTHOR_PERMISSIONS,
+) {
   render(
-    <MemoryRouter initialEntries={["/me/visits"]}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <ApiClientProvider client={client as never}>
         <SessionProvider
           session={{
             userId: "user-1",
             organizationId: "org-1",
-            permissions: ["visit.read", "visit.start", "visit.create"],
+            permissions,
           }}
         >
           <Routes>
@@ -47,6 +59,11 @@ function renderMyVisits(client: { GET: ReturnType<typeof vi.fn>; POST: ReturnTyp
               path="/patients/:patientId/encounters/:encounterId"
               element={<LocationProbe />}
             />
+            <Route
+              path="/patients/:patientId/encounters/:encounterId/compose"
+              element={<FullLocationProbe />}
+            />
+            <Route path="/scheduling/visits/:visitId" element={<FullLocationProbe />} />
           </Routes>
         </SessionProvider>
       </ApiClientProvider>
@@ -175,32 +192,46 @@ describe("MyVisits web workflow", () => {
     expect(await within(dialog).findByText(/only the clinician assigned/i)).toBeTruthy();
   });
 
-  it("opens the linked Encounter without creating a duplicate Encounter", async () => {
-    const get = vi.fn(async (path: string) => {
+  const linkedEncounter = (status: string) => ({
+    id: "enc-1",
+    patientId: visit.patientId,
+    admissionId: visit.admissionId,
+    visitId: visit.id,
+    encounterType: "routine_visit",
+    discipline: "rn",
+    serviceDate: "2026-08-31",
+    status,
+    signedAt: null,
+    cosignedAt: null,
+  });
+  const linkedEncounterClient = (status: string, encounters = [linkedEncounter(status)]) => ({
+    GET: vi.fn(async (path: string, _init?: unknown) => {
       if (path === "/api/v1/visits") return { data: [{ ...visit, status: "in_visit" }] };
-      if (path === "/api/v1/encounters")
-        return {
-          data: {
-            encounters: [
-              {
-                id: "enc-1",
-                patientId: visit.patientId,
-                admissionId: visit.admissionId,
-                visitId: visit.id,
-                encounterType: "routine_visit",
-                discipline: "rn",
-                serviceDate: "2026-08-31",
-                status: "draft",
-                signedAt: null,
-                cosignedAt: null,
-              },
-            ],
-          },
-        };
+      if (path === "/api/v1/encounters") return { data: { encounters } };
       return { data: null };
-    });
-    const post = vi.fn(async () => ({ data: null }));
-    renderMyVisits({ GET: get, POST: post });
+    }),
+    POST: vi.fn(async () => ({ data: null })),
+  });
+
+  it("opens a draft Encounter in the composer, in one click, without creating a duplicate (T01, T03)", async () => {
+    const client = linkedEncounterClient("draft");
+    renderMyVisits(client);
+
+    await screen.findByText("Scheduled visit");
+    fireEvent.click(screen.getByRole("button", { name: /^open encounter/i }));
+
+    await waitFor(() =>
+      expect(
+        new URL(screen.getByLabelText("full location").textContent ?? "", "http://x.invalid")
+          .pathname,
+      ).toBe(`/patients/${visit.patientId}/encounters/enc-1/compose`),
+    );
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("opens a draft Encounter on its record when the session may read but not author", async () => {
+    const client = linkedEncounterClient("draft");
+    renderMyVisits(client, "/me/visits", ["visit.read", "encounter.read"]);
 
     await screen.findByText("Scheduled visit");
     fireEvent.click(screen.getByRole("button", { name: /^open encounter/i }));
@@ -210,7 +241,89 @@ describe("MyVisits web workflow", () => {
         `/patients/${visit.patientId}/encounters/enc-1`,
       ),
     );
-    expect(post).not.toHaveBeenCalled();
+  });
+
+  it.each(["finalized", "signed", "cosign_pending", "cosigned"])(
+    "opens a %s Encounter on its record, never in the composer (T01)",
+    async (status) => {
+      const client = linkedEncounterClient(status);
+      renderMyVisits(client);
+
+      await screen.findByText("Scheduled visit");
+      fireEvent.click(screen.getByRole("button", { name: /^open encounter/i }));
+
+      await waitFor(() =>
+        expect(screen.getByLabelText("location").textContent).toBe(
+          `/patients/${visit.patientId}/encounters/enc-1`,
+        ),
+      );
+      expect(client.POST).not.toHaveBeenCalled();
+    },
+  );
+
+  it("sends the list as it was left (filters and page) as the way back (T36)", async () => {
+    const client = linkedEncounterClient("draft");
+    renderMyVisits(client, "/me/visits?status=in_visit&page=1&size=5");
+
+    await screen.findByText("Scheduled visit");
+    fireEvent.click(screen.getByRole("button", { name: /^open encounter/i }));
+
+    await waitFor(() => {
+      const url = new URL(
+        screen.getByLabelText("full location").textContent ?? "",
+        "http://x.invalid",
+      );
+      expect(url.searchParams.get("from")).toBe("/me/visits?status=in_visit&page=1&size=5");
+    });
+  });
+
+  it("sends the list as it was left as the visit's way back too (T36)", async () => {
+    const client = linkedEncounterClient("draft");
+    renderMyVisits(client, "/me/visits?status=in_visit&size=5");
+
+    fireEvent.click(await screen.findByText("Scheduled visit"));
+
+    await waitFor(() => {
+      const url = new URL(
+        screen.getByLabelText("full location").textContent ?? "",
+        "http://x.invalid",
+      );
+      expect(url.pathname).toBe(`/scheduling/visits/${visit.id}`);
+      expect(url.searchParams.get("from")).toBe("/me/visits?status=in_visit&size=5");
+    });
+  });
+
+  it("keeps the filters in the address, so Back restores them (T36)", async () => {
+    const client = linkedEncounterClient("draft");
+    renderMyVisits(client, "/me/visits?status=completed");
+
+    await waitFor(() => expect(client.GET).toHaveBeenCalled());
+    expect((screen.getByLabelText("Visit status") as HTMLSelectElement).value).toBe("completed");
+  });
+
+  it("finds the Encounter inside the visit's own service date, not only among the newest of the admission (D-C)", async () => {
+    const client = linkedEncounterClient("draft");
+    renderMyVisits(client);
+
+    await screen.findByText("Scheduled visit");
+    fireEvent.click(screen.getByRole("button", { name: /^open encounter/i }));
+    await waitFor(() => expect(screen.getByLabelText("full location")).toBeTruthy());
+
+    const encounterReads = client.GET.mock.calls.filter(([path]) => path === "/api/v1/encounters");
+    expect(encounterReads[0]?.[1]).toMatchObject({
+      params: { query: { patientId: visit.patientId, from: "2026-08-31", to: "2026-08-31" } },
+    });
+  });
+
+  it("says the draft is still being created when no Encounter is linked, and creates nothing (T03)", async () => {
+    const client = linkedEncounterClient("draft", []);
+    renderMyVisits(client);
+
+    await screen.findByText("Scheduled visit");
+    fireEvent.click(screen.getByRole("button", { name: /^open encounter/i }));
+
+    expect(await screen.findByText(/Encounter draft is still being created/)).toBeTruthy();
+    expect(client.POST).not.toHaveBeenCalled();
   });
 
   it("creates a Visit through the real M17 create contract", async () => {

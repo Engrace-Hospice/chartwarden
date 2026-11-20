@@ -143,10 +143,13 @@ export type EncounterRead =
       readonly mileage: MileageForm | null;
     };
 
+/**
+ * The encounter and what hangs off it. The patient is read from the ENCOUNTER's own `patientId`, never from the screen's URL: a path
+ * that names another patient must not put that patient's name over this encounter's note (the caller moves the URL to the right one).
+ */
 export async function readEncounter(
   client: ApiClient,
   encounterId: string,
-  patientId: string | undefined,
 ): Promise<EncounterRead> {
   const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
     params: {
@@ -226,8 +229,6 @@ export async function readEncounter(
     addenda: (data as { addenda?: AddendumRow[] }).addenda ?? [],
   };
 
-  const pid = patientId ?? data.patientId;
-
   const [cos, pat, cp, ass, hope, sel] = await Promise.all([
     client.GET("/api/v1/encounters/{encounterId}/cosignature", {
       params: {
@@ -240,7 +241,7 @@ export async function readEncounter(
     client.GET("/api/v1/patients/{id}", {
       params: {
         path: {
-          id: pid,
+          id: data.patientId,
         },
       },
     }),

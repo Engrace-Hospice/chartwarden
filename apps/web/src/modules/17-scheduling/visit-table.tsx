@@ -10,6 +10,8 @@ export interface VisitRow {
   id: string;
   patientId: string;
   admissionId?: string | null;
+  /** The visit's calendar date; the linked-encounter lookup narrows to it. */
+  serviceDate?: string | null;
   assignedMembershipId: string;
   visitPurpose: string;
   scheduledStartedAt: string;

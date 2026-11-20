@@ -259,12 +259,15 @@ test.describe("Encounters", () => {
       .toBe(true);
     await page.reload();
     await expect(page.getByRole("heading", { name: "My Visits" })).toBeVisible();
+    // Workflow 09, WP1: a draft opens where it is finished, in one click (the composer, not the record first), and
+    // the composer's one Back link leads to the list the visit was opened from.
     await page.getByRole("button", { name: `Open encounter for visit ${shortVisitId}` }).click();
-    await page.waitForURL(/\/encounters\/[^/]+$/, { timeout: 15_000 });
-    const encounterId = /\/encounters\/([^/]+)$/.exec(page.url())?.[1] as string;
+    await page.waitForURL(/\/encounters\/[^/]+\/compose(\?|$)/, { timeout: 15_000 });
+    const encounterId = /\/encounters\/([^/]+)\/compose/.exec(page.url())?.[1] as string;
     expect(encounterId).toBeTruthy();
-    await page.getByRole("button", { name: "Compose note" }).click();
-    await page.waitForURL(new RegExp(`/encounters/${encounterId}/compose$`), { timeout: 15_000 });
+    await expect(page.getByRole("link", { name: "Back to My Visits" })).toBeVisible({
+      timeout: 15_000,
+    });
 
     // ── 2. Compose it ──────────────────────────────────────────────────────────────────────────────
     await expect(page.getByRole("heading", { name: "Compose visit note" })).toBeVisible({
@@ -277,11 +280,11 @@ test.describe("Encounters", () => {
     // free text deliberately exercises the tenant-DEK sealing path that protects authored narrative.
     const sections = page.getByRole("complementary", { name: "Visit note sections" });
     const requiredLabels = await sections
-      .getByRole("button", { name: /: Required$/ })
+      .getByRole("button", { name: /: Required, no entry$/ })
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
     expect(requiredLabels.length).toBeGreaterThan(0);
     for (const label of requiredLabels) {
-      // Keep the explicit server-template heading: the state suffix changes to "Documented" while
+      // Keep the explicit server-template heading: the state suffix changes to "Entered" while
       // another section is edited, and decorative step numbers never enter this accessible name.
       await sections.getByRole("button", { name: label, exact: true }).click();
       await page
@@ -325,6 +328,8 @@ test.describe("Encounters", () => {
     await expect(page.getByText("Note finalized", { exact: true })).toBeVisible({
       timeout: 15_000,
     });
+    // Finalized is not signed: the composer says so and leads to the record's sign-off.
+    await expect(page.getByRole("button", { name: "Go to sign-off" })).toBeVisible();
 
     // ── 4. Sign with the same server-verified fresh step-up used for visit arrival. ────────────────
     await page.goto(`/patients/${patientId}/encounters/${encounterId}`);
@@ -356,7 +361,11 @@ test.describe("Encounters", () => {
       });
     }).toPass({ timeout: 30_000 });
     await page.getByRole("button", { name: "Signed", exact: true }).click();
-    await page.waitForURL(`/patients/${patientId}/encounters/${encounterId}`);
+    // A signed encounter opens on its record (never in the composer), and Back leads to the visit it was opened from.
+    await page.waitForURL(new RegExp(`/patients/${patientId}/encounters/${encounterId}(\\?.*)?$`));
+    await expect(page.getByRole("link", { name: "Back to the visit" })).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   test("the patient encounters list is accessible (WCAG 2.1 A/AA)", async ({ page }) => {

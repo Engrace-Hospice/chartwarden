@@ -23,6 +23,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { useReturnHere } from "../../shell/use-return-target";
 import {
   type QueueEntryRef,
   queueEntryHref,
@@ -57,6 +58,8 @@ const reviewDisciplineLabel = (discipline: string): string =>
 export function CosignatureQueue(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  // The way back from a reviewed note is this queue.
+  const withReturn = useReturnHere();
   const [items, setItems] = useState<EncounterRow[]>([]);
   const [disciplineFilter, setDisciplineFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -414,7 +417,7 @@ export function CosignatureQueue(): JSX.Element {
                           size="sm"
                           tone="secondary"
                           aria-label={`Review ${queueEntrySubject(e) === "addendum" ? "amendment to " : ""}${reviewDisciplineLabel(e.discipline)} ${stateLabel(e.encounterType).toLowerCase()} for patient ${e.patientId.slice(0, 8)} on ${e.serviceDate}`}
-                          onClick={() => navigate(queueEntryHref(e))}
+                          onClick={() => navigate(withReturn(queueEntryHref(e)))}
                         >
                           Review
                         </Button>

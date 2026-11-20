@@ -16,6 +16,9 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { canAuthorEncounters, encounterEntryHref } from "../../shell/note-href";
+import { useSession } from "../../shell/session";
+import { useReturnHere, useReturnTarget } from "../../shell/use-return-target";
 import { VISIT_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import {
   type EncounterLink,
@@ -40,6 +43,10 @@ export function VisitDetail(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  // Where this visit was opened from (My Visits with its filters, the calendar): the way back, and what the encounter's way back leads to.
+  const returnTarget = useReturnTarget();
+  const withReturn = useReturnHere();
+  const canAuthor = canAuthorEncounters(useSession()?.permissions);
   const { visitId } = useParams<{ visitId: string }>();
   const [visit, setVisit] = useState<VisitView | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
@@ -154,7 +161,11 @@ export function VisitDetail(): JSX.Element {
                 alignItems: "center",
               }}
             >
-              <Link to={backToSchedule}>← Back to schedule</Link>
+              {returnTarget ? (
+                <Link to={returnTarget.href}>← Back to {returnTarget.label}</Link>
+              ) : (
+                <Link to={backToSchedule}>← Back to schedule</Link>
+              )}
               <span style={meta}>
                 Scheduling / {visit.serviceDate} /{" "}
                 {patient ? `${patient.firstName} ${patient.lastName}` : "Patient"} / Visit
@@ -209,7 +220,7 @@ export function VisitDetail(): JSX.Element {
                       type="button"
                       style={linkButton}
                       onClick={() =>
-                        navigate(`/patients/${encounter.patientId}/encounters/${encounter.id}`)
+                        navigate(withReturn(encounterEntryHref(encounter, { canAuthor })))
                       }
                     >
                       {stateLabel(encounter.status)}

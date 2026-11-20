@@ -3,7 +3,7 @@
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { MyVisits } from "./my-visits";
 
@@ -18,7 +18,12 @@ const row = (id: string, patientId: string, visitPurpose: string) => ({
   status: "published",
 });
 
-function mount(): void {
+function Where(): JSX.Element {
+  const { key, search } = useLocation();
+  return <output aria-label="location">{`${key}|${search}`}</output>;
+}
+
+function mount(initialPath = "/"): void {
   const rows = [
     row("11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "p1", "recert"),
     row("22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "p2", "f2f"),
@@ -33,7 +38,8 @@ function mount(): void {
   } as unknown as ApiClient;
   render(
     <ApiClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Where />
         <MyVisits />
       </MemoryRouter>
     </ApiClientProvider>,
@@ -60,5 +66,30 @@ describe("My Visits purpose wording", () => {
     expect(cells).toContain("Recert Kickoff (RN)");
     expect(cells).not.toContain("Face-to-Face");
     expect(cells).not.toContain("HHA Visit");
+  });
+});
+
+describe("My Visits search box", () => {
+  const typeInSearch = (value: string) =>
+    fireEvent.change(screen.getByLabelText("Search my visits"), { target: { value } });
+
+  it("does not rewrite the address on a keystroke when there is no page to reset", async () => {
+    mount("/?status=published");
+    await screen.findByLabelText("Visit purpose");
+    const before = screen.getByLabelText("location").textContent;
+
+    typeInSearch("k");
+    typeInSearch("ki");
+
+    expect(screen.getByLabelText("location").textContent).toBe(before);
+  });
+
+  it("returns to the first page when a search is typed on a later page, keeping the filters", async () => {
+    mount("/?status=published&page=2");
+    await screen.findByLabelText("Visit purpose");
+
+    typeInSearch("k");
+
+    expect(screen.getByLabelText("location").textContent?.split("|")[1]).toBe("?status=published");
   });
 });

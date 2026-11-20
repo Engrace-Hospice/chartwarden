@@ -180,8 +180,8 @@ export const readyCard: CSSProperties = {
   gap: "0.75rem",
   padding: "0.9rem 1rem",
   borderRadius: "0.8rem",
-  border: "1px solid color-mix(in srgb, var(--color-success) 22%, transparent)",
-  background: "color-mix(in srgb, var(--color-success) 6%, var(--color-surface))",
+  border: hairline,
+  background: "var(--color-surface-container-low)",
 };
 
 export const readyMark: CSSProperties = {
@@ -193,8 +193,8 @@ export const readyMark: CSSProperties = {
   borderRadius: 999,
   fontSize: "0.82rem",
   fontWeight: 800,
-  color: "var(--color-success)",
-  background: "color-mix(in srgb, var(--color-success) 12%, transparent)",
+  color: "var(--color-on-surface-variant)",
+  background: "var(--color-surface-container-highest)",
 };
 
 export const readyTitle: CSSProperties = {

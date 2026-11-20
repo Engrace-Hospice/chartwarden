@@ -9,8 +9,10 @@ import {
   PatientLookupField,
   admissionDateLabel,
 } from "../../shell/entity-lookups";
+import { canAuthorEncounters, encounterEntryHref } from "../../shell/note-href";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
+import { useReturnHere } from "../../shell/use-return-target";
 import {
   type CreateVisitBody,
   type VisitPurpose,
@@ -42,6 +44,8 @@ export interface VisitView {
   externalFacilityId: string | null;
   rescheduledIntoVisitId: string | null;
 }
+
+const LINKED_ENCOUNTER_LIST_LIMIT = 50;
 
 export interface EncounterLink {
   id: string;
@@ -954,6 +958,7 @@ export function VisitActionPanel({
   const navigate = useNavigate();
   const session = useSession();
   const location = useLocation();
+  const withReturn = useReturnHere();
   const draftKey = `visit-attest:${visit.id}`;
   // Returning from /step-up: reopen the start/arrive dialog with the attestation the user had typed.
   const [restored] = useState(() =>
@@ -1227,7 +1232,13 @@ export function VisitActionPanel({
             tone="secondary"
             onClick={() =>
               encounter
-                ? navigate(`/patients/${encounter.patientId}/encounters/${encounter.id}`)
+                ? navigate(
+                    withReturn(
+                      encounterEntryHref(encounter, {
+                        canAuthor: canAuthorEncounters(permissions),
+                      }),
+                    ),
+                  )
                 : void onChanged()
             }
           >
@@ -1449,22 +1460,54 @@ export function VisitActionPanel({
   );
 }
 
+type EncounterListQuery = {
+  patientId: string;
+  admissionId?: string;
+  from?: string;
+  to?: string;
+  limit: number;
+};
+
+async function readEncounterLinks(
+  client: ApiClient,
+  query: EncounterListQuery,
+): Promise<EncounterLink[]> {
+  const { data } = await client.GET("/api/v1/encounters", { params: { query } } as never);
+  return ((data as { encounters?: EncounterLink[] } | undefined)?.encounters ??
+    []) as EncounterLink[];
+}
+
+/**
+ * The encounter a visit seeded. No route resolves a visit to its encounter, so the list is read and matched on `visitId` here. The list
+ * is newest-first and capped, so a visit's encounter can fall outside the newest 50 of its admission: the visit's own service date is
+ * asked for first (the seeded encounter carries the visit's date), and the admission's newest are the fallback. (A `visitId` filter on
+ * GET /encounters would make this one exact read; see the WP1 proposal.)
+ */
 export async function findLinkedEncounter(
   client: ApiClient,
-  visit: { id: string; patientId: string; admissionId?: string | null },
+  visit: {
+    id: string;
+    patientId: string;
+    admissionId?: string | null;
+    serviceDate?: string | null;
+  },
 ): Promise<EncounterLink | null> {
-  const { data } = await client.GET("/api/v1/encounters", {
-    params: {
-      query: {
-        patientId: visit.patientId,
-        ...(visit.admissionId ? { admissionId: visit.admissionId } : {}),
-        limit: 50,
-      },
-    },
-  } as never);
-  const encounters = ((data as { encounters?: EncounterLink[] } | undefined)?.encounters ??
-    []) as EncounterLink[];
-  return encounters.find((encounter) => encounter.visitId === visit.id) ?? null;
+  const base: EncounterListQuery = {
+    patientId: visit.patientId,
+    ...(visit.admissionId ? { admissionId: visit.admissionId } : {}),
+    limit: LINKED_ENCOUNTER_LIST_LIMIT,
+  };
+  const isTheVisits = (encounter: EncounterLink): boolean => encounter.visitId === visit.id;
+  if (visit.serviceDate) {
+    const onTheDay = await readEncounterLinks(client, {
+      ...base,
+      from: visit.serviceDate,
+      to: visit.serviceDate,
+    });
+    const found = onTheDay.find(isTheVisits);
+    if (found) return found;
+  }
+  return (await readEncounterLinks(client, base)).find(isTheVisits) ?? null;
 }
 
 function actionTitle(action: VisitAction): string {

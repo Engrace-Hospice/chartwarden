@@ -18,6 +18,28 @@ export function noteHref(note: OpenNote): string {
   return note.status === "finalized" ? base : `${base}/compose`;
 }
 
+/**
+ * Where a visit's (or a patient's) encounter is opened from a list, a visit or the calendar (Workflow 09, WP1): a draft is still being
+ * written, so it opens in the composer; every other status (finalized, signed, cosign pending, cosigned, void) is read, signed or
+ * corrected on the encounter record. Unlike `noteHref` this never sends a finished note to the composer: `noteHref` answers "where does
+ * an OPEN note get worked on", this answers "where does THIS encounter open".
+ *
+ * The composer's route needs `encounter.author`, so a session without it (a scheduler or DON who may read) is sent to the record, as it
+ * was before WP1. That is a choice of link target, not authorization: the server stays the gate.
+ */
+export function encounterEntryHref(
+  encounter: OpenNote,
+  options: { readonly canAuthor: boolean },
+): string {
+  const base = `/patients/${encounter.patientId}/encounters/${encounter.id}`;
+  return encounter.status === "draft" && options.canAuthor ? `${base}/compose` : base;
+}
+
+/** Whether a session's permissions include the composer's permission; one source for every link that chooses between composer and record. */
+export function canAuthorEncounters(permissions: readonly string[] | undefined): boolean {
+  return permissions?.includes("encounter.author") === true;
+}
+
 export function openNoteLabel(status: string): string {
   return status === "finalized" ? "Review and Sign" : "Continue Documentation";
 }

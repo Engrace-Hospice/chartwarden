@@ -1,5 +1,5 @@
 import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Fragment } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -63,6 +63,10 @@ function renderEncounter(
                   path="/patients/:patientId/encounters/:encounterId"
                   element={<EncounterRead />}
                 />
+                <Route
+                  path="/patients/:patientId/care-plan"
+                  element={<output aria-label="location">care plan screen</output>}
+                />
               </Routes>
             </Closure>
           </SessionProvider>
@@ -102,57 +106,64 @@ function renderPatientEncounters(client: {
 }
 
 describe("Encounter workspace web workflow", () => {
-  it.each([
-    ["carePlan", "Open care plan", "/patients/patient-1/care-plan"],
-    ["evv", "Open EVV reconciliation", "/evv/missing-resolutions"],
-  ])(
-    "links a server %s finalize blocker to its canonical correction surface",
-    async (field, action, href) => {
-      const get = vi.fn(async (path: string) => {
-        if (path === "/api/v1/encounters/{encounterId}") return { data: encounter };
-        if (path === "/api/v1/encounters/{encounterId}/cosignature")
-          return { data: { status: null } };
-        if (path === "/api/v1/patients/{id}")
-          return {
-            data: {
-              firstName: "Ava",
-              lastName: "Stone",
-              dob: "1950-01-01",
-              mrn: "MRN1",
-              status: "active",
-            },
-          };
-        if (path === "/api/v1/internal/care-plan/relevant-elements")
-          return { data: { problems: [], goals: [], interventions: [], redacted: false } };
-        return { data: { assessments: [] } };
-      });
-      const patch = vi.fn(async () => ({ data: { status: "ok" }, response: new Response() }));
-      const post = vi.fn(async (path: string) =>
-        path.endsWith("/finalize")
-          ? {
-              error: {
-                error: {
-                  code: "COMPLIANCE_GATE_FAILED",
-                  message: "The encounter is not ready to finalize.",
-                  details: [
-                    {
-                      field,
-                      message: "Resolve this server-identified blocker before finalizing.",
-                    },
-                  ],
-                },
-              },
-              response: new Response(null, { status: 422 }),
-            }
-          : { data: { status: "ok" }, response: new Response() },
-      );
-      renderEncounter({ GET: get, PATCH: patch, POST: post });
+  /** A record whose finalize the server refuses with `refusal`; everything else answers as a plain draft. */
+  function mountRefusedFinalize(refusal: { code: string; details: unknown[] }) {
+    const get = vi.fn(async (path: string) => {
+      if (path === "/api/v1/encounters/{encounterId}") return { data: encounter };
+      if (path === "/api/v1/encounters/{encounterId}/cosignature")
+        return { data: { status: null } };
+      if (path === "/api/v1/patients/{id}")
+        return {
+          data: {
+            firstName: "Ava",
+            lastName: "Stone",
+            dob: "1950-01-01",
+            mrn: "MRN1",
+            status: "active",
+          },
+        };
+      if (path === "/api/v1/internal/care-plan/relevant-elements")
+        return { data: { problems: [], goals: [], interventions: [], redacted: false } };
+      return { data: { assessments: [] } };
+    });
+    const patch = vi.fn(async () => ({ data: { status: "ok" }, response: new Response() }));
+    const post = vi.fn(async (path: string) =>
+      path.endsWith("/finalize")
+        ? {
+            error: { error: { code: refusal.code, message: "m", details: refusal.details } },
+            response: new Response(null, { status: 422 }),
+          }
+        : { data: { status: "ok" }, response: new Response() },
+    );
+    renderEncounter({ GET: get, PATCH: patch, POST: post });
+    return post;
+  }
 
-      fireEvent.click(await screen.findByRole("button", { name: "Review & finalize" }));
-      const link = await screen.findByRole("link", { name: action });
-      expect(link.getAttribute("href")).toBe(href);
-    },
-  );
+  it("sends a server care-plan finalize blocker to the care plan from the blocker panel", async () => {
+    mountRefusedFinalize({
+      code: "COMPLIANCE_GATE_FAILED",
+      details: [{ field: "carePlan", code: "CARE_PLAN_REVIEW_OVERDUE", message: "m" }],
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Finalize note" }));
+    const panel = await screen.findByRole("region", { name: "Finalize and sign checks" });
+    expect(await within(panel).findByText("Blocked: 1 item to fix")).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: "Open care plan" }));
+    expect((await screen.findByLabelText("location")).textContent).toBe("care plan screen");
+  });
+
+  it("keeps the EVV correction link for a refusal that is not the gate's, in the page banner", async () => {
+    mountRefusedFinalize({
+      code: "VALIDATION_FAILED",
+      details: [
+        { field: "evv", code: "INVALID", message: "Resolve this server-identified blocker." },
+      ],
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Finalize note" }));
+    const link = await screen.findByRole("link", { name: "Open EVV reconciliation" });
+    expect(link.getAttribute("href")).toBe("/evv/missing-resolutions");
+  });
 
   it("asks for the closure status again after a signature, so a lifted block's banner clears at once", async () => {
     let closureReads = 0;

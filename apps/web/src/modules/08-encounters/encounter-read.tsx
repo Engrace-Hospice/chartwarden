@@ -4,10 +4,8 @@ import {
   Glyph,
   LoadingSpinner,
   Modal,
-  PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
-  ageYears,
   cardSurface,
   ghostBorder,
   t,
@@ -15,9 +13,10 @@ import {
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import { useNoteClosure } from "../../shell/note-closure";
+import { useForwardReturn } from "../../shell/use-return-target";
 import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assessments-api";
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
 import { openAddendum } from "./addenda-api";
@@ -45,7 +44,26 @@ import {
   fieldKeyFromPath,
   validationDetails,
 } from "./read-errors";
-import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice } from "./sign-draft-notice";
+import {
+  BlockerPanel,
+  type GateAttempt,
+  LateEntryReasonField,
+  type NoteTarget,
+  asksForLateEntryReason,
+  composeHrefFor,
+  connectionLostAttempt,
+  externalPathFor,
+  focusLateEntryReason,
+  lateEntryReasonToSend,
+  panelAttemptFor,
+  panelWordsRefusal,
+  recordRemedyLabel,
+  refusalMovedStatus,
+  refusedAttempt,
+  responseRefusal,
+  useAnchorFocus,
+} from "./review";
+import { SIGN_DRAFT_NOTICE_ID, SignDraftNotice, humanizeSection } from "./sign-draft-notice";
 import { SignedNoteView } from "./signed-note-view";
 import { useAmendableSections } from "./use-amendable-sections";
 import { useCosignCeremony } from "./use-cosign-ceremony";
@@ -60,11 +78,18 @@ import {
   unconfirmedSeed,
 } from "./visit-delivery";
 import { VisitDeliveryFields } from "./visit-delivery-fields";
+import { COMPLETE_ANCHOR_ID, REVIEW_ANCHOR_ID, jumpToAnchor } from "./workspace/jump-to-anchor";
+import { useHashAnchor } from "./workspace/use-hash-anchor";
+import { VisitContextHeader } from "./workspace/visit-context-header";
+import { VisitPatientBanner } from "./workspace/visit-patient-banner";
 import { writeRefusalMessage } from "./write-refusal";
 import { authFailureRedirect } from "./write-workflow";
 
 // The sign ceremony; the cosigner's three (acknowledge, sign, supervisor release) are `useCosignCeremony`, shared with an amendment's request.
 type CeremonyMode = "sign" | null;
+
+/** The id of the checks panel in the rail: focus goes there once a finalize has gone through (the Finalize button is gone by then). */
+const FINALIZE_CHECKS_ID = "visit-finalize-checks";
 
 type EncounterSection =
   | "documentation"
@@ -116,15 +141,38 @@ function hasAnyValue(record: Record<string, unknown> | null | undefined): boolea
   );
 }
 
+/**
+ * One screen instance per encounter: opening another encounter (Back or Forward between record URLs, a link from a list) starts with
+ * nothing of the previous one on screen: no patient banner, no half-typed vitals, no open ceremony (Workflow 09, scenario T27).
+ */
 export function EncounterRead(): JSX.Element {
+  const { encounterId } = useParams<{ encounterId: string }>();
+  return <EncounterReadScreen key={encounterId} />;
+}
+
+function EncounterReadScreen(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
-  const { refresh: refreshClosureStatus } = useNoteClosure();
-
+  const location = useLocation();
   const { patientId, encounterId } = useParams<{
     patientId: string;
     encounterId: string;
   }>();
+  // The redirect in `load` keeps the query and hash and compares the URL's patient; it reads the latest through refs (written in an
+  // effect, never during render) so that neither an in-page hash change nor the redirect itself re-creates `load` and reads again.
+  const locationRef = useRef(location);
+  const patientIdRef = useRef(patientId);
+  const navigateRef = useRef(navigate);
+  useEffect(() => {
+    locationRef.current = location;
+    patientIdRef.current = patientId;
+    navigateRef.current = navigate;
+  });
+  // Bumped by every `load` and when the screen goes away: a read that comes back after a newer one, or after Back, is dropped.
+  const loadSequence = useRef(0);
+  // Where the composer opens from here keeps the way back this screen was opened with.
+  const withOrigin = useForwardReturn();
+  const { refresh: refreshClosureStatus } = useNoteClosure();
 
   const [encounter, setEncounter] = useState<Encounter | null>(null);
   // ADR-0114: the pre-drafted sections the signer must have resolved. Read once the encounter is known, and again when its status moves.
@@ -144,11 +192,19 @@ export function EncounterRead(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   // The failed read is the Part 2 note view that could not be decided (503): the screen offers a retry.
   const [retryable, setRetryable] = useState(false);
+  useHashAnchor(!loading && error === null && encounter !== null);
 
   const [ceremony, setCeremony] = useState<CeremonyMode>(null);
   const [utilityModal, setUtilityModal] = useState<"void" | "addendum" | "assessment" | null>(null);
 
   const [busy, setBusy] = useState(false);
+  // What the server last said to a finalize or a sign (WF09 WP3), and the author's late-entry reason for the next finalize.
+  const [attempt, setAttempt] = useState<GateAttempt>({ state: "none" });
+  const [lateReason, setLateReason] = useState("");
+  const focusChecks = useAnchorFocus(
+    FINALIZE_CHECKS_ID,
+    !loading && error === null && encounter !== null,
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   // The sign ceremony's commit button is disabled while the request is in flight, so a failure would otherwise
   // leave keyboard focus on nothing: move it to the error, which is also announced.
@@ -228,17 +284,36 @@ export function EncounterRead(): JSX.Element {
     async (inPlace?: boolean) => {
       if (!encounterId) return;
 
+      loadSequence.current += 1;
+      const sequence = loadSequence.current;
       if (!inPlace) setLoading(true);
       setError(null);
       setRetryable(false);
 
-      const read = await readEncounter(client, encounterId, patientId);
+      const read = await readEncounter(client, encounterId);
+      // Superseded by a newer read, or the user left the screen (Back): this answer must not move the URL or the screen.
+      if (sequence !== loadSequence.current) return;
 
       if (!read.ok) {
         setRetryable(read.noteViewUnavailable);
         setError(read.message);
         setLoading(false);
         return;
+      }
+
+      // The encounter's own patient is the authority. A path that names another patient is moved to the right one (its query and hash
+      // kept, so the way back and the in-page anchor survive) instead of showing this note under the wrong patient's chart. The
+      // redirect and the screen's state land in one batch from this one read: the redirect does not trigger a second read.
+      const urlPatientId = patientIdRef.current;
+      if (urlPatientId && read.encounter.patientId !== urlPatientId) {
+        navigateRef.current(
+          {
+            pathname: `/patients/${read.encounter.patientId}/encounters/${encounterId}`,
+            search: locationRef.current.search,
+            hash: locationRef.current.hash,
+          },
+          { replace: true },
+        );
       }
 
       setEncounter(read.encounter);
@@ -253,11 +328,14 @@ export function EncounterRead(): JSX.Element {
       setNoteEdited(read.noteEdited);
       setLoading(false);
     },
-    [client, encounterId, patientId],
+    [client, encounterId],
   );
 
   useEffect(() => {
     void load();
+    return () => {
+      loadSequence.current += 1;
+    };
   }, [load]);
 
   // The cosigner's acknowledge / sign / supervisor release for THIS note's request: one ceremony, shared with an amendment's.
@@ -361,6 +439,7 @@ export function EncounterRead(): JSX.Element {
       // A lost reply may mean the action already landed, so say so: retrying an unchanged form is safe (the same
       // idempotency key replays), but a changed form is a new intent and the server may answer that it is done.
       setBusy(false);
+      setAttempt(connectionLostAttempt("sign"));
       setActionError(
         "Could not reach the server. Check your connection and try again; if it keeps failing, reload the page to see whether the action already went through.",
       );
@@ -381,6 +460,14 @@ export function EncounterRead(): JSX.Element {
       }
 
       setBusy(false);
+      const refused = refusedAttempt(
+        responseRefusal(response?.status, err),
+        "sign",
+        humanizeSection,
+      );
+      setAttempt(refused);
+      // Signed or changed in another tab: read the note again, in place, so what this screen offers is true again.
+      if (refusalMovedStatus(refused)) void load(true);
 
       // ADR-0114: the signer's drafted sections are not resolved against the draft as it stands now. Re-read it; the message says which.
       if (errCode === "DRAFT_SECTION_STALE") void reloadDraft();
@@ -397,6 +484,7 @@ export function EncounterRead(): JSX.Element {
     }
 
     setBusy(false);
+    setAttempt({ state: "none" });
     closeCeremony();
 
     void load();
@@ -424,7 +512,9 @@ export function EncounterRead(): JSX.Element {
     success: string,
     supportedFields: readonly string[] = [],
     section?: EncounterSection,
-  ): Promise<void> {
+    /** Says the refusal itself (the blocker panel) and returns true when it is the one place to read it: the banner and field errors are then skipped. */
+    onRefused?: (error: unknown, status: number | undefined) => boolean,
+  ): Promise<boolean> {
     setBusy(true);
     setActionError(null);
     setActionRemediation(null);
@@ -439,6 +529,7 @@ export function EncounterRead(): JSX.Element {
     setBusy(false);
 
     if (res.error) {
+      if (onRefused?.(res.error, res.response?.status) === true) return false;
       const mapped = fieldErrorsFrom(res.error, supportedFields);
       const remediation = validationDetails(res.error)
         .map((detail) => fieldKeyFromPath(detail.field))
@@ -463,7 +554,7 @@ export function EncounterRead(): JSX.Element {
         }
       }
 
-      return;
+      return false;
     }
 
     clearFieldErrors(supportedFields);
@@ -476,7 +567,9 @@ export function EncounterRead(): JSX.Element {
       clearSectionError(section);
     }
 
-    await load();
+    // In place: the page keeps what it holds (the checks panel and its live region, the scroll position) while the note is read again.
+    await load(true);
+    return true;
   }
 
   async function saveVitals(): Promise<void> {
@@ -611,16 +704,32 @@ export function EncounterRead(): JSX.Element {
 
   async function finalizeEncounter(): Promise<void> {
     if (!encounterId) return;
+    setAttempt({ state: "running" });
+    const lateEntryReason = lateEntryReasonToSend(lateReason);
 
-    await runMutation(
+    try {
+      const finalized = await runFinalize(encounterId, lateEntryReason);
+      if (finalized) {
+        setAttempt({ state: "finalized" });
+        focusChecks();
+      }
+    } catch {
+      // The request never got an answer: nothing is known about the note, and the form is given back.
+      setBusy(false);
+      setAttempt(connectionLostAttempt("finalize"));
+    }
+  }
+
+  function runFinalize(id: string, lateEntryReason: string | undefined): Promise<boolean> {
+    return runMutation(
       () =>
         post("/api/v1/encounters/{encounterId}/finalize", {
           params: {
             path: {
-              encounterId,
+              encounterId: id,
             },
           },
-          body: {},
+          body: lateEntryReason === undefined ? {} : { lateEntryReason },
         }),
       "Encounter finalized.",
       [
@@ -640,6 +749,16 @@ export function EncounterRead(): JSX.Element {
         "source",
         "manualOverrideReason",
       ],
+      undefined,
+      (error, status) => {
+        const refused = refusedAttempt(responseRefusal(status, error), "finalize", humanizeSection);
+        setAttempt(refused);
+        // Finalized or signed in another tab: read the note again, in place.
+        if (refusalMovedStatus(refused)) void load(true);
+        // The checks panel is the one announcement of a refusal it words itself: no banner or field error repeats it. A code it does not
+        // know keeps the banner (the server's sentence, and the link to the care plan or the EVV reconciliation that fixes it).
+        return panelWordsRefusal(refused);
+      },
     );
   }
 
@@ -675,14 +794,8 @@ export function EncounterRead(): JSX.Element {
     );
   }
 
-  const bailBanner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}`}
-      chips={<MonoChip>{patient.mrn}</MonoChip>}
-    />
-  ) : (
-    <PatientBanner name="Encounter" />
+  const bailBanner = (
+    <VisitPatientBanner patient={patient} patientId={encounter?.patientId ?? null} />
   );
 
   if (loading) {
@@ -712,6 +825,57 @@ export function EncounterRead(): JSX.Element {
    * These remain unchanged.
    */
   const canSign = e.status === "finalized";
+  const panelAttempt = panelAttemptFor(e.status, attempt);
+
+  function startSign(): void {
+    setDelivery(
+      initialDelivery(asVisitModality(e.visitModality), e.visitModalityConfirmed === true),
+    );
+    setCeremony("sign");
+  }
+
+  /** Take the author to where a blocker is fixed: the composer for anything in the note, the screen that records the rest. */
+  function openTarget(target: NoteTarget): void {
+    // The composer opens at the part of the note the target names (`?focus=`); `save_selections` opens it plain (the record cannot save them).
+    const composePath = withOrigin(
+      composeHrefFor(`/patients/${e.patientId}/encounters/${e.id}/compose`, target),
+    );
+    const outside = externalPathFor(target, e.patientId);
+    if (outside !== null) {
+      navigate(outside);
+      return;
+    }
+    switch (target.kind) {
+      case "section":
+      case "draft_section":
+      case "vitals":
+      case "plan_step":
+      case "save_selections":
+      case "note_text":
+        navigate(composePath);
+        return;
+      case "late_entry_reason":
+        focusLateEntryReason();
+        return;
+      case "reauthenticate":
+        navigate(
+          authFailureRedirect(
+            403,
+            "STEP_UP_REQUIRED",
+            `${window.location.pathname}${window.location.search}`,
+          ) ?? "/step-up",
+        );
+        return;
+      case "open_note":
+        jumpToAnchor(REVIEW_ANCHOR_ID);
+        return;
+      case "scales":
+      case "care_plan_review":
+      case "my_notes":
+      case "none":
+        return;
+    }
+  }
   // ADR-0114: signing is blocked until every drafted section is resolved; the server is the judge, this only tells the signer first.
   const draftSections =
     draftLoad.status === "ready" && draftIsActive(draftLoad.draft) ? draftLoad.draft : null;
@@ -789,50 +953,15 @@ export function EncounterRead(): JSX.Element {
   const startedSections = workflowSections.filter((section) => section.started).length;
 
   const nextSuggestedSection =
-    workflowSections.find((section) => !section.started)?.label ?? "Review & finalize";
+    workflowSections.find((section) => !section.started)?.label ?? "Finalize note";
 
-  const banner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}${
-        ageYears(patient.dob) != null ? ` · ${ageYears(patient.dob)}y` : ""
-      }`}
-      chips={
-        <>
-          <MonoChip>{patient.mrn}</MonoChip>
-
-          <StatusPill
-            label={stateLabel(patient.status)}
-            tone={ENCOUNTER_TONE[patient.status] ?? "neutral"}
-          />
-        </>
-      }
-      actions={
-        <div style={bannerActions}>
-          <button
-            type="button"
-            onClick={() => navigate(`/patients/${e.patientId}/encounters`)}
-            style={ghostBtn}
-          >
-            Back to encounters
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate(`/patients/${e.patientId}`)}
-            style={ghostBtn}
-          >
-            Open chart
-          </button>
-        </div>
-      }
-    />
-  ) : (
-    <PatientBanner name="Encounter" />
-  );
+  const banner = <VisitPatientBanner patient={patient} patientId={e.patientId} />;
 
   return (
-    <PatientWorkspaceLayout banner={banner}>
+    <PatientWorkspaceLayout
+      banner={banner}
+      contextHeader={<VisitContextHeader screen="record" encounter={e} />}
+    >
       <div style={workspace}>
         <div style={workspaceBody}>
           <ChartModuleRail patientId={e.patientId} current="encounters" />
@@ -938,7 +1067,7 @@ export function EncounterRead(): JSX.Element {
                 1. DOCUMENTATION
             ──────────────────────────────────────────────────────── */}
 
-              <section style={sectionCard}>
+              <section id={REVIEW_ANCHOR_ID} tabIndex={-1} style={sectionCard}>
                 <div style={sectionHeader}>
                   <SectionHeading
                     step="1"
@@ -952,7 +1081,7 @@ export function EncounterRead(): JSX.Element {
                     <button
                       type="button"
                       onClick={() =>
-                        navigate(`/patients/${e.patientId}/encounters/${e.id}/compose`)
+                        navigate(withOrigin(`/patients/${e.patientId}/encounters/${e.id}/compose`))
                       }
                       disabled={busy}
                       style={primaryBtn}
@@ -1402,7 +1531,7 @@ export function EncounterRead(): JSX.Element {
               {/* ─────────────────────────────────────────────────────────
       QUICK ACTIONS
   ────────────────────────────────────────────────────────── */}
-              <div style={quickActionsCard}>
+              <div id={COMPLETE_ANCHOR_ID} tabIndex={-1} style={quickActionsCard}>
                 <div style={railHeading}>
                   <div style={railIconBox}>
                     <Glyph name="arrow-right" size={16} />
@@ -1431,19 +1560,20 @@ export function EncounterRead(): JSX.Element {
                       <strong style={quickActionTitle}>Draft visit</strong>
 
                       <span style={quickActionHelp}>
-                        Complete the visit documentation, then finalize when ready.
+                        Complete the visit documentation, then finalize. The server checks the note
+                        when you finalize.
                       </span>
                     </>
                   ) : e.status === "finalized" ? (
                     <>
                       <strong style={quickActionTitle}>
-                        {signBlockedByDraft ? "Review before signing" : "Ready for signature"}
+                        {signBlockedByDraft ? "Review before signing" : "Awaiting signature"}
                       </strong>
 
                       <span style={quickActionHelp}>
                         {signBlockedByDraft
                           ? "The encounter has been finalized. It can be signed once its drafted sections are resolved."
-                          : "The encounter has been finalized and can now be signed."}
+                          : "The note is finalized and its text is frozen. It is not signed."}
                       </span>
                     </>
                   ) : (
@@ -1458,7 +1588,7 @@ export function EncounterRead(): JSX.Element {
                 {signBlockedByDraft ? (
                   <SignDraftNotice
                     sections={sectionsToReview}
-                    composePath={`/patients/${e.patientId}/encounters/${e.id}/compose`}
+                    composePath={withOrigin(`/patients/${e.patientId}/encounters/${e.id}/compose`)}
                   />
                 ) : null}
 
@@ -1510,13 +1640,7 @@ export function EncounterRead(): JSX.Element {
                       aria-describedby={signBlockedByDraft ? SIGN_DRAFT_NOTICE_ID : undefined}
                       onClick={() => {
                         if (signBlockedByDraft) return;
-                        setDelivery(
-                          initialDelivery(
-                            asVisitModality(e.visitModality),
-                            e.visitModalityConfirmed === true,
-                          ),
-                        );
-                        setCeremony("sign");
+                        startSign();
                       }}
                       style={{
                         ...primaryBtn,
@@ -1539,7 +1663,7 @@ export function EncounterRead(): JSX.Element {
                           width: "100%",
                         }}
                       >
-                        {busy ? "Working…" : "Review & finalize"}
+                        {busy ? "Working…" : "Finalize note"}
                       </button>
 
                       <button
@@ -1572,6 +1696,35 @@ export function EncounterRead(): JSX.Element {
                   ) : null}
                 </div>
               </div>
+
+              {e.status === "draft" || e.status === "finalized" ? (
+                <>
+                  {e.status === "draft" &&
+                  (asksForLateEntryReason(attempt) || lateReason !== "") ? (
+                    <LateEntryReasonField
+                      value={lateReason}
+                      onChange={setLateReason}
+                      disabled={busy}
+                    />
+                  ) : null}
+
+                  <BlockerPanel
+                    id={FINALIZE_CHECKS_ID}
+                    attempt={panelAttempt}
+                    onRemedy={openTarget}
+                    remedyLabel={recordRemedyLabel}
+                    takeFocus={ceremony === null}
+                    onRetry={() => {
+                      if (busy) return;
+                      if (attempt.state === "refused" && attempt.refusal.moment === "sign") {
+                        startSign();
+                        return;
+                      }
+                      void finalizeEncounter();
+                    }}
+                  />
+                </>
+              ) : null}
 
               {e.addenda.length > 0 || e.status === "signed" || e.status === "cosigned" ? (
                 <div style={railCard}>
@@ -2290,10 +2443,6 @@ function RowField({
   );
 }
 
-function MonoChip({ children }: { children: ReactNode }): JSX.Element {
-  return <span style={monoChip}>{children}</span>;
-}
-
 /* ──────────────────────────────────────────────────────────────────────────
    LAYOUT
 ────────────────────────────────────────────────────────────────────────── */
@@ -2339,14 +2488,6 @@ const titleLine: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.75rem",
-  flexWrap: "wrap",
-};
-
-const bannerActions: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  gap: "0.5rem",
   flexWrap: "wrap",
 };
 
@@ -2976,10 +3117,6 @@ const secondaryBtn: CSSProperties = {
   cursor: "pointer",
 };
 
-const ghostBtn: CSSProperties = {
-  ...secondaryBtn,
-};
-
 const primaryBtn: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -3084,15 +3221,6 @@ const modalActions: CSSProperties = {
   display: "flex",
   justifyContent: "flex-end",
   gap: "0.5rem",
-};
-
-const monoChip: CSSProperties = {
-  fontFamily: t.fontMono,
-  fontSize: "0.78rem",
-  color: t.onSurfaceVariant,
-  background: t.surfaceContainer,
-  borderRadius: "9999px",
-  padding: "0.15rem 0.55rem",
 };
 
 const meta: CSSProperties = {

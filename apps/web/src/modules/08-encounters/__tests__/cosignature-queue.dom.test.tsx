@@ -7,7 +7,12 @@ import { CosignatureQueue } from "../cosignature-queue";
 
 function Location(): JSX.Element {
   const location = useLocation();
-  return <output aria-label="location">{`${location.pathname}${location.hash}`}</output>;
+  return (
+    <>
+      <output aria-label="location">{`${location.pathname}${location.hash}`}</output>
+      <output aria-label="search">{location.search}</output>
+    </>
+  );
 }
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -77,6 +82,25 @@ describe("Cosignature queue task actions", () => {
     );
     expect(screen.getByLabelText("location").textContent).toBe(
       "/patients/patient-12345678/encounters/encounter-12345678",
+    );
+  });
+});
+
+describe("Cosignature queue: the way back (Workflow 09, WP1)", () => {
+  it("sends the queue as the way back from a reviewed note, and keeps the amendment's anchor", async () => {
+    const user = userEvent.setup();
+    mountQueue([noteEntry, amendmentEntry]);
+    const [first] = await rows();
+    await user.click(
+      within(first as HTMLElement).getByRole("button", {
+        name: "Review amendment to LPN routine visit for patient patient- on 2026-11-15",
+      }),
+    );
+    expect(screen.getByLabelText("search").textContent).toBe(
+      `?from=${encodeURIComponent("/work/cosignatures")}`,
+    );
+    expect(screen.getByLabelText("location").textContent).toBe(
+      "/patients/patient-12345678/encounters/encounter-12345678#addendum-cosign-addendum-87654321",
     );
   });
 });

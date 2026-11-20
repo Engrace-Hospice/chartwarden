@@ -11,7 +11,8 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // sending it from forgetting it. Several assertions are about the SHAPE of the selection tree, which the
 // server validates section-by-section and code-by-code: a composer that sent a section the template does
 // not have would be rejected in production and would pass a shallow "did we PATCH" check.
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import axe from "axe-core";
 import type { JSX } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -352,7 +353,10 @@ describe("Workflow 04 — patient context and recoverable navigation", () => {
     expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
     expect(screen.getByText("MRN-9")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to encounter" }));
+    // One way back (WP1): the old "Back to encounter" / "Open record" pair, which went to the same place, is one link.
+    expect(screen.queryByRole("button", { name: "Open record" })).toBeNull();
+    expect(screen.getAllByRole("link", { name: "Back to encounter" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("link", { name: "Back to encounter" }));
     expect(await screen.findByRole("heading", { name: "Encounter destination" })).toBeTruthy();
   });
 
@@ -577,7 +581,9 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
     mountCompose();
     const button = await waitFor(() => screen.getByRole("button", { name: "Finalize note" }));
     expect((button as HTMLButtonElement).disabled).toBe(false);
-    expect(await screen.findByText(/Complete Assessment before finalization/i)).toBeTruthy();
+    expect(
+      await screen.findByText(/Add an entry or finish the details in Assessment/i),
+    ).toBeTruthy();
   });
 
   it("a 409 STALE_VERSION reads as a concurrent save, not as a generic error", async () => {
@@ -791,7 +797,11 @@ describe("WF09 step 1 — typed slots and contradictory statements", () => {
       section("med_reconciliation", "Medication Reconciliation", [medrec]),
     ],
   };
-  const goTo = (heading: RegExp) => fireEvent.click(screen.getByRole("button", { name: heading }));
+  // The section list only: the Review panel carries an Edit button per section too.
+  const goTo = (heading: RegExp) =>
+    fireEvent.click(
+      within(screen.getByLabelText("Visit note sections")).getByRole("button", { name: heading }),
+    );
   const checkbox = (name: RegExp) => screen.getByLabelText(name) as HTMLInputElement;
 
   it("renders a choice slot as a select and sends the chosen option", async () => {
@@ -899,22 +909,22 @@ describe("WF09 step 1 — typed slots and contradictory statements", () => {
     ).toBeTruthy();
   });
 
-  it("a statement with an empty slot leaves its section 'Needs details', not 'Documented'", async () => {
+  it("a statement with an empty slot leaves its section 'Needs details', not 'Entered'", async () => {
     templateOverride = typedTemplate;
     mountCompose();
     fireEvent.click(await screen.findByLabelText(/limited mobility/i));
 
     expect(screen.getByRole("button", { name: "Assessment: Needs details" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Assessment: Documented" })).toBeNull();
-    expect(screen.getByText(/0 of 4 sections documented/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Assessment: Entered" })).toBeNull();
+    expect(screen.getByText(/0 of 4 sections have an entry/i)).toBeTruthy();
     // The banner names it too, so the author is not told "complete" while finalize would refuse.
-    expect(screen.getByText(/Complete Assessment before finalization/i)).toBeTruthy();
+    expect(screen.getByText(/Add an entry or finish the details in Assessment/i)).toBeTruthy();
 
     fireEvent.change(await screen.findByLabelText("Assistance needed"), {
       target: { value: "moderate" },
     });
-    expect(screen.getByRole("button", { name: "Assessment: Documented" })).toBeTruthy();
-    expect(screen.getByText(/1 of 4 sections documented/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Assessment: Entered" })).toBeTruthy();
+    expect(screen.getByText(/1 of 4 sections have an entry/i)).toBeTruthy();
   });
 
   it("an optional section with an empty slot is flagged as well, since finalize refuses it too", async () => {
@@ -1027,14 +1037,16 @@ describe("WF09 step 2 — Reason for Visit is a select", () => {
     fireEvent.change(select, { target: { value: "nv.reason.routine" } });
     fireEvent.change(select, { target: { value: "" } });
     expect(select.value).toBe("");
-    expect(screen.getByRole("button", { name: "Reason for Visit: Required" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Reason for Visit: Required, no entry" }),
+    ).toBeTruthy();
   });
 
   it("a chosen reason documents the section, and free text stays available for the detail", async () => {
     templateOverride = reasonTemplate;
     mountCompose();
     fireEvent.change(await reasonSelect(), { target: { value: "nv.reason.fall_followup" } });
-    expect(screen.getByRole("button", { name: "Reason for Visit: Documented" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reason for Visit: Entered" })).toBeTruthy();
     expect(screen.getByLabelText("Additional notes")).toBeTruthy();
     expect(
       screen.getByText(/Optional\. Enter only information not already represented/),
@@ -1105,7 +1117,8 @@ describe("WF09 — a scheduled visit suggests its reason", () => {
     visitPurpose = "prn";
     mountCompose();
     expect((await select()).value).toBe("");
-    await waitFor(() => expect(visitReads()).toHaveLength(1));
+    // Two reads of the visit: the composer's reason lookup and the visit context header's (scheduled window, clinician).
+    await waitFor(() => expect(visitReads()).toHaveLength(2));
     expect(screen.queryByText(/Suggested from the scheduled visit/)).toBeNull();
   });
 
@@ -1117,7 +1130,7 @@ describe("WF09 — a scheduled visit suggests its reason", () => {
     ];
     mountCompose();
     expect((await select()).value).toBe("nv.reason.fall_followup");
-    await waitFor(() => expect(visitReads()).toHaveLength(1));
+    await waitFor(() => expect(visitReads()).toHaveLength(2));
     expect((await select()).value).toBe("nv.reason.fall_followup");
     expect(screen.queryByText(/Suggested from the scheduled visit/)).toBeNull();
   });
@@ -1379,5 +1392,107 @@ describe("WF09 — editing the note text", () => {
     mountCompose();
     await screen.findByText("Note as it reads");
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+});
+
+// Workflow 09, WP1 — the composer's visit context: one patient banner that opens the chart, one way back, the Document / Review /
+// Complete strip, and the two anchors Review and Complete move to.
+describe("Workflow 09, WP1 — the composer's visit context header", () => {
+  const composePath = `/patients/${PATIENT}/encounters/${ENCOUNTER}/compose`;
+  const mountComposeAt = (suffix: string) =>
+    mount(
+      `${composePath}${suffix}`,
+      <EncounterCompose />,
+      "/patients/:patientId/encounters/:encounterId/compose",
+    );
+  const origin = (path: string) => `?from=${encodeURIComponent(path)}`;
+
+  it("names the encounter and offers the patient's chart from the banner (T01, T22)", async () => {
+    mountCompose();
+    const header = await screen.findByRole("region", { name: "Visit context" });
+    expect(within(header).getByText("Routine Visit")).toBeTruthy();
+    expect(within(header).getByText("Draft")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Ada Lovelace" }).getAttribute("href")).toBe(
+      `/patients/${PATIENT}`,
+    );
+  });
+
+  it("has one Back link and no second 'Open record' button (T36)", async () => {
+    mountCompose();
+    await screen.findByRole("region", { name: "Visit context" });
+    expect(screen.getAllByRole("link", { name: /^Back to/ })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /^Back to/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open record" })).toBeNull();
+  });
+
+  it("goes back to where the note was opened from, and keeps the record one link away (T36)", async () => {
+    mountComposeAt(origin("/me/visits?status=in_visit"));
+    const back = await screen.findByRole("link", { name: "Back to My Visits" });
+    expect(back.getAttribute("href")).toBe("/me/visits?status=in_visit");
+    expect(screen.getByRole("link", { name: "Encounter record" }).getAttribute("href")).toBe(
+      `/patients/${PATIENT}/encounters/${ENCOUNTER}${origin("/me/visits?status=in_visit")}`,
+    );
+  });
+
+  it("ignores a way back that is not one of the app's screens", async () => {
+    mountComposeAt(origin("https://evil.example/me/visits"));
+    expect(
+      (await screen.findByRole("link", { name: "Back to encounter" })).getAttribute("href"),
+    ).toBe(`/patients/${PATIENT}/encounters/${ENCOUNTER}`);
+    expect(document.querySelector("a[href*='evil']")).toBeNull();
+  });
+
+  it("has the anchors the strip and the review panels use", async () => {
+    mountCompose();
+    await screen.findByRole("region", { name: "Visit context" });
+    for (const id of ["visit-document", "visit-review", "visit-complete"]) {
+      expect(document.getElementById(id), id).not.toBeNull();
+    }
+  });
+
+  it("lands on the Review anchor when opened at it (a copied address, a link from another screen)", async () => {
+    mountComposeAt("#visit-review");
+    await waitFor(() => expect(document.activeElement?.id).toBe("visit-review"));
+  });
+
+  it("says finalizing is not signing and links to the record's sign-off, keeping the way back", async () => {
+    const { router } = mountComposeAt(origin("/work/drafts"));
+    fireEvent.click(await screen.findByRole("button", { name: "Finalize note" }));
+
+    expect(await screen.findByText("Note finalized")).toBeTruthy();
+    expect(screen.getByText(/Finalizing is not signing/)).toBeTruthy();
+    expect(screen.queryByText("Sign it from the encounter record.")).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Go to sign-off" }));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/patients/${PATIENT}/encounters/${ENCOUNTER}`),
+    );
+    expect(router.state.location.search).toBe(origin("/work/drafts"));
+    expect(router.state.location.hash).toBe("#visit-complete");
+  });
+
+  it("has no accessibility violations with the header, the strip and the anchors in place", async () => {
+    mountComposeAt(origin("/me/visits"));
+    await screen.findByRole("region", { name: "Visit context" });
+    const results = await axe.run(document.body, {
+      // Page-level landmark rules judge the app shell this harness does not mount, not the screen under test.
+      rules: { region: { enabled: false }, "landmark-main-is-top-level": { enabled: false } },
+    });
+    expect(results.violations.map((v) => v.id)).toEqual([]);
+  });
+
+  it("offers no sign-off link while the note is still a draft", async () => {
+    mountCompose();
+    await screen.findByRole("region", { name: "Visit context" });
+    expect(screen.queryByRole("button", { name: "Go to sign-off" })).toBeNull();
+  });
+
+  it("sends Complete to the record once the note is finalized, because signing is not done in the composer", async () => {
+    encounterStatus = "finalized";
+    mountComposeAt(origin("/work/drafts"));
+    const strip = await screen.findByRole("navigation", { name: "Note workflow" });
+    expect(within(strip).getByRole("link", { name: "Complete" }).getAttribute("href")).toBe(
+      `/patients/${PATIENT}/encounters/${ENCOUNTER}${origin("/work/drafts")}#visit-complete`,
+    );
   });
 });

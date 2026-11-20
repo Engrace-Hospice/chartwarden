@@ -362,7 +362,7 @@ describe("a drafted section", () => {
     ).toBeInTheDocument();
     // A section with nothing drafted keeps its plain label.
     expect(
-      within(list).getByRole("button", { name: "Reason for Visit: Not started" }),
+      within(list).getByRole("button", { name: "Reason for Visit: No entry" }),
     ).toBeInTheDocument();
   });
 
@@ -615,11 +615,17 @@ describe("finalizing with drafted sections", () => {
     expect(
       screen.getByText(/Vital Signs Review \(changed since you resolved it\)/),
     ).toBeInTheDocument();
-    expect(screen.getByText("Drafted sections need your review")).toBeInTheDocument();
+    // The blocker panel is the one live region for the gate's refusal: the banner that used to repeat it is gone.
+    expect(screen.queryByText("Drafted sections need your review")).toBeNull();
+    const panel = screen.getByRole("region", { name: "Finalize and sign checks" });
+    expect(
+      within(panel).getByText("Plan and Next Visit: drafted text is not resolved"),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("Vital Signs Review: drafted text changed")).toBeInTheDocument();
     await waitFor(() => expect(callsTo("GET", "/draft").length).toBeGreaterThan(reads));
   });
 
-  it("repeats the first refusal that is not about the draft, so nothing the gate listed is hidden", async () => {
+  it("lists every failure the gate named in the blocker panel, drafted or not, so nothing it listed is hidden", async () => {
     const user = userEvent.setup();
     mountComposer({
       [`POST ${BASE}/finalize`]: () =>
@@ -634,8 +640,11 @@ describe("finalizing with drafted sections", () => {
     });
     await ready();
     await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    const panel = await screen.findByRole("region", { name: "Finalize and sign checks" });
+    expect(within(panel).getByText("Blocked: 2 items to fix")).toBeInTheDocument();
+    expect(within(panel).getByText("Vitals are required for this visit")).toBeInTheDocument();
     expect(
-      await screen.findByText(/Also: Vitals: Vitals are required for this visit/),
+      within(panel).getByText("Plan and Next Visit: drafted text is not resolved"),
     ).toBeInTheDocument();
   });
 
@@ -700,7 +709,7 @@ describe("the composer as before", () => {
     await ready();
     expect(
       await within(await sectionList()).findByRole("button", {
-        name: "Reason for Visit: Not started",
+        name: "Reason for Visit: No entry",
       }),
     ).toBeInTheDocument();
     await waitFor(() => expect(callsTo("GET", "/draft")).toHaveLength(1));
@@ -1036,16 +1045,17 @@ describe("a draft that is being re-read", () => {
     expect(save).toHaveFocus();
   });
 
-  it("says the draft could not be checked, in words, when finalizing answers 503", async () => {
+  it("says the server could not run its checks, in words, when finalizing answers 503", async () => {
     const user = userEvent.setup();
     mountComposer({
       [`POST ${BASE}/finalize`]: () => errorBody(503, "COMPLIANCE_GATE_UNAVAILABLE"),
     });
     await ready();
     await user.click(screen.getByRole("button", { name: "Finalize note" }));
+    // The panel's fixed sentence: a 503 can come from the care plan, the scales or the cosigner lookup as well as the draft.
     expect(
       await screen.findByText(
-        /The visit-note draft could not be checked right now\. The note was not finalized/,
+        "The server could not run its checks right now, so the note was not finalized. Try again in a moment.",
       ),
     ).toBeInTheDocument();
   });
@@ -1356,17 +1366,17 @@ describe("the required count and drafted text", () => {
     );
   };
   const requiredRemaining = (): HTMLElement =>
-    screen.getByText("required remaining").parentElement as HTMLElement;
+    screen.getByText("required with no entry").parentElement as HTMLElement;
 
   it("counts a section whose drafted text was confirmed as populated", async () => {
     withAssessment("confirmed");
     mountComposer();
     await ready();
-    expect(await screen.findByText("Required documentation is complete")).toBeInTheDocument();
-    expect(requiredRemaining()).toHaveTextContent(/^0\s*required remaining$/);
+    expect(await screen.findByText("Every required section has an entry")).toBeInTheDocument();
+    expect(requiredRemaining()).toHaveTextContent(/^0\s*required with no entry$/);
     expect(
       within(await sectionList()).getByRole("button", {
-        name: "Assessment: Documented, draft confirmed",
+        name: "Assessment: Entered, draft confirmed",
       }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/section needs attention/)).toBeNull();
@@ -1382,10 +1392,10 @@ describe("the required count and drafted text", () => {
     await ready();
     expect(
       await within(await sectionList()).findByRole("button", {
-        name: `Assessment: Required, ${railDraft}`,
+        name: `Assessment: Required, no entry, ${railDraft}`,
       }),
     ).toBeInTheDocument();
-    expect(requiredRemaining()).toHaveTextContent(/^1\s*required remaining$/);
+    expect(requiredRemaining()).toHaveTextContent(/^1\s*required with no entry$/);
     expect(screen.getByText(/1 section needs attention/)).toBeInTheDocument();
   });
 
@@ -1395,12 +1405,14 @@ describe("the required count and drafted text", () => {
     mountComposer({ [`PUT ${BASE}/draft/sections/assessment`]: sectionPut("assessment") });
     await ready();
     await openSection(user, /^Assessment/);
-    expect(requiredRemaining()).toHaveTextContent(/^1\s*required remaining$/);
+    expect(requiredRemaining()).toHaveTextContent(/^1\s*required with no entry$/);
 
     await user.click(await screen.findByRole("button", { name: "Confirm section" }));
 
-    await waitFor(() => expect(requiredRemaining()).toHaveTextContent(/^0\s*required remaining$/));
-    expect(screen.getByText("Required documentation is complete")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(requiredRemaining()).toHaveTextContent(/^0\s*required with no entry$/),
+    );
+    expect(screen.getByText("Every required section has an entry")).toBeInTheDocument();
   });
 
   it("counts again once a deselect takes the confirmed text out", async () => {
@@ -1408,19 +1420,23 @@ describe("the required count and drafted text", () => {
     withAssessment("confirmed");
     mountComposer({ [`PUT ${BASE}/draft/sections/assessment`]: sectionPut("assessment") });
     await ready();
-    await waitFor(() => expect(requiredRemaining()).toHaveTextContent(/^0\s*required remaining$/));
+    await waitFor(() =>
+      expect(requiredRemaining()).toHaveTextContent(/^0\s*required with no entry$/),
+    );
     await openSection(user, /^Assessment/);
 
     await user.click(await screen.findByRole("button", { name: "Deselect section" }));
 
-    await waitFor(() => expect(requiredRemaining()).toHaveTextContent(/^1\s*required remaining$/));
+    await waitFor(() =>
+      expect(requiredRemaining()).toHaveTextContent(/^1\s*required with no entry$/),
+    );
   });
 
   it("counts as before when the tenant has the draft switched off", async () => {
     mountComposer({ [`GET ${BASE}/draft`]: () => errorBody(404, "NOT_FOUND") });
     await ready();
     await waitFor(() => expect(callsTo("GET", "/draft")).toHaveLength(1));
-    expect(requiredRemaining()).toHaveTextContent(/^1\s*required remaining$/);
+    expect(requiredRemaining()).toHaveTextContent(/^1\s*required with no entry$/);
   });
 });
 

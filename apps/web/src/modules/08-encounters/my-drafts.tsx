@@ -27,6 +27,7 @@ import { useNavigate } from "react-router-dom";
 import { NameLabel, patientNameOf } from "../../shell/name-display";
 import { useNoteClosure } from "../../shell/note-closure";
 import { usePatientNames } from "../../shell/patient-names";
+import { useReturnHere } from "../../shell/use-return-target";
 import { lateEntryTone, stateLabel } from "./encounter-status";
 import {
   type ClosureFilter,
@@ -55,6 +56,8 @@ const isClosureFilter = (value: string): value is ClosureFilter =>
 
 export function MyDrafts(): JSX.Element {
   const navigate = useNavigate();
+  // The way back from an opened note is this list.
+  const withReturn = useReturnHere();
   const [disciplineFilter, setDisciplineFilter] = useState("");
   const [lateFilter, setLateFilter] = useState("");
   const [closureFilter, setClosureFilter] = useState<ClosureFilter>("");
@@ -348,7 +351,7 @@ export function MyDrafts(): JSX.Element {
                       // reason to exist is the note that is not finished yet; until the composer existed
                       // every row led to a read-only view of the thing the author came here to write.
                       // A FINALIZED note is finished writing: it opens the read screen, where it is signed.
-                      {...interactiveRowProps(() => navigate(noteHref(e)), false, true)}
+                      {...interactiveRowProps(() => navigate(withReturn(noteHref(e))), false, true)}
                       style={{ cursor: "pointer" }}
                     >
                       <td>
@@ -389,7 +392,7 @@ export function MyDrafts(): JSX.Element {
                           tone="secondary"
                           onClick={(event) => {
                             event.stopPropagation();
-                            navigate(noteHref(e));
+                            navigate(withReturn(noteHref(e)));
                           }}
                         >
                           {openNoteLabel(e.status)}

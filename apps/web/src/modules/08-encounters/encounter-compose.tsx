@@ -14,7 +14,6 @@ import {
   LoadingSpinner,
   Modal,
   PageHeader,
-  PatientBanner,
   PatientWorkspaceLayout,
   SelectField,
   StatusPill,
@@ -24,8 +23,15 @@ import {
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
-import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
+import {
+  type BlockerFunction,
+  useBlocker,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { type PanelStatus, withPanelStatus } from "../../shell/panel-status";
+import { useForwardReturn } from "../../shell/use-return-target";
 import { PlanOfCareStep } from "../07-care-plan/change-proposals";
 import { type UiFeedback, feedbackFor, transportFeedback } from "./compose-feedback";
 import { gateRefusalWords } from "./compose-gate-refusal";
@@ -38,7 +44,6 @@ import {
   attentionMark,
   attentionText,
   attentionTitle,
-  completionPercent,
   discardActions,
   discardDialog,
   discardText,
@@ -160,16 +165,52 @@ import {
   isNoteViewUnavailable,
 } from "./note-view-unavailable";
 import { type RecordedPanelKind, RecordedPanels } from "./recorded-panels";
+import {
+  BlockerPanel,
+  ENTERED_CARD,
+  ENTRY_PROGRESS_EYEBROW,
+  FOCUS_PARAM,
+  type GateAttempt,
+  LateEntryReasonField,
+  type NoteTarget,
+  REQUIRED_NO_ENTRY_LABEL,
+  ReviewPanel,
+  VISIT_REASON_SECTION_ID,
+  asksForLateEntryReason,
+  attentionTitle as attentionHeadline,
+  attentionText as attentionWords,
+  buildNoteSummary,
+  connectionLostAttempt,
+  entryProgressTitle,
+  externalPathFor,
+  focusLateEntryReason,
+  lateEntryReasonToSend,
+  panelAttemptFor,
+  panelWordsRefusal,
+  parseFocusParam,
+  refusalMovedStatus,
+  refusedAttempt,
+  sectionEntryLabel,
+  useAnchorFocus,
+  useLatestCallback,
+  useStableValue,
+} from "./review";
 import { SlotInput } from "./slot-input";
 import { useComposerDraft } from "./use-composer-draft";
 import { useFocusRequest } from "./use-focus-request";
 import { VitalsPanel } from "./vitals-panel";
+import { COMPLETE_ANCHOR_ID, REVIEW_ANCHOR_ID, jumpToAnchor } from "./workspace/jump-to-anchor";
+import { useHashAnchor } from "./workspace/use-hash-anchor";
+import { VisitContextHeader } from "./workspace/visit-context-header";
+import { VisitPatientBanner } from "./workspace/visit-patient-banner";
+import { DOCUMENT_ANCHOR_ID } from "./workspace/workflow-strip";
 
 interface PatientSummary {
   readonly firstName: string;
   readonly lastName: string;
   readonly mrn: string;
   readonly dob?: string;
+  readonly status?: string;
 }
 
 const SHELL_EXIT_PATHS = new Set(["/expired", "/error", "/maintenance", "/tenant-unavailable"]);
@@ -210,8 +251,15 @@ function removedFromDraftFeedback(statements: number, details: number): UiFeedba
   };
 }
 
-/** The template section a visit reason is recorded in. */
-const REASON_SECTION_ID = "chief_concern";
+/** The note-as-it-reads card: where the Review panel's "Go to the note preview" lands. */
+const NOTE_PREVIEW_ID = "visit-note-preview";
+
+/** The "Go to the note preview" button of the review panel: one element, so the memoised panel is not rebuilt around a new one each render. */
+const GO_TO_PREVIEW = (
+  <Button tone="tertiary" size="sm" onClick={() => jumpToAnchor(NOTE_PREVIEW_ID)}>
+    Go to the note preview
+  </Button>
+);
 
 /** The parts of the note that keep their own form and say so (see `useReportPanelStatus`). */
 type PanelKey = RecordedPanelKind | "vitals" | "plan";
@@ -221,6 +269,8 @@ const NO_SECTIONS: ReadonlySet<string> = new Set();
 export function EncounterCompose(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  // The record keeps the way back this screen was opened with.
+  const withOrigin = useForwardReturn();
   const { encounterId } = useParams<{ patientId: string; encounterId: string }>();
 
   const [encounter, setEncounter] = useState<EncounterView | null>(null);
@@ -236,6 +286,9 @@ export function EncounterCompose(): JSX.Element {
   const [retryable, setRetryable] = useState(false);
   const [feedback, setFeedback] = useState<UiFeedback | null>(null);
   const [operation, setOperation] = useState<"saving" | "finalizing" | null>(null);
+  // What the server last said to a finalize (WF09 WP3), and the author's late-entry reason: both belong to one note.
+  const [attempt, setAttempt] = useState<GateAttempt>({ state: "none" });
+  const [lateReason, setLateReason] = useState("");
   const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}, null));
   // The recorded fall a follow-up-after-a-fall visit follows up: the stored link, the author's current choice, and the falls on offer.
   const [linkedFall, setLinkedFall] = useState<{ incidentId: string; occurredOn: string } | null>(
@@ -271,7 +324,10 @@ export function EncounterCompose(): JSX.Element {
     setShownFor(encounterId);
     setFeedback(null);
     setSuggestion(null);
+    setAttempt({ state: "none" });
+    setLateReason("");
   }
+  useHashAnchor(!loading && encounter !== null && template !== null);
   const planRegion = useRef<HTMLDivElement>(null);
   // The newest re-read of the note's text: an older one answering late must not overwrite what a newer read or a save put on screen.
   const previewRead = useRef(0);
@@ -286,6 +342,8 @@ export function EncounterCompose(): JSX.Element {
   const loadSequence = useRef(0);
   // Focus for the heading of the open section, so a drafted section opened from the strip takes the reader to it.
   const [sectionHeadingRef, focusSectionHeading] = useFocusRequest<HTMLHeadingElement>();
+  // Focus for the vitals panel, so a blocker that names a vital takes the reader to it once it is open.
+  const [vitalsRegionRef, focusVitalsRegion] = useFocusRequest<HTMLDivElement>();
 
   const load = useCallback(async (): Promise<EncounterView | null> => {
     if (!encounterId) return null;
@@ -401,7 +459,7 @@ export function EncounterCompose(): JSX.Element {
   // confirms it by saving, or picks another.
   useEffect(() => {
     const visitId = encounter?.visitId;
-    const reasonSection = template?.sections.find((s) => s.sectionId === REASON_SECTION_ID);
+    const reasonSection = template?.sections.find((s) => s.sectionId === VISIT_REASON_SECTION_ID);
     if (encounter?.status !== "draft" || !visitId || reasonSection === undefined) return;
     let current = true;
     void loadVisitPurpose(client, visitId).then((purpose) => {
@@ -409,14 +467,17 @@ export function EncounterCompose(): JSX.Element {
       const code = suggestedReasonCode(purpose, reasonSection.entries);
       if (code === null) return;
       setDraft((prev) => {
-        const held = prev[REASON_SECTION_ID];
+        const held = prev[VISIT_REASON_SECTION_ID];
         if (held !== undefined && (held.entries.length > 0 || held.freeText.trim() !== "")) {
           return prev;
         }
         setSuggestion({ code, from: visitPurposeLabel(purpose) ?? purpose });
         return {
           ...prev,
-          [REASON_SECTION_ID]: { freeText: held?.freeText ?? "", entries: [{ code, params: {} }] },
+          [VISIT_REASON_SECTION_ID]: {
+            freeText: held?.freeText ?? "",
+            entries: [{ code, params: {} }],
+          },
         };
       });
     });
@@ -427,7 +488,7 @@ export function EncounterCompose(): JSX.Element {
 
   // The link only means something beside the follow-up-after-a-fall reason; anywhere else the note carries none.
   const reasonIsFall =
-    draft[REASON_SECTION_ID]?.entries.some((e) => e.code === FALL_FOLLOWUP_CODE) === true;
+    draft[VISIT_REASON_SECTION_ID]?.entries.some((e) => e.code === FALL_FOLLOWUP_CODE) === true;
   const effectiveFallId = reasonIsFall ? fallIncidentId : null;
   // The falls on offer are read once the author picks the follow-up reason: the list is a disclosure from Quality's register, so
   // it is not fetched for a note that never asks for it.
@@ -470,6 +531,8 @@ export function EncounterCompose(): JSX.Element {
   // Text typed into the edit box and not yet applied counts as unsaved, like a ticked statement does.
   const editDirty = editing && editText !== noteText;
   const selectionsDirty = currentDraft !== lastSavedDraft || editDirty;
+  // The late-entry reason is sent with the finalize, never saved apart: what is typed and not sent is lost on a way out, so it counts.
+  const lateReasonDirty = lateReason.trim() !== "";
   // A panel's form is saved by the panel's own button, so its unsaved input and its writes in flight count as the note's.
   const panels = Object.values(panelStatus);
   const panelsDirty = panels.some((panel) => panel.dirty);
@@ -493,7 +556,9 @@ export function EncounterCompose(): JSX.Element {
     }
   }
   const savingPanels = Object.entries(panelStatus).filter(([, panel]) => panel.saving);
-  const dirty = editable && (selectionsDirty || panelsDirty);
+  const noteDirty = editable && (selectionsDirty || panelsDirty);
+  // Leaving loses the typed reason too, so the way-out guards count it; what the server holds for the note does not include it.
+  const dirty = noteDirty || (editable && lateReasonDirty);
   const busy = operation !== null || savingPanels.length > 0;
   // The plan step may keep saving its own drawer while it says so; only another write locks it.
   const planDisabled = frozen || operation !== null || savingPanels.some(([key]) => key !== "plan");
@@ -520,7 +585,7 @@ export function EncounterCompose(): JSX.Element {
     encounterStatus: encounter?.status,
     activeSectionId: active?.sectionId,
     saving: busy,
-    dirty,
+    dirty: noteDirty,
   });
   // The server's check 1 counts drafted text the clinician confirmed as populating a required section; so does every count here.
   const confirmedIds = useMemo(() => confirmedSectionIds(drafted), [drafted]);
@@ -528,6 +593,34 @@ export function EncounterCompose(): JSX.Element {
     () => (template ? sectionsNeedingAttention(template, draft, filledByRecord, confirmedIds) : []),
     [template, draft, filledByRecord, confirmedIds],
   );
+
+  const adlSaved = panelStatus.adl?.recorded;
+  const nutritionSaved = panelStatus.nutrition?.recorded;
+  const woundsSaved = panelStatus.wounds?.recorded;
+  const builtSummary = useMemo(
+    () =>
+      template
+        ? buildNoteSummary({
+            template,
+            draft,
+            drafted,
+            recorded: { adl: adlSaved, nutrition: nutritionSaved, wounds: woundsSaved },
+            fall: reasonIsFall ? { linked: effectiveFallId !== null } : null,
+          })
+        : null,
+    [
+      template,
+      draft,
+      drafted,
+      adlSaved,
+      nutritionSaved,
+      woundsSaved,
+      reasonIsFall,
+      effectiveFallId,
+    ],
+  );
+  // A free-text keystroke rebuilds the summary without changing what it says: keep its identity so the review panel is not re-rendered.
+  const noteSummary = useStableValue(builtSummary);
 
   useEffect(() => {
     if (!dirty && !busy) return;
@@ -660,6 +753,75 @@ export function EncounterCompose(): JSX.Element {
     setOpenSection(sectionId);
     focusSectionHeading();
   };
+
+  /** Take the author to the part of the note a blocker or a review row names: focus moves there, or the screen moves to where it is fixed. */
+  function openTarget(target: NoteTarget): void {
+    switch (target.kind) {
+      case "section":
+      case "draft_section":
+        openFromSummary(target.sectionId);
+        return;
+      case "vitals":
+        setVitalsMounted(true);
+        setVitalsOpen(true);
+        focusVitalsRegion();
+        return;
+      case "plan_step":
+        showPanel("plan");
+        planRegion.current?.focus();
+        return;
+      case "late_entry_reason":
+        focusLateEntryReason();
+        return;
+      case "save_selections":
+        // The header's Save is disabled while a write is in flight or the note text is being edited; so is this.
+        if (!busy && !frozen) void save();
+        return;
+      case "note_text":
+        jumpToAnchor(NOTE_PREVIEW_ID);
+        return;
+      case "open_note":
+        jumpToAnchor(DOCUMENT_ANCHOR_ID);
+        return;
+      case "scales":
+      case "care_plan_review":
+      case "my_notes": {
+        const outside = encounter ? externalPathFor(target, encounter.patientId) : null;
+        if (outside !== null) navigate(outside);
+        return;
+      }
+      case "reauthenticate":
+      case "none":
+        return;
+    }
+  }
+  // The memoised panels take these: the closures above are rebuilt on every render, these keep their identity.
+  const onTarget = useLatestCallback(openTarget);
+  const retryFinalize = useLatestCallback(() => {
+    if (!busy && !frozen) void finalize();
+  });
+
+  // The record opens the composer at the part of the note a blocker names (`?focus=`): applied once per arrival, and only when it names
+  // something this template has. The record's `from` is read elsewhere and is untouched.
+  const [params] = useSearchParams();
+  const focusRequest = params.get(FOCUS_PARAM);
+  const noteShown =
+    !loading && encounter !== null && encounter.id === encounterId && template !== null;
+  const sectionIds = useMemo(
+    () => new Set(template?.sections.map((s) => s.sectionId) ?? []),
+    [template],
+  );
+  const appliedFocus = useRef<string | null>(null);
+  useEffect(() => {
+    if (!noteShown || focusRequest === null) return;
+    const arrival = `${encounterId}?${focusRequest}`;
+    if (appliedFocus.current === arrival) return;
+    appliedFocus.current = arrival;
+    const target = parseFocusParam(focusRequest, sectionIds);
+    if (target !== null) onTarget(target);
+  }, [noteShown, focusRequest, encounterId, sectionIds, onTarget]);
+  // After a finalize the page is replaced by a spinner while the note is read again: focus goes to the checks panel once it is back.
+  const focusChecks = useAnchorFocus(COMPLETE_ANCHOR_ID, noteShown);
 
   /** What the server holds for the note's text: the generated preview and the author's edit of it, if any. */
   const applyStored = useCallback((stored: SelectionsView): void => {
@@ -795,6 +957,7 @@ export function EncounterCompose(): JSX.Element {
 
     setOperation("finalizing");
     setFeedback(null);
+    setAttempt({ state: "running" });
     let finalizationAttempted = false;
 
     try {
@@ -806,6 +969,8 @@ export function EncounterCompose(): JSX.Element {
       );
 
       if (!saved.ok) {
+        // Finalize was never sent: the blocker panel has nothing new to say.
+        setAttempt({ state: "none" });
         setFeedback(feedbackFor(saved));
         return;
       }
@@ -817,57 +982,68 @@ export function EncounterCompose(): JSX.Element {
       setLastSavedDraft(currentDraft);
 
       finalizationAttempted = true;
-      const res = await finalizeEncounter(client, encounterId);
+      const res = await finalizeEncounter(client, encounterId, lateEntryReasonToSend(lateReason));
 
       if (!res.ok) {
         // The save changed what the draft is built from and the gate may have named drafted sections: one re-read shows what the
         // server holds now. (A finalize that succeeds reloads the whole note below, and the draft with it.)
         void noteDraft.reload();
+        // The drafted sections the gate named are also said in words beside the draft strip.
         const gate = gateRefusalWords(res.details, headingOfSection);
-        if (gate) {
-          // The gate named drafted sections: say which and why, beside the draft strip.
-          refuse(gate.refusal);
-          setFeedback(gate.feedback);
-          return;
-        }
-        setFeedback(feedbackFor(res));
+        if (gate) refuse(gate.refusal);
+        const refused = refusedAttempt(res, "finalize", headingOfSection);
+        setAttempt(refused);
+        // The blocker panel is the one announcement of a refusal it words itself, so no banner repeats it; a code it does not know keeps
+        // the banner (the server's sentence). A refusal of the save before the finalize keeps its banner too (above).
+        setFeedback(panelWordsRefusal(refused) ? null : feedbackFor(res));
+        // The note moved on in another tab (finalized or signed there): read it again so this screen stops offering what is no longer true.
+        if (refusalMovedStatus(refused)) void load();
         return;
       }
 
+      setAttempt({ state: "finalized" });
       setFeedback({
         tone: "success",
         title: "Note finalized",
-        message: "Sign it from the encounter record.",
+        message: "Finalizing is not signing: the note is signed on the encounter record.",
       });
       const reloaded = await load();
-      if (!reloaded) {
+      if (reloaded) {
+        focusChecks();
+      } else {
         setError(
           "The note was finalized, but the updated record could not be reloaded. Return to the encounter record or refresh before continuing.",
         );
       }
     } catch {
       if (!finalizationAttempted) {
+        setAttempt({ state: "none" });
         setFeedback(transportFeedback);
         return;
       }
 
       const reconciled = await load();
       if (!reconciled) {
+        // Nothing is in flight any more and the result is not known: the panel says so if this screen is shown again (a retry of the read).
+        setAttempt(connectionLostAttempt("finalize"));
         setError(
           "Finalization status could not be confirmed. Return to the encounter record or refresh before continuing.",
         );
       } else if (reconciled.status === "draft") {
+        setAttempt(connectionLostAttempt("finalize"));
         setFeedback({
           tone: "warning",
           title: "Finalization not completed",
           message: "Your draft was saved, but finalization was not completed. You can try again.",
         });
       } else {
+        setAttempt({ state: "finalized" });
         setFeedback({
           tone: "success",
           title: "Note finalized",
           message: "The server confirmed finalization after the connection was interrupted.",
         });
+        focusChecks();
       }
     } finally {
       setOperation(null);
@@ -890,7 +1066,7 @@ export function EncounterCompose(): JSX.Element {
     return <LoadingSpinner />;
   }
 
-  if (encounter === null || template === null) {
+  if (encounter === null || template === null || noteSummary === null) {
     return <EmptyState title="Not found" description="This encounter is not available." />;
   }
 
@@ -898,36 +1074,20 @@ export function EncounterCompose(): JSX.Element {
   const activeSelectionCount = activeDraft?.entries.length ?? 0;
   const activeHasFreeText = (activeDraft?.freeText.trim().length ?? 0) > 0;
   const recordPath = `/patients/${encounter.patientId}/encounters/${encounter.id}`;
-  const banner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      mrn={patient.mrn}
-      dob={patient.dob}
-    />
-  ) : (
-    <PatientBanner name="Encounter documentation" />
-  );
+  const panelAttempt = panelAttemptFor(encounter.status, attempt);
+  const banner = <VisitPatientBanner patient={patient} patientId={encounter.patientId} />;
 
   return (
-    <PatientWorkspaceLayout banner={banner}>
+    <PatientWorkspaceLayout
+      banner={banner}
+      contextHeader={<VisitContextHeader screen="compose" encounter={encounter} />}
+    >
       <WorkQueueLayout
         header={
           <PageHeader
             title="Compose visit note"
             actions={
               <div className="wx-encounter-compose-actions" style={headerActions}>
-                <Button tone="tertiary" onClick={() => navigate(recordPath)} disabled={busy}>
-                  Back to encounter
-                </Button>
-                <StatusPill
-                  label={stateLabel(encounter.status)}
-                  tone={ENCOUNTER_TONE[encounter.status] ?? "neutral"}
-                />
-
-                <Button tone="tertiary" onClick={() => navigate(recordPath)} disabled={busy}>
-                  Open record
-                </Button>
-
                 <Button
                   tone="tertiary"
                   onClick={() => {
@@ -951,7 +1111,7 @@ export function EncounterCompose(): JSX.Element {
           />
         }
         table={
-          <main className="wx-encounter-compose" style={page}>
+          <main id={DOCUMENT_ANCHOR_ID} tabIndex={-1} className="wx-encounter-compose" style={page}>
             <section
               className="wx-encounter-compose-summary"
               style={summaryBar}
@@ -960,13 +1120,11 @@ export function EncounterCompose(): JSX.Element {
               <div style={summaryMain}>
                 <div style={summaryTitleRow}>
                   <div>
-                    <div style={eyebrow}>Documentation progress</div>
+                    <div style={eyebrow}>{ENTRY_PROGRESS_EYEBROW}</div>
                     <div style={summaryTitle}>
-                      {completion.completed} of {completion.total} sections documented
+                      {entryProgressTitle(completion.completed, completion.total)}
                     </div>
                   </div>
-
-                  <strong style={completionPercent}>{completion.percent}%</strong>
                 </div>
 
                 <div style={progressTrack} aria-hidden>
@@ -982,7 +1140,7 @@ export function EncounterCompose(): JSX.Element {
               <div className="wx-encounter-compose-summary-stats" style={summaryStats}>
                 <div className="wx-encounter-compose-summary-stat" style={summaryStat}>
                   <span style={summaryStatValue}>{completion.requiredRemaining}</span>
-                  <span style={summaryStatLabel}>required remaining</span>
+                  <span style={summaryStatLabel}>{REQUIRED_NO_ENTRY_LABEL}</span>
                 </div>
 
                 <div style={summaryDivider} />
@@ -996,7 +1154,11 @@ export function EncounterCompose(): JSX.Element {
               </div>
             </section>
 
-            <output className="wx-encounter-save-state" aria-live="polite">
+            {/* While finalizing, the checks panel announces the wait; this stays quiet so the two do not speak at once. */}
+            <output
+              className="wx-encounter-save-state"
+              aria-live={operation === "finalizing" ? "off" : "polite"}
+            >
               {operation === "saving"
                 ? "Saving changes…"
                 : operation === "finalizing"
@@ -1007,7 +1169,9 @@ export function EncounterCompose(): JSX.Element {
                       ? "Unsaved changes"
                       : panelsDirty
                         ? "Unsaved entries in a section. Use that section's own Save button."
-                        : "All changes saved"}
+                        : lateReasonDirty
+                          ? "The late-entry reason is sent when you finalize."
+                          : "All changes saved"}
             </output>
 
             {feedback ? (
@@ -1025,6 +1189,14 @@ export function EncounterCompose(): JSX.Element {
                     onClick={() => navigate(`/patients/${encounter.patientId}/care-plan`)}
                   >
                     Open care plan
+                  </Button>
+                ) : null}
+                {feedback.tone === "success" && encounter.status === "finalized" ? (
+                  <Button
+                    tone="tertiary"
+                    onClick={() => navigate(withOrigin(`${recordPath}#${COMPLETE_ANCHOR_ID}`))}
+                  >
+                    Go to sign-off
                   </Button>
                 ) : null}
               </output>
@@ -1047,26 +1219,18 @@ export function EncounterCompose(): JSX.Element {
                 </div>
 
                 <div style={{ minWidth: 0 }}>
-                  <strong style={attentionTitle}>
-                    {unmet.length} {unmet.length === 1 ? "section needs" : "sections need"}{" "}
-                    attention
-                  </strong>
-                  <p style={attentionText}>
-                    Complete {unmet.join(", ")} before finalization. The server still performs the
-                    authoritative finalization check.
-                  </p>
+                  <strong style={attentionTitle}>{attentionHeadline(unmet.length)}</strong>
+                  <p style={attentionText}>{attentionWords(unmet)}</p>
                 </div>
               </section>
             ) : (
-              <section style={readyCard}>
+              <section style={readyCard} aria-label="Entry check">
                 <span style={readyMark} aria-hidden>
-                  ✓
+                  i
                 </span>
                 <div>
-                  <strong style={readyTitle}>Required documentation is complete</strong>
-                  <p style={readyText}>
-                    You can still review the assembled note before finalizing.
-                  </p>
+                  <strong style={readyTitle}>{ENTERED_CARD.title}</strong>
+                  <p style={readyText}>{ENTERED_CARD.text}</p>
                 </div>
               </section>
             )}
@@ -1079,7 +1243,7 @@ export function EncounterCompose(): JSX.Element {
               refusal={refusal}
             />
 
-            <div hidden={!vitalsOpen}>
+            <div hidden={!vitalsOpen} ref={vitalsRegionRef} tabIndex={-1}>
               {vitalsMounted ? (
                 <VitalsPanel
                   encounterId={encounter.id}
@@ -1117,20 +1281,18 @@ export function EncounterCompose(): JSX.Element {
                 <nav style={sectionNav}>
                   {template.sections.map((section, index) => {
                     const needsDetails = sectionHasEmptySlots(template, draft, section.sectionId);
-                    // "Documented" means finalize will take it: a statement with an empty slot is not that.
-                    const filled =
-                      (isSectionPopulated(draft, section.sectionId, confirmedIds) ||
-                        filledByRecord.has(section.sectionId)) &&
-                      !needsDetails;
+                    const hasEntry =
+                      isSectionPopulated(draft, section.sectionId, confirmedIds) ||
+                      filledByRecord.has(section.sectionId);
+                    // "Entered" says what the author has done; whether the server takes it is decided when the note is finalized.
+                    const filled = hasEntry && !needsDetails;
                     const isActive = section.sectionId === active?.sectionId;
                     const needsAttention = needsDetails || (section.required && !filled);
-                    const sectionState = filled
-                      ? "Documented"
-                      : needsDetails
-                        ? "Needs details"
-                        : needsAttention
-                          ? "Required"
-                          : "Not started";
+                    const sectionState = sectionEntryLabel({
+                      hasEntry,
+                      needsDetails,
+                      required: section.required,
+                    });
                     const draftedState = draftedStateOf(drafted, section.sectionId);
 
                     return (
@@ -1276,7 +1438,7 @@ export function EncounterCompose(): JSX.Element {
                               ...active.entries.map((e) => ({ value: e.code, label: e.label })),
                             ]}
                           />
-                          {active.sectionId === REASON_SECTION_ID &&
+                          {active.sectionId === VISIT_REASON_SECTION_ID &&
                           suggestion !== null &&
                           selectionsDirty &&
                           draft[active.sectionId]?.entries[0]?.code === suggestion.code ? (
@@ -1285,7 +1447,7 @@ export function EncounterCompose(): JSX.Element {
                               it, or choose another.
                             </p>
                           ) : null}
-                          {active.sectionId === REASON_SECTION_ID && reasonIsFall ? (
+                          {active.sectionId === VISIT_REASON_SECTION_ID && reasonIsFall ? (
                             <FallLinkField
                               choices={fallChoices}
                               linked={linkedFall}
@@ -1406,7 +1568,7 @@ export function EncounterCompose(): JSX.Element {
               </section>
 
               <aside className="wx-encounter-compose-preview" style={previewColumn}>
-                <section style={previewCard}>
+                <section id={NOTE_PREVIEW_ID} tabIndex={-1} style={previewCard}>
                   <header style={previewHeader}>
                     <div>
                       <div style={eyebrow}>SERVER-ASSEMBLED PREVIEW</div>
@@ -1538,7 +1700,7 @@ export function EncounterCompose(): JSX.Element {
               </aside>
             </div>
 
-            <div ref={planRegion}>
+            <div ref={planRegion} tabIndex={-1}>
               <PlanOfCareStep
                 encounterId={encounter.id}
                 patientId={encounter.patientId}
@@ -1546,6 +1708,35 @@ export function EncounterCompose(): JSX.Element {
                 onStatusChange={reportPlan}
               />
             </div>
+
+            {encounter.status === "draft" || encounter.status === "finalized" ? (
+              <>
+                <ReviewPanel
+                  id={REVIEW_ANCHOR_ID}
+                  summary={noteSummary}
+                  editable={editable}
+                  unsavedChanges={noteDirty}
+                  onEdit={onTarget}
+                >
+                  {GO_TO_PREVIEW}
+                </ReviewPanel>
+
+                {asksForLateEntryReason(attempt) || lateReason !== "" ? (
+                  <LateEntryReasonField
+                    value={lateReason}
+                    onChange={setLateReason}
+                    disabled={frozen || busy}
+                  />
+                ) : null}
+
+                <BlockerPanel
+                  id={COMPLETE_ANCHOR_ID}
+                  attempt={panelAttempt}
+                  onRemedy={onTarget}
+                  onRetry={retryFinalize}
+                />
+              </>
+            ) : null}
           </main>
         }
       />

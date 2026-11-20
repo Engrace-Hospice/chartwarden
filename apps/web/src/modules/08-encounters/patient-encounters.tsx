@@ -33,7 +33,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { CSSProperties, JSX, ReactNode } from "react";
 
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { AdmissionLookupField } from "../../shell/entity-lookups";
 import {
@@ -45,6 +45,8 @@ import {
 import { useSession } from "../../shell/session";
 
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { canAuthorEncounters, encounterEntryHref } from "../../shell/note-href";
+import { useReturnHere } from "../../shell/use-return-target";
 
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
@@ -61,6 +63,9 @@ interface EncounterRow {
   id: string;
 
   patientId: string;
+
+  /** The scheduled visit that seeded this encounter; null for a PRN / unscheduled one. */
+  visitId?: string | null;
 
   encounterType: string;
 
@@ -175,10 +180,15 @@ export function PatientEncounters(): JSX.Element {
   const client = useApiClient();
 
   const navigate = useNavigate();
+  // The list as it is now is the way back from an encounter opened out of it.
+  const withReturn = useReturnHere();
 
   const session = useSession();
-
   const { patientId } = useParams<{ patientId: string }>();
+
+  const canAuthor = canAuthorEncounters(session?.permissions);
+  const openHref = (row: EncounterRow): string =>
+    encounterEntryHref({ ...row, patientId: patientId ?? row.patientId }, { canAuthor });
 
   const [items, setItems] = useState<EncounterRow[]>([]);
 
@@ -351,6 +361,18 @@ export function PatientEncounters(): JSX.Element {
 
                 <dd style={dd}>{selected.isF2f ? "Yes" : "No"}</dd>
 
+                <dt style={dt}>Visit</dt>
+
+                <dd style={dd}>
+                  {selected.visitId ? (
+                    <Link to={withReturn(`/scheduling/visits/${selected.visitId}`)}>
+                      Open scheduled visit
+                    </Link>
+                  ) : (
+                    "PRN / unscheduled"
+                  )}
+                </dd>
+
                 {selected.signedAt ? (
                   <>
                     <dt style={dt}>Signed</dt>
@@ -362,28 +384,15 @@ export function PatientEncounters(): JSX.Element {
                 ) : null}
               </dl>
 
+              {/* A draft opens where it is finished (the HearthNote composer, #91); every other status on its record. Whoever may not
+                  author sees a draft on its record: the composer's writes would be refused for them. */}
               <Button
                 type="button"
-                onClick={() => navigate(`/patients/${patientId}/encounters/${selected.id}`)}
+                onClick={() => navigate(withReturn(openHref(selected)))}
                 style={{ marginTop: "1rem", width: "100%" }}
               >
                 Open encounter
               </Button>
-              {/* #91 — a draft has somewhere to be finished: the HearthNote composer (template menu +
-                  per-section free text). Offered only on `draft`, because the composer's writes are
-                  refused on any other status by `checkMutableForEdit`. */}
-              {selected.status === "draft" && session?.permissions?.includes("encounter.author") ? (
-                <Button
-                  type="button"
-                  tone="secondary"
-                  onClick={() =>
-                    navigate(`/patients/${patientId}/encounters/${selected.id}/compose`)
-                  }
-                  style={{ marginTop: "0.5rem", width: "100%" }}
-                >
-                  Compose note
-                </Button>
-              ) : null}
             </>
           ) : (
             <p style={meta}>

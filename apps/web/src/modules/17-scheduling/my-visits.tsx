@@ -19,11 +19,13 @@ import {
 // Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { NameLabel, patientNameOf } from "../../shell/name-display";
+import { canAuthorEncounters, encounterEntryHref } from "../../shell/note-href";
 import { usePatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
+import { useReturnHere } from "../../shell/use-return-target";
 import { mapSchedulingApiError } from "./scheduling-errors";
 import { VISIT_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import {
@@ -58,12 +60,32 @@ export function MyVisits(): JSX.Element {
   const [attestReason, setAttestReason] = useState(restored?.reason ?? "");
   const [attestError, setAttestError] = useState<string | null>(null);
   const [visits, setVisits] = useState<VisitRow[]>([]);
+  // The status, purpose and date filters and the page live in the URL (Workflow 09, WP1), so Back from a visit or a note lands on the
+  // list as it was left. The search text does not: it is typed, often a patient's name, and a URL is kept in history and in logs.
   const [searchQuery, setSearchQuery] = useState("");
-  const [status, setStatus] = useState("");
-  const [purpose, setPurpose] = useState("");
-  const [dateFilter, setDateFilter] = useState<"all" | "today" | "next48">("all");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [params, setParams] = useSearchParams();
+  const withReturn = useReturnHere();
+  const status = params.get("status") ?? "";
+  const purpose = params.get("purpose") ?? "";
+  const dateFilter = dateFilterOf(params.get("date"));
+  const page = positiveInt(params.get("page")) ?? 1;
+  const pageSize = pageSizeOf(params.get("size"));
+  const changeView = useCallback(
+    (changes: Readonly<Record<string, string | null>>): void => {
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          for (const [key, value] of Object.entries(changes)) {
+            if (value === null || value === "") next.delete(key);
+            else next.set(key, value);
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -144,10 +166,7 @@ export function MyVisits(): JSX.Element {
 
   const clearFilters = (): void => {
     setSearchQuery("");
-    setStatus("");
-    setPurpose("");
-    setDateFilter("all");
-    setPage(1);
+    changeView({ status: null, purpose: null, date: null, page: null });
   };
 
   async function openEncounter(visit: VisitRow): Promise<void> {
@@ -155,7 +174,12 @@ export function MyVisits(): JSX.Element {
     setActionNotice(null);
     const linked = await findLinkedEncounter(client, visit);
     setBusyVisitId(null);
-    if (linked) navigate(`/patients/${linked.patientId}/encounters/${linked.id}`);
+    if (linked)
+      navigate(
+        withReturn(
+          encounterEntryHref(linked, { canAuthor: canAuthorEncounters(sessionPermissions) }),
+        ),
+      );
     else setActionNotice("Encounter draft is still being created. Refresh the visit in a moment.");
   }
 
@@ -250,7 +274,8 @@ export function MyVisits(): JSX.Element {
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
-                      setPage(1);
+                      // A new search starts on page 1; with no page in the address there is nothing to reset (and no history write).
+                      if (params.has("page")) changeView({ page: null });
                     }}
                     aria-label="Search my visits"
                   />
@@ -261,10 +286,7 @@ export function MyVisits(): JSX.Element {
                     className="wx-select"
                     aria-label="Visit status"
                     value={status}
-                    onChange={(e) => {
-                      setStatus(e.target.value);
-                      setPage(1);
-                    }}
+                    onChange={(e) => changeView({ status: e.target.value, page: null })}
                     style={selectStyle}
                   >
                     <option value="">All</option>
@@ -282,10 +304,7 @@ export function MyVisits(): JSX.Element {
                     className="wx-select"
                     aria-label="Visit purpose"
                     value={purpose}
-                    onChange={(e) => {
-                      setPurpose(e.target.value);
-                      setPage(1);
-                    }}
+                    onChange={(e) => changeView({ purpose: e.target.value, page: null })}
                     style={selectStyle}
                   >
                     <option value="">All</option>
@@ -351,7 +370,7 @@ export function MyVisits(): JSX.Element {
                     <tr
                       key={v.id}
                       {...interactiveRowProps(
-                        () => navigate(`/scheduling/visits/${v.id}`),
+                        () => navigate(withReturn(`/scheduling/visits/${v.id}`)),
                         false,
                         true,
                       )}
@@ -447,11 +466,10 @@ export function MyVisits(): JSX.Element {
                 page={activePage}
                 pageSize={pageSize}
                 totalItems={rows.length}
-                onPageChange={setPage}
-                onPageSizeChange={(nextPageSize) => {
-                  setPageSize(nextPageSize);
-                  setPage(1);
-                }}
+                onPageChange={(next) => changeView({ page: next > 1 ? String(next) : null })}
+                onPageSizeChange={(next) =>
+                  changeView({ size: next === DEFAULT_PAGE_SIZE ? null : String(next), page: null })
+                }
                 pageSizeOptions={FIELD_PAGE_SIZES}
                 noun="visits"
               />
@@ -507,6 +525,23 @@ export function MyVisits(): JSX.Element {
 }
 
 const FIELD_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+const DEFAULT_PAGE_SIZE = 10;
+
+type DateFilter = "all" | "today" | "next48";
+
+function dateFilterOf(value: string | null): DateFilter {
+  return value === "today" || value === "next48" ? value : "all";
+}
+
+function positiveInt(value: string | null): number | null {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function pageSizeOf(value: string | null): number {
+  const parsed = positiveInt(value);
+  return FIELD_PAGE_SIZES.find((size) => size === parsed) ?? DEFAULT_PAGE_SIZE;
+}
 
 function isToday(iso: string): boolean {
   const d = new Date(iso);

@@ -328,14 +328,16 @@ describe("the recorded panels in the composer", () => {
     const user = userEvent.setup();
     mountCompose();
 
-    expect(await screen.findByText("Required documentation is complete")).toBeTruthy();
+    expect(await screen.findByText("Every required section has an entry")).toBeTruthy();
     expect(screen.queryByText(/needs? attention/)).toBeNull();
-    expect(screen.getByText("1 of 4 sections documented")).toBeTruthy();
+    expect(screen.getByText("1 of 4 sections have an entry")).toBeTruthy();
     expect(
-      within(screen.getByText("required remaining").parentElement as HTMLElement).getByText("0"),
+      within(screen.getByText("required with no entry").parentElement as HTMLElement).getByText(
+        "0",
+      ),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Activities of Daily Living: Documented" }),
+      screen.getByRole("button", { name: "Activities of Daily Living: Entered" }),
     ).toBeTruthy();
 
     await openSection(user, /^Activities of Daily Living/);
@@ -349,22 +351,22 @@ describe("the recorded panels in the composer", () => {
 
     expect(await screen.findByText("1 section needs attention")).toBeTruthy();
     expect(
-      screen.getByText(/Complete Activities of Daily Living before finalization/),
+      screen.getByText(/Add an entry or finish the details in Activities of Daily Living/),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Activities of Daily Living: Required" }),
+      screen.getByRole("button", { name: "Activities of Daily Living: Required, no entry" }),
     ).toBeTruthy();
-    expect(screen.getByText("0 of 4 sections documented")).toBeTruthy();
+    expect(screen.getByText("0 of 4 sections have an entry")).toBeTruthy();
 
     await openSection(user, /^Activities of Daily Living/);
     expect(screen.getByText(/Required\. This section has no preset statements/)).toBeTruthy();
     await user.selectOptions(bathing(), "Limited assist");
     await user.click(screen.getByRole("button", { name: "Save ADLs" }));
 
-    expect(await screen.findByText("Required documentation is complete")).toBeTruthy();
-    expect(screen.getByText("1 of 4 sections documented")).toBeTruthy();
+    expect(await screen.findByText("Every required section has an entry")).toBeTruthy();
+    expect(screen.getByText("1 of 4 sections have an entry")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Activities of Daily Living: Documented" }),
+      screen.getByRole("button", { name: "Activities of Daily Living: Entered" }),
     ).toBeTruthy();
   });
 
@@ -372,17 +374,17 @@ describe("the recorded panels in the composer", () => {
     const user = userEvent.setup();
     world.adl = STORED_ADL;
     mountCompose();
-    await screen.findByText("Required documentation is complete");
+    await screen.findByText("Every required section has an entry");
 
     await openSection(user, /^Wounds/);
     expect(await screen.findByText("No wounds recorded for this patient")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Wounds: Not started" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Wounds: No entry" })).toBeTruthy();
   });
 
   it("keeps one panel per recorded section mounted, reading each record once, and shows only the open section's", async () => {
     const user = userEvent.setup();
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
 
     await openSection(user, /^Activities of Daily Living/);
     expect(
@@ -413,7 +415,7 @@ describe("the recorded panels in the composer", () => {
       return { body: { version: 4, layer1Preview: "" } };
     };
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await openSection(user, /^Activities of Daily Living/);
     await screen.findByRole("combobox", { name: "Bathing" });
 
@@ -662,7 +664,7 @@ describe("the note's preview after a panel saves", () => {
 
 describe("the vitals panel", () => {
   const openVitals = async (user: ReturnType<typeof userEvent.setup>) => {
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await user.click(screen.getByRole("button", { name: "Vitals" }));
     return screen.findByRole("heading", { name: "Visit vitals" });
   };
@@ -806,7 +808,7 @@ describe("the plan-of-care step in the composer", () => {
 
 describe("the vitals panel's weight and height", () => {
   const openVitals = async (user: ReturnType<typeof userEvent.setup>) => {
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await user.click(screen.getByRole("button", { name: "Vitals" }));
     await screen.findByRole("heading", { name: "Visit vitals" });
   };
@@ -943,7 +945,7 @@ describe("a note that is no longer a draft", () => {
     world.status = "finalized";
     world.adl = STORED_ADL;
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
 
     await openSection(user, /^Activities of Daily Living/);
     expect(await screen.findByRole("combobox", { name: "Bathing" })).toBeDisabled();
@@ -963,7 +965,7 @@ describe("a note that is no longer a draft", () => {
       body: { error: { code: "NOTE_PINNED_AT_FINALIZE", message: "pinned" } },
     });
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await openSection(user, /^Activities of Daily Living/);
     await user.selectOptions(
       await screen.findByRole("combobox", { name: "Bathing" }),
@@ -1023,7 +1025,7 @@ describe("a stale ADL record in the composer", () => {
       body: { error: { code: "STALE_VERSION", message: "stale" } },
     });
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await openSection(user, /^Activities of Daily Living/);
     await user.selectOptions(
       await screen.findByRole("combobox", { name: "Bathing" }),
@@ -1111,7 +1113,7 @@ describe("statement details the server would refuse", () => {
       },
     });
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
 
     await user.click(screen.getByRole("button", { name: "Save draft" }));
 
@@ -1133,7 +1135,7 @@ describe("statement details the server would refuse", () => {
     ];
     mountCompose();
 
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     expect(screen.queryByText(/Save the draft to apply the change/)).toBeNull();
   });
 });
@@ -1173,7 +1175,7 @@ describe("unsaved panels at Finalize, and the notices around them", () => {
   it("names the vitals when they hold unsaved entries, opens them, and lets them be discarded", async () => {
     const user = userEvent.setup();
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await user.click(screen.getByRole("button", { name: "Vitals" }));
     await user.type(await screen.findByRole("textbox", { name: "Heart rate" }), "88");
     await user.click(screen.getByRole("button", { name: "Close vitals" }));
@@ -1282,7 +1284,7 @@ describe("the vitals panel keeps what was typed", () => {
   it("survives closing and reopening, and still guards the page while closed", async () => {
     const user = userEvent.setup();
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await user.click(screen.getByRole("button", { name: "Vitals" }));
     await user.type(await screen.findByRole("textbox", { name: "Heart rate" }), "88");
 
@@ -1300,7 +1302,7 @@ describe("the vitals panel keeps what was typed", () => {
   it("starts the next set empty once one is recorded", async () => {
     const user = userEvent.setup();
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await user.click(screen.getByRole("button", { name: "Vitals" }));
     await user.type(await screen.findByRole("textbox", { name: "Heart rate" }), "88");
     await user.click(screen.getByRole("button", { name: "Record vitals" }));
@@ -1316,7 +1318,7 @@ describe("the vitals panel keeps what was typed", () => {
     const user = userEvent.setup();
     world.weightUnitMissing = true;
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await user.click(screen.getByRole("button", { name: "Vitals" }));
 
     const warning = await screen.findByText(
@@ -1342,7 +1344,7 @@ describe("the vitals panel keeps what was typed", () => {
   it("shows no warning when every stored weight has its unit", async () => {
     const user = userEvent.setup();
     mountCompose();
-    await screen.findByText("Documentation progress");
+    await screen.findByText("Entry progress");
     await user.click(screen.getByRole("button", { name: "Vitals" }));
     await screen.findByRole("heading", { name: "Visit vitals" });
 

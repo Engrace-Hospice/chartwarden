@@ -20,7 +20,9 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { canAuthorEncounters, encounterEntryHref } from "../../shell/note-href";
 import { useSession } from "../../shell/session";
+import { useReturnHere } from "../../shell/use-return-target";
 import { PURPOSES, VISIT_TONE, purposeLabel, stateLabel } from "./scheduling-status";
 import {
   type EncounterLink,
@@ -1197,6 +1199,9 @@ function VisitPanel({
   onClose: () => void;
 }): JSX.Element {
   const client = useApiClient();
+  // The calendar as it is now (view, date, filters, patient, visit) is the way back from the visit and from its documentation.
+  const withReturn = useReturnHere();
+  const canAuthor = canAuthorEncounters(useSession()?.permissions);
   const [encounter, setEncounter] = useState<EncounterLink | null | undefined>(undefined);
   useEffect(() => {
     let active = true;
@@ -1271,13 +1276,13 @@ function VisitPanel({
               .join("  •  ") || "—"}
           </div>
         </div>
-        <Link to={`/scheduling/visits/${visit.id}`} className="wx-btn-primary">
+        <Link to={withReturn(`/scheduling/visits/${visit.id}`)} className="wx-btn-primary">
           <Glyph name={visit.status === "en_route" ? "check-circle" : "clock"} size={16} /> Open
           Visit
         </Link>
         {encounter ? (
           <Link
-            to={`/patients/${encounter.patientId}/encounters/${encounter.id}`}
+            to={withReturn(encounterEntryHref(encounter, { canAuthor }))}
             className="wx-btn-secondary"
           >
             Open Documentation
