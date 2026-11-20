@@ -1114,14 +1114,20 @@ controls:
       nothing, and a tenant may still remove a key from a role it owns. Limits stated on purpose - the key is not scoped by
       plan kind, so an RN reads every kind of discipline plan (MSW, spiritual, volunteer, Aide POC) of a patient on their
       caseload, with Part 2 and family-violence redaction still applied by the disclosure gate; the aide holds no read key
-      (the read keys are not scoped by plan kind), so it can acknowledge only where a tenant also lets it open the plan, and
-      only the aide the plan names may fill the acknowledgment slot; and the event and PDF carry the slot a signer filled,
-      while the signature row and its audit image also carry the role key the signer held (held_role_key, migration 1527,
-      empty on rows signed earlier and on a system-actor signature). A finalize may only seal a signer set at or above the
-      D11 floor, with at most one signature per role. A plan's aide and supervising RN are set only through PUT aide-
-      assignment, by an author of the Aide POC on a plan they may touch, and only to staff the plan location's roster lists
-      as active with the right role (version-checked; the plan row audit records the change)
-    hipaa: ["164.312(a)(1)", "164.312(c)(1)", "164.312(d)", "164.308(a)(4)(ii)(B)", "164.308(a)(4)(ii)(C)"]
+      (the read keys are not scoped by plan kind), so it can open the plan only where a tenant also grants read
+      (acknowledging returns the sealed Aide POC version it acknowledges, Part 2 redacted), and only the aide the plan names
+      may fill the acknowledgment slot; and the event and PDF carry the slot a signer filled, while the signature row and
+      its audit image also carry the role key the signer held (held_role_key, migration 1527, empty on rows signed earlier
+      and on a system-actor signature). A finalize may only seal a signer set at or above the D11 floor, with at most one
+      signature per role. A plan's aide and supervising RN are set only through PUT aide- assignment, by an author of the
+      Aide POC on a plan they may touch, and only to staff the plan location's roster lists as active with the right role
+      (version-checked; the plan row audit records the change; never the same person as aide and supervising RN; changeable
+      only while the plan has no version yet or an open draft, so after a signature a revision is opened first). Stated
+      limits: any roster RN, the author included, can be named supervising RN, which gives that RN the supervisory attest
+      rights of the plan (bounded by the roster, the aide_supervisory RBAC keys and step-up; the audit image shows who
+      changed it), a supervisory visit can be signed only by the RN it names or a covering clinical supervisor or director
+      of nursing, and the roster role check runs when the team is assigned, not again at finalize
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.312(c)(1)", "164.312(d)", "164.308(a)(3)(ii)(A)", "164.308(a)(4)(ii)(B)", "164.308(a)(4)(ii)(C)"]
     soc2: ["CC6.1", "CC6.3"]
     status: implemented
     evidence:
@@ -1144,9 +1150,10 @@ controls:
       # signVersion binds the claimed slot to the actor's roles (the acknowledgment flag comes from the sealed slot, never the
       # body) and records the held role key on the signature row (migration 1527).
       - file: apps/backend/__tests__/discipline-plans-signer-binding.test.ts
-      # The aide and supervising RN assignment: roster-checked, kind-checked, version-checked and caseload-scoped, proven as the
-      # NOBYPASSRLS role over real roles and locations.
+      # The aide and supervising RN assignment and the visit-signer binding, over a fake transaction: roster-checked,
+      # kind-checked, version-checked, locked after a draft, never one person in both roles.
       - file: apps/backend/__tests__/discipline-plans-assign-aide-team.test.ts
+      # The same rules as the NOBYPASSRLS role over real roles, locations and RLS, with the plan row audit image asserted.
       - script: test:m15:aide-roster:live
       - file: packages/db/migrations/1527_m15_signature_held_role_key.sql
 
