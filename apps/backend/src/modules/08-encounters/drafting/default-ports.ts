@@ -20,6 +20,24 @@ import type { DraftSeamPorts } from "./ports";
 /** The `callerModule` token M8 identifies itself with on M39's evaluation audit (M7's own reads carry "m7"). */
 const CONSENT_CALLER_MODULE = "m8";
 
+/** M39's consent type for the advance directive acknowledgment (`packages/consent` kinds); only its presence is read, never its content. */
+const ADVANCE_DIRECTIVE_CONSENT_TYPE = "advance_directive_acknowledgment";
+
+/**
+ * The M8-side structural projection of M39's `ConsentEvaluator.evaluate` (the one arm the draft consumes besides the Part 2 verdict);
+ * the registry hands the seam over opaquely, as M22 and M12 read it (no import of M39's package into M8).
+ */
+interface ConsentEvaluationPort {
+  evaluate(args: {
+    readonly organizationId: string;
+    readonly patientId: string;
+    readonly consentType: string;
+    readonly asOf: string;
+    readonly sessionContext: { readonly sessionClass: string };
+    readonly callerModule: string;
+  }): Promise<{ readonly allowed: boolean; readonly consentRecordId?: string }>;
+}
+
 export function defaultDraftPorts(): DraftSeamPorts {
   // An M39 outage RETHROWS here (M7's own reads answer "no"): the draft fails closed as DRAFT_UNAVAILABLE instead of
   // quietly drafting a section short of content the viewer may be entitled to.
@@ -59,6 +77,25 @@ export function defaultDraftPorts(): DraftSeamPorts {
       getSeam("FaceToFaceReader").getAttestedF2fForPeriod(periodId as ElectionPeriodId),
     activeCertification: (periodId) =>
       getSeam("CertificationReader").getActiveCertification(periodId as ElectionPeriodId),
+    // S2b (RN admission visit): M12's orders as of the visit instant, M5's roster on the service date, M39's acknowledgment as of the visit
+    // instant. Each answers by its own dates, so the as-of cut (VN-D11) is theirs; none returns content the draft must not state.
+    activeMedicationsAsOf: (organizationId, patientId, asOf) =>
+      getSeam("MedicationOrderProvider").getMedicationsAsOf(organizationId, patientId, asOf),
+    caregiversOn: (organizationId, patientId, on) =>
+      getSeam("PatientCaregiverRosterReader").caregiversOn(organizationId, patientId, on),
+    advanceDirectiveAcknowledgment: async ({ organizationId, patientId, asOf }) => {
+      const verdict = await (getSeam("ConsentEvaluator") as ConsentEvaluationPort).evaluate({
+        organizationId,
+        patientId,
+        consentType: ADVANCE_DIRECTIVE_CONSENT_TYPE,
+        asOf,
+        sessionContext: { sessionClass: "staff" },
+        callerModule: CONSENT_CALLER_MODULE,
+      });
+      return verdict.allowed && verdict.consentRecordId !== undefined
+        ? { consentRecordId: verdict.consentRecordId }
+        : null;
+    },
     recordedWounds: (query) => seamWoundReader.woundsForEncounter(query),
     part2DisclosureAllowed: ({ organizationId, patientId, viewer }) =>
       sudDisclosureAllowedForActor(

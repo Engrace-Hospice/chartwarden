@@ -3,7 +3,8 @@
 // The recertification draft states facts M6 owns: the benefit period (`election.read`), the level of care (`loc.read`), the attested face-to-face
 // (`f2f.read`) and the certification (`cti.read`). The seams that serve them apply no permission check of their own, so the draft refuses a
 // caller who could not read them through M6's own routes. The face-to-face visit's draft reads only the benefit period (it starts the weight
-// and PPS baseline window). Every other template reads none of it and needs none of these keys.
+// and PPS baseline window). The RN admission visit (S2b) states the caregivers on record (M5: `patient.read`) and the advance directive
+// acknowledgment on file (M39: `consent.read`), on the same terms. Every other template reads none of it and needs none of these keys.
 import { ForbiddenError } from "@chartwarden/types";
 import type { DraftReader, DraftViewer } from "./ports";
 
@@ -23,10 +24,13 @@ export function readerOf(
   };
 }
 
-/** Encounter type -> the M6 read keys its draft is compiled from (the keys of M6's `GET` routes for the same facts). */
+/** Encounter type -> the read keys its draft is compiled from (the keys of the owning modules' `GET` routes for the same facts). */
 const ADMISSION_FACT_READS: ReadonlyMap<string, readonly string[]> = new Map([
   ["recert_visit", ["election.read", "cti.read", "f2f.read", "loc.read"]],
   ["face_to_face", ["election.read"]],
+  // S2b: the admission visit states the caregivers on record (M5, `GET /patients/:id/caregivers`: `patient.read`) and the advance directive
+  // acknowledgment on file (M39, consent reads: `consent.read`). The orders in effect need `prescribing.read`, which every draft already asks.
+  ["admission_visit", ["patient.read", "consent.read"]],
 ]);
 
 /** The M6 read keys the draft of `encounterType` needs, none for a template that reads no admission fact. */

@@ -2,7 +2,7 @@
 // SESSION viewer, a signed note refuses a resolution, and a write records its explicit audit event. Fakes only; the live suite
 // proves the Drizzle unit.
 import { encounterType } from "@chartwarden/db/schema";
-import { readsBenefitPeriod } from "@chartwarden/hearthnote";
+import { readsAdmissionRecord, readsBenefitPeriod } from "@chartwarden/hearthnote";
 import type { EncounterType } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -439,7 +439,7 @@ describe("the admission's read keys a recertification or face-to-face draft need
 
   it("names at least one key for every visit type whose draft reads the admission's benefit period (the two lists cannot drift apart)", () => {
     const types = encounterType.enumValues as readonly EncounterType[];
-    const readers = types.filter((type) => readsBenefitPeriod(type));
+    const readers = types.filter((type) => readsBenefitPeriod(type) || readsAdmissionRecord(type));
     expect(readers.length).toBeGreaterThan(0);
     for (const type of readers) expect(admissionReadsFor(type), type).not.toEqual([]);
   });
@@ -497,6 +497,52 @@ describe("the admission's read keys a recertification or face-to-face draft need
   it("asks a routine visit's draft for none of them", async () => {
     const { svc } = serviceFor(draftEncounterRow());
     expect((await svc.getDraft(holding([]), ID)).templateKey).toBe("routine_visit:rn");
+  });
+
+  // S2b: the admission visit states the caregivers (M5: patient.read) and the advance directive acknowledgment (M39: consent.read).
+  const ADMISSION_KEYS = ["patient.read", "consent.read"];
+  const admission = draftEncounterRow({ encounterType: "admission_visit", discipline: "rn" });
+
+  it("names patient.read and consent.read for the admission visit, and nothing of M6's", () => {
+    expect(admissionReadsFor("admission_visit")).toEqual(ADMISSION_KEYS);
+  });
+
+  it.each(ADMISSION_KEYS)(
+    "refuses an admission draft to a caller who lacks %s, naming it, before any source is read",
+    async (missing) => {
+      const { svc, seams } = serviceFor(admission);
+      const error = await svc
+        .getDraft(holding(ADMISSION_KEYS.filter((k) => k !== missing)), ID)
+        .then(
+          () => undefined,
+          (e: unknown) => e,
+        );
+      expect(error).toMatchObject({ statusCode: 403 });
+      expect((error as Error).message).toContain(missing);
+      expect(seams.carePlanAsOf).not.toHaveBeenCalled();
+      expect(seams.caregiversOn).not.toHaveBeenCalled();
+      expect(seams.advanceDirectiveAcknowledgment).not.toHaveBeenCalled();
+    },
+  );
+
+  it("gives a caller who holds both the admission draft, and refuses the admission's section PUT without them", async () => {
+    const { svc, unit } = serviceFor(admission);
+    expect((await svc.getDraft(holding(ADMISSION_KEYS), ID)).templateKey).toBe(
+      "admission_visit:rn",
+    );
+    const spy = vi.spyOn(unit, "recordResolved");
+    await expectCode(
+      svc.resolveSection(
+        holding(["patient.read"]),
+        ID,
+        "advance_directive",
+        { resolution: "confirmed", contentHash: "a".repeat(64), corpusVersion: "x" },
+        AUDIT,
+      ),
+      "FORBIDDEN",
+      403,
+    );
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it("answers 404 while the switch is off even to a caller who lacks the keys: the refusal is no oracle for the switch", async () => {

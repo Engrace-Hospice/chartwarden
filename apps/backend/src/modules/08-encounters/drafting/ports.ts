@@ -17,6 +17,8 @@ import type {
   InterventionDiscipline,
   LevelOfCareDays,
   MedicationOrderChange,
+  MedicationOrderDto,
+  PatientCaregiverRosterEntry,
   RelevantCarePlanElements,
   ScaleSeries,
   ScaleType,
@@ -85,6 +87,33 @@ export interface DraftSeamPorts {
   attestedFaceToFace(electionPeriodId: string): Promise<FaceToFaceSummary | null>;
   /** M6 `CertificationReader.getActiveCertification`: the period's active certification of terminal illness (S2). */
   activeCertification(electionPeriodId: string): Promise<CertificationSummary | null>;
+  /**
+   * M12 `MedicationOrderProvider.getMedicationsAsOf`: the orders in effect AT `asOf` (an ISO instant), decided from each order's own instants
+   * (S2b, the RN admission visit's `med_reconciliation`).
+   */
+  activeMedicationsAsOf(
+    organizationId: string,
+    patientId: string,
+    asOf: string,
+  ): Promise<readonly MedicationOrderDto[]>;
+  /**
+   * M5 `PatientCaregiverRosterReader.caregiversOn`: the caregivers on record ON `on` (YYYY-MM-DD), from each link's own involvement dates
+   * (S2b, `caregiver_overview`). The entries carry contact details; the draft reads the name and the relationship only.
+   */
+  caregiversOn(
+    organizationId: string,
+    patientId: string,
+    on: string,
+  ): Promise<readonly PatientCaregiverRosterEntry[]>;
+  /**
+   * M39 `ConsentEvaluator.evaluate` for the `advance_directive_acknowledgment` consent type, as of `asOf`: the record that was active then,
+   * or `null` when none was (S2b, `advance_directive`). A fact that a record existed, never what it says. THROWS when M39 cannot answer.
+   */
+  advanceDirectiveAcknowledgment(query: {
+    readonly organizationId: string;
+    readonly patientId: string;
+    readonly asOf: string;
+  }): Promise<{ readonly consentRecordId: string } | null>;
   /**
    * M9's wounds recorded on this visit (through M8's wound reader, `WoundProvider` seam): the note states them, so the draft's context
    * carries them. A seam that cannot answer THROWS, as the others do: the draft is then unavailable rather than silently short of a wound.

@@ -19,12 +19,13 @@ import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-sto
 type Pair = readonly [EncounterType, EncounterDiscipline];
 
 /**
- * The pairs that draft: S1's RN routine visit and S2's RN recertification visit and face-to-face visit (physician or nurse practitioner).
- * Stated here, not derived, so widening the corpus is a deliberate edit of this test.
+ * The pairs that draft: S1's RN routine visit, S2's RN recertification visit and face-to-face visit (physician or nurse practitioner) and
+ * S2b's RN admission visit. Stated here, not derived, so widening the corpus is a deliberate edit of this test.
  */
 const DRAFTED_PAIRS: ReadonlySet<string> = new Set([
   "routine_visit:rn",
   "recert_visit:rn",
+  "admission_visit:rn",
   "face_to_face:md",
   "face_to_face:np",
 ]);

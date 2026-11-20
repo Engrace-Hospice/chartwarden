@@ -31,6 +31,10 @@ export function serialSeams(seams: DraftSeamPorts): DraftSeamPorts {
     levelOfCareOn: inTurn(seams.levelOfCareOn.bind(seams)),
     attestedFaceToFace: inTurn(seams.attestedFaceToFace.bind(seams)),
     activeCertification: inTurn(seams.activeCertification.bind(seams)),
+    // S2b: the admission visit's three reads (M12 orders, M5 roster, M39 acknowledgment) take their turn too.
+    activeMedicationsAsOf: inTurn(seams.activeMedicationsAsOf.bind(seams)),
+    caregiversOn: inTurn(seams.caregiversOn.bind(seams)),
+    advanceDirectiveAcknowledgment: inTurn(seams.advanceDirectiveAcknowledgment.bind(seams)),
     recordedWounds: inTurn(seams.recordedWounds.bind(seams)),
     part2DisclosureAllowed: inTurn(seams.part2DisclosureAllowed.bind(seams)),
   };
