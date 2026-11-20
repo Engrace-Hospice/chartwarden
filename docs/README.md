@@ -179,6 +179,8 @@ per-module build truth is the generated matrix (`bun run status:matrix`).
 | [`implementation/evidence/07-acceptance-report.md`](./implementation/evidence/07-acceptance-report.md) | Workflow 07 engineering acceptance: delivered behavior, exact automated results, security controls, and the remaining clinician/live-DB/rollback release gates. |
 | [`implementation/evidence/07-discipline-plans-current-state.md`](./implementation/evidence/07-discipline-plans-current-state.md) | Workflow 07 WP0 evidence: current UI/API/lifecycle/security inventory, regulatory verification, usability evidence, test results, risks, wireframes, and staged delivery decision. |
 | [`implementation/evidence/07-initial-version-contract-proposal.md`](./implementation/evidence/07-initial-version-contract-proposal.md) | Approved and implemented contract for opening initial and interim discipline-plan versions and the additive server-derived overview action projection. |
+| [`implementation/ChartWarden_Workflow_09_Clinical_Visits_Documentation.md`](./implementation/ChartWarden_Workflow_09_Clinical_Visits_Documentation.md) | Workflow 09 plan for the unified visit workspace (navigation, authoring, review and blockers, signing, handoffs); WP0 complete, WP1 and WP3 approved, the rest awaits approval. |
+| [`implementation/evidence/09-clinical-visits-documentation-current-state.md`](./implementation/evidence/09-clinical-visits-documentation-current-state.md) | Workflow 09 WP0 evidence: gate register, contracts, entry-point map, runtime pass, and the 2026-11-20 refresh with the approval record. |
 
 ---
 
