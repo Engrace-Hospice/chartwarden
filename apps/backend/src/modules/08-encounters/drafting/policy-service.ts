@@ -10,7 +10,11 @@
 // The service takes the caller's transaction (`withOrgContext` upstream) so RLS scopes every row; it never opens its own.
 import { type AuditContext, audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
-import { CORPUS_CLINICAL_REVIEW, type ClinicalReviewStatus } from "@chartwarden/narrative-vocab";
+import {
+  CORPUS_CLINICAL_REVIEW,
+  type CorpusReviewState,
+  effectiveReviewStatus,
+} from "@chartwarden/narrative-vocab";
 import { ChartWardenError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 
@@ -30,11 +34,11 @@ export interface DraftPolicy {
 
 export const DEFAULT_DRAFT_POLICY: DraftPolicy = Object.freeze({ enabled: false, enabledAt: null });
 
-/** The phrase corpus's clinical review state (what `CORPUS_CLINICAL_REVIEW` carries); injectable so a test can approve it. */
-export interface CorpusReview {
-  readonly reviewer: string;
-  readonly status: ClinicalReviewStatus;
-}
+/**
+ * The phrase corpus's clinical review state (what `CORPUS_CLINICAL_REVIEW` carries); injectable so a test can approve it. An approval
+ * counts only for the release it names (`effectiveReviewStatus`).
+ */
+export type CorpusReview = CorpusReviewState;
 
 const P = schema.visitNoteDraftPolicies;
 
@@ -79,10 +83,10 @@ export interface PutDraftPolicyInput {
 }
 
 function assertMayEnable(review: CorpusReview): void {
-  if (review.status === "approved") return;
+  if (effectiveReviewStatus(review) === "approved") return;
   throw new ChartWardenError(
     CORPUS_REVIEW_PENDING_CODE,
-    "The visit-note draft cannot be enabled until the phrase corpus has had its clinical review.",
+    "The visit-note draft cannot be enabled until the current phrase corpus release has had its clinical review.",
     HTTP_CONFLICT,
   );
 }

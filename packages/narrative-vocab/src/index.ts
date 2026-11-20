@@ -14,7 +14,9 @@ export {
   CORPUS_CLINICAL_REVIEW,
   VOCABULARY,
   VOCAB_VERSION,
+  effectiveReviewStatus,
   type ClinicalReviewStatus,
+  type CorpusReviewState,
 } from "./vocabulary";
 export {
   NARRATIVE_VOCAB_RELEASES,

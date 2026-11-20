@@ -54,7 +54,7 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import { type DbClient, createDbClient } from "@chartwarden/db";
-import { DRAFT_VOCAB_CODES } from "@chartwarden/narrative-vocab";
+import { DRAFT_VOCAB_CODES, VOCAB_VERSION } from "@chartwarden/narrative-vocab";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -101,7 +101,7 @@ const PREVIOUS_DATE = "2026-01-08";
 const NOW = new Date("2026-02-01T12:00:00.000Z");
 const AS_OF = "2026-01-16T04:59:59.999Z";
 const PREVIOUS_VISIT_AT = "2026-01-09T04:59:59.999Z";
-const APPROVED = { reviewer: "ADA", status: "approved" } as const;
+const APPROVED = { reviewer: "ADA", status: "approved", reviewedVersion: VOCAB_VERSION } as const;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const ORG_C = "33333333-3333-3333-3333-333333333333";

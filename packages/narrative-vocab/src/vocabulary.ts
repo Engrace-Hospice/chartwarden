@@ -26,12 +26,40 @@ export type ClinicalReviewStatus = "pending" | "approved";
  *
  * `status` stays "pending" until ADA approves the wording; the approval is a deliberate edit to this
  * constant in its own commit. A later PR (the per-tenant switch, VN-D17) REFUSES to enable the draft for
- * any tenant while `status` is not "approved". Nothing in this package reads it: it is data for that gate.
+ * any tenant while the review is not approved FOR THE RUNNING RELEASE (`effectiveReviewStatus`).
+ *
+ * An approval is of one release (S2 design): `reviewedVersion` names the `VOCAB_VERSION` ADA read. A release cut
+ * after the approval carries wording nobody has read, so the approval stops counting for it, and the corpus test
+ * fails until the commit that bumped `VOCAB_VERSION` settles the review (ADA approves the new release, or this goes
+ * back to "pending"). Going back to "pending" refuses new enables only; it does not switch off a tenant already on.
  */
 export const CORPUS_CLINICAL_REVIEW: {
   readonly reviewer: "ADA";
   readonly status: ClinicalReviewStatus;
-} = { reviewer: "ADA", status: "pending" };
+  /** The corpus release the approval covers; `null` while the review is pending. */
+  readonly reviewedVersion: string | null;
+} = { reviewer: "ADA", status: "pending", reviewedVersion: null };
+
+/** A review state as the switch gate reads it (what `CORPUS_CLINICAL_REVIEW` carries; a test injects another). */
+export interface CorpusReviewState {
+  readonly reviewer: string;
+  readonly status: ClinicalReviewStatus;
+  readonly reviewedVersion: string | null;
+}
+
+/**
+ * The review state that counts for `version` (default: the running release). "approved" only when the review is
+ * approved AND names exactly that release; a pending review, or an approval that names no release or another one,
+ * is "pending". Fails closed.
+ */
+export function effectiveReviewStatus(
+  review: CorpusReviewState,
+  version: string = VOCAB_VERSION,
+): ClinicalReviewStatus {
+  return review.status === "approved" && review.reviewedVersion === version
+    ? "approved"
+    : "pending";
+}
 
 // ── scoping shorthands (kept local so each entry's tags read 1:1 with the encounter model) ───────────
 const NURSING: readonly EncounterDiscipline[] = ["rn", "lpn"];

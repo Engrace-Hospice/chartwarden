@@ -10,6 +10,7 @@ import {
   VOCABULARY,
   VOCAB_VERSION,
   activeNarrativeVocabRelease,
+  effectiveReviewStatus,
   entriesFor,
   getVocabEntry,
 } from "../src/index";
@@ -39,12 +40,57 @@ describe("corpus release", () => {
 
 describe("CORPUS_CLINICAL_REVIEW", () => {
   it("names ADA and is pending until the reviewer approves the draft wording", () => {
-    expect(CORPUS_CLINICAL_REVIEW).toEqual({ reviewer: "ADA", status: "pending" });
+    expect(CORPUS_CLINICAL_REVIEW).toEqual({
+      reviewer: "ADA",
+      status: "pending",
+      reviewedVersion: null,
+    });
   });
 
   it("is typed so a later gate can compare against both states", () => {
     const status: "pending" | "approved" = CORPUS_CLINICAL_REVIEW.status;
     expect(["pending", "approved"]).toContain(status);
+  });
+
+  // The approval is of one corpus release (S2 design, VN-D14): a release cut after it is unreviewed wording. Whoever bumps
+  // `VOCAB_VERSION` must settle the review in the same commit (ADA approves the new release, or the constant goes back to pending).
+  // Going back to pending does not switch off a tenant that is already on; the owner decides that separately.
+  it("an approval names the running corpus release, or the release was cut after the review", () => {
+    if (CORPUS_CLINICAL_REVIEW.status === "pending") {
+      expect(CORPUS_CLINICAL_REVIEW.reviewedVersion).toBeNull();
+    } else {
+      expect(CORPUS_CLINICAL_REVIEW.reviewedVersion).toBe(VOCAB_VERSION);
+    }
+  });
+});
+
+describe("effectiveReviewStatus", () => {
+  const approvedFor = (reviewedVersion: string | null) => ({
+    reviewer: "ADA" as const,
+    status: "approved" as const,
+    reviewedVersion,
+  });
+
+  it("is approved only when the approval names the release asked about", () => {
+    expect(effectiveReviewStatus(approvedFor(VOCAB_VERSION))).toBe("approved");
+    expect(effectiveReviewStatus(approvedFor("narrative-vocab@2026.06.0"))).toBe("pending");
+    expect(
+      effectiveReviewStatus(approvedFor("narrative-vocab@2099.01.0"), "narrative-vocab@2099.01.0"),
+    ).toBe("approved");
+  });
+
+  it("fails closed: an approval that names no release, or a pending review, is pending", () => {
+    expect(effectiveReviewStatus(approvedFor(null))).toBe("pending");
+    expect(
+      effectiveReviewStatus({ reviewer: "ADA", status: "pending", reviewedVersion: null }),
+    ).toBe("pending");
+    expect(
+      effectiveReviewStatus({
+        reviewer: "ADA",
+        status: "pending",
+        reviewedVersion: VOCAB_VERSION,
+      }),
+    ).toBe("pending");
   });
 });
 

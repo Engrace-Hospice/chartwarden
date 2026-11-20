@@ -1,7 +1,7 @@
 // ADR-0114 VN-D17 - the per-tenant visit-note draft switch: the absent-row default (off), the server-side enabled_at, the refusal to enable
 // while the phrase corpus has not had its clinical review, and the explicit audit event. DB behaviour (RLS, the CHECK, the upsert against
 // a real row, the audit trigger) is the live suite's; this proves the rules in the service.
-import { CORPUS_CLINICAL_REVIEW } from "@chartwarden/narrative-vocab";
+import { CORPUS_CLINICAL_REVIEW, VOCAB_VERSION } from "@chartwarden/narrative-vocab";
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
@@ -20,8 +20,14 @@ const ORG = "00000000-0000-4000-8000-0000000000a1";
 const MEMBERSHIP = "00000000-0000-4000-8000-0000000000b1";
 const NOW = new Date("2026-11-19T12:00:00.000Z");
 const EARLIER = new Date("2026-11-10T08:00:00.000Z");
-const APPROVED = { reviewer: "ADA", status: "approved" } as const;
-const PENDING = { reviewer: "ADA", status: "pending" } as const;
+const APPROVED = { reviewer: "ADA", status: "approved", reviewedVersion: VOCAB_VERSION } as const;
+const PENDING = { reviewer: "ADA", status: "pending", reviewedVersion: null } as const;
+// Approved, but for a release cut before the running one: the approval does not cover the running wording.
+const APPROVED_EARLIER_RELEASE = {
+  reviewer: "ADA",
+  status: "approved",
+  reviewedVersion: "narrative-vocab@2026.06.0",
+} as const;
 
 const row = (enabled: boolean, enabledAt: Date | null) => ({ enabled, enabledAt });
 
@@ -113,6 +119,28 @@ describe("putDraftPolicy", () => {
     expect(fake.insertedValues()).toEqual([]);
   });
 
+  it("refuses to enable on an approval that covers another corpus release: the same 409, nothing read or written", async () => {
+    const fake = fakeTx([]);
+    const refusal = await putDraftPolicy(fake.tx, {
+      ...base,
+      corpusReview: APPROVED_EARLIER_RELEASE,
+      enabled: true,
+    }).catch((error: unknown) => error);
+    expect(refusal).toMatchObject({ code: CORPUS_REVIEW_PENDING_CODE, statusCode: 409 });
+    expect(fake.queriesRun()).toBe(0);
+    expect(fake.insertedValues()).toEqual([]);
+  });
+
+  it("disabling is still allowed on an approval that covers another release", async () => {
+    const fake = fakeTx([[row(true, EARLIER)], [], []]);
+    const result = await putDraftPolicy(fake.tx, {
+      ...base,
+      corpusReview: APPROVED_EARLIER_RELEASE,
+      enabled: false,
+    });
+    expect(result).toEqual({ enabled: false, enabledAt: null });
+  });
+
   // Skipped once the owner approves the corpus in its own commit: the refusal is then correctly gone.
   it.skipIf(CORPUS_CLINICAL_REVIEW.status === "approved")(
     "refuses to enable against the REAL corpus constant while it is pending (the default review)",
@@ -180,6 +208,16 @@ describe("createDbDraftRouteService (the wire view over the switch)", () => {
       reviewer: "ADA",
     });
     expect(fake.insertedValues()[0]).toMatchObject({ changedByMembershipId: MEMBERSHIP });
+  });
+
+  it("GET reports an approval that covers another release as pending: the wire never says approved for unreviewed wording", async () => {
+    const { db } = dbOver([[]]);
+    const service = createDbDraftRouteService({ db, corpusReview: APPROVED_EARLIER_RELEASE });
+    expect(await service.getPolicy(ORG)).toEqual({
+      enabled: false,
+      reviewStatus: "pending",
+      reviewer: "ADA",
+    });
   });
 
   it("PUT is refused with CORPUS_REVIEW_PENDING while the corpus is pending, and writes nothing", async () => {
