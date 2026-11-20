@@ -72,16 +72,13 @@ describe("buildTemplateMenu: the recertification and face-to-face visits (S2)", 
   const recertOff = buildTemplateMenu("recert_visit", "rn");
   const recertOn = buildTemplateMenu("recert_visit", "rn", { draftWording: true });
 
-  it("switch off: none of the draft phrases in any section, and every section open to the pre-existing phrases as before", () => {
+  it("switch off: none of the draft phrases in any section, and the drafted sections are wired to no category", () => {
     for (const [type, discipline] of [
       ["recert_visit", "rn"],
       ["face_to_face", "md"],
       ["face_to_face", "np"],
     ] as const) {
       const menu = buildTemplateMenu(type, discipline);
-      const preExisting = entriesFor(type, discipline)
-        .filter((e) => !DRAFT_VOCAB_CODES.has(e.code))
-        .map((e) => e.code);
       for (const section of menu.sections) {
         for (const entry of section.entries) {
           expect(DRAFT_VOCAB_CODES.has(entry.code), `${type}/${section.sectionId}`).toBe(false);
@@ -90,7 +87,7 @@ describe("buildTemplateMenu: the recertification and face-to-face visits (S2)", 
       const drafted =
         type === "recert_visit" ? S2_DRAFTED_SECTIONS.recert : S2_DRAFTED_SECTIONS.faceToFace;
       for (const id of drafted) {
-        expect(menuCodes(menu, id), `${type}/${id}`).toEqual(preExisting);
+        expect(menuCodes(menu, id), `${type}/${id}`).toEqual([]);
         expect(menu.sections.find((s) => s.sectionId === id)?.allowedCategories).toEqual([]);
       }
     }
@@ -105,7 +102,7 @@ describe("buildTemplateMenu: the recertification and face-to-face visits (S2)", 
     }
   });
 
-  it("switch on: draft phrases appear only in the sections wired to their category, and an open section stays open to the legacy phrases alone", () => {
+  it("switch on: draft phrases appear only in the sections wired to their category, and chief_concern offers the visit reasons alone", () => {
     expect(menuCodes(recertOn, "vitals_review").some((c) => DRAFT_VOCAB_CODES.has(c))).toBe(true);
     expect(menuCodes(recertOn, "plan").some((c) => DRAFT_VOCAB_CODES.has(c))).toBe(true);
     const wired = new Set(["vitals_review", "plan", "interventions"]);
@@ -119,21 +116,20 @@ describe("buildTemplateMenu: the recertification and face-to-face visits (S2)", 
         }
       }
     }
-    // chief_concern is not wired for the recertification: it offers exactly what it did before S1 and S2.
-    const legacy = entriesFor("recert_visit", "rn")
-      .filter((e) => !DRAFT_VOCAB_CODES.has(e.code))
-      .map((e) => e.code);
-    expect(menuCodes(recertOn, "chief_concern")).toEqual(legacy);
+    // chief_concern is not wired for the recertification's draft: it offers the visit reasons and no draft phrase.
+    const reasons = menuCodes(recertOn, "chief_concern");
+    expect(reasons.length).toBeGreaterThan(0);
+    for (const code of reasons) expect(code.startsWith("nv.reason."), code).toBe(true);
   });
 
-  it("switch on: the face-to-face visit's open sections stay open to the legacy phrases alone", () => {
+  it("switch on: the face-to-face visit's menu is the one it has with the switch off (S2 adds no preset phrase to it)", () => {
     for (const discipline of ["md", "np"] as const) {
-      const menu = buildTemplateMenu("face_to_face", discipline, { draftWording: true });
-      const legacy = entriesFor("face_to_face", discipline)
-        .filter((e) => !DRAFT_VOCAB_CODES.has(e.code))
-        .map((e) => e.code);
-      for (const id of ["chief_concern", "vitals_review", "plan"]) {
-        expect(menuCodes(menu, id), `${discipline}/${id}`).toEqual(legacy);
+      const on = buildTemplateMenu("face_to_face", discipline, { draftWording: true });
+      const off = buildTemplateMenu("face_to_face", discipline);
+      for (const section of on.sections) {
+        expect(menuCodes(on, section.sectionId), `${discipline}/${section.sectionId}`).toEqual(
+          menuCodes(off, section.sectionId),
+        );
       }
     }
   });
