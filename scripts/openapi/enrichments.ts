@@ -1231,6 +1231,7 @@ import {
 // response DTOs). The later `Object.assign` (m15-block.ts) wins over the earlier M15 entries.
 import {
   // response DTOs (§4.2)
+  AideSupervisionRosterResponseSchema as M15AideSupervisionRosterResponseSchema,
   AideSupervisoryVisitViewResponseSchema as M15AideSupervisoryVisitViewResponseSchema,
   // request bodies / list queries
   DisciplineAssessmentViewResponseSchema as M15DisciplineAssessmentViewResponseSchema,
@@ -8162,6 +8163,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "The patient-shareable summary — both confidential categories always stripped (§7.9; §4.1 #3)",
     response: M15DisciplinePlanSummaryResponseSchema,
+  },
+  "GET /api/v1/discipline-plans/:planId/aide-supervision-roster": {
+    summary:
+      "The aides and RN supervisors active at an Aide POC's location — the supervisory-visit pickers; membership id, display name and role key only, readable with discipline_plan.read",
+    response: M15AideSupervisionRosterResponseSchema,
   },
   "GET /api/v1/discipline-plans/:planId/versions": {
     summary: "The plan's version chain, cursor-paginated by sequence (§4.1 #4)",

@@ -16,6 +16,7 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { RedactedCategory } from "./disclosure";
 import type {
+  AideSupervisionRosterView,
   AideSupervisoryVisitView,
   DisciplineAssessmentView,
   DisciplineGoalView,
@@ -611,6 +612,20 @@ export const DisciplinePlanSummaryResponseSchema = Type.Object({
   redacted_categories: Type.Array(RedactedCategorySchema),
 });
 
+/**
+ * The Aide POC supervisory-visit pickers: the plan location's aides and RN supervisors. Minimum necessary — a
+ * membership id, the name to show and the role that qualified the person; no email, licence or patient data.
+ */
+const AideSupervisionRosterMemberSchema = Type.Object({
+  membershipId: Str,
+  displayName: Str,
+  roleKey: Str,
+});
+export const AideSupervisionRosterResponseSchema = Type.Object({
+  aides: Type.Array(AideSupervisionRosterMemberSchema),
+  supervisors: Type.Array(AideSupervisionRosterMemberSchema),
+});
+
 /** Route 19/20/21/22 — a `volunteer_compliance_gate` row (status re-derived over the validity window). */
 export const VolunteerComplianceGateViewResponseSchema = Type.Object({
   gateId: Str,
@@ -723,6 +738,10 @@ type _PlanListItem = Conforms<
 type _PlanDetail = Conforms<
   Static<typeof DisciplinePlanDetailResponseSchema>,
   DisciplinePlanDetail
+>;
+type _AideSupervisionRoster = Conforms<
+  Static<typeof AideSupervisionRosterResponseSchema>,
+  AideSupervisionRosterView
 >;
 type _PlanSummary = Conforms<
   Static<typeof DisciplinePlanSummaryResponseSchema>,

@@ -44,6 +44,9 @@ export { buildDrizzleDisciplinePlanAbacResolver } from "./abac-resolver-drizzle"
 
 // §4.1 — the route mount + the Drizzle-backed READ + WRITE service builders.
 export {
+  type AideRosterPort,
+  type AideRosterStaffRow,
+  type AideSupervisionRosterView,
   type M15ReadDeps,
   type M15ReadService,
   type M15RouteServices,

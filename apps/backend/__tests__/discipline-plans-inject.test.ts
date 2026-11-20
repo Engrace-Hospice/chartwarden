@@ -416,6 +416,9 @@ function createM15Backend(): {
         toVersionListItem,
       );
     },
+    async getAideSupervisionRoster(_actor, planId) {
+      return plans.get(planId)?.kind === "aide_poc" ? { aides: [], supervisors: [] } : null;
+    },
     async getVersion(_actor, planId, versionId) {
       const row = versions.get(versionId);
       return row && row.planId === planId ? row : null;

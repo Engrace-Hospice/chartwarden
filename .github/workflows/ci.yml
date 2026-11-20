@@ -1340,6 +1340,8 @@ jobs:
           - { name: "M15 IDG decision loop", scripts: "test:m15:idg-decision:live" }
           # GAP-044 — the five M15 §4.6 crons (supervisory/MSW/chaplain overdue, gate watcher, hour aggregator).
           - { name: "M15 crons", scripts: "test:m15:crons:live" }
+          # The Aide POC supervisory-visit staff pickers (plan-scoped aides + RN supervisors) as the NOBYPASSRLS app role.
+          - { name: "M15 aide-supervision roster", scripts: "test:m15:aide-roster:live" }
           # GAP-101 — M36 out-of-band delivery workers (send_push/sms/voice/email) + vendor-webhook reconcile.
           - { name: "M36 out-of-band delivery", scripts: "test:m36:delivery:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }

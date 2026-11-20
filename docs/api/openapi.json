@@ -140915,6 +140915,93 @@
         }
       }
     },
+    "/api/v1/discipline-plans/{planId}/aide-supervision-roster": {
+      "get": {
+        "operationId": "getApiV1DisciplineplansByPlanIdAidesupervisionroster",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "summary": "The aides and RN supervisors active at an Aide POC's location — the supervisory-visit pickers; membership id, display name and role key only, readable with discipline_plan.read",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "aides",
+                    "supervisors"
+                  ],
+                  "properties": {
+                    "aides": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "membershipId",
+                          "displayName",
+                          "roleKey"
+                        ],
+                        "properties": {
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "roleKey": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "supervisors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "membershipId",
+                          "displayName",
+                          "roleKey"
+                        ],
+                        "properties": {
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "roleKey": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/discipline-plans/{planId}/aide-supervisory-visits": {
       "post": {
         "operationId": "postApiV1DisciplineplansByPlanIdAidesupervisoryvisits",

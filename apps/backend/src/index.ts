@@ -471,6 +471,7 @@ import {
   registerAuthorizationSeams,
   registerM3CronWorkers,
   scheduleM3Jobs,
+  staffAtLocationForOrg,
   wireM3ReaperTenancy,
 } from "./modules/03-authorization/index";
 import { M3_CLOSE_ENGAGEMENTS_PLATFORM_JOB_ID } from "./modules/03-authorization/jobs/close-engagements";
@@ -8809,7 +8810,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // nightly aggregator (M15-F04, migration 0347); the ratio answers `unavailable` only when it was
           // never computed or no signed visit has a resolved duration, never a fabricated 0%.
           mountM15Routes(app, {
-            readService: buildDrizzleM15ReadService(dbHandle.db),
+            readService: buildDrizzleM15ReadService(dbHandle.db, {
+              // The Aide POC supervisory-visit pickers: M3's location-scoped staff read, bound as a locally-declared
+              // port (M15 imports no authorization code or schema).
+              aideRoster: {
+                listStaffAtLocation: (query) => staffAtLocationForOrg(dbHandle.db, query),
+              },
+            }),
             writeService: buildDrizzleM15WriteService(dbHandle.db, {
               outbox: m15OutboxPublisher,
             }),
