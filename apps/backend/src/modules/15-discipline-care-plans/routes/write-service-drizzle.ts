@@ -65,6 +65,7 @@ import {
   decideRevokeGate,
   deriveGateStatus,
 } from "../volunteer/index";
+import { SUPERVISORY_OVERRIDE_ROLES } from "../abac-predicates";
 import type { M15ReadActor, M15WriteActor } from "./actor";
 import {
   AIDE_ROLE_KEYS,
@@ -806,6 +807,18 @@ export function buildDrizzleM15WriteService(
         checkPlanWritable(plan.status);
         checkOptimisticConcurrency(input.expectedVersion, plan.version);
 
+        // The care team is part of the DRAFT (§2.3: named before a version can leave `draft`). Once a version is out for
+        // signature or signed, moving the aide would leave the aide's acknowledgment on a plan that names someone else and
+        // move the supervisor's authority silently: a revision is opened (route 6) to change it. A plan with no version yet
+        // is open too (the first assignment).
+        const versions = await tx.select({ status: V.status }).from(V).where(eq(V.planId, planId));
+        if (versions.length > 0 && !versions.some((version) => version.status === "draft")) {
+          throw new DisciplinePlanStateError(
+            "ASSIGNMENT_LOCKED",
+            "the care team can change only while the plan has an open draft; open a revision first",
+          );
+        }
+
         // Both people must be active staff at THIS plan's location holding the right role right now; the roster port
         // (M3) decides, so a member who left, was suspended, lost the role or works elsewhere is refused.
         const roster = assembleAideSupervisionRoster(
@@ -825,6 +838,13 @@ export function buildDrizzleM15WriteService(
           throw new DisciplinePlanStateError(
             "SUPERVISING_RN_NOT_ELIGIBLE",
             "the chosen supervising RN is not an active RN at this plan's location",
+          );
+        }
+
+        if (input.aideMembershipId === input.supervisingRnMembershipId) {
+          throw new DisciplinePlanStateError(
+            "SUPERVISING_RN_NOT_ELIGIBLE",
+            "the supervising RN cannot be the aide they supervise",
           );
         }
 
@@ -1364,6 +1384,19 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(SV.id, visitId), eq(SV.planId, planId)))
           .limit(1);
         if (!row) throw new NotFoundError("supervisory visit not found");
+        // The attestation belongs to the RN who recorded it. The route guard only asks "is the caller the plan's CURRENT
+        // supervising RN" (or a covering supervisor), which re-pointing the plan's supervisor can change: so the service
+        // also binds the signer to the visit's own RN, with the same supervisor override.
+        if (
+          actor.kind !== "system" &&
+          row.supervisingRnMembershipId !== actor.membershipId &&
+          !SUPERVISORY_OVERRIDE_ROLES.some((role) => actor.roles.includes(role))
+        ) {
+          throw new DisciplinePlanStateError(
+            "NOT_AIDE_SUPERVISOR",
+            "only the supervising RN who recorded this attestation, or a covering supervisor, may sign it",
+          );
+        }
         if (input.expectedVersion !== null) {
           checkOptimisticConcurrency(input.expectedVersion, row.version);
         }

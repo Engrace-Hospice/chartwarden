@@ -52,14 +52,20 @@ function rosterPort(rows: readonly AideRosterStaffRow[] = ROSTER): AideRosterPor
   };
 }
 
-/** select() answers the plan row. The guarded UPDATE returns the merged row (or nothing when `staleUpdate`). */
-function fakeDb(plan: Record<string, unknown> = PLAN_ROW, staleUpdate = false) {
+/** select() answers in call order: the plan row, then the plan's versions. The guarded UPDATE returns the merged row
+ *  (or nothing when `staleUpdate`). */
+function fakeDb(
+  plan: Record<string, unknown> = PLAN_ROW,
+  staleUpdate = false,
+  versions: readonly Record<string, unknown>[] = [],
+) {
   updates = [];
   rosterQueries = [];
+  const results: unknown[][] = [[plan], [...versions]];
   const tx = {
     execute: async () => [],
     select: () => {
-      const rows = [plan];
+      const rows = results.shift() ?? [];
       const chain: Promise<unknown[]> = Object.assign(Promise.resolve(rows), {
         from: (): unknown => chain,
         where: (): unknown => chain,
@@ -72,7 +78,10 @@ function fakeDb(plan: Record<string, unknown> = PLAN_ROW, staleUpdate = false) {
       set: (values: Record<string, unknown>) => {
         updates.push(values);
         return {
-          where: () => ({ returning: async () => (staleUpdate ? [] : [{ ...plan, ...values }]) }),
+          where: () => ({
+            returning: async () =>
+              staleUpdate ? [] : [{ ...plan, ...(versions[0] ?? {}), ...values }],
+          }),
         };
       },
     }),
@@ -85,6 +94,7 @@ interface ServiceOptions {
   readonly aideRoster?: AideRosterPort | null;
   readonly staleUpdate?: boolean;
   readonly inCaseload?: boolean;
+  readonly versions?: readonly Record<string, unknown>[];
 }
 
 const service = ({
@@ -92,8 +102,9 @@ const service = ({
   aideRoster = rosterPort(),
   staleUpdate = false,
   inCaseload = true,
+  versions = [],
 }: ServiceOptions = {}) =>
-  buildDrizzleM15WriteService(fakeDb(plan, staleUpdate), {
+  buildDrizzleM15WriteService(fakeDb(plan, staleUpdate, versions), {
     isInCaseload: async () => inCaseload,
     ...(aideRoster === null ? {} : { aideRoster }),
   });
@@ -240,5 +251,90 @@ describe("M15 assignAideTeam", () => {
       input(),
     );
     expect(updates[0]).toMatchObject({ aideMembershipId: AIDE });
+  });
+  it("refuses the same member as both aide and supervising RN (nobody supervises themself)", async () => {
+    const both = [...ROSTER, { membershipId: OTHER, displayName: "Dual Role", roleKey: "chha" }];
+    const dual = [...both, { membershipId: OTHER, displayName: "Dual Role", roleKey: "rn" }];
+    const err = await rejection(
+      service({ aideRoster: rosterPort(dual) }).assignAideTeam(
+        actor(["rn"]),
+        PLAN,
+        input({ aideMembershipId: OTHER, supervisingRnMembershipId: OTHER }),
+      ),
+    );
+    expect(err.code).toBe("SUPERVISING_RN_NOT_ELIGIBLE");
+    expect(updates).toHaveLength(0);
+  });
+
+  it("is locked once the plan has versions but none is an open draft: open a revision to change the care team", async () => {
+    for (const versions of [
+      [{ status: "signed" }],
+      [{ status: "signed" }, { status: "superseded" }],
+      [{ status: "in_review" }],
+    ]) {
+      const err = await rejection(
+        service({ versions }).assignAideTeam(actor(["rn"]), PLAN, input()),
+      );
+      expect(err.code, JSON.stringify(versions)).toBe("ASSIGNMENT_LOCKED");
+      expect(err.statusCode).toBe(409);
+    }
+    expect(updates).toHaveLength(0);
+  });
+
+  it("is open while the plan has no version yet or an open draft", async () => {
+    for (const versions of [
+      [],
+      [{ status: "draft" }],
+      [{ status: "signed" }, { status: "draft" }],
+    ]) {
+      await service({ versions }).assignAideTeam(actor(["rn"]), PLAN, input());
+      expect(updates[0], JSON.stringify(versions)).toMatchObject({ aideMembershipId: AIDE });
+    }
+  });
+});
+
+describe("M15 signSupervisoryVisit — re-pointing the supervising RN does not hand over a visit already recorded", () => {
+  const VISIT = "44444444-4444-4444-8444-444444444444";
+  const visitRow = {
+    id: VISIT,
+    planId: PLAN,
+    supervisingRnMembershipId: RN,
+    aideMembershipId: AIDE,
+    sourceEncounterId: null,
+    supervisoryAt: new Date("2026-01-01T00:00:00Z"),
+    attestationMode: "aide_present",
+    aidePerformanceSatisfactory: true,
+    correctiveActions: null,
+    supervisoryNarrative: "Synthetic narrative of the supervised visit, long enough to be valid.",
+    nextDueAt: new Date("2026-01-15T00:00:00Z"),
+    cadenceDaysAtInsert: 14,
+    signedAt: null,
+    version: 1,
+  };
+  const signAs = (membershipId: string, roles: readonly string[]) =>
+    service({ versions: [visitRow] }).signSupervisoryVisit(
+      { ...actor(roles), membershipId },
+      PLAN,
+      VISIT,
+      { expectedVersion: null } as never,
+    );
+
+  it("lets the RN the visit names sign it", async () => {
+    await signAs(RN, ["rn"]);
+    expect(updates[0]).toHaveProperty("signedAt");
+  });
+
+  it("refuses another RN, even one the plan now names as supervising RN (403 NOT_AIDE_SUPERVISOR)", async () => {
+    const err = await rejection(signAs("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", ["rn"]));
+    expect(err.code).toBe("NOT_AIDE_SUPERVISOR");
+    expect(err.statusCode).toBe(403);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("lets a covering clinical supervisor or director of nursing sign (the ABAC override)", async () => {
+    for (const role of ["clinical_supervisor", "director_of_nursing"]) {
+      await signAs("ffffffff-ffff-4fff-8fff-ffffffffffff", [role]);
+      expect(updates[0], role).toHaveProperty("signedAt");
+    }
   });
 });

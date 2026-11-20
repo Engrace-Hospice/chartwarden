@@ -65,6 +65,8 @@ const U_AIDE_NARROWED = "a0000000-0000-4000-8000-000000000016";
 const U_CASE_MANAGER = "a0000000-0000-4000-8000-000000000021";
 const U_LPN = "a0000000-0000-4000-8000-000000000031";
 const U_B_AIDE = "a0000000-0000-4000-8000-000000000041";
+const U_DUAL = "a0000000-0000-4000-8000-000000000051"; // holds both chha and rn at the plan location
+const U_RN_OFFSITE = "a0000000-0000-4000-8000-000000000052"; // an RN sited at the OTHER location only
 
 const PATIENT = "c0000000-0000-4000-8000-000000000001";
 const PATIENT_B = "c0000000-0000-4000-8000-000000000002";
@@ -219,6 +221,8 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
     await user(U_CASE_MANAGER, null); // no name on file -> labelled by a short id, never the email
     await user(U_LPN, "Lee Practical");
     await user(U_B_AIDE, "Bea Otherorg");
+    await user(U_DUAL, "Dana Dualrole");
+    await user(U_RN_OFFSITE, "Rhea Offsite");
 
     await member(U_CALLER, ORG_A, [main]);
     await member(U_OFF_CASELOAD, ORG_A, [main]);
@@ -232,6 +236,8 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
     await member(U_CASE_MANAGER, ORG_A, [main]);
     await member(U_LPN, ORG_A, [main]);
     await member(U_B_AIDE, ORG_B, [locOf[`${ORG_B}:main`] as string]);
+    await member(U_DUAL, ORG_A, [main]);
+    await member(U_RN_OFFSITE, ORG_A, [other]);
 
     await grant(U_CALLER, ORG_A, "rn");
     await grant(U_OFF_CASELOAD, ORG_A, "rn");
@@ -246,6 +252,9 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
     await grant(U_CASE_MANAGER, ORG_A, "rn_case_manager");
     await grant(U_LPN, ORG_A, "lpn");
     await grant(U_B_AIDE, ORG_B, "chha");
+    await grant(U_DUAL, ORG_A, "chha");
+    await grant(U_DUAL, ORG_A, "rn");
+    await grant(U_RN_OFFSITE, ORG_A, "rn");
 
     planA = await plan(ORG_A, "aide_poc", PATIENT);
     mswPlanA = await plan(ORG_A, "msw_plan", PATIENT);
@@ -345,6 +354,7 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
     // Only the active aide sited at the plan's location: not the off-site, suspended, expired or narrowed ones.
     expect(body.aides).toEqual([
       { membershipId: memberOf[U_AIDE], displayName: "Avery Aide", roleKey: "chha" },
+      { membershipId: memberOf[U_DUAL], displayName: "Dana Dualrole", roleKey: "chha" },
     ]);
     // RNs and RN case managers at the location; a member with no name on file is labelled by a short id.
     expect(body.supervisors).toEqual(
@@ -458,6 +468,7 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
     });
 
     afterEach(async () => {
+      await admin.query(`DELETE FROM discipline_care_plan_version WHERE plan_id=$1`, [planA]);
       await admin.query(
         `UPDATE discipline_care_plan SET aide_membership_id=NULL, supervising_rn_membership_id=NULL WHERE id=$1`,
         [planA],
@@ -480,10 +491,17 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
         version: before + 1,
       });
       const { rows } = await admin.query(
-        `SELECT event_type FROM audit_event WHERE organization_id=$1 AND resource_id::text=$2`,
+        `SELECT event_type, before, after FROM audit_event
+          WHERE organization_id=$1 AND resource_id::text=$2 AND event_type LIKE 'discipline_care_plan.%'`,
         [ORG_A, planA],
       );
-      expect(rows.length).toBeGreaterThan(0);
+      // The plan row's audit image carries both ids before (null) and after (the picks), so a surveyor can see who changed it.
+      const change = rows.find(
+        (r) =>
+          r.after?.aide_membership_id === memberOf[U_AIDE] && r.before?.aide_membership_id == null,
+      );
+      expect(change, JSON.stringify(rows.map((r) => r.event_type))).toBeTruthy();
+      expect(change.after.supervising_rn_membership_id).toBe(memberOf[U_CASE_MANAGER]);
     });
 
     it("refuses an aide who is off-site, suspended, expired, narrowed, the wrong role or in another tenant (422, nothing written)", async () => {
@@ -508,12 +526,39 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
     });
 
     it("refuses a supervising RN who is an aide, an LPN or in another tenant (422)", async () => {
-      for (const rn of [U_AIDE, U_LPN, U_B_AIDE]) {
+      for (const rn of [U_AIDE, U_LPN, U_B_AIDE, U_RN_OFFSITE]) {
         const res = await put(planA, U_CALLER, pick(U_AIDE, rn));
         expect(res.statusCode, rn).toBe(422);
         expect(res.json().error?.code ?? res.json().code, rn).toBe("SUPERVISING_RN_NOT_ELIGIBLE");
       }
       expect(await planRow(planA)).toMatchObject({ aide_membership_id: null });
+    });
+
+    it("refuses one person as both the aide and the supervising RN", async () => {
+      const res = await put(planA, U_CALLER, pick(U_DUAL, U_DUAL));
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error?.code ?? res.json().code).toBe("SUPERVISING_RN_NOT_ELIGIBLE");
+      expect(await planRow(planA)).toMatchObject({ aide_membership_id: null });
+    });
+
+    it("is locked once a version is out for signature, and open again with an open draft", async () => {
+      const addVersion = async (status: string, sequence: number) =>
+        admin.query(
+          `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
+             sequence, status, kind, state_snapshot) VALUES ($1,$2,$3,$4,$5,$6,'initial','{}'::jsonb)`,
+          [ORG_A, peOf(ORG_A), locOf[`${ORG_A}:main`], planA, sequence, status],
+        );
+      await addVersion("in_review", 1);
+      const locked = await put(planA, U_CALLER, pick(U_AIDE, U_CASE_MANAGER));
+      expect(locked.statusCode).toBe(409);
+      expect(locked.json().error?.code ?? locked.json().code).toBe("ASSIGNMENT_LOCKED");
+      expect(await planRow(planA)).toMatchObject({ aide_membership_id: null });
+      await admin.query(
+        `UPDATE discipline_care_plan_version SET status='superseded' WHERE plan_id=$1`,
+        [planA],
+      );
+      await addVersion("draft", 2);
+      expect((await put(planA, U_CALLER, pick(U_AIDE, U_CASE_MANAGER))).statusCode).toBe(200);
     });
 
     it("is version-checked, aide-plan-only and caseload-scoped, and answers another tenant's plan with a 404", async () => {

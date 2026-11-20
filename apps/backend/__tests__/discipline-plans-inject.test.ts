@@ -975,6 +975,21 @@ describe("M15 route smoke — the M1 boundary", () => {
     await app.close();
   });
 
+  it("403s the aide-assignment write for a session without discipline_plan.author", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/discipline-plans/${PLAN}/aide-assignment`,
+      headers: { ...NONE_HEADERS, "idempotency-key": "assign-403", "if-match": "1" },
+      payload: {
+        aideMembershipId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        supervisingRnMembershipId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
   it("requires If-Match and a well-formed body before assigning the aide team", async () => {
     const { app } = makeServer();
     const url = `/api/v1/discipline-plans/${PLAN}/aide-assignment`;
@@ -1067,7 +1082,7 @@ describe("M15 route smoke — the M1 boundary", () => {
 // ── one legitimately-authorized 2xx call per route (the bulk of the file) ──────────────────────────────
 interface RouteCase {
   readonly label: string;
-  readonly method: "GET" | "POST" | "PATCH";
+  readonly method: "GET" | "POST" | "PATCH" | "PUT";
   readonly url: string;
   readonly headers: Record<string, string>;
   readonly payload?: Record<string, unknown>;

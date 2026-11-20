@@ -171,6 +171,7 @@
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
+        "apps/backend/__tests__/m15-aide-supervision-roster.live.test.ts",
         "apps/backend/__tests__/m36-oncall-directory.test.ts",
         "apps/backend/__tests__/m36-role-send.live.test.ts",
         "apps/backend/__tests__/m36-role-send.test.ts",
