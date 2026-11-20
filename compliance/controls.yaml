@@ -308,13 +308,16 @@ controls:
       - file: apps/backend/__tests__/m5-census-caseload-scope.live.test.ts
 
   - id: CW-AC-06
-    title: List and audit reads return minimum-necessary facts — computed age (never date of birth) on the admission census; actor names resolved only inside the caller's org
+    title: List and audit reads return minimum-necessary facts — computed age (never date of birth) on the admission census; actor names resolved only inside the caller's org; the Aide POC supervision roster lists staff as membership id, display name and role key only, inside the caller's org and the plan's location, behind the plan's read permission and caseload check
     hipaa: ["164.502(b)", "164.312(b)"]
     soc2: ["CC6.1", "CC6.7"]
     status: partial
     evidence:
       - file: apps/backend/src/modules/05-patient/patient-admission-identity.ts
       - file: packages/audit/src/query/drizzle-audit-query.ts
+      - file: apps/backend/src/modules/03-authorization/staff-at-location-for-org.ts
+      # Proves the roster as the NOBYPASSRLS role: cross-tenant, suspended, expired, off-site and disabled-role members are never listed.
+      - script: test:m15:aide-roster:live
     gap:
       reason: The census age field and the audit actorName org-scoped lookup are covered by in-memory tests and a manual Docker check only; no live suite proves them against the NOBYPASSRLS role.
       owner: platform
@@ -1099,8 +1102,23 @@ controls:
       - file: packages/auth/src/roles/note-closure-grants.ts
 
   - id: CW-AC-53
-    title: The discipline-plan permissions a tenant's RN roles hold by default are least privilege (the RBAC half only; which patient is the care-team scope, caseload_or_scope and discipline_scope, is unchanged) - rn_case_manager and rn hold read, read_summary, author, finalize and sign, because signVersion accepts the RN slot of an Aide POC from either role key (any care-team RN may sign it) while the same slot on the MSW and volunteer plans stays the RN case manager's, so rn holding the key signs nothing else - and never the system keys (IDG revise, read internal), a supervisor, the director of nursing or an external role. Coverage is the roles a tenant already has when migration 1526 runs; neither role is a template, so a new tenant gets nothing until an administrator creates the roles, a role created later receives nothing, and a tenant may still remove a key from a role it owns
-    hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.308(a)(4)(ii)(C)"]
+    title: >-
+      The discipline-plan permissions a tenant's RN roles hold by default are least privilege (the RBAC half only; which
+      patient is the care-team scope, caseload_or_scope and discipline_scope, is unchanged) - rn_case_manager and rn hold
+      read, read_summary, author, finalize and sign, because signVersion accepts the RN slot of an Aide POC from either role
+      key (any care-team RN may sign it) while the same slot on the MSW and volunteer plans stays the RN case manager's, so
+      rn holding the key signs nothing else - and never the system keys (IDG revise, read internal), a supervisor, the
+      director of nursing or an external role. Coverage is the roles a tenant already has when migration 1526 runs; neither
+      role is a template, so a new tenant gets nothing until an administrator creates the roles, a role created later
+      receives nothing, and a tenant may still remove a key from a role it owns. Limits stated on purpose - the key is not
+      scoped by plan kind, so an RN reads every kind of discipline plan (MSW, spiritual, volunteer, Aide POC) of a patient
+      on their caseload, with Part 2 and family-violence redaction still applied by the disclosure gate; no role holds the
+      sign key for the CHHA acknowledgment slot by default (a tenant must grant it to chha before an Aide POC can reach
+      signed, which fails closed); and the event and PDF carry the slot a signer filled, while the signature row and its
+      audit image also carry the role key the signer held (held_role_key, migration 1527, empty on rows signed earlier and
+      on a system-actor signature). A finalize may only seal a signer set at or above the D11 floor, with at most one
+      signature per role
+    hipaa: ["164.312(a)(1)", "164.312(c)(1)", "164.312(d)", "164.308(a)(4)(ii)(B)", "164.308(a)(4)(ii)(C)"]
     soc2: ["CC6.1", "CC6.3"]
     status: implemented
     evidence:
@@ -1120,6 +1138,10 @@ controls:
       # intervention create/update), not only on openVersion, and refuses a finalize whose signer quorum is below the D11 floor.
       - file: apps/backend/__tests__/discipline-plans-authoring-scope.test.ts
       - file: apps/backend/__tests__/discipline-plans-signer-floor.test.ts
+      # signVersion binds the claimed slot to the actor's roles (the acknowledgment flag comes from the sealed slot, never the
+      # body) and records the held role key on the signature row (migration 1527).
+      - file: apps/backend/__tests__/discipline-plans-signer-binding.test.ts
+      - file: packages/db/migrations/1527_m15_signature_held_role_key.sql
 
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
