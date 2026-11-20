@@ -68,6 +68,9 @@ export function isCompleteM23Qualification(input: {
 /** Emits only allowlisted diagnostic facts, never arbitrary Vitest error text. */
 export function summarizeVitestFailureMessage(message: string): string[] {
   const summary = new Set<string>();
+  if (message.includes("M23 isolated runner did not provide CHARTWARDEN_TEST_DATABASE_URL")) {
+    summary.add("Isolated runner database URL missing from Vitest environment");
+  }
   const timeout = message.match(/Hook timed out (?:in|after) (\d{1,7})ms/i);
   if (timeout?.[1]) summary.add(`Hook timeout: ${timeout[1]}ms`);
 

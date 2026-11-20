@@ -255,6 +255,7 @@ async function main() {
         env: {
           ...process.env,
           CHARTWARDEN_TEST_DATABASE_URL: databaseUrl.toString(),
+          CHARTWARDEN_M23_RLS_ISOLATED_RUN: "true",
           CHARTWARDEN_TEST_CLUSTER_ID: clusterName,
           CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER: identity.systemIdentifier,
         },

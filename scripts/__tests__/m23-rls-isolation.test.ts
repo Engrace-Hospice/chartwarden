@@ -222,6 +222,17 @@ describe("M23 Vitest failure diagnostics", () => {
       "No allowlisted failure detail; raw diagnostic withheld.",
     ]);
   });
+
+  it("identifies the fixed isolated-runner database URL guard", () => {
+    expect(
+      summarizeVitestFailureMessage(
+        "Error: M23 isolated runner did not provide CHARTWARDEN_TEST_DATABASE_URL",
+      ),
+    ).toEqual([
+      "Isolated runner database URL missing from Vitest environment",
+      "Failure class: Error",
+    ]);
+  });
 });
 
 describe("M23 qualification completeness", () => {

@@ -26,6 +26,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dropLiveRoles } from "./_live-roles";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+if (process.env.CHARTWARDEN_M23_RLS_ISOLATED_RUN === "true" && !DB_URL) {
+  throw new Error("M23 isolated runner did not provide CHARTWARDEN_TEST_DATABASE_URL");
+}
 const MIGRATIONS_DIR = join(__dirname, "..");
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
