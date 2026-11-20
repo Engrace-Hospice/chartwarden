@@ -58,7 +58,7 @@ import type {
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildServer } from "../src/bootstrap/index";
+import { STEP_UP_FLOOR_KEY, buildServer, stepUpFreshFor } from "../src/bootstrap/index";
 import { registerSeam } from "../src/bootstrap/seams/registry";
 import {
   AdmissionSeamDataGapError,
@@ -76,6 +76,7 @@ import {
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
   createHearthnoteCiphers,
+  registerEncounterRoutes,
 } from "../src/modules/08-encounters/index";
 import { registerDraftSectionRoutes } from "../src/modules/08-encounters/routes/draft-section-routes";
 import { carePlan, change, honestSeries, point } from "./_encounter-draft-fixtures";
@@ -229,6 +230,16 @@ const NO_SOURCE_READS = { scale: 0, medication: 0, carePlan: 0 };
 /** The M6 keys whose facts a recertification draft states (the keys of M6's own GET routes for them). */
 const M6_READS = ["election.read", "cti.read", "f2f.read", "loc.read"] as const;
 type M6Read = (typeof M6_READS)[number];
+/** Every draft is compiled from the care plan, medication orders and scored scales: the routes need those read keys. */
+const SOURCE_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
+const BASE_KEYS = ["encounter.read", "encounter.author", ...SOURCE_READS];
+/** What an author needs to finalize and sign a note and to amend it (the route keys; the M6 keys are the service's). */
+const WRITE_KEYS = [
+  "encounter.finalize",
+  "encounter.sign",
+  "encounter.addendum_author",
+  "encounter.addendum_sign",
+];
 
 interface Member {
   readonly userId: string;
@@ -267,6 +278,10 @@ describe.skipIf(!DB_URL)(
     const lacking = {} as Record<M6Read, Member>;
     let f2fOnlyReader: Member;
     let noM6Reader: Member;
+    /** The grant and session stores and the RBAC handle: a test grants or revokes a key and the next request sees it. */
+    let permissions: ReturnType<typeof createInMemoryEffectivePermissionStore>;
+    let rbac: ReturnType<typeof registerEffectivePermissionResolver>;
+    let sessionStore: ReturnType<typeof createInMemorySessionContextStore>;
     let counter = 0;
     const scenarios: Scenario[] = [];
     const consentAsked: string[] = [];
@@ -609,12 +624,13 @@ describe.skipIf(!DB_URL)(
     async function confirmDrafted(
       f: EncounterFixture,
       skip: readonly string[] = [],
+      headers = authorA(),
     ): Promise<void> {
-      const { body } = await getDraft(f);
+      const { body } = await getDraft(f, headers);
       for (const section of body.sections) {
         if (section.state !== "unresolved" && section.state !== "needs_reconfirmation") continue;
         if (skip.includes(section.sectionId)) continue;
-        const res = await putSection(f, section.sectionId, "confirmed", section);
+        const res = await putSection(f, section.sectionId, "confirmed", section, headers);
         expect(res.statusCode, `confirm ${section.sectionId}`).toBe(200);
       }
     }
@@ -640,7 +656,10 @@ describe.skipIf(!DB_URL)(
     // the encounter service (finalize and sign)
     // -------------------------------------------------------------------------------------------------------------
     /** Chief concern and assessment have no drafted source for a recertification: the clinician's own words, as the gate requires. */
-    async function documentOwnSections(f: EncounterFixture): Promise<void> {
+    async function documentOwnSections(
+      f: EncounterFixture,
+      membershipId = orgs.A.author.membershipId,
+    ): Promise<void> {
       await svc.updateSelections(
         ORG_A,
         f.encounterId,
@@ -651,12 +670,14 @@ describe.skipIf(!DB_URL)(
             entries: [{ code: FIXTURE_VOCAB_CODE }],
           })),
         },
-        orgs.A.author.membershipId,
+        membershipId,
       );
     }
+    /** What a recertification or face-to-face finalize and sign need of the caller: the route resolves these from the session. */
+    const ALL_M6_KEYS: ReadonlySet<string> = new Set(M6_READS);
     const finalize = (f: EncounterFixture, roles: readonly string[] = ["rn"]) =>
       svc.finalize(ORG_A, f.encounterId, SERVICE_DATE as never, {
-        viewer: { roles, membershipId: orgs.A.author.membershipId },
+        viewer: { roles, membershipId: orgs.A.author.membershipId, permissions: ALL_M6_KEYS },
       });
     const sign = (f: EncounterFixture, roles: readonly string[] = ["rn"]) =>
       svc.sign(
@@ -667,6 +688,7 @@ describe.skipIf(!DB_URL)(
           sessionId: SESSION_A,
           userId: orgs.A.author.userId,
           roles,
+          permissions: ALL_M6_KEYS,
         },
         SIGN_ARGS,
       );
@@ -853,27 +875,23 @@ describe.skipIf(!DB_URL)(
       registerSeam("LatestAssessmentProvider", {
         latestBatch: async () => [{ scaleType: "pps" }, { scaleType: "esas_r" }],
       } as never);
-      registerSeam(
-        "SessionContextResolver",
-        createSessionContextResolver(
-          createInMemorySessionContextStore([
-            {
-              sessionClass: "staff" as const,
-              portalAccountId: null,
-              sessionPatientId: null,
-              sessionId: SESSION_A,
-              userId: orgs.A.author.userId,
-              membershipId: orgs.A.author.membershipId,
-              organizationId: ORG_A,
-              roles: [],
-              providerEntityIds: [],
-              locationIds: [],
-              lastStepUpAt: new Date(),
-              lastStepUpFactor: "webauthn" as const,
-            },
-          ]).store,
-        ),
-      );
+      sessionStore = createInMemorySessionContextStore([
+        {
+          sessionClass: "staff" as const,
+          portalAccountId: null,
+          sessionPatientId: null,
+          sessionId: SESSION_A,
+          userId: orgs.A.author.userId,
+          membershipId: orgs.A.author.membershipId,
+          organizationId: ORG_A,
+          roles: [],
+          providerEntityIds: [],
+          locationIds: [],
+          lastStepUpAt: new Date(),
+          lastStepUpFactor: "webauthn" as const,
+        },
+      ]);
+      registerSeam("SessionContextResolver", createSessionContextResolver(sessionStore.store));
       // The admission a sign validates (M6's reader is proven by its own suite): active since before the service date, the encounter's patient.
       registerSeam("AdmissionStatusReader", {
         getAdmissionSummary: async (organizationId: string, admissionId: string) => ({
@@ -898,37 +916,41 @@ describe.skipIf(!DB_URL)(
       resetAuthorizationContract();
       resetRbacEngine();
       resetAbacRegistry();
-      // Every draft is compiled from the care plan, medication orders and scored scales: the routes need those read keys. A recertification
-      // (and, for the benefit period alone, a face-to-face) draft also needs M6's own keys: the service checks those by template.
-      const SOURCE_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
-      const BASE_KEYS = ["encounter.read", "encounter.author", ...SOURCE_READS];
+      // A recertification (and, for the benefit period alone, a face-to-face) draft also needs M6's own keys: the service checks those by template.
       const grant = (orgId: string, member: Member, permissionKeys: string[]) => ({
         orgId,
         userId: member.userId,
         grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys }],
       });
-      registerEffectivePermissionResolver(
-        createInMemoryEffectivePermissionStore([
-          grant(ORG_A, orgs.A.author, [...BASE_KEYS, ...M6_READS]),
-          grant(ORG_B, orgs.B.author, [...BASE_KEYS, ...M6_READS]),
-          // every key but one of M6's
-          ...M6_READS.map((key) =>
-            grant(ORG_A, lacking[key], [
-              ...BASE_KEYS,
-              ...M6_READS.filter((other) => other !== key),
-            ]),
-          ),
-          grant(ORG_A, f2fOnlyReader, [...BASE_KEYS, "election.read"]),
-          grant(ORG_A, noM6Reader, BASE_KEYS),
-        ]).store,
-      );
+      permissions = createInMemoryEffectivePermissionStore([
+        grant(ORG_A, orgs.A.author, [...BASE_KEYS, ...M6_READS]),
+        grant(ORG_B, orgs.B.author, [...BASE_KEYS, ...M6_READS]),
+        // every key but one of M6's
+        ...M6_READS.map((key) =>
+          grant(ORG_A, lacking[key], [...BASE_KEYS, ...M6_READS.filter((other) => other !== key)]),
+        ),
+        grant(ORG_A, f2fOnlyReader, [...BASE_KEYS, "election.read"]),
+        grant(ORG_A, noM6Reader, BASE_KEYS),
+      ]);
+      rbac = registerEffectivePermissionResolver(permissions.store);
       const registry = createPredicateRegistry({ ...M3_INTRINSIC_PREDICATES });
       const predicates = buildEncounterAbacPredicates({
         resolver: createDbEncounterAbacResolver(handle.db),
         isInCaseload: async () => true,
       });
       for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+      // M3's step-up gate (registered at boot in production): the sign routes need a FRESH step-up on the session.
+      registry.register("step_up_recent", async (context, target) =>
+        stepUpFreshFor({
+          organizationId: context.organizationId,
+          sessionId:
+            typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null,
+          operationKey:
+            typeof target.operationKey === "string" ? target.operationKey : STEP_UP_FLOOR_KEY,
+        }),
+      );
       registerAbacRegistry(registry);
+      svc = createDbEncounterRouteService(handle.db, undefined, CIPHERS, () => LIVE_NOW);
 
       app = buildServer({
         db: handle.db,
@@ -941,8 +963,8 @@ describe.skipIf(!DB_URL)(
           now: () => LIVE_NOW,
         }),
       });
+      registerEncounterRoutes(app, { service: svc, caseloadPatientIds: async () => [] });
       await app.ready();
-      svc = createDbEncounterRouteService(handle.db, undefined, CIPHERS, () => LIVE_NOW);
     }, 600_000);
 
     afterAll(async () => {
@@ -2175,6 +2197,292 @@ describe.skipIf(!DB_URL)(
         await addSignedCti(m6.ny, periodId, "2026-11-19T01:30:00Z");
         await expect(attestedF2f(m6.akl, periodId)).resolves.toBeNull();
         await expect(activeCti(m6.akl, periodId)).resolves.toBeNull();
+      });
+    });
+
+    // ===============================================================================================================
+    // 9. finalize, sign and the amendment path ask the template's M6 keys too (the real encounter routes)
+    // ===============================================================================================================
+    describe("9. finalize, sign and an amendment ask the template's M6 read keys, over the real routes", () => {
+      const REASON = "Corrected the prognosis section after the weight was measured again.";
+      const requiresKey = (key: string) => `requires permission '${key}'`;
+      const setKeys = (org: OrgFixture, member: Member, m6Keys: readonly string[]) => {
+        permissions.put(org.orgId, member.userId, [
+          {
+            roleKey: "seed",
+            enabled: true,
+            expiresAt: null,
+            permissionKeys: [...BASE_KEYS, ...WRITE_KEYS, ...m6Keys],
+          },
+        ]);
+        rbac.invalidateActor(org.orgId, member.userId);
+      };
+      /** A member of `org` with the finalize, sign and addendum keys, `m6Keys` of M6's, and a fresh step-up session (the session id is the user id). */
+      async function newAuthor(
+        org: OrgFixture,
+        label: string,
+        m6Keys: readonly string[],
+      ): Promise<Member> {
+        const member = await seedMember(org.orgId, label);
+        setKeys(org, member, m6Keys);
+        sessionStore.put({
+          sessionClass: "staff" as const,
+          portalAccountId: null,
+          sessionPatientId: null,
+          sessionId: member.userId,
+          userId: member.userId,
+          membershipId: member.membershipId,
+          organizationId: org.orgId,
+          roles: [],
+          providerEntityIds: [],
+          locationIds: [],
+          lastStepUpAt: new Date(),
+          lastStepUpFactor: "webauthn" as const,
+        });
+        return member;
+      }
+      const post = (url: string, org: OrgFixture, member: Member, payload?: unknown) =>
+        app.inject({
+          method: "POST",
+          url,
+          headers: as(org, member),
+          ...(payload === undefined ? {} : { payload: payload as never }),
+        });
+      const finalizeOver = (f: EncounterFixture, member: Member, org = orgs.A) =>
+        post(`/api/v1/encounters/${f.encounterId}/finalize`, org, member);
+      const signOver = (f: EncounterFixture, member: Member, org = orgs.A) =>
+        post(`/api/v1/encounters/${f.encounterId}/sign`, org, member, {
+          attestationConfirmed: true,
+          visitModality: "in_person",
+        });
+      const pinsOf = (f: EncounterFixture) =>
+        rows<{ id: string }>(
+          "SELECT id::text FROM hearthnote_assembled_output WHERE encounter_id = $1",
+          [f.encounterId],
+        );
+      /** The author's own words for the required sections no source drafts (recertification: two; face-to-face: all but prognosis). */
+      const documentOwn = (f: EncounterFixture, author: Member, kind: "recert" | "f2f") =>
+        svc.updateSelections(
+          ORG_A,
+          f.encounterId,
+          0,
+          {
+            sections:
+              kind === "recert"
+                ? ["chief_concern", "assessment"].map((sectionId) => ({
+                    sectionId,
+                    entries: [{ code: FIXTURE_VOCAB_CODE }],
+                  }))
+                : requiredSectionSelections("face_to_face", "np").sections.filter(
+                    (section) => section.sectionId !== "prognosis",
+                  ),
+          },
+          author.membershipId,
+        );
+      /** A visit of `author`'s, its own sections written and every drafted section confirmed while `author` holds every M6 key. */
+      async function confirmedVisit(
+        author: Member,
+        kind: "recert" | "f2f",
+      ): Promise<EncounterFixture> {
+        const { f } = await seedRecert(
+          kind === "f2f"
+            ? { author, type: "face_to_face", discipline: "np" }
+            : { author, type: "recert_visit" },
+        );
+        await documentOwn(f, author, kind);
+        await confirmDrafted(f, [], as(orgs.A, author));
+        return f;
+      }
+      const expectSealedRowsEqualFinal = async (f: EncounterFixture) => {
+        const sealed = await signedRowsOf(f);
+        expect(sealed.length).toBeGreaterThan(0);
+        const texts = await Promise.all(sealed.map((r) => open(r.text_cipher)));
+        expect(texts.join("\n\n")).toBe(await open(await finalCipherOf(f)));
+      };
+      /** The author loses `key`, is refused 403 at `step`, then holds it again: finalize and sign succeed and seal the note. */
+      async function walkFinalizeAndSign(
+        f: EncounterFixture,
+        author: Member,
+        key: string,
+        m6Keys: readonly string[],
+      ): Promise<void> {
+        const without = m6Keys.filter((other) => other !== key);
+
+        setKeys(orgs.A, author, without);
+        const refusedFinalize = await finalizeOver(f, author);
+        expect(refusedFinalize.statusCode).toBe(403);
+        expect(refusedFinalize.json().error.message).toContain(requiresKey(key));
+        expect(await statusOf(f)).toBe("draft");
+        expect(await pinsOf(f)).toEqual([]);
+        expect(await signedRowsOf(f)).toEqual([]);
+
+        setKeys(orgs.A, author, m6Keys);
+        expect((await finalizeOver(f, author)).statusCode).toBe(200);
+        expect(await statusOf(f)).toBe("finalized");
+        const pinned = await finalCipherOf(f);
+
+        setKeys(orgs.A, author, without);
+        const refusedSign = await signOver(f, author);
+        expect(refusedSign.statusCode).toBe(403);
+        expect(refusedSign.json().error.message).toContain(requiresKey(key));
+        expect(await statusOf(f)).toBe("finalized");
+        expect(await signedRowsOf(f)).toEqual([]);
+        expect(await finalCipherOf(f)).toBe(pinned);
+
+        setKeys(orgs.A, author, m6Keys);
+        const signed = await signOver(f, author);
+        expect(signed.statusCode, signed.body).toBe(200);
+        expect(await statusOf(f)).toBe("signed");
+        await expectSealedRowsEqualFinal(f);
+      }
+
+      it.each(["cti.read", "f2f.read"] as const)(
+        "a recertification author who loses %s is refused 403 naming it at finalize and at sign, nothing is written, and both succeed once it is granted again",
+        async (key) => {
+          const author = await newAuthor(orgs.A, `recert-${key}`, M6_READS);
+          const f = await confirmedVisit(author, "recert");
+          await walkFinalizeAndSign(f, author, key, M6_READS);
+        },
+      );
+
+      it("a face-to-face author (np) who loses election.read is refused 403 at finalize and at sign, and both succeed once it is granted again", async () => {
+        const author = await newAuthor(orgs.A, "f2f-election", M6_READS);
+        const f = await confirmedVisit(author, "f2f");
+        await walkFinalizeAndSign(f, author, "election.read", M6_READS);
+      });
+
+      it("with the switch off an author with none of M6's keys finalizes and signs a recertification as before: the key rule does not apply and no source is read", async () => {
+        const author = await newAuthor(orgs.B, "b-no-m6", []);
+        const { f, scenario } = await seedRecert({ org: orgs.B, author });
+        await svc.updateSelections(
+          ORG_B,
+          f.encounterId,
+          0,
+          requiredSectionSelections("recert_visit", "rn"),
+          author.membershipId,
+        );
+        const finalized = await finalizeOver(f, author, orgs.B);
+        expect(finalized.statusCode, finalized.body).toBe(200);
+        const signed = await signOver(f, author, orgs.B);
+        expect(signed.statusCode, signed.body).toBe(200);
+        expect(await statusOf(f)).toBe("signed");
+        expect(await signedRowsOf(f)).toEqual([]);
+        expect(scenario.calls).toEqual(NO_M6_CALLS);
+        expect(scenario.sourceReads).toEqual(NO_SOURCE_READS);
+      });
+
+      it("a routine visit's author with none of M6's keys finalizes and signs as before", async () => {
+        const author = await newAuthor(orgs.A, "routine-no-m6", []);
+        const { f, scenario } = await seedRecert({ author, type: "routine_visit" });
+        await svc.updateSelections(
+          ORG_A,
+          f.encounterId,
+          0,
+          { sections: [{ sectionId: "chief_concern", entries: [{ code: FIXTURE_VOCAB_CODE }] }] },
+          author.membershipId,
+        );
+        await confirmDrafted(f, [], as(orgs.A, author));
+        const finalized = await finalizeOver(f, author);
+        expect(finalized.statusCode, finalized.body).toBe(200);
+        const signed = await signOver(f, author);
+        expect(signed.statusCode, signed.body).toBe(200);
+        expect(await statusOf(f)).toBe("signed");
+        await expectSealedRowsEqualFinal(f);
+        expect(scenario.calls).toEqual(NO_M6_CALLS);
+      });
+
+      describe("an amending addendum of a signed recertification note", () => {
+        const amendmentRowsOf = (addendumId: string) =>
+          rows<{ section_id: string; amends_section_id: string }>(
+            "SELECT section_id, amends_section_id::text FROM hearthnote_signed_section WHERE addendum_id = $1",
+            [addendumId],
+          );
+        const addendumStatus = async (addendumId: string) =>
+          one(
+            await rows<{ status: string }>("SELECT status FROM encounter_addendum WHERE id = $1", [
+              addendumId,
+            ]),
+          ).status;
+        const addendumPins = (addendumId: string) =>
+          rows("SELECT 1 FROM hearthnote_assembled_output WHERE addendum_id = $1", [addendumId]);
+
+        it.each(["cti.read", "loc.read"] as const)(
+          "an addendum author who loses %s is refused 403 naming it on the amendment draft GET and PUT, the addendum's finalize and its sign, and all four work once it is granted again",
+          async (key) => {
+            const author = await newAuthor(orgs.A, `amend-${key}`, M6_READS);
+            const note = await confirmedVisit(author, "recert");
+            expect((await finalizeOver(note, author)).statusCode).toBe(200);
+            expect((await signOver(note, author)).statusCode).toBe(200);
+
+            const headers = as(orgs.A, author);
+            const created = await app.inject({
+              method: "POST",
+              url: `/api/v1/encounters/${note.encounterId}/addenda`,
+              headers,
+              payload: { reason: REASON, amendsSectionIds: ["prognosis"] },
+            });
+            expect(created.statusCode, created.body).toBe(201);
+            const addendumId = created.json().id as string;
+            const base = `/api/v1/encounters/${note.encounterId}/addenda/${addendumId}`;
+            const readDraft = () => app.inject({ method: "GET", url: `${base}/draft`, headers });
+            const seen = (await readDraft()).json().sections[0] as {
+              sectionId: string;
+              contentHash: string;
+              corpusVersion: string;
+            };
+            expect(seen.sectionId).toBe("prognosis");
+            const confirmBody = {
+              resolution: "confirmed",
+              contentHash: seen.contentHash,
+              corpusVersion: seen.corpusVersion,
+            };
+            const putConfirm = () =>
+              app.inject({
+                method: "PUT",
+                url: `${base}/draft/sections/prognosis`,
+                headers,
+                payload: confirmBody,
+              });
+            const refusal = (res: {
+              statusCode: number;
+              json: () => { error: { message: string } };
+            }) => {
+              expect(res.statusCode).toBe(403);
+              expect(res.json().error.message).toContain(requiresKey(key));
+            };
+            const without = M6_READS.filter((other) => other !== key);
+            // the amended section is confirmed while the author holds every key: that is the addendum's own content, as the gate wants it
+            expect((await putConfirm()).statusCode).toBe(200);
+
+            setKeys(orgs.A, author, without);
+            refusal(await readDraft());
+            refusal(await putConfirm());
+            refusal(await post(`${base}/finalize`, orgs.A, author));
+            expect(await addendumStatus(addendumId)).toBe("draft");
+            expect(await addendumPins(addendumId)).toEqual([]);
+
+            setKeys(orgs.A, author, M6_READS);
+            expect((await readDraft()).statusCode).toBe(200);
+            expect((await putConfirm()).statusCode).toBe(200);
+            expect((await post(`${base}/finalize`, orgs.A, author)).statusCode).toBe(200);
+            expect(await addendumStatus(addendumId)).toBe("finalized");
+
+            setKeys(orgs.A, author, without);
+            refusal(await post(`${base}/sign`, orgs.A, author, { attestationConfirmed: true }));
+            expect(await addendumStatus(addendumId)).toBe("finalized");
+            expect(await amendmentRowsOf(addendumId)).toEqual([]);
+
+            setKeys(orgs.A, author, M6_READS);
+            const signed = await post(`${base}/sign`, orgs.A, author, {
+              attestationConfirmed: true,
+            });
+            expect(signed.statusCode, signed.body).toBe(200);
+            expect(await addendumStatus(addendumId)).toBe("signed");
+            expect((await amendmentRowsOf(addendumId)).map((r) => r.section_id)).toEqual([
+              "prognosis",
+            ]);
+          },
+        );
       });
     });
   },
