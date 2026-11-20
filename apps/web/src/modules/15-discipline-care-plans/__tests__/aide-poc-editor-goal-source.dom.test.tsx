@@ -104,6 +104,17 @@ function renderEditor(goals: unknown[] = []) {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/discipline-plans") return ok({ data: [detail], nextCursor: null });
       if (path === "/api/v1/discipline-plans/{planId}") return ok(detail);
+      // The editor wears the shared chart shell, whose banner reads the patient.
+      if (path === "/api/v1/patients/{id}")
+        return ok({
+          id: PATIENT,
+          organizationId: "org-1",
+          mrn: "MRN-0007",
+          firstName: "June",
+          lastName: "Rivera",
+          dob: "1950-02-14",
+          status: "active",
+        });
       return ok({});
     }),
     POST: post,

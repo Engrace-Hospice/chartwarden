@@ -4,6 +4,7 @@ import {
   LoadingSpinner,
   PageHeader,
   Panel,
+  PatientWorkspaceLayout,
   StatusPill,
   t,
   useApiClient,
@@ -23,6 +24,12 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import {
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
 import {
   type PlanListItem,
   type PlanSummary,
@@ -44,6 +51,7 @@ import { Notice, columnStyle, ghostButtonStyle, pageTitleStyle } from "./discipl
 export function DisciplinePlansSummary(): JSX.Element {
   const client = useApiClient();
   const { patientId } = useParams<{ patientId: string }>();
+  const identity = useChartIdentity(patientId);
   const [summaries, setSummaries] = useState<PlanSummary[]>([]);
   const [partial, setPartial] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,141 +87,170 @@ export function DisciplinePlansSummary(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  // The shared chart banner and Patient Summary rail, so this screen shows the same identity header as
+  // every other discipline-plan screen.
+  const bailBanner = <ChartPatientBanner patientId={patientId} identity={identity} nameAsHeading />;
+  if (loading) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <LoadingSpinner />
+      </PatientChartBail>
+    );
+  }
+  if (error) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <EmptyState title="Unavailable" description={error} />
+      </PatientChartBail>
+    );
+  }
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Discipline plans — summary</span>}
-        actions={
-          // The page's own controls do not print. The class sits on a wrapper with no inline display: an
-          // inline `display: flex` would beat the print stylesheet's `display: none`.
-          <div className="wx-print-hide">
-            <div style={{ display: "flex", gap: t.space2 }}>
-              <Button tone="secondary" type="button" onClick={() => window.print()}>
-                Print
-              </Button>
-              <Link to={`/patients/${patientId}/discipline-plans`} style={ghostButtonStyle}>
-                Back
-              </Link>
-            </div>
-          </div>
-        }
-      />
+    <PatientWorkspaceLayout
+      banner={<ChartPatientBanner patientId={patientId} identity={identity} />}
+      rail={<PatientSummaryPanel identity={identity} />}
+    >
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <ChartModuleRail patientId={patientId ?? ""} current="discipline-plans" />
+        <section
+          aria-label="Discipline plans summary"
+          className="wx-kit-column"
+          style={{ ...columnStyle, flex: 1, minWidth: 0, overflow: "auto" }}
+        >
+          <PageHeader
+            title={<span style={pageTitleStyle}>Discipline plans — summary</span>}
+            actions={
+              // The page's own controls do not print. The class sits on a wrapper with no inline display: an
+              // inline `display: flex` would beat the print stylesheet's `display: none`.
+              <div className="wx-print-hide">
+                <div style={{ display: "flex", gap: t.space2 }}>
+                  <Button tone="secondary" type="button" onClick={() => window.print()}>
+                    Print
+                  </Button>
+                  <Link to={`/patients/${patientId}/discipline-plans`} style={ghostButtonStyle}>
+                    Back
+                  </Link>
+                </div>
+              </div>
+            }
+          />
 
-      <Notice tone="info">
-        This is the shareable projection of the discipline plans — substance-use-disorder and
-        family-violence content is excluded from it for every reader, including clinicians who are
-        cleared to see it on the plan itself.
-      </Notice>
-      {partial.length > 0 ? (
-        <p className="wx-text-error">
-          Not included in this summary: {partial.join(", ")} — the summary for{" "}
-          {partial.length === 1 ? "that plan" : "those plans"} could not be read in this session.
-        </p>
-      ) : null}
+          <Notice tone="info">
+            This is the shareable projection of the discipline plans — substance-use-disorder and
+            family-violence content is excluded from it for every reader, including clinicians who
+            are cleared to see it on the plan itself.
+          </Notice>
+          {partial.length > 0 ? (
+            <p className="wx-text-error">
+              Not included in this summary: {partial.join(", ")} — the summary for{" "}
+              {partial.length === 1 ? "that plan" : "those plans"} could not be read in this
+              session.
+            </p>
+          ) : null}
 
-      {summaries.length === 0 ? (
-        <EmptyState
-          title="No plans to summarize"
-          description="This patient has no discipline plan whose summary you can read."
-        />
-      ) : (
-        summaries.map((s) => (
-          <Panel
-            stack
-            headingLevel={3}
-            key={s.planId}
-            title={kindLabel(s.kind)}
-            action={<span className="wx-text-muted">{kindRegulation(s.kind)}</span>}
-          >
-            <span className="wx-text-muted">Plan status: {humanize(s.status)}</span>
+          {summaries.length === 0 ? (
+            <EmptyState
+              title="No plans to summarize"
+              description="This patient has no discipline plan whose summary you can read."
+            />
+          ) : (
+            summaries.map((s) => (
+              <Panel
+                stack
+                headingLevel={3}
+                key={s.planId}
+                title={kindLabel(s.kind)}
+                action={<span className="wx-text-muted">{kindRegulation(s.kind)}</span>}
+              >
+                <span className="wx-text-muted">Plan status: {humanize(s.status)}</span>
 
-            {s.kind === "spiritual_plan" && s.spiritualCareDeclined ? (
-              <Notice tone="info">
-                Spiritual care: as the patient has requested. No spiritual-care goals are recorded.
-              </Notice>
-            ) : null}
+                {s.kind === "spiritual_plan" && s.spiritualCareDeclined ? (
+                  <Notice tone="info">
+                    Spiritual care: as the patient has requested. No spiritual-care goals are
+                    recorded.
+                  </Notice>
+                ) : null}
 
-            <h4
-              style={{
-                margin: 0,
-                fontFamily: t.fontDisplay,
-                fontSize: "0.85rem",
-                color: t.onSurface,
-              }}
-            >
-              Goals
-            </h4>
-            {s.goals.length === 0 ? (
-              <span className="wx-text-muted">No goals recorded.</span>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Goal</th>
-                    <th>Target</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.goals.map((g) => (
-                    <tr key={g.goalId}>
-                      <td>{g.text}</td>
-                      <td>{shortDate(g.targetAt)}</td>
-                      <td>
-                        <StatusPill
-                          label={humanize(g.status)}
-                          tone={toneOf(GOAL_STATUS_TONE, g.status)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                <h4
+                  style={{
+                    margin: 0,
+                    fontFamily: t.fontDisplay,
+                    fontSize: "0.85rem",
+                    color: t.onSurface,
+                  }}
+                >
+                  Goals
+                </h4>
+                {s.goals.length === 0 ? (
+                  <span className="wx-text-muted">No goals recorded.</span>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Goal</th>
+                        <th>Target</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.goals.map((g) => (
+                        <tr key={g.goalId}>
+                          <td>{g.text}</td>
+                          <td>{shortDate(g.targetAt)}</td>
+                          <td>
+                            <StatusPill
+                              label={humanize(g.status)}
+                              tone={toneOf(GOAL_STATUS_TONE, g.status)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
 
-            <h4
-              style={{
-                margin: 0,
-                fontFamily: t.fontDisplay,
-                fontSize: "0.85rem",
-                color: t.onSurface,
-              }}
-            >
-              Interventions
-            </h4>
-            {s.interventions.length === 0 ? (
-              <span className="wx-text-muted">No interventions recorded.</span>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Scope</th>
-                    <th>Frequency</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.interventions.map((iv) => (
-                    <tr key={iv.interventionId}>
-                      <td>{iv.scopeText}</td>
-                      <td>{iv.frequencyText}</td>
-                      <td>
-                        <StatusPill
-                          label={humanize(iv.status)}
-                          tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Panel>
-        ))
-      )}
-    </div>
+                <h4
+                  style={{
+                    margin: 0,
+                    fontFamily: t.fontDisplay,
+                    fontSize: "0.85rem",
+                    color: t.onSurface,
+                  }}
+                >
+                  Interventions
+                </h4>
+                {s.interventions.length === 0 ? (
+                  <span className="wx-text-muted">No interventions recorded.</span>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Scope</th>
+                        <th>Frequency</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.interventions.map((iv) => (
+                        <tr key={iv.interventionId}>
+                          <td>{iv.scopeText}</td>
+                          <td>{iv.frequencyText}</td>
+                          <td>
+                            <StatusPill
+                              label={humanize(iv.status)}
+                              tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </Panel>
+            ))
+          )}
+        </section>
+      </div>
+    </PatientWorkspaceLayout>
   );
 }

@@ -4,6 +4,7 @@ import {
   LoadingSpinner,
   PageHeader,
   Panel,
+  PatientWorkspaceLayout,
   StatusPill,
   StickyFooterActions,
   t,
@@ -21,10 +22,21 @@ import {
 //     editor loses with a 409 instead of silently clobbering (the §7.10 acceptance).
 //   • the AIDE ASSIGNMENT itself is not editable here. M15 publishes no route that re-points a plan's
 //     aide/supervising RN — that binding is set by the bootstrap worker and moved by an IDG decision — so
-//     it is shown read-only rather than faked with a control that cannot save.
+//     it is shown read-only (by name, from the plan's staff roster) rather than faked with a control that
+//     cannot save.
+//
+// The screen wears the same chart shell as every sibling M15 screen (patient banner, Patient Summary rail,
+// chart module rail), in its loading / error / empty states too.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import {
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
+import { useAideRoster } from "./aide-roster";
 import {
   type GoalView,
   type InterventionView,
@@ -39,7 +51,6 @@ import {
   goalSourceLabel,
   humanize,
   shortDate,
-  shortId,
   toneOf,
 } from "./discipline-status";
 import {
@@ -81,6 +92,8 @@ export function AidePocEditor(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const identity = useChartIdentity(patientId);
+  const roster = useAideRoster(plan?.planId);
 
   // New intervention (the aide TASK) draft.
   const [scopeText, setScopeText] = useState("");
@@ -219,15 +232,33 @@ export function AidePocEditor(): JSX.Element {
     await load();
   }
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (!plan)
+  // The shared chart banner and Patient Summary rail, so this screen shows the same identity header as
+  // every other chart tab.
+  const bailBanner = <ChartPatientBanner patientId={patientId} identity={identity} nameAsHeading />;
+  if (loading) {
     return (
-      <EmptyState
-        title="No Aide Plan of Care yet"
-        description="This plan is created when the admission is activated."
-      />
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <LoadingSpinner />
+      </PatientChartBail>
     );
+  }
+  if (error) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <EmptyState title="Unavailable" description={error} />
+      </PatientChartBail>
+    );
+  }
+  if (!plan) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <EmptyState
+          title="No Aide Plan of Care yet"
+          description="This plan is created when the admission is activated."
+        />
+      </PatientChartBail>
+    );
+  }
 
   const editingVersion = plan.versions.find((v) => v.versionId === versionId) ?? null;
   const sealed = editingVersion !== null && editingVersion.status !== "draft";
@@ -235,211 +266,243 @@ export function AidePocEditor(): JSX.Element {
     scopeText.trim() !== "" && frequencyText.trim() !== "" && frequencyValue.trim() !== "";
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Aide Plan of Care — editor</span>}
-        actions={
-          <Link
-            to={`/patients/${patientId}/discipline-plans/aide-poc`}
-            style={ghostButtonStyle}
-            onClick={(event) => {
-              if (!confirmDiscard()) event.preventDefault();
-            }}
-          >
-            Back to plan
-          </Link>
-        }
-      />
-
-      {sealed ? (
-        <Notice tone="warning">
-          Version {editingVersion?.sequence} is {humanize(editingVersion?.status)} — its snapshot is
-          sealed. Edits made now belong to the next draft version, not to this one.
-        </Notice>
-      ) : null}
-      {actionError ? (
-        <p role="alert" aria-live="assertive" className="wx-text-error">
-          {actionError}
-        </p>
-      ) : null}
-
-      <Panel stack headingLevel={3} title="Assignment">
-        <SummaryGrid>
-          <Field label="Assigned aide" value={shortId(plan.aideMembershipId)} mono />
-          <Field label="Supervising RN" value={shortId(plan.supervisingRnMembershipId)} mono />
-          <Field
-            label="Supervisory cadence"
-            value={`${plan.supervisoryCadence?.cadenceDays ?? plan.supervisoryCadenceDaysOverride ?? 14} days`}
-          />
-        </SummaryGrid>
-        <span className="wx-text-muted">
-          The aide and supervising RN bindings are set at bootstrap and moved by an IDG decision;
-          they are not editable from this screen.
-        </span>
-      </Panel>
-
-      <Panel stack headingLevel={3} title="Aide tasks">
-        {plan.interventions.length === 0 ? (
-          <span className="wx-text-muted">No tasks on this plan yet.</span>
-        ) : (
-          <TableScroll label="Aide tasks table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Task</th>
-                  <th>Frequency</th>
-                  <th>Status</th>
-                  <th>&nbsp;</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plan.interventions.map((iv) => (
-                  <tr key={iv.interventionId}>
-                    <td>{iv.scopeText}</td>
-                    <td>
-                      {iv.frequencyText}
-                      <div className="wx-text-muted">{iv.frequencyValue}</div>
-                    </td>
-                    <td>
-                      <StatusPill
-                        label={humanize(iv.status)}
-                        tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
-                      />
-                    </td>
-                    <td>
-                      {iv.status === "active" ? (
-                        <Button
-                          tone="secondary"
-                          type="button"
-                          onClick={() => void discontinueIntervention(iv)}
-                        >
-                          Discontinue
-                        </Button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        )}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: t.space3, alignItems: "flex-end" }}>
-          <TextField label="New task" value={scopeText} onChange={setScopeText} />
-          <TextField
-            label="Frequency (words)"
-            value={frequencyText}
-            onChange={setFrequencyText}
-            placeholder="three times weekly"
-          />
-          <TextField
-            label="Frequency (coded)"
-            value={frequencyValue}
-            onChange={setFrequencyValue}
-            placeholder="3/week"
-          />
-          <Button
-            tone="primary"
-            type="button"
-            disabled={!canAddIntervention}
-            onClick={() => void addIntervention()}
-          >
-            Add task
-          </Button>
-        </div>
-      </Panel>
-
-      <Panel stack headingLevel={3} title="Goals">
-        {plan.goals.length === 0 ? (
-          <span className="wx-text-muted">No goals on this plan yet.</span>
-        ) : (
-          <TableScroll label="Aide goals table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Goal</th>
-                  <th>Source</th>
-                  <th>Target</th>
-                  <th>Status</th>
-                  <th>Change</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plan.goals.map((g) => (
-                  <tr key={g.goalId}>
-                    <td>
-                      {g.revisedText ?? g.originalText}
-                      {g.revisedText ? (
-                        <div className="wx-text-muted">originally: {g.originalText}</div>
-                      ) : null}
-                    </td>
-                    <td>{goalSourceLabel(g.source)}</td>
-                    <td>{shortDate(g.targetAt)}</td>
-                    <td>
-                      <StatusPill
-                        label={humanize(g.status)}
-                        tone={toneOf(GOAL_STATUS_TONE, g.status)}
-                      />
-                    </td>
-                    <td>
-                      <SelectField
-                        label={`Status change for goal ${g.goalId.slice(0, 8)}`}
-                        value=""
-                        options={GOAL_EVENTS}
-                        onChange={(v) => void applyGoalEvent(g, v)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        )}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: t.space3, alignItems: "flex-end" }}>
-          <TextField
-            label="IPOC problem id"
-            value={goalProblemId}
-            onChange={setGoalProblemId}
-            describedBy="goal-problem-hint"
-          />
-          <SelectField
-            label="Source"
-            value={goalSource}
-            options={SOURCE_OPTIONS}
-            onChange={setGoalSource}
-          />
-          <Button
-            tone="primary"
-            type="button"
-            disabled={goalText.trim() === "" || goalProblemId.trim() === ""}
-            onClick={() => void addGoal()}
-          >
-            Add goal
-          </Button>
-        </div>
-        <TextAreaField
-          label="Goal text"
-          value={goalText}
-          onChange={setGoalText}
-          rows={3}
-          hint="Recorded verbatim as the goal's original text, which is immutable — later wording changes are recorded as revisions alongside it."
+    <PatientWorkspaceLayout
+      banner={
+        <ChartPatientBanner
+          patientId={patientId}
+          identity={identity}
+          actions={
+            <Link
+              to={`/patients/${patientId}/discipline-plans`}
+              className="wx-btn-secondary"
+              onClick={(event) => {
+                if (!confirmDiscard()) event.preventDefault();
+              }}
+            >
+              All discipline plans
+            </Link>
+          }
         />
-        <span id="goal-problem-hint" className="wx-text-muted">
-          A discipline goal refines an IPOC problem owned by the interdisciplinary care plan (M7);
-          the problem id comes from that plan.
-        </span>
-      </Panel>
-
-      <StickyFooterActions>
-        <Link
-          to={`/patients/${patientId}/discipline-plans/aide-poc`}
-          style={linkStyle}
-          onClick={(event) => {
-            if (!confirmDiscard()) event.preventDefault();
-          }}
+      }
+      rail={<PatientSummaryPanel identity={identity} />}
+    >
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <ChartModuleRail patientId={patientId ?? ""} current="discipline-plans" />
+        <section
+          aria-label="Aide Plan of Care editor"
+          className="wx-kit-column"
+          style={{ ...columnStyle, flex: 1, minWidth: 0, overflow: "auto" }}
         >
-          Done editing — return to the plan to finalize and sign
-        </Link>
-      </StickyFooterActions>
-    </div>
+          <PageHeader
+            title={<span style={pageTitleStyle}>Aide Plan of Care — editor</span>}
+            actions={
+              <Link
+                to={`/patients/${patientId}/discipline-plans/aide-poc`}
+                style={ghostButtonStyle}
+                onClick={(event) => {
+                  if (!confirmDiscard()) event.preventDefault();
+                }}
+              >
+                Back to plan
+              </Link>
+            }
+          />
+
+          {sealed ? (
+            <Notice tone="warning">
+              Version {editingVersion?.sequence} is {humanize(editingVersion?.status)} — its
+              snapshot is sealed. Edits made now belong to the next draft version, not to this one.
+            </Notice>
+          ) : null}
+          {actionError ? (
+            <p role="alert" aria-live="assertive" className="wx-text-error">
+              {actionError}
+            </p>
+          ) : null}
+
+          <Panel stack headingLevel={3} title="Assignment">
+            <SummaryGrid>
+              <Field label="Assigned aide" value={roster.nameOf(plan.aideMembershipId)} />
+              <Field label="Supervising RN" value={roster.nameOf(plan.supervisingRnMembershipId)} />
+              <Field
+                label="Supervisory cadence"
+                value={`${plan.supervisoryCadence?.cadenceDays ?? plan.supervisoryCadenceDaysOverride ?? 14} days`}
+              />
+            </SummaryGrid>
+            <span className="wx-text-muted">
+              The aide and supervising RN bindings are set at bootstrap and moved by an IDG
+              decision; they are not editable from this screen.
+            </span>
+          </Panel>
+
+          <Panel stack headingLevel={3} title="Aide tasks">
+            {plan.interventions.length === 0 ? (
+              <span className="wx-text-muted">No tasks on this plan yet.</span>
+            ) : (
+              <TableScroll label="Aide tasks table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Task</th>
+                      <th>Frequency</th>
+                      <th>Status</th>
+                      <th>&nbsp;</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plan.interventions.map((iv) => (
+                      <tr key={iv.interventionId}>
+                        <td>{iv.scopeText}</td>
+                        <td>
+                          {iv.frequencyText}
+                          <div className="wx-text-muted">{iv.frequencyValue}</div>
+                        </td>
+                        <td>
+                          <StatusPill
+                            label={humanize(iv.status)}
+                            tone={toneOf(INTERVENTION_STATUS_TONE, iv.status)}
+                          />
+                        </td>
+                        <td>
+                          {iv.status === "active" ? (
+                            <Button
+                              tone="secondary"
+                              type="button"
+                              onClick={() => void discontinueIntervention(iv)}
+                            >
+                              Discontinue
+                            </Button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+            )}
+            <div
+              style={{ display: "flex", flexWrap: "wrap", gap: t.space3, alignItems: "flex-end" }}
+            >
+              <TextField label="New task" value={scopeText} onChange={setScopeText} />
+              <TextField
+                label="Frequency (words)"
+                value={frequencyText}
+                onChange={setFrequencyText}
+                placeholder="three times weekly"
+              />
+              <TextField
+                label="Frequency (coded)"
+                value={frequencyValue}
+                onChange={setFrequencyValue}
+                placeholder="3/week"
+              />
+              <Button
+                tone="primary"
+                type="button"
+                disabled={!canAddIntervention}
+                onClick={() => void addIntervention()}
+              >
+                Add task
+              </Button>
+            </div>
+          </Panel>
+
+          <Panel stack headingLevel={3} title="Goals">
+            {plan.goals.length === 0 ? (
+              <span className="wx-text-muted">No goals on this plan yet.</span>
+            ) : (
+              <TableScroll label="Aide goals table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Goal</th>
+                      <th>Source</th>
+                      <th>Target</th>
+                      <th>Status</th>
+                      <th>Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plan.goals.map((g) => (
+                      <tr key={g.goalId}>
+                        <td>
+                          {g.revisedText ?? g.originalText}
+                          {g.revisedText ? (
+                            <div className="wx-text-muted">originally: {g.originalText}</div>
+                          ) : null}
+                        </td>
+                        <td>{goalSourceLabel(g.source)}</td>
+                        <td>{shortDate(g.targetAt)}</td>
+                        <td>
+                          <StatusPill
+                            label={humanize(g.status)}
+                            tone={toneOf(GOAL_STATUS_TONE, g.status)}
+                          />
+                        </td>
+                        <td>
+                          <SelectField
+                            label={`Status change for goal ${g.goalId.slice(0, 8)}`}
+                            value=""
+                            options={GOAL_EVENTS}
+                            onChange={(v) => void applyGoalEvent(g, v)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+            )}
+            <div
+              style={{ display: "flex", flexWrap: "wrap", gap: t.space3, alignItems: "flex-end" }}
+            >
+              <TextField
+                label="IPOC problem id"
+                value={goalProblemId}
+                onChange={setGoalProblemId}
+                describedBy="goal-problem-hint"
+              />
+              <SelectField
+                label="Source"
+                value={goalSource}
+                options={SOURCE_OPTIONS}
+                onChange={setGoalSource}
+              />
+              <Button
+                tone="primary"
+                type="button"
+                disabled={goalText.trim() === "" || goalProblemId.trim() === ""}
+                onClick={() => void addGoal()}
+              >
+                Add goal
+              </Button>
+            </div>
+            <TextAreaField
+              label="Goal text"
+              value={goalText}
+              onChange={setGoalText}
+              rows={3}
+              hint="Recorded verbatim as the goal's original text, which is immutable — later wording changes are recorded as revisions alongside it."
+            />
+            <span id="goal-problem-hint" className="wx-text-muted">
+              A discipline goal refines an IPOC problem owned by the interdisciplinary care plan
+              (M7); the problem id comes from that plan.
+            </span>
+          </Panel>
+
+          <StickyFooterActions>
+            <Link
+              to={`/patients/${patientId}/discipline-plans/aide-poc`}
+              style={linkStyle}
+              onClick={(event) => {
+                if (!confirmDiscard()) event.preventDefault();
+              }}
+            >
+              Done editing — return to the plan to finalize and sign
+            </Link>
+          </StickyFooterActions>
+        </section>
+      </div>
+    </PatientWorkspaceLayout>
   );
 }
