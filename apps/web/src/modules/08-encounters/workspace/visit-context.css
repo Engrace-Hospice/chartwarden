@@ -1,0 +1,82 @@
+/* Workflow 09, WP1: the visit context header shared by the note composer and the encounter record. A flat strip under the patient
+   banner (Lantern tokens only); the Document / Review / Complete steps reuse the chart's own pill look (.wx-chart-subtab). */
+.wx-visit-context {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.625rem 1.5rem 0.75rem;
+  background: var(--color-surface-lowest);
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-visit-context-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1.25rem;
+}
+
+.wx-visit-context-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.wx-visit-context-facts,
+.wx-visit-context-visit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.wx-visit-context-type {
+  color: var(--color-on-surface);
+  font-weight: 600;
+}
+
+.wx-visit-context-visit a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  font-weight: 600;
+}
+
+.wx-visit-chip {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-container);
+  border-radius: 9999px;
+  padding: 0.15rem 0.55rem;
+}
+
+.wx-visit-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A step that is not available is still a focusable control, so its reason is reachable by keyboard (aria-describedby). */
+.wx-visit-step-unavailable {
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.wx-visit-step-reason {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
