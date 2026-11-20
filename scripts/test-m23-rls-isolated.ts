@@ -5,19 +5,18 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import {
+  type M23ContainerInspection,
+  type M23NetworkInspection,
+  M23_PGDATA_TMPFS,
+  startLoopbackTcpRelay,
+  validateM23DockerIsolation,
+} from "./m23-rls-isolation";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TEST_FILE = "packages/db/migrations/__tests__/m23-rls-isolation.live.test.ts";
 const POSTGRES_CONTEXT = join(ROOT, "deploy/production/postgres");
 const PG_DOCKERFILE = join(POSTGRES_CONTEXT, "Dockerfile");
-const PGDATA_TMPFS = "/var/lib/postgresql";
-
-type ContainerInspection = {
-  Config: { Labels: Record<string, string> | null };
-  Mounts: Array<{ Destination: string; Type: string }>;
-  NetworkSettings: { Networks: Record<string, { NetworkID: string }> };
-};
-
 type VitestReport = {
   numTotalTests?: number;
   numPassedTests?: number;
@@ -25,11 +24,13 @@ type VitestReport = {
   numPendingTests?: number;
 };
 
-function cleanup(command: string, args: readonly string[]) {
+function cleanup(resource: string, command: string, args: readonly string[]): boolean {
   const result = spawnSync(command, [...args], { cwd: ROOT, encoding: "utf8" });
-  if (result.status !== 0) {
-    console.warn(`Cleanup needs operator review for a resource created by this run (${args[0]}).`);
+  if (result.error || result.status !== 0) {
+    console.warn(`Cleanup failed for a resource created by this run (${resource}).`);
+    return false;
   }
+  return true;
 }
 
 function run(command: string, args: readonly string[], options: { quiet?: boolean } = {}) {
@@ -50,16 +51,6 @@ function run(command: string, args: readonly string[], options: { quiet?: boolea
 function requireExecutable(name: string) {
   const result = spawnSync("sh", ["-c", 'command -v "$1" >/dev/null 2>&1', "sh", name]);
   if (result.status !== 0) throw new Error(`Required executable is unavailable: ${name}`);
-}
-
-function parsePublishedPort(value: string): number {
-  const match = /^127\.0\.0\.1:(\d+)$/.exec(value);
-  if (!match) throw new Error("PostgreSQL did not publish on a loopback-only ephemeral port");
-  const port = Number(match[1]);
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
-    throw new Error("Docker returned an invalid PostgreSQL port");
-  }
-  return port;
 }
 
 async function waitForPostgres(
@@ -136,9 +127,12 @@ async function main() {
   let imageBuilt = false;
   let networkCreated = false;
   let containerCreated = false;
+  let relay: Awaited<ReturnType<typeof startLoopbackTcpRelay>> | undefined;
   let db: Client | undefined;
   const reportDir = mkdtempSync(join(tmpdir(), "chartwarden-m23-vitest-"));
   const reportPath = join(reportDir, "vitest.json");
+  let runError: unknown;
+  const cleanupFailures: string[] = [];
 
   try {
     run("docker", ["build", "-q", "-t", image, POSTGRES_CONTEXT], { quiet: true });
@@ -158,10 +152,8 @@ async function main() {
         label,
         "--network",
         network,
-        "--publish",
-        "127.0.0.1::5432",
         "--tmpfs",
-        `${PGDATA_TMPFS}:rw,nosuid,size=2g,uid=999,gid=999`,
+        `${M23_PGDATA_TMPFS}:rw,nosuid,size=2g,uid=999,gid=999`,
         "--env",
         "POSTGRES_USER=postgres",
         "--env",
@@ -179,29 +171,52 @@ async function main() {
     containerCreated = true;
 
     const inspection = JSON.parse(run("docker", ["inspect", container], { quiet: true }))[0] as
-      | ContainerInspection
+      | M23ContainerInspection
       | undefined;
-    const mounts = inspection?.Mounts ?? [];
-    const networks = Object.keys(inspection?.NetworkSettings.Networks ?? {});
-    if (
-      inspection?.Config.Labels?.["com.chartwarden.test-suite"] !== "m23-rls-live" ||
-      mounts.length !== 1 ||
-      mounts[0]?.Type !== "tmpfs" ||
-      mounts[0]?.Destination !== PGDATA_TMPFS ||
-      networks.length !== 1 ||
-      networks[0] !== network
-    ) {
+    const networkInspection = JSON.parse(
+      run("docker", ["network", "inspect", network], { quiet: true }),
+    )[0] as M23NetworkInspection | undefined;
+    if (!inspection || !networkInspection) {
       throw new Error(
-        "Docker isolation preflight failed (expected one labeled container, tmpfs, and private network)",
+        "Docker isolation preflight failed (container or network inspection missing)",
       );
     }
-
-    const port = parsePublishedPort(
-      run("docker", ["port", container, "5432/tcp"], { quiet: true }),
+    const databaseHost = validateM23DockerIsolation({
+      container: inspection,
+      network: networkInspection,
+      expectedNetwork: network,
+    });
+    const mountFilesystemType = run(
+      "docker",
+      ["exec", container, "stat", "-f", "-c", "%T", M23_PGDATA_TMPFS],
+      { quiet: true },
     );
+    if (mountFilesystemType !== "tmpfs") {
+      throw new Error("Docker isolation preflight failed (PostgreSQL mount is not tmpfs-backed)");
+    }
+    const pgdata = inspection.Config?.Env?.find((entry) => entry.startsWith("PGDATA="))?.slice(
+      "PGDATA=".length,
+    );
+    if (!pgdata) {
+      throw new Error(
+        "Docker isolation preflight failed (PostgreSQL data directory is unidentified)",
+      );
+    }
+    relay = await startLoopbackTcpRelay(databaseHost, 5432);
+    const port = relay.port;
     const databaseUrl = new URL(`postgresql://postgres@127.0.0.1:${port}/${databaseName}`);
     databaseUrl.password = password;
     const identity = await waitForPostgres(databaseUrl.toString(), clusterName, databaseName);
+    const pgdataFilesystemType = run(
+      "docker",
+      ["exec", container, "stat", "-f", "-c", "%T", pgdata],
+      { quiet: true },
+    );
+    if (pgdataFilesystemType !== "tmpfs") {
+      throw new Error(
+        "Docker isolation preflight failed (PostgreSQL data directory is not tmpfs-backed)",
+      );
+    }
     db = new Client({ connectionString: databaseUrl.toString() });
     await db.connect();
     const databaseNames = await db.query<{ names: string[] }>(
@@ -261,13 +276,37 @@ async function main() {
         "M23 live qualification failed or skipped tests; see the Vitest summary above",
       );
     }
+  } catch (error) {
+    runError = error;
   } finally {
-    await db?.end().catch(() => undefined);
-    if (containerCreated) cleanup("docker", ["rm", "-f", container]);
-    if (networkCreated) cleanup("docker", ["network", "rm", network]);
-    if (imageBuilt) cleanup("docker", ["image", "rm", image]);
-    rmSync(reportDir, { recursive: true, force: true });
+    await db?.end().catch(() => cleanupFailures.push("database client"));
+    await relay?.close().catch(() => cleanupFailures.push("loopback relay"));
+    if (containerCreated && !cleanup("container", "docker", ["rm", "-f", container])) {
+      cleanupFailures.push("container");
+    }
+    if (networkCreated && !cleanup("network", "docker", ["network", "rm", network])) {
+      cleanupFailures.push("network");
+    }
+    if (imageBuilt && !cleanup("image", "docker", ["image", "rm", image])) {
+      cleanupFailures.push("image");
+    }
+    try {
+      rmSync(reportDir, { recursive: true, force: true });
+    } catch {
+      cleanupFailures.push("temporary report directory");
+    }
   }
+
+  if (cleanupFailures.length > 0) {
+    throw new Error(
+      `M23 qualification cleanup failed for: ${cleanupFailures.join(", ")}; qualification is failed.`,
+      { cause: runError },
+    );
+  }
+  console.log(
+    "Cleanup passed: private container, network, image, relay, and report directory removed.",
+  );
+  if (runError) throw runError;
 }
 
 await main();
