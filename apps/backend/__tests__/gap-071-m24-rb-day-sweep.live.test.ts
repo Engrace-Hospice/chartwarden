@@ -140,6 +140,7 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
       [ORG_B, PATIENT_B, "G071-B"],
       [ORG_A, LOCKED_PATIENT, "G071-L"],
       [ORG_A, DECEASED_PATIENT, "G071-D"],
+      [ORG_A, DEATH_START_PATIENT, "G071-DEATH-START"],
     ] as const) {
       await admin.query(
         `INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob,
