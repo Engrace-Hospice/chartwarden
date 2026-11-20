@@ -85,7 +85,9 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 - **Who may read it.** The draft of a recertification visit needs `election.read`, `cti.read`, `f2f.read` and `loc.read` (M6's own read keys for the four
   facts, which its seams do not check), and the face-to-face visit's draft needs `election.read`. The service refuses 403 a caller of such an encounter who
   lacks one, after the switch and tenant checks and before any source is read (`drafting/admission-reads.ts`). The check is by template, so it is the same
-  for every viewer (one draft per patient and visit); a routine visit's draft needs no key it did not before. **Before a tenant's switch is turned on,
+  for every viewer (one draft per patient and visit); a routine visit's draft needs no key it did not before. Finalize, sign and an addendum's finalize and
+  sign recompute the draft for the caller and ask the same keys at the same point (`readNoteDraft`), resolved from the whole request context as the route
+  guards resolve them. **Before a tenant's switch is turned on,
   every role that authors a recertification or face-to-face note holds these keys**: they are per-tenant grants, and a role without them cannot read or
   confirm the draft, so cannot sign once the switch is on.
 - **The corpus review is checked when the switch is enabled.** A tenant already on keeps the switch on after a later corpus release moves the wording
