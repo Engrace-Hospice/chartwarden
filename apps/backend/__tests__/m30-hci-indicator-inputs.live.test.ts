@@ -618,5 +618,29 @@ describe.skipIf(!DB_URL)("F-042 — HCI indicator inputs, LIVE Postgres", () => 
         after.liveDischargesReadmittedWithin7Days - before.liveDischargesReadmittedWithin7Days,
       ).toBe(1);
     });
+
+    it("discharge counts include only COMPLETED discharges: a voided or pending_cosign row is no discharge", async () => {
+      const reader = createDischargeReader(handle.db);
+      const window = { from: "2026-01-01", to: "2026-02-01" };
+      const ssviBefore = await reader.ssviDischargeCounts(ORG_A, window);
+      const timingBefore = await reader.liveDischargeTimingCounts(ORG_A, window);
+      // One completed (the positive control: it IS counted) and one each of the statuses that must not be.
+      for (const status of ["completed", "voided", "pending_cosign"]) {
+        const a = await activate();
+        await admin.query(
+          `INSERT INTO discharge_event (organization_id, admission_id, discharge_type, status, effective_at)
+           VALUES ($1, $2, 'revocation', $3, '2026-01-11')`,
+          [ORG_A, a.admissionId, status],
+        );
+      }
+      const ssviAfter = await reader.ssviDischargeCounts(ORG_A, window);
+      const timingAfter = await reader.liveDischargeTimingCounts(ORG_A, window);
+      expect(ssviAfter.totalDischarges - ssviBefore.totalDischarges).toBe(1);
+      expect(ssviAfter.liveDischarges - ssviBefore.liveDischarges).toBe(1);
+      expect(
+        ssviAfter.liveDischargesIncludingTransfers - ssviBefore.liveDischargesIncludingTransfers,
+      ).toBe(1);
+      expect(timingAfter.totalDischarges - timingBefore.totalDischarges).toBe(1);
+    });
   });
 });

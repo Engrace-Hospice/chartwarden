@@ -1,7 +1,7 @@
 // apps/backend/src/modules/06-admission/seams/discharge-reader.ts — the DEDICATED Drizzle reader backing
 // M6's `DischargeReader` seam (M30 HCI indicators 3/4: Early / Late Live Discharges). Mirrors
 // `death-discharge-reader.ts`'s shape exactly, but reads ALL discharge types (not just `dischargeType=
-// 'death'`) — the denominator for HCI 3/4 is every discharge in the window, live or death.
+// 'death'`) — the denominator for HCI 3/4 is every COMPLETED discharge in the window, live or death.
 //
 // CMS criterion: among LIVE discharges (`dischargeType !== 'death'`), one is "early" when it falls on or
 // before day 7 since admission (indicator 3; matches the FY2025 threshold label in
@@ -71,6 +71,9 @@ export function createDischargeReader(db: DbClient): DischargeReader {
           .where(
             and(
               eq(DE.organizationId, organizationId),
+              // Only a COMPLETED discharge is a discharge: a voided row never happened, and a for-cause row still
+              // `pending_cosign` has not taken effect (the admission stays active).
+              eq(DE.status, "completed"),
               gte(DE.effectiveAt, period.from),
               lt(DE.effectiveAt, period.to),
             ),
@@ -107,6 +110,9 @@ export function createDischargeReader(db: DbClient): DischargeReader {
           .where(
             and(
               eq(DE.organizationId, organizationId),
+              // Only a COMPLETED discharge is a discharge: a voided row never happened, and a for-cause row still
+              // `pending_cosign` has not taken effect (the admission stays active).
+              eq(DE.status, "completed"),
               gte(DE.effectiveAt, period.from),
               lt(DE.effectiveAt, period.to),
             ),
@@ -119,7 +125,8 @@ export function createDischargeReader(db: DbClient): DischargeReader {
         const liveSettled = settled.filter((r) => r.dischargeType !== "death");
         // ponytail: LOS here is this admission only (admission date to discharge date). CMS counts LIFETIME hospice
         // days across hospices and one final discharge per beneficiary per year, so a readmitted or prior-agency
-        // patient is under-counted. There is no prior-hospice-days source (it needs the CMS claims feed).
+        // patient is under-counted (other hospices' days need the CMS claims feed; this agency's earlier stays for
+        // the same patient are not summed either). Upgrade path: sum the patient's admissions already read below.
         let dischargesWithLos180OrMore = 0;
         for (const r of settled) {
           if (r.admissionAt === null) continue; // never guessed — see liveDischargeTimingCounts
