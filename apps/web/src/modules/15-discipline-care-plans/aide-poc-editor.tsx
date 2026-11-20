@@ -36,6 +36,11 @@ import {
   PatientSummaryPanel,
   useChartIdentity,
 } from "../../shell/patient-context";
+import {
+  FREQUENCY_CODE_OPTIONS,
+  FREQUENCY_WORD_OPTIONS,
+  frequencyPresetFor,
+} from "./aide-frequency";
 import { useAideRoster } from "./aide-roster";
 import {
   type GoalView,
@@ -67,6 +72,12 @@ import {
   pageTitleStyle,
   useUnsavedChangesWarning,
 } from "./discipline-ui";
+import { useIpocProblems } from "./ipoc-problems";
+
+/** The discipline an Aide POC entry is authored as. The plan's author matrix is `["rn"]` (the RN case manager
+ *  maps onto it), whoever the aide is; the task's own `discipline` stays `aide`. Sending `aide` here was
+ *  refused with `DISCIPLINE_SCOPE_VIOLATION` for every caller. */
+const AUTHOR_DISCIPLINE = "rn";
 
 /** `discipline_goal_source` values this form may send (`agent_stated` needs an acting consent this form does
  *  not collect). The route union and the pgEnum are pinned equal by `m15-goal-source-parity.test.ts`. */
@@ -94,19 +105,19 @@ export function AidePocEditor(): JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null);
   const identity = useChartIdentity(patientId);
   const roster = useAideRoster(plan?.planId);
+  const ipoc = useIpocProblems(patientId);
 
-  // New intervention (the aide TASK) draft.
+  // New intervention (the aide TASK) draft. The two frequency selects share ONE code, so they cannot disagree.
   const [scopeText, setScopeText] = useState("");
-  const [frequencyText, setFrequencyText] = useState("");
-  const [frequencyValue, setFrequencyValue] = useState("");
+  const [frequencyCode, setFrequencyCode] = useState("");
+  const frequencyPreset = frequencyPresetFor(frequencyCode);
   // New goal draft.
   const [goalText, setGoalText] = useState("");
   const [goalSource, setGoalSource] = useState("clinical");
   const [goalProblemId, setGoalProblemId] = useState("");
   const dirty =
     scopeText.trim() !== "" ||
-    frequencyText.trim() !== "" ||
-    frequencyValue.trim() !== "" ||
+    frequencyCode !== "" ||
     goalText.trim() !== "" ||
     goalProblemId.trim() !== "" ||
     goalSource !== "clinical";
@@ -131,16 +142,16 @@ export function AidePocEditor(): JSX.Element {
   }, [load]);
 
   async function addIntervention(): Promise<void> {
-    if (!plan) return;
+    if (!plan || !frequencyPreset) return;
     setActionError(null);
     const res = await client.POST("/api/v1/discipline-plans/{planId}/interventions", {
       params: { path: { planId: plan.planId }, header: writeHeaders() },
       body: {
         scopeText,
-        frequencyText,
-        frequencyValue,
+        frequencyText: frequencyPreset.words,
+        frequencyValue: frequencyPreset.code,
         discipline: "aide",
-        addedByDiscipline: "aide",
+        addedByDiscipline: AUTHOR_DISCIPLINE,
       },
     } as never);
     if (res.error) {
@@ -148,8 +159,7 @@ export function AidePocEditor(): JSX.Element {
       return;
     }
     setScopeText("");
-    setFrequencyText("");
-    setFrequencyValue("");
+    setFrequencyCode("");
     await load();
   }
 
@@ -162,7 +172,7 @@ export function AidePocEditor(): JSX.Element {
         parentProblemId: goalProblemId,
         source: goalSource,
         originalText: goalText,
-        addedByDiscipline: "aide",
+        addedByDiscipline: AUTHOR_DISCIPLINE,
       },
     } as never);
     if (res.error) {
@@ -262,8 +272,17 @@ export function AidePocEditor(): JSX.Element {
 
   const editingVersion = plan.versions.find((v) => v.versionId === versionId) ?? null;
   const sealed = editingVersion !== null && editingVersion.status !== "draft";
-  const canAddIntervention =
-    scopeText.trim() !== "" && frequencyText.trim() !== "" && frequencyValue.trim() !== "";
+  const canAddIntervention = scopeText.trim() !== "" && frequencyPreset !== undefined;
+  const problemOptions = [
+    { value: "", label: ipoc.loading ? "Loading problems…" : "Select a problem…" },
+    ...ipoc.problems.map((p) => ({ value: p.id, label: p.description })),
+  ];
+  const canAddGoal = goalText.trim() !== "" && goalProblemId !== "";
+  const problemHint = ipoc.error
+    ? ipoc.error
+    : !ipoc.loading && ipoc.problems.length === 0
+      ? "No active IPOC problems on this patient's care plan. Add one under Care Plans first."
+      : "Pick the problem on the patient's interdisciplinary plan of care (IPOC, under Care Plans) that this goal works toward.";
 
   return (
     <PatientWorkspaceLayout
@@ -384,17 +403,17 @@ export function AidePocEditor(): JSX.Element {
               style={{ display: "flex", flexWrap: "wrap", gap: t.space3, alignItems: "flex-end" }}
             >
               <TextField label="New task" value={scopeText} onChange={setScopeText} />
-              <TextField
+              <SelectField
                 label="Frequency (words)"
-                value={frequencyText}
-                onChange={setFrequencyText}
-                placeholder="three times weekly"
+                value={frequencyCode}
+                options={FREQUENCY_WORD_OPTIONS}
+                onChange={setFrequencyCode}
               />
-              <TextField
+              <SelectField
                 label="Frequency (coded)"
-                value={frequencyValue}
-                onChange={setFrequencyValue}
-                placeholder="3/week"
+                value={frequencyCode}
+                options={FREQUENCY_CODE_OPTIONS}
+                onChange={setFrequencyCode}
               />
               <Button
                 tone="primary"
@@ -456,11 +475,12 @@ export function AidePocEditor(): JSX.Element {
             <div
               style={{ display: "flex", flexWrap: "wrap", gap: t.space3, alignItems: "flex-end" }}
             >
-              <TextField
-                label="IPOC problem id"
+              <SelectField
+                label="IPOC problem"
                 value={goalProblemId}
+                options={problemOptions}
                 onChange={setGoalProblemId}
-                describedBy="goal-problem-hint"
+                disabled={ipoc.loading || ipoc.problems.length === 0}
               />
               <SelectField
                 label="Source"
@@ -471,7 +491,7 @@ export function AidePocEditor(): JSX.Element {
               <Button
                 tone="primary"
                 type="button"
-                disabled={goalText.trim() === "" || goalProblemId.trim() === ""}
+                disabled={!canAddGoal}
                 onClick={() => void addGoal()}
               >
                 Add goal
@@ -485,8 +505,7 @@ export function AidePocEditor(): JSX.Element {
               hint="Recorded verbatim as the goal's original text, which is immutable — later wording changes are recorded as revisions alongside it."
             />
             <span id="goal-problem-hint" className="wx-text-muted">
-              A discipline goal refines an IPOC problem owned by the interdisciplinary care plan
-              (M7); the problem id comes from that plan.
+              {problemHint}
             </span>
           </Panel>
 
