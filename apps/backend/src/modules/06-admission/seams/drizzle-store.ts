@@ -24,7 +24,8 @@
 // `LevelOfCareReader.getCurrentLevelOfCare` applies). Sound for the one consumer of the field
 // (`toActiveElectionPeriod`, which M23 only reads for the period containing "now"); an admission with
 // NO LOC row cannot answer it and throws the gap error rather than defaulting to routine home care.
-import { type DbClient, schema } from "@chartwarden/db";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   AdmissionSummary,
@@ -817,6 +818,22 @@ const localDate = (d: Date | string): string =>
   d instanceof Date ? d.toISOString().slice(0, 10) : d.slice(0, 10);
 const localDateN = (d: Date | string | null): string | null => (d === null ? null : localDate(d));
 
+/**
+ * The calendar day a stored instant falls on in the ORGANIZATION's own zone, never the UTC day: an evening act on the US side of UTC is
+ * already the next day in UTC. The recertification draft (M8, ADR-0114 S2) compares these days with a visit's service date and prints them.
+ */
+async function orgLocalDateN(
+  tx: DbClient,
+  organizationId: string,
+  at: Date | string | null,
+): Promise<string | null> {
+  if (at === null) return null;
+  return localDateInTimeZone(
+    at instanceof Date ? at : new Date(at),
+    await organizationTimezone(tx, organizationId),
+  );
+}
+
 /** The joined election-period row shape both period reads project from. */
 interface PeriodRow {
   id: string;
@@ -1114,6 +1131,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
         const rows = await tx
           .select({
             id: CTI.id,
+            organizationId: CTI.organizationId,
             electionPeriodId: CTI.electionPeriodId,
             status: CTI.status,
             hospiceMdSignedAt: CTI.hospiceMdSignedAt,
@@ -1131,7 +1149,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
           certificationId: pick.id,
           electionPeriodId: pick.electionPeriodId,
           status: pick.status,
-          hospiceMdSignedAt: localDateN(pick.hospiceMdSignedAt),
+          hospiceMdSignedAt: await orgLocalDateN(tx, pick.organizationId, pick.hospiceMdSignedAt),
           signedLate: pick.signedLate,
           // No stored is_recert column — derived from the CMS definition: the first benefit period is
           // the initial certification, every subsequent sequence is a recertification (§2.2).
@@ -1148,6 +1166,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
         const rows = await tx
           .select({
             id: F2F.id,
+            organizationId: F2F.organizationId,
             electionPeriodId: F2F.electionPeriodId,
             status: F2F.status,
             performerRole: F2F.performerRole,
@@ -1161,6 +1180,9 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
         const pick = rows.find((r) => r.status === "attested") ?? rows[0];
         if (!pick) return null;
         if (pick.encounterDate === null) {
+          // A scheduled face-to-face has no date until it is held, and the reader answers `null` for it either way (it takes only an attested
+          // one): only an ATTESTED row without a date is a gap in the record.
+          if (pick.status !== "attested") return null;
           throw new AdmissionSeamDataGapError("face_to_face_encounter", pick.id, [
             "encounter_date",
           ]);
@@ -1171,7 +1193,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
           status: pick.status,
           performerRole: pick.performerRole,
           encounterDate: localDate(pick.encounterDate),
-          attestedAt: localDateN(pick.attestationSignedAt),
+          attestedAt: await orgLocalDateN(tx, pick.organizationId, pick.attestationSignedAt),
           windowOverride: pick.windowOverride,
         } as FaceToFaceSummary;
       });
