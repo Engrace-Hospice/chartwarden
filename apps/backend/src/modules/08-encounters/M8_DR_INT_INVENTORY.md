@@ -29,7 +29,8 @@ degradation must not block patient-care documentation or visit signing.
   tenant's draft switch ON (absent row = off) and an encounter whose template drafts a section (today only
   the RN routine visit; every other template behaves as with the switch off: no draft read, no check 13, no
   sealed rows), finalize and sign recompute the draft for the signer from M7 `relevantElementsAsOf`, M9
-  scale series, M12 medication changes and the M39 Part 2 verdict. If any of those reads fails, or does not
+  scale series, M12 medication changes and the M39 Part 2 verdict (an addendum's finalize does the same when a
+  confirmed amended section is its sole content: see the addendum paragraph below). If any of those reads fails, or does not
   answer within `DRAFT_SOURCE_READ_TIMEOUT_MS` (5 s), sign and finalize answer **503
   `COMPLIANCE_GATE_UNAVAILABLE`** for that tenant and never pass: a section cannot be confirmed or signed
   against sources that could not be read, and a note must not be signed against a draft computed from
@@ -65,7 +66,10 @@ An addendum may name sections of a signed drafted note it amends; its sign seals
 amendment row (the note's own rows and pin never change) and publishes `m8.encounter.section_amended` per amended section (outbox: ids only). The audit
 event of the same name is ONE per signed addendum, `{ addendumId, sectionCount }`, standard retention class and not Part 2 eligible (`audit.read` is not Part 2
 gated, so no section id, flag or Part 2 class may sit on it); the per-section trail is the row trigger of the sealed amendment row. Same fail-closed
-posture as the note's own sign (a source or key-ring outage is a 503, never a pass). Recorded limits:
+posture as the note's own sign (a source or key-ring outage is a 503, never a pass). Finalize of an addendum whose ONLY content is a confirmed amended
+section (no selection, no annotation) depends on the same sources: it reads the author's draft (M7, M9, M12, M39) to count what sign would seal, so an outage
+there is a 503 `COMPLIANCE_GATE_UNAVAILABLE` at finalize too, not only at sign. Such an addendum could not finalize at all before, and an addendum with a
+selection or an annotation, or with no confirmed section, reads nothing at finalize. Recorded limits:
 
 - **No billing re-open.** An amendment touches no claim, no billability read and no event M23/M24 consumes.
 - **The amendment's cosignature request is worked like a note's** (PR E2b). `addendum_cosignature_request` is a sibling of `cosignature_request` (that one
@@ -74,8 +78,8 @@ posture as the note's own sign (a source or key-ring outage is a 503, never a pa
   cron's two-table sweep). Signing publishes `m8.encounter.addendum_cosigned` (no consumer), not `m8.encounter.cosigned`, and its provenance row is the new
   `encounter_signature` kind `addendum_cosignature` (migration 1524). The cosignature queue lists both kinds, told apart by `cosign.subject`.
 - **M22 has no Part 2 document path.** A rendered document shows the withheld marker where a Part 2 derived section (a note's, or an amendment's) is.
-- **A note that holds Part 2 content is amended only by an author with Part 2 disclosure** (`422 AMENDMENT_PART2_NOT_ENTITLED` at naming and again at sign; an
-  M39 failure is a 503, never a denial). "Holds Part 2 content" is ONE note-wide fact: its pin is `part2_derived`, or any sealed row is (an original, or an
+- **A note that holds Part 2 content is amended only by an author with Part 2 disclosure** (`422 AMENDMENT_PART2_NOT_ENTITLED` at naming, at finalize when a
+  confirmed amended section is the addendum's sole content, and again at sign; an M39 failure is a 503, never a denial). "Holds Part 2 content" is ONE note-wide fact: its pin is `part2_derived`, or any sealed row is (an original, or an
   amendment of any section). A signer without disclosure is refused the same way whichever section they name, so the refusal says nothing of which sections are
   Part 2 (answering "unknown section" for one would be the same oracle: template section ids are public). The refusal says "this note cannot be amended by this
   signer" and names no section; the verdict is asked only when the note has Part 2 content, and a free addendum is unaffected. An entitled author's redraft can
