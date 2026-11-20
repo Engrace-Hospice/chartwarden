@@ -6,28 +6,34 @@ import { ENCOUNTER_DISCIPLINE_RULES, type EncounterType } from "@chartwarden/typ
 import { describe, expect, it } from "vitest";
 import { TEMPLATES, resolveTemplate } from "../src/index";
 
-/** The `allowedCategories` every catalog section carried before S1 PR B (undefined = uncategorized). */
+/**
+ * The `allowedCategories` every catalog section carries without draft wording: what it carried before S1 PR B, with the
+ * WF09 declarations on top (Reason for Visit offers the visit reasons, a prose section declares `[]`).
+ */
 const LEGACY_CATEGORIES: Readonly<Record<string, readonly string[] | undefined>> = {
-  chief_concern: undefined,
-  vitals_review: undefined,
+  chief_concern: ["visit_reason"],
+  vitals_review: [],
   assessment: ["observation"],
   symptom_management: ["symptom_impact"],
   interventions: ["care_plan_element"],
-  plan: undefined,
+  plan: [],
+  functional_status: [],
+  nutrition: [],
+  skin_wounds: [],
   adl: ["adl"],
   psychosocial: ["psychosocial"],
-  family_dynamics: undefined,
+  family_dynamics: [],
   spiritual: ["spiritual"],
   med_reconciliation: ["care_plan_element"],
-  advance_directive: undefined,
-  caregiver_overview: undefined,
+  advance_directive: [],
+  caregiver_overview: [],
   baseline_symptoms: ["symptom_impact"],
-  pps: undefined,
-  esas: undefined,
-  prognosis: undefined,
-  recert_summary: undefined,
+  pps: [],
+  esas: [],
+  prognosis: [],
+  recert_summary: [],
   f2f_attestation: ["attestation"],
-  idg_followup: undefined,
+  idg_followup: [],
 };
 
 const ROUTINE_RN = "routine_visit:rn";
@@ -36,8 +42,11 @@ describe("RN routine visit category wiring", () => {
   const sectionById = (id: string) =>
     resolveTemplate("routine_visit", "rn")?.sections.find((s) => s.id === id);
 
-  it("gives chief_concern, vitals_review and plan their categories", () => {
-    expect(sectionById("chief_concern")?.allowedCategories).toEqual(["chief_concern"]);
+  it("gives chief_concern, vitals_review and plan their categories (chief_concern keeps the visit reasons)", () => {
+    expect(sectionById("chief_concern")?.allowedCategories).toEqual([
+      "visit_reason",
+      "chief_concern",
+    ]);
     expect(sectionById("vitals_review")?.allowedCategories).toEqual(["vitals_review"]);
     expect(sectionById("plan")?.allowedCategories).toEqual(["plan", "care_plan_element"]);
   });
@@ -54,6 +63,9 @@ describe("RN routine visit category wiring", () => {
       ["chief_concern", "Reason for Visit", true],
       ["vitals_review", "Vital Signs Review", true],
       ["assessment", "Assessment", true],
+      ["functional_status", "Functional Status", false],
+      ["nutrition", "Nutrition and Hydration", false],
+      ["skin_wounds", "Skin and Wounds", false],
       ["symptom_management", "Symptom Management", false],
       ["interventions", "Interventions", false],
       ["plan", "Plan and Next Visit", true],
@@ -103,8 +115,9 @@ describe("a template resolved without draft wording", () => {
     expect(
       resolveTemplate("routine_visit", "rn", { draftWording: true })?.sections[0]
         ?.allowedCategories,
-    ).toEqual(["chief_concern"]);
+    ).toEqual(["visit_reason", "chief_concern"]);
     expect(resolveTemplate("routine_visit", "rn")?.sections[0]?.allowedCategories).toEqual([
+      "visit_reason",
       "chief_concern",
     ]);
   });

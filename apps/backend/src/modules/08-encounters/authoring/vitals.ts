@@ -8,9 +8,24 @@
 // runs the returned §2.8 effects inside the encounter's optimistic-locked transaction. "Clinically not
 // indicated" is a first-class value (§2.2) — a non-empty CNI field list requires a documented reason,
 // never a silent NULL the surveyor can't explain.
-import type { PainScale, VitalUnit } from "@chartwarden/types";
+import type { RecordedVitals } from "@chartwarden/hearthnote";
+import {
+  type ErrorDetailType,
+  type PainScale,
+  ValidationError,
+  type VitalUnit,
+} from "@chartwarden/types";
 import type { EncounterSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
+import {
+  HEIGHT_UNITS,
+  WEIGHT_UNITS,
+  parseHeight,
+  parseWeight,
+  plausibleKilograms,
+  plausibleMetres,
+  positiveDecimal,
+} from "./measurements";
 
 /** Minimum free-text length for the §2.2 "clinically not indicated" reason (also a DB CHECK). */
 export const VITALS_CNI_REASON_MIN = 20;
@@ -34,6 +49,56 @@ export interface VitalsInput {
   readonly bloodGlucoseUnit?: VitalUnit | null;
   readonly clinicallyNotIndicatedFields?: readonly string[];
   readonly clinicallyNotIndicatedReason?: string | null;
+}
+
+const hasValue = (v: unknown): boolean => isNum(v as number) || isText(v as string);
+
+/** Measurements the note takes one at a time: the newest set that carries one supplies it. */
+const SCALAR_MEASUREMENTS = ["heartRate", "respiratoryRate", "spo2", "painScore"] as const;
+
+/** The fields of `source` that carry a value (an absent or null field stays absent), or nothing when there is no source. */
+function takeFrom(source: VitalsInput | undefined, fields: readonly (keyof VitalsInput)[]) {
+  return Object.fromEntries(
+    source === undefined ? [] : fields.flatMap((f) => (source[f] == null ? [] : [[f, source[f]]])),
+  );
+}
+
+/**
+ * What the visit note states, from every vitals set captured on the encounter (NEWEST first). Each measurement comes from
+ * the newest set that carries it, so a later capture replaces only what it measured and an earlier reading is never dropped
+ * by a partial retake. Two things are never split across sets, because the halves mean nothing apart: a measurement and its
+ * unit, and the two halves of a blood pressure (the newest set that has BOTH; failing that the newest set with either one,
+ * stated on its own). A weight or height counts only when it is a positive number with a unit of its own family, the same
+ * rule the weight history applies, so the note's "current weight" and the history's agree.
+ */
+export function recordedVitalsFrom(sets: readonly VitalsInput[]): RecordedVitals {
+  const bloodPressureSet =
+    sets.find((s) => isNum(s.bpSystolic) && isNum(s.bpDiastolic)) ??
+    sets.find((s) => isNum(s.bpSystolic) || isNum(s.bpDiastolic));
+  const merged: RecordedVitals = {
+    ...takeFrom(bloodPressureSet, ["bpSystolic", "bpDiastolic"]),
+    ...takeFrom(
+      sets.find((s) => hasValue(s.temperature)),
+      ["temperature", "temperatureUnit"],
+    ),
+    ...takeFrom(
+      sets.find((s) => parseWeight(s.weight, s.weightUnit) !== null),
+      ["weight", "weightUnit"],
+    ),
+    ...takeFrom(
+      sets.find((s) => parseHeight(s.height, s.heightUnit) !== null),
+      ["height", "heightUnit"],
+    ),
+    ...Object.fromEntries(
+      SCALAR_MEASUREMENTS.flatMap((field) => {
+        const source = sets.find((s) => hasValue(s[field]));
+        return source === undefined ? [] : [[field, source[field]]];
+      }),
+    ),
+  };
+  // BMI is derived from the MERGED weight and height: a set that took only one of them stores no BMI of its own.
+  const bmi = computeBmi(merged as VitalsInput);
+  return bmi === null ? merged : { ...merged, bmi };
 }
 
 /** The derived vitals facts + the §2.8 effects a capture declares (the service executes them). */
@@ -83,6 +148,7 @@ export function validateVitals(input: VitalsInput): void {
       "pain_score out of range (0–10)",
     );
   }
+  validateMeasurements(input);
   const cniFields = input.clinicallyNotIndicatedFields ?? [];
   if (cniFields.length > 0) {
     require_(
@@ -93,33 +159,52 @@ export function validateVitals(input: VitalsInput): void {
   }
 }
 
-/** Convert a numeric-as-text weight to kilograms (lb→kg), or null when unparseable. */
-function toKg(
-  weight: string | null | undefined,
-  unit: VitalUnit | null | undefined,
-): number | null {
-  if (!isText(weight)) return null;
-  const n = Number(weight);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return unit === "lb" ? n * 0.45359237 : n;
+/** A weight or height needs a plain positive number and a unit of its own family; every violation is named by field. */
+function measurementProblems(
+  label: "weight" | "height",
+  value: string | null | undefined,
+  unit: string | null | undefined,
+  units: readonly string[],
+): ErrorDetailType[] {
+  const unitField = `${label}Unit`;
+  const unitList = units.join(" or ");
+  const problems: ErrorDetailType[] = [];
+  if (isText(value) && positiveDecimal(value) === null) {
+    problems.push({ field: label, code: "INVALID", message: `${label} must be a positive number` });
+  }
+  if (unit !== null && unit !== undefined && !units.includes(unit)) {
+    problems.push({
+      field: unitField,
+      code: "INVALID",
+      message: `${unitField} must be ${unitList}`,
+    });
+  } else if (isText(value) && (unit === null || unit === undefined)) {
+    problems.push({
+      field: unitField,
+      code: "REQUIRED",
+      message: `a ${label} needs its unit (${unitList})`,
+    });
+  }
+  return problems;
 }
 
-/** Convert a numeric-as-text height to metres (in→m, cm→m), or null when unparseable. */
-function toMetres(
-  height: string | null | undefined,
-  unit: VitalUnit | null | undefined,
-): number | null {
-  if (!isText(height)) return null;
-  const n = Number(height);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  if (unit === "in") return (n * 2.54) / 100;
-  return n / 100; // cm (default)
+/** §2.2 — a weight/height without its unit, with a unit of the wrong family, or that is not a positive number is a 422 naming each field. */
+function validateMeasurements(input: VitalsInput): void {
+  const problems = [
+    ...measurementProblems("weight", input.weight, input.weightUnit, WEIGHT_UNITS),
+    ...measurementProblems("height", input.height, input.heightUnit, HEIGHT_UNITS),
+  ];
+  if (problems.length > 0) throw new ValidationError("request validation failed", problems);
 }
 
-/** §2.2 — BMI is a derived column, computed from weight + height, never clinician-entered. */
+/**
+ * §2.2 — BMI is a derived column, computed from weight + height, never clinician-entered. It exists only when BOTH are recorded
+ * (a positive number with a kg|lb / cm|in unit) and are plausible human values; a unit is never assumed, so an incomplete or
+ * implausible pair yields no BMI rather than a wrong one.
+ */
 export function computeBmi(input: VitalsInput): string | null {
-  const kg = toKg(input.weight, input.weightUnit);
-  const m = toMetres(input.height, input.heightUnit);
+  const kg = plausibleKilograms(input.weight, input.weightUnit);
+  const m = plausibleMetres(input.height, input.heightUnit);
   if (kg === null || m === null) return null;
   return (kg / (m * m)).toFixed(1);
 }

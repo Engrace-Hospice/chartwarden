@@ -15,17 +15,24 @@ import {
 } from "../src/index";
 
 const LEGACY_ENTRY_COUNT = 23;
+const DRAFT_ENTRY_COUNT = 25;
 const LEGACY_CODES = new Set(VOCABULARY.slice(0, LEGACY_ENTRY_COUNT).map((e) => e.code));
-const NEW_ENTRIES = VOCABULARY.slice(LEGACY_ENTRY_COUNT);
+// The draft entries sit right after the 23 legacy ones; later releases (2026.11.1 visit reasons) append after them.
+const NEW_ENTRIES = VOCABULARY.slice(LEGACY_ENTRY_COUNT, LEGACY_ENTRY_COUNT + DRAFT_ENTRY_COUNT);
 
 describe("corpus release", () => {
-  it("is a new release, registered with its own uuid and a date", () => {
-    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.11.0");
+  it("is its own release, registered with its own uuid and a date, and a later release followed it", () => {
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
+      "narrative-vocab@2026.11.1",
     ]);
-    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-18");
+    expect(NARRATIVE_VOCAB_RELEASES[1]).toEqual({
+      version: "narrative-vocab@2026.11.0",
+      id: "0e92f042-d45f-426c-918a-d3391387dd69",
+      releasedOn: "2026-11-18",
+    });
+    expect(activeNarrativeVocabRelease(VOCAB_VERSION).version).toBe(VOCAB_VERSION);
   });
 
   it("keeps the 2026.06.0 release row untouched (a signed note pins that id)", () => {
@@ -57,7 +64,7 @@ describe("DRAFT_VOCAB_CODES", () => {
 
 describe("draft entries", () => {
   it("adds 25 entries after the 23 legacy ones, with unique codes", () => {
-    expect(NEW_ENTRIES).toHaveLength(25);
+    expect(NEW_ENTRIES).toHaveLength(DRAFT_ENTRY_COUNT);
     expect(new Set(VOCABULARY.map((e) => e.code)).size).toBe(VOCABULARY.length);
     for (const e of NEW_ENTRIES) expect(LEGACY_CODES.has(e.code)).toBe(false);
   });
@@ -73,7 +80,7 @@ describe("draft entries", () => {
     for (const type of Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]) {
       for (const discipline of ENCOUNTER_DISCIPLINE_RULES[type]) {
         if (type === "routine_visit" && discipline === "rn") continue;
-        const surfaced = entriesFor(type, discipline).filter((e) => !LEGACY_CODES.has(e.code));
+        const surfaced = entriesFor(type, discipline).filter((e) => DRAFT_VOCAB_CODES.has(e.code));
         expect(surfaced, `${type}:${discipline}`).toEqual([]);
       }
     }

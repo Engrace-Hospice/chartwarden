@@ -6,6 +6,7 @@
 // pure: no IO, no cross-module schema import; the service persists rows and runs the declared §2.8
 // effects inside the encounter's optimistic-locked transaction.
 export * from "./vitals";
+export * from "./measurements";
 export * from "./mileage";
 export * from "./f2f";
 // F-064 — the `at_least_one` mirror for `encounter_care_plan_link`.

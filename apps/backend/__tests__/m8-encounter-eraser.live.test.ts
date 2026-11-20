@@ -70,6 +70,9 @@ const CHANGED_COLUMNS = [
   "voided_at",
   "voided_by",
   "vocab_version_id",
+  // WF09: the fall a visit followed up says something about the patient, so the tombstone clears the link.
+  "fall_incident_id",
+  "fall_occurred_on",
 ] as const;
 
 type Row = Record<string, unknown>;
@@ -86,6 +89,8 @@ const OWNED_TABLES = {
   cosignatureRequests: "cosignature_request",
   vitals: "vitals",
   mileage: "mileage",
+  adlRecords: "encounter_adl",
+  nutritionRecords: "encounter_nutrition",
   hearthnoteSelections: "hearthnote_selection",
   hearthnoteAssembledOutputs: "hearthnote_assembled_output",
   hearthnoteLlmModifications: "hearthnote_llm_modification",
@@ -103,9 +108,11 @@ const VISIT_NOTE_KEYS = [
   "amendments",
   "addendumCosignatureRequests",
 ] as const satisfies readonly OwnedKey[];
+/** The WF09 recorded-findings tables (ADLs, nutrition): destroyed by name, because the tombstoned root never fires their ON DELETE CASCADE. */
+const FINDING_KEYS = ["adlRecords", "nutritionRecords"] as const satisfies readonly OwnedKey[];
 
 /**
- * What `seedSatellites` plants per root: one of each, plus a second selection (addendum-scoped) and two more outputs (addendum-scoped,
+ * What `seedSatellites` plants per root: one of each (the recorded ADLs and nutrition included), plus a second selection (addendum-scoped) and two more outputs (addendum-scoped,
  * Layer-2-involved); two draft confirmations; four sealed sections (two originals under the primary pin, two amendment rows under the
  * addendum's own output); the two sections the addendum names; one cosignature request of the amending addendum.
  */
@@ -116,6 +123,8 @@ const PER_ROOT: Record<OwnedKey, number> = {
   cosignatureRequests: 1,
   vitals: 1,
   mileage: 1,
+  adlRecords: 1,
+  nutritionRecords: 1,
   hearthnoteSelections: 2,
   hearthnoteAssembledOutputs: 3,
   hearthnoteLlmModifications: 1,
@@ -160,6 +169,8 @@ const OWNED_SCOPE: Record<OwnedKey, string> = {
   cosignatureRequests: `encounter_id IN (${ENCOUNTERS_OF})`,
   vitals: `encounter_id IN (${ENCOUNTERS_OF})`,
   mileage: `encounter_id IN (${ENCOUNTERS_OF})`,
+  adlRecords: `encounter_id IN (${ENCOUNTERS_OF})`,
+  nutritionRecords: `encounter_id IN (${ENCOUNTERS_OF})`,
   hearthnoteSelections: HEARTHNOTE_SCOPE,
   hearthnoteAssembledOutputs: HEARTHNOTE_SCOPE,
   hearthnoteLlmModifications: `assembled_output_id IN (SELECT id FROM hearthnote_assembled_output WHERE ${HEARTHNOTE_SCOPE})`,
@@ -481,6 +492,19 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
        VALUES ($1,$2,$3,$4,'12.5','route')`,
       [...site, encounterId],
     );
+    // WF09 recorded findings: one ADL record and one nutrition record per encounter (UNIQUE encounter_id).
+    await admin.query(
+      `INSERT INTO encounter_adl (organization_id, provider_entity_id, location_id, encounter_id, bathing, bowel, devices,
+         created_by_membership_id, updated_by_membership_id)
+       VALUES ($1,$2,$3,$4,'limited_assist','continent',ARRAY['walker'],$5,$5)`,
+      [...site, encounterId, member],
+    );
+    await admin.query(
+      `INSERT INTO encounter_nutrition (organization_id, provider_entity_id, location_id, encounter_id, appetite, meal_intake_percent,
+         created_by_membership_id, updated_by_membership_id)
+       VALUES ($1,$2,$3,$4,'fair',50,$5,$5)`,
+      [...site, encounterId, member],
+    );
     // HearthNote selections: one under the encounter, one under the addendum (its encounter_id is null: the XOR CHECK).
     for (const [parentEncounter, parentAddendum] of [
       [encounterId, null],
@@ -587,7 +611,15 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     // One root of every kind the product can hold, for the patient to be destroyed.
     const finalized = { status: "finalized", vocab_version_id: PIN };
     targets.set("draft", await seedEncounter("A", targetPatient));
-    targets.set("finalized_normal", await seedEncounter("A", targetPatient, finalized));
+    targets.set(
+      "finalized_normal",
+      await seedEncounter("A", targetPatient, {
+        ...finalized,
+        // A follow-up-after-a-fall visit: the link (an incident id and its date) must not survive the tombstone.
+        fall_incident_id: randomUUID(),
+        fall_occurred_on: "2026-01-14",
+      }),
+    );
     targets.set(
       "late_entry",
       await seedEncounter("A", targetPatient, {
@@ -690,6 +722,11 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     );
     expect(carrying.rowCount).toBe(5);
     expect(targets.size).toBe(TARGET_ROOTS);
+    const linked = await admin.query(
+      "SELECT 1 FROM encounter WHERE patient_id=$1 AND (fall_incident_id IS NOT NULL OR fall_occurred_on IS NOT NULL)",
+      [targetPatient],
+    );
+    expect(linked.rowCount).toBe(1);
     expect(ENCOUNTER_ERASED_REASON).not.toContain(MARKER);
     // the largest CHECK floor on any reason column is the administrative override's 100 characters
     expect(ENCOUNTER_ERASED_REASON.length).toBeGreaterThanOrEqual(100);
@@ -740,7 +777,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     }
   });
 
-  it("the eraser connection is the destruction login, and holds DELETE plus an org-scoped policy on each visit-note table", async () => {
+  it("the eraser connection is the destruction login, and holds DELETE plus an org-scoped policy on each visit-note and recorded-findings table", async () => {
     // The connection the store runs on: a non-superuser, RLS-bound member of chartwarden_destruction.
     const who = await destruction.pool.query<{
       u: string;
@@ -758,7 +795,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       bypass: false,
       member: true,
     });
-    for (const key of VISIT_NOTE_KEYS) {
+    for (const key of [...VISIT_NOTE_KEYS, ...FINDING_KEYS]) {
       const table = OWNED_TABLES[key];
       const grants = await admin.query<{ sel: boolean; del: boolean; ins: boolean; upd: boolean }>(
         `SELECT has_table_privilege('chartwarden_destruction', $1::text, 'SELECT') AS sel,
@@ -950,6 +987,14 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
         [targetPatient, `%${MARKER}%`],
       );
       expect(leaked.rowCount).toBe(0);
+    });
+
+    it("clears the fall link of a root that held one", async () => {
+      const after = await snapshot([targetPatient]);
+      for (const row of after) {
+        expect(row.fall_incident_id, `fall_incident_id of ${row.id}`).toBeNull();
+        expect(row.fall_occurred_on, `fall_occurred_on of ${row.id}`).toBeNull();
+      }
     });
 
     it("keeps a human's void attribution, attributes the rest to the author, and pins a draft to a real corpus release", async () => {

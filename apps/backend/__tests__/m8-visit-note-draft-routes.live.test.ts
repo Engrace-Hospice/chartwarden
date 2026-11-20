@@ -1,3 +1,19 @@
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import {
+  M3_INTRINSIC_PREDICATES,
+  createInMemoryEffectivePermissionStore,
+  createInMemorySessionContextStore,
+  createPredicateRegistry,
+  createSessionContextResolver,
+  registerAbacRegistry,
+  registerEffectivePermissionResolver,
+  resetAbacRegistry,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@chartwarden/auth";
+import { type DbClient, createDbClient } from "@chartwarden/db";
 /**
  * ADR-0114 PR C2b1 (visit-note drafting) - the draft's store ports, the draft read and the section resolution, proven against real
  * Postgres as the NOBYPASSRLS `chartwarden_app` role. The seams (M7 care plan, M9 scales, M12 medications, M39 Part 2) are fakes: their
@@ -38,22 +54,11 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m8:visit-note-draft-routes:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1. Never point this at the shared Docker cluster.
  */
-import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import {
-  M3_INTRINSIC_PREDICATES,
-  createInMemoryEffectivePermissionStore,
-  createInMemorySessionContextStore,
-  createPredicateRegistry,
-  createSessionContextResolver,
-  registerAbacRegistry,
-  registerEffectivePermissionResolver,
-  resetAbacRegistry,
-  resetAuthorizationContract,
-  resetRbacEngine,
-} from "@chartwarden/auth";
-import { type DbClient, createDbClient } from "@chartwarden/db";
+  type RecordedWound,
+  describeRecordedAdl,
+  describeRecordedWounds,
+} from "@chartwarden/hearthnote";
 import { DRAFT_VOCAB_CODES } from "@chartwarden/narrative-vocab";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
@@ -62,6 +67,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { STEP_UP_FLOOR_KEY, buildServer, stepUpFreshFor } from "../src/bootstrap/index";
 import { registerSeam } from "../src/bootstrap/seams/registry";
+import { recordedVitalsFrom } from "../src/modules/08-encounters/authoring/index";
 import { createDbDraftStore } from "../src/modules/08-encounters/drafting/db-draft-store";
 import { createDbRunInOrg } from "../src/modules/08-encounters/drafting/db-draft-unit";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
@@ -84,6 +90,7 @@ import { runCosignatureSlaCron } from "../src/modules/08-encounters/jobs/cron-wo
 import { registerDraftSectionRoutes } from "../src/modules/08-encounters/routes/draft-section-routes";
 import { assembleSelections } from "../src/modules/08-encounters/routes/service";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/index";
+import { noWoundReader } from "../src/modules/08-encounters/wound-reader";
 import { carePlan, change, fakePorts } from "./_encounter-draft-fixtures";
 import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
 import {
@@ -717,7 +724,11 @@ describe.skipIf(!DB_URL)(
         const enc = draftEncounter(orgs.A, f);
         const empty = await storeIn(orgs.A, (s) => s.loadSelection(enc), FAKE_CIPHER);
         expect(empty.selection.sections).toEqual([]);
-        expect(empty.context).toEqual({ patient: "Patient", serviceDate: SERVICE_DATE });
+        expect(empty.context).toEqual({
+          patient: "Patient",
+          serviceDate: SERVICE_DATE,
+          recordedVitals: {},
+        });
         await admin.query(
           `INSERT INTO hearthnote_selection (organization_id, provider_entity_id, location_id, encounter_id, template_key, template_version, selections, free_text_cipher)
          VALUES ($1,$2,$3,$4,'routine_visit:rn','v',$5,$6)`,
@@ -737,6 +748,45 @@ describe.skipIf(!DB_URL)(
         expect(await storeIn(orgs.A, (s) => s.ownTextSectionIds(f.encounterId))).toEqual(
           new Set(["plan"]),
         );
+      });
+
+      it("loadSelection: the context carries what is recorded on the visit (ADLs, weight, the linked fall), so the signed note states what the gate counted", async () => {
+        const f = await seedEncounter(orgs.A);
+        const enc = draftEncounter(orgs.A, f);
+        await admin.query(
+          `INSERT INTO encounter_adl (organization_id, provider_entity_id, location_id, encounter_id, bathing, devices, created_by_membership_id, updated_by_membership_id)
+         VALUES ($1,$2,$3,$4,'limited_assist',ARRAY['walker'],$5,$5)`,
+          [
+            orgs.A.orgId,
+            orgs.A.providerEntityId,
+            orgs.A.locationId,
+            f.encounterId,
+            orgs.A.author.membershipId,
+          ],
+        );
+        await admin.query(
+          `INSERT INTO vitals (organization_id, provider_entity_id, location_id, encounter_id, captured_at, heart_rate, weight, weight_unit)
+         VALUES ($1,$2,$3,$4,$5,70,'61.5','kg')`,
+          [
+            orgs.A.orgId,
+            orgs.A.providerEntityId,
+            orgs.A.locationId,
+            f.encounterId,
+            "2026-01-15T14:00:00Z",
+          ],
+        );
+        await admin.query("UPDATE encounter SET fall_occurred_on = '2026-01-10' WHERE id = $1", [
+          f.encounterId,
+        ]);
+        const { context } = await storeIn(orgs.A, (s) => s.loadSelection(enc), FAKE_CIPHER);
+        expect(context.recordedAdl).toMatchObject({
+          items: { bathing: "limited_assist" },
+          devices: ["walker"],
+        });
+        expect(context.recordedVitals).toMatchObject({ weight: "61.5", weightUnit: "kg" });
+        expect(context.linkedFall).toEqual({ occurredOn: "2026-01-10" });
+        // M9's wounds are not read here: they come through the draft's seam (`recordedWounds`).
+        expect(context.recordedWounds).toBeUndefined();
       });
 
       it("loadSelection refuses sealed prose when no cipher is bound (never a draft without the clinician's own text)", async () => {
@@ -792,6 +842,10 @@ describe.skipIf(!DB_URL)(
           ["chief_concern", "not_drafted"],
           ["vitals_review", "not_drafted"],
           ["assessment", "not_drafted"],
+          // WF09: the recorded ADL, nutrition and wound sections are free text only, so nothing drafts them.
+          ["functional_status", "not_drafted"],
+          ["nutrition", "not_drafted"],
+          ["skin_wounds", "not_drafted"],
           ["symptom_management", "not_drafted"],
           ["interventions", "unresolved"],
           ["plan", "unresolved"],
@@ -1440,6 +1494,8 @@ describe.skipIf(!DB_URL)(
           undefined,
           ciphers,
           () => LIVE_NOW,
+          undefined,
+          noWoundReader,
           () => currentSeams,
         );
       let svc: ReturnType<typeof serviceFor>;
@@ -1563,6 +1619,20 @@ describe.skipIf(!DB_URL)(
       /** What Layer 1 alone makes of the clinician's selections: a tenant with the draft off, or nothing drafted, signs exactly this. */
       const layer1Text = () =>
         assembleSelections("routine_visit", "rn", SERVICE_DATE, requireSelections.sections);
+      /** The same, for a visit `prepared` captured the required vitals on: the note states what was recorded on the visit (WF09). */
+      const layer1TextWithRecordedVitals = () =>
+        assembleSelections(
+          "routine_visit",
+          "rn",
+          SERVICE_DATE,
+          requireSelections.sections,
+          undefined,
+          {
+            recordedVitals: recordedVitalsFrom([
+              requiredVitalsCapture("routine_visit", "rn") ?? {},
+            ]),
+          },
+        );
       const detailsOf = (error: unknown) =>
         ((error as { details?: { field?: string; code: string }[] }).details ?? []).map((d) => [
           d.field,
@@ -1721,6 +1791,39 @@ describe.skipIf(!DB_URL)(
           expect(await outputsOf(f)).toEqual([]);
         });
 
+        it("states what was recorded on the visit that the draft does not draft (ADLs, weight, wounds), so the signed note says what the gate counted", async () => {
+          const wound: RecordedWound = {
+            site: "sacrum",
+            etiology: "pressure_injury",
+            stage: "stage_2",
+          };
+          currentSeams = liveSeams({ recordedWounds: async () => [wound] });
+          const f = await prepared();
+          await admin.query(
+            `INSERT INTO encounter_adl (organization_id, provider_entity_id, location_id, encounter_id, bathing, created_by_membership_id, updated_by_membership_id)
+           VALUES ($1,$2,$3,$4,'total_dependence',$5,$5)`,
+            [
+              orgs.A.orgId,
+              orgs.A.providerEntityId,
+              orgs.A.locationId,
+              f.encounterId,
+              orgs.A.author.membershipId,
+            ],
+          );
+          await admin.query(
+            `INSERT INTO vitals (organization_id, provider_entity_id, location_id, encounter_id, captured_at, weight, weight_unit)
+           VALUES ($1,$2,$3,$4,now(),'61.5','kg')`,
+            [orgs.A.orgId, orgs.A.providerEntityId, orgs.A.locationId, f.encounterId],
+          );
+          await resolveAll(orgs.A, f);
+          expect((await finalize(orgs.A, f)).status).toBe("finalized");
+          const [out] = await outputsOf(f);
+          const pinned = await open(ORG_A, one(out ? [out] : []).final_cipher);
+          expect(pinned).toContain(describeRecordedAdl({ items: { bathing: "total_dependence" } }));
+          expect(pinned).toContain(describeRecordedWounds([wound]));
+          expect(pinned).toContain("weight 61.5 kg");
+        });
+
         it("passes once every drafted section is resolved, and pins the confirmed text, not Layer 1 alone", async () => {
           const f = await prepared();
           await resolveAll(orgs.A, f);
@@ -1864,7 +1967,7 @@ describe.skipIf(!DB_URL)(
           const f = await prepared(orgs.C); // org C has the switch off: finalize is today's finalize
           await finalize(orgs.C, f);
           const pinnedAtFinalize = await open(ORG_C, one(await outputsOf(f)).final_cipher);
-          expect(pinnedAtFinalize).toBe(layer1Text());
+          expect(pinnedAtFinalize).toBe(layer1TextWithRecordedVitals());
           await inOrg(orgs.C, (tx) =>
             putDraftPolicy(tx, {
               organizationId: ORG_C,
@@ -1989,11 +2092,13 @@ describe.skipIf(!DB_URL)(
             (await svc.sign(ORG_A, f.encounterId, actorOf(orgs.A, "A"), SIGN_ARGS)).status,
           ).toBe("signed");
           const [out] = await outputsOf(f);
-          expect(await open(ORG_A, one(out ? [out] : []).final_cipher)).toBe(layer1Text());
+          expect(await open(ORG_A, one(out ? [out] : []).final_cipher)).toBe(
+            layer1TextWithRecordedVitals(),
+          );
           const texts = await Promise.all(
             (await signedRowsOf(f)).map((r) => open(ORG_A, r.text_cipher)),
           );
-          expect(texts.join("\n\n")).toBe(layer1Text());
+          expect(texts.join("\n\n")).toBe(layer1TextWithRecordedVitals());
           expect(await confirmationsOf(f.encounterId)).toEqual([]);
         });
       });
@@ -2401,7 +2506,9 @@ describe.skipIf(!DB_URL)(
             (await svc.sign(ORG_B, f.encounterId, actorOf(orgs.B, "B"), SIGN_ARGS)).status,
           ).toBe("signed");
           const [out] = await outputsOf(f);
-          expect(await open(ORG_B, one(out ? [out] : []).final_cipher)).toBe(layer1Text());
+          expect(await open(ORG_B, one(out ? [out] : []).final_cipher)).toBe(
+            layer1TextWithRecordedVitals(),
+          );
           expect(await signedRowsOf(f)).toEqual([]);
           expect(await confirmationsOf(f.encounterId)).toEqual([]);
           expect(reads.carePlanAsOf).not.toHaveBeenCalled();
@@ -2839,6 +2946,8 @@ describe.skipIf(!DB_URL)(
             outbox,
             CIPHERS,
             () => LIVE_NOW,
+            undefined,
+            noWoundReader,
             () => currentSeams,
           );
         const flakyAmendSvc = () =>
@@ -2847,6 +2956,8 @@ describe.skipIf(!DB_URL)(
             outbox,
             FLAKY_CIPHERS,
             () => LIVE_NOW,
+            undefined,
+            noWoundReader,
             () => currentSeams,
           );
         let a: ReturnType<typeof amendSvc>;
@@ -6263,6 +6374,8 @@ describe.skipIf(!DB_URL)(
                 undefined,
                 CIPHERS,
                 () => LIVE_NOW,
+                undefined,
+                noWoundReader,
                 () => asking(currentSeams),
               );
               const view = await reader.getEncounter(

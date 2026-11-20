@@ -1312,7 +1312,7 @@ Every state transition publishes one event in the same transaction as the state 
 | `m8.encounter.cosignature_hard_cap_reached` | critical | 48h cron tick | `{ encounterId, routedToMembershipId, supervisorMembershipId }` |
 | `m8.encounter.late_entry_override` | warn | significant-late tier engaged | `{ encounterId, overrideBy, overrideReason, daysLate }` |
 | `m8.encounter.administrative_override` | critical | >14d admin override | `{ encounterId, overrideBy, overrideReason, daysLate }` |
-| `m8.encounter.voided` | warn | draft voided | `{ encounterId, voidedBy, voidedReason }` |
+| `m8.encounter.voided` | warn | draft voided | `{ encounterId, voidedBy }` (the reason stays on the row and in the audit trail, never in the outbox payload) |
 | `m8.encounter.orphan_recorded` | info | signed encounter with NULL `visit_id` (ad-hoc/retroactive, no scheduled visit) | `{ encounterId, patientId, organizationId, recordedAt }` |
 | `m8.hearthnote.layer2_enhanced` | info | Layer-2 call completed | `{ encounterId, modificationId, modelId, promptTemplateVersion, tokensInput, tokensOutput, hardBlockedCount, softWarnCount }` |
 | `m8.vitals.captured` | info | vitals committed | `{ encounterId, vitalsId, fieldsCaptured: string[], abnormalFlags?: string[] }` |

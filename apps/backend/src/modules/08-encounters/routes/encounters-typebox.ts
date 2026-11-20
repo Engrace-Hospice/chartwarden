@@ -12,10 +12,17 @@ import type {
   EncounterView as ServiceEncounterView,
   MileageResult as ServiceMileageResult,
   EncounterRouteService as ServiceRouteApi,
-  VitalsResult as ServiceVitalsResult,
 } from "./service";
 
 export { parse };
+// The vitals capture body and its responses live in their own file (vitals-typebox.ts); re-exported so the route and the OpenAPI
+// enrichments keep importing them from here.
+export {
+  CaptureVitalsSchema,
+  VitalsListResponseSchema,
+  VitalsResultResponseSchema,
+  VitalsViewResponseSchema,
+} from "./vitals-typebox";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -90,6 +97,20 @@ export const CreateEncounterSchema = Type.Object({
   serviceDate: Type.String({ format: "date" }),
   faceToFaceEncounterId: Type.Optional(Type.String({ format: "uuid" })),
   bereavementPlanId: Type.Optional(Type.String({ format: "uuid" })),
+  /** The visit's reason, chosen at the start of an unscheduled visit (a `visit_reason` code the pair is offered). */
+  reasonCode: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+});
+
+/** The reasons for visit offered on one (encounter type × discipline) pair — read before the encounter exists. */
+export const VisitReasonsQuerySchema = Type.Object({
+  encounterType: lit(ENCOUNTER_TYPE),
+  discipline: lit(ENCOUNTER_DISCIPLINE),
+});
+
+export const VisitReasonsResponseSchema = Type.Object({
+  encounterType: lit(ENCOUNTER_TYPE),
+  discipline: lit(ENCOUNTER_DISCIPLINE),
+  reasons: Type.Array(Type.Object({ code: Type.String(), label: Type.String() })),
 });
 
 // §2.6 — the HearthNote selection tree a clinician builds against the template for their
@@ -123,45 +144,22 @@ const SelectionSectionSchema = Type.Object({
 });
 export const UpdateSelectionsSchema = Type.Object({
   sections: Type.Array(SelectionSectionSchema, { maxItems: 100 }),
+  /**
+   * The recorded fall (an M30 fall report for this patient) a follow-up-after-a-fall visit follows up. Absent keeps the link as it
+   * is; null clears it. Only accepted while the reason for the visit is that follow-up.
+   */
+  fallIncidentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  /**
+   * The author's own edit of the note text. Absent keeps the edit as it is; null discards it so the note reads as generated; text is
+   * stored beside the generated text, flagged, and is what gets signed.
+   */
+  editedNarrative: Type.Optional(
+    Type.Union([Type.String({ minLength: 1, maxLength: 20_000 }), Type.Null()]),
+  ),
 });
 
-// §2.2 — numeric-direct vitals (the `vitals` row shape; numerics-as-text preserve their unit). "Clinically
-// not indicated" is a first-class value: a non-empty field list carries a documented reason, not a NULL.
-const VITAL_UNIT = [
-  "mmHg",
-  "bpm",
-  "breaths_per_min",
-  "c",
-  "f",
-  "percent_o2",
-  "kg",
-  "lb",
-  "cm",
-  "in",
-  "mg_dl",
-  "mmol_l",
-] as const;
-const PAIN_SCALE = ["nrs_0_10", "flacc", "painad", "verbal_descriptor"] as const;
 const Int = Type.Optional(Type.Integer());
-export const CaptureVitalsSchema = Type.Object({
-  bpSystolic: Int,
-  bpDiastolic: Int,
-  heartRate: Int,
-  respiratoryRate: Int,
-  temperature: Type.Optional(Type.String({ maxLength: 16 })),
-  temperatureUnit: Type.Optional(lit(VITAL_UNIT)),
-  spo2: Int,
-  painScore: Int,
-  painScale: Type.Optional(lit(PAIN_SCALE)),
-  weight: Type.Optional(Type.String({ maxLength: 16 })),
-  weightUnit: Type.Optional(lit(VITAL_UNIT)),
-  height: Type.Optional(Type.String({ maxLength: 16 })),
-  heightUnit: Type.Optional(lit(VITAL_UNIT)),
-  bloodGlucose: Int,
-  bloodGlucoseUnit: Type.Optional(lit(VITAL_UNIT)),
-  clinicallyNotIndicatedFields: Type.Optional(Type.Array(Type.String({ maxLength: 64 }))),
-  clinicallyNotIndicatedReason: Type.Optional(Type.String({ maxLength: 4000 })),
-});
+const NullableStr = Type.Union([Type.String(), Type.Null()]);
 
 // §2.2 D10 — per-encounter mileage; the source picks how `miles_driven` is resolved.
 const MILES_SOURCE = ["odometer", "route_calc", "manual_override"] as const;
@@ -384,6 +382,8 @@ export const EncounterViewResponseSchema = Type.Object({
   evvBracketPresent: Type.Optional(Type.Boolean()),
   selections: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
   finalDocumentation: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  /** True when `finalDocumentation` is the author's own edit of the generated note rather than the generated text. */
+  finalDocumentationEdited: Type.Optional(Type.Boolean()),
   /**
    * `finalDocumentation` as structured data (single-read only), for the same viewer under the same 42 CFR Part 2 rule: the LATEST signed text per section
    * (an amendment replaces the section it amends). A withheld section carries `text: null` and `withheld: true`, and a note withheld whole (a finalized pin
@@ -526,53 +526,6 @@ export const MyNotesResponseSchema = Type.Object({
   encounters: Type.Array(MyNoteResponseSchema),
 });
 
-/** Routes 4/5 — a vitals capture/edit result (§4.4 decorators). */
-export const VitalsResultResponseSchema = Type.Object({
-  vitalsId: Type.String(),
-  fieldsCaptured: Type.Array(Type.String()),
-  abnormalFlags: Type.Array(Type.String()),
-  bmi: Type.Union([Type.String(), Type.Null()]),
-});
-
-/**
- * Route 5b — one stored vitals set read back (#92). Nullable rather than optional on every field:
- * the row exists and the measurement is genuinely absent, which is a different clinical statement
- * from "this key was not sent" — a `null` spo2 on a signed encounter says nobody recorded it.
- */
-const NullableInt = Type.Union([Type.Integer(), Type.Null()]);
-const NullableStr = Type.Union([Type.String(), Type.Null()]);
-const NullableUnit = Type.Union([lit(VITAL_UNIT), Type.Null()]);
-export const VitalsViewResponseSchema = Type.Object({
-  id: Type.String(),
-  encounterId: Type.String(),
-  capturedAt: Type.String(),
-  bpSystolic: NullableInt,
-  bpDiastolic: NullableInt,
-  heartRate: NullableInt,
-  respiratoryRate: NullableInt,
-  temperature: NullableStr,
-  temperatureUnit: NullableUnit,
-  spo2: NullableInt,
-  painScore: NullableInt,
-  painScale: Type.Union([lit(PAIN_SCALE), Type.Null()]),
-  weight: NullableStr,
-  weightUnit: NullableUnit,
-  height: NullableStr,
-  heightUnit: NullableUnit,
-  bmi: NullableStr,
-  bloodGlucose: NullableInt,
-  bloodGlucoseUnit: NullableUnit,
-  clinicallyNotIndicatedFields: Type.Union([Type.Array(Type.String()), Type.Null()]),
-  clinicallyNotIndicatedReason: NullableStr,
-  abnormalFlags: Type.Array(Type.String()),
-});
-
-/** Route 5b — the `{ encounterId, vitals }` envelope, newest capture first. */
-export const VitalsListResponseSchema = Type.Object({
-  encounterId: Type.String(),
-  vitals: Type.Array(VitalsViewResponseSchema),
-});
-
 /** Routes 6/7 — the authoritative mileage figure (D10). */
 export const MileageResultResponseSchema = Type.Object({
   mileageId: Type.String(),
@@ -588,6 +541,8 @@ export const SelectionsUpdateResponseSchema = Type.Object({
 
 /** Routes 3b / 23b — read the stored selection tree back, with its assembled Layer-1 narrative (#114). */
 export const SelectionsViewResponseSchema = Type.Object({
+  /** The visit's patient: attributes the read to them in the §164.528 accounting. */
+  patientId: Type.String(),
   templateKey: Type.String(),
   vocabVersion: Type.String(),
   sections: Type.Array(
@@ -608,7 +563,52 @@ export const SelectionsViewResponseSchema = Type.Object({
   /** The Layer-1 assembly of the stored tree — the note as it currently reads. */
   layer1Preview: Type.String(),
   version: Type.Integer(),
+  /** The author's edit of the note text, or null when the note reads as generated. Absent on an addendum's selections. */
+  editedNarrative: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  /** True when the selections or vitals changed after the edit was made, so the edit needs the author's review before finalizing. */
+  editedNarrativeStale: Type.Optional(Type.Boolean()),
+  /** The recorded fall this visit is linked to, or null. Absent on an addendum's selections. */
+  fallIncident: Type.Optional(
+    Type.Union([
+      Type.Object({ incidentId: Type.String(), occurredOn: Type.String({ format: "date" }) }),
+      Type.Null(),
+    ]),
+  ),
 });
+
+/**
+ * Route 3d — the patient's recorded falls this visit can follow up (WF09): id, the org-local date and the severity, never the report's
+ * narrative. `unavailable` is true when Quality's incident register could not be read, so the screen can say so instead of claiming
+ * the patient has no recorded fall.
+ */
+export const FallIncidentsResponseSchema = Type.Object({
+  /** The visit's patient: attributes the read to them in the §164.528 accounting. */
+  patientId: Type.String(),
+  incidents: Type.Array(
+    Type.Object({
+      incidentId: Type.String(),
+      occurredOn: Type.String({ format: "date" }),
+      severity: Type.String(),
+    }),
+  ),
+  unavailable: Type.Boolean(),
+});
+
+/** One slot's constraint, mirroring `SlotSpec` in `@chartwarden/narrative-vocab`. */
+const SlotSpecSchema = Type.Union([
+  Type.Object({
+    kind: Type.Union([Type.Literal("integer"), Type.Literal("number")]),
+    min: Type.Number(),
+    max: Type.Number(),
+    unit: Type.Optional(Type.String()),
+    label: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    kind: Type.Literal("choice"),
+    options: Type.Array(Type.String()),
+    label: Type.Optional(Type.String()),
+  }),
+]);
 
 /**
  * Route 3c — the authoring MENU (F-063): the resolved HearthNote template with the vocabulary entries
@@ -630,8 +630,15 @@ export const EncounterTemplateResponseSchema = Type.Object({
       heading: Type.String(),
       /** A required section must carry ≥1 selection before the §2.6 Layer-3 gate lets the note finalize. */
       required: Type.Boolean(),
-      /** Empty when the section accepts any entry the pair is eligible for. */
+      /** The categories this section offers; empty means a prose-only section (`entries` is then empty). */
       allowedCategories: Type.Array(Type.String()),
+      /** The structured record the composer offers in this section (ADLs, nutrition, wounds); null for a plain selection section. */
+      recordedPanel: Type.Union([
+        Type.Literal("adl"),
+        Type.Literal("nutrition"),
+        Type.Literal("wounds"),
+        Type.Null(),
+      ]),
       entries: Type.Array(
         Type.Object({
           code: Type.String(),
@@ -639,6 +646,10 @@ export const EncounterTemplateResponseSchema = Type.Object({
           category: Type.String(),
           bodySystem: Type.Union([Type.String(), Type.Null()]),
           slots: Type.Array(Type.String()),
+          /** Per-slot constraint (a slot absent here is free text) — the composer renders its input from this. */
+          slotSpecs: Type.Record(Type.String(), SlotSpecSchema),
+          /** Statements sharing a group contradict each other; the server refuses two in one note. */
+          exclusiveGroup: Type.Union([Type.String(), Type.Null()]),
         }),
       ),
     }),
@@ -813,9 +824,13 @@ export const BillableResponseSchema = Type.Object({
 /** Route 31 — M22 PDF-render payload. */
 export const RenderPayloadResponseSchema = Type.Object({
   encounterId: Type.String(),
+  /** The visit's patient: attributes the read to them in the §164.528 accounting. */
+  patientId: Type.String(),
   final: Type.String(),
   /** True when `final` is the narrative pinned at finalize; false when it is a live re-assembly (#122). */
   pinned: Type.Boolean(),
+  /** True when `final` is the author's own edit of the generated note (the generated text is kept beside it). */
+  clinicianEdited: Type.Optional(Type.Boolean()),
 });
 
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
@@ -828,11 +843,9 @@ type _CosignQueue = Conforms<
   Static<typeof CosignatureQueueResponseSchema>,
   Ret<"cosignatureQueue">
 >;
-type _Vitals = Conforms<Static<typeof VitalsResultResponseSchema>, ServiceVitalsResult>;
 // F-063 — the two reads that had no counterpart write... the other way round: two WRITES that had no read.
 type _Template = Conforms<Static<typeof EncounterTemplateResponseSchema>, Ret<"getTemplate">>;
 type _MileageView = Conforms<Static<typeof MileageViewResponseSchema>, Ret<"getMileage">>;
-type _VitalsList = Conforms<Static<typeof VitalsListResponseSchema>, Ret<"listVitals">>;
 type _Mileage = Conforms<Static<typeof MileageResultResponseSchema>, ServiceMileageResult>;
 type _Selections = Conforms<Static<typeof SelectionsUpdateResponseSchema>, Ret<"updateSelections">>;
 type _ChartPromotions = Conforms<

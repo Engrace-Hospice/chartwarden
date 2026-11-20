@@ -3,14 +3,15 @@
 //
 // M8 owns the destruction callback for a patient's ENCOUNTER record — the visit-note satellites M8
 // creates around the M5 patient spine: encounter signatures, addenda, care-plan links, cosignature
-// requests, vitals, mileage, the HearthNote selection / assembled-output / llm-modification rows, and (ADR-0114) the visit-note
+// requests, vitals, mileage, the recorded ADLs and nutrition, the HearthNote selection / assembled-output / llm-modification rows, and (ADR-0114) the visit-note
 // draft's per-section confirmations, the sealed per-section signed rows (amendment rows included), the sections an addendum
 // amends and the cosignature requests an amending addendum opens.
 // Under an M4 destruction certificate it (1) shreds the HearthNote cipher columns (§3.6 —
 // `hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.*_cipher`, `hearthnote_signed_section.text_cipher`),
 // then (2) tombstones the `encounter` root (status `voided`, every reason text replaced with one placeholder; the PK
 // survives for FK referential integrity), then (3) deletes the satellite subtree for the subject patient, children before
-// parents — the same D8 resolver pattern
+// parents. Because the root is NEVER deleted, no ON DELETE CASCADE ever fires from it: every table keyed by `encounter_id` (the ADL and
+// nutrition records included) must be deleted by name below, or its rows outlive the destroyed patient. The same D8 resolver pattern
 // M5's `clinical_record`, M6's `admission_record`, and M7's `care_plan_record` erasers use. The four
 // erasers are disjoint by table ownership: M5 destroys the patient demographics subtree, M6 the
 // admission subtree, M7 the care-plan subtree, M8 the encounter subtree it owns.
@@ -33,7 +34,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@chartwarden/narrative-vocab";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type DataEraser, DegradedError } from "@chartwarden/types";
-import { type AnyColumn, type SQL, and, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { type AnyColumn, type SQL, and, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -59,6 +60,10 @@ export interface EncounterEraseCounts {
   readonly cosignatureRequests: number;
   readonly vitals: number;
   readonly mileage: number;
+  /** The ADLs recorded on the visit (one row per encounter). */
+  readonly adlRecords: number;
+  /** The nutrition recorded on the visit (one row per encounter). */
+  readonly nutritionRecords: number;
   readonly hearthnoteSelections: number;
   readonly hearthnoteAssembledOutputs: number;
   readonly hearthnoteLlmModifications: number;
@@ -148,6 +153,8 @@ export function createInMemoryEncounterEraseStore(
     cosignatureRequests: 0,
     vitals: 0,
     mileage: 0,
+    adlRecords: 0,
+    nutritionRecords: 0,
     hearthnoteSelections: 0,
     hearthnoteAssembledOutputs: 0,
     hearthnoteLlmModifications: 0,
@@ -211,6 +218,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
   const COSIGN = schema.cosignatureRequests;
   const VITALS = schema.vitals;
   const MILEAGE = schema.mileage;
+  const ADL = schema.encounterAdlRecords;
+  const NUTRITION = schema.encounterNutritionRecords;
   const SEL = schema.hearthnoteSelections;
   const AO = schema.hearthnoteAssembledOutputs;
   const LLM = schema.hearthnoteLlmModifications;
@@ -296,6 +305,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           cosignatureRequests: 0,
           vitals: 0,
           mileage: 0,
+          adlRecords: 0,
+          nutritionRecords: 0,
           hearthnoteSelections: 0,
           hearthnoteAssembledOutputs: 0,
           hearthnoteLlmModifications: 0,
@@ -314,7 +325,9 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
         // statement, keeps the count their own); draft confirmations and amendments hang off the encounter / addendum (CASCADE); the
         // addendum cosignature request references the addendum and encounter with RESTRICT, so it MUST go before `encounter_addendum`;
         // the two hearthnote tables and the signatures reference addenda too, so all of them go before `encounter_addendum`; the
-        // remaining satellites (care-plan links / cosignature requests / vitals / mileage) are independent encounter leaves.
+        // remaining satellites (care-plan links / cosignature requests / vitals / mileage / ADLs / nutrition) are independent encounter
+        // leaves. The ADL and nutrition tables declare ON DELETE CASCADE, but the `encounter` root is only tombstoned, so the cascade
+        // never fires: they are deleted explicitly.
         const hearthnoteLlmModifications = await del(() =>
           tx
             .delete(LLM)
@@ -385,6 +398,15 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
             .where(inArray(MILEAGE.encounterId, encounterIds))
             .returning({ id: MILEAGE.id }),
         );
+        const adlRecords = await del(() =>
+          tx.delete(ADL).where(inArray(ADL.encounterId, encounterIds)).returning({ id: ADL.id }),
+        );
+        const nutritionRecords = await del(() =>
+          tx
+            .delete(NUTRITION)
+            .where(inArray(NUTRITION.encounterId, encounterIds))
+            .returning({ id: NUTRITION.id }),
+        );
 
         return {
           signatures,
@@ -393,6 +415,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
           cosignatureRequests,
           vitals,
           mileage,
+          adlRecords,
+          nutritionRecords,
           hearthnoteSelections,
           hearthnoteAssembledOutputs,
           hearthnoteLlmModifications,
@@ -417,6 +441,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
         //  - every non-null reason column becomes the one placeholder (a null stays null), and the placeholder clears every
         //    tier/state length floor. voided_reason is never null on a voided root, so it is always the placeholder, which also
         //    scrubs the text of a root a human had already voided.
+        //  - the fall link (fall_incident_id, fall_occurred_on) says something about the destroyed patient (a recorded incident and its
+        //    date), so the root does not keep it: both go to null (nothing requires them, so null is always allowed);
         //  - voided_by: a root a human did not void says the clinician voided it (voided_by = authored_by_membership_id), because no
         //    system membership exists; the placeholder reason says it was erased under a destruction certificate, and the audit actor
         //    of the update is NULL (userId ""). Read voided_by on a tombstoned root with that in mind.
@@ -439,6 +465,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
             voidedAt: sql`COALESCE(${ENC.voidedAt}, now())`,
             voidedBy: sql`COALESCE(${ENC.voidedBy}, ${ENC.authoredByMembershipId})`,
             vocabVersionId: sql`COALESCE(${ENC.vocabVersionId}, ${pin}::uuid)`,
+            fallIncidentId: null,
+            fallOccurredOn: null,
           })
           .where(
             and(
@@ -450,6 +478,8 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
                 needsScrub(ENC.lateEntryReason),
                 needsScrub(ENC.significantLateOverrideReason),
                 needsScrub(ENC.administrativeOverrideReason),
+                isNotNull(ENC.fallIncidentId),
+                isNotNull(ENC.fallOccurredOn),
               ),
             ),
           )

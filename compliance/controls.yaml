@@ -49,6 +49,29 @@ controls:
       - file: apps/backend/__tests__/hope-assemble-candidates.test.ts
       - file: apps/backend/__tests__/hope-submission-list-order.test.ts
       - script: test:m10:write:live
+      # WF09 (migrations 1528-1532): five new PHI tables, `encounter_adl` and `encounter_nutrition` (M8, one row per visit), `wound` and
+      # `wound_observation` (M9) and `care_plan_change_proposal` (M7). Each carries the three tenancy columns, RLS ENABLEd and FORCEd with an
+      # app-role policy pinned to app.org_id (USING and WITH CHECK), column-limited UPDATE grants (the application role cannot rewrite what a
+      # row IS: identity, tenant, siting, patient, creator) and a BEFORE UPDATE guard trigger on those identity columns, so a change is refused by
+      # trigger for every role that cannot disable triggers. The same guards keep a closed wound closed, a recorded observation unedited (a
+      # correction appends) and a decided or withdrawn proposal final. Known limit: they are ordinary triggers, which the table owner or a
+      # superuser can disable or bypass (ALTER TABLE ... DISABLE TRIGGER, session_replication_role = replica), so they hold against the
+      # application's own write paths, not against a database administrator. The application role has no DELETE; the destruction role has SELECT and DELETE behind its own org-pinned policy (CW-DS-01
+      # says what is proven of that). arch:tenancy replays the migrations with the rest. Proven live as chartwarden_app: findings (each tenant
+      # reads only its own ADL and nutrition rows and a session with no organisation reads none, with a superuser negative control; org B's
+      # insert hits the WITH CHECK and its update touches nothing; the application role may update a value column but no identity column, and the
+      # guard refuses an identity change from a superuser), wounds (RLS enabled and forced on both tables, another organisation's rows hidden and
+      # a write into one refused, an observation can name only a wound of its own organisation and patient) and proposals (another organisation
+      # sees, decides and writes nothing; the plan, patient, visit, proposer and organisation of a proposal cannot be rewritten by the application
+      # role, and the guard trigger refuses it from a superuser connection too).
+      - script: test:m8:findings:live
+      - script: test:wounds:live
+      - script: test:m7:change-proposals:live
+      - file: packages/db/migrations/1528_m8_encounter_adl.sql
+      - file: packages/db/migrations/1529_m8_encounter_nutrition.sql
+      - file: packages/db/migrations/1530_m9_wound.sql
+      - file: packages/db/migrations/1531_m9_wound_observation.sql
+      - file: packages/db/migrations/1532_m7_care_plan_change_proposal.sql
 
   - id: CW-AC-02
     title: Unique user identification and authorization at the route (RBAC + ABAC predicates)
@@ -292,7 +315,7 @@ controls:
       review_by: 2026-12-31
 
   - id: CW-AC-11
-    title: Request-integrity route kit — pagination cursors are HMAC-signed per org and bound to the list identity, anchor shape and normalized filters (a cursor replayed in another org, list or filter context, or tampered with is a 422, proven live as the NOBYPASSRLS app role), writes without an active membership are refused 403 (unit-tested; a pure check on the request context), and optimistic concurrency, Idempotency-Key and the D13 AI block run through the shared kit (M21's timestamp If-Match and M24's optional If-Match are documented variants on it
+    title: Request-integrity route kit — pagination cursors are HMAC-signed per org and bound to the list identity, anchor shape and normalized filters (a cursor replayed in another org, list or filter context, or tampered with is a 422, proven live as the NOBYPASSRLS app role), writes without an active membership are refused 403 (unit-tested; a pure check on the request context), and optimistic concurrency, Idempotency-Key and the D13 AI block run through the shared kit (M21's timestamp If-Match and M24's optional If-Match are documented variants on it, as is M8's optional If-Match on the ADL and nutrition PUTs, whose version is the record's updated_at in epoch ms)
     hipaa: ["164.312(c)(1)", "164.312(a)(1)"]
     soc2: ["CC6.1", "PI1.4"]
     status: implemented
@@ -306,6 +329,25 @@ controls:
       - file: apps/backend/src/bootstrap/env.ts
       - file: apps/backend/__tests__/env-validation.test.ts
       - file: apps/backend/__tests__/m5-census-caseload-scope.live.test.ts
+      # WF09 writes through the same kit. M9 wounds: every wound write refuses an AI principal (403, nothing reaches the service), and the three
+      # that append a row (register a wound, add an observation, correct one) need an Idempotency-Key (400 IDEMPOTENCY_KEY_REQUIRED without one;
+      # a correction also needs If-Match, 409 STALE_VERSION on skew); resolving a wound is one-way in the database and takes no key. Unit-tested at
+      # the route; a replay of a wound write is not exercised. M7 change proposals: create needs an Idempotency-Key (live, a replayed POST with the
+      # same key records one draft) and every write (create, replace, withdraw, accept, dismiss) refuses an AI principal; accept and dismiss need
+      # care_plan.author, which a clinician holding only care_plan.read lacks (403). M8 ADL and nutrition PUT: an AI principal is refused (403,
+      # nothing written) and an OPTIONAL If-Match carries the record's version (its updated_at in epoch ms, 0 when none is recorded, also the ETag
+      # of every GET and PUT); a stale one is 409 STALE_VERSION and writes nothing, a PUT without it still replaces the record (an unchanged body is
+      # a no-op), and two first PUTs with If-Match 0 leave one winner (live). The PUT is draft-only: a finalized note answers 409
+      # NOTE_PINNED_AT_FINALIZE and a signed one 409 IMMUTABLE_AFTER_SIGN.
+      - script: test:m8:findings:live
+      - script: test:wounds:live
+      - script: test:m7:change-proposals:live
+      - file: apps/backend/src/modules/08-encounters/findings/findings-routes.ts
+      - file: apps/backend/src/modules/09-assessments/wounds/routes.ts
+      - file: apps/backend/src/modules/07-care-plan/routes/change-proposal-routes.ts
+      - file: apps/backend/__tests__/findings-routes.test.ts
+      - file: apps/backend/__tests__/wounds-route-writes.test.ts
+      - file: apps/backend/__tests__/care-plan-change-proposal-routes.test.ts
 
   - id: CW-AC-06
     title: List and audit reads return minimum-necessary facts — computed age (never date of birth) on the admission census; actor names resolved only inside the caller's org; the Aide POC supervision roster lists staff as membership id, display name and role key only, inside the caller's org and the plan's location, behind the plan's read permission and caseload check
@@ -1025,7 +1067,7 @@ controls:
       owner: engineering
       review_by: 2027-01-31
   - id: CW-AC-43
-    title: Care-plan content flagged 42 CFR Part 2 (SUD) or family violence is withheld from a caller without disclosure on the care-plan read and write results (M7 problems, goals, interventions, version snapshots, proposed changes and the internal element-picker read, decided per caller; M15 goals, interventions anchored to a hidden goal, assessments, version detail, finalize, sign and edit results, and the seam read), from a link or a parent reference to a Part 2 element the caller is not cleared to see (the M8 visit-to-problem link and the M15 goal and intervention parent checks refuse it for a human caller, decided per caller), from every rendering and event that has no viewer (the M15 version-signed event and so the plan PDF, the IDG packet cover, the IDG minutes, the ops outbox detail read), and from an IDG decision that flags its own problem; a goal authored through the M15 route under a Part 2 problem, or refining a Part 2 goal, is stored flagged from then on, whatever the author sent; redaction fails closed when the viewer is not named, when a snapshot has an unexpected shape or a missing flag, and when the consent lookup errors
+    title: Care-plan content flagged 42 CFR Part 2 (SUD) or family violence is withheld from a caller without disclosure on the care-plan read and write results (M7 problems, goals, interventions, version snapshots, proposed changes (the problem proposals and the visit-recorded plan-change proposals, which carry the flag themselves) and the internal element-picker read, decided per caller; M15 goals, interventions anchored to a hidden goal, assessments, version detail, finalize, sign and edit results, and the seam read), from a link or a parent reference to a Part 2 element the caller is not cleared to see (the M8 visit-to-problem link and the M15 goal and intervention parent checks refuse it for a human caller, decided per caller), from every rendering and event that has no viewer (the M15 version-signed event and so the plan PDF, the IDG packet cover, the IDG minutes, the ops outbox detail read), and from an IDG decision that flags its own problem; a goal authored through the M15 route under a Part 2 problem, or refining a Part 2 goal, is stored flagged from then on, whatever the author sent; redaction fails closed when the viewer is not named, when a snapshot has an unexpected shape or a missing flag, and when the consent lookup errors
     hipaa: ["164.312(a)(1)", "164.502(b)"]
     soc2: ["CC6.1", "C1.1"]
     status: implemented
@@ -1075,6 +1117,22 @@ controls:
       # Not covered, stated rather than implied: a discipline intervention has no Part 2 flag of its own and is hidden
       # only through the goal it is anchored to, so one that refines a Part 2 intervention without a Part 2 goal
       # anchor is not withheld; goals stored before the inheritance change are not backfilled (reseed).
+      # WF09 plan-change proposals (`care_plan_change_proposal`, migration 1532). A proposal carries `sud_related`: set by its author on a new
+      # problem, otherwise copied from the problem or Part 2 goal it touches, so a goal or intervention proposed under a Part 2 problem is flagged
+      # too. A caller without disclosure never lists one (the plan's review list and the patient's list answer `redacted: true` with the rest),
+      # cannot read, accept or dismiss it (the non-leaking 404 a missing proposal also answers), and cannot create one against a Part 2 element: a
+      # missing element and a Part 2 element answer the same 404 (a goal under a Part 2 problem is as absent as the problem, and the 404 names the
+      # id the caller sent, never the problem behind it). Replacing a draft problem proposal re-flags its still-draft goals and interventions, in
+      # both directions, and a visible child's target label never carries a Part 2 parent's text; dismissing a problem proposal dismisses its
+      # pending children for the same reason and by the same decider (an accepted problem's children are left alone); accepting a Part 2 proposal
+      # with disclosure stores the problem flagged. The database holds the line too (a guard trigger, refused for every role that cannot disable triggers, see CW-AC-01): the flag cannot be cleared once
+      # the proposal has left draft, and an accepted, dismissed or withdrawn proposal is final. Its audit snapshot scrubs the text and the
+      # diagnosis codes (CW-AU-01). Not covered, stated rather than implied: the live suite hands the service the disclosure verdict as a boolean,
+      # and no case drives the proposal routes through the real M39 ConsentEvaluator (index.ts gives them the same resolver as the care-plan
+      # routes, fail closed by default, but test:m7:consent-wiring:live does not mount them).
+      - script: test:m7:change-proposals:live
+      - file: apps/backend/src/modules/07-care-plan/change-proposals-db.ts
+      - file: apps/backend/__tests__/care-plan-change-proposal-rules.test.ts
 
   - id: CW-AC-44
     title: The care-plan permissions a tenant's clinical roles hold by default are least privilege (the RBAC half only; which patient is caseload_or_scope and Part 2 content is CW-AC-43) - read for the roles that work from the plan, author and finalize for the nurse case manager, clinical supervisor and director of nursing, sign for exactly the six roles the signer-role-match rule accepts - and never the system keys (bootstrap, IDG revise), an external, portal or collaborator role. Coverage is the roles a tenant already has when migration 1494 runs plus the director of nursing and medical director templates on a new tenant; a role created later receives nothing, and a tenant may still remove a key from a role it owns
@@ -1100,6 +1158,71 @@ controls:
       # ADR-0113: the same director_of_nursing template also carries encounter.closure_override and encounter.closure_policy_admin
       # (CW-AC-48); packages/auth/src/roles/note-closure-grants.ts is their single source.
       - file: packages/auth/src/roles/note-closure-grants.ts
+      # WF09: `care_plan.read` now also authorizes RECORDING a plan-change proposal (create, replace and withdraw a draft on
+      # /api/v1/care-plans/:planId/change-proposals), because a proposal changes nothing on the plan: the visiting RN, LPN, NP or MD who is not the
+      # case manager can report what a visit found. Deciding one (accept, dismiss) needs `care_plan.author`, which of the clinical roles only the
+      # RN case manager, clinical supervisor and DON hold by default; a clinician holding only the read key gets 403 (route test), and the live suite records a
+      # proposal as a field RN with the read key alone. The read key stays bounded by this row (an external, portal or collaborator role never
+      # gets it) and every proposal route also composes caseload_or_scope. What stops a holder who authored no note is not the key but the
+      # EncounterDraftReader check of CW-AC-54. The key is also held by administrators and by any role a tenant grants it to, so widening its
+      # holders means revisiting that check.
+      - script: test:m7:change-proposals:live
+      - file: apps/backend/src/modules/07-care-plan/routes/change-proposal-routes.ts
+      - file: apps/backend/__tests__/care-plan-change-proposal-routes.test.ts
+
+  - id: CW-AC-54
+    title: >-
+      A record that names a visit is tied only to the author's own open visit note. M7 change proposals and M9 wound observations carry a logical
+      sourceEncounterId that neither module can check (M7 and M9 import no M8 code and read no M8 table), so M8 publishes the PHI seam
+      EncounterDraftReader (a visit's patient, status, authoring membership and whether its note template states wounds, as ids, enums and one
+      boolean; it opens its own org-scoped read with an explicit organization_id predicate behind RLS) and each writer refuses, before it writes, a
+      visit that is unknown, another patient's or another author's (one 404 for all three, so the check is no existence oracle for a visit), one
+      whose note is no longer a draft (409 ENCOUNTER_NOT_DRAFT) and, for a wound observation, one whose note template has no wounds section
+      (422 WOUND_NOT_IN_NOTE). The seam fails closed. Its registry entry is a deny stub that throws until the real reader is registered (the
+      composition root registers it only when a database is wired), and a reader error refuses the write. A visit that closes between the check and
+      the commit is reconciled after the commit (a proposal is released or withdrawn with its visit, an observation is taken out of the closed note
+      by a wrong_visit correction) instead of staying bound to it
+    hipaa: ["164.312(a)(1)", "164.312(c)(1)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: partial
+    evidence:
+      - script: test:m7:change-proposals:live
+      - script: test:wounds:live
+      # Live: M7 binds a draft only to the caller's own, still-open note for the plan's patient (404 for another author's, another patient's and an
+      # unknown visit; 409 ENCOUNTER_NOT_DRAFT after finalize, on a POST and on a replace), counts a visit's room per plan and proposer, and settles
+      # a draft whose visit closed while it was committing. M9 ties an observation to the caller's own open note for the patient and to nothing
+      # else, refuses a telephonic note (no wounds section), never sees another organisation's note, and takes an observation out of a note that
+      # closed while it was being saved.
+      - file: apps/backend/src/modules/08-encounters/encounter-draft-reader.ts
+      - file: apps/backend/src/modules/07-care-plan/change-proposals-visit.ts
+      - file: apps/backend/src/modules/09-assessments/wounds/source-visit.ts
+      - file: apps/backend/src/modules/08-encounters/fall-incident-reader.ts
+      - file: apps/backend/src/bootstrap/seams/providers.ts
+      - file: apps/backend/src/bootstrap/seams/registry.ts
+      - file: packages/types/src/seams.ts
+      # Unit: the check's refusals (own visit, another author's, another patient's, unknown, not a draft), that the deny stub throws so the write is
+      # refused, that a reader failure refuses it, the registered reader's organization-scoped query, and that a note template with no wounds section
+      # (or no template for the pair) states none. The reverse seam, M9's WoundProvider (the observations recorded at one encounter, which the visit
+      # note states), is PHI-flagged with a deny stub in the same registry and its org-scoped read is live in the wounds suite.
+      - file: apps/backend/__tests__/care-plan-change-proposal-visit.test.ts
+      - file: apps/backend/__tests__/encounter-draft-reader.test.ts
+    gap:
+      reason: >-
+        The check binds a record only when it names a visit. A wound is registered, and an observation recorded without a visit tie, on
+        assessment.author and the caseload_or_scope predicate alone, and M9 has no patient-existence seam, so a wound can be created for a patient
+        uuid that does not exist inside the caller's own organisation (wound.patient_id has no foreign key; another tenant's patient is out of reach
+        through RLS). The note-closure allowlist (apps/backend/src/bootstrap/note-closure-allowlist.ts, ADR-0113; CW-AC-47 carries the same limit
+        from the gate's side) deliberately keeps the wound routes,
+        the proposal list, create, replace and withdraw routes and the ADL, nutrition and weight routes open to a clinician the note-closure clock has
+        blocked, so that clinician can still register wounds and propose plan changes until the block lifts (a proposal still needs that clinician's own
+        open draft note; accept and dismiss are not on the allowlist). Recording a proposal needs only care_plan.read (CW-AC-44), so for a holder of
+        that key this check is the whole of the authorization beyond caseload_or_scope. On the read side, M8 reads a patient's recorded falls from
+        M30 through the IncidentRegisterProvider seam (fall-incident-reader.ts), and M30's listIncidents ignores the permissions array M8 passes
+        (always empty) and uses the actor id only to set app.user_id, so it relies on M8's own route guards (the encounter.author permission,
+        encounter.scope and is_author_or_supervisor) and on org RLS. Close the first with a patient-existence seam in M9, and decide
+        whether a blocked clinician should be able to register a wound.
+      owner: clinical-platform
+      review_by: 2027-04-30
 
   - id: CW-AC-53
     title: >-
@@ -1236,6 +1359,34 @@ controls:
       # key within 15 min of a signed-URL issue is attributed to it, including the backup/copy readers'.
       - script: test:object-store:conformance:live
       - file: deploy/production/compose.yml
+      # WF09 (migrations 1528-1532): each new PHI table has a SECURITY DEFINER write-audit trigger owned by chartwarden_audit_writer (insert,
+      # update and delete, the acting user from app.user_id, retention class compliance). The ADL, nutrition, wound and wound-observation tables
+      # hold only coded values and numbers, so their snapshots carry every column; care_plan_change_proposal scrubs its twelve free-text and
+      # diagnosis-code columns (description, icd10_code, snomed_code, resolution_note, goal_text, measurable_outcome, revised_text, scope_text,
+      # frequency_text, frequency_value, responsible_role, discontinue_reason), so a Part 2 diagnosis code is as hidden as its text. The live cases assert the
+      # insert and update events with the acting user (ADL, nutrition, wounds), that a proposal's typed text never enters the diff, that the
+      # finalize release is audited as a system actor and that the element an accept writes is audited under the accepter. Known limits (parity
+      # with before, not new): the older `problem` table's trigger (migration 0029) scrubs only description and resolution_note, so its icd10 and
+      # snomed codes still enter the diff, and the older `intervention` table's trigger scrubs only discontinue_reason, frequency_text and
+      # scope_text, so its free-string frequency_value (up to 64 characters, no pattern) enters the diff.
+      # The new PHI reads each declare a read-audit config. The ADL, nutrition, weight-history, vitals and fall-incidents GETs name the encounter
+      # (resourceIdParam encounterId) and take the patient from the response (patientIdPayloadPath patientId), with field names only (the
+      # fall-incidents read is an `encounter` read naming the field fallIncidents, and its response carries the visit's patientId). The wound list
+      # and detail GETs and the patient's proposal list take the patient from the path (patientIdParam; the wound detail also names woundId), and the
+      # plan's proposal list takes it from the response (patientIdPayloadPath patientId). Live: one `.viewed` event per ADL, nutrition and
+      # weight-history GET (resource kinds encounter_adl, encounter_nutrition and vitals) against the encounter and its patient, attributed to the
+      # reader, naming fields and no values; `encounter.viewed` for the fall-incidents GET with the patient; `wound.list_viewed` and `wound.viewed` with the patient; `care_plan_change_proposal.list_viewed`
+      # against the patient for both proposal lists, for each reader. Not proven live: the vitals GET itself (the weight-history case lands the
+      # vitals-kind event), and an ADL or nutrition
+      # GET that answers null (nothing recorded yet) names no patient in its event, because it discloses none.
+      - script: test:m8:findings:live
+      - script: test:wounds:live
+      - script: test:m7:change-proposals:live
+      - file: apps/backend/src/modules/08-encounters/findings/findings-routes.ts
+      - file: apps/backend/src/modules/09-assessments/wounds/routes.ts
+      - file: apps/backend/src/modules/07-care-plan/routes/change-proposal-routes.ts
+      - file: apps/backend/src/modules/08-encounters/routes/encounters-routes.ts
+      - file: packages/db/migrations/1532_m7_care_plan_change_proposal.sql
 
   - id: CW-AU-02
     title: External auditor access is staged behind BAA acceptance and a second factor
@@ -1347,7 +1498,7 @@ controls:
 
   - id: CW-AC-47
     title: >-
-      Visit-note closure gate (ADR-0113 D6): in a tenant whose closure policy is block (the default is warn; off and warn refuse nothing), a staff session whose oldest clocked open visit note is past its block instant is refused 403 NOTE_CLOSURE_REQUIRED on every route outside an exact METHOD + route-template allowlist (the note's own routes, the read-only chart, eMAR, orders, triage and on-call, field safety, emergency messaging, the alert inbox, and the duties that cannot wait for a note: incident report, death, code status, comfort kit, break-glass, EVV check-out and offline sync, IPU restraint release and reassess). Hospice election revocation, discharge, an allergy write, consent revocation, a new restraint and starting a visit stay refused, each pinned with its reason in a test. An EVV offline-sync batch that contains a check_in is refused through the same verdict (assertNotBlocked, a required dependency of the EVV routes injected by the composition root so M18 imports nothing from M1). The gate fails closed: a policy or evaluator failure answers 503 NOTE_CLOSURE_UNAVAILABLE, a policy read or an evaluation past 5 s fails the same way (an evaluation frees its single-flight key), and one organization and member may start at most 20 evaluations a second (429 RATE_LIMITED, Retry-After 1); only a last-known off or warn policy read under 55 s ago stands in for a failed policy refresh. A block is never cached; a clear, or a warn on a proven bound (an override's end or a block instant ahead), is cached at most 5 s, counted from the instant the evaluation is as of. A refusal leaves a per-organization log line (at most one per 30 s; organization id and count only) and the label-free counter chartwarden_note_closure_refusals_total.
+      Visit-note closure gate (ADR-0113 D6): in a tenant whose closure policy is block (the default is warn; off and warn refuse nothing), a staff session whose oldest clocked open visit note is past its block instant is refused 403 NOTE_CLOSURE_REQUIRED on every route outside an exact METHOD + route-template allowlist (the note's own routes, the wound and plan-change routes its composer calls, the read-only chart, eMAR, orders, triage and on-call, field safety, emergency messaging, the alert inbox, and the duties that cannot wait for a note: incident report, death, code status, comfort kit, break-glass, EVV check-out and offline sync, IPU restraint release and reassess). Hospice election revocation, discharge, an allergy write, consent revocation, a new restraint and starting a visit stay refused, each pinned with its reason in a test. An EVV offline-sync batch that contains a check_in is refused through the same verdict (assertNotBlocked, a required dependency of the EVV routes injected by the composition root so M18 imports nothing from M1). The gate fails closed: a policy or evaluator failure answers 503 NOTE_CLOSURE_UNAVAILABLE, a policy read or an evaluation past 5 s fails the same way (an evaluation frees its single-flight key), and one organization and member may start at most 20 evaluations a second (429 RATE_LIMITED, Retry-After 1); only a last-known off or warn policy read under 55 s ago stands in for a failed policy refresh. A block is never cached; a clear, or a warn on a proven bound (an override's end or a block instant ahead), is cached at most 5 s, counted from the instant the evaluation is as of. A refusal leaves a per-organization log line (at most one per 30 s; organization id and count only) and the label-free counter chartwarden_note_closure_refusals_total.
     hipaa: ["164.312(a)(1)"]
     soc2: ["CC5.2", "CC6.1", "PI1.3"]
     status: partial
@@ -1370,7 +1521,7 @@ controls:
       - file: docs/runbooks/m8-note-closure-policy-reset.md
     gap:
       reason: >-
-        Refusals are evidenced by a throttled log line and an unlabelled counter, not an audit event: one line per organization per 30 s, a tail below that is reported with the next refusal, and no refusal can be tied to a member from the audit trail. Caches are per replica: a block is never cached, but a pass is for up to 5 s, so an override revoke reaches a replica that cached the overridden clinician within 5 s, and a request that joins a single-flight evaluation can inherit a block computed just before a signature or grant committed; the budget is a fixed window (up to 2x at an edge) and a timed-out evaluation is not cancelled in the database. A failed policy refresh serves the last known off or warn policy for up to 55 s (60 s worst case), so a tenant that has just moved to block is not enforced during a database read failure in that window; nothing known, a last known block, or an older policy fails closed. A mixed offline batch (check_in and check_out) is refused as a whole, and how the offline client keeps that batch after the 403 is outside this repo and unverified. The clock is only as good as its start signal (the author's first authoring write on a seeded draft is theirs to delay; a late note created after its visit started is clocked at the visit's start, held to the creation instant because the visit row has no recorded-at instant), a legacy clockless draft never blocks (no backfill), and only visit_note is on the engine (HOPE windows, CTI and face-to-face are later slices).
+        Refusals are evidenced by a throttled log line and an unlabelled counter, not an audit event: one line per organization per 30 s, a tail below that is reported with the next refusal, and no refusal can be tied to a member from the audit trail. Caches are per replica: a block is never cached, but a pass is for up to 5 s, so an override revoke reaches a replica that cached the overridden clinician within 5 s, and a request that joins a single-flight evaluation can inherit a block computed just before a signature or grant committed; the budget is a fixed window (up to 2x at an edge) and a timed-out evaluation is not cancelled in the database. A failed policy refresh serves the last known off or warn policy for up to 55 s (60 s worst case), so a tenant that has just moved to block is not enforced during a database read failure in that window; nothing known, a last known block, or an older policy fails closed. A mixed offline batch (check_in and check_out) is refused as a whole, and how the offline client keeps that batch after the 403 is outside this repo and unverified. The clock is only as good as its start signal (the author's first authoring write on a seeded draft is theirs to delay; a late note created after its visit started is clocked at the visit's start, held to the creation instant because the visit row has no recorded-at instant), a legacy clockless draft never blocks (no backfill), and only visit_note is on the engine (HOPE windows, CTI and face-to-face are later slices). The allowlist also keeps WF09 chart writes reachable by a blocked clinician, on purpose (the comments in note-closure-allowlist.ts say the visit composer's wound step and plan-of-care step call them while the note is being written, so a blocked clinician must reach them to close the note). The wound routes are GET /api/v1/patients/:patientId/wounds and .../wounds/:woundId, and POST .../wounds (register), .../observations, .../observations/:observationId/corrections and .../resolve. The plan-change routes are GET /api/v1/patients/:patientId/care-plan-change-proposals, GET and POST /api/v1/care-plans/:planId/change-proposals, and PUT and DELETE on .../:proposalId (accept and dismiss are left off as a case manager's call that can wait). None of these is tied to the clinician's own blocked note by the gate. Registering a wound, resolving one and recording an observation without a visit tie need no visit at all (assessment.author and caseload_or_scope only), and a proposal or a tied observation needs only some open draft note of the clinician's own for that patient (the EncounterDraftReader check, CW-AC-54), not necessarily the note that is blocking them. So a blocked clinician can keep adding to a patient's wound record and plan-change list until the block lifts, which weakens the gate as a nudge to close the note first. Closing it would mean splitting the wound routes into a note-bound pair and the rest, or dropping the registration and resolve routes from the list.
       owner: clinical-platform
       review_by: 2027-04-30
 
@@ -2074,16 +2225,31 @@ controls:
       - script: test:m10:write:live
       - script: test:m10:submission-result:live
       - script: test:m10:sfv-sign-binding:live
+      # WF09: three erasers reach the new PHI tables. M8's encounter_record eraser deletes a patient's encounter_adl and encounter_nutrition rows by
+      # name (the encounter root is only tombstoned, so the ON DELETE CASCADE on encounter_id never fires) and counts them (adlRecords,
+      # nutritionRecords), then tombstones the root with fixed, content-free sentences instead of the clinician's words (TOMBSTONE_REASON in the
+      # late-entry, EVV-missing and override reason columns that held one, TOMBSTONE_VOID_REASON as the void reason; a column that held none stays
+      # null), long enough to satisfy the table's own minimum-length CHECKs on a draft, a finalized and a signed row alike. M9's assessment eraser
+      # deletes a patient's wound_observation rows (both ends of a correction chain) and then its wound rows (eraseWoundSubtree), whether or not
+      # any assessment row exists. M7's care_plan_record eraser deletes the plan's care_plan_change_proposal rows (parent and child in one
+      # statement) and counts them (changeProposals). Each is proven live over a privileged connection to delete only the destroyed patient's rows
+      # and leave a bystander's (the gap says what that does not cover).
+      - script: test:m8:findings:live
+      - script: test:wounds:live
+      - script: test:m7:change-proposals:live
+      - file: apps/backend/src/modules/08-encounters/erasers/encounter-eraser.ts
+      - file: apps/backend/src/modules/09-assessments/wounds/erase.ts
+      - file: apps/backend/src/modules/09-assessments/erasers/assessment-eraser.ts
+      - file: apps/backend/src/modules/07-care-plan/erasers/care-plan-eraser.ts
+      - file: apps/backend/__tests__/encounter-eraser.test.ts
       # The encounter eraser (M8) shreds the sealed per-section text, then deletes the signed sections, the draft
       # confirmations, encounter_amendment and addendum_cosignature_request rows of the subject patient's encounters.
       # Its tombstone voids the encounter root and replaces every free-text reason with one fixed placeholder; the
       # structural shell (patient link, service date, discipline) survives.
-      - file: apps/backend/src/modules/08-encounters/erasers/encounter-eraser.ts
-      - file: apps/backend/__tests__/encounter-eraser.test.ts
       - script: test:m8:eraser:live
       - file: apps/backend/src/modules/08-encounters/M8_DR_INT_INVENTORY.md
     gap:
-      reason: The object-store second copy (compose.object-copy.yml, a RustFS replica; NOT enabled in production) would receive a D12 shred only on its next hourly run, a large erasure is held by its mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed there, and a --restore after a shred brings destroyed objects back (objects are plaintext, so crypto-erasure does not cover them). Before enabling it, propagate D12 shreds to the copy target and add a replica step to the destruction runbook. The legacy MinIO volume kept after the SeaweedFS cutover is also a full copy until an operator removes it (README, cutover). A closed tenant's sealed clearinghouse credential (tenant_clearinghouse_config) and its held credential fingerprints (tenant_clearinghouse_credential_reservation) have no purge path (neither table grants DELETE to the application or the destruction role, both reference the organization row with ON DELETE RESTRICT, the M23 billing eraser run by the M34 tenant shred has no step for them, and the credential is sealed under the platform KEK rather than the tenant's DEK, so destroying that DEK does not make it unreadable), so they stay, and the fingerprints keep reserving the credentials, until a database-level procedure removes them. Tenant-pricing financial records are retained records that an eraser must not delete. Published plan versions and final statements cannot be deleted through the application or platform credential (guard triggers, CW-PI-01). The signed contract, the statement and the statement review tables reference `subscription` with ON DELETE RESTRICT, and the billing-mode history references the contract, which itself restricts onto `subscription`, so deleting a subscription that has them fails. patient_census_daily has no foreign key to protect it (it is keyed by organization), and it is the input a final statement's census figure was computed from. Any future M35 offboarding eraser must therefore treat all of these as retained financial records, and decide on the census rows deliberately, not as tenant data to shred. M10 iQIES submission packages are still not reached by any retention scan, eraser or purge in two cases, and no eraser or purge owner is named, which is a human decision. (a) The package ZIP (`hope_submission.acceptance_report`) of every batch that was not cancelled (a packaged or exported batch nobody cancelled, a marked-uploaded batch, which is kept for the CMS 10-year hold, and a resulted batch). (b) The per-item column `hope_submission_item.iqies_validation_result` of a patient whose `hope_record` was destroyed (`hope_submission` carries no patient id, spec §4.8); it holds the record's XML (name, date of birth, MBI or SSN) until a CMS result is recorded for that item, after which it holds the CMS report row that replaced it (assessment id and free-text message). The package ZIP in (a) still holds the XML either way, and the HOPE eraser reaches neither. The design that would close (b) is a purge keyed through `hope_submission_item.hope_assessment_id` to the patient; it is not built. Bytes that a legal hold, or an unreadable hold scope, kept at cancel are purged only when an operator REPEATS the cancel after the hold is released, by a manual, API-only step (the web offers Cancel only on a batch that was never uploaded) that needs a NEW Idempotency-Key, because a same-key repeat replays the cached 2xx for 24 hours and never reaches the purge, and that re-reads the scope, purges and writes one repeatCancel audit event. There is no automatic purge on release and M4's hold release does not signal M10, so until an operator repeats the cancel the bytes stay (the runbook paragraph is in apps/backend/src/modules/10-hope/M10_DR_INT_INVENTORY.md). The cancel reads the hold scope as one statement after the batch row lock, and nothing locks legal_hold, so a hold committed after that statement and before the cancel commits is missed (a statement-sized window), and the cancel can purge bytes that hold would have kept. The cancel purge is a logical deletion, so the NULLed jsonb leaves dead tuples until vacuum, and the old values stay in the WAL, replicas and backups until their retention expires. The M8 encounter eraser reads no legal hold and relies on the M34 shred preflight, which refuses the tenant while any hold is active; that check is not in the eraser's transaction, so a hold committed after it is missed. The audit_event before and after images from the M8 write-audit triggers (migration 0031) keep clinical values their denylists do not name (vitals numbers, hearthnote_selection.selections, encounter_signature.attestation_text, mileage figures), and the eraser's own deletes add more; this is retention by design (retention class compliance), not erased. M8 outbox payloads carry reason text, and failed dead letters are never purged. The eraser refuses, before any write, a connection that is not chartwarden_destruction.
+      reason: The object-store second copy (compose.object-copy.yml, a RustFS replica; NOT enabled in production) would receive a D12 shred only on its next hourly run, a large erasure is held by its mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed there, and a --restore after a shred brings destroyed objects back (objects are plaintext, so crypto-erasure does not cover them). Before enabling it, propagate D12 shreds to the copy target and add a replica step to the destruction runbook. The legacy MinIO volume kept after the SeaweedFS cutover is also a full copy until an operator removes it (README, cutover). A closed tenant's sealed clearinghouse credential (tenant_clearinghouse_config) and its held credential fingerprints (tenant_clearinghouse_credential_reservation) have no purge path (neither table grants DELETE to the application or the destruction role, both reference the organization row with ON DELETE RESTRICT, the M23 billing eraser run by the M34 tenant shred has no step for them, and the credential is sealed under the platform KEK rather than the tenant's DEK, so destroying that DEK does not make it unreadable), so they stay, and the fingerprints keep reserving the credentials, until a database-level procedure removes them. Tenant-pricing financial records are retained records that an eraser must not delete. Published plan versions and final statements cannot be deleted through the application or platform credential (guard triggers, CW-PI-01). The signed contract, the statement and the statement review tables reference `subscription` with ON DELETE RESTRICT, and the billing-mode history references the contract, which itself restricts onto `subscription`, so deleting a subscription that has them fails. patient_census_daily has no foreign key to protect it (it is keyed by organization), and it is the input a final statement's census figure was computed from. Any future M35 offboarding eraser must therefore treat all of these as retained financial records, and decide on the census rows deliberately, not as tenant data to shred. M10 iQIES submission packages are still not reached by any retention scan, eraser or purge in two cases, and no eraser or purge owner is named, which is a human decision. (a) The package ZIP (`hope_submission.acceptance_report`) of every batch that was not cancelled (a packaged or exported batch nobody cancelled, a marked-uploaded batch, which is kept for the CMS 10-year hold, and a resulted batch). (b) The per-item column `hope_submission_item.iqies_validation_result` of a patient whose `hope_record` was destroyed (`hope_submission` carries no patient id, spec §4.8); it holds the record's XML (name, date of birth, MBI or SSN) until a CMS result is recorded for that item, after which it holds the CMS report row that replaced it (assessment id and free-text message). The package ZIP in (a) still holds the XML either way, and the HOPE eraser reaches neither. The design that would close (b) is a purge keyed through `hope_submission_item.hope_assessment_id` to the patient; it is not built. Bytes that a legal hold, or an unreadable hold scope, kept at cancel are purged only when an operator REPEATS the cancel after the hold is released, by a manual, API-only step (the web offers Cancel only on a batch that was never uploaded) that needs a NEW Idempotency-Key, because a same-key repeat replays the cached 2xx for 24 hours and never reaches the purge, and that re-reads the scope, purges and writes one repeatCancel audit event. There is no automatic purge on release and M4's hold release does not signal M10, so until an operator repeats the cancel the bytes stay (the runbook paragraph is in apps/backend/src/modules/10-hope/M10_DR_INT_INVENTORY.md). The cancel reads the hold scope as one statement after the batch row lock, and nothing locks legal_hold, so a hold committed after that statement and before the cancel commits is missed (a statement-sized window), and the cancel can purge bytes that hold would have kept. The cancel purge is a logical deletion, so the NULLed jsonb leaves dead tuples until vacuum, and the old values stay in the WAL, replicas and backups until their retention expires. The M8 encounter eraser reads no legal hold and relies on the M34 shred preflight, which refuses the tenant while any hold is active; that check is not in the eraser's transaction, so a hold committed after it is missed. The audit_event before and after images from the M8 write-audit triggers (migration 0031) keep clinical values their denylists do not name (vitals numbers, hearthnote_selection.selections, encounter_signature.attestation_text, mileage figures), and the eraser's own deletes add more; this is retention by design (retention class compliance), not erased. M8 outbox payloads carry reason text, and failed dead letters are never purged. The eraser refuses, before any write, a connection that is not chartwarden_destruction. WF09 erasers (the M8 ADL and nutrition rows and encounter tombstone, the M9 wound and observation rows, the M7 change proposals) are proven only over a privileged connection that bypasses RLS and grants. No suite deletes those five tables as chartwarden_destruction, so the SELECT and DELETE grant and the org-pinned policy that migrations 1528 to 1532 give that role are declared but unexercised, and the M9 wound step is driven directly through eraseWoundSubtree, not through the registered assessment eraser under a destruction certificate.
       owner: platform
       review_by: 2027-01-31
 

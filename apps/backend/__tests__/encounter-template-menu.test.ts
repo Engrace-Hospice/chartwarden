@@ -1,6 +1,7 @@
 // S1 rollout (ADR-0114, design §3.2): the authoring MENU of a tenant with the draft switch off is exactly what it was before the
-// 2026.11.0 corpus: none of the unreviewed draft phrases, and the RN routine visit's three formerly uncategorized sections as open
-// as they were. With the switch on, the menu offers the draft wording through the routine visit's wired categories.
+// 2026.11.0 corpus: none of the unreviewed draft phrases, and the RN routine visit's three formerly uncategorized sections as WF09 left
+// them (the visit reasons for the Reason for Visit, no preset statements for the Vital Signs Review and the Plan, which are prose).
+// With the switch on, the menu offers the draft wording through the routine visit's wired categories.
 import { DRAFT_VOCAB_CODES, entriesFor } from "@chartwarden/narrative-vocab";
 import { describe, expect, it } from "vitest";
 import { buildTemplateMenu } from "../src/modules/08-encounters/routes/service";
@@ -11,7 +12,7 @@ const menuCodes = (
 ): readonly string[] =>
   menu.sections.find((s) => s.sectionId === sectionId)?.entries.map((e) => e.code) ?? [];
 
-const PRE_S1_OPEN_SECTIONS = ["chief_concern", "vitals_review", "plan"] as const;
+const PROSE_SECTIONS = ["vitals_review", "plan"] as const;
 
 describe("buildTemplateMenu: draft wording off (the default)", () => {
   const menu = buildTemplateMenu("routine_visit", "rn");
@@ -24,13 +25,14 @@ describe("buildTemplateMenu: draft wording off (the default)", () => {
     }
   });
 
-  it("leaves the three formerly uncategorized sections open to every pre-existing eligible phrase, as before", () => {
-    const preExisting = entriesFor("routine_visit", "rn")
-      .filter((e) => !DRAFT_VOCAB_CODES.has(e.code))
-      .map((e) => e.code);
-    expect(preExisting.length).toBeGreaterThan(0);
-    for (const id of PRE_S1_OPEN_SECTIONS) {
-      expect(menuCodes(menu, id), id).toEqual(preExisting);
+  it("leaves the three formerly uncategorized sections as WF09 made them: the visit reasons for the reason, prose only for the rest", () => {
+    // Not the whole pre-existing catalog (a note's stated reason was once a cardiovascular finding): the draft switch does not undo WF09.
+    const reason = menu.sections.find((s) => s.sectionId === "chief_concern");
+    expect(reason?.allowedCategories).toEqual(["visit_reason"]);
+    expect(menuCodes(menu, "chief_concern").length).toBeGreaterThan(0);
+    for (const code of menuCodes(menu, "chief_concern")) expect(code).toMatch(/^nv\.reason\./);
+    for (const id of PROSE_SECTIONS) {
+      expect(menuCodes(menu, id), id).toEqual([]);
       expect(menu.sections.find((s) => s.sectionId === id)?.allowedCategories, id).toEqual([]);
     }
   });

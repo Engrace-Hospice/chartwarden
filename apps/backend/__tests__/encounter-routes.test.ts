@@ -31,6 +31,7 @@ import {
   createInMemoryEncounterBackend,
   registerEncounterRoutes,
 } from "../src/modules/08-encounters/index";
+import type { FallIncidentReader } from "../src/modules/08-encounters/routes/fall-link";
 import { requiredSectionSelections } from "./_hearthnote-fixtures";
 
 /**
@@ -137,9 +138,12 @@ function makeServer(
     caseload?: readonly string[];
     /** GAP-182 — the caseload seam rejects (the list must fail CLOSED). */
     caseloadFails?: boolean;
+    /** WF09 — the patient's recorded falls (M30's incident register in production). */
+    falls?: FallIncidentReader;
   } = {},
 ) {
   const backend = createInMemoryEncounterBackend({
+    ...(options.falls === undefined ? {} : { falls: options.falls }),
     encounters: [
       {
         id: ENC_BY_LPN,
@@ -719,6 +723,56 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
     expect(read.json().layer1Preview).toBe(patched.json().layer1Preview);
   });
 
+  it("WF09: the note carries the vitals recorded on the visit, on read and on write", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const record = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/encounters/${id}/vitals`,
+        headers: RN,
+        payload,
+      });
+    const preview = async (): Promise<string> =>
+      (
+        await app.inject({ method: "GET", url: `/api/v1/encounters/${id}/selections`, headers: RN })
+      ).json().layer1Preview as string;
+
+    expect(await preview()).toBe("");
+    const first = await record({
+      bpSystolic: 128,
+      bpDiastolic: 88,
+      heartRate: 78,
+      temperature: "97.8",
+      temperatureUnit: "f",
+    });
+    expect(first.statusCode).toBeLessThan(300);
+    expect(await preview()).toBe(
+      "Vital Signs Review\nVital signs: blood pressure 128/88 mmHg, heart rate 78 bpm, temperature 97.8 °F.",
+    );
+
+    // A later capture replaces only what it measured; the rest of the earlier set still stands.
+    await record({ heartRate: 90 });
+    expect(await preview()).toContain(
+      "blood pressure 128/88 mmHg, heart rate 90 bpm, temperature 97.8 °F.",
+    );
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": String(read.json().version) },
+      payload: TREE,
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().layer1Preview).toContain("Vital signs: blood pressure 128/88 mmHg");
+    expect(patched.json().layer1Preview).toContain("2+ dependent edema");
+  });
+
   it("the template route serves the MENU the tree is built from — sections AND their vocabulary (F-063)", async () => {
     // The composer's blocker, and the reason the authoring surface did not exist: `PATCH .../selections`
     // carries `sectionId`/`code` as free strings and rejects an unknown one (the two cases below), so a
@@ -753,6 +807,305 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
       "edema_grade",
     ]);
     expect(assessment?.entries.find((e) => e.code === "nv.cv.stable")?.slots).toEqual([]);
+  });
+
+  // ── WF09 step 1 — slot values and contradictory statements are refused by the SERVER ───────────────
+  //
+  // The composer accepted "oxygen at 79 L/min via nasal cannula", "requires 14 assistance with transfers"
+  // and "pain well controlled" beside "pain limiting function": the phrase interpolates any string. The
+  // rule lives on the write path so a client other than the composer cannot store them either.
+  const patchTree = (
+    app: Awaited<ReturnType<typeof makeServer>>["app"],
+    id: string,
+    sections: unknown[],
+  ) =>
+    app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: { sections },
+    });
+
+  it("refuses an oxygen flow no nasal cannula delivers, naming the section to fix", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await patchTree(app, id, [
+      { sectionId: "assessment", entries: [{ code: "nv.resp.dyspnea", params: { o2_lpm: 79 } }] },
+    ]);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("INVALID_SELECTION");
+    expect(res.json().error.details).toEqual([
+      expect.objectContaining({ field: "assessment", code: "SLOT_INVALID" }),
+    ]);
+    // Nothing was stored: the read-back still has the empty tree the draft started with.
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(read.json().sections).toEqual([]);
+  });
+
+  it("refuses 'pain controlled' and 'pain limiting function' in the same note", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await patchTree(app, id, [
+      {
+        sectionId: "symptom_management",
+        entries: [
+          { code: "nv.sym.pain_controlled", params: { pain_score: 5 } },
+          { code: "nv.sym.pain_uncontrolled", params: { pain_score: 6 } },
+        ],
+      },
+    ]);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.details).toEqual([
+      expect.objectContaining({ field: "symptom_management", code: "EXCLUSIVE_CONFLICT" }),
+    ]);
+  });
+
+  it("refuses a param that is not one of the statement's own slots: a context-slot key cannot replace the patient or the date, and the note never carries it", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    for (const params of [
+      { pain_score: 4, patient: "Jane Roe, who is ordered off hospice," },
+      { pain_score: 4, serviceDate: "1999-01-01" },
+      { pain_score: 4, o2_lpm: 2 }, // another statement's slot
+    ]) {
+      const res = await patchTree(app, id, [
+        { sectionId: "symptom_management", entries: [{ code: "nv.sym.pain_controlled", params }] },
+      ]);
+      expect(res.statusCode, JSON.stringify(params)).toBe(422);
+      expect(res.json().error.code).toBe("INVALID_SELECTION");
+      expect(res.json().error.details).toEqual([
+        expect.objectContaining({ field: "symptom_management", code: "SLOT_UNKNOWN" }),
+      ]);
+    }
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(JSON.stringify(read.json())).not.toContain("Jane Roe");
+  });
+
+  it("lets a draft save a half-filled statement, but finalize refuses it", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const base = requiredSectionSelections("routine_visit", "rn").sections;
+    const sections = base.map((s) =>
+      s.sectionId === "assessment"
+        ? { ...s, entries: [{ code: "nv.cv.edema", params: { edema_grade: "" } }] }
+        : s,
+    );
+    expect((await patchTree(app, id, sections)).statusCode).toBe(200);
+
+    const finalize = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+      payload: {},
+    });
+    expect(finalize.statusCode).toBe(422);
+    expect(finalize.json().error.code).toBe("INVALID_SELECTION");
+    expect(finalize.json().error.details).toEqual([
+      expect.objectContaining({ field: "assessment", code: "SLOT_INCOMPLETE" }),
+    ]);
+  });
+
+  it("serves no statements for the sections that are prose — Reason for Visit is not a body-system list", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/template`,
+      headers: RN,
+    });
+    const sections = res.json().sections as {
+      sectionId: string;
+      entries: { code: string; category: string; exclusiveGroup: string | null }[];
+    }[];
+    for (const prose of ["vitals_review", "plan"]) {
+      expect(sections.find((s) => s.sectionId === prose)?.entries, prose).toEqual([]);
+    }
+    // The clinical sections still carry theirs.
+    expect(sections.find((s) => s.sectionId === "assessment")?.entries.length).toBeGreaterThan(0);
+
+    // WF09 step 2 — Reason for Visit is a choice of visit reasons, never a body-system finding.
+    const reasons = sections.find((s) => s.sectionId === "chief_concern")?.entries ?? [];
+    expect(reasons.length).toBeGreaterThanOrEqual(8);
+    expect(reasons.every((e) => e.category === "visit_reason")).toBe(true);
+    expect(reasons.every((e) => e.exclusiveGroup === "visit-reason")).toBe(true);
+    expect(reasons.map((e) => e.code)).toContain("nv.reason.fall_followup");
+  });
+
+  it("WF09: a chosen reason is the note's Reason for Visit, and a second one is refused", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const save = (reasonCodes: string[], version: string) =>
+      app.inject({
+        method: "PATCH",
+        url: `/api/v1/encounters/${id}/selections`,
+        headers: { ...RN, "if-match": version },
+        payload: {
+          sections: [
+            { sectionId: "chief_concern", entries: reasonCodes.map((code) => ({ code })) },
+          ],
+        },
+      });
+
+    const ok = await save(["nv.reason.fall_followup"], "0");
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().layer1Preview).toBe(
+      "Reason for Visit\nThis visit is a follow-up after a recent fall.",
+    );
+
+    const two = await save(["nv.reason.routine", "nv.reason.pain"], "1");
+    expect(two.statusCode).toBe(422);
+    expect(two.json().error.code).toBe("INVALID_SELECTION");
+  });
+
+  it("WF09: the reasons a visit offers are readable before the encounter exists, per discipline", async () => {
+    const { app } = makeServer();
+    const reasonsFor = async (encounterType: string, discipline: string) => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/encounters/visit-reasons?encounterType=${encounterType}&discipline=${discipline}`,
+        headers: { ...RN, "x-test-roles": discipline },
+      });
+      expect(res.statusCode).toBe(200);
+      return (res.json().reasons as { code: string; label: string }[]).map((r) => r.code);
+    };
+    expect(await reasonsFor("routine_visit", "rn")).toContain("nv.reason.fall_followup");
+    expect(await reasonsFor("chaplain_visit", "chaplain")).toContain("nv.reason.ritual");
+    expect(await reasonsFor("chaplain_visit", "chaplain")).not.toContain("nv.reason.wound");
+    expect(await reasonsFor("pt_visit", "pt")).toContain("nv.reason.therapy_evaluation");
+    // Not a visit's own reason: nothing to choose.
+    expect(await reasonsFor("bereavement_contact", "msw")).toEqual([]);
+  });
+
+  it("WF09: a visit started on site with a reason has it saved on the draft, and the note reads it", async () => {
+    const { app } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+        reasonCode: "nv.reason.pain",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+    expect(created.json().version).toBe(1);
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(read.json().layer1Preview).toContain(
+      "Reason for Visit\nThis visit is for pain assessment and management.",
+    );
+  });
+
+  it("WF09: a reason this visit is not offered is refused, and leaves no draft behind", async () => {
+    const { app } = makeServer();
+    const before = await app.inject({ method: "GET", url: "/api/v1/encounters", headers: RN });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+        reasonCode: "nv.reason.ritual",
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("INVALID_SELECTION");
+    const after = await app.inject({ method: "GET", url: "/api/v1/encounters", headers: RN });
+    expect(after.json()).toEqual(before.json());
+  });
+
+  it("WF09: the reason is saved IN the create, never in a second write that could fail and leave a draft behind", async () => {
+    const { app, backend } = makeServer();
+    const createDraft = vi.spyOn(backend.service, "createDraft");
+    const updateSelections = vi.spyOn(backend.service, "updateSelections");
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+        reasonCode: "nv.reason.pain",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(createDraft).toHaveBeenCalledTimes(1);
+    expect(createDraft.mock.calls[0]?.[2]).toMatchObject({
+      initialSections: [{ entries: [{ code: "nv.reason.pain" }] }],
+    });
+    expect(updateSelections).not.toHaveBeenCalled();
+  });
+
+  it("WF09: a create whose initial selections cannot be saved creates nothing (atomic), so a retry cannot make a second draft", async () => {
+    const { app, backend } = makeServer();
+    const before = await app.inject({ method: "GET", url: "/api/v1/encounters", headers: RN });
+    // Two reasons that contradict each other: the draft-save rule refuses them, and the create goes with them.
+    await expect(
+      backend.service.createDraft(ORG, "rn_1", {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20" as never,
+        initialSections: [
+          {
+            sectionId: "chief_concern",
+            entries: [{ code: "nv.reason.routine" }, { code: "nv.reason.pain" }],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_SELECTION" });
+    const after = await app.inject({ method: "GET", url: "/api/v1/encounters", headers: RN });
+    expect(after.json()).toEqual(before.json());
+  });
+
+  it("the template route publishes each slot's constraint and each statement's exclusive group", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/template`,
+      headers: RN,
+    });
+    const entries = (
+      res.json().sections as {
+        entries: {
+          code: string;
+          slotSpecs: Record<string, { kind: string }>;
+          exclusiveGroup: string | null;
+        }[];
+      }[]
+    ).flatMap((s) => s.entries);
+    const pain = entries.find((e) => e.code === "nv.sym.pain_controlled");
+    expect(pain?.exclusiveGroup).toBe("pain-status");
+    expect(pain?.slotSpecs.pain_score?.kind).toBe("integer");
+    const stable = entries.find((e) => e.code === "nv.cv.stable");
+    expect(stable?.exclusiveGroup).toBeNull();
+    expect(stable?.slotSpecs).toEqual({});
   });
 
   // ── F-064 (#159) — care-plan links ────────────────────────────────────────────────────────────────
@@ -1818,5 +2171,318 @@ describe("M8 visit modality — sign body and the legacy confirm route", () => {
     });
     expect(res.statusCode).toBe(422);
     await app.close();
+  });
+});
+
+describe("WF09 — the fall a follow-up visit follows up", () => {
+  const FALL_A = "f1111111-1111-4111-8111-111111111111"; // 2026-06-18, two days before the visit
+  const FALL_B = "f2222222-2222-4222-8222-222222222222"; // 2026-06-01
+  const FALL_AFTER = "f3333333-3333-4333-8333-333333333333"; // after the visit: cannot be followed up by it
+  const FALL_OLD = "f4444444-4444-4444-8444-444444444444"; // far outside the lookback
+  const falls: FallIncidentReader = {
+    async recentFalls() {
+      return [
+        { incidentId: FALL_B, occurredAt: new Date("2026-06-01T09:00:00Z"), severity: "minor" },
+        { incidentId: FALL_AFTER, occurredAt: new Date("2026-06-21T09:00:00Z"), severity: "minor" },
+        { incidentId: FALL_A, occurredAt: new Date("2026-06-18T14:00:00Z"), severity: "moderate" },
+        { incidentId: FALL_OLD, occurredAt: new Date("2026-01-02T09:00:00Z"), severity: "severe" },
+      ];
+    },
+  };
+
+  type Server = ReturnType<typeof makeServer>;
+  async function draft(app: Server["app"]): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    return res.json().id as string;
+  }
+  const save = (
+    app: Server["app"],
+    id: string,
+    version: number,
+    reason: string,
+    fallIncidentId?: string | null,
+  ) =>
+    app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": String(version) },
+      payload: {
+        sections: [{ sectionId: "chief_concern", entries: [{ code: reason }] }],
+        ...(fallIncidentId === undefined ? {} : { fallIncidentId }),
+      },
+    });
+  const read = async (app: Server["app"], id: string) =>
+    (
+      await app.inject({ method: "GET", url: `/api/v1/encounters/${id}/selections`, headers: RN })
+    ).json();
+
+  it("lists the falls the visit can follow up: newest first, none after the visit, none beyond the lookback", async () => {
+    const { app } = makeServer({ falls });
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/fall-incidents`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      patientId: PATIENT, // the visit's patient: what attributes the read to them in the §164.528 accounting
+      incidents: [
+        { incidentId: FALL_A, occurredOn: "2026-06-18", severity: "moderate" },
+        { incidentId: FALL_B, occurredOn: "2026-06-01", severity: "minor" },
+      ],
+      unavailable: false,
+    });
+  });
+
+  it("states the linked fall's date in the note, and keeps the link across a later save", async () => {
+    const { app } = makeServer({ falls });
+    const id = await draft(app);
+    const linked = await save(app, id, 0, "nv.reason.fall_followup", FALL_A);
+    expect(linked.statusCode).toBe(200);
+    expect(linked.json().layer1Preview).toBe(
+      "Reason for Visit\nThis visit is a follow-up after a recent fall. The fall occurred on 2026-06-18.",
+    );
+    expect((await read(app, id)).fallIncident).toEqual({
+      incidentId: FALL_A,
+      occurredOn: "2026-06-18",
+    });
+
+    // A save that says nothing about the fall leaves it linked.
+    const again = await save(app, id, 1, "nv.reason.fall_followup");
+    expect(again.statusCode).toBe(200);
+    expect((await read(app, id)).fallIncident?.incidentId).toBe(FALL_A);
+  });
+
+  it("clears the link when the reason is no longer a follow-up after a fall, and when it is cleared", async () => {
+    const { app } = makeServer({ falls });
+    const id = await draft(app);
+    await save(app, id, 0, "nv.reason.fall_followup", FALL_A);
+
+    const other = await save(app, id, 1, "nv.reason.pain");
+    expect(other.json().layer1Preview).not.toContain("The fall occurred");
+    expect((await read(app, id)).fallIncident).toBeNull();
+
+    await save(app, id, 2, "nv.reason.fall_followup", FALL_B);
+    const cleared = await save(app, id, 3, "nv.reason.fall_followup", null);
+    expect(cleared.json().layer1Preview).not.toContain("The fall occurred");
+    expect((await read(app, id)).fallIncident).toBeNull();
+  });
+
+  it("refuses a fall that is not recorded for this patient in the days before the visit", async () => {
+    const { app } = makeServer({ falls });
+    const id = await draft(app);
+    for (const bad of [FALL_AFTER, FALL_OLD, "f9999999-9999-4999-8999-999999999999"]) {
+      const res = await save(app, id, 0, "nv.reason.fall_followup", bad);
+      expect(res.statusCode, bad).toBe(422);
+      expect(res.json().error.code).toBe("INVALID_SELECTION");
+    }
+    expect((await read(app, id)).fallIncident).toBeNull();
+  });
+
+  it("refuses a fall linked to any other reason", async () => {
+    const { app } = makeServer({ falls });
+    const id = await draft(app);
+    const res = await save(app, id, 0, "nv.reason.pain", FALL_A);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("INVALID_SELECTION");
+  });
+
+  it("reports the register as unavailable rather than as having no falls, and the note still saves", async () => {
+    const down: FallIncidentReader = {
+      async recentFalls() {
+        throw new Error("incident register unavailable");
+      },
+    };
+    const { app } = makeServer({ falls: down });
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/fall-incidents`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    // Not "no falls": the register could not be read, and the read is still attributed to the patient.
+    expect(res.json()).toEqual({ patientId: PATIENT, incidents: [], unavailable: true });
+    expect((await save(app, id, 0, "nv.reason.fall_followup")).statusCode).toBe(200);
+  });
+
+  it("a note that was never linked reads exactly as before", async () => {
+    const { app } = makeServer({ falls });
+    const id = await draft(app);
+    const res = await save(app, id, 0, "nv.reason.fall_followup");
+    expect(res.json().layer1Preview).toBe(
+      "Reason for Visit\nThis visit is a follow-up after a recent fall.",
+    );
+  });
+
+  it("is limited to the encounter's author or supervisor", async () => {
+    const { app } = makeServer({ falls });
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/fall-incidents`,
+      headers: VIEWER,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe("WF09 — the author's edit of the note text", () => {
+  type Server = ReturnType<typeof makeServer>;
+  const REQUIRED = requiredSectionSelections("routine_visit", "rn");
+  async function draft(app: Server["app"]): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    return res.json().id as string;
+  }
+  const patch = (app: Server["app"], id: string, version: number, body: Record<string, unknown>) =>
+    app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": String(version) },
+      payload: { ...REQUIRED, ...body },
+    });
+  const read = async (app: Server["app"], id: string) =>
+    (
+      await app.inject({ method: "GET", url: `/api/v1/encounters/${id}/selections`, headers: RN })
+    ).json();
+  const finalize = (app: Server["app"], id: string) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+      payload: {},
+    });
+  const EDIT = "Mrs. W was seen at home. She is comfortable and her daughter is at the bedside.";
+
+  it("stores the edit beside the generated text, and reads it back flagged and not stale", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const saved = await patch(app, id, 0, { editedNarrative: EDIT });
+    expect(saved.statusCode).toBe(200);
+    const view = await read(app, id);
+    expect(view.editedNarrative).toBe(EDIT);
+    expect(view.editedNarrativeStale).toBe(false);
+    // The generated text is always kept, and is not the edit.
+    expect(view.layer1Preview).not.toBe(EDIT);
+    expect(view.layer1Preview).toContain("Reason for Visit");
+  });
+
+  it("keeps the edit across a later save that says nothing about it, and discards it on null", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    await patch(app, id, 0, { editedNarrative: EDIT });
+    expect((await patch(app, id, 1, {})).statusCode).toBe(200);
+    expect((await read(app, id)).editedNarrative).toBe(EDIT);
+    expect((await patch(app, id, 2, { editedNarrative: null })).statusCode).toBe(200);
+    expect((await read(app, id)).editedNarrative).toBeNull();
+  });
+
+  it("does not count text identical to the generated note as an edit, and refuses empty text", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const first = await patch(app, id, 0, {});
+    const generated = first.json().layer1Preview as string;
+    expect((await patch(app, id, 1, { editedNarrative: generated })).statusCode).toBe(200);
+    expect((await read(app, id)).editedNarrative).toBeNull();
+
+    const blank = await patch(app, id, 2, { editedNarrative: "   " });
+    expect(blank.statusCode).toBe(422);
+    expect(blank.json().error.code).toBe("INVALID_NARRATIVE_EDIT");
+  });
+
+  it("marks the edit stale when the note moves underneath it, and refuses to finalize on it until it is applied again", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    await patch(app, id, 0, { editedNarrative: EDIT });
+
+    // The selections change after the edit was made.
+    const moved = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "1" },
+      payload: {
+        sections: [
+          ...REQUIRED.sections,
+          {
+            sectionId: "symptom_management",
+            entries: [{ code: "nv.sym.pain_controlled", params: { pain_score: 2 } }],
+          },
+        ],
+      },
+    });
+    expect(moved.statusCode).toBe(200);
+    expect((await read(app, id)).editedNarrativeStale).toBe(true);
+
+    const refused = await finalize(app, id);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe("NARRATIVE_EDIT_STALE");
+
+    // Reviewing and applying the same text again rebases it onto the note as it now reads.
+    const again = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "2" },
+      payload: {
+        sections: [
+          ...REQUIRED.sections,
+          {
+            sectionId: "symptom_management",
+            entries: [{ code: "nv.sym.pain_controlled", params: { pain_score: 2 } }],
+          },
+        ],
+        editedNarrative: EDIT,
+      },
+    });
+    expect(again.statusCode).toBe(200);
+    expect((await read(app, id)).editedNarrativeStale).toBe(false);
+    expect((await finalize(app, id)).statusCode).toBe(200);
+  });
+
+  it("signs the author's text, flagged as edited", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    await patch(app, id, 0, { editedNarrative: EDIT });
+    expect((await finalize(app, id)).statusCode).toBe(200);
+
+    const view = (
+      await app.inject({ method: "GET", url: `/api/v1/encounters/${id}`, headers: RN })
+    ).json();
+    expect(view.finalDocumentation).toBe(EDIT);
+    expect(view.finalDocumentationEdited).toBe(true);
+  });
+
+  it("a note that was never edited finalizes as generated, unflagged", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const saved = await patch(app, id, 0, {});
+    expect((await finalize(app, id)).statusCode).toBe(200);
+    const view = (
+      await app.inject({ method: "GET", url: `/api/v1/encounters/${id}`, headers: RN })
+    ).json();
+    expect(view.finalDocumentation).toBe(saved.json().layer1Preview);
+    expect(view.finalDocumentationEdited).toBe(false);
   });
 });

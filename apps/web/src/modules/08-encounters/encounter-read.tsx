@@ -175,6 +175,8 @@ export function EncounterRead(): JSX.Element {
   const [delivery, setDelivery] = useState<DeliveryDraft>(() => initialDelivery(null));
 
   const [noteText, setNoteText] = useState("");
+  // The draft's note text is the author's edit rather than the generated text.
+  const [noteEdited, setNoteEdited] = useState(false);
 
   const [vitals, setVitals] = useState<VitalsForm>({
     bpSystolic: "",
@@ -248,6 +250,7 @@ export function EncounterRead(): JSX.Element {
       setAssessments(read.assessments);
       setHopeAssessments(read.hopeAssessments);
       setNoteText(read.noteText);
+      setNoteEdited(read.noteEdited);
       setLoading(false);
     },
     [client, encounterId, patientId],
@@ -966,6 +969,7 @@ export function EncounterRead(): JSX.Element {
                   Layer-1 note as it currently reads. */}
                 {e.status === "draft" ? (
                   <div style={readOnlyPanel}>
+                    {noteEdited ? <p style={editedTag}>Edited by the author</p> : null}
                     <p style={noteBody}>
                       {noteText ||
                         "Nothing documented yet. Use Compose note to document this visit."}
@@ -973,6 +977,11 @@ export function EncounterRead(): JSX.Element {
                   </div>
                 ) : (
                   <div style={readOnlyPanel}>
+                    {e.finalDocumentationEdited ? (
+                      <p style={editedTag}>
+                        Edited by the author. The generated text is kept with the record.
+                      </p>
+                    ) : null}
                     <SignedNoteView
                       view={e.finalDocumentationView}
                       history={e.noteHistory}
@@ -2518,6 +2527,13 @@ const sectionExplanation: CSSProperties = {
 /* ──────────────────────────────────────────────────────────────────────────
    DOCUMENTATION
 ────────────────────────────────────────────────────────────────────────── */
+
+const editedTag: CSSProperties = {
+  margin: "0 0 0.5rem",
+  fontSize: "0.7rem",
+  fontWeight: 650,
+  color: "var(--color-on-surface-variant)",
+};
 
 const readOnlyPanel: CSSProperties = {
   padding: "0.75rem",

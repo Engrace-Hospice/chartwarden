@@ -177,9 +177,11 @@ sealed `hearthnote_signed_section.text_cipher` of ADR-0114; `layer2_cipher` beco
 `hearthnote_output_layer2_consistency` requires non-null, and stays NULL on a Layer-2-off one; migrations 1521/1525 let only
 that sentinel through on a signed note; the store holds a `DbClient`, not the key custodian, so it destroys the bytes, not the
 DEK); (2) it TOMBSTONES the `encounter`
-root (voided, every reason text replaced by one placeholder, PK kept for FK integrity; `voided_by` is the note's author because
+root (voided, every reason text replaced by one placeholder, the fall link `fall_incident_id` / `fall_occurred_on` cleared, PK kept
+for FK integrity; `voided_by` is the note's author because
 no system membership exists, and the audit actor is NULL); (3) it DELETES the satellites (signatures, addenda, care-plan links,
-cosignature requests, vitals, mileage, HearthNote selection/assembled-output/llm-modification, and ADR-0114's
+cosignature requests, vitals, mileage, the recorded ADLs and nutrition (`encounter_adl`, `encounter_nutrition`: the root is only
+tombstoned, so their `ON DELETE CASCADE` never fires and they are deleted by name), HearthNote selection/assembled-output/llm-modification, and ADR-0114's
 `encounter_draft_confirmation`, `hearthnote_signed_section` (an amendment's rows included: they carry the encounter id, so
 the same shred and delete cover them), `encounter_amendment` and `addendum_cosignature_request`, children before parents).
 A failure between the

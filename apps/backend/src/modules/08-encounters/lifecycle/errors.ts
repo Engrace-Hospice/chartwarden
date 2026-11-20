@@ -47,12 +47,26 @@ export const M8_ERROR_STATUS = {
   PARENT_VOIDED: 409,
   STALE_VERSION: 409,
   IMMUTABLE_AFTER_SIGN: 409,
+  /** A per-visit record (ADLs, nutrition) can only change while the note is a draft: finalize pins the note text, so a later change
+   *  would leave the stored record disagreeing with the note that was pinned (WF09). */
+  NOTE_PINNED_AT_FINALIZE: 409,
+  /** The encounter's note template has no section that states this record, so it would be saved and then silently left out of the
+   *  signed note; the clinician is told instead of documenting something the note will not carry (WF09). */
+  FINDING_NOT_IN_NOTE: 422,
   // §2.6 HearthNote Layer-1 assembly (#114). `@chartwarden/hearthnote` documents its own error codes as
   // "mapped to HTTP by the M8 service in T09" — this is that mapping, which was never written because
   // nothing ever assembled. TEMPLATE_NOT_FOUND and VOCAB_VERSION_MISMATCH already have codes above
   // (INVALID_ENCOUNTER_DISCIPLINE_PAIR / VOCAB_VERSION_MISMATCH), exactly as the package prescribes.
   UNKNOWN_VOCAB_CODE: 422,
   UNKNOWN_TEMPLATE_SECTION: 422,
+  /** A selected statement carries a slot value outside its constraint, an unfilled slot at finalize, or
+   *  contradicts another statement in the note (WF09). `details` names the section and rule per problem. */
+  INVALID_SELECTION: 422,
+  /** The note text the author typed is empty; discard the edit to go back to the generated text (WF09). */
+  INVALID_NARRATIVE_EDIT: 422,
+  /** The selections or vitals changed after the author edited the note text, so the text being signed may no longer say what the
+   *  note holds. The author reviews it and applies it again, or discards it (WF09). */
+  NARRATIVE_EDIT_STALE: 409,
   /** No tenant-DEK envelope is bound, so §3.6 free text cannot be sealed — the write refuses. */
   HEARTHNOTE_CIPHER_UNBOUND: 503,
   // §2.3 Layer-3 gate (enforced at sign; preview at finalize)

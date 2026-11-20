@@ -69,8 +69,16 @@ const GOLDEN_NARRATIVE = [
 
 describe("legacy corpus (narrative-vocab@2026.06.0 entries) is unchanged", () => {
   it("the first 23 entries are byte-identical, in order", () => {
+    // WF09 later annotated these entries with `slotSpecs` / `exclusiveGroup`: they bound what a clinician may type and
+    // never reach the rendered bytes. The digest is taken over every field the entries had when it was captured.
     const digest = createHash("sha256")
-      .update(JSON.stringify(VOCABULARY.slice(0, LEGACY_ENTRY_COUNT)))
+      .update(
+        JSON.stringify(
+          VOCABULARY.slice(0, LEGACY_ENTRY_COUNT).map(
+            ({ slotSpecs: _slotSpecs, exclusiveGroup: _exclusiveGroup, ...captured }) => captured,
+          ),
+        ),
+      )
       .digest("hex");
     expect(digest).toBe(LEGACY_CORPUS_SHA256);
   });

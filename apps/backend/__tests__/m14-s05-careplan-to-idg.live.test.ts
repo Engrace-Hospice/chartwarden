@@ -54,6 +54,7 @@ import {
 } from "../src/modules/08-encounters/index";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
 import { createSignedEncountersReader } from "../src/modules/08-encounters/seams/readers";
+import { noWoundReader } from "../src/modules/08-encounters/wound-reader";
 import {
   type IdgWriteOutboxPort,
   createDbIdgBackend,
@@ -392,6 +393,9 @@ describe.skipIf(!DB_URL)(
         handle.db,
         bind("m8") as unknown as EncounterWriteOutboxPort,
         CIPHERS,
+        undefined,
+        undefined,
+        noWoundReader, // no M9 is wired here: states no wounds by name (the production reader fails closed)
       );
       m17 = createDbSchedulingBackend(
         handle.db,

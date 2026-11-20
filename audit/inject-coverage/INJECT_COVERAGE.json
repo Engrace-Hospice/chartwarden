@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2102,
-    "coveredRoutes": 2102,
-    "directRoutesReferenced": 1905
+    "routes": 2122,
+    "coveredRoutes": 2122,
+    "directRoutesReferenced": 1925
   },
   "modules": [
     {
@@ -155,13 +155,14 @@
     },
     {
       "module": "07-care-plan",
-      "routes": 25,
+      "routes": 32,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/assessment-routes.test.ts",
+        "apps/backend/__tests__/care-plan-change-proposal-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
         "apps/backend/__tests__/care-plan-hardening-routes.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
@@ -181,6 +182,7 @@
         "apps/backend/__tests__/m5-code-status.live.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
+        "apps/backend/__tests__/m7-change-proposals.live.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
         "apps/backend/__tests__/orders-routes.test.ts",
         "apps/backend/__tests__/orm-recovery.test.ts",
@@ -189,39 +191,47 @@
         "apps/backend/__tests__/portal-inject.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts",
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
-        "apps/backend/__tests__/scheduling-inject.test.ts"
+        "apps/backend/__tests__/scheduling-inject.test.ts",
+        "apps/backend/__tests__/wounds-routes.test.ts",
+        "apps/backend/__tests__/wounds.live.test.ts"
       ],
-      "directRoutesReferenced": 25
+      "directRoutesReferenced": 32
     },
     {
       "module": "08-encounters",
-      "routes": 56,
+      "routes": 63,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/encounter-authoring.test.ts",
         "apps/backend/__tests__/encounter-draft-routes.test.ts",
         "apps/backend/__tests__/encounter-routes.test.ts",
+        "apps/backend/__tests__/findings-routes.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m36-promotions.live.test.ts",
         "apps/backend/__tests__/m8-chart-promotion.test.ts",
         "apps/backend/__tests__/m8-encounter-addenda-read.live.test.ts",
+        "apps/backend/__tests__/m8-findings.live.test.ts",
         "apps/backend/__tests__/m8-note-closure.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-draft-routes.live.test.ts",
         "apps/backend/__tests__/note-closure-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts",
-        "apps/backend/__tests__/visit-note-draft-routes.test.ts"
+        "apps/backend/__tests__/visit-note-draft-routes.test.ts",
+        "apps/backend/__tests__/wounds.live.test.ts"
       ],
-      "directRoutesReferenced": 54
+      "directRoutesReferenced": 61
     },
     {
       "module": "09-assessments",
-      "routes": 20,
+      "routes": 26,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/assessment-routes.test.ts",
-        "apps/backend/__tests__/m9-assessments-write.live.test.ts"
+        "apps/backend/__tests__/m9-assessments-write.live.test.ts",
+        "apps/backend/__tests__/wounds-route-writes.test.ts",
+        "apps/backend/__tests__/wounds-routes.test.ts",
+        "apps/backend/__tests__/wounds.live.test.ts"
       ],
-      "directRoutesReferenced": 17
+      "directRoutesReferenced": 23
     },
     {
       "module": "10-hope",

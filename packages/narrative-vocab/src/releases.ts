@@ -56,10 +56,17 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
     id: "81dcb265-d2ef-456b-b029-1bcce25105e7",
     releasedOn: "2026-06-01",
   },
+  // The visit-note draft phrases (ADR-0114). Shipped on main; never edit this row.
   {
     version: "narrative-vocab@2026.11.0",
     id: "0e92f042-d45f-426c-918a-d3391387dd69",
     releasedOn: "2026-11-18",
+  },
+  // Adds the `visit_reason` entries (the Reason for Visit choice). Additive: no earlier phrase changed.
+  {
+    version: "narrative-vocab@2026.11.1",
+    id: "ccc0842e-648d-4174-bf86-50129e9efd8e",
+    releasedOn: "2026-11-19",
   },
 ];
 

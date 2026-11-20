@@ -23,6 +23,7 @@ import {
   assertGatePassed,
   runAddendumComplianceGate,
   runEncounterComplianceGate,
+  sectionsPopulatedByFindings,
 } from "../src/modules/08-encounters/gate/index";
 import {
   AttestationSchema,
@@ -113,6 +114,64 @@ describe("§2.6 Layer-3 gate — check 1, required HearthNote sections", () => {
         scalesPresent: NO_SCALES_PRESENT,
       }).pass,
     ).toBe(true);
+  });
+
+  describe("a saved finding populates a required section only when it states something", () => {
+    // A CHHA note's `adl` section is required and states the saved ADL record, never selections.
+    const gateWith = (recorded: Parameters<typeof sectionsPopulatedByFindings>[2]) => {
+      const verdict = runEncounterComplianceGate({
+        encounterType: "chha_visit" as const,
+        discipline: "chha" as const,
+        sections: documented("chha_visit", "chha").filter((s) => s.sectionId !== "adl"),
+        carePlanOverdue: null,
+        vitalsCaptured: ALL_VITALS_CAPTURED,
+        vitalsClinicallyNotIndicated: NO_CNI,
+        scalesPresent: NO_SCALES_PRESENT,
+        findingSections: sectionsPopulatedByFindings("chha_visit", "chha", recorded),
+      });
+      return verdict.pass ? [] : verdict.remediation.map((x) => x.field);
+    };
+
+    it("counts the required CHHA ADL section populated by a saved ADL record with an item level, and not by a nutrition one", () => {
+      expect(gateWith({ nutrition: { appetite: "good" } })).toEqual(["adl"]);
+      expect(gateWith({ adl: { items: { bathing: "limited_assist" } } })).toEqual([]);
+    });
+
+    it("does not count a record that was never saved", () => {
+      expect(gateWith({})).toEqual(["adl"]);
+    });
+
+    it("does not count a devices-only or continence-only ADL record: no ADL level is stated, so the signed note would say nothing", () => {
+      expect(gateWith({ adl: { devices: ["cane"] } })).toEqual(["adl"]);
+      expect(gateWith({ adl: { bladder: "continent", bowel: "continent" } })).toEqual(["adl"]);
+      expect(gateWith({ adl: { items: {} } })).toEqual(["adl"]);
+    });
+
+    it("counts an ADL record whose every item is 'did not occur': the note states each one, and the clinician has documented the visit", () => {
+      const allDidNotOccur = Object.fromEntries(
+        [
+          "bathing",
+          "dressing",
+          "grooming",
+          "toileting",
+          "transferring",
+          "ambulation",
+          "eating",
+        ].map((item) => [item, "did_not_occur"]),
+      );
+      expect(gateWith({ adl: { items: allDidNotOccur } })).toEqual([]);
+    });
+
+    it("populates a nutrition section from any one recorded field, a recorded 0 percent included, and not from none", () => {
+      const nutritionSection = (recorded: Parameters<typeof sectionsPopulatedByFindings>[2]) =>
+        sectionsPopulatedByFindings("routine_visit", "rn", recorded);
+      expect(nutritionSection({ nutrition: {} }).has("nutrition")).toBe(false);
+      expect(nutritionSection({ nutrition: { mealIntakePercent: 0 } }).has("nutrition")).toBe(true);
+      expect(nutritionSection({ nutrition: { support: "none" } }).has("nutrition")).toBe(true);
+      expect(nutritionSection({ adl: { items: { eating: "independent" } } }).has("nutrition")).toBe(
+        false,
+      );
+    });
   });
 
   it("does not count an OPTIONAL section towards a required one, or a required one twice", () => {

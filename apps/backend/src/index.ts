@@ -631,6 +631,8 @@ import {
   activeSudProblemIdsForOrg,
   buildM7AdmissionActivatedConsumer,
   buildM7AdmissionDischargedConsumer,
+  buildM7EncounterFinalizedConsumer,
+  buildM7EncounterVoidedConsumer,
   buildM7ExtractionDiagnosisWritebackConsumer,
   buildM7IdgDecisionConsumer,
   buildM7WorkerDeps,
@@ -667,6 +669,7 @@ import {
   mountEncounterRoutes,
   registerClosureAlertCatalog,
   registerEncounterAbacPredicates,
+  registerEncounterDraftReader,
   registerEncounterErasers,
   registerEncounterRoutes,
   registerEncounterSeams,
@@ -683,12 +686,14 @@ import {
   buildM9WorkerDeps,
   createDrizzleAssessmentEraseStore,
   createDrizzleAssessmentReaderStore,
+  createDrizzleWoundProviderStore,
   mountAssessmentRoutes,
   registerAssessmentAbacPredicates,
   registerAssessmentErasers,
   registerAssessmentRoutes,
   registerAssessmentSeams,
   registerM9CronWorkers,
+  registerWoundSeam,
   scheduleM9Jobs,
   wireM9Tenancy,
 } from "./modules/09-assessments/index";
@@ -2369,6 +2374,9 @@ export function wireModuleSeams(
         }
       : {},
   );
+  // WF09 — the visit facts (patient / status / author) M7 change proposals and M9 wounds check before binding a record to a note being
+  // written. Without a db the registry's fail-closed deny-stub stands, so those writes are refused rather than unchecked.
+  if (deps.db) registerEncounterDraftReader(registerSeam, deps.db);
   // M9 — the two §4.7 / D7 owned seams (LatestAssessmentProvider + ScaleSeriesProvider) M7/M10/M14/M28/M32
   // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the
   // Drizzle-backed store lands with M9's routes/repos (M9-T05+).
@@ -2377,6 +2385,10 @@ export function wireModuleSeams(
   // so a route-recorded row's latest-read throws AssessmentSeamDataGapError until the write path sites
   // captures — loud, never a fabricated context.
   registerAssessmentSeams(deps.db ? { store: createDrizzleAssessmentReaderStore(deps.db) } : {});
+  // WF09 — the wound observations recorded at one encounter, which the M8 visit note states (M9 owns the wound record). Only with a
+  // db: the DB-backed M8 service is the one that reads them. Without one nothing is registered and the seam keeps its fail-closed
+  // deny-stub, never an always-empty store that would answer "no wounds" to whatever reached it.
+  if (deps.db) registerWoundSeam(registerSeam, createDrizzleWoundProviderStore(deps.db));
   // M10 — the three PER-ENTITY §2 / D10 owned seams (HopeTimepointProvider + HopeJ2051Provider +
   // HopeSubmissionProvider) M14/M22/M30/M32 consume for open HOPE windows, J2051 trigger/SFV obligations,
   // and per-PE submission status (in-memory store). PLUS the ORG-LEVEL HopeOrgRollupProvider (#107) the M30
@@ -15040,6 +15052,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             db: dbHandle.db,
             outbox: m7OutboxPublisher,
           }),
+          buildM7EncounterFinalizedConsumer({ db: dbHandle.db }),
+          buildM7EncounterVoidedConsumer({ db: dbHandle.db }),
           buildM11IdgDecisionConsumer({
             db: dbHandle.db,
             outbox: m11OutboxPublisher,

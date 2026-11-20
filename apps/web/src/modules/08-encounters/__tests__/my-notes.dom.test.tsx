@@ -175,8 +175,9 @@ describe("My notes", () => {
     };
     mount();
 
+    // The KPI buttons render before the notes load, reading "—"; wait for the counts themselves.
     const overdue = await screen.findByRole("button", { name: /^Overdue/ });
-    expect(within(overdue).getByText("2")).toBeTruthy();
+    expect(await within(overdue).findByText("2")).toBeTruthy();
     expect(within(screen.getByRole("button", { name: /^At Risk/ })).getByText("1")).toBeTruthy();
     expect(
       within(screen.getByText("Open Notes").parentElement as HTMLElement).getByText("5"),

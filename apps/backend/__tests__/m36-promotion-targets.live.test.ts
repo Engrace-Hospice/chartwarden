@@ -39,6 +39,7 @@ import {
   createDbEncounterRouteService,
   createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
+import { noWoundReader } from "../src/modules/08-encounters/wound-reader";
 import {
   type IdgWriteOutboxPort,
   createDbIdgBackend,
@@ -374,6 +375,8 @@ describe.skipIf(!DB_URL)(
         m8Outbox,
         CIPHERS,
         () => new Date(LIVE_NOW),
+        undefined,
+        noWoundReader, // no M9 is wired here: states no wounds by name (the production reader fails closed)
       );
       const m14Publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M14_OUTBOX_EVENTS]));
       const m14Outbox: IdgWriteOutboxPort = {

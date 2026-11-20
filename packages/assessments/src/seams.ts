@@ -14,4 +14,8 @@ export type {
   ScaleSeries,
   ScaleDelta,
   AssessmentCaptureContext,
+  WoundObservationView,
+  WoundProvider,
+  WoundReadActor,
+  WoundReadOptions,
 } from "@chartwarden/types";

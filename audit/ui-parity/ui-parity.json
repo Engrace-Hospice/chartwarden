@@ -544,6 +544,14 @@
       "app": "web",
       "module": "09-assessments",
       "moduleId": 9,
+      "id": "assessment.wounds",
+      "path": "/patients/:patientId/wounds",
+      "permission": "assessment.read"
+    },
+    {
+      "app": "web",
+      "module": "09-assessments",
+      "moduleId": 9,
       "id": "assessment.scale-licenses",
       "path": "/admin/scales/licenses",
       "permission": "assessment.license_read"

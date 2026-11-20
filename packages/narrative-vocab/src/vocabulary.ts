@@ -9,10 +9,52 @@
 // determinism depends on phrase stability).
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import { DRAFT_VOCABULARY } from "./draft-entries";
-import type { VocabEntry } from "./types";
+import type { SlotSpec, VocabEntry } from "./types";
 
-/** Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11). */
-export const VOCAB_VERSION = "narrative-vocab@2026.11.0";
+/**
+ * Slot constraints. They bound what a clinician may type, never the phrase bytes (D11 — see `SlotSpec`).
+ * Each `choice` option must read correctly inside its phrase: "requires moderate assistance with
+ * transfers", "has 2+ dependent edema", "limits ability to ambulate beyond 25 feet".
+ */
+const PAIN_SCORE: SlotSpec = { kind: "integer", min: 0, max: 10, label: "Pain score (0–10)" };
+const EDEMA_GRADE: SlotSpec = {
+  kind: "choice",
+  options: ["trace", "1+", "2+", "3+", "4+"],
+  label: "Edema grade",
+};
+// ponytail: the phrase says "via nasal cannula", whose practical ceiling is 6 L/min. Widen if a mask or
+// high-flow phrase is ever added, as its own entry.
+const O2_FLOW: SlotSpec = {
+  kind: "number",
+  min: 0.5,
+  max: 6,
+  unit: "L/min",
+  label: "Oxygen flow",
+};
+const ASSIST_LEVEL: SlotSpec = {
+  kind: "choice",
+  options: ["minimal", "moderate", "maximal", "total"],
+  label: "Assistance needed",
+};
+const WALK_DISTANCE: SlotSpec = {
+  kind: "choice",
+  options: ["5 feet", "10 feet", "25 feet", "50 feet", "100 feet"],
+  label: "Walking distance",
+};
+const WOUND_STAGE: SlotSpec = {
+  kind: "choice",
+  options: ["1", "2", "3", "4"],
+  label: "Pressure injury stage",
+};
+
+/** The reason a visit follows up a recorded fall: the one reason a fall can be linked to. */
+export const FALL_FOLLOWUP_CODE = "nv.reason.fall_followup";
+
+/**
+ * Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11).
+ * 2026.11.0 added the visit-note draft phrases (ADR-0114); 2026.11.1 adds the `visit_reason` entries.
+ */
+export const VOCAB_VERSION = "narrative-vocab@2026.11.1";
 
 /** Whether the named clinical reviewer has approved the corpus wording. */
 export type ClinicalReviewStatus = "pending" | "approved";
@@ -54,7 +96,73 @@ const CLINICAL_TYPES: readonly EncounterType[] = [
   "lpn_visit",
 ];
 
-/** The 23 entries shipped in narrative-vocab@2026.06.0 (never edited; ordering is load-bearing). */
+/** Visits a reason for visit is chosen on: what nurses and providers document, plus their phone visits. */
+const REASON_TYPES: readonly EncounterType[] = [...CLINICAL_TYPES, "telephonic"];
+
+/** Every visit type except the two that are not a clinician's own visit (a bereavement contact, an IDG follow-up). */
+const ALL_VISIT_TYPES: readonly EncounterType[] = [
+  ...REASON_TYPES,
+  "chha_visit",
+  "msw_assessment",
+  "msw_followup",
+  "chaplain_assessment",
+  "chaplain_visit",
+  "volunteer_visit",
+  "pt_visit",
+  "ot_visit",
+  "slp_visit",
+];
+const ALL_DISCIPLINES: readonly EncounterDiscipline[] = [
+  "rn",
+  "lpn",
+  "chha",
+  "msw",
+  "chaplain",
+  "volunteer",
+  "md",
+  "np",
+  "pt",
+  "ot",
+  "slp",
+];
+const THERAPY: readonly EncounterDiscipline[] = ["pt", "ot", "slp"];
+const THERAPY_TYPES: readonly EncounterType[] = ["pt_visit", "ot_visit", "slp_visit"];
+const SOCIAL_WORK_TYPES: readonly EncounterType[] = [
+  "msw_assessment",
+  "msw_followup",
+  "telephonic",
+];
+const CHAPLAIN_TYPES: readonly EncounterType[] = [
+  "chaplain_assessment",
+  "chaplain_visit",
+  "telephonic",
+];
+
+/**
+ * One "Reason for Visit" choice. All share a group, so a note carries exactly one primary reason. A reason
+ * is offered to nurses and providers on their visits unless it says otherwise.
+ */
+function reason(
+  code: string,
+  label: string,
+  phrase: string,
+  scope: {
+    readonly disciplines?: readonly EncounterDiscipline[];
+    readonly encounterTypes?: readonly EncounterType[];
+  } = {},
+): VocabEntry {
+  return {
+    code,
+    label,
+    phrase,
+    category: "visit_reason",
+    exclusiveGroup: "visit-reason",
+    disciplines: scope.disciplines ?? SKILLED,
+    encounterTypes: scope.encounterTypes ?? REASON_TYPES,
+  };
+}
+
+/** The 23 entries shipped in narrative-vocab@2026.06.0 (phrase bytes never edited; ordering is load-bearing). */
 const CORE_VOCABULARY: readonly VocabEntry[] = [
   // ── per-body-system observations ───────────────────────────────────────────────────────────────
   {
@@ -68,6 +176,7 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.cv.edema",
+    slotSpecs: { edema_grade: EDEMA_GRADE },
     label: "Cardiovascular — dependent edema present",
     phrase: "${patient} has ${edema_grade} dependent edema in the bilateral lower extremities",
     category: "observation",
@@ -77,6 +186,7 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.resp.unlabored",
+    exclusiveGroup: "respiratory-status",
     label: "Respiratory — unlabored, lungs clear",
     phrase: "${patient}'s respirations are unlabored and lung sounds are clear to auscultation",
     category: "observation",
@@ -86,6 +196,8 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.resp.dyspnea",
+    exclusiveGroup: "respiratory-status",
+    slotSpecs: { o2_lpm: O2_FLOW },
     label: "Respiratory — dyspnea on exertion",
     phrase:
       "${patient} reports dyspnea on exertion and uses oxygen at ${o2_lpm} L/min via nasal cannula",
@@ -96,6 +208,7 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.neuro.alert",
+    exclusiveGroup: "neurological-status",
     label: "Neurological — alert and oriented",
     phrase: "${patient} is alert and oriented to person, place, and time",
     category: "observation",
@@ -105,6 +218,7 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.neuro.decline",
+    exclusiveGroup: "neurological-status",
     label: "Neurological — increased somnolence",
     phrase: "${patient} demonstrates increased somnolence and is oriented to person only",
     category: "observation",
@@ -133,6 +247,7 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.integ.intact",
+    exclusiveGroup: "skin-status",
     label: "Integumentary — skin intact",
     phrase: "${patient}'s skin is intact, warm, and dry with no open areas noted",
     category: "observation",
@@ -142,6 +257,8 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.integ.wound",
+    exclusiveGroup: "skin-status",
+    slotSpecs: { wound_stage: WOUND_STAGE },
     label: "Integumentary — pressure injury present",
     phrase:
       "${patient} has a stage ${wound_stage} pressure injury at the ${wound_site}, dressed per orders",
@@ -152,6 +269,7 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.msk.limited",
+    slotSpecs: { assist_level: ASSIST_LEVEL },
     label: "Musculoskeletal — limited mobility",
     phrase:
       "${patient} has limited mobility and requires ${assist_level} assistance with transfers",
@@ -164,6 +282,8 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   // ── HOPE J2051-aligned symptom impact ──────────────────────────────────────────────────────────
   {
     code: "nv.sym.pain_controlled",
+    exclusiveGroup: "pain-status",
+    slotSpecs: { pain_score: PAIN_SCORE },
     label: "Symptom impact — pain controlled on current regimen",
     phrase:
       "${patient}'s pain is well controlled at ${pain_score} of 10 on the current medication regimen",
@@ -173,6 +293,8 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.sym.pain_uncontrolled",
+    exclusiveGroup: "pain-status",
+    slotSpecs: { pain_score: PAIN_SCORE },
     label: "Symptom impact — pain limiting function",
     phrase:
       "${patient} reports pain at ${pain_score} of 10 that limits participation in daily activities",
@@ -182,6 +304,7 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.sym.dyspnea_impact",
+    slotSpecs: { ambulation_distance: WALK_DISTANCE },
     label: "Symptom impact — dyspnea limiting function",
     phrase: "Dyspnea limits ${patient}'s ability to ambulate beyond ${ambulation_distance}",
     category: "symptom_impact",
@@ -278,5 +401,191 @@ const CORE_VOCABULARY: readonly VocabEntry[] = [
   },
 ] as const;
 
-/** The curated corpus (ordering is stable and load-bearing for byte-identical assembly). */
-export const VOCABULARY: readonly VocabEntry[] = [...CORE_VOCABULARY, ...DRAFT_VOCABULARY];
+/** The `visit_reason` entries added in narrative-vocab@2026.11.1 (appended after the draft entries; never edited). */
+const VISIT_REASON_VOCABULARY: readonly VocabEntry[] = [
+  // ── visit reasons (2026.11.1) — the "Reason for Visit" choice; one per note, details go in free text ─
+  reason(
+    "nv.reason.routine",
+    "Routine scheduled visit",
+    "this is a routine scheduled visit per the plan of care",
+    { disciplines: ALL_DISCIPLINES, encounterTypes: ALL_VISIT_TYPES },
+  ),
+  reason(
+    FALL_FOLLOWUP_CODE,
+    "Follow-up after a fall",
+    "this visit is a follow-up after a recent fall",
+    {
+      disciplines: [...SKILLED, "pt", "ot"],
+      encounterTypes: [...REASON_TYPES, "pt_visit", "ot_visit"],
+    },
+  ),
+  reason(
+    "nv.reason.pain",
+    "Pain assessment and management",
+    "this visit is for pain assessment and management",
+  ),
+  reason(
+    "nv.reason.symptom_change",
+    "New or changing symptom",
+    "this visit is for a new or changing symptom",
+  ),
+  reason(
+    "nv.reason.condition_change",
+    "Decline or change in condition",
+    "this visit is for a decline or change in condition",
+    {
+      disciplines: [...SKILLED, "msw", "chaplain", ...THERAPY],
+      encounterTypes: [...REASON_TYPES, ...SOCIAL_WORK_TYPES, ...CHAPLAIN_TYPES, ...THERAPY_TYPES],
+    },
+  ),
+  reason(
+    "nv.reason.medication",
+    "Medication review or change",
+    "this visit is for medication review or a medication change",
+  ),
+  reason("nv.reason.wound", "Wound or skin care", "this visit is for wound or skin care"),
+  reason(
+    "nv.reason.post_hospital",
+    "Follow-up after ER visit or hospital stay",
+    "this visit follows an emergency department visit or hospital stay",
+    {
+      disciplines: [...SKILLED, "msw"],
+      encounterTypes: [...REASON_TYPES, ...SOCIAL_WORK_TYPES],
+    },
+  ),
+  reason(
+    "nv.reason.caregiver",
+    "Caregiver concern",
+    "this visit is to address a caregiver concern",
+    {
+      disciplines: ALL_DISCIPLINES.filter((d) => d !== "volunteer"),
+      encounterTypes: ALL_VISIT_TYPES.filter((t) => t !== "volunteer_visit"),
+    },
+  ),
+  reason(
+    "nv.reason.family_request",
+    "Patient or family request",
+    "this visit was requested by the patient or family",
+    { disciplines: ALL_DISCIPLINES, encounterTypes: ALL_VISIT_TYPES },
+  ),
+
+  // ── visit reasons for the other disciplines (2026.11.1) ────────────────────────────────────────────
+  reason("nv.reason.personal_care", "Personal care", "this visit is for personal care", {
+    disciplines: ["chha"],
+    encounterTypes: ["chha_visit"],
+  }),
+  reason("nv.reason.respite", "Caregiver respite", "this visit is to give the caregiver a break", {
+    disciplines: ["chha", "volunteer"],
+    encounterTypes: ["chha_visit", "volunteer_visit"],
+  }),
+  reason(
+    "nv.reason.psychosocial",
+    "Psychosocial assessment",
+    "this visit is for a psychosocial assessment",
+    { disciplines: ["msw"], encounterTypes: SOCIAL_WORK_TYPES },
+  ),
+  reason(
+    "nv.reason.advance_care_planning",
+    "Advance care planning",
+    "this visit is for advance care planning",
+    { disciplines: ["msw"], encounterTypes: SOCIAL_WORK_TYPES },
+  ),
+  reason(
+    "nv.reason.resources",
+    "Financial or resource need",
+    "this visit is to address a financial or resource need",
+    { disciplines: ["msw"], encounterTypes: SOCIAL_WORK_TYPES },
+  ),
+  reason(
+    "nv.reason.grief",
+    "Anticipatory grief support",
+    "this visit is for anticipatory grief support",
+    {
+      disciplines: ["msw", "chaplain"],
+      encounterTypes: [...SOCIAL_WORK_TYPES, ...CHAPLAIN_TYPES],
+    },
+  ),
+  reason("nv.reason.crisis", "Crisis intervention", "this visit is for crisis intervention", {
+    disciplines: ["msw", "chaplain"],
+    encounterTypes: [...SOCIAL_WORK_TYPES, ...CHAPLAIN_TYPES],
+  }),
+  reason(
+    "nv.reason.spiritual_assessment",
+    "Spiritual assessment",
+    "this visit is for a spiritual assessment",
+    { disciplines: ["chaplain"], encounterTypes: CHAPLAIN_TYPES },
+  ),
+  reason(
+    "nv.reason.spiritual_support",
+    "Spiritual support",
+    "this visit is for spiritual support",
+    { disciplines: ["chaplain"], encounterTypes: CHAPLAIN_TYPES },
+  ),
+  reason(
+    "nv.reason.ritual",
+    "Ritual or sacrament",
+    "this visit is for a requested ritual or sacrament",
+    { disciplines: ["chaplain"], encounterTypes: CHAPLAIN_TYPES },
+  ),
+  reason("nv.reason.companionship", "Companionship", "this visit is for companionship", {
+    disciplines: ["volunteer"],
+    encounterTypes: ["volunteer_visit"],
+  }),
+  reason("nv.reason.practical_help", "Practical help", "this visit is to provide practical help", {
+    disciplines: ["volunteer"],
+    encounterTypes: ["volunteer_visit"],
+  }),
+  reason("nv.reason.vigil", "Bedside vigil", "this visit is for a bedside vigil", {
+    disciplines: ["volunteer"],
+    encounterTypes: ["volunteer_visit"],
+  }),
+  reason(
+    "nv.reason.therapy_evaluation",
+    "Therapy evaluation",
+    "this visit is for a therapy evaluation",
+    { disciplines: THERAPY, encounterTypes: THERAPY_TYPES },
+  ),
+  reason(
+    "nv.reason.function_change",
+    "Change in mobility or function",
+    "this visit is for a change in mobility or function",
+    { disciplines: THERAPY, encounterTypes: THERAPY_TYPES },
+  ),
+  reason(
+    "nv.reason.home_safety",
+    "Home safety assessment",
+    "this visit is for a home safety assessment",
+    { disciplines: ["pt", "ot"], encounterTypes: ["pt_visit", "ot_visit"] },
+  ),
+  reason(
+    "nv.reason.caregiver_training",
+    "Caregiver training",
+    "this visit is for caregiver training",
+    {
+      disciplines: THERAPY,
+      encounterTypes: THERAPY_TYPES,
+    },
+  ),
+  reason(
+    "nv.reason.swallowing",
+    "Swallowing assessment",
+    "this visit is for a swallowing assessment",
+    { disciplines: ["slp"], encounterTypes: ["slp_visit"] },
+  ),
+  reason(
+    "nv.reason.communication",
+    "Communication assessment",
+    "this visit is for a communication assessment",
+    { disciplines: ["slp"], encounterTypes: ["slp_visit"] },
+  ),
+] as const;
+
+/**
+ * The curated corpus: the 23 core entries, then the 2026.11.0 draft entries, then the 2026.11.1 visit
+ * reasons. Each release only appends (ordering is stable and load-bearing for byte-identical assembly).
+ */
+export const VOCABULARY: readonly VocabEntry[] = [
+  ...CORE_VOCABULARY,
+  ...DRAFT_VOCABULARY,
+  ...VISIT_REASON_VOCABULARY,
+];
