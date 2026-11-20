@@ -58,6 +58,7 @@ import type {
   VitalsDraftInput,
   WeightDraftInput,
 } from "./types";
+import type { CaregiverRelationship } from "./validate";
 import {
   DraftInputError,
   WEIGHT_UNITS,
@@ -522,7 +523,7 @@ const ADMISSION_CODES = {
 } as const;
 
 /** The words for M5's caregiver relationships (`patient_caregiver.relationship`); a value it does not hold is a malformed input. */
-const RELATIONSHIP_WORDS: Readonly<Record<string, string>> = {
+const RELATIONSHIP_WORDS: Readonly<Record<CaregiverRelationship, string>> = {
   spouse: "spouse",
   child: "child",
   parent: "parent",
@@ -691,7 +692,10 @@ const ROUTINE_SECTION_PHRASES: Readonly<Record<string, readonly string[]>> = {
  * drafted. The recertification and the face-to-face visit have maps of their own; every other template is read as the routine visit
  * (S1), so tagging those phrases for another pair is still all it takes to make that pair draft.
  */
-const SECTION_PHRASES: ReadonlyMap<string, Readonly<Record<string, readonly string[]>>> = new Map([
+const SECTION_PHRASES: ReadonlyMap<string, Readonly<Record<string, readonly string[]>>> = new Map<
+  string,
+  Readonly<Record<string, readonly string[]>>
+>([
   [
     templateKey("recert_visit", "rn"),
     {

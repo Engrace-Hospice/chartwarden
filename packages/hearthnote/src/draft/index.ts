@@ -32,7 +32,8 @@ export { compileDraft } from "./compile";
 export {
   draftedSectionIds,
   emptyDraft,
+  readsAdmissionRecord,
   readsBenefitPeriod,
   templateHasDraftedSection,
 } from "./scope";
-export { DraftInputError, isWeightUnit } from "./validate";
+export { DraftInputError, isCaregiverRelationship, isWeightUnit } from "./validate";

@@ -5,6 +5,7 @@
 // already-read, already-redacted-for-this-author records; the backend does the as-of reads (VN-D11).
 import type { EncounterDiscipline, EncounterType, ScaleType } from "@chartwarden/types";
 import type { AssemblyContext, SelectionState } from "../assembly/types";
+import type { CaregiverRelationship } from "./validate";
 
 /** What a drafted sentence was built from. Source ids go to the audit trail only (VN-D7). */
 export type DraftSourceKind =
@@ -167,16 +168,7 @@ export interface MedicationOrderInput extends DraftSourceBase {
   readonly asNeeded: boolean;
 }
 
-/** The relationship words M5 records on a patient-caregiver link (`patient_caregiver.relationship`). */
-export type CaregiverRelationship =
-  | "spouse"
-  | "child"
-  | "parent"
-  | "sibling"
-  | "other_family"
-  | "friend"
-  | "guardian"
-  | "paid_caregiver";
+export type { CaregiverRelationship };
 
 /** One caregiver on record on the service date (M5): the name and the relationship, never a contact detail (S2b). */
 export interface CaregiverInput extends DraftSourceBase {
