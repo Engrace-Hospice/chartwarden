@@ -26,6 +26,7 @@ import type { JSX } from "react";
 import { type DeviceView, deviceActions } from "./evv-api";
 import { type DeviceAction, DeviceActionModal } from "./evv-modals";
 import { EVV_DEVICE_TONE, stateLabel } from "./evv-shared";
+import { EvvWorkspaceNav } from "./workspace-nav";
 
 interface DeviceRow {
   id: string;
@@ -131,6 +132,7 @@ export function EvvDeviceRoster({
       <WorkQueueLayout
         header={
           <PageHeader title={title.replace("—", "-")}>
+            <EvvWorkspaceNav />
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               {isMine
                 ? "Review your registered EVV devices and approval status."

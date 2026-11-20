@@ -15,7 +15,7 @@ release cannot change the rendered text of an already-signed note. `encounter.vo
 `hearthnote_assembled_output.vocab_version_id` hold it.
 
 The column is a `uuid`. The narrative corpus versions itself as a **string** —
-`@chartwarden/narrative-vocab`'s `VOCAB_VERSION`, currently `narrative-vocab@2026.06.0`. Nothing bridged
+`@chartwarden/narrative-vocab`'s `VOCAB_VERSION`, a string such as `narrative-vocab@2026.06.0`. Nothing bridged
 the two, so finalize wrote a fixed sentinel — `00000000-0000-4000-8000-0000000000d8` — onto **every
 encounter the platform has ever finalized**. It satisfied the `encounter_vocab_pinned_when_finalized`
 CHECK and the `m8.encounter.finalized` payload's required `vocabVersionId`, and identified nothing.

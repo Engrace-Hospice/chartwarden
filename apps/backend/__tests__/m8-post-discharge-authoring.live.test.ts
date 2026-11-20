@@ -34,6 +34,7 @@ import {
   createDbEncounterRouteService,
   createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
+import { noWoundReader } from "../src/modules/08-encounters/wound-reader";
 import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
@@ -236,7 +237,14 @@ describe.skipIf(!DB_URL)("M8 post-discharge authoring guard — LIVE Postgres (S
     const outbox: EncounterWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m8" }),
     };
-    svc = createDbEncounterRouteService(handle.db, outbox, CIPHERS, () => new Date(LIVE_NOW));
+    svc = createDbEncounterRouteService(
+      handle.db,
+      outbox,
+      CIPHERS,
+      () => new Date(LIVE_NOW),
+      undefined,
+      noWoundReader, // no M9 is wired here: states no wounds by name (the production reader fails closed)
+    );
   }, 120_000);
 
   afterAll(async () => {

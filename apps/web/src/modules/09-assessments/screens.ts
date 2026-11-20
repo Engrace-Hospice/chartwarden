@@ -36,6 +36,9 @@ const ScaleTrend = lazy(() => import("./scale-trend").then((m) => ({ default: m.
 const SignificantChangeInbox = lazy(() =>
   import("./significant-change-inbox").then((m) => ({ default: m.SignificantChangeInbox })),
 );
+const WoundRegistry = lazy(() =>
+  import("./wounds/wound-registry").then((m) => ({ default: m.WoundRegistry })),
+);
 
 export const assessmentScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 9,
@@ -80,6 +83,15 @@ export const assessmentScreens: ScreenRegistryModule<ComponentType> = {
       title: "Assessment Summary",
       requiredPermission: "assessment.read_summary",
       screen: AssessmentSummary,
+    },
+    {
+      // The patient's longitudinal wounds (register, observe, correct, close) — reached from the patient chart; param path (no nav).
+      // Gated on `assessment.read` like every patient-scoped M9 read; the writes are the server's `assessment.author` / `.amend`.
+      id: "assessment.wounds",
+      path: "/patients/:patientId/wounds",
+      title: "Wounds",
+      requiredPermission: "assessment.read",
+      screen: WoundRegistry,
     },
     {
       // Scale-license registry — org-admin top-level surface.

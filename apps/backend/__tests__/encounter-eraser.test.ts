@@ -15,6 +15,7 @@ import { wireModuleErasers, wireModuleSeams } from "../src/index";
 import { ENCOUNTER_ERASED_REASON } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
   type EncounterEraseCounts,
+  createDrizzleEncounterEraseStore,
   eraseEncounterRecord,
   createInMemoryEncounterEraseStore as makeEraseStore,
   registerEncounterErasers,
@@ -32,6 +33,8 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       cosignatureRequests: 1,
       vitals: 4,
       mileage: 1,
+      adlRecords: 2,
+      nutritionRecords: 3,
       hearthnoteSelections: 5,
       hearthnoteAssembledOutputs: 2,
       hearthnoteLlmModifications: 1,
@@ -41,9 +44,12 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       addendumCosignatureRequests: 1,
     });
     const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
-    expect(erased).toBe(34); // 32 satellites + 2 tombstoned roots
+    expect(erased).toBe(39); // 37 satellites + 2 tombstoned roots
     expect(counts.vitals).toBe(4);
     expect(counts.tombstonedRoots).toBe(2);
+    // The recorded ADLs and nutrition are counted: the encounter root is only tombstoned, so no cascade would remove them.
+    expect(counts.adlRecords).toBe(2);
+    expect(counts.nutritionRecords).toBe(3);
     // ADR-0114: the draft's confirmations and the sealed per-section rows go with the rest of the encounter subtree.
     expect(counts.draftConfirmations).toBe(3);
     expect(counts.signedSections).toBe(6);
@@ -89,6 +95,8 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
       cosignatureRequests: 0,
       vitals: 0,
       mileage: 0,
+      adlRecords: 0,
+      nutritionRecords: 0,
       hearthnoteSelections: 0,
       hearthnoteAssembledOutputs: 0,
       hearthnoteLlmModifications: 0,
@@ -137,6 +145,33 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
     const r = await getEraser("encounter_record").erase({ orgId: "org_a" }, "pat_unseeded");
     expect(r.erased).toBe(0);
     await app.close();
+  });
+});
+
+describe("M8-T12 — the tombstone scrubs everything about the destroyed patient the root still holds", () => {
+  it("nulls the fall link (incident id and date) and voids the root with the one content-free reason", async () => {
+    // A scripted `db`: the tombstone is one UPDATE inside a tenant transaction, so capture the values it sets.
+    let set: Record<string, unknown> | undefined;
+    const tx = {
+      execute: async () => [],
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          set = values;
+          return { where: () => ({ returning: async () => [] }) };
+        },
+      }),
+    };
+    const db = { transaction: async (run: (tx: unknown) => unknown) => run(tx) };
+
+    await createDrizzleEncounterEraseStore(db as never).tombstoneEncounters("org_a", "pat_1");
+
+    expect(set).toMatchObject({
+      status: "voided",
+      fallIncidentId: null,
+      fallOccurredOn: null,
+      voidedReason: ENCOUNTER_ERASED_REASON,
+    });
+    expect((set?.voidedReason as string).length).toBeGreaterThanOrEqual(40); // encounter_voided_consistency
   });
 });
 

@@ -98,6 +98,11 @@ export const encounters = pgTable(
 
     faceToFaceEncounterId: uuid("face_to_face_encounter_id"), // M6 face_to_face_encounter for F2F dual-write (D1)
     bereavementPlanId: uuid("bereavement_plan_id"), // M16 bereavement_plan for bereavement_contact
+    // The fall a "follow-up after a fall" visit follows up (migration 1517). The id is a logical, app-validated M30
+    // incident_report (kind 'fall'); the date is that incident's org-local date COPIED at link time, so the note keeps
+    // saying the same thing whatever later happens to the report. Both NULL = no fall linked.
+    fallIncidentId: uuid("fall_incident_id"),
+    fallOccurredOn: date("fall_occurred_on"),
 
     documentId: uuid("document_id"), // back-reference to the M22-rendered PDF when M22 publishes
 

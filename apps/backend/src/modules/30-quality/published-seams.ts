@@ -8,7 +8,10 @@ import type { DbClient } from "@chartwarden/db";
 // events, with no read path to the measure ledger, the incident register, QAPI, CoP status, or the SRA
 // posture.
 //
-// GAP-066 — WHO CONSUMES THIS TODAY: nobody. The four consumers this file used to name (M22's quality
+// WHO CONSUMES THIS TODAY: one seam, one call. M8 (Encounters) reads `IncidentRegisterProvider.listIncidents` for a patient's recorded
+// falls, so a "follow-up after a fall" visit note can link the fall it follows up (WF09); it takes the id, date and severity only.
+//
+// GAP-066 — EVERY OTHER SEAM HERE HAS NO CONSUMER YET. The four consumers this file used to name (M22's quality
 // report, M28's FHIR MeasureReport/AdverseEvent, M33's executive dashboards, M34's FY-rollover tenant
 // gate) are unbuilt FEATURES, not unwired bindings — none of those surfaces exists. The impls below are
 // live and tested against the M1 registry; they are simply the read path a future consumer will use.

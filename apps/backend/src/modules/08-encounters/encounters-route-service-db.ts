@@ -20,7 +20,11 @@
 // Layer-2 rows are persisted through the `hearthnote_selection` / `hearthnote_assembled_output` tables.
 import { isStepUpRecent } from "@chartwarden/auth";
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
-import { templateKey as hearthnoteTemplateKey, requiredScalesFor } from "@chartwarden/hearthnote";
+import {
+  type RecordedWound,
+  templateKey as hearthnoteTemplateKey,
+  requiredScalesFor,
+} from "@chartwarden/hearthnote";
 import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@chartwarden/narrative-vocab";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -63,6 +67,7 @@ import {
   planF2fDualWrite,
   planMileageCapture,
   planVitalsCapture,
+  unitlessMeasurements,
 } from "./authoring/index";
 import {
   CHART_PROMOTION_DECIDED_EVENT,
@@ -76,7 +81,7 @@ import {
   clampClockStart,
   isValidServiceDate,
   localDayStart,
-  stampClockIfNull,
+  stampDraftOpened as stampDraftOpenedAt,
 } from "./closure/clock-stamp";
 import { myNotesOf } from "./closure/my-notes";
 import { OPEN_NOTE_STATUS_LIST_SQL } from "./closure/open-status";
@@ -107,13 +112,17 @@ import { readPinnedNote } from "./drafting/pinned-note";
 import { isVisitNoteDraftEnabled } from "./drafting/policy-service";
 import type { DraftSeamPorts, DraftViewer } from "./drafting/ports";
 import { createWorkspaceReader } from "./drafting/workspace-read";
+import { loadEncounterRow } from "./encounter-row";
 import { deriveEvvAtSign } from "./evv-at-sign";
+import { seamFallIncidentReader } from "./fall-incident-reader";
+import { loadRecordedRecords } from "./findings/index";
 import {
   type GateSectionSelection,
   assertGatePassed,
   deriveVitalsGateFacts,
   runAddendumComplianceGate,
   runEncounterComplianceGate,
+  sectionsPopulatedByFindings,
 } from "./gate/index";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
 import {
@@ -144,6 +153,14 @@ import {
   checkVersion,
   checkVocabVersion,
 } from "./lifecycle/validation";
+import { createNoteFactsReader } from "./note-facts";
+import { type FallIncidentReader, nextFallLink } from "./routes/fall-link";
+import {
+  type NarrativeEdit,
+  finalNarrative,
+  isStaleEdit,
+  nextNarrativeEdit,
+} from "./routes/narrative-edit";
 import { toVitalsView } from "./routes/service";
 import type {
   CarePlanLinkView,
@@ -153,7 +170,7 @@ import type {
   EncounterView,
   SelectionSectionInput,
 } from "./routes/service";
-import { assembleSelections, buildTemplateMenu } from "./routes/service";
+import { assembleSelections, assertSelectionsValid, buildTemplateMenu } from "./routes/service";
 import {
   getCarePlanReader,
   getCareTeamProvider,
@@ -161,6 +178,7 @@ import {
   getLatestAssessmentProvider,
 } from "./seams/index";
 import { type StoredSelectionSection, openStoredProse, storedSections } from "./selection-tree";
+import { persistSelections, pinnedOutputFor, selectionsViewOf } from "./selections-store";
 import {
   assertModalityFitsVisitType,
   confirmedModalityColumns,
@@ -168,6 +186,7 @@ import {
   evvTimesAtSign,
   planDeliveryAtSign,
 } from "./visit-delivery";
+import { type WoundNoteReader, seamWoundReader } from "./wound-reader";
 
 const ENC = schema.encounters;
 const LINK = schema.encounterCarePlanLinks;
@@ -471,6 +490,8 @@ export function createDbEncounterRouteService(
   outbox: EncounterWriteOutboxPort = NOOP_OUTBOX,
   ciphers?: HearthnoteCiphers,
   clock: () => Date = () => new Date(),
+  fallReader: FallIncidentReader = seamFallIncidentReader,
+  woundReader: WoundNoteReader = seamWoundReader,
   /** ADR-0114: the seam-backed half of the visit-note draft the gate and sign read (M7, M9, M12, M39); the M1-registry wiring by default. */
   draftSeams: () => DraftSeamPorts = defaultDraftPorts,
 ): EncounterRouteService {
@@ -478,15 +499,11 @@ export function createDbEncounterRouteService(
   const orgLocalToday = async (t: DbClient, organizationId: string): Promise<LocalDate> =>
     localDateInTimeZone(clock(), await organizationTimezone(t, organizationId)) as LocalDate;
 
-  /**
-   * ADR-0113: a seeded draft that never got an M17 start event gets its documentation clock on the AUTHOR's first
-   * authoring write (and at sign, so a signed note always has one). Only the author's own write counts: the clock is the
-   * author's duty, so an edit by anyone else (a supervisor on `IS_AUTHOR_OR_SUPERVISOR` routes) never starts it, and a
-   * legacy (pre-deploy, clockless) draft is not clocked by someone else touching it (D9). A `null` `actorMembershipId`
-   * (a caller with no acting member) stamps nothing. Write-once and open-notes-only in the UPDATE itself; the
-   * row's own `clockStartedAt` just skips the round trip once it is set. A GET never calls this.
-   */
-  const stampDraftOpened = async (
+  /** The WF09 note facts (vitals, ADLs, nutrition, wounds, linked fall): one reader over the database and the M9/M30 seams. */
+  const noteFacts = createNoteFactsReader({ db, woundReader, fallReader });
+
+  /** ADR-0113: the author's first authoring write starts a seeded draft's closure clock; see the shared `stampDraftOpened`. */
+  const stampDraftOpened = (
     t: DbClient,
     organizationId: string,
     row: {
@@ -495,16 +512,8 @@ export function createDbEncounterRouteService(
       readonly authoredByMembershipId: string;
     },
     actorMembershipId: string | null,
-  ): Promise<void> => {
-    if (row.clockStartedAt !== null) return;
-    if (actorMembershipId === null || actorMembershipId !== row.authoredByMembershipId) return;
-    await stampClockIfNull(t, {
-      orgId: organizationId,
-      encounterId: row.id,
-      at: clock(),
-      source: "draft_opened",
-    });
-  };
+  ): Promise<void> =>
+    stampDraftOpenedAt(t, { organizationId, row, actorMembershipId, at: clock() });
 
   /**
    * ADR-0113 D1: what a note's clock does at CREATION. The clock starts at ARRIVAL, so a visit-linked note follows the visit, but a
@@ -701,6 +710,42 @@ export function createDbEncounterRouteService(
     );
   }
 
+  // ── The author's edit of the note text (WF09) ──────────────────────────────────────────────────────
+  //
+  // The edit is the clinician's own words about one patient, so it is sealed in the SAME envelope as their verbatim prose
+  // (`free_text_cipher`, §3.6): under two reserved keys that no template section id can equal, beside the per-section prose. That
+  // keeps it inside what the audit trigger already scrubs and what the §3.6 eraser already shreds, with no second PHI column.
+  const EDIT_TEXT_KEY = "@narrative";
+  const EDIT_BASIS_KEY = "@narrative_basis";
+  const editProse = (edit: NarrativeEdit | null): Record<string, string> =>
+    edit === null ? {} : { [EDIT_TEXT_KEY]: edit.text, [EDIT_BASIS_KEY]: edit.basisHash };
+
+  /** The stored edit, or null when there is none (or no cipher is bound to open it). */
+  async function openEdit(
+    organizationId: string,
+    row: { freeTextCipher: string | null },
+  ): Promise<NarrativeEdit | null> {
+    if (row.freeTextCipher === null || !freeTextCipher) return null;
+    const prose = JSON.parse(
+      await withTenantDek("the clinician's note text could not be opened", () =>
+        freeTextCipher.open(organizationId, row.freeTextCipher as string),
+      ),
+    ) as Record<string, string>;
+    const text = prose[EDIT_TEXT_KEY];
+    const basisHash = prose[EDIT_BASIS_KEY];
+    return text === undefined || basisHash === undefined ? null : { text, basisHash };
+  }
+
+  /** The edit stored on one encounter's draft, or null. */
+  async function storedEditFor(
+    t: DbClient,
+    organizationId: string,
+    encounterId: string,
+  ): Promise<NarrativeEdit | null> {
+    const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
+    return row ? await openEdit(organizationId, row) : null;
+  }
+
   // ── §2.6 Layer-3 compliance gate (#121) ───────────────────────────────────────────────────────────
   //
   // The gate itself is pure (./gate); this resolves the facts it decides over. Both write paths that
@@ -785,10 +830,16 @@ export function createDbEncounterRouteService(
       .from(VITALS)
       .where(eq(VITALS.encounterId, r.id));
     const { captured, clinicallyNotIndicated } = deriveVitalsGateFacts(vitalsRows);
+    // Only which records exist: the gate never needs the prior-weight history the previews read.
+    const findings = await loadRecordedRecords(t, {
+      organizationId: r.organizationId,
+      encounterId: r.id,
+    });
     const verdict = runEncounterComplianceGate({
       encounterType: r.encounterType,
       discipline: r.discipline,
       sections: gateSections(sel?.selections ?? null),
+      findingSections: sectionsPopulatedByFindings(r.encounterType, r.discipline, findings),
       carePlanOverdue: await carePlanOverdueFor(r.patientId),
       vitalsCaptured: captured,
       vitalsClinicallyNotIndicated: clinicallyNotIndicated,
@@ -897,6 +948,8 @@ export function createDbEncounterRouteService(
       readonly discipline: EncounterView["discipline"];
       readonly serviceDate: string;
       readonly vocabVersionId: string;
+      /** The wounds recorded on the visit, read before the transaction opened. A primary note states them; an addendum states none. */
+      readonly wounds?: readonly RecordedWound[];
       /** ADR-0114: the note's text when the visit-note draft is on (the confirmed draft and the clinician's own selections); absent, Layer 1 from the selections. */
       readonly narrative?: string;
       /** ADR-0114: that text carries a Part 2 derived section (`hearthnote_assembled_output.part2_derived`). */
@@ -916,9 +969,39 @@ export function createDbEncounterRouteService(
         ? { encounterId: input.encounterId as string }
         : { addendumId: input.addendumId },
     );
+    // WF09 — the finalize-time completeness rule, on the one path both primary notes and addenda persist
+    // through. It runs inside the finalize transaction, so a refusal rolls the whole transition back.
+    assertSelectionsValid(sections, { requireComplete: true });
+    // ADR-0114: with the visit-note draft on, the note's text is the confirmed draft (`input.narrative`). Otherwise it is Layer 1, where the
+    // primary note states the visit's recorded facts as they stand at this moment; the narrative is pinned below, so a later edit never
+    // rewrites a finalized note. An addendum states none: it amends, it does not re-measure.
     const layer1 =
       input.narrative ??
-      assembleSelections(input.encounterType, input.discipline, input.serviceDate, sections);
+      assembleSelections(
+        input.encounterType,
+        input.discipline,
+        input.serviceDate,
+        sections,
+        VOCAB_VERSION,
+        input.addendumId === null
+          ? await noteFacts.factsFor(
+              t,
+              organizationId,
+              await loadEnc(t, input.encounterId as string),
+              input.wounds ?? [],
+            )
+          : undefined,
+      );
+    // The author's own edit of the note text is what is signed, kept beside the generated text and flagged. Only a primary note has
+    // one (an addendum amends, it is not edited), and an edit the note has moved away from refuses here (409), inside the finalize
+    // transaction, so nothing is pinned. With the draft on the generated text is the draft's, which an edit made against the selections'
+    // Layer 1 never matches: it refuses as stale rather than being dropped.
+    const edited = finalNarrative(
+      layer1,
+      input.addendumId === null
+        ? await storedEditFor(t, organizationId, input.encounterId as string)
+        : null,
+    );
     // D5's finalize-time reification, through the module's own shipped ladder rather than a literal.
     // Phase 1: the platform flag is off, so this is `kill_switch_active` / `enhanced: false` / final === layer1.
     const outcome = layer2OutcomeFor(layer1, input.part2Derived === true);
@@ -927,7 +1010,10 @@ export function createDbEncounterRouteService(
       () =>
         Promise.all([
           narrativeCipher.seal(organizationId, outcome.layer1),
-          narrativeCipher.seal(organizationId, outcome.final),
+          narrativeCipher.seal(
+            organizationId,
+            edited.clinicianEdited ? edited.final : outcome.final,
+          ),
         ]),
     );
     await t.insert(OUT).values({
@@ -939,6 +1025,7 @@ export function createDbEncounterRouteService(
       kind: input.kind,
       layer1Cipher,
       finalCipher,
+      clinicianEdited: edited.clinicianEdited,
       // The layer2 pair is derived from the outcome, never asserted: the `hearthnote_output_layer2_consistency`
       // CHECK requires cipher-and-flag to agree, and deriving both from one value is what keeps them agreeing
       // when Layer 2 becomes reachable.
@@ -1183,16 +1270,26 @@ export function createDbEncounterRouteService(
    * they run one after the other and each reads what the one before it committed. Without it a section PUT could commit between sign's
    * draft read and sign's UPDATE, and sign would seal sentences the PUT had just deselected; two signs would both read `finalized`.
    * `NO KEY UPDATE` rather than `UPDATE` so the foreign-key checks of the satellite inserts (vitals, mileage, signatures) still run.
+   * The findings PUT (ADLs, nutrition) takes the same lock, so it serialises with finalize (see ./encounter-row).
    */
-  async function loadEnc(
+  const loadEnc = (
     t: DbClient,
     encounterId: string,
     opts: { readonly lock?: boolean } = {},
-  ): Promise<typeof ENC.$inferSelect> {
-    const query = t.select().from(ENC).where(eq(ENC.id, encounterId)).limit(1);
-    const [row] = opts.lock ? await query.for("no key update") : await query;
-    if (!row) throw new NotFoundError("encounter");
-    return row;
+  ): Promise<typeof ENC.$inferSelect> =>
+    loadEncounterRow(t, encounterId, undefined, opts.lock ? "no key update" : undefined);
+
+  /**
+   * The wounds recorded on this encounter's visit, for the note to state. M9's seam opens its own tenant context, so it is read OUTSIDE
+   * any open transaction: callers read it first and hand the result to `noteFacts.factsFor`. Only an UNPINNED note needs it: a pinned
+   * note is its pin, and never reads a wound again.
+   */
+  async function woundsForNote(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<readonly RecordedWound[]> {
+    const patientId = await patientOfEncounter(organizationId, encounterId);
+    return noteFacts.woundsFor({ organizationId, encounterId, patientId });
   }
 
   /** After the row lock: an encounter another request has already moved on is a 409 here, not an error deep in the transition. */
@@ -1467,20 +1564,64 @@ export function createDbEncounterRouteService(
     });
   }
 
+  /**
+   * The pinned note's texts for a selections preview. That read has no viewer, so it is a document consumer: never entitled to 42 CFR
+   * Part 2 text (ADR-0114 VN-D13). A pin with no Part 2 derived section is opened as sealed; one that carries it reads through the
+   * per-viewer note view, with those sections withheld (the sealed layer-1 text is never opened for it).
+   */
+  async function pinnedPreviewTexts(
+    t: DbClient,
+    organizationId: string,
+    patientId: string,
+    encounterId: string,
+    pin: {
+      readonly layer1Cipher: string;
+      readonly finalCipher: string;
+      readonly part2Derived: boolean;
+    },
+  ): Promise<{ readonly layer1: string; readonly final: string }> {
+    const open = openPinned(organizationId);
+    if (!pin.part2Derived) {
+      return { layer1: await open(pin.layer1Cipher), final: await open(pin.finalCipher) };
+    }
+    const note = await readPinnedNote(t, encounterId, {
+      open,
+      entitled: part2Entitlement(organizationId, patientId, null),
+    });
+    const text = note?.text ?? "";
+    return { layer1: text, final: text };
+  }
+
   return {
     // ── Encounter reads ────────────────────────────────────────────────────────────────────────────
     async getEncounter(organizationId, encounterId, viewer = ANONYMOUS_VIEWER) {
-      const { row, rows } = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const t = tx as unknown as DbClient;
-        const [r] = await t.select(encounterCols).from(ENC).where(eq(ENC.id, encounterId)).limit(1);
-        if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
-        return { row: r, rows: await workspace.rowsFor(t, encounterId) };
-      });
+      const { row, rows, edited } = await withOrgContext(
+        db,
+        { organizationId, userId: "" },
+        async (tx) => {
+          const t = tx as unknown as DbClient;
+          const [r] = await t
+            .select(encounterCols)
+            .from(ENC)
+            .where(eq(ENC.id, encounterId))
+            .limit(1);
+          if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
+          return {
+            row: r,
+            rows: await workspace.rowsFor(t, encounterId),
+            // WF09: whether the pinned text is the author's own edit (a flag only; the text goes through the per-viewer Part 2 view).
+            edited: narrativeCipher
+              ? ((await pinnedOutputFor(t, encounterId))?.clinicianEdited ?? false)
+              : false,
+          };
+        },
+      );
       // Resolved AFTER the read tx (S3): the M18 resolver, the tenant DEK and the M39 Part 2 verdict each open a pooled connection of their own,
       // so asked inside the transaction every concurrent read of a note with a Part 2 section would hold one connection and wait for another.
       return {
         ...toView(row),
         ...(await workspace.render(organizationId, row, viewer, rows)),
+        finalDocumentationEdited: edited,
         evvBracketPresent: await evvBracketPresentFor(organizationId, row),
       };
     },
@@ -1491,36 +1632,60 @@ export function createDbEncounterRouteService(
     // encounter and reported success. A 404 is the truthful answer when there is no HearthNote to render
     // (#114) — the renderer can distinguish "nothing to render" from "here is nothing".
     async renderPayload(organizationId, encounterId) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      // The PINNED bytes win whenever they exist (#122). This is the whole point of the pin: what M22 prints and M28 exposes is what
+      // was assembled at finalize, not what the current corpus (or the wounds and weights as they stand today) would produce. So the
+      // pin is looked for FIRST, and a pinned note reads nothing else: no wound seam call, no findings, no vitals.
+      const pinned = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
-        // The PINNED bytes win whenever they exist (#122). This is the whole point of the pin: what M22
-        // prints and M28 exposes is what was assembled at finalize, not what the current corpus would
-        // produce from the same selections today.
-        //
         // ADR-0114 (VN-D13): a document is broadly readable and M22 has no per-document Part 2 signal for it (its retention class is the
         // template's), so the document consumer is never entitled: a note with a Part 2 derived section renders those sections withheld.
-        const pinned = await readPinnedNote(t, encounterId, {
+        const note = await readPinnedNote(t, encounterId, {
           open: openPinned(organizationId),
           entitled: part2Entitlement(organizationId, r.patientId, null),
         });
-        if (pinned !== null) {
-          return { encounterId: r.id, final: pinned.text, pinned: true };
-        }
-        // No pin: either a draft (nothing has been finalized, so a live preview is the only answer there
-        // is) or a row finalized before #122 shipped. `pinned: false` is the difference, and it is on the
-        // wire — a renderer must be able to tell a legal record from a preview of one.
-        const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
-        if (!row) throw new NotFoundError("hearthnote_selection");
         return {
           encounterId: r.id,
-          final: assembleSelections(
-            r.encounterType,
-            r.discipline,
-            r.serviceDate,
-            await openProse(organizationId, row),
-          ),
+          patientId: r.patientId,
+          pin:
+            note === null
+              ? null
+              : {
+                  final: note.text,
+                  clinicianEdited:
+                    (await pinnedOutputFor(t, encounterId))?.clinicianEdited ?? false,
+                },
+        };
+      });
+      if (pinned.pin !== null) {
+        const { pin, ...visit } = pinned;
+        return { ...visit, ...pin, pinned: true };
+      }
+      // No pin: either a draft (nothing has been finalized, so a live preview is the only answer there is) or a row finalized before
+      // #122 shipped. `pinned: false` is the difference, and it is on the wire — a renderer must be able to tell a legal record from
+      // a preview of one. Only this branch consults the wounds, and it does so before opening the transaction (M9's seam opens its own).
+      const wounds = await woundsForNote(organizationId, encounterId);
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadEnc(t, encounterId);
+        const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
+        if (!row) throw new NotFoundError("hearthnote_selection");
+        const generated = assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          await openProse(organizationId, row),
+          VOCAB_VERSION,
+          await noteFacts.factsFor(t, organizationId, r, wounds),
+        );
+        // A draft's live preview is what finalizing would pin: the author's edit when there is one.
+        const edit = await openEdit(organizationId, row);
+        return {
+          encounterId: r.id,
+          patientId: r.patientId,
+          final: edit === null ? generated : edit.text,
           pinned: false,
+          clinicianEdited: edit !== null,
         };
       });
     },
@@ -1711,6 +1876,10 @@ export function createDbEncounterRouteService(
           today: new Date().toISOString().slice(0, 10) as LocalDate,
         });
         validateAdmissionForService(organizationId, args.patientId, args.serviceDate, admission);
+        // Sections that ride the create (the visit reason) obey the draft-save rule, checked before anything is written.
+        if (args.initialSections !== undefined) {
+          assertSelectionsValid(args.initialSections, { requireComplete: false });
+        }
         // F-064 — the ARCH-011 siting 0128 deferred: from the admission, else the author's membership.
         const siting = await resolveSiting(t, admission, actorUserId);
         const row = firstOrThrow(
@@ -1747,12 +1916,24 @@ export function createDbEncounterRouteService(
           authoredByMembershipId: row.authoredByMembershipId,
           serviceDate: row.serviceDate,
         });
+        // The reason chosen at the start of the visit is saved IN THIS transaction, exactly as a selections write stores it, so the create
+        // is atomic: a failure here rolls the draft back with it, and a retry cannot leave a second draft behind.
+        let version = Number(row.version);
+        if (args.initialSections !== undefined) {
+          const { stored, prose } = splitFreeText(args.initialSections);
+          version = await persistSelections(t, organizationId, row, {
+            ifVersion: version,
+            stored,
+            freeTextCipher: await sealProse(organizationId, prose),
+            fallLink: null,
+          });
+        }
         return {
           id: row.id,
           status: "draft",
           templateKey: `${row.discipline}_${row.encounterType}_v1`,
           templateVersion: "v1",
-          version: Number(row.version),
+          version,
         };
       });
     },
@@ -1764,6 +1945,12 @@ export function createDbEncounterRouteService(
     // shaped for. One row per parent (mig 0225 made that index genuinely unique), so this is an upsert.
     async updateSelections(organizationId, encounterId, ifVersion, input, actorMembershipId) {
       const { stored, prose } = splitFreeText(input.sections);
+      // Linking a DIFFERENT fall needs the patient's recorded falls, read from M30 before the write transaction opens.
+      const choices =
+        typeof input.fallIncidentId === "string"
+          ? await noteFacts.fallChoicesFor(organizationId, encounterId, actorMembershipId)
+          : [];
+      const wounds = await woundsForNote(organizationId, encounterId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId, { lock: true });
@@ -1772,46 +1959,42 @@ export function createDbEncounterRouteService(
         await stampDraftOpened(t, organizationId, r, actorMembershipId);
         // Assemble BEFORE the write: an unknown code or section must reject the PATCH, not be stored and
         // discovered by whoever later tries to render the note.
+        assertSelectionsValid(input.sections, { requireComplete: false });
+        const fallLink = nextFallLink({
+          sections: input.sections,
+          requested: input.fallIncidentId,
+          current:
+            r.fallIncidentId !== null && r.fallOccurredOn !== null
+              ? { incidentId: r.fallIncidentId, occurredOn: r.fallOccurredOn }
+              : null,
+          choices,
+        });
         const layer1Preview = assembleSelections(
           r.encounterType,
           r.discipline,
           r.serviceDate,
           input.sections,
-        );
-        const freeTextCipherValue = await sealProse(organizationId, prose);
-        const updated = firstOrThrow(
-          await t
-            .update(ENC)
-            .set({ version: ifVersion + 1, updatedAt: new Date() })
-            .where(and(eq(ENC.id, encounterId), eq(ENC.version, ifVersion)))
-            .returning({ version: ENC.version }),
-          "updateSelections matched no row (stale write)",
-        );
-        await t
-          .insert(SEL)
-          .values({
+          VOCAB_VERSION,
+          await noteFacts.factsFor(
+            t,
             organizationId,
-            providerEntityId: r.providerEntityId,
-            locationId: r.locationId,
-            encounterId,
-            templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
-            templateVersion: VOCAB_VERSION,
-            selections: { sections: stored },
-            freeTextCipher: freeTextCipherValue,
-          })
-          .onConflictDoUpdate({
-            target: SEL.encounterId,
-            targetWhere: isNotNull(SEL.encounterId),
-            set: {
-              selections: { sections: stored },
-              freeTextCipher: freeTextCipherValue,
-              templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
-              templateVersion: VOCAB_VERSION,
-              updatedAt: new Date(),
-              version: sql`${SEL.version} + 1`,
-            },
-          });
-        return { version: Number(updated.version), layer1Preview };
+            { id: encounterId, fallOccurredOn: fallLink === null ? null : fallLink.occurredOn },
+            wounds,
+          ),
+        );
+        // The author's edit of the note text: kept, replaced or discarded, against the generated text of THIS write.
+        const edit = nextNarrativeEdit({
+          requested: input.editedNarrative,
+          current: await storedEditFor(t, organizationId, encounterId),
+          generated: layer1Preview,
+        });
+        const version = await persistSelections(t, organizationId, r, {
+          ifVersion,
+          stored,
+          freeTextCipher: await sealProse(organizationId, { ...prose, ...editProse(edit) }),
+          fallLink,
+        });
+        return { version, layer1Preview };
       });
     },
 
@@ -1867,22 +2050,62 @@ export function createDbEncounterRouteService(
     },
 
     async getSelections(organizationId, encounterId) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      // A note that is already PINNED (finalized, signed, cosigned) answers from its pin: the preview is the text that was pinned and
+      // is never stale, so a later wound correction or another visit's weight edit cannot flip `editedNarrativeStale` on a note that was
+      // signed unchanged, and no wound is read. Only an unpinned note (a draft, or one finalized before #122) is previewed live.
+      const sealed = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId); // non-leaking 404 before the child read
+        const pin = await pinnedOutputFor(t, encounterId);
+        if (pin === undefined) return null;
+        const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
+        const text = await pinnedPreviewTexts(t, organizationId, r.patientId, encounterId, pin);
+        return selectionsViewOf(r, {
+          sections: row ? await openProse(organizationId, row) : [],
+          layer1Preview: text.layer1,
+          editedNarrative: pin.clinicianEdited ? text.final : null,
+          editedNarrativeStale: false,
+        });
+      });
+      if (sealed !== null) return sealed;
+      const wounds = await woundsForNote(organizationId, encounterId);
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadEnc(t, encounterId);
         const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
         const sections = row ? await openProse(organizationId, row) : [];
-        return {
-          templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
-          vocabVersion: VOCAB_VERSION,
+        const layer1Preview = assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
           sections,
-          layer1Preview: assembleSelections(r.encounterType, r.discipline, r.serviceDate, sections),
-          // The If-Match contract protects the encounter aggregate, not its HearthNote child row.
-          // `hearthnote_selection.version` remains internal bookkeeping; returning it here causes a
-          // false 412 whenever the child and encounter counters differ.
-          version: Number(r.version),
-        };
+          VOCAB_VERSION,
+          await noteFacts.factsFor(t, organizationId, r, wounds),
+        );
+        const edit = row ? await openEdit(organizationId, row) : null;
+        return selectionsViewOf(r, {
+          sections,
+          layer1Preview,
+          editedNarrative: edit?.text ?? null,
+          editedNarrativeStale: isStaleEdit(edit, layer1Preview),
+        });
       });
+    },
+
+    async listFallIncidents(organizationId, encounterId, actorMembershipId, onUnavailable) {
+      // The visit first: a visit that is not visible is the non-leaking 404, and it names the patient the read is attributed to.
+      const patientId = await patientOfEncounter(organizationId, encounterId);
+      try {
+        return {
+          patientId,
+          incidents: await noteFacts.fallChoicesFor(organizationId, encounterId, actorMembershipId),
+          unavailable: false,
+        };
+      } catch (cause) {
+        if (cause instanceof NotFoundError) throw cause;
+        onUnavailable?.(cause);
+        return { patientId, incidents: [], unavailable: true };
+      }
     },
 
     /**
@@ -1898,7 +2121,7 @@ export function createDbEncounterRouteService(
     async listVitals(organizationId, encounterId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        await loadEnc(t, encounterId); // throws NotFoundError on unknown/cross-tenant (non-leaking)
+        const enc = await loadEnc(t, encounterId); // throws NotFoundError on unknown/cross-tenant (non-leaking)
         const rows = await t
           .select()
           .from(VITALS)
@@ -1906,6 +2129,8 @@ export function createDbEncounterRouteService(
           .orderBy(desc(VITALS.capturedAt), desc(VITALS.id));
         return {
           encounterId,
+          patientId: enc.patientId,
+          ...unitlessMeasurements(rows),
           vitals: rows.map((row) =>
             toVitalsView(row.id, encounterId, {
               capturedAt: row.capturedAt.toISOString(),
@@ -2222,9 +2447,13 @@ export function createDbEncounterRouteService(
 
     // ── Finalize (§2.3 — Layer-3 gate preview + pin the vocab version D11) ─────────────────────────────
     async finalize(organizationId, encounterId, at, args) {
+      // The wounds recorded on the visit are M9's, read through its seam before this transaction opens.
+      const wounds = await woundsForNote(organizationId, encounterId);
       return withOrgContext(db, { organizationId, userId: args?.actorUserId ?? "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        // Locked first: the draft read below, and the pin written from it, must be of what every earlier section PUT committed.
+        // Row-lock the encounter BEFORE anything is read for the pin or the draft: a findings PUT (ADLs, nutrition) and a section PUT take
+        // the same lock, so each either committed before this point (the gate, the draft and the pinned note read it) or waits and is then
+        // refused 409 on the finalized status.
         const r = await loadEnc(t, encounterId, { lock: true });
         assertLegalFrom(r.status, "finalize");
         // The finalize route is `IS_AUTHOR`-guarded (only the author reaches it), so the writer here is the author.
@@ -2306,6 +2535,7 @@ export function createDbEncounterRouteService(
           discipline: r.discipline,
           serviceDate: r.serviceDate,
           vocabVersionId,
+          wounds,
           // The gate has passed, so every drafted section is resolved: the pin carries the confirmed text, not Layer 1 alone.
           ...(draft === null
             ? {}
@@ -2316,6 +2546,7 @@ export function createDbEncounterRouteService(
         });
         await emit(t, organizationId, "m8.encounter.finalized", "encounter", encounterId, {
           encounterId,
+          patientId: r.patientId,
           vocabVersionId,
           layer2Involved: false,
           lateEntryTier: late.tier,
@@ -2805,7 +3036,6 @@ export function createDbEncounterRouteService(
         await emit(t, organizationId, "m8.encounter.voided", "encounter", encounterId, {
           encounterId,
           voidedBy: args.actorMembershipId,
-          voidedReason: args.reason,
         });
         return { status: "voided" };
       });
@@ -2904,6 +3134,7 @@ export function createDbEncounterRouteService(
         assertDraftAddendum(a.status as AddendumState);
         // The addendum inherits its parent's template — an addendum to an RN routine visit is written
         // against the RN routine-visit template, not one of its own.
+        assertSelectionsValid(input.sections, { requireComplete: false });
         const layer1Preview = assembleSelections(
           parent.encounterType,
           parent.discipline,
@@ -2956,6 +3187,7 @@ export function createDbEncounterRouteService(
         const [row] = await t.select().from(SEL).where(eq(SEL.addendumId, addendumId)).limit(1);
         const sections = row ? await openProse(organizationId, row) : [];
         return {
+          patientId: parent.patientId,
           templateKey: hearthnoteTemplateKey(parent.encounterType, parent.discipline),
           vocabVersion: VOCAB_VERSION,
           sections,

@@ -18,9 +18,10 @@ import {
 const LEGACY_ENTRY_COUNT = 23;
 const ROUTINE_ENTRY_COUNT = 25; // narrative-vocab@2026.11.0 (S1)
 const RECERT_ENTRY_COUNT = 11; // narrative-vocab@2026.12.0 (S2)
+const DRAFT_ENTRY_COUNT = ROUTINE_ENTRY_COUNT + RECERT_ENTRY_COUNT;
 const LEGACY_CODES = new Set(VOCABULARY.slice(0, LEGACY_ENTRY_COUNT).map((e) => e.code));
-/** Every draft-wording entry: the 25 of 2026.11.0 and the 11 of 2026.12.0. */
-const NEW_ENTRIES = VOCABULARY.slice(LEGACY_ENTRY_COUNT);
+/** Every draft-wording entry: the 25 of 2026.11.0 and the 11 of 2026.12.0. The `visit_reason` entries of 2026.11.1 sit after them. */
+const NEW_ENTRIES = VOCABULARY.slice(LEGACY_ENTRY_COUNT, LEGACY_ENTRY_COUNT + DRAFT_ENTRY_COUNT);
 const ROUTINE_ENTRIES = NEW_ENTRIES.slice(0, ROUTINE_ENTRY_COUNT);
 const RECERT_ENTRIES = NEW_ENTRIES.slice(ROUTINE_ENTRY_COUNT);
 /** The S1 entries the recertification visit drafts from too (S2 tags them for it; their wording is pinned below). */
@@ -38,8 +39,10 @@ describe("corpus release", () => {
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
+      "narrative-vocab@2026.11.1",
       "narrative-vocab@2026.12.0",
     ]);
+    expect(activeNarrativeVocabRelease(VOCAB_VERSION).version).toBe(VOCAB_VERSION);
     expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-20");
   });
 
@@ -172,7 +175,7 @@ describe("draft entries", () => {
     for (const type of Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]) {
       for (const discipline of ENCOUNTER_DISCIPLINE_RULES[type]) {
         if (drafting.has(`${type}:${discipline}`)) continue;
-        const surfaced = entriesFor(type, discipline).filter((e) => !LEGACY_CODES.has(e.code));
+        const surfaced = entriesFor(type, discipline).filter((e) => DRAFT_VOCAB_CODES.has(e.code));
         expect(surfaced, `${type}:${discipline}`).toEqual([]);
       }
     }
@@ -181,7 +184,7 @@ describe("draft entries", () => {
   it("surface in the menus of the templates that draft, and only the entries tagged for each", () => {
     const codes = (type: EncounterType, discipline: "rn" | "md" | "np"): string[] =>
       entriesFor(type, discipline)
-        .filter((e) => !LEGACY_CODES.has(e.code))
+        .filter((e) => DRAFT_VOCAB_CODES.has(e.code))
         .map((e) => e.code);
     expect(codes("routine_visit", "rn").sort()).toEqual(ROUTINE_ENTRIES.map((e) => e.code).sort());
     expect(codes("recert_visit", "rn").sort()).toEqual(

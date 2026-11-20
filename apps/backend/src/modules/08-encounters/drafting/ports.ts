@@ -1,7 +1,12 @@
 // apps/backend/src/modules/08-encounters/drafting/ports.ts — the narrow interfaces the draft computation reads
 // through (S1 PR C2a). Unit tests pass fakes; `defaultDraftPorts()` (default-ports.ts) wires the seam-backed half
 // from the M1 registry, and PR C2b supplies the store-backed half over the M8 tables.
-import type { AssemblyContext, SelectionState, VitalsDraftInput } from "@chartwarden/hearthnote";
+import type {
+  AssemblyContext,
+  RecordedWound,
+  SelectionState,
+  VitalsDraftInput,
+} from "@chartwarden/hearthnote";
 import type {
   CarePlanElementsAudience,
   CertificationSummary,
@@ -80,6 +85,15 @@ export interface DraftSeamPorts {
   attestedFaceToFace(electionPeriodId: string): Promise<FaceToFaceSummary | null>;
   /** M6 `CertificationReader.getActiveCertification`: the period's active certification of terminal illness (S2). */
   activeCertification(electionPeriodId: string): Promise<CertificationSummary | null>;
+  /**
+   * M9's wounds recorded on this visit (through M8's wound reader, `WoundProvider` seam): the note states them, so the draft's context
+   * carries them. A seam that cannot answer THROWS, as the others do: the draft is then unavailable rather than silently short of a wound.
+   */
+  recordedWounds(query: {
+    readonly organizationId: string;
+    readonly encounterId: string;
+    readonly patientId: string;
+  }): Promise<readonly RecordedWound[]>;
   /**
    * Whether this viewer may read this patient's 42 CFR Part 2 content. THROWS on an M39 failure (`onError: "throw"` in `default-ports.ts`): an error
    * is never a `false` and never a `true`. Each caller maps the throw to its own 503 (the draft, the sign gate, the note view, an amendment's naming

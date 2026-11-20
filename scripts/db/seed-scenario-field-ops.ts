@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * ChartWarden — field-ops scenario data: M15 (volunteer plan) / M17 (scheduling) / M18 (EVV) /
  * M19 (on-call triage) / M20 (field safety) / M21 (supplies) for the flagship patient (local dev).
@@ -30,6 +31,7 @@ const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001";
 const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001";
 const nowIso = (): string => new Date().toISOString();
 const addHours = (h: number): string => new Date(Date.now() + h * 3_600_000).toISOString();
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function membershipIdFor(email: string): Promise<string> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
@@ -141,6 +143,65 @@ async function seedPublishedVisit(
   return data.id;
 }
 
+async function waitForEvvRegistration(visitId: string): Promise<void> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  try {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const registration = await db.query<{ registered: boolean }>(
+        "SELECT EXISTS (SELECT 1 FROM evv_visit_registration WHERE visit_id = $1) AS registered",
+        [visitId],
+      );
+      if (registration.rows[0]?.registered) return;
+      await sleep(250);
+    }
+  } finally {
+    await db.end();
+  }
+  throw new Error(`M18 visit registration did not arrive for ${visitId} within 10 seconds`);
+}
+
+async function seedSyntheticAggregatorEvidence(input: {
+  organizationId: string;
+  visitId: string;
+  checkInEventId: string;
+  checkOutEventId: string;
+}): Promise<void> {
+  // There is deliberately no public "create submission" route: preparation is worker-owned. This
+  // local-only fixture seeds a visibly synthetic rejected response so the authenticated UI can show
+  // every evidence field without claiming that a vendor call occurred. Worker behavior remains
+  // covered by the private-PostgreSQL M18 worker suite.
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  try {
+    await db.query("SET session_replication_role = replica");
+    const eventPairHash = createHash("sha256")
+      .update(`${input.checkInEventId}:${input.checkOutEventId}`)
+      .digest("hex");
+    await db.query(
+      `INSERT INTO evv_aggregator_submission
+         (organization_id, visit_id, check_in_event_id, check_out_event_id, event_pair_hash,
+          state_code, aggregator_vendor, status, attempt_count, last_attempt_at, submitted_at,
+          aggregator_transaction_id, aggregator_response_at, aggregator_rejection_code,
+          aggregator_rejection_reason)
+       VALUES ($1,$2,$3,$4,$5,'OR','synthetic_demo','rejected',2,now(),now(),
+               'demo-no-vendor-call',now(),'DEMO_VALIDATION',
+               'Synthetic local fixture; no vendor transmission occurred.')`,
+      [
+        input.organizationId,
+        input.visitId,
+        input.checkInEventId,
+        input.checkOutEventId,
+        eventPairHash,
+      ],
+    );
+  } finally {
+    await db.end();
+  }
+}
+
 /**
  * GENUINE GAP: `tenant_oncall_policy` has no create route at all — `PATCH /api/v1/oncall/policy` 404s
  * with `ONCALL_POLICY_NOT_FOUND` if the row doesn't already exist (`write-service-drizzle.ts`'s
@@ -214,6 +275,7 @@ async function wipePriorFieldOps(patientId: string, organizationId: string): Pro
   ]);
   const visitIds = visits.rows.map((r) => r.id);
   if (visitIds.length) {
+    await db.query("DELETE FROM evv_aggregator_submission WHERE visit_id = ANY($1)", [visitIds]);
     await db.query("DELETE FROM evv_visit_registration WHERE visit_id = ANY($1)", [visitIds]);
     await db.query("DELETE FROM visit_state_history WHERE visit_id = ANY($1)", [visitIds]);
     await db.query("DELETE FROM visit WHERE id = ANY($1)", [visitIds]);
@@ -366,6 +428,7 @@ async function main(): Promise<void> {
 
   // ── M18 — EVV ──────────────────────────────────────────────────────────────────────────────────
   try {
+    const ritaId = await membershipIdFor("rita@chartwarden.local");
     const dev = await rn.client.POST("/api/v1/evv/devices/self-register", {
       // The `attestationId` this used to pass was `crypto.randomUUID()` — the only caller in the
       // codebase, satisfying a REQUIRED uuid by inventing one, because no route mints a device
@@ -381,6 +444,54 @@ async function main(): Promise<void> {
     });
     if (approve.error) throw new Error(`device approve failed: ${JSON.stringify(approve.error)}`);
 
+    // A separate current visit gives the supervisor workspace real, coordinate-free event evidence
+    // without consuming the future scheduling example above. The scenario drives the same API calls
+    // as the mobile client; the browser E2E remains read-only and never pretends web capture exists.
+    const evvVisitId = await seedPublishedVisit(
+      rn,
+      patientId,
+      admissionId,
+      ritaId,
+      null,
+      addHours(-1),
+      addHours(1),
+    );
+    await waitForEvvRegistration(evvVisitId);
+    const syntheticCoords = { lat: 45.523, lng: -122.6789 };
+    const checkIn = await rn.client.POST("/api/v1/evv/check-in", {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: {
+        visitId: evvVisitId,
+        serviceTypeCode: "routine_visit",
+        capturedAt: nowIso(),
+        coords: syntheticCoords,
+        accuracyM: 8,
+        evvDeviceId: devData.id,
+      },
+    });
+    if (checkIn.error) throw new Error(`EVV check-in failed: ${JSON.stringify(checkIn.error)}`);
+
+    const checkOut = await rn.client.POST("/api/v1/evv/check-out", {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: {
+        visitId: evvVisitId,
+        capturedAt: nowIso(),
+        coords: syntheticCoords,
+        accuracyM: 8,
+        evvDeviceId: devData.id,
+      },
+    });
+    if (checkOut.error) throw new Error(`EVV check-out failed: ${JSON.stringify(checkOut.error)}`);
+    const checkInData = checkIn.data as unknown as { eventId: string } | undefined;
+    const checkOutData = checkOut.data as unknown as { eventId: string } | undefined;
+    if (!checkInData || !checkOutData) throw new Error("EVV capture returned no event ids");
+    await seedSyntheticAggregatorEvidence({
+      organizationId: rn.organizationId,
+      visitId: evvVisitId,
+      checkInEventId: checkInData.eventId,
+      checkOutEventId: checkOutData.eventId,
+    });
+
     // A SECOND handset, deliberately left PENDING. The approve/reject ceremony is the only M18 write a
     // browser can drive at all — check-in/check-out is the Capacitor mobile flow (§5.2), because a
     // browser has no attested device and no §12.4 posture to report — and with the first device driven
@@ -395,8 +506,8 @@ async function main(): Promise<void> {
       throw new Error(`second device register failed: ${JSON.stringify(pending.error)}`);
 
     log.ok(
-      "EVV: device self-registered + approved, and a second left PENDING for the supervisor roster " +
-        "(no completed visit yet to check in/out against — scheduled for tomorrow)",
+      "EVV: device approved, current visit checked in/out through the real API, synthetic no-vendor " +
+        "rejection evidence seeded for the supervisor UI, and a second device left PENDING",
     );
   } catch (err) {
     log.fail(`M18 EVV: ${String(err)}`);

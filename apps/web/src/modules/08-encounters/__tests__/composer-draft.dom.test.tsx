@@ -184,6 +184,11 @@ function routes(over: Record<string, Responder> = {}): Record<string, Responder>
     [`GET /api/v1/patients/${PATIENT}`]: () => ({
       body: { id: PATIENT, firstName: "Ada", lastName: "Lovelace", mrn: "MRN-9" },
     }),
+    // The plan-of-care step the composer also hosts reads the patient's plan (none here) and this visit's proposals.
+    [`GET /api/v1/patients/${PATIENT}/care-plan`]: () => ({ body: { carePlan: null } }),
+    [`GET /api/v1/patients/${PATIENT}/care-plan-change-proposals`]: () => ({
+      body: { patientId: PATIENT, proposals: [], redacted: false },
+    }),
     [`GET ${BASE}/draft`]: () => ({ body: draftBody() }),
     [`PUT ${BASE}/draft/sections/plan`]: sectionPut("plan"),
     [`PUT ${BASE}/draft/sections/vitals_review`]: sectionPut("vitals_review"),
@@ -685,7 +690,7 @@ describe("the composer as before", () => {
     expect(screen.queryByRole("region", { name: "Pre-drafted from the record" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Care plan for this visit" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Scores and trend" })).toBeNull();
-    expect(callsTo("GET", "/care-plan-links")).toHaveLength(0);
+    // (The plan-of-care step the composer also hosts reads the visit's links itself, so those reads are not the picker's.)
     expect(callsTo("GET", "/care-plan/relevant-elements")).toHaveLength(0);
     expect(calls.filter((c) => c.path.includes("/scales/"))).toHaveLength(0);
   };
@@ -1189,9 +1194,10 @@ describe("the care-plan picker", () => {
     world.links = [link(GOAL_ID, null)];
     let attempts = 0;
     mountComposer({
+      // The first read is the plan-of-care step's own, at mount; the picker mounts once the draft has loaded, so its reads follow.
       [`GET ${BASE}/care-plan-links`]: () => {
         attempts += 1;
-        return attempts === 1 ? errorBody(503, "UNAVAILABLE") : { body: { links: world.links } };
+        return attempts === 2 ? errorBody(503, "UNAVAILABLE") : { body: { links: world.links } };
       },
     });
     await ready();
@@ -1213,9 +1219,10 @@ describe("the care-plan picker", () => {
     world.links = [link(GOAL_ID, null)];
     let reads = 0;
     mountComposer({
+      // Reads 1 and 2 are the plan-of-care step's own (at mount) and the picker's first; a re-read after the deselect fails.
       [`GET ${BASE}/care-plan-links`]: () => {
         reads += 1;
-        return reads === 1 ? { body: { links: world.links } } : errorBody(503, "UNAVAILABLE");
+        return reads <= 2 ? { body: { links: world.links } } : errorBody(503, "UNAVAILABLE");
       },
     });
     await ready();
@@ -1362,7 +1369,7 @@ describe("the required count and drafted text", () => {
         name: "Assessment: Documented, draft confirmed",
       }),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/required section needs attention/)).toBeNull();
+    expect(screen.queryByText(/section needs attention/)).toBeNull();
   });
 
   it.each([
@@ -1379,7 +1386,7 @@ describe("the required count and drafted text", () => {
       }),
     ).toBeInTheDocument();
     expect(requiredRemaining()).toHaveTextContent(/^1\s*required remaining$/);
-    expect(screen.getByText(/1 required section needs attention/)).toBeInTheDocument();
+    expect(screen.getByText(/1 section needs attention/)).toBeInTheDocument();
   });
 
   it("counts a section as populated the moment its draft is confirmed, and not before", async () => {

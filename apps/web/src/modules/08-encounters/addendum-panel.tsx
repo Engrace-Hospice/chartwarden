@@ -17,7 +17,6 @@ import {
   Modal,
   StatusPill,
   TextAreaField,
-  TextField,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -63,6 +62,7 @@ import {
 import { ProposedFromMessage } from "./proposed-from-message";
 import { humanizeSection } from "./sign-draft-notice";
 import { shortStamp } from "./signed-note-model";
+import { SlotInput } from "./slot-input";
 import { useNoteDraft } from "./use-note-draft";
 
 type Failure = Extract<AddendumResult<unknown>, { ok: false }>;
@@ -637,14 +637,14 @@ function AddendumEditor({ encounterId, addendumId, amendment, onClose }: EditorP
                   </label>
                   {picked
                     ? entry.slots.map((slot) => (
-                        <TextField
+                        <SlotInput
                           key={slot}
-                          label={`${entry.label} — ${slot}`}
+                          slot={slot}
+                          spec={entry.slotSpecs[slot]}
+                          label={`${entry.label} — ${entry.slotSpecs[slot]?.label ?? slot}`}
                           value={String(picked.params[slot] ?? "")}
                           disabled={saving}
-                          onChange={(ev) =>
-                            setSlot(section.sectionId, entry.code, slot, ev.target.value)
-                          }
+                          onChange={(value) => setSlot(section.sectionId, entry.code, slot, value)}
                         />
                       ))
                     : null}

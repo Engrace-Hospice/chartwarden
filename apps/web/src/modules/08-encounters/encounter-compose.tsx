@@ -1,17 +1,3 @@
-import {
-  Button,
-  EmptyState,
-  LoadingSpinner,
-  Modal,
-  PageHeader,
-  PatientBanner,
-  PatientWorkspaceLayout,
-  StatusPill,
-  TextAreaField,
-  TextField,
-  WorkQueueLayout,
-  useApiClient,
-} from "@chartwarden/ui";
 // apps/web/src/modules/08-encounters — the HearthNote composer (M8 §5.2/§2.6, Track B / ADR-0030; #91).
 //
 // The server remains the source of truth for:
@@ -21,43 +7,163 @@ import {
 // - optimistic concurrency.
 //
 // This page only improves the authoring experience around that contract.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, JSX } from "react";
-import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { visitPurposeLabel } from "@chartwarden/types";
 import {
-  type UiFeedback,
-  feedbackFor,
-  humanize,
-  readableValidation,
-  transportFeedback,
-} from "./compose-feedback";
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  Modal,
+  PageHeader,
+  PatientBanner,
+  PatientWorkspaceLayout,
+  SelectField,
+  StatusPill,
+  TextAreaField,
+  WorkQueueLayout,
+  useApiClient,
+} from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { JSX } from "react";
+import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { type PanelStatus, withPanelStatus } from "../../shell/panel-status";
+import { PlanOfCareStep } from "../07-care-plan/change-proposals";
+import { type UiFeedback, feedbackFor, transportFeedback } from "./compose-feedback";
 import { gateRefusalWords } from "./compose-gate-refusal";
+import { humanize } from "./compose-text";
 import { ComposerDraftRail, ComposerDraftStrip } from "./composer-draft-chrome";
 import { STATE_LABEL, confirmedSectionIds, draftedStateOf } from "./draft-model";
 import { DraftSectionPanel } from "./draft-section-panel";
+import {
+  attentionCard,
+  attentionMark,
+  attentionText,
+  attentionTitle,
+  completionPercent,
+  discardActions,
+  discardDialog,
+  discardText,
+  discardTitle,
+  editorBody,
+  editorCard,
+  editorColumn,
+  editorDescription,
+  editorHeader,
+  editorTitle,
+  editorTitleRow,
+  emptyVocabulary,
+  emptyVocabularyText,
+  emptyVocabularyTitle,
+  entryCard,
+  entryCardSelected,
+  entryCheckbox,
+  entryContent,
+  entryGrid,
+  entryLabel,
+  entryMetaRow,
+  entryText,
+  eyebrow,
+  freeTextHeading,
+  freeTextHint,
+  freeTextSection,
+  freeTextTitle,
+  headerActions,
+  noticeBox,
+  noticeError,
+  noticeSuccess,
+  noticeTitle,
+  optionalBadge,
+  page,
+  previewActions,
+  previewBody,
+  previewCard,
+  previewColumn,
+  previewEmpty,
+  previewEmptyText,
+  previewEmptyTitle,
+  previewFooter,
+  previewFooterText,
+  previewHeader,
+  previewStatus,
+  previewText,
+  previewTitle,
+  progressFill,
+  progressTrack,
+  railCount,
+  railHeader,
+  railTitle,
+  readOnlyHint,
+  readyCard,
+  readyMark,
+  readyText,
+  readyTitle,
+  requiredBadge,
+  sectionIndex,
+  sectionIndexActive,
+  sectionIndexComplete,
+  sectionNav,
+  sectionNavButton,
+  sectionNavButtonActive,
+  sectionNavCopy,
+  sectionNavMeta,
+  sectionNavMetaRequired,
+  sectionNavTitle,
+  sectionNavTitleActive,
+  sectionRail,
+  selectionCounter,
+  slotGrid,
+  slotPanel,
+  slotPanelTitle,
+  staleEditNotice,
+  summaryBar,
+  summaryDivider,
+  summaryMain,
+  summaryStat,
+  summaryStatLabel,
+  summaryStatValue,
+  summaryStats,
+  summaryTitle,
+  summaryTitleRow,
+  verbatimBadge,
+  workspace,
+} from "./encounter-compose-styles";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
   type EncounterView,
+  FALL_FOLLOWUP_CODE,
+  type FallIncidentsView,
   type MenuEntry,
+  type SelectionsView,
+  type TemplateSection,
   type TemplateView,
-  captureVitals,
+  currentNoteText,
+  dropUnofferedEntries,
   finalizeEncounter,
   isSectionPopulated,
+  isSingleChoice,
+  loadFallIncidents,
   loadSelections,
   loadTemplate,
+  loadVisitPurpose,
   saveSelections,
+  sectionHasEmptySlots,
+  sectionsFilledByRecords,
+  sectionsNeedingAttention,
+  suggestedReasonCode,
   toDraft,
   toSelectionsBody,
-  unmetRequiredSections,
 } from "./encounters-api";
+import { FallLinkField } from "./fall-link-field";
 import {
   NOTE_VIEW_UNAVAILABLE_DESCRIPTION,
   NoteViewUnavailable,
   isNoteViewUnavailable,
 } from "./note-view-unavailable";
+import { type RecordedPanelKind, RecordedPanels } from "./recorded-panels";
+import { SlotInput } from "./slot-input";
 import { useComposerDraft } from "./use-composer-draft";
 import { useFocusRequest } from "./use-focus-request";
+import { VitalsPanel } from "./vitals-panel";
 
 interface PatientSummary {
   readonly firstName: string;
@@ -70,7 +176,47 @@ const SHELL_EXIT_PATHS = new Set(["/expired", "/error", "/maintenance", "/tenant
 const isShellExit = (pathname: string): boolean =>
   SHELL_EXIT_PATHS.has(pathname) || pathname === "/login" || pathname.startsWith("/login/");
 
-const serializedDraft = (draft: DraftSections): string => JSON.stringify(toSelectionsBody(draft));
+const serializedDraft = (draft: DraftSections, fallIncidentId: string | null): string =>
+  JSON.stringify(toSelectionsBody(draft, fallIncidentId));
+
+/** The note's own words for a part of it that keeps its own form (named in the notice that asks the author to save or discard it). */
+const PANEL_ORDER: readonly PanelKey[] = ["adl", "nutrition", "wounds", "vitals", "plan"];
+
+function unsavedPanelsFeedback(titles: readonly string[]): UiFeedback {
+  return {
+    tone: "warning",
+    title: "Unsaved entries in a section",
+    message: `Save or discard the unsaved entries in ${titles.join(", ")} before finalizing.`,
+    tag: "findings-unsaved",
+  };
+}
+
+/** What was taken out of a stored draft because the template cannot show it and the server would refuse it. */
+function removedFromDraftFeedback(statements: number, details: number): UiFeedback {
+  const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many);
+  const parts = [
+    statements > 0
+      ? `${statements} saved ${plural(statements, "statement is", "statements are")} no longer offered in ${plural(statements, "its", "their")} section and ${plural(statements, "was", "were")} removed here.`
+      : null,
+    details > 0
+      ? `${details} saved ${plural(details, "detail does", "details do")} not belong to ${plural(details, "its", "their")} statement and ${plural(details, "was", "were")} removed here.`
+      : null,
+  ].filter((part): part is string => part !== null);
+  return {
+    tone: "warning",
+    title:
+      statements > 0 ? "Statements removed from this draft" : "Details removed from this draft",
+    message: `${parts.join(" ")} Save the draft to apply the change.`,
+  };
+}
+
+/** The template section a visit reason is recorded in. */
+const REASON_SECTION_ID = "chief_concern";
+
+/** The parts of the note that keep their own form and say so (see `useReportPanelStatus`). */
+type PanelKey = RecordedPanelKind | "vitals" | "plan";
+type PanelStatuses = Readonly<Partial<Record<PanelKey, PanelStatus>>>;
+const NO_SECTIONS: ReadonlySet<string> = new Set();
 
 export function EncounterCompose(): JSX.Element {
   const client = useApiClient();
@@ -90,8 +236,53 @@ export function EncounterCompose(): JSX.Element {
   const [retryable, setRetryable] = useState(false);
   const [feedback, setFeedback] = useState<UiFeedback | null>(null);
   const [operation, setOperation] = useState<"saving" | "finalizing" | null>(null);
-  const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}));
+  const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}, null));
+  // The recorded fall a follow-up-after-a-fall visit follows up: the stored link, the author's current choice, and the falls on offer.
+  const [linkedFall, setLinkedFall] = useState<{ incidentId: string; occurredOn: string } | null>(
+    null,
+  );
+  const [fallIncidentId, setFallIncidentId] = useState<string | null>(null);
+  const [fallChoices, setFallChoices] = useState<FallIncidentsView | null>(null);
+  // The author's own edit of the note text: the saved edit (null = the note reads as generated), whether the note moved underneath
+  // it since, and the text box while they are changing it.
+  const [editedNarrative, setEditedNarrative] = useState<string | null>(null);
+  const [editStale, setEditStale] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState("");
   const [vitalsOpen, setVitalsOpen] = useState(false);
+  // The vitals form is mounted the first time it is opened and kept (hidden when closed), so what was typed survives a close.
+  const [vitalsMounted, setVitalsMounted] = useState(false);
+  // The last re-read of the note failed: the preview may be out of date until one succeeds.
+  const [previewStale, setPreviewStale] = useState(false);
+  // The reason the scheduled visit's purpose suggested, held as an UNSAVED choice until the clinician saves it.
+  const [suggestion, setSuggestion] = useState<{ code: string; from: string } | null>(null);
+  // What each panel says about itself: unsaved input, a write in flight, a saved record. The note is dirty or busy when any panel is.
+  const [panelStatus, setPanelStatus] = useState<PanelStatuses>({});
+  // True from the start of a load until it ends: panels are gone in between, and what they say on the way out is not about the note
+  // that is about to be shown.
+  const loadingRef = useRef(true);
+  const reportPanel = useCallback((key: PanelKey, status: PanelStatus): void => {
+    if (loadingRef.current) return;
+    setPanelStatus((held) => withPanelStatus(held, key, status));
+  }, []);
+  // What a notice and a suggestion say belongs to one note: another note (Back or Forward between composer URLs) starts without them.
+  const [shownFor, setShownFor] = useState(encounterId);
+  if (shownFor !== encounterId) {
+    setShownFor(encounterId);
+    setFeedback(null);
+    setSuggestion(null);
+  }
+  const planRegion = useRef<HTMLDivElement>(null);
+  // The newest re-read of the note's text: an older one answering late must not overwrite what a newer read or a save put on screen.
+  const previewRead = useRef(0);
+  const reportVitals = useCallback(
+    (status: PanelStatus) => reportPanel("vitals", status),
+    [reportPanel],
+  );
+  const reportPlan = useCallback(
+    (status: PanelStatus) => reportPanel("plan", status),
+    [reportPanel],
+  );
   const loadSequence = useRef(0);
   // Focus for the heading of the open section, so a drafted section opened from the strip takes the reader to it.
   const [sectionHeadingRef, focusSectionHeading] = useFocusRequest<HTMLHeadingElement>();
@@ -100,6 +291,7 @@ export function EncounterCompose(): JSX.Element {
     if (!encounterId) return null;
     const sequence = ++loadSequence.current;
 
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     setRetryable(false);
@@ -109,7 +301,18 @@ export function EncounterCompose(): JSX.Element {
     setDraft({});
     setPreview("");
     setVersion(0);
-    setLastSavedDraft(serializedDraft({}));
+    setLastSavedDraft(serializedDraft({}, null));
+    setLinkedFall(null);
+    setFallIncidentId(null);
+    setFallChoices(null);
+    setEditedNarrative(null);
+    setEditStale(false);
+    setEditing(false);
+    setEditText("");
+    setVitalsOpen(false);
+    setVitalsMounted(false);
+    setPreviewStale(false);
+    setPanelStatus({});
     setOpenSection(null);
 
     try {
@@ -126,6 +329,7 @@ export function EncounterCompose(): JSX.Element {
             ? NOTE_VIEW_UNAVAILABLE_DESCRIPTION
             : "Could not load this encounter.",
         );
+        loadingRef.current = false;
         setLoading(false);
         return null;
       }
@@ -143,6 +347,7 @@ export function EncounterCompose(): JSX.Element {
 
       if (!tmpl || !sel || pat.error || !pat.data) {
         setError("Could not load this encounter.");
+        loadingRef.current = false;
         setLoading(false);
         return null;
       }
@@ -152,17 +357,33 @@ export function EncounterCompose(): JSX.Element {
       setPatient(pat.data as PatientSummary);
 
       const loadedDraft = toDraft(sel.sections);
-      setDraft(loadedDraft);
-      setLastSavedDraft(serializedDraft(loadedDraft));
+      const {
+        draft: offeredDraft,
+        dropped,
+        droppedParams,
+      } = dropUnofferedEntries(tmpl, loadedDraft);
+      setDraft(offeredDraft);
+      // The saved baseline stays the STORED tree, so a removal reads as an unsaved change the author applies.
+      setLastSavedDraft(serializedDraft(loadedDraft, sel.fallIncident?.incidentId ?? null));
+      setLinkedFall(sel.fallIncident ?? null);
+      setFallIncidentId(sel.fallIncident?.incidentId ?? null);
+      // "Save the draft to apply the change" only means something on a note that can still be saved.
+      if ((dropped > 0 || droppedParams > 0) && loadedEncounter.status === "draft") {
+        setFeedback(removedFromDraftFeedback(dropped, droppedParams));
+      }
       setPreview(sel.layer1Preview);
+      setEditedNarrative(sel.editedNarrative ?? null);
+      setEditStale(sel.editedNarrativeStale === true);
       setVersion(sel.version);
 
       setOpenSection((prev) => prev ?? tmpl.sections[0]?.sectionId ?? null);
+      loadingRef.current = false;
       setLoading(false);
       return loadedEncounter;
     } catch {
       if (sequence !== loadSequence.current) return null;
       setError("Could not load this encounter. Check your connection and try again.");
+      loadingRef.current = false;
       setLoading(false);
       return null;
     }
@@ -175,10 +396,107 @@ export function EncounterCompose(): JSX.Element {
     };
   }, [load]);
 
+  // A note that came from the schedule suggests the reason its visit purpose implies (a routine visit, an MSW or
+  // chaplain assessment). Only into an empty Reason for Visit, and only as an unsaved choice: the clinician
+  // confirms it by saving, or picks another.
+  useEffect(() => {
+    const visitId = encounter?.visitId;
+    const reasonSection = template?.sections.find((s) => s.sectionId === REASON_SECTION_ID);
+    if (encounter?.status !== "draft" || !visitId || reasonSection === undefined) return;
+    let current = true;
+    void loadVisitPurpose(client, visitId).then((purpose) => {
+      if (!current || purpose === null) return;
+      const code = suggestedReasonCode(purpose, reasonSection.entries);
+      if (code === null) return;
+      setDraft((prev) => {
+        const held = prev[REASON_SECTION_ID];
+        if (held !== undefined && (held.entries.length > 0 || held.freeText.trim() !== "")) {
+          return prev;
+        }
+        setSuggestion({ code, from: visitPurposeLabel(purpose) ?? purpose });
+        return {
+          ...prev,
+          [REASON_SECTION_ID]: { freeText: held?.freeText ?? "", entries: [{ code, params: {} }] },
+        };
+      });
+    });
+    return () => {
+      current = false;
+    };
+  }, [client, encounter, template]);
+
+  // The link only means something beside the follow-up-after-a-fall reason; anywhere else the note carries none.
+  const reasonIsFall =
+    draft[REASON_SECTION_ID]?.entries.some((e) => e.code === FALL_FOLLOWUP_CODE) === true;
+  const effectiveFallId = reasonIsFall ? fallIncidentId : null;
+  // The falls on offer are read once the author picks the follow-up reason: the list is a disclosure from Quality's register, so
+  // it is not fetched for a note that never asks for it.
+  useEffect(() => {
+    if (!encounterId || encounter?.status !== "draft" || !reasonIsFall || fallChoices !== null) {
+      return;
+    }
+    let current = true;
+    void loadFallIncidents(client, encounterId).then((found) => {
+      if (current) setFallChoices(found);
+    });
+    return () => {
+      current = false;
+    };
+  }, [client, encounterId, encounter?.status, reasonIsFall, fallChoices]);
+
+  // The server counts a saved ADL or nutrition record as documenting the section that states it, so the panels' saved records do too.
+  const adlRecorded = panelStatus.adl?.recorded === true;
+  const nutritionRecorded = panelStatus.nutrition?.recorded === true;
+  const filledByRecord = useMemo(
+    () =>
+      template
+        ? sectionsFilledByRecords(template, { adl: adlRecorded, nutrition: nutritionRecorded })
+        : NO_SECTIONS,
+    [template, adlRecorded, nutritionRecorded],
+  );
+
   const editable = encounter?.status === "draft" && encounter.id === encounterId;
-  const currentDraft = useMemo(() => serializedDraft(draft), [draft]);
-  const dirty = editable && currentDraft !== lastSavedDraft;
-  const busy = operation !== null;
+  // While the author is typing over the note text, the selections and the save and finalize buttons wait: the text is a copy of
+  // the note as it reads, so changing what it was made from underneath it would leave the two disagreeing.
+  const frozen = !editable || editing;
+  const currentDraft = useMemo(
+    () => serializedDraft(draft, effectiveFallId),
+    [draft, effectiveFallId],
+  );
+  // The note as it reads now. An edit made on an older version of the note no longer says what the note says (it misses what was
+  // documented since), so a stale edit is never shown as the note: the generated text is, and the old edit is offered beside it.
+  const editInForce = editedNarrative !== null && !editStale;
+  const noteText = editInForce ? editedNarrative : preview;
+  // Text typed into the edit box and not yet applied counts as unsaved, like a ticked statement does.
+  const editDirty = editing && editText !== noteText;
+  const selectionsDirty = currentDraft !== lastSavedDraft || editDirty;
+  // A panel's form is saved by the panel's own button, so its unsaved input and its writes in flight count as the note's.
+  const panels = Object.values(panelStatus);
+  const panelsDirty = panels.some((panel) => panel.dirty);
+  const dirtyPanels = PANEL_ORDER.filter((key) => panelStatus[key]?.dirty === true);
+  /** What the author calls a part of the note: the heading of its section, or the panel's own title. */
+  function panelTitle(key: PanelKey): string {
+    if (key === "vitals") return "Visit vitals";
+    if (key === "plan") return "Plan of care";
+    return template?.sections.find((s) => s.recordedPanel === key)?.heading ?? key;
+  }
+  /** Bring a part of the note into view (its section opened, the vitals shown, the plan scrolled to) so its unsaved entries can be dealt with. */
+  function showPanel(key: PanelKey): void {
+    if (key === "vitals") {
+      setVitalsMounted(true);
+      setVitalsOpen(true);
+    } else if (key === "plan") {
+      planRegion.current?.scrollIntoView?.({ block: "start" });
+    } else {
+      const sectionId = template?.sections.find((s) => s.recordedPanel === key)?.sectionId;
+      if (sectionId !== undefined) setOpenSection(sectionId);
+    }
+  }
+  const savingPanels = Object.entries(panelStatus).filter(([, panel]) => panel.saving);
+  const dirty = editable && (selectionsDirty || panelsDirty);
+  const busy = operation !== null || savingPanels.length > 0;
+  // The plan step may keep saving its own drawer while it says so; only another write locks it.
+  const planDisabled = frozen || operation !== null || savingPanels.some(([key]) => key !== "plan");
   const shouldBlock = useCallback<BlockerFunction>(
     ({ nextLocation }) => (dirty || busy) && !isShellExit(nextLocation.pathname),
     [busy, dirty],
@@ -207,8 +525,8 @@ export function EncounterCompose(): JSX.Element {
   // The server's check 1 counts drafted text the clinician confirmed as populating a required section; so does every count here.
   const confirmedIds = useMemo(() => confirmedSectionIds(drafted), [drafted]);
   const unmet = useMemo(
-    () => (template ? unmetRequiredSections(template, draft, confirmedIds) : []),
-    [template, draft, confirmedIds],
+    () => (template ? sectionsNeedingAttention(template, draft, filledByRecord, confirmedIds) : []),
+    [template, draft, filledByRecord, confirmedIds],
   );
 
   useEffect(() => {
@@ -217,6 +535,11 @@ export function EncounterCompose(): JSX.Element {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [busy, dirty]);
+
+  // The notice that asked for the panels to be saved or discarded goes once they are.
+  useEffect(() => {
+    if (!panelsDirty) setFeedback((held) => (held?.tag === "findings-unsaved" ? null : held));
+  }, [panelsDirty]);
 
   const completion = useMemo(() => {
     if (!template) {
@@ -228,8 +551,11 @@ export function EncounterCompose(): JSX.Element {
       };
     }
 
-    const completed = template.sections.filter((section) =>
-      isSectionPopulated(draft, section.sectionId, confirmedIds),
+    const completed = template.sections.filter(
+      (section) =>
+        (isSectionPopulated(draft, section.sectionId, confirmedIds) ||
+          filledByRecord.has(section.sectionId)) &&
+        !sectionHasEmptySlots(template, draft, section.sectionId),
     ).length;
 
     const total = template.sections.length;
@@ -240,23 +566,54 @@ export function EncounterCompose(): JSX.Element {
       requiredRemaining: unmet.length,
       percent: total > 0 ? Math.round((completed / total) * 100) : 0,
     };
-  }, [draft, template, confirmedIds, unmet.length]);
+  }, [draft, template, filledByRecord, confirmedIds, unmet.length]);
 
   function toggleEntry(sectionId: string, entry: MenuEntry): void {
+    // Statements sharing an exclusive group contradict each other and the server refuses two in one note,
+    // so picking one replaces its sibling wherever in the note that sibling was recorded.
+    const rivals = new Set(
+      entry.exclusiveGroup === null
+        ? []
+        : (template?.sections ?? []).flatMap((s) =>
+            s.entries
+              .filter((e) => e.exclusiveGroup === entry.exclusiveGroup && e.code !== entry.code)
+              .map((e) => e.code),
+          ),
+    );
+
     setDraft((prev) => {
       const current = prev[sectionId] ?? { entries: [], freeText: "" };
-      const has = current.entries.some((e) => e.code === entry.code);
+      if (current.entries.some((e) => e.code === entry.code)) {
+        return {
+          ...prev,
+          [sectionId]: {
+            ...current,
+            entries: current.entries.filter((e) => e.code !== entry.code),
+          },
+        };
+      }
 
+      const cleared: DraftSections = Object.fromEntries(
+        Object.entries(prev).map(([id, section]) => [
+          id,
+          { ...section, entries: section.entries.filter((e) => !rivals.has(e.code)) },
+        ]),
+      );
+      const base = cleared[sectionId] ?? current;
       return {
-        ...prev,
-        [sectionId]: {
-          ...current,
-          entries: has
-            ? current.entries.filter((e) => e.code !== entry.code)
-            : [...current.entries, { code: entry.code, params: {} }],
-        },
+        ...cleared,
+        [sectionId]: { ...base, entries: [...base.entries, { code: entry.code, params: {} }] },
       };
     });
+  }
+
+  /** A single-choice section's select: pick one (replacing any other) or `""` to clear it. */
+  function chooseOne(section: TemplateSection, code: string): void {
+    const held = draft[section.sectionId]?.entries[0]?.code;
+    if (code === held) return;
+    // toggleEntry swaps a rival out and unticks a held one, which is exactly pick-and-clear.
+    const entry = section.entries.find((e) => e.code === (code === "" ? held : code));
+    if (entry !== undefined) toggleEntry(section.sectionId, entry);
   }
 
   function setSlot(sectionId: string, code: string, slot: string, value: string): void {
@@ -285,6 +642,16 @@ export function EncounterCompose(): JSX.Element {
     }));
   }
 
+  /** The stored note, or null when it could not be read (a refusal or a dropped connection). */
+  const readStored = useCallback(async (): Promise<SelectionsView | null> => {
+    if (!encounterId) return null;
+    try {
+      return await loadSelections(client, encounterId);
+    } catch {
+      return null;
+    }
+  }, [client, encounterId]);
+
   const headingOfSection = (sectionId: string): string =>
     template?.sections.find((section) => section.sectionId === sectionId)?.heading ??
     humanize(sectionId);
@@ -294,29 +661,79 @@ export function EncounterCompose(): JSX.Element {
     focusSectionHeading();
   };
 
-  async function save(): Promise<void> {
-    if (!encounterId) return;
+  /** What the server holds for the note's text: the generated preview and the author's edit of it, if any. */
+  const applyStored = useCallback((stored: SelectionsView): void => {
+    setPreview(stored.layer1Preview);
+    setEditedNarrative(stored.editedNarrative ?? null);
+    setEditStale(stored.editedNarrativeStale === true);
+    setPreviewStale(false);
+  }, []);
 
+  /**
+   * Re-read the server-assembled note without touching the author's working draft. Vitals are recorded
+   * apart from the selections and the note states them, so the preview is stale the moment they save. The
+   * preview shows what is stored; unsaved edits still need a save, exactly as before.
+   */
+  const refreshPreview = useCallback(async (): Promise<void> => {
+    // The load this read belongs to (another note, or a reload, starts a newer one) and the read itself (a newer read or a save puts
+    // newer text on screen): an answer for an older one must not overwrite it.
+    const sequence = loadSequence.current;
+    const read = ++previewRead.current;
+    const stored = await readStored();
+    if (sequence !== loadSequence.current || read !== previewRead.current) return;
+    if (stored === null) {
+      setPreviewStale(true);
+      return;
+    }
+    applyStored(stored);
+  }, [applyStored, readStored]);
+  // The panels' "something they state was saved": stable, so the memoised panels are not re-rendered by a keystroke in the free text.
+  const refreshFromPanel = useCallback((): void => {
+    void refreshPreview();
+  }, [refreshPreview]);
+
+  /** Edit the note text. Unsaved selections are saved first, so the text being edited is the note as it now reads. */
+  async function startEdit(): Promise<void> {
+    if (!encounterId) return;
+    if (selectionsDirty && !(await save())) return;
+    const stored = await readStored();
+    if (!stored) {
+      setFeedback(transportFeedback);
+      return;
+    }
+    previewRead.current += 1;
+    applyStored(stored);
+    setEditText(currentNoteText(stored));
+    setEditing(true);
+  }
+
+  /** Apply (text) or discard (null) the author's edit of the note text, then show the note as the server now holds it. */
+  async function writeEdit(next: string | null): Promise<void> {
+    if (!encounterId) return;
     setOperation("saving");
     setFeedback(null);
-
     try {
-      const res = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
-
+      const res = await saveSelections(
+        client,
+        encounterId,
+        version,
+        toSelectionsBody(draft, effectiveFallId, next),
+      );
       if (!res.ok) {
         setFeedback(feedbackFor(res));
         return;
       }
-
       setVersion(res.value.version);
-      setPreview(res.value.layer1Preview);
       setLastSavedDraft(currentDraft);
-      // A save changes the clinician's own words inside a drafted section, so its text, hash and state are re-read.
-      void noteDraft.reload();
+      setEditing(false);
+      await refreshPreview();
       setFeedback({
         tone: "success",
-        title: "Draft saved",
-        message: "Your visit note changes were saved.",
+        title: next === null ? "Edit discarded" : "Note text updated",
+        message:
+          next === null
+            ? "The note reads as generated from your selections."
+            : "Your edited text is what will be signed. The generated text is kept beside it.",
       });
     } catch {
       setFeedback(transportFeedback);
@@ -325,15 +742,68 @@ export function EncounterCompose(): JSX.Element {
     }
   }
 
+  async function save(): Promise<boolean> {
+    if (!encounterId) return false;
+
+    setOperation("saving");
+    setFeedback(null);
+
+    try {
+      const res = await saveSelections(
+        client,
+        encounterId,
+        version,
+        toSelectionsBody(draft, effectiveFallId),
+      );
+
+      if (!res.ok) {
+        setFeedback(feedbackFor(res));
+        return false;
+      }
+
+      setVersion(res.value.version);
+      setPreview(res.value.layer1Preview);
+      previewRead.current += 1;
+      setPreviewStale(false);
+      setLastSavedDraft(currentDraft);
+      // A save changes the clinician's own words inside a drafted section, so its text, hash and state are re-read.
+      void noteDraft.reload();
+      // A saved edit may have gone stale under what was just saved; the server decides.
+      if (editedNarrative !== null) await refreshPreview();
+      setFeedback({
+        tone: "success",
+        title: "Draft saved",
+        message: "Your visit note changes were saved.",
+      });
+      return true;
+    } catch {
+      setFeedback(transportFeedback);
+      return false;
+    } finally {
+      setOperation(null);
+    }
+  }
+
   async function finalize(): Promise<void> {
     if (!encounterId) return;
+    // Finalizing reloads the note, which would drop what a panel holds unsaved: say so instead of losing it silently.
+    if (dirtyPanels.length > 0) {
+      setFeedback(unsavedPanelsFeedback(dirtyPanels.map(panelTitle)));
+      showPanel(dirtyPanels[0] as PanelKey);
+      return;
+    }
 
     setOperation("finalizing");
     setFeedback(null);
     let finalizationAttempted = false;
 
     try {
-      const saved = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
+      const saved = await saveSelections(
+        client,
+        encounterId,
+        version,
+        toSelectionsBody(draft, effectiveFallId),
+      );
 
       if (!saved.ok) {
         setFeedback(feedbackFor(saved));
@@ -342,6 +812,8 @@ export function EncounterCompose(): JSX.Element {
 
       setVersion(saved.value.version);
       setPreview(saved.value.layer1Preview);
+      previewRead.current += 1;
+      setPreviewStale(false);
       setLastSavedDraft(currentDraft);
 
       finalizationAttempted = true;
@@ -458,17 +930,20 @@ export function EncounterCompose(): JSX.Element {
 
                 <Button
                   tone="tertiary"
-                  onClick={() => setVitalsOpen((v) => !v)}
-                  disabled={!editable || busy}
+                  onClick={() => {
+                    setVitalsMounted(true);
+                    setVitalsOpen((v) => !v);
+                  }}
+                  disabled={frozen || busy}
                 >
                   {vitalsOpen ? "Close vitals" : "Vitals"}
                 </Button>
 
-                <Button tone="tertiary" onClick={() => void save()} disabled={busy || !editable}>
+                <Button tone="tertiary" onClick={() => void save()} disabled={busy || frozen}>
                   {operation === "saving" ? "Saving…" : "Save draft"}
                 </Button>
 
-                <Button onClick={() => void finalize()} disabled={busy || !editable}>
+                <Button onClick={() => void finalize()} disabled={busy || frozen}>
                   Finalize note
                 </Button>
               </div>
@@ -526,9 +1001,13 @@ export function EncounterCompose(): JSX.Element {
                 ? "Saving changes…"
                 : operation === "finalizing"
                   ? "Saving and finalizing…"
-                  : dirty
-                    ? "Unsaved changes"
-                    : "All changes saved"}
+                  : savingPanels.length > 0
+                    ? "Saving a section…"
+                    : selectionsDirty
+                      ? "Unsaved changes"
+                      : panelsDirty
+                        ? "Unsaved entries in a section. Use that section's own Save button."
+                        : "All changes saved"}
             </output>
 
             {feedback ? (
@@ -551,6 +1030,16 @@ export function EncounterCompose(): JSX.Element {
               </output>
             ) : null}
 
+            {previewStale ? (
+              <output style={{ ...noticeBox, ...noticeError }}>
+                <strong style={noticeTitle}>Note preview not refreshed</strong>
+                <span>
+                  Your change was saved, but the note could not be read again, so the preview may be
+                  out of date. Use Save &amp; refresh preview to read it.
+                </span>
+              </output>
+            ) : null}
+
             {unmet.length > 0 ? (
               <section style={attentionCard} aria-label="Required documentation">
                 <div style={attentionMark} aria-hidden>
@@ -559,7 +1048,7 @@ export function EncounterCompose(): JSX.Element {
 
                 <div style={{ minWidth: 0 }}>
                   <strong style={attentionTitle}>
-                    {unmet.length} required {unmet.length === 1 ? "section needs" : "sections need"}{" "}
+                    {unmet.length} {unmet.length === 1 ? "section needs" : "sections need"}{" "}
                     attention
                   </strong>
                   <p style={attentionText}>
@@ -590,22 +1079,26 @@ export function EncounterCompose(): JSX.Element {
               refusal={refusal}
             />
 
-            {vitalsOpen ? (
-              <VitalsPanel
-                encounterId={encounter.id}
-                disabled={busy}
-                onSaved={() => {
-                  setVitalsOpen(false);
-                  // Vitals are a source of the draft: the text, its hash and its state are re-read.
-                  void noteDraft.reload();
-                  setFeedback({
-                    tone: "success",
-                    title: "Vitals recorded",
-                    message: "Visit vitals were saved.",
-                  });
-                }}
-              />
-            ) : null}
+            <div hidden={!vitalsOpen}>
+              {vitalsMounted ? (
+                <VitalsPanel
+                  encounterId={encounter.id}
+                  disabled={frozen || busy}
+                  onStatusChange={reportVitals}
+                  onSaved={() => {
+                    setVitalsOpen(false);
+                    // Vitals are a source of the draft: the text, its hash and its state are re-read.
+                    void noteDraft.reload();
+                    setFeedback({
+                      tone: "success",
+                      title: "Vitals recorded",
+                      message: "Visit vitals were saved.",
+                    });
+                    void refreshPreview();
+                  }}
+                />
+              ) : null}
+            </div>
 
             <div className="wx-encounter-compose-workspace" style={workspace}>
               <aside
@@ -623,14 +1116,21 @@ export function EncounterCompose(): JSX.Element {
 
                 <nav style={sectionNav}>
                   {template.sections.map((section, index) => {
-                    const filled = isSectionPopulated(draft, section.sectionId, confirmedIds);
+                    const needsDetails = sectionHasEmptySlots(template, draft, section.sectionId);
+                    // "Documented" means finalize will take it: a statement with an empty slot is not that.
+                    const filled =
+                      (isSectionPopulated(draft, section.sectionId, confirmedIds) ||
+                        filledByRecord.has(section.sectionId)) &&
+                      !needsDetails;
                     const isActive = section.sectionId === active?.sectionId;
-                    const missingRequired = section.required && !filled;
+                    const needsAttention = needsDetails || (section.required && !filled);
                     const sectionState = filled
                       ? "Documented"
-                      : missingRequired
-                        ? "Required"
-                        : "Not started";
+                      : needsDetails
+                        ? "Needs details"
+                        : needsAttention
+                          ? "Required"
+                          : "Not started";
                     const draftedState = draftedStateOf(drafted, section.sectionId);
 
                     return (
@@ -671,7 +1171,7 @@ export function EncounterCompose(): JSX.Element {
                           <span
                             style={{
                               ...sectionNavMeta,
-                              ...(missingRequired ? sectionNavMetaRequired : null),
+                              ...(needsAttention ? sectionNavMetaRequired : null),
                             }}
                           >
                             {sectionState}
@@ -712,9 +1212,11 @@ export function EncounterCompose(): JSX.Element {
                           )}
                         </div>
                         <p style={editorDescription}>
-                          {active.entries.length === 0
-                            ? "This section has no preset statements. Write it in the free-text field below; it is stored verbatim."
-                            : "Select the statements that describe this visit. Additional free text is stored verbatim."}
+                          {isSingleChoice(active.entries)
+                            ? "Choose one. Anything the choice cannot say goes in the notes below, stored verbatim."
+                            : active.entries.length === 0
+                              ? "This section has no preset statements. Write it in the free-text field below; it is stored verbatim."
+                              : "Select the statements that describe this visit. Additional free text is stored verbatim."}
                         </p>
                       </div>
 
@@ -742,7 +1244,17 @@ export function EncounterCompose(): JSX.Element {
                     ) : null}
 
                     <div style={editorBody}>
-                      {active.entries.length === 0 ? (
+                      <RecordedPanels
+                        sections={template.sections}
+                        activeSectionId={active.sectionId}
+                        encounterId={encounter.id}
+                        patientId={encounter.patientId}
+                        disabled={frozen || busy}
+                        onChanged={refreshFromPanel}
+                        onStatusChange={reportPanel}
+                      />
+                      {active.entries.length === 0 && active.recordedPanel ? null : active.entries
+                          .length === 0 ? (
                         <div style={emptyVocabulary}>
                           <strong style={emptyVocabularyTitle}>
                             No preset statements for this section
@@ -752,6 +1264,37 @@ export function EncounterCompose(): JSX.Element {
                             {humanize(encounter.encounterType)} in the free-text field below.
                           </p>
                         </div>
+                      ) : isSingleChoice(active.entries) ? (
+                        <>
+                          <SelectField
+                            label={active.heading}
+                            value={draft[active.sectionId]?.entries[0]?.code ?? ""}
+                            disabled={frozen || busy}
+                            onChange={(e) => chooseOne(active, e.target.value)}
+                            options={[
+                              { value: "", label: "Select…" },
+                              ...active.entries.map((e) => ({ value: e.code, label: e.label })),
+                            ]}
+                          />
+                          {active.sectionId === REASON_SECTION_ID &&
+                          suggestion !== null &&
+                          selectionsDirty &&
+                          draft[active.sectionId]?.entries[0]?.code === suggestion.code ? (
+                            <p style={freeTextHint}>
+                              Suggested from the scheduled visit ({suggestion.from}). Save to keep
+                              it, or choose another.
+                            </p>
+                          ) : null}
+                          {active.sectionId === REASON_SECTION_ID && reasonIsFall ? (
+                            <FallLinkField
+                              choices={fallChoices}
+                              linked={linkedFall}
+                              value={fallIncidentId}
+                              disabled={frozen || busy}
+                              onChange={setFallIncidentId}
+                            />
+                          ) : null}
+                        </>
                       ) : (
                         <div style={entryGrid}>
                           {active.entries.map((entry) => {
@@ -759,6 +1302,15 @@ export function EncounterCompose(): JSX.Element {
                               (e) => e.code === entry.code,
                             );
                             const selected = picked !== undefined;
+                            // One statement, one place: a statement already recorded in another section
+                            // is locked here so the note cannot carry it twice with different values.
+                            const elsewhere = selected
+                              ? undefined
+                              : template?.sections.find(
+                                  (s) =>
+                                    s.sectionId !== active.sectionId &&
+                                    draft[s.sectionId]?.entries.some((e) => e.code === entry.code),
+                                );
 
                             return (
                               <div
@@ -772,7 +1324,7 @@ export function EncounterCompose(): JSX.Element {
                                   <input
                                     type="checkbox"
                                     checked={selected}
-                                    disabled={!editable || busy}
+                                    disabled={frozen || busy || elsewhere !== undefined}
                                     onChange={() => toggleEntry(active.sectionId, entry)}
                                     style={entryCheckbox}
                                   />
@@ -788,6 +1340,12 @@ export function EncounterCompose(): JSX.Element {
                                         />
                                       </span>
                                     ) : null}
+
+                                    {elsewhere ? (
+                                      <span style={entryMetaRow}>
+                                        Already recorded in {elsewhere.heading}
+                                      </span>
+                                    ) : null}
                                   </span>
                                 </label>
 
@@ -797,19 +1355,15 @@ export function EncounterCompose(): JSX.Element {
 
                                     <div style={slotGrid}>
                                       {entry.slots.map((slot) => (
-                                        <TextField
+                                        <SlotInput
                                           key={slot}
-                                          label={humanize(slot)}
+                                          slot={slot}
+                                          spec={entry.slotSpecs[slot]}
                                           value={String(picked.params[slot] ?? "")}
-                                          onChange={(e) =>
-                                            setSlot(
-                                              active.sectionId,
-                                              entry.code,
-                                              slot,
-                                              e.target.value,
-                                            )
+                                          onChange={(value) =>
+                                            setSlot(active.sectionId, entry.code, slot, value)
                                           }
-                                          disabled={!editable || busy}
+                                          disabled={frozen || busy}
                                         />
                                       ))}
                                     </div>
@@ -826,8 +1380,13 @@ export function EncounterCompose(): JSX.Element {
                           <div>
                             <strong style={freeTextTitle}>Additional clinical notes</strong>
                             <p style={freeTextHint}>
-                              Optional. Enter only information not already represented by the
-                              selected statements.
+                              {active.entries.length > 0
+                                ? "Optional. Enter only information not already represented by the selected statements."
+                                : filledByRecord.has(active.sectionId)
+                                  ? "Optional. The saved record above documents this section; add notes only for what it does not cover."
+                                  : active.required
+                                    ? "Required. This section has no preset statements; document it here in your own words."
+                                    : "Optional."}
                             </p>
                           </div>
                           <span style={verbatimBadge}>Recorded verbatim</span>
@@ -838,7 +1397,7 @@ export function EncounterCompose(): JSX.Element {
                           value={draft[active.sectionId]?.freeText ?? ""}
                           onChange={(e) => setFreeText(active.sectionId, e.target.value)}
                           rows={5}
-                          disabled={!editable || busy}
+                          disabled={frozen || busy}
                         />
                       </div>
                     </div>
@@ -855,12 +1414,41 @@ export function EncounterCompose(): JSX.Element {
                     </div>
 
                     <span style={previewStatus}>
-                      {preview.trim().length > 0 ? "Available" : "Not saved"}
+                      {editing
+                        ? "Editing"
+                        : editInForce
+                          ? "Edited by you"
+                          : editedNarrative !== null
+                            ? "Edit out of date"
+                            : preview.trim().length > 0
+                              ? "Available"
+                              : "Not saved"}
                     </span>
                   </header>
 
+                  {editedNarrative !== null && editStale && !editing ? (
+                    <div role="alert" style={staleEditNotice}>
+                      <strong>The note changed after you edited this text.</strong> Below is the
+                      note as it now reads; your earlier edit is not used. Edit it again to keep
+                      your wording, or discard the old edit. The note cannot be finalized until you
+                      do.
+                      <details>
+                        <summary>Your earlier edit</summary>
+                        <p style={previewText}>{editedNarrative}</p>
+                      </details>
+                    </div>
+                  ) : null}
+
                   <div style={previewBody}>
-                    {preview.trim().length === 0 ? (
+                    {editing ? (
+                      <TextAreaField
+                        label="Note text"
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        rows={14}
+                        disabled={busy}
+                      />
+                    ) : noteText.trim().length === 0 ? (
                       <div style={previewEmpty}>
                         <strong style={previewEmptyTitle}>No assembled narrative yet</strong>
                         <p style={previewEmptyText}>
@@ -869,16 +1457,71 @@ export function EncounterCompose(): JSX.Element {
                         </p>
                       </div>
                     ) : (
-                      <p style={previewText}>{preview}</p>
+                      <p style={previewText}>{noteText}</p>
                     )}
                   </div>
 
                   {editable ? (
                     <footer style={previewFooter}>
-                      <span style={previewFooterText}>Preview updates after saving.</span>
-                      <Button tone="tertiary" onClick={() => void save()} disabled={busy}>
-                        {busy ? "Saving…" : "Save & refresh preview"}
-                      </Button>
+                      <span style={previewFooterText}>
+                        {editing
+                          ? "Your text is what will be signed; the generated text is kept beside it."
+                          : editInForce
+                            ? "Your edited text will be signed."
+                            : editedNarrative !== null
+                              ? "Apply a new edit or discard the old one to finalize."
+                              : "Preview updates after saving."}
+                      </span>
+                      <span style={previewActions}>
+                        {editing ? (
+                          <>
+                            <Button
+                              tone="tertiary"
+                              onClick={() => setEditing(false)}
+                              disabled={busy}
+                            >
+                              Cancel
+                            </Button>
+                            {editedNarrative !== null ? (
+                              <Button
+                                tone="tertiary"
+                                onClick={() => void writeEdit(null)}
+                                disabled={busy}
+                              >
+                                Discard edit
+                              </Button>
+                            ) : null}
+                            <Button
+                              onClick={() => void writeEdit(editText)}
+                              disabled={busy || editText.trim().length === 0}
+                            >
+                              {busy ? "Saving…" : "Apply edit"}
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            {editedNarrative !== null ? (
+                              <Button
+                                tone="tertiary"
+                                onClick={() => void writeEdit(null)}
+                                disabled={busy}
+                              >
+                                Discard edit
+                              </Button>
+                            ) : null}
+                            <Button
+                              tone="tertiary"
+                              onClick={() => void startEdit()}
+                              disabled={busy}
+                            >
+                              Edit
+                            </Button>
+                            <Button tone="tertiary" onClick={() => void save()} disabled={busy}>
+                              {busy ? "Saving…" : "Save & refresh preview"}
+                            </Button>
+                          </>
+                        )}
+                      </span>
                     </footer>
                   ) : null}
                 </section>
@@ -893,6 +1536,15 @@ export function EncounterCompose(): JSX.Element {
                   />
                 ) : null}
               </aside>
+            </div>
+
+            <div ref={planRegion}>
+              <PlanOfCareStep
+                encounterId={encounter.id}
+                patientId={encounter.patientId}
+                disabled={planDisabled}
+                onStatusChange={reportPlan}
+              />
             </div>
           </main>
         }
@@ -921,822 +1573,3 @@ export function EncounterCompose(): JSX.Element {
     </PatientWorkspaceLayout>
   );
 }
-
-/**
- * §2.2 vitals capture.
- * The server remains responsible for validating clinical envelopes and
- * clinically-not-indicated semantics.
- */
-function VitalsPanel({
-  encounterId,
-  disabled,
-  onSaved,
-}: {
-  encounterId: string;
-  disabled: boolean;
-  onSaved: () => void;
-}): JSX.Element {
-  const client = useApiClient();
-  const [busy, setBusy] = useState(false);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
-
-  const FIELDS = [
-    ["bpSystolic", "BP systolic", "mmHg"],
-    ["bpDiastolic", "BP diastolic", "mmHg"],
-    ["heartRate", "Heart rate", "bpm"],
-    ["respiratoryRate", "Respiratory rate", "breaths/min"],
-    ["temperature", "Temperature", "°F"],
-    ["spo2", "SpO₂", "%"],
-    ["painScore", "Pain score", "0–10"],
-  ] as const;
-
-  async function submit(): Promise<void> {
-    setBusy(true);
-    setError(null);
-
-    const body: Record<string, number> = {};
-
-    for (const [key] of FIELDS) {
-      const raw = values[key];
-
-      if (raw !== undefined && raw.trim() !== "" && !Number.isNaN(Number(raw))) {
-        body[key] = Number(raw);
-      }
-    }
-
-    const res = await captureVitals(
-      client,
-      encounterId,
-      body as Parameters<typeof captureVitals>[2],
-    );
-
-    setBusy(false);
-    if (!res.ok) {
-      setError(readableValidation(res.details, res.message));
-      return;
-    }
-    onSaved();
-  }
-
-  return (
-    <section style={vitalsPanel}>
-      <header style={vitalsHeader}>
-        <div>
-          <div style={eyebrow}>Quick capture</div>
-          <h2 style={vitalsTitle}>Visit vitals</h2>
-          <p style={vitalsDescription}>
-            Record the measurements available for this visit. Leave unavailable fields blank.
-          </p>
-        </div>
-      </header>
-
-      <div style={vitalsGrid}>
-        {FIELDS.map(([key, label, unit]) => (
-          <div key={key} style={vitalField}>
-            <TextField
-              label={label}
-              value={values[key] ?? ""}
-              disabled={busy || disabled}
-              onChange={(e) =>
-                setValues((current) => ({
-                  ...current,
-                  [key]: e.target.value,
-                }))
-              }
-            />
-            <span style={vitalUnit}>{unit}</span>
-          </div>
-        ))}
-      </div>
-
-      {error ? (
-        <p role="alert" style={vitalsError}>
-          {error}
-        </p>
-      ) : null}
-
-      <footer style={vitalsFooter}>
-        <span style={vitalsFooterHint}>Clinical validation is applied by the server.</span>
-
-        <Button onClick={() => void submit()} disabled={busy || disabled}>
-          {busy ? "Recording…" : "Record vitals"}
-        </Button>
-      </footer>
-    </section>
-  );
-}
-
-const hairline = "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)";
-
-const page: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "1rem",
-  padding: "1rem",
-  background: "color-mix(in srgb, var(--color-surface-container-low) 55%, transparent)",
-};
-
-const headerActions: CSSProperties = {
-  display: "flex",
-  gap: "0.5rem",
-  alignItems: "center",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-};
-
-const summaryBar: CSSProperties = {
-  display: "flex",
-  alignItems: "stretch",
-  justifyContent: "space-between",
-  gap: "1.5rem",
-  padding: "1rem 1.1rem",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-  boxShadow: "0 1px 2px color-mix(in srgb, black 6%, transparent)",
-};
-
-const summaryMain: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-};
-
-const summaryTitleRow: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-end",
-  justifyContent: "space-between",
-  gap: "1rem",
-};
-
-const eyebrow: CSSProperties = {
-  marginBottom: "0.2rem",
-  fontSize: "0.8125rem",
-  lineHeight: 1.2,
-  fontWeight: 500,
-  color: "var(--color-on-surface-variant)",
-};
-
-const summaryTitle: CSSProperties = {
-  fontSize: "0.95rem",
-  fontWeight: 650,
-  color: "var(--color-on-surface)",
-};
-
-const completionPercent: CSSProperties = {
-  fontSize: "1.05rem",
-  color: "var(--color-primary)",
-};
-
-const progressTrack: CSSProperties = {
-  height: "0.4rem",
-  marginTop: "0.65rem",
-  borderRadius: 999,
-  overflow: "hidden",
-  background: "var(--color-surface-container-highest)",
-};
-
-const progressFill: CSSProperties = {
-  display: "block",
-  height: "100%",
-  borderRadius: 999,
-  background: "var(--color-primary)",
-  transition: "width 180ms ease",
-};
-
-const summaryStats: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "1rem",
-  flexShrink: 0,
-};
-
-const summaryStat: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  minWidth: "7rem",
-};
-
-const summaryStatValue: CSSProperties = {
-  fontSize: "1.1rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface)",
-};
-
-const summaryStatLabel: CSSProperties = {
-  marginTop: "0.1rem",
-  fontSize: "0.72rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const summaryDivider: CSSProperties = {
-  width: 1,
-  alignSelf: "stretch",
-  background: "var(--color-outline-variant)",
-  opacity: 0.5,
-};
-
-const noticeBox: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.65rem",
-  padding: "0.75rem 0.9rem",
-  borderRadius: "0.7rem",
-  fontSize: "0.82rem",
-  border: hairline,
-};
-
-const noticeSuccess: CSSProperties = {
-  background: "color-mix(in srgb, var(--color-success) 8%, var(--color-surface))",
-  color: "var(--color-on-surface)",
-};
-
-const noticeError: CSSProperties = {
-  background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
-  color: "var(--color-on-surface)",
-};
-
-const noticeTitle: CSSProperties = {
-  flexShrink: 0,
-  fontWeight: 700,
-};
-
-const attentionCard: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "0.75rem",
-  padding: "0.9rem 1rem",
-  borderRadius: "0.8rem",
-  border: "1px solid color-mix(in srgb, var(--color-error) 25%, transparent)",
-  background: "color-mix(in srgb, var(--color-error) 6%, var(--color-surface))",
-};
-
-const attentionMark: CSSProperties = {
-  display: "grid",
-  placeItems: "center",
-  width: "1.7rem",
-  height: "1.7rem",
-  flexShrink: 0,
-  borderRadius: 999,
-  fontSize: "0.85rem",
-  fontWeight: 800,
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  // The pill foreground again: plain error on this tint is about 3.7:1 in light theme, the pill token about 4.9:1.
-  color: "var(--color-error-pill-fg)",
-};
-
-const attentionTitle: CSSProperties = {
-  display: "block",
-  fontSize: "0.83rem",
-  color: "var(--color-on-surface)",
-};
-
-const attentionText: CSSProperties = {
-  margin: "0.2rem 0 0",
-  fontSize: "0.78rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-
-const readyCard: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "0.75rem",
-  padding: "0.9rem 1rem",
-  borderRadius: "0.8rem",
-  border: "1px solid color-mix(in srgb, var(--color-success) 22%, transparent)",
-  background: "color-mix(in srgb, var(--color-success) 6%, var(--color-surface))",
-};
-
-const readyMark: CSSProperties = {
-  display: "grid",
-  placeItems: "center",
-  width: "1.7rem",
-  height: "1.7rem",
-  flexShrink: 0,
-  borderRadius: 999,
-  fontSize: "0.82rem",
-  fontWeight: 800,
-  color: "var(--color-success)",
-  background: "color-mix(in srgb, var(--color-success) 12%, transparent)",
-};
-
-const readyTitle: CSSProperties = {
-  display: "block",
-  fontSize: "0.83rem",
-};
-
-const readyText: CSSProperties = {
-  margin: "0.2rem 0 0",
-  fontSize: "0.78rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const workspace: CSSProperties = {
-  display: "grid",
-  gap: "1rem",
-  alignItems: "start",
-};
-
-const sectionRail: CSSProperties = {
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-};
-
-const railHeader: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  padding: "0.95rem 1rem",
-  borderBottom: hairline,
-};
-
-const railTitle: CSSProperties = {
-  fontSize: "0.88rem",
-};
-
-const railCount: CSSProperties = {
-  display: "inline-grid",
-  placeItems: "center",
-  minWidth: "1.65rem",
-  height: "1.65rem",
-  padding: "0 0.4rem",
-  borderRadius: 999,
-  fontSize: "0.72rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const sectionNav: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.15rem",
-  padding: "0.45rem",
-};
-
-const sectionNavButton: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  width: "100%",
-  gap: "0.65rem",
-  padding: "0.65rem 0.7rem",
-  border: "1px solid transparent",
-  borderRadius: "0.65rem",
-  background: "transparent",
-  color: "inherit",
-  textAlign: "left",
-  cursor: "pointer",
-};
-
-const sectionNavButtonActive: CSSProperties = {
-  border: "1px solid color-mix(in srgb, var(--color-primary) 18%, transparent)",
-  background: "color-mix(in srgb, var(--color-primary) 7%, var(--color-surface))",
-};
-
-const sectionIndex: CSSProperties = {
-  display: "grid",
-  placeItems: "center",
-  width: "1.55rem",
-  height: "1.55rem",
-  flexShrink: 0,
-  borderRadius: 999,
-  fontSize: "0.68rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const sectionIndexComplete: CSSProperties = {
-  color: "var(--color-success)",
-  background: "color-mix(in srgb, var(--color-success) 11%, var(--color-surface))",
-};
-
-const sectionIndexActive: CSSProperties = {
-  color: "var(--color-on-primary)",
-  background: "var(--color-primary)",
-};
-
-const sectionNavCopy: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  minWidth: 0,
-  gap: "0.1rem",
-};
-
-const sectionNavTitle: CSSProperties = {
-  overflow: "hidden",
-  fontSize: "0.78rem",
-  fontWeight: 600,
-  color: "var(--color-on-surface)",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const sectionNavTitleActive: CSSProperties = {
-  color: "var(--color-primary)",
-};
-
-const sectionNavMeta: CSSProperties = {
-  fontSize: "0.68rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-// The pill foreground, not --color-error: on the active step's primary tint plain error is 4.12:1 in light
-// theme (needs 4.5), the pill token is 5.52:1. The two tokens are identical in dark theme.
-const sectionNavMetaRequired: CSSProperties = {
-  color: "var(--color-error-pill-fg)",
-};
-
-const readOnlyHint: CSSProperties = {
-  margin: "0 0.75rem 0.75rem",
-  padding: "0.7rem",
-  borderRadius: "0.6rem",
-  fontSize: "0.72rem",
-  lineHeight: 1.4,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-low)",
-};
-
-const editorColumn: CSSProperties = {
-  minWidth: 0,
-};
-
-const editorCard: CSSProperties = {
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-  boxShadow: "0 1px 2px color-mix(in srgb, black 5%, transparent)",
-};
-
-const editorHeader: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "1rem",
-  padding: "1.1rem 1.2rem",
-  borderBottom: hairline,
-};
-
-const editorTitleRow: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  flexWrap: "wrap",
-  gap: "0.5rem",
-};
-
-const editorTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "1.05rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface)",
-};
-
-const editorDescription: CSSProperties = {
-  maxWidth: "46rem",
-  margin: "0.35rem 0 0",
-  fontSize: "0.78rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-
-const requiredBadge: CSSProperties = {
-  padding: "0.18rem 0.42rem",
-  borderRadius: 999,
-  fontSize: "0.66rem",
-  fontWeight: 700,
-  color: "var(--color-error-pill-fg)",
-  background: "color-mix(in srgb, var(--color-error) 9%, transparent)",
-};
-
-const discardDialog: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.75rem",
-  padding: "1.25rem",
-};
-
-const discardTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "1.15rem",
-  color: "var(--color-on-surface)",
-};
-
-const discardText: CSSProperties = {
-  margin: 0,
-  lineHeight: 1.5,
-  color: "var(--color-on-surface-variant)",
-};
-
-const discardActions: CSSProperties = {
-  display: "flex",
-  justifyContent: "flex-end",
-  gap: "0.5rem",
-};
-
-const optionalBadge: CSSProperties = {
-  padding: "0.18rem 0.42rem",
-  borderRadius: 999,
-  fontSize: "0.66rem",
-  fontWeight: 650,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const selectionCounter: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-end",
-  flexShrink: 0,
-  fontSize: "0.7rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const editorBody: CSSProperties = {
-  padding: "1rem 1.15rem 1.15rem",
-};
-
-const entryGrid: CSSProperties = {
-  display: "grid",
-  gap: "0.55rem",
-};
-
-const entryCard: CSSProperties = {
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.7rem",
-  background: "var(--color-surface)",
-  transition: "border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease",
-};
-
-const entryCardSelected: CSSProperties = {
-  border: "1px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
-  background: "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
-  boxShadow: "inset 3px 0 0 color-mix(in srgb, var(--color-primary) 85%, transparent)",
-};
-
-const entryLabel: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "0.75rem",
-  padding: "0.75rem 0.8rem",
-  cursor: "pointer",
-};
-
-const entryCheckbox: CSSProperties = {
-  width: "1rem",
-  height: "1rem",
-  marginTop: "0.1rem",
-  flexShrink: 0,
-  accentColor: "var(--color-primary)",
-};
-
-const entryContent: CSSProperties = {
-  display: "flex",
-  flex: 1,
-  minWidth: 0,
-  flexDirection: "column",
-  gap: "0.35rem",
-};
-
-const entryText: CSSProperties = {
-  fontSize: "0.82rem",
-  lineHeight: 1.4,
-  fontWeight: 550,
-  color: "var(--color-on-surface)",
-};
-
-const entryMetaRow: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  flexWrap: "wrap",
-  gap: "0.4rem",
-};
-
-const slotPanel: CSSProperties = {
-  padding: "0.75rem 0.8rem 0.8rem 2.55rem",
-  borderTop: hairline,
-  background: "var(--color-surface-container-low)",
-};
-
-const slotPanelTitle: CSSProperties = {
-  marginBottom: "0.55rem",
-  fontSize: "0.7rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface-variant)",
-};
-
-const slotGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",
-  gap: "0.65rem",
-};
-
-const emptyVocabulary: CSSProperties = {
-  padding: "1rem",
-  borderRadius: "0.75rem",
-  border: hairline,
-  background: "var(--color-surface-container-low)",
-};
-
-const emptyVocabularyTitle: CSSProperties = {
-  fontSize: "0.82rem",
-};
-
-const emptyVocabularyText: CSSProperties = {
-  margin: "0.3rem 0 0",
-  fontSize: "0.76rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-
-const freeTextSection: CSSProperties = {
-  marginTop: "1rem",
-  paddingTop: "1rem",
-  borderTop: hairline,
-};
-
-const freeTextHeading: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  marginBottom: "0.65rem",
-};
-
-const freeTextTitle: CSSProperties = {
-  fontSize: "0.82rem",
-};
-
-const freeTextHint: CSSProperties = {
-  margin: "0.2rem 0 0",
-  fontSize: "0.72rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const verbatimBadge: CSSProperties = {
-  flexShrink: 0,
-  padding: "0.2rem 0.45rem",
-  borderRadius: 999,
-  fontSize: "0.64rem",
-  fontWeight: 650,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const previewColumn: CSSProperties = {
-  minWidth: 0,
-};
-
-const previewCard: CSSProperties = {
-  position: "sticky",
-  top: "1rem",
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-};
-
-const previewHeader: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  padding: "0.95rem 1rem",
-  borderBottom: hairline,
-};
-
-const previewTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "0.95rem",
-  fontWeight: 700,
-};
-
-const previewStatus: CSSProperties = {
-  padding: "0.18rem 0.4rem",
-  borderRadius: 999,
-  fontSize: "0.64rem",
-  fontWeight: 650,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container-high)",
-};
-
-const previewBody: CSSProperties = {
-  minHeight: "12rem",
-  maxHeight: "55vh",
-  overflowY: "auto",
-  padding: "1rem",
-};
-
-const previewText: CSSProperties = {
-  margin: 0,
-  whiteSpace: "pre-wrap",
-  fontSize: "0.82rem",
-  lineHeight: 1.65,
-  color: "var(--color-on-surface)",
-};
-
-const previewEmpty: CSSProperties = {
-  display: "flex",
-  minHeight: "10rem",
-  flexDirection: "column",
-  justifyContent: "center",
-  alignItems: "center",
-  padding: "1rem",
-  textAlign: "center",
-};
-
-const previewEmptyTitle: CSSProperties = {
-  fontSize: "0.8rem",
-};
-
-const previewEmptyText: CSSProperties = {
-  maxWidth: "16rem",
-  margin: "0.35rem 0 0",
-  fontSize: "0.72rem",
-  lineHeight: 1.45,
-  color: "var(--color-on-surface-variant)",
-};
-
-const previewFooter: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.6rem",
-  padding: "0.7rem 0.85rem",
-  borderTop: hairline,
-  background: "var(--color-surface-container-low)",
-};
-
-const previewFooterText: CSSProperties = {
-  fontSize: "0.67rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const vitalsPanel: CSSProperties = {
-  overflow: "hidden",
-  border: hairline,
-  borderRadius: "0.9rem",
-  background: "var(--color-surface)",
-};
-
-const vitalsHeader: CSSProperties = {
-  padding: "0.9rem 1rem 0",
-};
-
-const vitalsTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "0.95rem",
-  fontWeight: 700,
-};
-
-const vitalsDescription: CSSProperties = {
-  margin: "0.25rem 0 0",
-  fontSize: "0.75rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const vitalsGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))",
-  gap: "0.75rem",
-  padding: "0.9rem 1rem",
-};
-
-const vitalField: CSSProperties = {
-  position: "relative",
-};
-
-const vitalUnit: CSSProperties = {
-  display: "block",
-  marginTop: "0.18rem",
-  fontSize: "0.65rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const vitalsError: CSSProperties = {
-  margin: "0 1rem 0.75rem",
-  padding: "0.75rem",
-  borderRadius: "0.5rem",
-  color: "var(--color-on-error-container)",
-  background: "var(--color-error-container)",
-};
-
-const vitalsFooter: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  padding: "0.75rem 1rem",
-  borderTop: hairline,
-  background: "var(--color-surface-container-low)",
-};
-
-const vitalsFooterHint: CSSProperties = {
-  fontSize: "0.7rem",
-  color: "var(--color-on-surface-variant)",
-};

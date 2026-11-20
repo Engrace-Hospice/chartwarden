@@ -63,6 +63,9 @@ export type MissingResolutionView = Ok<
 export type AggregatorSubmissionView = Ok<
   operations["postApiV1EvvAggregatorsubmissionsByIdCancel"]
 >;
+export type EvvEventView = Ok<operations["getApiV1EvvEventsByEventId"]>;
+export type CorrectEventResult = Ok<operations["postApiV1EvvEventsByEventIdCorrect"]>;
+export type CorrectEventBody = ReqBody<operations["postApiV1EvvEventsByEventIdCorrect"]>;
 
 export type EditTenantPolicyBody = ReqBody<operations["patchApiV1EvvGeofencepolicyTenant"]>;
 export type PerAddressOverrideBody = ReqBody<operations["postApiV1EvvGeofencepolicyPeraddress"]>;
@@ -144,6 +147,8 @@ export type WriteResult<T> =
       readonly status: number | null;
       readonly code: string | null;
       readonly message: string;
+      /** Parsed server envelope, retained so callers can distinguish a fresh-step-up refusal. */
+      readonly error: unknown;
     };
 
 /**
@@ -165,31 +170,56 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
   const code = typeof err?.code === "string" ? err.code : null;
   const suffix = detail ? ` ${detail}` : "";
   const message =
-    code === "EVV_RESOLUTION_NOT_ASSIGNED_CLINICIAN"
-      ? `Only the clinician assigned to this visit can self-attest to it — a supervisor override is the other route.${suffix}`
-      : code === "EVV_RESOLUTION_WINDOW_CLOSED" ||
-          code === "EVV_RESOLUTION_SELF_ATTEST_WINDOW_CLOSED"
-        ? `The self-attest window has closed on this row; a supervisor override is required.${suffix}`
-        : code === "EVV_RESOLUTION_REASON_TOO_SHORT"
-          ? (detail ?? "The reason supplied is shorter than this attestation requires.")
-          : code === "EVV_AGGREGATOR_NOT_RESUBMITTABLE"
-            ? `A submission can only be resubmitted after the state rejected it or timed out.${suffix}`
-            : code === "EVV_AGGREGATOR_NOT_CANCELLABLE"
-              ? `This submission has already reached a terminal status; there is nothing left to cancel.${suffix}`
-              : httpStatus === 403
-                ? (detail ?? "Your role is not permitted to take this action.")
-                : httpStatus === 409
-                  ? (detail ??
-                    "That row has moved on since this page loaded. Reload and try again.")
-                  : httpStatus === 404
-                    ? "That record is no longer available to you."
-                    : httpStatus === 422
-                      ? (detail ?? "The server rejected the details supplied.")
-                      : (detail ?? "The action could not be completed.");
-  return { ok: false, status: httpStatus, code, message };
+    code === "EVV_EVENT_ALREADY_SUPERSEDED"
+      ? `This event already has a correction. Open the current event in the evidence timeline and correct that record instead.${suffix}`
+      : code === "EVV_CORRECTION_REASON_TOO_SHORT"
+        ? (detail ?? "Explain the correction in at least 60 characters.")
+        : code === "EVV_CORRECTION_KIND_MISMATCH"
+          ? `A correction must remain the same check-in or check-out kind as the original.${suffix}`
+          : code === "EVV_RESOLUTION_NOT_ASSIGNED_CLINICIAN"
+            ? `Only the clinician assigned to this visit can self-attest to it — a supervisor override is the other route.${suffix}`
+            : code === "EVV_RESOLUTION_WINDOW_CLOSED" ||
+                code === "EVV_RESOLUTION_SELF_ATTEST_WINDOW_CLOSED"
+              ? `The self-attest window has closed on this row; a supervisor override is required.${suffix}`
+              : code === "EVV_RESOLUTION_REASON_TOO_SHORT"
+                ? (detail ?? "The reason supplied is shorter than this attestation requires.")
+                : code === "EVV_AGGREGATOR_NOT_RESUBMITTABLE"
+                  ? `A submission can only be resubmitted after the state rejected it or timed out.${suffix}`
+                  : code === "EVV_AGGREGATOR_NOT_CANCELLABLE"
+                    ? `This submission has already reached a terminal status; there is nothing left to cancel.${suffix}`
+                    : httpStatus === 403
+                      ? (detail ?? "Your role is not permitted to take this action.")
+                      : httpStatus === 409
+                        ? (detail ??
+                          "That row has moved on since this page loaded. Reload and try again.")
+                        : httpStatus === 404
+                          ? "That record is no longer available to you."
+                          : httpStatus === 422
+                            ? (detail ?? "The server rejected the details supplied.")
+                            : (detail ?? "The action could not be completed.");
+  return { ok: false, status: httpStatus, code, message, error: body };
 }
 
 const ok = <T>(value: T): WriteResult<T> => ({ ok: true, value });
+
+// ── correction-of-record (§4.1 route 6; §2.3 / §7.7) ────────────────────────────────────────────────
+
+/**
+ * Create a linked replacement event. The route, not the client, owns step-up, kind matching, the live-head
+ * check and the atomic supersede/insert/outbox/resolution transaction.
+ */
+export async function correctEventRecord(
+  client: ApiClient,
+  eventId: string,
+  body: CorrectEventBody,
+): Promise<WriteResult<CorrectEventResult>> {
+  const { data, error, response } = await client.POST("/api/v1/evv/events/{eventId}/correct", {
+    params: { path: { eventId } },
+    body,
+  });
+  if (error || !data) return failure(response?.status, error);
+  return ok(data);
+}
 
 // ── device lifecycle (§4.1 routes 10–13) ───────────────────────────────────────────────────────────────
 

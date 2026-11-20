@@ -78,6 +78,7 @@ import {
   embeddingsProviderDenyStub,
   emergencyServiceJurisdictionReaderDenyStub,
   encounterCreatorDenyStub,
+  encounterDraftReaderDenyStub,
   escalationRouterDenyStub,
   evvAggregatorReferenceReaderDenyStub,
   evvBracketResolverDenyStub,
@@ -196,6 +197,7 @@ import {
   visitReaderDenyStub,
   volunteerComplianceProviderDenyStub,
   volunteerGateExpiryReaderDenyStub,
+  woundProviderDenyStub,
 } from "./providers";
 import { NotImplementedError } from "./providers";
 
@@ -862,6 +864,12 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: bereavementEncounterReaderDenyStub,
   },
+  {
+    key: "EncounterDraftReader",
+    ownerModule: 8,
+    phi: true,
+    denyStub: encounterDraftReaderDenyStub,
+  },
   // phi: FALSE — membership/location ids only, no patient reference.
   { key: "SupervisorReader", ownerModule: 3, phi: false, denyStub: supervisorReaderDenyStub },
   {
@@ -1027,6 +1035,12 @@ export const REQUIRED_SEAMS = [
     ownerModule: 9,
     phi: true,
     denyStub: scaleSeriesProviderDenyStub,
+  },
+  {
+    key: "WoundProvider",
+    ownerModule: 9,
+    phi: true,
+    denyStub: woundProviderDenyStub,
   },
   // M10 (HOPE Engine) owned seams (§2 / D10). Leaf-typed read-only DTO surfaces over M10's PHI tables (the
   // timepoint schedule + completion state, the J2051 trigger/SFV obligations, the per-PE submission batch

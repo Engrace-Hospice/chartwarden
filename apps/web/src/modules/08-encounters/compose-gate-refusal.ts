@@ -1,7 +1,8 @@
 // apps/web/src/modules/08-encounters — what the composer says when finalizing is refused for drafted sections (ADR-0114 VN-D7, S1 PR D).
 // Moved out of encounter-compose.tsx unchanged. The gate lists every failure at once: the drafted sections are named beside the draft strip,
 // and the first other failure is repeated in the page's own feedback.
-import { type UiFeedback, readableValidation } from "./compose-feedback";
+import type { UiFeedback } from "./compose-feedback";
+import { readableValidation } from "./compose-text";
 import { describeIssues, draftGateRefusal } from "./draft-model";
 
 export interface GateRefusalWords {

@@ -1,5 +1,6 @@
 // S1 PR C2a — `computeDraft` (VN-D4, VN-D10, VN-D11, design §3.2): the visit time, the as-of per-viewer reads, the
 // stored selection tree and the pure compiler, composed. Nothing is cached across calls.
+import type { RecordedWound } from "@chartwarden/hearthnote";
 import { VOCAB_VERSION } from "@chartwarden/narrative-vocab";
 import { describe, expect, it } from "vitest";
 import { computeDraft, snapshotStorePorts } from "../src/modules/08-encounters/drafting/compute";
@@ -57,6 +58,10 @@ describe("computeDraft: composition", () => {
       ["chief_concern", "empty"],
       ["vitals_review", "drafted"],
       ["assessment", "drafted"],
+      // WF09: the recorded ADL, nutrition and wound sections are free text only, so nothing drafts them.
+      ["functional_status", "empty"],
+      ["nutrition", "empty"],
+      ["skin_wounds", "empty"],
       ["symptom_management", "empty"],
       ["interventions", "drafted"],
       ["plan", "drafted"],
@@ -352,6 +357,40 @@ describe("computeDraft: 42 CFR Part 2, per viewer", () => {
       actor: { roles: ["rn"], membershipId: null },
     });
     expect(PATIENT_ID).toBe(ports.carePlanAsOf.mock.calls[0]?.[0]);
+  });
+});
+
+describe("computeDraft: the wounds recorded on the visit", () => {
+  const wound: RecordedWound = {
+    site: "sacrum",
+    etiology: "pressure_injury",
+    stage: "stage_2",
+    lengthCm: 2.5,
+    widthCm: 1.5,
+  };
+
+  it("carry into the context the signed note is written from, asked of the seam for this visit", async () => {
+    const ports = fakePorts({ recordedWounds: async () => [wound] });
+    const out = await computeDraft(ports, encounter(), viewer(), NOW);
+    expect(out.context.recordedWounds).toEqual([wound]);
+    expect(ports.recordedWounds).toHaveBeenCalledWith({
+      organizationId: ORG_ID,
+      encounterId: encounter().id,
+      patientId: PATIENT_ID,
+    });
+  });
+
+  it("leave the stored context as it was when there are none", async () => {
+    const out = await computeDraft(fakePorts(), encounter(), viewer(), NOW);
+    expect(out.context).not.toHaveProperty("recordedWounds");
+  });
+
+  it("make the draft unavailable when M9 cannot answer, rather than a note short of a wound", async () => {
+    const ports = fakePorts({ recordedWounds: async () => Promise.reject(new Error("M9 down")) });
+    await expect(computeDraft(ports, encounter(), viewer(), NOW)).rejects.toMatchObject({
+      code: "DRAFT_UNAVAILABLE",
+      statusCode: 503,
+    });
   });
 });
 

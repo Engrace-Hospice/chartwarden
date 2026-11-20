@@ -9,15 +9,24 @@ import { VOCABULARY } from "./vocabulary";
 
 export { DRAFT_VOCAB_CODES } from "./draft-entries";
 
-export type { VocabBodySystem, VocabCategory, VocabEntry } from "./types";
+export type { SlotSpec, VocabBodySystem, VocabCategory, VocabEntry } from "./types";
 export {
   CORPUS_CLINICAL_REVIEW,
+  FALL_FOLLOWUP_CODE,
   VOCABULARY,
   VOCAB_VERSION,
   effectiveReviewStatus,
   type ClinicalReviewStatus,
   type CorpusReviewState,
 } from "./vocabulary";
+export {
+  MAX_TEXT_SLOT_LENGTH,
+  entrySlots,
+  validateSelectionTree,
+  type SelectionIssue,
+  type SelectionIssueCode,
+  type SelectionTreeInput,
+} from "./slots";
 export {
   NARRATIVE_VOCAB_RELEASES,
   UnregisteredNarrativeVocabRelease,

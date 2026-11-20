@@ -395,7 +395,12 @@ async function main(): Promise<void> {
       body: {
         sections: template.sections
           .filter((t) => t.required)
-          .map((t) => ({ sectionId: t.id, entries: [{ code: "nv.cv.stable" }] })),
+          .map((t) => ({
+            sectionId: t.id,
+            // The Reason for Visit is a choice of visit reasons; every other required section keeps the
+            // one stable statement this seed has always used to get past the gate.
+            entries: [{ code: t.id === "chief_concern" ? "nv.reason.routine" : "nv.cv.stable" }],
+          })),
       },
     });
     if (sel.error) throw new Error(`encounter selections failed: ${JSON.stringify(sel.error)}`);

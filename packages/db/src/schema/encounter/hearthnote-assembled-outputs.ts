@@ -34,6 +34,10 @@ export const hearthnoteAssembledOutputs = pgTable(
     layer2Cipher: text("layer2_cipher"), // encrypted: post-hardblock Layer-2 narrative (NULL if Layer-2 not used)
     finalCipher: text("final_cipher").notNull(), // the bytes that ARE the signed encounter narrative
 
+    // The author edited the note text (migration 1518): `final_cipher` is their text and `layer1_cipher` the generated one it was
+    // made from. False = the signed bytes are the assembly (or its Layer-2 polish), never a person's rewrite.
+    clinicianEdited: boolean("clinician_edited").notNull().default(false),
+
     layer2Eligibility: layer2EligibilityReason("layer2_eligibility").notNull(),
     layer2InvolvedAtFinalize: boolean("layer2_involved_at_finalize").notNull().default(false),
     // Migration 1522 (ADR-0114): the pinned narrative carries a section drafted from sources that may hold 42 CFR Part 2 content (the

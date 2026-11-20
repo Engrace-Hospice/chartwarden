@@ -4,6 +4,8 @@ import {
   Glyph,
   LoadingSpinner,
   PageHeader,
+  PatientBanner,
+  PatientWorkspaceLayout,
   StatusPill,
   cardSurface,
   ghostBorder,
@@ -13,7 +15,9 @@ import {
 } from "@chartwarden/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ChartPatientBanner } from "../../shell/patient-context";
+import { isUuid } from "../../shell/uuid";
 import {
   type ClinicalSnapshot,
   type SignatureView,
@@ -25,6 +29,7 @@ import {
 } from "./care-plan-api";
 import { RestrictedContentNote, disciplineLabel } from "./care-plan-overview";
 import { cap, toneFor } from "./care-plan-status";
+import { loadCarePlan } from "./change-proposals/change-proposals-api";
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return "Not set";
@@ -43,11 +48,30 @@ export function CarePlanVersionHistory(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { planId, versionId } = useParams<{ planId: string; versionId?: string }>();
+  // The plan's patient, carried by the link that opened this page; the version reads do not return it. The link is only a claim: it is
+  // trusted for the banner once the patient's own plan read says this plan is theirs, so a stale or edited link shows no banner.
+  const [searchParams] = useSearchParams();
+  const claimed = searchParams.get("patientId");
+  const claimedPatientId = claimed !== null && isUuid(claimed) ? claimed : null;
+  const [verifiedPatientId, setVerifiedPatientId] = useState<string | null>(null);
+  const patientId = verifiedPatientId === claimedPatientId ? verifiedPatientId : null;
   const [items, setItems] = useState<Version[]>([]);
   const [fetched, setFetched] = useState<Version | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<{ id: string; message: string } | null>(null);
+
+  useEffect(() => {
+    setVerifiedPatientId(null);
+    if (!planId || claimedPatientId === null) return;
+    let active = true;
+    void loadCarePlan(client, claimedPatientId).then((read) => {
+      if (active && read.ok && read.value?.id === planId) setVerifiedPatientId(claimedPatientId);
+    });
+    return () => {
+      active = false;
+    };
+  }, [client, planId, claimedPatientId]);
 
   useEffect(() => {
     let active = true;
@@ -122,10 +146,12 @@ export function CarePlanVersionHistory(): JSX.Element {
   const detailLoading = needsFetch && !fetchedForSelected && !shownError;
 
   function selectVersion(id: string): void {
-    if (planId && id !== selectedId) navigate(`/care-plans/${planId}/versions/${id}`);
+    if (!planId || id === selectedId) return;
+    const keep = claimedPatientId ? `?patientId=${encodeURIComponent(claimedPatientId)}` : "";
+    navigate(`/care-plans/${planId}/versions/${id}${keep}`);
   }
 
-  return (
+  const page = (
     <DetailPageLayout header={<PageHeader title="Care Plan Version History" />}>
       {loading ? (
         <LoadingSpinner />
@@ -178,6 +204,24 @@ export function CarePlanVersionHistory(): JSX.Element {
         </div>
       )}
     </DetailPageLayout>
+  );
+
+  // One layout for as long as the link names a patient: verification only decides whose banner it carries, so the page is not
+  // remounted when the check lands. Until then (and if the plan turns out not to be theirs) the banner is neutral.
+  return claimedPatientId ? (
+    <PatientWorkspaceLayout
+      banner={
+        patientId ? (
+          <ChartPatientBanner patientId={patientId} />
+        ) : (
+          <PatientBanner name="Care Plan version history" />
+        )
+      }
+    >
+      {page}
+    </PatientWorkspaceLayout>
+  ) : (
+    page
   );
 }
 

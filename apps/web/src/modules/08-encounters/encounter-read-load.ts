@@ -3,6 +3,7 @@
 // encounter-read.tsx unchanged (S1 React review: that file is far over the size ceiling and may only shrink).
 import type { ApiClient } from "@chartwarden/ui";
 import type { AddendumRow } from "./addenda-api";
+import { currentNoteText } from "./encounters-api";
 import { NOTE_VIEW_UNAVAILABLE_DESCRIPTION, isNoteViewUnavailable } from "./note-view-unavailable";
 import type { FinalDocumentationView, NoteHistory } from "./signed-note-model";
 
@@ -30,6 +31,8 @@ export interface Encounter {
   evvBracketPresent?: boolean;
   selections: Record<string, unknown> | null;
   finalDocumentation: string | null;
+  /** The signed text is the author's own edit of the generated note, not the generated text itself. */
+  finalDocumentationEdited?: boolean;
   /** The signed note as structured data for this viewer (a withheld part has no text); null = nothing pinned, absent = an older API. */
   finalDocumentationView?: FinalDocumentationView | null;
   noteHistory?: NoteHistory | null;
@@ -133,6 +136,8 @@ export type EncounterRead =
       readonly assessments: AssessmentRow[];
       readonly hopeAssessments: AssessmentRow[];
       readonly noteText: string;
+      /** The draft's note text is the author's edit rather than the generated text. */
+      readonly noteEdited: boolean;
       /** Null when the encounter holds none: the screen keeps the form as it is. */
       readonly vitals: VitalsForm | null;
       readonly mileage: MileageForm | null;
@@ -206,6 +211,8 @@ export async function readEncounter(
           finalDocumentation?: string | null;
         }
       ).finalDocumentation ?? null,
+    finalDocumentationEdited:
+      (data as { finalDocumentationEdited?: boolean }).finalDocumentationEdited === true,
     finalDocumentationView: data.finalDocumentationView,
     noteHistory: data.noteHistory,
     vitals: loadedVitals ?? null,
@@ -300,8 +307,10 @@ export async function readEncounter(
     // A preview only once something is documented — an empty tree still assembles the template's
     // headings, which would read as a note that says nothing.
     noteText: sel.data?.sections?.some((s) => s.entries.length > 0 || Boolean(s.freeText))
-      ? (sel.data?.layer1Preview ?? "")
+      ? currentNoteText(sel.data)
       : "",
+    noteEdited:
+      typeof sel.data?.editedNarrative === "string" && sel.data.editedNarrativeStale !== true,
     vitals: loadedVitals
       ? {
           bpSystolic: String(loadedVitals.bpSystolic ?? ""),

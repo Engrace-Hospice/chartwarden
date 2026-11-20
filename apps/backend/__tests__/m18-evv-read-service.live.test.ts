@@ -7,18 +7,27 @@
  * EVV chain per tenant as superuser, then drives `createDbEvvBackend` over the M18-owned tables as the
  * unprivileged (NOBYPASSRLS) `chartwarden_app` role under `withOrgContext`, proving:
  *   • the event ledger / device roster reads return the seeded rows, coordinate-free on the wire (§4.3);
+ *   • the production aggregator route returns its evidence projection, tenant-scoped, and emits its list-read audit;
  *   • RLS scopes every read by tenant (org B cannot see org A's event, and `getEvent` cross-tenant 404s);
- *   • every write still fail-closes 501 (the deny-stub throws SYNCHRONOUSLY — asserted as such).
+ *   • the live write lifecycle persists through the same app-role connection.
  *
  * Gated on a live DB (default `bun run test` skips it):
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m18-evv-read-service.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  createInMemoryEffectivePermissionStore,
+  registerEffectivePermissionResolver,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
+import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDbEvvBackend } from "../src/modules/18-evv/evv-route-service-db";
+import { buildServer } from "../src/bootstrap/index";
+import { createDbEvvBackend, registerEvvRoutes } from "../src/modules/18-evv/index";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -33,12 +42,28 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const VISIT = "55555555-5555-5555-5555-555555555555";
 const DEVICE_ATTEST = "66666666-6666-6666-6666-666666666666";
 
-type SeedIds = { membership: string; evvDevice: string; evvEvent: string };
+type SeedIds = {
+  membership: string;
+  evvDevice: string;
+  evvEvent: string;
+  aggregatorSubmission: string;
+};
+
+function headerAuth(request: FastifyRequest): void {
+  const userId = request.headers["x-test-user"];
+  const organizationId = request.headers["x-test-org"];
+  const membershipId = request.headers["x-test-membership"];
+  if (typeof userId !== "string" || typeof organizationId !== "string") return;
+  request.context.userId = userId;
+  request.context.organizationId = organizationId;
+  request.context.attributes.membershipId = typeof membershipId === "string" ? membershipId : "";
+}
 
 describe.skipIf(!DB_URL)("M18 EVV Drizzle read service — LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let service: ReturnType<typeof createDbEvvBackend>;
+  let app: ReturnType<typeof buildServer>;
   const seeded: Record<string, SeedIds> = {};
 
   async function resetSchema() {
@@ -112,7 +137,20 @@ describe.skipIf(!DB_URL)("M18 EVV Drizzle read service — LIVE Postgres", () =>
        VALUES ($1,$2,'missing_checkout','sync_reconcile')`,
       [org, VISIT],
     );
-    return { membership, evvDevice, evvEvent };
+    const aggregatorSubmission = (
+      await admin.query(
+        `INSERT INTO evv_aggregator_submission
+           (organization_id, visit_id, check_in_event_id, state_code, aggregator_vendor, status,
+            attempt_count, last_attempt_at, next_retry_at, submitted_at, aggregator_transaction_id,
+            aggregator_response_at, aggregator_rejection_code, aggregator_rejection_reason)
+         VALUES ($1,$2,$3,'OR','sandata','rejected',3,
+           '2026-11-18T18:01:02.000Z','2026-11-18T18:31:02.000Z','2026-11-18T18:01:03.000Z',
+           $4,'2026-11-18T18:01:04.000Z','EVV-42','Synthetic provider enrollment mismatch')
+         RETURNING id`,
+        [org, VISIT, evvEvent, `txn-m18r-${n}`],
+      )
+    ).rows[0].id as string;
+    return { membership, evvDevice, evvEvent, aggregatorSubmission };
   }
 
   beforeAll(async () => {
@@ -134,11 +172,42 @@ describe.skipIf(!DB_URL)("M18 EVV Drizzle read service — LIVE Postgres", () =>
       connectionString: appRoleUrl(DB_URL as string),
     });
     service = createDbEvvBackend(handle.db);
+    resetAuthorizationContract();
+    resetRbacEngine();
+    registerEffectivePermissionResolver(
+      createInMemoryEffectivePermissionStore([
+        {
+          orgId: ORG_A,
+          userId: USER,
+          grants: [
+            {
+              roleKey: "seed",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: ["evv.aggregator.read"],
+            },
+          ],
+        },
+      ]).store,
+    );
+    app = buildServer({
+      db: handle.db,
+      authenticate: headerAuth,
+      security: { rateLimitEnabled: false },
+    });
+    registerEvvRoutes(app, {
+      service,
+      assertMayStartVisit: async () => undefined,
+    });
+    await app.ready();
   }, 120_000);
 
   afterAll(async () => {
+    await app?.close();
     await handle?.close();
     if (admin) await admin.end();
+    resetAuthorizationContract();
+    resetRbacEngine();
   });
 
   it("listEvents returns the org's EVV event, coordinate-free on the wire (§4.3, RLS-scoped)", async () => {
@@ -169,6 +238,70 @@ describe.skipIf(!DB_URL)("M18 EVV Drizzle read service — LIVE Postgres", () =>
     // getEvent scopes by app.org_id too → org A's event is a 404 for org B (NotFoundError, statusCode 404).
     await expect(service.getEvent(ORG_B, seeded[ORG_A].evvEvent)).rejects.toMatchObject({
       statusCode: 404,
+    });
+  });
+
+  it("the production aggregator route returns evidence under RLS and writes its list-read audit", async () => {
+    await admin.query(
+      "DELETE FROM audit_event WHERE organization_id=$1 AND event_type='evv_aggregator_submission.list_viewed'",
+      [ORG_A],
+    );
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/evv/aggregator-submissions?stateCode=OR&status=rejected",
+      headers: {
+        "x-test-user": USER,
+        "x-test-org": ORG_A,
+        "x-test-membership": seeded[ORG_A].membership,
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const submissions =
+      response.json<
+        Array<{
+          id: string;
+          aggregatorTransactionId: string | null;
+          attemptCount: number;
+          lastAttemptAt: string | null;
+          nextRetryAt: string | null;
+          submittedAt: string | null;
+          aggregatorResponseAt: string | null;
+          aggregatorRejectionCode: string | null;
+          aggregatorRejectionReason: string | null;
+        }>
+      >();
+    expect(submissions).toEqual([
+      expect.objectContaining({
+        id: seeded[ORG_A].aggregatorSubmission,
+        aggregatorTransactionId: "txn-m18r-1",
+        attemptCount: 3,
+        lastAttemptAt: "2026-11-18T18:01:02.000Z",
+        nextRetryAt: "2026-11-18T18:31:02.000Z",
+        submittedAt: "2026-11-18T18:01:03.000Z",
+        aggregatorResponseAt: "2026-11-18T18:01:04.000Z",
+        aggregatorRejectionCode: "EVV-42",
+        aggregatorRejectionReason: "Synthetic provider enrollment mismatch",
+      }),
+    ]);
+    expect(submissions.some((row) => row.id === seeded[ORG_B].aggregatorSubmission)).toBe(false);
+
+    const auditRows = (
+      await admin.query<{ actor_user_id: string; context: { count?: number; filter?: unknown } }>(
+        `SELECT actor_user_id::text AS actor_user_id, context
+           FROM audit_event
+          WHERE organization_id=$1
+            AND event_type='evv_aggregator_submission.list_viewed'
+          ORDER BY created_at DESC`,
+        [ORG_A],
+      )
+    ).rows;
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]).toMatchObject({
+      actor_user_id: USER,
+      context: {
+        count: 1,
+        filter: { stateCode: "OR", status: "rejected" },
+      },
     });
   });
 

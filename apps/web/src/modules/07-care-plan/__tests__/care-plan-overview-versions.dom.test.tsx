@@ -221,3 +221,109 @@ describe("Care Plan version history snapshot", () => {
     expect(screen.getByText(/Medication review · Medical · Weekly/)).toBeTruthy();
   });
 });
+
+describe("Care Plan version history patient header", () => {
+  const PATIENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+  const withPatient = (client: ApiClient, planOfPatient = "plan-1"): ApiClient => {
+    const inner = client.GET as unknown as (path: string, init?: unknown) => Promise<unknown>;
+    return {
+      GET: vi.fn(async (path: string, init?: unknown) =>
+        path === "/api/v1/patients/{id}"
+          ? ok({
+              id: PATIENT,
+              firstName: "Eleanor",
+              lastName: "Whitfield",
+              mrn: "MRN-9",
+              dob: "1939-03-12",
+              status: "active",
+            })
+          : path === "/api/v1/patients/{patientId}/care-plan"
+            ? ok({ id: planOfPatient, patientId: PATIENT, status: "active" })
+            : inner(path, init),
+      ),
+    } as unknown as ApiClient;
+  };
+  const readsOf = (client: ApiClient): unknown[] =>
+    (client.GET as unknown as ReturnType<typeof vi.fn>).mock.calls.map(([p]) => p);
+
+  it("shows the patient the plan belongs to when the link names one and their plan is this one", async () => {
+    renderHistory(
+      withPatient(clientFor([version(1), version(2)])),
+      `/care-plans/plan-1/versions?patientId=${PATIENT}`,
+    );
+
+    expect(await screen.findByText("Eleanor Whitfield")).toBeTruthy();
+    expect(await screen.findByText(/Problem of v2/)).toBeTruthy();
+  });
+
+  it("shows no patient banner when the named patient's plan is a different plan", async () => {
+    const client = withPatient(clientFor([version(1), version(2)]), "another-plan");
+    renderHistory(client, `/care-plans/plan-1/versions?patientId=${PATIENT}`);
+    await screen.findByText(/Problem of v2/);
+
+    await waitFor(() =>
+      expect(readsOf(client)).toContain("/api/v1/patients/{patientId}/care-plan"),
+    );
+    expect(readsOf(client)).not.toContain("/api/v1/patients/{id}");
+    expect(screen.queryByText("Eleanor Whitfield")).toBeNull();
+  });
+
+  it("ignores a patientId that is not a UUID: no banner and no read for it", async () => {
+    const client = withPatient(clientFor([version(1), version(2)]));
+    renderHistory(client, "/care-plans/plan-1/versions?patientId=patient-9");
+    await screen.findByText(/Problem of v2/);
+
+    expect(readsOf(client)).not.toContain("/api/v1/patients/{patientId}/care-plan");
+    expect(readsOf(client)).not.toContain("/api/v1/patients/{id}");
+    expect(screen.queryByText("Eleanor Whitfield")).toBeNull();
+  });
+
+  it("keeps the patient in the link when another version is chosen", async () => {
+    renderHistory(
+      withPatient(clientFor([version(1), version(2)])),
+      `/care-plans/plan-1/versions?patientId=${PATIENT}`,
+    );
+    await screen.findByText(/Problem of v2/);
+
+    fireEvent.click(versionButton(1));
+
+    expect(await screen.findByText(/Problem of v1/)).toBeTruthy();
+    expect(currentPath()).toBe("/care-plans/plan-1/versions/version-1");
+  });
+
+  it("shows no patient header, and reads no patient, when the URL names none", async () => {
+    const client = withPatient(clientFor([version(1), version(2)]));
+    renderHistory(client);
+    await screen.findByText(/Problem of v2/);
+
+    expect(readsOf(client)).not.toContain("/api/v1/patients/{id}");
+    expect(screen.queryByText("Eleanor Whitfield")).toBeNull();
+  });
+
+  it("keeps one page while the link is checked: the list is the same element before and after the banner arrives", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const inner = withPatient(clientFor([version(1), version(2)])).GET as unknown as (
+      path: string,
+      init?: unknown,
+    ) => Promise<unknown>;
+    const client = {
+      GET: vi.fn(async (path: string, init?: unknown) => {
+        if (path === "/api/v1/patients/{patientId}/care-plan") await held;
+        return inner(path, init);
+      }),
+    } as unknown as ApiClient;
+    renderHistory(client, `/care-plans/plan-1/versions?patientId=${PATIENT}`);
+
+    const list = await screen.findByLabelText("Care Plan versions");
+    // Not yet verified: a neutral banner, never the claimed patient's.
+    expect(screen.getByText("Care Plan version history")).toBeTruthy();
+    expect(screen.queryByText("Eleanor Whitfield")).toBeNull();
+
+    release();
+    expect(await screen.findByText("Eleanor Whitfield")).toBeTruthy();
+    expect(screen.getByLabelText("Care Plan versions")).toBe(list);
+  });
+});

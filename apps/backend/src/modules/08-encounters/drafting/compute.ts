@@ -88,15 +88,25 @@ export async function computeDraft(
   const asOf = await guarded("the visit time", () =>
     visitAsOf({ serviceDate: encounter.serviceDate, orgTimeZone, now }),
   );
-  const [sources, stored] = await Promise.all([
+  const [sources, stored, wounds] = await Promise.all([
     readDraftInputs(call, encounter, viewer, asOf),
     guarded("the stored selections", () => call.loadSelection(encounter)),
+    guarded("the recorded wounds", () =>
+      call.recordedWounds({
+        organizationId: encounter.organizationId,
+        encounterId: encounter.id,
+        patientId: encounter.patientId,
+      }),
+    ),
   ]);
-  const draft = compile({ ...sources, selection: stored.selection, context: stored.context });
+  // The wounds are M9's: the store states what M8 holds, the seam adds them, so the signed note (`finalNoteOf`) states what the gate counted.
+  const context: AssemblyContext =
+    wounds.length === 0 ? stored.context : { ...stored.context, recordedWounds: wounds };
+  const draft = compile({ ...sources, selection: stored.selection, context });
   return {
     draft,
     selection: stored.selection,
-    context: stored.context,
+    context,
     asOf,
     templateKey: draft.templateKey,
   };

@@ -46,6 +46,8 @@ const template = {
           category: "observation",
           bodySystem: "respiratory",
           slots: [],
+          slotSpecs: {},
+          exclusiveGroup: null,
         },
         {
           code: "nv.pain.score",
@@ -53,6 +55,8 @@ const template = {
           category: "observation",
           bodySystem: null,
           slots: ["pain_score"],
+          slotSpecs: {},
+          exclusiveGroup: null,
         },
       ],
     },
@@ -65,6 +69,26 @@ const template = {
     },
   ],
 };
+
+/** A test may swap the whole menu (typed slots, exclusive groups); reset in `beforeEach`. */
+let templateOverride: Record<string, unknown> | null = null;
+/** What the server's selections READ answers as the assembled note (e.g. once vitals are recorded). */
+let previewOverride: string | null = null;
+/** The scheduled visit this encounter was seeded from (M17), and the purpose that visit reads back with. */
+const VISIT = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee";
+let encounterVisitId: string | null = null;
+let visitPurpose = "routine_visit";
+/** The patient's recorded falls (Quality) and the fall already linked to the stored note. */
+const FALL_A = "f1111111-1111-4111-8111-111111111111";
+const FALL_B = "f2222222-2222-4222-8222-222222222222";
+let fallIncidents: { incidents: unknown[]; unavailable: boolean } = {
+  incidents: [],
+  unavailable: false,
+};
+let storedFall: { incidentId: string; occurredOn: string } | null = null;
+/** The author's saved edit of the note text, and whether the note moved underneath it. */
+let storedEdit: string | null = null;
+let storedEditStale = false;
 
 let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
@@ -91,15 +115,20 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
 
 function bodyFor(method: string, path: string): unknown {
   if (method === "GET") {
-    if (path.endsWith("/template")) return template;
+    if (path.endsWith("/template")) return templateOverride ?? template;
     if (path.endsWith("/selections"))
       return {
         templateKey: template.templateKey,
         vocabVersion: template.vocabVersion,
         sections: storedSections,
-        layer1Preview: storedSections.length > 0 ? "Patient reports dyspnea at rest." : "",
+        layer1Preview:
+          previewOverride ?? (storedSections.length > 0 ? "Patient reports dyspnea at rest." : ""),
         version: storedVersion,
+        fallIncident: storedFall,
+        editedNarrative: storedEdit,
+        editedNarrativeStale: storedEditStale,
       };
+    if (path.endsWith("/fall-incidents")) return fallIncidents;
     if (path === `/api/v1/patients/${PATIENT}`)
       return { id: PATIENT, firstName: "Ada", lastName: "Lovelace", mrn: "MRN-9" };
     if (path.endsWith("/vitals")) return { encounterId: ENCOUNTER, vitals: [] };
@@ -128,13 +157,14 @@ function bodyFor(method: string, path: string): unknown {
           },
         ],
       };
+    if (path === `/api/v1/visits/${VISIT}`) return { id: VISIT, visitPurpose };
     const pathEncounterId = path.match(/^\/api\/v1\/encounters\/([^/]+)$/)?.[1];
     return {
       id: mirrorEncounterIdFromPath && pathEncounterId ? pathEncounterId : ENCOUNTER,
       organizationId: "org-1",
       patientId: PATIENT,
       admissionId: "adm-1",
-      visitId: null,
+      visitId: encounterVisitId,
       encounterType: "routine_visit",
       discipline: "rn",
       serviceDate: "2026-08-27",
@@ -292,6 +322,14 @@ beforeEach(() => {
   encounterStatus = "draft";
   storedSections = [];
   storedVersion = 3;
+  templateOverride = null;
+  previewOverride = null;
+  encounterVisitId = null;
+  visitPurpose = "routine_visit";
+  fallIncidents = { incidents: [], unavailable: false };
+  storedFall = null;
+  storedEdit = null;
+  storedEditStale = false;
 });
 afterEach(() => {
   writeFailure = null;
@@ -680,5 +718,666 @@ describe("#91 — My notes (was My Drafts) leads somewhere a draft can be finish
     mount("/work/drafts", <MyDrafts />, "/work/drafts");
     expect(await screen.findByText("Lovelace, Ada")).toBeTruthy();
     expect(screen.queryByText(PATIENT.slice(0, 8))).toBeNull();
+  });
+});
+
+// WF09 step 1 — the composer rendered every slot as a free text box and let contradictory statements sit
+// side by side, which is how a note came to read "oxygen at 79 L/min", "requires 14 assistance" and "pain
+// well controlled" next to "pain limiting function". The server now refuses those writes; the composer
+// renders the same rules so a clinician is stopped before the round trip, not after it.
+describe("WF09 step 1 — typed slots and contradictory statements", () => {
+  const menuEntry = (code: string, label: string, extra: Record<string, unknown> = {}) => ({
+    code,
+    label,
+    category: "observation",
+    bodySystem: null,
+    slots: [],
+    slotSpecs: {},
+    exclusiveGroup: null,
+    ...extra,
+  });
+  const painScore = { kind: "integer", min: 0, max: 10, label: "Pain score (0–10)" };
+  const section = (sectionId: string, heading: string, entries: unknown[], required = false) => ({
+    sectionId,
+    heading,
+    required,
+    allowedCategories: [],
+    entries,
+  });
+  const medrec = menuEntry("nv.cp.medrec", "Medication reconciliation reviewed");
+  const typedTemplate = {
+    ...template,
+    sections: [
+      section(
+        "assessment",
+        "Assessment",
+        [
+          menuEntry("nv.resp.unlabored", "Respiratory — unlabored", {
+            exclusiveGroup: "respiratory-status",
+          }),
+          menuEntry("nv.resp.dyspnea", "Respiratory — dyspnea", {
+            slots: ["o2_lpm"],
+            slotSpecs: {
+              o2_lpm: { kind: "number", min: 0.5, max: 6, unit: "L/min", label: "Oxygen flow" },
+            },
+            exclusiveGroup: "respiratory-status",
+          }),
+          menuEntry("nv.msk.limited", "Musculoskeletal — limited mobility", {
+            slots: ["assist_level"],
+            slotSpecs: {
+              assist_level: {
+                kind: "choice",
+                options: ["minimal", "moderate", "maximal", "total"],
+                label: "Assistance needed",
+              },
+            },
+          }),
+          menuEntry("nv.sym.pain_uncontrolled", "Pain limiting function", {
+            slots: ["pain_score"],
+            slotSpecs: { pain_score: painScore },
+            exclusiveGroup: "pain-status",
+          }),
+        ],
+        true,
+      ),
+      section("symptom_management", "Symptom Management", [
+        menuEntry("nv.sym.pain_controlled", "Pain controlled", {
+          slots: ["pain_score"],
+          slotSpecs: { pain_score: painScore },
+          exclusiveGroup: "pain-status",
+        }),
+      ]),
+      section("interventions", "Interventions", [medrec]),
+      section("med_reconciliation", "Medication Reconciliation", [medrec]),
+    ],
+  };
+  const goTo = (heading: RegExp) => fireEvent.click(screen.getByRole("button", { name: heading }));
+  const checkbox = (name: RegExp) => screen.getByLabelText(name) as HTMLInputElement;
+
+  it("renders a choice slot as a select and sends the chosen option", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/limited mobility/i));
+    const select = (await screen.findByLabelText("Assistance needed")) as HTMLSelectElement;
+    const options = Array.from(select.options).map((o) => o.textContent);
+    expect(options).toEqual(expect.arrayContaining(["minimal", "moderate", "maximal", "total"]));
+    expect(options).not.toContain("14");
+
+    fireEvent.change(select, { target: { value: "moderate" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    const sent = bodies[0] as { sections: { entries: { params?: unknown }[] }[] };
+    expect(sent.sections[0]?.entries[0]?.params).toEqual({ assist_level: "moderate" });
+  });
+
+  it("renders a number slot with its range, so 79 L/min cannot be typed as a valid value", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/dyspnea/i));
+    const flow = (await screen.findByLabelText("Oxygen flow")) as HTMLInputElement;
+    expect(flow.type).toBe("number");
+    expect(flow.min).toBe("0.5");
+    expect(flow.max).toBe("6");
+    expect(screen.getByText(/0\.5.*6.*L\/min/)).toBeTruthy();
+  });
+
+  it("selecting a contradictory statement replaces its sibling", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/dyspnea/i));
+    expect(checkbox(/dyspnea/i).checked).toBe(true);
+
+    fireEvent.click(checkbox(/unlabored/i));
+    expect(checkbox(/unlabored/i).checked).toBe(true);
+    expect(checkbox(/dyspnea/i).checked).toBe(false);
+  });
+
+  it("the replacement works across sections, matching the server's whole-note rule", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/Pain limiting function/i));
+
+    goTo(/Symptom Management/);
+    fireEvent.click(checkbox(/Pain controlled/i));
+
+    goTo(/^Assessment/);
+    expect(checkbox(/Pain limiting function/i).checked).toBe(false);
+  });
+
+  it("disables a statement already recorded in another section and says where", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    await screen.findByLabelText(/limited mobility/i);
+    goTo(/^Interventions/);
+    fireEvent.click(checkbox(/Medication reconciliation reviewed/i));
+
+    goTo(/^Medication Reconciliation/);
+    expect(checkbox(/Medication reconciliation reviewed/i).disabled).toBe(true);
+    expect(screen.getByText(/Already recorded in Interventions/i)).toBeTruthy();
+  });
+
+  it("drops a stored statement the menu no longer offers in its section, and says so", async () => {
+    storedSections = [
+      { sectionId: "assessment", entries: [{ code: "nv.removed.from.menu" }], freeText: "" },
+    ];
+    mountCompose();
+    expect(await screen.findByText(/no longer offered/i)).toBeTruthy();
+    // The removal is a change the author must save, never a silent rewrite of the stored note.
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    expect((bodies[0] as { sections: unknown[] }).sections).toEqual([]);
+  });
+
+  it("shows the server's reason when it refuses a value", async () => {
+    writeFailurePath = "/selections";
+    writeFailure = {
+      status: 422,
+      body: {
+        error: {
+          code: "INVALID_SELECTION",
+          message: "Oxygen flow must be a number from 0.5 to 6 L/min.",
+          details: [
+            {
+              field: "assessment",
+              code: "SLOT_INVALID",
+              message: "Oxygen flow must be a number from 0.5 to 6 L/min.",
+            },
+          ],
+        },
+      },
+    };
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/Dyspnea at rest/i));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    expect(
+      await screen.findByText(/Oxygen flow must be a number from 0\.5 to 6 L\/min\./),
+    ).toBeTruthy();
+  });
+
+  it("a statement with an empty slot leaves its section 'Needs details', not 'Documented'", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/limited mobility/i));
+
+    expect(screen.getByRole("button", { name: "Assessment: Needs details" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Assessment: Documented" })).toBeNull();
+    expect(screen.getByText(/0 of 4 sections documented/i)).toBeTruthy();
+    // The banner names it too, so the author is not told "complete" while finalize would refuse.
+    expect(screen.getByText(/Complete Assessment before finalization/i)).toBeTruthy();
+
+    fireEvent.change(await screen.findByLabelText("Assistance needed"), {
+      target: { value: "moderate" },
+    });
+    expect(screen.getByRole("button", { name: "Assessment: Documented" })).toBeTruthy();
+    expect(screen.getByText(/1 of 4 sections documented/i)).toBeTruthy();
+  });
+
+  it("an optional section with an empty slot is flagged as well, since finalize refuses it too", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    await screen.findByLabelText(/limited mobility/i);
+    goTo(/^Symptom Management/);
+    fireEvent.click(checkbox(/Pain controlled/i));
+    expect(screen.getByRole("button", { name: "Symptom Management: Needs details" })).toBeTruthy();
+  });
+
+  it("recording vitals refreshes the note from the server and keeps the author's unsaved edits", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/limited mobility/i));
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Vitals" })));
+    fireEvent.change(await screen.findByLabelText(/BP systolic/i), { target: { value: "118" } });
+    fireEvent.change(screen.getByLabelText(/BP diastolic/i), { target: { value: "72" } });
+    previewOverride = "Vital Signs Review\nVital signs: blood pressure 118/72 mmHg.";
+    fireEvent.click(screen.getByRole("button", { name: "Record vitals" }));
+
+    expect(await screen.findByText(/Vital signs: blood pressure 118\/72 mmHg\./)).toBeTruthy();
+    expect(checkbox(/limited mobility/i).checked).toBe(true);
+  });
+
+  it("sends the unit the vitals panel shows, so the note does not state a bare temperature", async () => {
+    mountCompose();
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Vitals" })));
+    fireEvent.change(await screen.findByLabelText(/Temperature/i), { target: { value: "97.8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Record vitals" }));
+    await waitFor(() => expect(writes()).toContain(`POST /api/v1/encounters/${ENCOUNTER}/vitals`));
+    expect(bodies[0]).toEqual({ temperature: 97.8, temperatureUnit: "f" });
+  });
+});
+
+describe("WF09 step 2 — Reason for Visit is a select", () => {
+  const reasonEntry = (code: string, label: string) => ({
+    code,
+    label,
+    category: "visit_reason",
+    bodySystem: null,
+    slots: [],
+    slotSpecs: {},
+    exclusiveGroup: "visit-reason",
+  });
+  const reasonTemplate = {
+    ...template,
+    sections: [
+      {
+        sectionId: "chief_concern",
+        heading: "Reason for Visit",
+        required: true,
+        allowedCategories: ["visit_reason"],
+        entries: [
+          reasonEntry("nv.reason.routine", "Routine scheduled visit"),
+          reasonEntry("nv.reason.fall_followup", "Follow-up after a fall"),
+          reasonEntry("nv.reason.pain", "Pain assessment and management"),
+        ],
+      },
+      {
+        sectionId: "plan",
+        heading: "Plan and Next Visit",
+        required: false,
+        allowedCategories: [],
+        entries: [],
+      },
+    ],
+  };
+  const reasonSelect = async () =>
+    (await screen.findByLabelText("Reason for Visit")) as HTMLSelectElement;
+  const saved = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    return (bodies[0] as { sections: { entries: { code: string }[] }[] }).sections;
+  };
+
+  it("offers the reasons as one select, not a list of checkboxes", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    const select = await reasonSelect();
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "Select…",
+      "Routine scheduled visit",
+      "Follow-up after a fall",
+      "Pain assessment and management",
+    ]);
+    expect(select.value).toBe("");
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(screen.getByText(/^Choose one\./)).toBeTruthy();
+  });
+
+  it("records the chosen reason, and choosing another replaces it", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    const select = await reasonSelect();
+    fireEvent.change(select, { target: { value: "nv.reason.fall_followup" } });
+    expect(select.value).toBe("nv.reason.fall_followup");
+    fireEvent.change(select, { target: { value: "nv.reason.pain" } });
+
+    const sections = await saved();
+    expect(sections[0]?.entries.map((e) => e.code)).toEqual(["nv.reason.pain"]);
+  });
+
+  it("choosing 'Select…' again clears the reason", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    const select = await reasonSelect();
+    fireEvent.change(select, { target: { value: "nv.reason.routine" } });
+    fireEvent.change(select, { target: { value: "" } });
+    expect(select.value).toBe("");
+    expect(screen.getByRole("button", { name: "Reason for Visit: Required" })).toBeTruthy();
+  });
+
+  it("a chosen reason documents the section, and free text stays available for the detail", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    fireEvent.change(await reasonSelect(), { target: { value: "nv.reason.fall_followup" } });
+    expect(screen.getByRole("button", { name: "Reason for Visit: Documented" })).toBeTruthy();
+    expect(screen.getByLabelText("Additional notes")).toBeTruthy();
+    expect(
+      screen.getByText(/Optional\. Enter only information not already represented/),
+    ).toBeTruthy();
+  });
+
+  it("shows the stored reason as the selected option", async () => {
+    templateOverride = reasonTemplate;
+    storedSections = [
+      { sectionId: "chief_concern", entries: [{ code: "nv.reason.pain" }], freeText: "" },
+    ];
+    mountCompose();
+    expect((await reasonSelect()).value).toBe("nv.reason.pain");
+  });
+});
+
+describe("WF09 — a scheduled visit suggests its reason", () => {
+  const reasonEntry = (code: string, label: string) => ({
+    code,
+    label,
+    category: "visit_reason",
+    bodySystem: null,
+    slots: [],
+    slotSpecs: {},
+    exclusiveGroup: "visit-reason",
+  });
+  const reasonTemplate = {
+    ...template,
+    sections: [
+      {
+        sectionId: "chief_concern",
+        heading: "Reason for Visit",
+        required: true,
+        allowedCategories: ["visit_reason"],
+        entries: [
+          reasonEntry("nv.reason.routine", "Routine scheduled visit"),
+          reasonEntry("nv.reason.fall_followup", "Follow-up after a fall"),
+        ],
+      },
+    ],
+  };
+  const select = async () =>
+    (await screen.findByLabelText("Reason for Visit")) as HTMLSelectElement;
+  const visitReads = () => calls.filter((c) => c === `GET /api/v1/visits/${VISIT}`);
+
+  it("pre-selects the reason a routine visit implies, as an unsaved choice the clinician confirms", async () => {
+    templateOverride = reasonTemplate;
+    encounterVisitId = VISIT;
+    mountCompose();
+    await waitFor(async () => expect((await select()).value).toBe("nv.reason.routine"));
+    expect(screen.getByText(/Suggested from the scheduled visit \(Routine Visit\)/)).toBeTruthy();
+    // Nothing was written by suggesting: it is the clinician's to keep.
+    expect(writes()).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    const sent = bodies[0] as { sections: { sectionId: string; entries: { code: string }[] }[] };
+    expect(sent.sections.find((s) => s.sectionId === "chief_concern")?.entries).toEqual([
+      expect.objectContaining({ code: "nv.reason.routine" }),
+    ]);
+  });
+
+  it("suggests nothing for a purpose that says what kind of visit it is, not why the clinician is there", async () => {
+    templateOverride = reasonTemplate;
+    encounterVisitId = VISIT;
+    visitPurpose = "prn";
+    mountCompose();
+    expect((await select()).value).toBe("");
+    await waitFor(() => expect(visitReads()).toHaveLength(1));
+    expect(screen.queryByText(/Suggested from the scheduled visit/)).toBeNull();
+  });
+
+  it("leaves a reason the clinician already saved alone", async () => {
+    templateOverride = reasonTemplate;
+    encounterVisitId = VISIT;
+    storedSections = [
+      { sectionId: "chief_concern", entries: [{ code: "nv.reason.fall_followup" }], freeText: "" },
+    ];
+    mountCompose();
+    expect((await select()).value).toBe("nv.reason.fall_followup");
+    await waitFor(() => expect(visitReads()).toHaveLength(1));
+    expect((await select()).value).toBe("nv.reason.fall_followup");
+    expect(screen.queryByText(/Suggested from the scheduled visit/)).toBeNull();
+  });
+
+  it("does not look for a visit when the note was started on site", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    expect((await select()).value).toBe("");
+    expect(visitReads()).toHaveLength(0);
+  });
+});
+
+describe("WF09 — linking the recorded fall a follow-up visit follows up", () => {
+  const reasonEntry = (code: string, label: string) => ({
+    code,
+    label,
+    category: "visit_reason",
+    bodySystem: null,
+    slots: [],
+    slotSpecs: {},
+    exclusiveGroup: "visit-reason",
+  });
+  const reasonTemplate = {
+    ...template,
+    sections: [
+      {
+        sectionId: "chief_concern",
+        heading: "Reason for Visit",
+        required: true,
+        allowedCategories: ["visit_reason"],
+        entries: [
+          reasonEntry("nv.reason.routine", "Routine scheduled visit"),
+          reasonEntry("nv.reason.fall_followup", "Follow-up after a fall"),
+        ],
+      },
+    ],
+  };
+  const FALLS = {
+    incidents: [
+      { incidentId: FALL_A, occurredOn: "2026-08-25", severity: "moderate" },
+      { incidentId: FALL_B, occurredOn: "2026-08-10", severity: "minor" },
+    ],
+    unavailable: false,
+  };
+  const reason = async () =>
+    (await screen.findByLabelText("Reason for Visit")) as HTMLSelectElement;
+  const which = async () => (await screen.findByLabelText("Which fall?")) as HTMLSelectElement;
+  const fallReads = () => calls.filter((c) => c.endsWith("/fall-incidents"));
+  const saveBody = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    return bodies[0] as { fallIncidentId?: string | null };
+  };
+
+  it("offers the patient's recorded falls under the follow-up reason, and saves the one chosen", async () => {
+    templateOverride = reasonTemplate;
+    fallIncidents = FALLS;
+    mountCompose();
+    fireEvent.change(await reason(), { target: { value: "nv.reason.fall_followup" } });
+
+    const picker = await which();
+    await waitFor(() => expect(picker.disabled).toBe(false));
+    expect(Array.from(picker.options).map((o) => o.textContent)).toEqual([
+      "No fall linked",
+      "2026-08-25 — Moderate",
+      "2026-08-10 — Minor",
+    ]);
+    fireEvent.change(picker, { target: { value: FALL_A } });
+
+    expect((await saveBody()).fallIncidentId).toBe(FALL_A);
+  });
+
+  it("shows nothing about falls, and sends no link, for any other reason", async () => {
+    templateOverride = reasonTemplate;
+    fallIncidents = FALLS;
+    mountCompose();
+    fireEvent.change(await reason(), { target: { value: "nv.reason.routine" } });
+    expect(screen.queryByLabelText("Which fall?")).toBeNull();
+    expect((await saveBody()).fallIncidentId).toBeNull();
+    // The recorded falls are not even read for a note that never asks for them.
+    expect(fallReads()).toEqual([]);
+  });
+
+  it("preselects a fall already linked, and clears it when the author unlinks it", async () => {
+    templateOverride = reasonTemplate;
+    fallIncidents = FALLS;
+    storedFall = { incidentId: FALL_B, occurredOn: "2026-08-10" };
+    storedSections = [
+      { sectionId: "chief_concern", entries: [{ code: "nv.reason.fall_followup" }], freeText: "" },
+    ];
+    mountCompose();
+    const picker = await which();
+    await waitFor(() => expect(picker.value).toBe(FALL_B));
+
+    fireEvent.change(picker, { target: { value: "" } });
+    expect((await saveBody()).fallIncidentId).toBeNull();
+  });
+
+  it("keeps a fall linked earlier that the list no longer offers, so saving does not drop it", async () => {
+    templateOverride = reasonTemplate;
+    fallIncidents = { incidents: [], unavailable: false };
+    storedFall = { incidentId: FALL_B, occurredOn: "2026-03-01" };
+    storedSections = [
+      { sectionId: "chief_concern", entries: [{ code: "nv.reason.fall_followup" }], freeText: "" },
+    ];
+    mountCompose();
+    const picker = await which();
+    await waitFor(() => expect(picker.value).toBe(FALL_B));
+    expect(Array.from(picker.options).map((o) => o.textContent)).toContain(
+      "2026-03-01 — linked earlier",
+    );
+  });
+
+  it("says so when the patient has no recorded fall, and when the register could not be read", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    fireEvent.change(await reason(), { target: { value: "nv.reason.fall_followup" } });
+    expect(await screen.findByText(/No fall is recorded for this patient/)).toBeTruthy();
+  });
+
+  it("does not claim there are no falls when the register is unavailable", async () => {
+    templateOverride = reasonTemplate;
+    fallIncidents = { incidents: [], unavailable: true };
+    mountCompose();
+    fireEvent.change(await reason(), { target: { value: "nv.reason.fall_followup" } });
+    expect(await screen.findByText(/could not be loaded/)).toBeTruthy();
+    expect(screen.queryByText(/No fall is recorded/)).toBeNull();
+    expect((await saveBody()).fallIncidentId).toBeNull();
+  });
+});
+
+describe("WF09 — editing the note text", () => {
+  const GENERATED = "Patient reports dyspnea at rest.";
+  const EDITED = "Patient is comfortable and resting; daughter at the bedside.";
+  const withSavedNote = () => {
+    storedSections = [{ sectionId: "assessment", entries: [{ code: "nv.resp.dyspnea_at_rest" }] }];
+  };
+  const patchBody = () => bodies[bodies.length - 1] as Record<string, unknown>;
+  const box = async () => (await screen.findByLabelText("Note text")) as HTMLTextAreaElement;
+
+  it("offers Edit beside Save & refresh preview, and opens the note text for editing", async () => {
+    withSavedNote();
+    mountCompose();
+    expect(await screen.findByRole("button", { name: "Save & refresh preview" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect((await box()).value).toBe(GENERATED);
+    expect(screen.getByText("Editing")).toBeTruthy();
+    // Nothing is written by opening the editor.
+    expect(writes()).toEqual([]);
+  });
+
+  it("applies the edit: sends the text, then shows it as the note, marked as edited", async () => {
+    withSavedNote();
+    mountCompose();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.change(await box(), { target: { value: EDITED } });
+    storedEdit = EDITED; // what the server holds once the write lands
+    fireEvent.click(screen.getByRole("button", { name: "Apply edit" }));
+
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    expect(patchBody().editedNarrative).toBe(EDITED);
+    expect(await screen.findByText(EDITED)).toBeTruthy();
+    expect(screen.getByText("Edited by you")).toBeTruthy();
+    expect(screen.getByText("Your edited text will be signed.")).toBeTruthy();
+  });
+
+  it("discards an edit by sending null, and Cancel writes nothing", async () => {
+    withSavedNote();
+    storedEdit = EDITED;
+    mountCompose();
+    expect(await screen.findByText(EDITED)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(writes()).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard edit" }));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(patchBody().editedNarrative).toBeNull();
+  });
+
+  it("saves selections that are not yet saved before it opens the note text", async () => {
+    mountCompose();
+    // Tick a statement so the draft is unsaved.
+    fireEvent.click(await screen.findByLabelText(/Dyspnea at rest/));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    expect(await box()).toBeTruthy();
+    // The save carried no edit: it only brought the note up to date.
+    expect(patchBody()).not.toHaveProperty("editedNarrative");
+  });
+
+  it("holds Save draft, Finalize and the selections while the text is being edited", async () => {
+    withSavedNote();
+    mountCompose();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await box();
+    expect((screen.getByRole("button", { name: "Save draft" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByRole("button", { name: "Finalize note" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((screen.getByLabelText(/Dyspnea at rest/) as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("will not apply empty text", async () => {
+    withSavedNote();
+    mountCompose();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.change(await box(), { target: { value: "   " } });
+    expect((screen.getByRole("button", { name: "Apply edit" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  it("warns when the note moved after the edit, and says it cannot be finalized until reviewed", async () => {
+    withSavedNote();
+    storedEdit = EDITED;
+    storedEditStale = true;
+    mountCompose();
+    expect(await screen.findByText(/The note changed after you edited this text/)).toBeTruthy();
+    expect(screen.getByText(/cannot be finalized until you do/)).toBeTruthy();
+  });
+
+  it("shows the note as it now reads, not the out-of-date edit, and keeps the old edit to copy from", async () => {
+    withSavedNote();
+    storedEdit = EDITED;
+    storedEditStale = true;
+    mountCompose();
+    await screen.findByText(/The note changed after you edited this text/);
+    // The box carries the current, complete note; the old edit is only inside the collapsed "earlier edit".
+    expect(screen.getByText(GENERATED)).toBeTruthy();
+    expect(screen.getByText("Edit out of date")).toBeTruthy();
+    expect(screen.queryByText("Edited by you")).toBeNull();
+    expect(screen.queryByText("Your edited text will be signed.")).toBeNull();
+    const earlier = screen.getByText("Your earlier edit").closest("details");
+    expect(earlier?.textContent).toContain(EDITED);
+  });
+
+  it("starts editing from the current note when the old edit is out of date", async () => {
+    withSavedNote();
+    storedEdit = EDITED;
+    storedEditStale = true;
+    mountCompose();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    expect(((await box()) as HTMLTextAreaElement).value).toBe(GENERATED);
+  });
+
+  it("offers no edit on a note that is no longer a draft", async () => {
+    encounterStatus = "finalized";
+    withSavedNote();
+    mountCompose();
+    await screen.findByText("Note as it reads");
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 });

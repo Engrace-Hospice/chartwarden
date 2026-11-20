@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 120 documented screen specs · 45 module screen-sets registered · 407 screens wired across web/portal/admin.
+**Coverage:** 120 documented screen specs · 45 module screen-sets registered · 408 screens wired across web/portal/admin.
 - **admin**: 44 screen(s)
 - **portal**: 19 screen(s)
-- **web**: 344 screen(s)
+- **web**: 345 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -89,6 +89,7 @@
 | web | 09-assessments | `assessment.scale-trend` | `/patients/:patientId/scales/:scaleType` | `assessment.read_trend` | ✅ |
 | web | 09-assessments | `assessment.changes` | `/patients/:patientId/assessments/changes` | `assessment.read` | ✅ |
 | web | 09-assessments | `assessment.summary` | `/patients/:patientId/assessments/summary` | `assessment.read_summary` | ✅ |
+| web | 09-assessments | `assessment.wounds` | `/patients/:patientId/wounds` | `assessment.read` | ✅ |
 | web | 09-assessments | `assessment.scale-licenses` | `/admin/scales/licenses` | `assessment.license_read` | ✅ |
 | web | 09-assessments | `assessment.scale-policies` | `/admin/scales/policies` | `assessment.policy_read` | ✅ |
 | web | 10-hope | `hope.dashboard` | `/hope` | `hope.schedule.read` | ✅ |

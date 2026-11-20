@@ -52,8 +52,25 @@ export type EncounterView = Ok<operations["getApiV1EncountersByEncounterId"]>;
 export type TemplateView = Ok<operations["getApiV1EncountersByEncounterIdTemplate"]>;
 export type TemplateSection = TemplateView["sections"][number];
 export type MenuEntry = TemplateSection["entries"][number];
+export type FallIncidentsView = Ok<operations["getApiV1EncountersByEncounterIdFallincidents"]>;
+export type FallChoice = FallIncidentsView["incidents"][number];
+/** The reason a recorded fall can be linked to (the corpus code; the browser carries no corpus, so it is named once here). */
+export const FALL_FOLLOWUP_CODE = "nv.reason.fall_followup";
+export type VisitReasonChoice = Ok<operations["getApiV1EncountersVisitreasons"]>["reasons"][number];
 export type SelectionsView = Ok<operations["getApiV1EncountersByEncounterIdSelections"]>;
 export type SelectionSection = SelectionsView["sections"][number];
+
+/**
+ * The note as it reads now: the author's edit while it still matches the note, otherwise the generated text. An edit made before
+ * the note moved (a statement, a vital, the reason) misses what was documented since, so it is never shown as the note.
+ */
+export function currentNoteText(
+  sel: Pick<SelectionsView, "layer1Preview" | "editedNarrative" | "editedNarrativeStale">,
+): string {
+  return typeof sel.editedNarrative === "string" && sel.editedNarrativeStale !== true
+    ? sel.editedNarrative
+    : sel.layer1Preview;
+}
 export type VitalsListView = Ok<operations["getApiV1EncountersByEncounterIdVitals"]>;
 export type MileageView = Ok<operations["getApiV1EncountersByEncounterIdMileage"]>;
 
@@ -159,17 +176,21 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
         : code === "UNKNOWN_TEMPLATE_SECTION" || code === "UNKNOWN_VOCAB_CODE"
           ? (detail ??
             "This note referenced something its template does not contain. Reload and try again.")
-          : code === "STALE_VERSION"
-            ? "Someone else saved this note after you opened it. Reload to pick up their changes — saving now would discard them."
-            : httpStatus === 403
-              ? (detail ?? "Your role is not permitted to author on this encounter.")
-              : httpStatus === 409
-                ? (detail ?? "This encounter changed before your action was applied.")
-                : httpStatus === 404
-                  ? "That encounter is no longer available to you."
-                  : httpStatus === 422
-                    ? (detail ?? "The server rejected the details supplied.")
-                    : (detail ?? "The action could not be completed.");
+          : code === "NARRATIVE_EDIT_STALE"
+            ? "The selections or vitals changed after you edited the note text. Review the text and apply it again, or discard your edit, then finalize."
+            : code === "INVALID_NARRATIVE_EDIT"
+              ? "The note text is empty. Discard your edit to go back to the generated text."
+              : code === "STALE_VERSION"
+                ? "Someone else saved this note after you opened it. Reload to pick up their changes — saving now would discard them."
+                : httpStatus === 403
+                  ? (detail ?? "Your role is not permitted to author on this encounter.")
+                  : httpStatus === 409
+                    ? (detail ?? "This encounter changed before your action was applied.")
+                    : httpStatus === 404
+                      ? "That encounter is no longer available to you."
+                      : httpStatus === 422
+                        ? (detail ?? "The server rejected the details supplied.")
+                        : (detail ?? "The action could not be completed.");
   return { ok: false, status: httpStatus, code, message, details: err?.details };
 }
 
@@ -186,6 +207,82 @@ export async function loadTemplate(
     params: { path: { encounterId } },
   });
   return (data ?? null) as TemplateView | null;
+}
+
+/**
+ * The reasons for visit this (type × discipline) pair offers, for the New Encounter form — read before the
+ * encounter exists, from the same server scoping the composer's menu uses. A failed read is an empty list:
+ * the reason is optional there and is still chosen in the note.
+ */
+export async function loadVisitReasons(
+  client: ApiClient,
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+): Promise<readonly VisitReasonChoice[]> {
+  const { data } = await client.GET("/api/v1/encounters/visit-reasons", {
+    params: { query: { encounterType, discipline } },
+  });
+  return data?.reasons ?? [];
+}
+
+/**
+ * The scheduled visit's purpose (M17), or `null` when it cannot be read. Only ever a SUGGESTION for the reason, so
+ * a visit the caller cannot see, or a failed read, simply means nothing is suggested.
+ */
+export async function loadVisitPurpose(client: ApiClient, visitId: string): Promise<string | null> {
+  try {
+    const { data } = await client.GET("/api/v1/visits/{visitId}", {
+      params: { path: { visitId } },
+    });
+    return data?.visitPurpose ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The scheduled purposes whose reason is not a judgement: a routine visit IS a "routine scheduled visit", and an
+ * MSW or chaplain assessment IS a psychosocial or spiritual assessment. Everything else (a PRN visit, an admission,
+ * a face-to-face, a recert kickoff, a level-of-care change ...) says what KIND of visit it is, not why the clinician
+ * is there, so it suggests nothing and the clinician chooses.
+ */
+const REASON_FOR_PURPOSE: Readonly<Record<string, string>> = {
+  routine_visit: "nv.reason.routine",
+  aide_poc: "nv.reason.routine",
+  chaplain_visit: "nv.reason.routine",
+  volunteer_visit: "nv.reason.routine",
+  msw_assessment: "nv.reason.psychosocial",
+  chaplain_assessment: "nv.reason.spiritual_assessment",
+};
+
+/** The reason code a scheduled `purpose` suggests, if this visit's menu actually offers it. */
+export function suggestedReasonCode(
+  purpose: string,
+  offered: readonly { readonly code: string }[],
+): string | null {
+  const code = Object.hasOwn(REASON_FOR_PURPOSE, purpose) ? REASON_FOR_PURPOSE[purpose] : undefined;
+  return code !== undefined && offered.some((e) => e.code === code) ? code : null;
+}
+
+/** What the screen holds when the register could not be read: no patient is named, since none was returned. */
+const UNAVAILABLE_FALLS: FallIncidentsView = { patientId: "", incidents: [], unavailable: true };
+
+/**
+ * The patient's recorded falls this visit can follow up (WF09). `unavailable` means Quality's register could not be read, which the
+ * screen says rather than claiming there are none; a failed request is reported the same way.
+ */
+export async function loadFallIncidents(
+  client: ApiClient,
+  encounterId: string,
+): Promise<FallIncidentsView> {
+  try {
+    const { data } = await client.GET("/api/v1/encounters/{encounterId}/fall-incidents", {
+      params: { path: { encounterId } },
+    });
+    return data ?? UNAVAILABLE_FALLS;
+  } catch {
+    return UNAVAILABLE_FALLS;
+  }
 }
 
 /** The stored selection tree plus its assembled Layer-1 narrative and the version `If-Match` needs. */
@@ -356,7 +453,11 @@ export function toDraft(sections: readonly SelectionSection[]): DraftSections {
  * persist rows that can never render. A section carrying only free text IS sent — verbatim prose is
  * content, and assembly preserves it exactly.
  */
-export function toSelectionsBody(draft: DraftSections): UpdateSelectionsBody {
+export function toSelectionsBody(
+  draft: DraftSections,
+  fallIncidentId?: string | null,
+  editedNarrative?: string | null,
+): UpdateSelectionsBody {
   const sections = Object.entries(draft)
     .filter(([, v]) => v.entries.length > 0 || v.freeText.trim().length > 0)
     .map(([sectionId, v]) => ({
@@ -366,10 +467,122 @@ export function toSelectionsBody(draft: DraftSections): UpdateSelectionsBody {
       ),
       ...(v.freeText.trim().length > 0 ? { freeText: v.freeText.trim() } : {}),
     }));
-  return { sections } as UpdateSelectionsBody;
+  return {
+    sections,
+    ...(fallIncidentId === undefined ? {} : { fallIncidentId }),
+    ...(editedNarrative === undefined ? {} : { editedNarrative }),
+  } as UpdateSelectionsBody;
+}
+
+/**
+ * Remove, from a stored draft, what the menu can no longer show and the server would refuse:
+ *   - every selected statement the menu does not offer in its section (the author could neither see nor untick it, and every save
+ *     would carry it back), and
+ *   - every param that is not one of its statement's own slots (the server answers 422 SLOT_UNKNOWN, and no field shows it to remove).
+ * Both are a change to the author's draft, so the caller reports the counts and leaves the draft unsaved.
+ */
+export function dropUnofferedEntries(
+  template: TemplateView,
+  draft: DraftSections,
+): {
+  readonly draft: DraftSections;
+  readonly dropped: number;
+  readonly droppedParams: number;
+} {
+  const offered = new Map(
+    template.sections.map((s) => [
+      s.sectionId,
+      new Map(s.entries.map((e) => [e.code, new Set(e.slots)])),
+    ]),
+  );
+  let dropped = 0;
+  let droppedParams = 0;
+  const next: DraftSections = {};
+  for (const [sectionId, value] of Object.entries(draft)) {
+    const allowed = offered.get(sectionId);
+    const entries = value.entries.flatMap((e): DraftEntry[] => {
+      const slots = allowed?.get(e.code);
+      if (slots === undefined) return [];
+      const own = Object.entries(e.params).filter(([key]) => slots.has(key));
+      droppedParams += Object.keys(e.params).length - own.length;
+      return [{ ...e, params: Object.fromEntries(own) }];
+    });
+    dropped += value.entries.length - entries.length;
+    next[sectionId] = { ...value, entries };
+  }
+  return { draft: next, dropped, droppedParams };
+}
+
+/**
+ * Whether a section's statements are ONE choice: two or more, every one in the same exclusive group, so a
+ * note can carry at most one of them (the "Reason for Visit" reasons). Such a section is a select, not a
+ * list of checkboxes that would swap each other out under the author's cursor.
+ */
+export function isSingleChoice(entries: TemplateSection["entries"]): boolean {
+  const group = entries[0]?.exclusiveGroup ?? null;
+  return entries.length >= 2 && group !== null && entries.every((e) => e.exclusiveGroup === group);
+}
+
+/**
+ * Whether a section holds a statement whose slot is still empty. The server accepts that as a draft and
+ * refuses it at finalize (an empty slot would assemble into "has  dependent edema"), so the author is told
+ * the section is not done. A statement the menu no longer offers has no slots to check.
+ */
+export function sectionHasEmptySlots(
+  template: TemplateView,
+  draft: DraftSections,
+  sectionId: string,
+): boolean {
+  const menu = template.sections.find((s) => s.sectionId === sectionId)?.entries ?? [];
+  return (draft[sectionId]?.entries ?? []).some((picked) =>
+    (menu.find((m) => m.code === picked.code)?.slots ?? []).some(
+      (slot) => String(picked.params[slot] ?? "").trim() === "",
+    ),
+  );
 }
 
 const NO_SECTIONS: ReadonlySet<string> = new Set();
+
+/**
+ * The sections a SAVED findings record documents. The server counts a stored ADL or nutrition record as populating the section that
+ * states it (`recordedPanel`), so the composer does too: the author documented it in the panel, not in the selections. Wounds are not
+ * counted: a wound observation does not populate a section by itself.
+ */
+export function sectionsFilledByRecords(
+  template: TemplateView,
+  recorded: { readonly adl: boolean; readonly nutrition: boolean },
+): ReadonlySet<string> {
+  return new Set(
+    template.sections
+      .filter(
+        (s) =>
+          (s.recordedPanel === "adl" && recorded.adl) ||
+          (s.recordedPanel === "nutrition" && recorded.nutrition),
+      )
+      .map((s) => s.sectionId),
+  );
+}
+
+/**
+ * The headings that still stand between the author and finalize, in template order: a required section
+ * with nothing in it (selections, notes, drafted text they confirmed, or a saved findings record, see {@link sectionsFilledByRecords}),
+ * or any section holding a half-filled statement. Advice only — the server decides.
+ */
+export function sectionsNeedingAttention(
+  template: TemplateView,
+  draft: DraftSections,
+  filledByRecord: ReadonlySet<string> = NO_SECTIONS,
+  confirmedSectionIds: ReadonlySet<string> = NO_SECTIONS,
+): readonly string[] {
+  return template.sections
+    .filter((s) => {
+      const empty =
+        !isSectionPopulated(draft, s.sectionId, confirmedSectionIds) &&
+        !filledByRecord.has(s.sectionId);
+      return (s.required && empty) || sectionHasEmptySlots(template, draft, s.sectionId);
+    })
+    .map((s) => s.heading);
+}
 
 /**
  * Whether a section counts as populated: the clinician's own entries or free text, or drafted text they CONFIRMED (ADR-0114). The same

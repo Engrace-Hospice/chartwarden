@@ -21,17 +21,9 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // negative half — `/me/evv/devices` offers no approve control, because approving your own handset would
 // defeat the point of the control.
 //
-// TWO GAPS FOUND AND NOT FIXED THERE, recorded because they are compliance-shaped:
-//   • `evv_missing_resolution` has exactly ONE writer — the correction-of-record path, which needs a
-//     check-in to already exist in order to correct it. A visit that simply never captured produces
-//     nothing. The designed producer is M17's late-check sweep emitting
-//     `m17.visit.late_check_out_suspected`, whose own catalog entry reads "M18 opens an
-//     evv_missing_resolution row (M18 §7 / D6)". M18's side is a REGISTERED deferral in
-//     `outbox-deferred-consumers.ts` — a declared absence, correctly tracked. The M17 side is not:
-//     nothing in the codebase EMITS that event, so binding the consumer would still deliver nothing.
-//     The queue that exists to prove a visit happened when the device did not record it is unreachable.
-//   • The Aggregator Submission queue is empty for the same reason, so its resubmit/cancel controls
-//     are unexercisable on a seeded stack.
+// The late-check sweep, missing-resolution consumer, and aggregator preparation worker are now built
+// and wired. Browser E2E still covers device approval because the seeded workflow does not provide a
+// deterministic late-check or rejected-submission journey; worker/domain suites cover those paths.
 //
 // STILL NOT HERE, and neither is a deferral: the check-in/check-out CAPTURE surfaces are the Capacitor
 // mobile flow (§5.2, owned by the M17 visit-detail CTA) — a browser has no attested device and no §12.4

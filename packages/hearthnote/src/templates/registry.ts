@@ -16,10 +16,32 @@ import {
 import type { HearthnoteTemplate, TemplateSection } from "./types";
 import { templateKey } from "./types";
 
+/**
+ * A required section the clinician writes in their own words: it offers no preset statements.
+ *
+ * Reason for Visit, Vital Signs Review and Plan used to declare no categories, which offered the whole
+ * catalog — so a note's stated reason was a cardiovascular finding, and the same statement could be ticked
+ * in three sections with three different values. Until structured reasons exist (WF09 step 2), prose is the
+ * honest content for these.
+ */
+const prose = (id: string, heading: string): TemplateSection => ({
+  id,
+  heading,
+  required: true,
+  allowedCategories: [],
+});
+
 // ── section catalog (each section defined once; templates reference by id) ───────────────────────────
 const SECTION: Record<string, TemplateSection> = {
-  chief_concern: { id: "chief_concern", heading: "Reason for Visit", required: true },
-  vitals_review: { id: "vitals_review", heading: "Vital Signs Review", required: true },
+  // A choice of visit reasons (one per note), with free text for the detail a choice cannot carry.
+  chief_concern: {
+    id: "chief_concern",
+    heading: "Reason for Visit",
+    required: true,
+    allowedCategories: ["visit_reason"],
+    fallSummary: true,
+  },
+  vitals_review: { ...prose("vitals_review", "Vital Signs Review"), vitalsSummary: true },
   assessment: {
     id: "assessment",
     heading: "Assessment",
@@ -38,12 +60,37 @@ const SECTION: Record<string, TemplateSection> = {
     required: false,
     allowedCategories: ["care_plan_element"],
   },
-  plan: { id: "plan", heading: "Plan and Next Visit", required: true },
+  plan: prose("plan", "Plan and Next Visit"),
+  // The recorded ADL, nutrition and wound sections: optional, and free text only. Their content is the visit's
+  // recorded facts, stated by a deterministic sentence (the way `vitals_review` states the recorded vitals).
+  functional_status: {
+    id: "functional_status",
+    heading: "Functional Status",
+    required: false,
+    allowedCategories: [],
+    adlSummary: true,
+  },
+  nutrition: {
+    id: "nutrition",
+    heading: "Nutrition and Hydration",
+    required: false,
+    allowedCategories: [],
+    nutritionSummary: true,
+  },
+  skin_wounds: {
+    id: "skin_wounds",
+    heading: "Skin and Wounds",
+    required: false,
+    allowedCategories: [],
+    woundSummary: true,
+  },
+  // CHHA already has an ADL section (required); it states the recorded ADLs rather than gaining a second one.
   adl: {
     id: "adl",
     heading: "Activities of Daily Living",
     required: true,
     allowedCategories: ["adl"],
+    adlSummary: true,
   },
   psychosocial: {
     id: "psychosocial",
@@ -51,7 +98,7 @@ const SECTION: Record<string, TemplateSection> = {
     required: true,
     allowedCategories: ["psychosocial"],
   },
-  family_dynamics: { id: "family_dynamics", heading: "Family Dynamics", required: true },
+  family_dynamics: prose("family_dynamics", "Family Dynamics"),
   spiritual: {
     id: "spiritual",
     heading: "Spiritual Assessment",
@@ -64,40 +111,37 @@ const SECTION: Record<string, TemplateSection> = {
     required: true,
     allowedCategories: ["care_plan_element"],
   },
-  advance_directive: {
-    id: "advance_directive",
-    heading: "Advance Directive Acknowledgment",
-    required: true,
-  },
-  caregiver_overview: { id: "caregiver_overview", heading: "Caregiver Overview", required: true },
+  advance_directive: prose("advance_directive", "Advance Directive Acknowledgment"),
+  caregiver_overview: prose("caregiver_overview", "Caregiver Overview"),
   baseline_symptoms: {
     id: "baseline_symptoms",
     heading: "Baseline Symptoms",
     required: true,
     allowedCategories: ["symptom_impact"],
   },
-  pps: { id: "pps", heading: "Palliative Performance Status", required: true },
-  esas: { id: "esas", heading: "Symptom Assessment (ESAS)", required: true },
-  prognosis: { id: "prognosis", heading: "Prognostic Indicators", required: true },
-  recert_summary: { id: "recert_summary", heading: "Recertification Summary", required: true },
+  pps: prose("pps", "Palliative Performance Status"),
+  esas: prose("esas", "Symptom Assessment (ESAS)"),
+  prognosis: prose("prognosis", "Prognostic Indicators"),
+  recert_summary: prose("recert_summary", "Recertification Summary"),
   f2f_attestation: {
     id: "f2f_attestation",
     heading: "Face-to-Face Attestation",
     required: true,
     allowedCategories: ["attestation"],
   },
-  idg_followup: { id: "idg_followup", heading: "IDG Decision Follow-Up", required: true },
+  idg_followup: prose("idg_followup", "IDG Decision Follow-Up"),
 };
 
 /**
- * VN-D15 (S1 PR B): phrase categories for the RN routine visit's three uncategorized sections. Wired for
- * THIS template only — `chief_concern` and `plan` are shared with every discipline, and a category there
- * would empty their menus (the new entries are tagged for the RN routine visit alone). `plan` also keeps
- * `care_plan_element`, the category of the care-plan phrases its menu already offered. Every other
- * template resolves exactly the sections it had before.
+ * VN-D15 (S1 PR B): the draft-wording categories of the RN routine visit's `chief_concern`, `vitals_review`
+ * and `plan` sections. Wired for THIS template only — `chief_concern` and `plan` are shared with every
+ * discipline, and the draft entries are tagged for the RN routine visit alone. `plan` also keeps
+ * `care_plan_element`, the category of the care-plan phrases its menu already offered, and `chief_concern`
+ * keeps `visit_reason` (WF09): the structured Reason for Visit choice and the fall link on it stay offered
+ * while the draft wording is on. Every other template resolves exactly the sections it had before.
  */
 const ROUTINE_VISIT_RN_CATEGORIES: Readonly<Record<string, readonly VocabCategory[]>> = {
-  chief_concern: ["chief_concern"],
+  chief_concern: ["visit_reason", "chief_concern"],
   vitals_review: ["vitals_review"],
   plan: ["plan", "care_plan_element"],
 };
@@ -143,6 +187,9 @@ function baseSectionIds(discipline: EncounterDiscipline): readonly string[] {
         "chief_concern",
         "vitals_review",
         "assessment",
+        "functional_status",
+        "nutrition",
+        "skin_wounds",
         "symptom_management",
         "interventions",
         "plan",
@@ -157,8 +204,16 @@ function baseSectionIds(discipline: EncounterDiscipline): readonly string[] {
     case "ot":
     case "slp":
       // Therapists document a functional assessment and their interventions; like CHHA/MSW they carry no
-      // `vitals_review`, so the §2.6 gate requires no vitals for a therapy visit.
-      return ["chief_concern", "assessment", "interventions", "plan"];
+      // `vitals_review`, so the §2.6 gate requires no vitals for a therapy visit. PT and OT also state the
+      // functional status they assessed (transfers, ambulation, devices; self-care); SLP the swallowing and
+      // intake it assessed. None of the three treats wounds.
+      return [
+        "chief_concern",
+        "assessment",
+        ...(discipline === "slp" ? ["nutrition"] : ["functional_status"]),
+        "interventions",
+        "plan",
+      ];
     case "volunteer":
       return ["chief_concern", "plan"];
   }
@@ -182,14 +237,17 @@ function extraSectionIds(encounterType: EncounterType): readonly string[] {
   }
 }
 
-/** Build the resolved template for one legal pair (telephonic drops the vitals section — §2.2). */
+/** What a telephonic note cannot hold: nothing was measured, so no vitals and no wound measurements (§2.2). */
+const TELEPHONIC_OMITS: ReadonlySet<string> = new Set(["vitals_review", "skin_wounds"]);
+
+/** Build the resolved template for one legal pair (telephonic drops the vitals and wound sections — §2.2). */
 function buildTemplate(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
   wired: boolean,
 ): HearthnoteTemplate {
   const base = baseSectionIds(discipline).filter(
-    (id) => !(id === "vitals_review" && encounterType === "telephonic"),
+    (id) => !(TELEPHONIC_OMITS.has(id) && encounterType === "telephonic"),
   );
   const ordered: string[] = [];
   for (const id of [...base, ...extraSectionIds(encounterType)]) {

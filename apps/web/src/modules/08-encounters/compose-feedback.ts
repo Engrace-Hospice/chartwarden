@@ -1,15 +1,15 @@
 // apps/web/src/modules/08-encounters — what the composer tells the author when a save or a finalize is refused (or the connection drops):
 // the banner's tone, title and words. The server decides every refusal; this only words it (extracted from encounter-compose.tsx).
+import { TRANSPORT_MESSAGE, readableValidation } from "./compose-text";
 import type { WriteResult } from "./encounters-api";
-
-export const humanize = (k: string): string =>
-  k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 export type UiFeedback = {
   tone: "success" | "error" | "warning";
   title: string;
   message: string;
   field?: string;
+  /** Names a notice that goes away by itself once what it is about is no longer true. */
+  tag?: "findings-unsaved";
 };
 
 export function feedbackFor(result: Extract<WriteResult<unknown>, { ok: false }>): UiFeedback {
@@ -43,26 +43,5 @@ export function feedbackFor(result: Extract<WriteResult<unknown>, { ok: false }>
 export const transportFeedback: UiFeedback = {
   tone: "error",
   title: "Connection interrupted",
-  message: "The connection was interrupted. Your changes are still here; try again.",
+  message: TRANSPORT_MESSAGE,
 };
-
-const VITAL_LABELS: Record<string, string> = {
-  bpSystolic: "Systolic blood pressure",
-  bpDiastolic: "Diastolic blood pressure",
-  heartRate: "Heart rate",
-  respiratoryRate: "Respiratory rate",
-  temperature: "Temperature",
-  spo2: "SpO₂",
-  painScore: "Pain score",
-};
-
-export function readableValidation(details: unknown, fallback: string): string {
-  const first = Array.isArray(details) ? details[0] : details;
-  if (first && typeof first === "object") {
-    const item = first as { field?: unknown; message?: unknown };
-    const field =
-      typeof item.field === "string" ? (VITAL_LABELS[item.field] ?? humanize(item.field)) : null;
-    if (typeof item.message === "string") return field ? `${field}: ${item.message}` : item.message;
-  }
-  return fallback;
-}

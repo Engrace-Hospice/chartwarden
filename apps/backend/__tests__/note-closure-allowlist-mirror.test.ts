@@ -84,6 +84,7 @@ const SCREEN_READS: readonly ScreenRead[] = [
     read: "GET /api/v1/patients/:patientId/scales/:scaleType/series",
   },
   { screen: "/patients/:patientId/care-plan", read: "GET /api/v1/patients/:patientId/care-plan" },
+  { screen: "/patients/:patientId/wounds", read: "GET /api/v1/patients/:patientId/wounds" },
   { screen: "/patients/:patientId/consents", read: "GET /api/v1/patients/:patientId/consents" },
   { screen: "/patients/:patientId/documents", read: "GET /api/v1/documents" },
   { screen: "/patients/:patientId/hope", read: "GET /api/v1/patients/:patientId/hope/assessments" },

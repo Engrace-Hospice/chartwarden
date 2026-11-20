@@ -13,6 +13,7 @@ import {
   createDbAssessmentRouteService,
 } from "./assessments-route-service-db";
 import { registerAssessmentRoutes as _registerM9Routes } from "./routes/assessments-routes";
+import { createDbWoundService, registerWoundRoutes } from "./wounds/index";
 
 /**
  * M9L — mount the M9 assessment routes over the PRODUCTION Drizzle route service + ABAC resolver
@@ -29,6 +30,8 @@ export function mountAssessmentRoutes(
 ): void {
   _registerM9Abac({ resolver: createDbAssessmentAbacResolver(db) });
   _registerM9Routes(app, { service: createDbAssessmentRouteService(db, outbox) });
+  // Longitudinal wounds (a patient has wounds; each visit adds dated observations; no outbox events).
+  registerWoundRoutes(app, { service: createDbWoundService(db) });
 }
 
 export {
@@ -134,3 +137,5 @@ export {
   type AssessmentSummaryRenderPayload,
   denyStubAssessmentSummaryPdfRenderer,
 } from "./seams/m22-summary-pdf";
+// Longitudinal wounds — routes, services, the `WoundProvider` seam the M8 visit note reads, and the patient eraser step.
+export * from "./wounds/index";

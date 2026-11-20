@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 2117,
-    "enriched": 2117,
+    "routes": 2137,
+    "enriched": 2137,
     "deficit": 0,
-    "mutating": 1216,
+    "mutating": 1226,
     "mutatingNoBody": 1,
-    "gets": 848,
+    "gets": 857,
     "getsNoResponse": 9
   },
   "modules": [
@@ -61,32 +61,32 @@
     },
     {
       "module": "07-care-plan",
-      "routes": 25,
-      "enriched": 25,
+      "routes": 32,
+      "enriched": 32,
       "deficit": 0,
-      "mutating": 15,
+      "mutating": 19,
       "mutatingNoBody": 0,
-      "gets": 10,
+      "gets": 12,
       "getsNoResponse": 0
     },
     {
       "module": "08-encounters",
-      "routes": 56,
-      "enriched": 56,
+      "routes": 63,
+      "enriched": 63,
       "deficit": 0,
-      "mutating": 33,
+      "mutating": 35,
       "mutatingNoBody": 0,
-      "gets": 22,
+      "gets": 27,
       "getsNoResponse": 0
     },
     {
       "module": "09-assessments",
-      "routes": 20,
-      "enriched": 20,
+      "routes": 26,
+      "enriched": 26,
       "deficit": 0,
-      "mutating": 8,
+      "mutating": 12,
       "mutatingNoBody": 0,
-      "gets": 12,
+      "gets": 14,
       "getsNoResponse": 0
     },
     {

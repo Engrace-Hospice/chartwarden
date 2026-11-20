@@ -112,6 +112,10 @@ describe("reading the draft", () => {
       ["chief_concern", "not_drafted"],
       ["vitals_review", "not_drafted"],
       ["assessment", "not_drafted"],
+      // WF09: the recorded ADL, nutrition and wound sections are free text only, so nothing drafts them.
+      ["functional_status", "not_drafted"],
+      ["nutrition", "not_drafted"],
+      ["skin_wounds", "not_drafted"],
       ["symptom_management", "not_drafted"],
       ["interventions", "unresolved"],
       ["plan", "unresolved"],

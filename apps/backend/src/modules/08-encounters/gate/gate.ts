@@ -10,6 +10,8 @@
 // transition, or deferred with a named blocker — is the register in ./checks. Read that first; it is
 // the honest inventory, and `gate.test.ts` pins it against what this file actually decides.
 import {
+  type RecordedAdl,
+  type RecordedNutrition,
   type VitalField,
   requiredScalesFor,
   requiredVitalsFor,
@@ -76,6 +78,11 @@ export interface EncounterGateFacts {
    */
   readonly scalesPresent: ReadonlySet<ScaleType>;
   /**
+   * §2.6 check 1 — section ids a RECORDED finding populates (the saved ADL or nutrition record, when it states something), see
+   * {@link sectionsPopulatedByFindings}. Resolved upstream; absent means no finding is recorded on the visit.
+   */
+  readonly findingSections?: ReadonlySet<string>;
+  /**
    * Check 13 (ADR-0114) — the drafted sections that still need the clinician, from the SIGNER's recomputed draft against the stored
    * confirmations. ABSENT when the tenant has the draft switched off (the check does not run); an empty list means every drafted
    * section is resolved. A draft that could not be computed never reaches here: the service refuses with COMPLIANCE_GATE_UNAVAILABLE.
@@ -88,6 +95,35 @@ export interface EncounterGateFacts {
    * still passes through the clinician's own selections and free text). ABSENT when the draft is off, and then check 1 is exactly as it was.
    */
   readonly draftConfirmedSectionIds?: ReadonlySet<string>;
+}
+
+/** An ADL record populates a section only through an ADL ITEM level (a devices- or continence-only record states no assistance level). */
+const statesAdlLevel = (adl: RecordedAdl | undefined): boolean =>
+  Object.keys(adl?.items ?? {}).length > 0;
+
+/** A nutrition record populates a section once at least one of its fields is recorded (a recorded 0 percent counts). */
+const statesNutritionField = (nutrition: RecordedNutrition | undefined): boolean =>
+  Object.values(nutrition ?? {}).some((v) => v !== undefined && v !== null);
+
+/**
+ * The template sections a recorded finding stands in for: a section that states the saved ADL record (`adlSummary`) is populated
+ * once the record carries at least one ADL item level, and likewise nutrition with at least one recorded field: the clinician has
+ * documented it in the panel, not in the selections. A record that states nothing (devices only, an empty nutrition record) does
+ * not populate a required section, because the signed note would carry no sentence for it. This is the one definition of "a
+ * required finding section is populated"; the template flags only say WHICH sections state which record.
+ */
+export function sectionsPopulatedByFindings(
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+  recorded: { readonly adl?: RecordedAdl; readonly nutrition?: RecordedNutrition },
+): ReadonlySet<string> {
+  const adl = statesAdlLevel(recorded.adl);
+  const nutrition = statesNutritionField(recorded.nutrition);
+  const template = resolveTemplate(encounterType, discipline);
+  const ids = (template?.sections ?? [])
+    .filter((s) => (adl && s.adlSummary === true) || (nutrition && s.nutritionSummary === true))
+    .map((s) => s.id);
+  return new Set(ids);
 }
 
 /** One structured remediation hint — the §2.6 "422 with remediation" payload, one entry per failure. */
@@ -131,6 +167,7 @@ export function runEncounterComplianceGate(facts: EncounterGateFacts): GateResul
   } else {
     const populated = new Set([
       ...facts.sections.filter(isPopulated).map((s) => s.sectionId),
+      ...(facts.findingSections ?? []),
       ...(facts.draftConfirmedSectionIds ?? []),
     ]);
     for (const section of template.sections) {

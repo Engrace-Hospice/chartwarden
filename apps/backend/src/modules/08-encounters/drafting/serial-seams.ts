@@ -1,6 +1,6 @@
 // apps/backend/src/modules/08-encounters/drafting/serial-seams.ts — the draft's seam reads, one at a time (S1; design §3.2 "Connections").
 //
-// Every seam read (M7 care plan, M9 scale series, M12 medication orders, M39 Part 2) opens its OWN pooled transaction (`withOrgContextFromRequest`)
+// Every seam read (M7 care plan, M9 scale series and wounds, M12 medication orders, M39 Part 2) opens its OWN pooled transaction (`withOrgContextFromRequest`)
 // while the draft request already holds one, and on a write (section PUT, finalize, sign) holds the encounter row lock with it. The draft reads
 // its four sources together, so one request could take six of the pool's ten connections (the request's, M7's two (it asks M39 inside), both M9
 // series, M12's) and three such requests deadlock on the pool until its acquisition timeout turns them into DRAFT_UNAVAILABLE. Taking turns
@@ -31,6 +31,7 @@ export function serialSeams(seams: DraftSeamPorts): DraftSeamPorts {
     levelOfCareOn: inTurn(seams.levelOfCareOn.bind(seams)),
     attestedFaceToFace: inTurn(seams.attestedFaceToFace.bind(seams)),
     activeCertification: inTurn(seams.activeCertification.bind(seams)),
+    recordedWounds: inTurn(seams.recordedWounds.bind(seams)),
     part2DisclosureAllowed: inTurn(seams.part2DisclosureAllowed.bind(seams)),
   };
 }

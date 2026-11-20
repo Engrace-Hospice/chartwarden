@@ -9,7 +9,13 @@ import { Link } from "react-router-dom";
 import { GoalsProgressPanel } from "../../shell/goals-progress";
 import { useSession } from "../../shell/session";
 import type { CarePlan, Goal, Intervention, Problem, ReviewStatus, Version } from "./care-plan-api";
-import { cap, isGoalEditable, isInterventionEditable, toneFor } from "./care-plan-status";
+import {
+  cap,
+  isGoalEditable,
+  isInterventionEditable,
+  toneFor,
+  versionHistoryPath,
+} from "./care-plan-status";
 
 const DISCIPLINE_LABEL: Record<string, string> = {
   rn: "Nursing",
@@ -124,7 +130,7 @@ export function PlanHeader({
         <p>Manage goals, interventions, and outcomes for this patient's hospice care plan.</p>
       </div>
       <div style={{ display: "flex", alignItems: "stretch", gap: "0.75rem", flexWrap: "wrap" }}>
-        <Link to={`/care-plans/${plan.id}/versions`} className="wx-version-card">
+        <Link to={versionHistoryPath(plan)} className="wx-version-card">
           <span
             aria-hidden
             className="wx-version-dot"
@@ -578,7 +584,11 @@ export function CarePlanRail({
     permission?: string;
   }[] = [
     ...(canAddGoal ? [{ label: "Add Goal", icon: "plus" as GlyphName, onClick: onAddGoal }] : []),
-    { label: "Version History", icon: "rotate-ccw", to: `/care-plans/${plan.id}/versions` },
+    {
+      label: "Version History",
+      icon: "rotate-ccw",
+      to: versionHistoryPath(plan),
+    },
     {
       label: "View IDG Notes",
       icon: "grid-circles",

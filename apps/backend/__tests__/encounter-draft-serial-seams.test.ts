@@ -33,6 +33,7 @@ function measured(ms: number) {
     medicationChangesBetween: read("medications", () => [
       change("started", "2026-11-12T16:00:00.000Z", { id: "order-a" }),
     ]),
+    recordedWounds: read("wounds", () => []),
     part2DisclosureAllowed: read("part2", () => true),
     electionPeriods: read("periods", () => []),
     levelOfCareOn: read("levelOfCare", () => ({
@@ -56,7 +57,7 @@ describe("serialSeams", () => {
     const { stats, seams } = measured(5);
     const serial = serialSeams(seams);
 
-    const [plan, scaleA, scaleB, meds, part2] = await Promise.all([
+    const [plan, scaleA, scaleB, meds, wounds, part2] = await Promise.all([
       serial.carePlanAsOf(
         "p",
         "routine_visit",
@@ -73,6 +74,7 @@ describe("serialSeams", () => {
         "2026-11-01T00:00:00.000Z",
         "2026-11-18T00:00:00.000Z",
       ),
+      serial.recordedWounds({ organizationId: "o", encounterId: "e", patientId: "p" }),
       serial.part2DisclosureAllowed({
         organizationId: "o",
         patientId: "p",
@@ -81,7 +83,8 @@ describe("serialSeams", () => {
     ]);
 
     expect(stats.peak).toBe(1);
-    expect(stats.order).toEqual(["carePlan", "scale", "scale", "medications", "part2"]);
+    expect(stats.order).toEqual(["carePlan", "scale", "scale", "medications", "wounds", "part2"]);
+    expect(wounds).toEqual([]);
     expect(plan?.goals).toHaveLength(1);
     expect(scaleA.scaleType).toBe("pps");
     expect(scaleB.scaleType).toBe("esas_r");

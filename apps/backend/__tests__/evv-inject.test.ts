@@ -281,6 +281,13 @@ function makeServer(
             stateCode: "PA",
             aggregatorVendor: "sandata",
             status: "rejected",
+            aggregatorTransactionId: "txn-rejected",
+            attemptCount: 2,
+            lastAttemptAt: "2026-11-19T17:00:00.000Z",
+            submittedAt: "2026-11-19T17:00:01.000Z",
+            aggregatorResponseAt: "2026-11-19T17:00:03.000Z",
+            aggregatorRejectionCode: "AUTH-42",
+            aggregatorRejectionReason: "Provider identifier was not enrolled for this program.",
           },
         ],
         resolutions: [
@@ -905,6 +912,15 @@ describe("§4.1 routes 20-22 — aggregator submissions (§2.2.5 D7)", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveLength(2);
+    expect(res.json()).toContainEqual(
+      expect.objectContaining({
+        id: SUBMISSION_REJECTED,
+        aggregatorTransactionId: "txn-rejected",
+        aggregatorResponseAt: "2026-11-19T17:00:03.000Z",
+        aggregatorRejectionCode: "AUTH-42",
+        aggregatorRejectionReason: "Provider identifier was not enrolled for this program.",
+      }),
+    );
     await app.close();
   });
 
@@ -918,6 +934,8 @@ describe("§4.1 routes 20-22 — aggregator submissions (§2.2.5 D7)", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("queued");
+    expect(res.json().aggregatorRejectionCode).toBeNull();
+    expect(res.json().aggregatorRejectionReason).toBeNull();
     await app.close();
   });
 
@@ -1167,6 +1185,23 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     const { app } = makeServer();
     const res = await correct(app, "00000000-0000-4000-8000-000000000000");
     expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("refuses to move a correction onto a different visit", async () => {
+    const { app } = makeServer();
+    const originalId = await capture(app);
+    const res = await correct(app, originalId, {
+      newEvent: { ...checkInBody(), visitId: VISIT_OTHER },
+    });
+    expect(res.statusCode).toBe(422);
+
+    const original = await app.inject({
+      method: "GET",
+      url: `/api/v1/evv/events/${originalId}`,
+      headers: SUPERVISOR,
+    });
+    expect(original.json().supersededByEventId).toBeNull();
     await app.close();
   });
 
