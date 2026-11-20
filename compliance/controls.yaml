@@ -1103,33 +1103,33 @@ controls:
 
   - id: CW-AC-53
     title: >-
-      The discipline-plan permissions a tenant's RN roles hold by default are least privilege (the RBAC half only; which
-      patient is the care-team scope, caseload_or_scope and discipline_scope, is unchanged) - rn_case_manager and rn hold
-      read, read_summary, author, finalize and sign, because signVersion accepts the RN slot of an Aide POC from either role
-      key (any care-team RN may sign it) while the same slot on the MSW and volunteer plans stays the RN case manager's, so
-      rn holding the key signs nothing else - and never the system keys (IDG revise, read internal), a supervisor, the
-      director of nursing or an external role. Coverage is the roles a tenant already has when migration 1526 runs; neither
-      role is a template, so a new tenant gets nothing until an administrator creates the roles, a role created later
-      receives nothing, and a tenant may still remove a key from a role it owns. Limits stated on purpose - the key is not
-      scoped by plan kind, so an RN reads every kind of discipline plan (MSW, spiritual, volunteer, Aide POC) of a patient
-      on their caseload, with Part 2 and family-violence redaction still applied by the disclosure gate; no role holds the
-      sign key for the CHHA acknowledgment slot by default (a tenant must grant it to chha before an Aide POC can reach
-      signed, which fails closed); and the event and PDF carry the slot a signer filled, while the signature row and its
-      audit image also carry the role key the signer held (held_role_key, migration 1527, empty on rows signed earlier and
-      on a system-actor signature). A finalize may only seal a signer set at or above the D11 floor, with at most one
-      signature per role
+      The discipline-plan permissions a tenant's RN roles and aide role hold by default are least privilege (the RBAC half
+      only; which patient is the care-team scope, caseload_or_scope and discipline_scope, is unchanged) - rn_case_manager
+      and rn hold read, read_summary, author, finalize and sign, because signVersion accepts the RN slot of an Aide POC from
+      either role key (any care-team RN may sign it) while the same slot on the MSW and volunteer plans stays the RN case
+      manager's, so rn holding the key signs nothing else; chha holds sign alone, for the CHHA acknowledgment slot it fills
+      and never a cosignature - and never the system keys (IDG revise, read internal), a supervisor, the director of nursing
+      or an external role. Coverage is the roles a tenant already has when migration 1526 runs; none of the roles is a
+      template, so a new tenant gets nothing until an administrator creates the roles, a role created later receives
+      nothing, and a tenant may still remove a key from a role it owns. Limits stated on purpose - the key is not scoped by
+      plan kind, so an RN reads every kind of discipline plan (MSW, spiritual, volunteer, Aide POC) of a patient on their
+      caseload, with Part 2 and family-violence redaction still applied by the disclosure gate; the aide holds no read key
+      (the read keys are not scoped by plan kind), so it can acknowledge only where a tenant also lets it open the plan; and
+      the event and PDF carry the slot a signer filled, while the signature row and its audit image also carry the role key
+      the signer held (held_role_key, migration 1527, empty on rows signed earlier and on a system-actor signature). A
+      finalize may only seal a signer set at or above the D11 floor, with at most one signature per role
     hipaa: ["164.312(a)(1)", "164.312(c)(1)", "164.312(d)", "164.308(a)(4)(ii)(B)", "164.308(a)(4)(ii)(C)"]
     soc2: ["CC6.1", "CC6.3"]
     status: implemented
     evidence:
-      # Re-runs migration 1526 over staged roles in a real database: rn and rn_case_manager get exactly their five keys, a
+      # Re-runs migration 1526 over staged roles in a real database: rn and rn_case_manager get exactly their five keys and chha only sign, a
       # supervisor, an external role and a platform template get none, existing grants survive, a second run adds
       # nothing and each insert is audited under the migration's correlation id.
       - script: test:m3:role-floor:live
       # The single source of the grants, the backfill migration (insert-only, idempotent) and the pin tests: the constant
-      # and the migration are identical, only the five keys go to only the two roles, and the sign grant equals the roles a
+      # and the migration are identical, the five keys go to only the two RN roles and chha gets sign alone, and the sign grant equals the roles a
       # D11 signer slot accepts through the same actorHoldsSignerRole check signVersion uses (plain rn fills the Aide POC
-      # RN slot only, on no other plan kind).
+      # RN slot only, on no other plan kind; chha fills the acknowledgment slot only).
       - file: packages/auth/src/roles/discipline-plan-grants.ts
       - file: packages/db/migrations/1526_m15_discipline_plan_default_grants.sql
       - file: packages/auth/__tests__/discipline-plan-grants.test.ts
