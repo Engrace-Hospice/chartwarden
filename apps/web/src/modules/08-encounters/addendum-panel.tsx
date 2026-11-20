@@ -245,13 +245,6 @@ export function AddendaPanel({
           <div style={stack}>
             <strong>Sign addendum</strong>
             <span style={metaText}>{signing?.reason}</span>
-            {failure && failure.addendumId === signingId ? (
-              <FailureAlert
-                failure={failure.error}
-                step={failure.step}
-                amends={(signing?.amendsSectionIds?.length ?? 0) > 0}
-              />
-            ) : null}
           </div>
         }
         legalText="I attest this addendum is complete and accurate to the best of my knowledge."

@@ -246,6 +246,20 @@ describe("addendumRefusalMessage", () => {
     });
   });
 
+  it("words the switched-off draft for the step that was refused: at finalize the addendum is still a draft and finalizing is what to repeat", () => {
+    const text = addendumRefusalMessage({
+      ...refusal("DRAFT_OFF_AFTER_FINALIZE"),
+      step: "finalize",
+    });
+    expect(text).toMatch(/Nothing was changed: the addendum is still a draft/);
+    expect(text).toMatch(/Visit-note Draft/);
+    expect(text).toMatch(/then finalize again\.$/);
+    expect(text).not.toMatch(/sign/i);
+    expect(
+      addendumRefusalMessage({ ...refusal("DRAFT_OFF_AFTER_FINALIZE"), step: "sign" }),
+    ).toMatch(/still waiting.*then sign again\.$/);
+  });
+
   it("says a source could not be read and to try again, changing nothing", () => {
     expect(
       addendumRefusalMessage({ ...refusal("COMPLIANCE_GATE_UNAVAILABLE"), status: 503 }),

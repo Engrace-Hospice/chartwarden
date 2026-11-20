@@ -171,7 +171,9 @@ export function addendumRefusalMessage({
       return `Some amended sections need another look before this addendum can be signed${named}. Review them above, then sign again.`;
     }
     case "DRAFT_OFF_AFTER_FINALIZE":
-      return "The visit-note draft is switched off for your organization now, so the sections this addendum amends cannot be signed. Nothing was changed: the addendum is still waiting. Ask an administrator to switch the visit-note draft back on (Admin, Visit-note Draft), then sign again.";
+      return step === "finalize"
+        ? "The visit-note draft is switched off for your organization now, so the sections this addendum amends cannot be confirmed. Nothing was changed: the addendum is still a draft. Ask an administrator to switch the visit-note draft back on (Admin, Visit-note Draft), then finalize again."
+        : "The visit-note draft is switched off for your organization now, so the sections this addendum amends cannot be signed. Nothing was changed: the addendum is still waiting. Ask an administrator to switch the visit-note draft back on (Admin, Visit-note Draft), then sign again.";
     case "COMPLIANCE_GATE_UNAVAILABLE":
       return "The addendum could not be checked right now: a record it depends on did not answer. Nothing was changed. Try again in a moment.";
     case "NO_ELIGIBLE_COSIGNER":
