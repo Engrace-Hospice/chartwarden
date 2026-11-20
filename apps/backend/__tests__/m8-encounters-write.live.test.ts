@@ -126,6 +126,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   /** The real caller signing (§3.3/D13) — `resolveSignatureProvenance` resolves SESSION_A's step-up
    *  through the SessionContextResolver seam registered in beforeAll (fresh, webauthn). */
   let ACTOR_A: { membershipId: string; sessionId: string };
+  /** What finalize is told of its caller: the addendum's author, with no roles (a free addendum reads no draft). */
+  const finalizerOf = (membershipId: string) => ({ roles: [], membershipId, userId: undefined });
+  let FINALIZER_A: ReturnType<typeof finalizerOf>;
   /** PARAM-004/CoP-418.104(c) follow-up — signing writes an `encounter_signature` row, which has NOT
    *  NULL provider_entity_id/location_id. F-064 (#159): `createDraft` now RESOLVES the encounter's
    *  siting from M6's `AdmissionStatusReader` (the REAL reader over the seeded active admission row),
@@ -207,6 +210,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       [ADMISSION, ORG_A, SITING_A.providerEntityId, SITING_A.locationId, PATIENT, "2025-12-01"],
     );
     ACTOR_A = { membershipId: membershipOf[ORG_A], sessionId: SESSION_A };
+    FINALIZER_A = finalizerOf(ACTOR_A.membershipId);
     const sessions = createInMemorySessionContextStore([
       {
         sessionClass: "staff",
@@ -675,7 +679,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     );
     expect(addendumRows.rowCount).toBe(1);
     expect(addendumRows.rows[0].template_key).toBe("routine_visit:rn");
-    const fin = await svc.finalizeAddendum(ORG_A, id, a.id);
+    const fin = await svc.finalizeAddendum(ORG_A, id, a.id, FINALIZER_A);
     expect(fin.status).toBe("finalized");
     const signed = await svc.signAddendum(ORG_A, id, a.id, ACTOR_A, SIGN_ARGS);
     expect(signed.status).toBe("signed");
@@ -765,7 +769,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       authorMembershipId: ACTOR_A.membershipId,
     });
     await svc.updateAddendumSelections(ORG_A, id, a.id, TREE);
-    await svc.finalizeAddendum(ORG_A, id, a.id);
+    await svc.finalizeAddendum(ORG_A, id, a.id, FINALIZER_A);
 
     const out = await admin.query(
       `SELECT kind, encounter_id, assembly_template_key, vocab_version_id
@@ -1267,7 +1271,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       reason: "Correcting the signed encounter documentation.",
       authorMembershipId: ACTOR_A.membershipId,
     });
-    await expect(svc.finalizeAddendum(ORG_A, id, a.id)).rejects.toMatchObject({
+    await expect(svc.finalizeAddendum(ORG_A, id, a.id, FINALIZER_A)).rejects.toMatchObject({
       statusCode: 422,
       code: "COMPLIANCE_GATE_FAILED",
     });

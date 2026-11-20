@@ -70,9 +70,10 @@ export interface AmendmentFlow {
     viewer: DraftViewer,
   ): Promise<PreparedAmendment | null>;
   /**
-   * How many sections the addendum's sign would seal for `viewer` right now (0 when it names none, none is confirmed, or the draft is off). The same
-   * Part 2 verdict and draft read as `prepare`, in that order, but without asking every named section to be resolved: finalize does not.
-   * Refuses as `prepare` does (422 AMENDMENT_PART2_NOT_ENTITLED, 503 COMPLIANCE_GATE_UNAVAILABLE); no confirmed section reads nothing at all.
+   * How many sections the addendum's sign would seal for `viewer` right now (0 when it names none or none is confirmed). The same Part 2 verdict and
+   * draft read as `prepare`, in that order, and the same refusals (422 AMENDMENT_PART2_NOT_ENTITLED, 503 COMPLIANCE_GATE_UNAVAILABLE, 409
+   * DRAFT_OFF_AFTER_FINALIZE), but without asking every named section to be resolved: finalize does not. No confirmed section reads nothing at all.
+   * The caller holds the encounter row lock and its connection across the source reads, as sign does (serial-seams.ts).
    */
   sealable(
     tx: DbClient,
@@ -95,6 +96,13 @@ const part2Entitled = (
       patientId: patient.patientId,
       viewer: who,
     }),
+  );
+
+/** Named sections are never signed away: the draft being off (the switch, or a template the corpus does not draft) is not "nothing to amend". */
+const draftOff = (): EncounterStateError =>
+  new EncounterStateError(
+    "DRAFT_OFF_AFTER_FINALIZE",
+    "this addendum amends sections of the signed note, and the visit-note draft is now switched off for this organization, so the amendments cannot be confirmed: switch the draft back on for the organization, then try again",
   );
 
 export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
@@ -167,13 +175,7 @@ export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
     async prepare(tx, parent, addendumId, viewer) {
       const restricted = await readNamedDraft(tx, parent, addendumId, viewer);
       if (restricted === null) return null;
-      if (restricted === "off") {
-        // Named sections are never signed away: the draft being off (the switch, or a template the corpus does not draft) is not "nothing to amend".
-        throw new EncounterStateError(
-          "DRAFT_OFF_AFTER_FINALIZE",
-          "this addendum amends sections of the signed note, and the visit-note draft is now switched off for this organization, so the amendments cannot be confirmed: switch the draft back on for the organization, then sign again",
-        );
-      }
+      if (restricted === "off") throw draftOff();
       assertResolved(restricted);
       return { draft: restricted, sections: amendedSectionsOf(restricted) };
     },
@@ -181,7 +183,8 @@ export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
     async sealable(tx, parent, addendumId, viewer) {
       if ((await confirmedAmendmentCount(tx, addendumId)) === 0) return 0;
       const restricted = await readNamedDraft(tx, parent, addendumId, viewer);
-      return restricted === null || restricted === "off" ? 0 : amendedSectionsOf(restricted).length;
+      if (restricted === "off") throw draftOff();
+      return restricted === null ? 0 : amendedSectionsOf(restricted).length;
     },
 
     write(tx, addendum, prepared) {

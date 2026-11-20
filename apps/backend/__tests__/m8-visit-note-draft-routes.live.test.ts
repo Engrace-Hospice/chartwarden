@@ -1386,6 +1386,11 @@ describe.skipIf(!DB_URL)(
         roles,
         membershipId: member.membershipId,
       });
+      /** What finalize is told of its caller: the session's roles and membership, and the audit user id when it has one. */
+      const finalizerOf = (member: Member, roles: readonly string[] = ["rn"], userId?: string) => ({
+        ...viewerOf(member, roles),
+        userId,
+      });
       const actorOf = (
         org: OrgFixture,
         key: keyof typeof SESSIONS,
@@ -2874,7 +2879,12 @@ describe.skipIf(!DB_URL)(
         ): Promise<string> {
           const created = await createAmendment(f, sectionIds, a, roles);
           await a.updateAddendumSelections(ORG_A, f.encounterId, created.id, requireSelections);
-          await a.finalizeAddendum(ORG_A, f.encounterId, created.id);
+          await a.finalizeAddendum(
+            ORG_A,
+            f.encounterId,
+            created.id,
+            finalizerOf(orgs.A.author, roles),
+          );
           return created.id;
         }
         const amendDraft = (
@@ -3335,9 +3345,23 @@ describe.skipIf(!DB_URL)(
             payload?: unknown,
             headers: Record<string, string> = authorA(),
           ) => amendApp.inject({ method, url, headers, payload: payload as never });
+          /** The author's session with these roles (`rn` alone is not entitled to Part 2; `part2` is, by the fake M39 verdict). */
+          const withRoles = (roles: readonly string[]) => ({
+            ...authorA(),
+            "x-test-roles": roles.join(","),
+          });
           /** Opens an amending addendum over HTTP and saves NO selection or annotation. */
-          async function openOnly(f: EncounterFixture, ids: readonly string[]): Promise<string> {
-            const res = await send("POST", baseUrl(f), { reason: REASON, amendsSectionIds: ids });
+          async function openOnly(
+            f: EncounterFixture,
+            ids: readonly string[],
+            roles: readonly string[] = ["rn"],
+          ): Promise<string> {
+            const res = await send(
+              "POST",
+              baseUrl(f),
+              { reason: REASON, amendsSectionIds: ids },
+              withRoles(roles),
+            );
             expect(res.statusCode).toBe(201);
             return res.json().id as string;
           }
@@ -3347,19 +3371,31 @@ describe.skipIf(!DB_URL)(
             id: string,
             sectionId: string,
             resolution: "confirmed" | "deselected",
+            roles: readonly string[] = ["rn"],
           ): Promise<void> {
-            const seen = (await amendDraft(f, id)).sections.find((s) => s.sectionId === sectionId);
-            const res = await send("PUT", `${baseUrl(f)}/${id}/draft/sections/${sectionId}`, {
-              resolution,
-              contentHash: seen?.contentHash,
-              corpusVersion: seen?.corpusVersion,
-            });
-            expect(res.statusCode).toBe(200);
+            const seen = (await amendDraft(f, id, roles)).sections.find(
+              (s) => s.sectionId === sectionId,
+            );
+            const res = await send(
+              "PUT",
+              `${baseUrl(f)}/${id}/draft/sections/${sectionId}`,
+              { resolution, contentHash: seen?.contentHash, corpusVersion: seen?.corpusVersion },
+              withRoles(roles),
+            );
+            expect(res.statusCode, res.body).toBe(200);
           }
-          const finalizeOver = (f: EncounterFixture, id: string) =>
-            send("POST", `${baseUrl(f)}/${id}/finalize`);
-          const signOver = (f: EncounterFixture, id: string) =>
-            send("POST", `${baseUrl(f)}/${id}/sign`, { attestationConfirmed: true });
+          const finalizeOver = (
+            f: EncounterFixture,
+            id: string,
+            roles: readonly string[] = ["rn"],
+          ) => send("POST", `${baseUrl(f)}/${id}/finalize`, undefined, withRoles(roles));
+          const signOver = (f: EncounterFixture, id: string, roles: readonly string[] = ["rn"]) =>
+            send(
+              "POST",
+              `${baseUrl(f)}/${id}/sign`,
+              { attestationConfirmed: true },
+              withRoles(roles),
+            );
           const selectionRows = async (id: string) =>
             (await rows("SELECT 1 FROM hearthnote_selection WHERE addendum_id = $1", [id])).length;
           /** The envelope's own remediation: what the browser is told. */
@@ -3586,11 +3622,105 @@ describe.skipIf(!DB_URL)(
             expect(await addendumStatus(id)).toBe("draft");
           });
 
+          const ENTITLED = ["rn", "part2"];
+          /** A note signed with Part 2 content in it (the M39 fake entitles the `part2` role): every later amendment is judged against that. */
+          async function part2Note(): Promise<EncounterFixture> {
+            currentSeams = goalSeams(GOAL_V2, {
+              medicationChangesBetween: async () => sudChange(),
+            });
+            return signedNote(ENTITLED);
+          }
+          const pinRows = async (id: string) =>
+            (
+              await rows(
+                "SELECT 1 FROM hearthnote_assembled_output WHERE addendum_id = $1 AND kind = 'addendum_finalize'",
+                [id],
+              )
+            ).length;
+
+          it("two concurrent finalizes of a confirmed-only addendum: one 200, one 409, one pin, and the second reads no source (the encounter row lock is taken first)", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const base = currentSeams;
+            let reads = 0;
+            const slow = () =>
+              goalSeams(GOAL_V2, {
+                carePlanAsOf: async (...args) => {
+                  reads += 1;
+                  await new Promise((resolve) => setTimeout(resolve, 250));
+                  return base.carePlanAsOf(...args);
+                },
+              });
+            const solo = await openOnly(f, ["plan"]);
+            await putResolution(f, solo, "plan", "confirmed");
+            currentSeams = slow();
+            expect((await finalizeOver(f, solo)).statusCode).toBe(200);
+            const readsOfOne = reads;
+            expect(readsOfOne).toBeGreaterThan(0);
+
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            await putResolution(f, id, "plan", "confirmed");
+            currentSeams = slow();
+            reads = 0;
+            const settled = await Promise.all([finalizeOver(f, id), finalizeOver(f, id)]);
+            expect(settled.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+            expect(remediationOf(settled.find((r) => r.statusCode === 409) as never).code).toBe(
+              "ILLEGAL_TRANSITION",
+            );
+            expect(await pinRows(id)).toBe(1);
+            expect(reads).toBe(readsOfOne);
+          });
+
+          it("an author WITH Part 2 disclosure finalizes and signs an addendum whose only content is a confirmed section of a Part 2 note: finalize judges the session's own viewer, as sign does", async () => {
+            const f = await part2Note();
+            const id = await openOnly(f, ["interventions"], ENTITLED);
+            await putResolution(f, id, "interventions", "confirmed", ENTITLED);
+            const finalized = await finalizeOver(f, id, ENTITLED);
+            expect(finalized.statusCode, finalized.body).toBe(200);
+            const signed = await signOver(f, id, ENTITLED);
+            expect(signed.statusCode, signed.body).toBe(200);
+            expect(signed.json()).toMatchObject({ amendedSectionIds: ["interventions"] });
+          });
+
+          it("a Part 2 verdict that cannot be decided fails closed at finalize: 503 COMPLIANCE_GATE_UNAVAILABLE, still a draft", async () => {
+            const f = await part2Note();
+            const id = await openOnly(f, ["interventions"], ENTITLED);
+            await putResolution(f, id, "interventions", "confirmed", ENTITLED);
+            currentSeams = goalSeams(GOAL_V2, {
+              medicationChangesBetween: async () => sudChange(),
+              part2DisclosureAllowed: async () => {
+                throw new Error("synthetic M39 outage");
+              },
+            });
+            const res = await finalizeOver(f, id, ENTITLED);
+            expect(res.statusCode, res.body).toBe(503);
+            expect(remediationOf(res).code).toBe("COMPLIANCE_GATE_UNAVAILABLE");
+            expect(await addendumStatus(id)).toBe("draft");
+          });
+
+          it("the draft switched off after naming: finalize answers what sign answers for that state (409 DRAFT_OFF_AFTER_FINALIZE), not ADDENDUM_EMPTY, and the addendum stays a draft", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            await putResolution(f, id, "plan", "confirmed");
+            await switchTo(false);
+            try {
+              const res = await finalizeOver(f, id);
+              expect(res.statusCode, res.body).toBe(409);
+              expect(remediationOf(res).code).toBe("DRAFT_OFF_AFTER_FINALIZE");
+              expect(await addendumStatus(id)).toBe("draft");
+            } finally {
+              await switchTo(true);
+            }
+            expect((await finalizeOver(f, id)).statusCode).toBe(200);
+          });
+
           it("a free addendum with nothing in it keeps the old rule: finalize is 422 ADDENDUM_EMPTY", async () => {
             const f = await signedNote();
             const created = await createAmendment(f, undefined);
             const error = await a
-              .finalizeAddendum(ORG_A, f.encounterId, created.id)
+              .finalizeAddendum(ORG_A, f.encounterId, created.id, finalizerOf(orgs.A.author))
               .catch((e: unknown) => e);
             expect(error).toMatchObject({ code: "COMPLIANCE_GATE_FAILED", statusCode: 422 });
             expect(detailPairs(error)).toEqual([[undefined, "ADDENDUM_EMPTY"]]);
@@ -4428,7 +4558,7 @@ describe.skipIf(!DB_URL)(
                 amendsSectionIds: ["plan"],
               });
               await a.updateAddendumSelections(ORG_A, f.encounterId, created.id, requireSelections);
-              await a.finalizeAddendum(ORG_A, f.encounterId, created.id);
+              await a.finalizeAddendum(ORG_A, f.encounterId, created.id, author);
               // the draft is its addendum's author's view alone: this author is not the note's
               const asAddendumAuthor = {
                 ...callerOf(orgs.A),
@@ -5659,7 +5789,7 @@ describe.skipIf(!DB_URL)(
                 amendsSectionIds: ["plan"],
               });
               await a.updateAddendumSelections(ORG_A, f.encounterId, created.id, requireSelections);
-              await a.finalizeAddendum(ORG_A, f.encounterId, created.id);
+              await a.finalizeAddendum(ORG_A, f.encounterId, created.id, who);
               await resolveAs(who, f, created.id, "plan");
               const refused = await a
                 .signAddendum(ORG_A, f.encounterId, created.id, who, { at: SERVICE_DATE as never })
@@ -5882,7 +6012,11 @@ describe.skipIf(!DB_URL)(
               ["encounter_amendment.insert", "encounter_amendment.insert"],
             );
             await a.updateAddendumSelections(ORG_A, f.encounterId, created.id, requireSelections);
-            await a.finalizeAddendum(ORG_A, f.encounterId, created.id, user);
+            await a.finalizeAddendum(ORG_A, f.encounterId, created.id, {
+              roles: ["rn"],
+              membershipId: membership,
+              userId: user,
+            });
             // the addendum row: its creation and its finalize are the user's (the selections save between them still files under the system)
             const addendumImages = await auditEvents(
               ORG_A,

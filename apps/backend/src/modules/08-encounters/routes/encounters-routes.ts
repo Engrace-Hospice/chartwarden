@@ -1046,13 +1046,10 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
-      return service.finalizeAddendum(
-        organizationId,
-        encounterId,
-        addendumId,
-        actorUserIdOf(request),
-        draftViewerOf(request),
-      );
+      return service.finalizeAddendum(organizationId, encounterId, addendumId, {
+        ...draftViewerOf(request),
+        userId: actorUserIdOf(request),
+      });
     },
   );
 

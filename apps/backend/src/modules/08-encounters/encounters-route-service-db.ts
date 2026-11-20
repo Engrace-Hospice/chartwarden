@@ -948,8 +948,9 @@ export function createDbEncounterRouteService(
   /**
    * Run the §2.6 gate for one addendum (the narrower form — see runAddendumComplianceGate). Finalize and sign judge emptiness by the SAME number:
    * how many sections sign would seal (`amendedSections`, only asked when a selection or an annotation does not already decide it). Sign has it
-   * from the draft it just read, under the encounter row lock; finalize asks `amendments.sealable`, so an addendum sign would refuse as empty
-   * does not get past finalize into a state the editor cannot leave.
+   * from the draft it just read; finalize asks `amendments.sealable`, so an addendum sign would refuse as empty does not get past finalize into a
+   * state the editor cannot leave. Both run under the encounter row lock taken first, holding their connection across the serial source reads:
+   * the pattern sign and the section PUT already use (serial-seams.ts), so a concurrent finalize waits and then finds the addendum finalized.
    */
   async function gateAddendum(
     t: DbClient,
@@ -2954,27 +2955,32 @@ export function createDbEncounterRouteService(
         };
       });
     },
-    async finalizeAddendum(organizationId, encounterId, addendumId, actorUserId, viewer) {
-      return withOrgContext(db, { organizationId, userId: actorUserId ?? "" }, async (tx) => {
+    async finalizeAddendum(organizationId, encounterId, addendumId, actor) {
+      return withOrgContext(db, { organizationId, userId: actor.userId ?? "" }, async (tx) => {
         const t = tx as unknown as DbClient;
+        // Locked first, as sign and the section PUT lock it: the addendum's gate may read the draft's sources, so a concurrent finalize must wait
+        // and then find the addendum finalized, not run the same reads and pin its output twice.
+        const parent = await loadEnc(t, encounterId, { lock: true });
         const a = await loadAddendum(t, encounterId, addendumId);
-        const parent = await loadEnc(t, encounterId);
-        // The author is the caller (the route's `is_addendum_author`): without a session's roles (a service call) they are the addendum's author with none.
-        const author = viewer ?? { roles: [], membershipId: a.authoredByMembershipId };
         const trans = transitionAddendum(a.status as "draft" | "finalized" | "signed", {
           type: "finalize",
           // Not judged (nor a draft read) for an addendum that cannot finalize anyway: the transition answers 409 first.
           gatePreviewPassed:
             a.status === "draft" &&
             (await gateAddendum(t, addendumId, "finalize", () =>
-              amendments.sealable(t, parent, addendumId, author),
+              amendments.sealable(t, parent, addendumId, actor),
             )),
           at: new Date().toISOString().slice(0, 10) as LocalDate,
         });
-        await t
-          .update(ADDENDUM)
-          .set({ status: trans.to, updatedAt: new Date() })
-          .where(eq(ADDENDUM.id, addendumId));
+        // The row lock makes a lost race unreachable; the status guard keeps a second finalize a 409 if a path ever skips it.
+        firstOrThrow(
+          await t
+            .update(ADDENDUM)
+            .set({ status: trans.to, updatedAt: new Date() })
+            .where(and(eq(ADDENDUM.id, addendumId), eq(ADDENDUM.status, "draft")))
+            .returning({ id: ADDENDUM.id }),
+          "addendum finalize matched no row: the addendum changed status since it was loaded",
+        );
         // The addendum's own assembled output (`addendum_finalize`), pinned the same way and against the
         // PARENT's template and pinned vocab version — an addendum to an RN routine visit is written
         // against the RN routine-visit template, so it must be pinned against it too.

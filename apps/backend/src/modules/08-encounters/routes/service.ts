@@ -858,8 +858,7 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     addendumId: string,
-    actorUserId?: string,
-    viewer?: { roles: readonly string[]; membershipId: string | null },
+    actor: { userId?: string | undefined; roles: readonly string[]; membershipId: string | null },
   ): Promise<{ status: "finalized" }>;
   signAddendum(
     organizationId: string,
