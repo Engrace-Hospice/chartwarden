@@ -1154,6 +1154,86 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(details.map((d) => d.field).sort()).toEqual(["plan", "vitals_review"]);
   });
 
+  // WF09 step 1 — the slot and contradiction rules on the REAL write path, against the TABLE. The in-memory
+  // service pins the rule; this proves the Drizzle service enforces it inside its transaction.
+  it("WF09 — an out-of-range slot value is refused on the real write path, and nothing is stored", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    await expect(
+      svc.updateSelections(
+        ORG_A,
+        id,
+        0,
+        {
+          sections: [
+            {
+              sectionId: "assessment",
+              entries: [{ code: "nv.resp.dyspnea", params: { o2_lpm: 79 } }],
+            },
+          ],
+        },
+        null,
+      ),
+    ).rejects.toMatchObject({ statusCode: 422, code: "INVALID_SELECTION" });
+    const rows = await admin.query("SELECT 1 FROM hearthnote_selection WHERE encounter_id=$1", [
+      id,
+    ]);
+    expect(rows.rowCount).toBe(0);
+  });
+
+  it("WF09 — a half-filled statement saves as a draft but is refused at finalize, and the ROW stays draft", async () => {
+    const id = await draft("routine_visit", "rn", { document: false, captureVitals: false });
+    const sections = requiredSectionSelections(
+      "routine_visit" as never,
+      "rn" as never,
+    ).sections.map((s) =>
+      s.sectionId === "assessment"
+        ? { ...s, entries: [{ code: "nv.cv.edema", params: { edema_grade: "" } }] }
+        : s,
+    );
+    await svc.updateSelections(ORG_A, id, 0, { sections }, null);
+    const vitals = requiredVitalsCapture("routine_visit" as never, "rn" as never);
+    if (vitals) await svc.captureVitals(ORG_A, id, vitals, null);
+
+    await expect(svc.finalize(ORG_A, id, SERVICE_DATE as never)).rejects.toMatchObject({
+      statusCode: 422,
+      code: "INVALID_SELECTION",
+    });
+    const row = await admin.query("SELECT status, vocab_version_id FROM encounter WHERE id=$1", [
+      id,
+    ]);
+    expect(row.rows[0].status).toBe("draft");
+    expect(row.rows[0].vocab_version_id).toBeNull();
+  });
+
+  it("WF09 — the note states the visit's vitals: on the draft read, on the write preview, and in the bytes pinned at finalize", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.captureVitals(
+      ORG_A,
+      id,
+      { heartRate: 91, temperature: "98.6", temperatureUnit: "f" as never },
+      null,
+    );
+
+    const read = await svc.getSelections(ORG_A, id);
+    expect(read.layer1Preview).toContain("Vital Signs Review\nVital signs: ");
+    expect(read.layer1Preview).toContain("heart rate 91 bpm");
+    expect(read.layer1Preview).toContain("temperature 98.6 °F");
+
+    const saved = await svc.updateSelections(
+      ORG_A,
+      id,
+      read.version,
+      { sections: read.sections },
+      null,
+    );
+    expect(saved.layer1Preview).toBe(read.layer1Preview);
+
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const pinned = await svc.renderPayload(ORG_A, id);
+    expect(pinned.pinned).toBe(true);
+    expect(pinned.final).toContain("heart rate 91 bpm");
+  });
+
   it("§2.6 check 2 (#125) — a routine_visit missing a required vital is refused at finalize, per field; clinically_not_indicated is a real escape", async () => {
     const id = await draft("routine_visit", "rn", { captureVitals: false });
     // Every roster field but BP: the gate runs as a PREVIEW at finalize (same as check 1), so a note

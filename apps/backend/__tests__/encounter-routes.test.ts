@@ -676,6 +676,56 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
     expect(read.json().layer1Preview).toBe(patched.json().layer1Preview);
   });
 
+  it("WF09: the note carries the vitals recorded on the visit, on read and on write", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const record = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/encounters/${id}/vitals`,
+        headers: RN,
+        payload,
+      });
+    const preview = async (): Promise<string> =>
+      (
+        await app.inject({ method: "GET", url: `/api/v1/encounters/${id}/selections`, headers: RN })
+      ).json().layer1Preview as string;
+
+    expect(await preview()).toBe("");
+    const first = await record({
+      bpSystolic: 128,
+      bpDiastolic: 88,
+      heartRate: 78,
+      temperature: "97.8",
+      temperatureUnit: "f",
+    });
+    expect(first.statusCode).toBeLessThan(300);
+    expect(await preview()).toBe(
+      "Vital Signs Review\nVital signs: blood pressure 128/88 mmHg, heart rate 78 bpm, temperature 97.8 °F.",
+    );
+
+    // A later capture replaces only what it measured; the rest of the earlier set still stands.
+    await record({ heartRate: 90 });
+    expect(await preview()).toContain(
+      "blood pressure 128/88 mmHg, heart rate 90 bpm, temperature 97.8 °F.",
+    );
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": String(read.json().version) },
+      payload: TREE,
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().layer1Preview).toContain("Vital signs: blood pressure 128/88 mmHg");
+    expect(patched.json().layer1Preview).toContain("2+ dependent edema");
+  });
+
   it("the template route serves the MENU the tree is built from — sections AND their vocabulary (F-063)", async () => {
     // The composer's blocker, and the reason the authoring surface did not exist: `PATCH .../selections`
     // carries `sectionId`/`code` as free strings and rejects an unknown one (the two cases below), so a
@@ -710,6 +760,162 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
       "edema_grade",
     ]);
     expect(assessment?.entries.find((e) => e.code === "nv.cv.stable")?.slots).toEqual([]);
+  });
+
+  // ── WF09 step 1 — slot values and contradictory statements are refused by the SERVER ───────────────
+  //
+  // The composer accepted "oxygen at 79 L/min via nasal cannula", "requires 14 assistance with transfers"
+  // and "pain well controlled" beside "pain limiting function": the phrase interpolates any string. The
+  // rule lives on the write path so a client other than the composer cannot store them either.
+  const patchTree = (
+    app: Awaited<ReturnType<typeof makeServer>>["app"],
+    id: string,
+    sections: unknown[],
+  ) =>
+    app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: { sections },
+    });
+
+  it("refuses an oxygen flow no nasal cannula delivers, naming the section to fix", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await patchTree(app, id, [
+      { sectionId: "assessment", entries: [{ code: "nv.resp.dyspnea", params: { o2_lpm: 79 } }] },
+    ]);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("INVALID_SELECTION");
+    expect(res.json().error.details).toEqual([
+      expect.objectContaining({ field: "assessment", code: "SLOT_INVALID" }),
+    ]);
+    // Nothing was stored: the read-back still has the empty tree the draft started with.
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(read.json().sections).toEqual([]);
+  });
+
+  it("refuses 'pain controlled' and 'pain limiting function' in the same note", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await patchTree(app, id, [
+      {
+        sectionId: "symptom_management",
+        entries: [
+          { code: "nv.sym.pain_controlled", params: { pain_score: 5 } },
+          { code: "nv.sym.pain_uncontrolled", params: { pain_score: 6 } },
+        ],
+      },
+    ]);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.details).toEqual([
+      expect.objectContaining({ field: "symptom_management", code: "EXCLUSIVE_CONFLICT" }),
+    ]);
+  });
+
+  it("lets a draft save a half-filled statement, but finalize refuses it", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const base = requiredSectionSelections("routine_visit", "rn").sections;
+    const sections = base.map((s) =>
+      s.sectionId === "assessment"
+        ? { ...s, entries: [{ code: "nv.cv.edema", params: { edema_grade: "" } }] }
+        : s,
+    );
+    expect((await patchTree(app, id, sections)).statusCode).toBe(200);
+
+    const finalize = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+      payload: {},
+    });
+    expect(finalize.statusCode).toBe(422);
+    expect(finalize.json().error.code).toBe("INVALID_SELECTION");
+    expect(finalize.json().error.details).toEqual([
+      expect.objectContaining({ field: "assessment", code: "SLOT_INCOMPLETE" }),
+    ]);
+  });
+
+  it("serves no statements for the sections that are prose — Reason for Visit is not a body-system list", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/template`,
+      headers: RN,
+    });
+    const sections = res.json().sections as {
+      sectionId: string;
+      entries: { code: string; category: string; exclusiveGroup: string | null }[];
+    }[];
+    for (const prose of ["vitals_review", "plan"]) {
+      expect(sections.find((s) => s.sectionId === prose)?.entries, prose).toEqual([]);
+    }
+    // The clinical sections still carry theirs.
+    expect(sections.find((s) => s.sectionId === "assessment")?.entries.length).toBeGreaterThan(0);
+
+    // WF09 step 2 — Reason for Visit is a choice of visit reasons, never a body-system finding.
+    const reasons = sections.find((s) => s.sectionId === "chief_concern")?.entries ?? [];
+    expect(reasons.length).toBeGreaterThanOrEqual(8);
+    expect(reasons.every((e) => e.category === "visit_reason")).toBe(true);
+    expect(reasons.every((e) => e.exclusiveGroup === "visit-reason")).toBe(true);
+    expect(reasons.map((e) => e.code)).toContain("nv.reason.fall_followup");
+  });
+
+  it("WF09: a chosen reason is the note's Reason for Visit, and a second one is refused", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const save = (reasonCodes: string[], version: string) =>
+      app.inject({
+        method: "PATCH",
+        url: `/api/v1/encounters/${id}/selections`,
+        headers: { ...RN, "if-match": version },
+        payload: {
+          sections: [
+            { sectionId: "chief_concern", entries: reasonCodes.map((code) => ({ code })) },
+          ],
+        },
+      });
+
+    const ok = await save(["nv.reason.fall_followup"], "0");
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().layer1Preview).toBe(
+      "Reason for Visit\nThis visit is a follow-up after a recent fall.",
+    );
+
+    const two = await save(["nv.reason.routine", "nv.reason.pain"], "1");
+    expect(two.statusCode).toBe(422);
+    expect(two.json().error.code).toBe("INVALID_SELECTION");
+  });
+
+  it("the template route publishes each slot's constraint and each statement's exclusive group", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/template`,
+      headers: RN,
+    });
+    const entries = (
+      res.json().sections as {
+        entries: {
+          code: string;
+          slotSpecs: Record<string, { kind: string }>;
+          exclusiveGroup: string | null;
+        }[];
+      }[]
+    ).flatMap((s) => s.entries);
+    const pain = entries.find((e) => e.code === "nv.sym.pain_controlled");
+    expect(pain?.exclusiveGroup).toBe("pain-status");
+    expect(pain?.slotSpecs.pain_score?.kind).toBe("integer");
+    const stable = entries.find((e) => e.code === "nv.cv.stable");
+    expect(stable?.exclusiveGroup).toBeNull();
+    expect(stable?.slotSpecs).toEqual({});
   });
 
   // ── F-064 (#159) — care-plan links ────────────────────────────────────────────────────────────────

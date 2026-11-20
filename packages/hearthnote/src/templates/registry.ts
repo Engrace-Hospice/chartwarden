@@ -14,10 +14,31 @@ import {
 import type { HearthnoteTemplate, TemplateSection } from "./types";
 import { templateKey } from "./types";
 
+/**
+ * A required section the clinician writes in their own words: it offers no preset statements.
+ *
+ * Reason for Visit, Vital Signs Review and Plan used to declare no categories, which offered the whole
+ * catalog — so a note's stated reason was a cardiovascular finding, and the same statement could be ticked
+ * in three sections with three different values. Until structured reasons exist (WF09 step 2), prose is the
+ * honest content for these.
+ */
+const prose = (id: string, heading: string): TemplateSection => ({
+  id,
+  heading,
+  required: true,
+  allowedCategories: [],
+});
+
 // ── section catalog (each section defined once; templates reference by id) ───────────────────────────
 const SECTION: Record<string, TemplateSection> = {
-  chief_concern: { id: "chief_concern", heading: "Reason for Visit", required: true },
-  vitals_review: { id: "vitals_review", heading: "Vital Signs Review", required: true },
+  // A choice of visit reasons (one per note), with free text for the detail a choice cannot carry.
+  chief_concern: {
+    id: "chief_concern",
+    heading: "Reason for Visit",
+    required: true,
+    allowedCategories: ["visit_reason"],
+  },
+  vitals_review: { ...prose("vitals_review", "Vital Signs Review"), vitalsSummary: true },
   assessment: {
     id: "assessment",
     heading: "Assessment",
@@ -36,7 +57,7 @@ const SECTION: Record<string, TemplateSection> = {
     required: false,
     allowedCategories: ["care_plan_element"],
   },
-  plan: { id: "plan", heading: "Plan and Next Visit", required: true },
+  plan: prose("plan", "Plan and Next Visit"),
   adl: {
     id: "adl",
     heading: "Activities of Daily Living",
@@ -49,7 +70,7 @@ const SECTION: Record<string, TemplateSection> = {
     required: true,
     allowedCategories: ["psychosocial"],
   },
-  family_dynamics: { id: "family_dynamics", heading: "Family Dynamics", required: true },
+  family_dynamics: prose("family_dynamics", "Family Dynamics"),
   spiritual: {
     id: "spiritual",
     heading: "Spiritual Assessment",
@@ -62,29 +83,25 @@ const SECTION: Record<string, TemplateSection> = {
     required: true,
     allowedCategories: ["care_plan_element"],
   },
-  advance_directive: {
-    id: "advance_directive",
-    heading: "Advance Directive Acknowledgment",
-    required: true,
-  },
-  caregiver_overview: { id: "caregiver_overview", heading: "Caregiver Overview", required: true },
+  advance_directive: prose("advance_directive", "Advance Directive Acknowledgment"),
+  caregiver_overview: prose("caregiver_overview", "Caregiver Overview"),
   baseline_symptoms: {
     id: "baseline_symptoms",
     heading: "Baseline Symptoms",
     required: true,
     allowedCategories: ["symptom_impact"],
   },
-  pps: { id: "pps", heading: "Palliative Performance Status", required: true },
-  esas: { id: "esas", heading: "Symptom Assessment (ESAS)", required: true },
-  prognosis: { id: "prognosis", heading: "Prognostic Indicators", required: true },
-  recert_summary: { id: "recert_summary", heading: "Recertification Summary", required: true },
+  pps: prose("pps", "Palliative Performance Status"),
+  esas: prose("esas", "Symptom Assessment (ESAS)"),
+  prognosis: prose("prognosis", "Prognostic Indicators"),
+  recert_summary: prose("recert_summary", "Recertification Summary"),
   f2f_attestation: {
     id: "f2f_attestation",
     heading: "Face-to-Face Attestation",
     required: true,
     allowedCategories: ["attestation"],
   },
-  idg_followup: { id: "idg_followup", heading: "IDG Decision Follow-Up", required: true },
+  idg_followup: prose("idg_followup", "IDG Decision Follow-Up"),
 };
 
 /** The base section ids a discipline documents, before encounter-type specialization. */

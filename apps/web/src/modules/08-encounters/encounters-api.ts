@@ -366,6 +366,76 @@ export function toSelectionsBody(draft: DraftSections): UpdateSelectionsBody {
   return { sections } as UpdateSelectionsBody;
 }
 
+/**
+ * Remove every selected statement the menu does not offer in its section, and count them.
+ *
+ * A draft saved before a section's menu was narrowed can hold statements the composer can no longer show,
+ * so the author could neither see nor untick them and every save would carry them back. Dropping them is
+ * a change to the author's draft, so the caller reports the count and leaves the draft unsaved.
+ */
+export function dropUnofferedEntries(
+  template: TemplateView,
+  draft: DraftSections,
+): { readonly draft: DraftSections; readonly dropped: number } {
+  const offered = new Map(
+    template.sections.map((s) => [s.sectionId, new Set(s.entries.map((e) => e.code))]),
+  );
+  let dropped = 0;
+  const next: DraftSections = {};
+  for (const [sectionId, value] of Object.entries(draft)) {
+    const allowed = offered.get(sectionId);
+    const entries = value.entries.filter((e) => allowed?.has(e.code) === true);
+    dropped += value.entries.length - entries.length;
+    next[sectionId] = { ...value, entries };
+  }
+  return { draft: next, dropped };
+}
+
+/**
+ * Whether a section's statements are ONE choice: two or more, every one in the same exclusive group, so a
+ * note can carry at most one of them (the "Reason for Visit" reasons). Such a section is a select, not a
+ * list of checkboxes that would swap each other out under the author's cursor.
+ */
+export function isSingleChoice(entries: TemplateSection["entries"]): boolean {
+  const group = entries[0]?.exclusiveGroup ?? null;
+  return entries.length >= 2 && group !== null && entries.every((e) => e.exclusiveGroup === group);
+}
+
+/**
+ * Whether a section holds a statement whose slot is still empty. The server accepts that as a draft and
+ * refuses it at finalize (an empty slot would assemble into "has  dependent edema"), so the author is told
+ * the section is not done. A statement the menu no longer offers has no slots to check.
+ */
+export function sectionHasEmptySlots(
+  template: TemplateView,
+  draft: DraftSections,
+  sectionId: string,
+): boolean {
+  const menu = template.sections.find((s) => s.sectionId === sectionId)?.entries ?? [];
+  return (draft[sectionId]?.entries ?? []).some((picked) =>
+    (menu.find((m) => m.code === picked.code)?.slots ?? []).some(
+      (slot) => String(picked.params[slot] ?? "").trim() === "",
+    ),
+  );
+}
+
+/**
+ * The headings that still stand between the author and finalize, in template order: a required section
+ * with nothing in it, or any section holding a half-filled statement. Advice only — the server decides.
+ */
+export function sectionsNeedingAttention(
+  template: TemplateView,
+  draft: DraftSections,
+): readonly string[] {
+  return template.sections
+    .filter((s) => {
+      const d = draft[s.sectionId];
+      const empty = !d || (d.entries.length === 0 && d.freeText.trim().length === 0);
+      return (s.required && empty) || sectionHasEmptySlots(template, draft, s.sectionId);
+    })
+    .map((s) => s.heading);
+}
+
 /** Which required sections are still empty — shown to the author, never used to block the request. */
 export function unmetRequiredSections(
   template: TemplateView,

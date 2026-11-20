@@ -7,8 +7,16 @@ import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
 import type { VocabEntry } from "./types";
 import { VOCABULARY } from "./vocabulary";
 
-export type { VocabBodySystem, VocabCategory, VocabEntry } from "./types";
+export type { SlotSpec, VocabBodySystem, VocabCategory, VocabEntry } from "./types";
 export { VOCABULARY, VOCAB_VERSION } from "./vocabulary";
+export {
+  MAX_TEXT_SLOT_LENGTH,
+  entrySlots,
+  validateSelectionTree,
+  type SelectionIssue,
+  type SelectionIssueCode,
+  type SelectionTreeInput,
+} from "./slots";
 export {
   NARRATIVE_VOCAB_RELEASES,
   UnregisteredNarrativeVocabRelease,

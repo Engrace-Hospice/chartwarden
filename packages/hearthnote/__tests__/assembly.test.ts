@@ -134,6 +134,78 @@ describe("assembleLayer1 — deterministic core", () => {
   });
 });
 
+describe("assembleLayer1 — recorded vitals (WF09)", () => {
+  const template = resolveTemplate("routine_visit", "rn")!;
+  const RECORDED: AssemblyContext["recordedVitals"] = {
+    bpSystolic: 128,
+    bpDiastolic: 88,
+    heartRate: 78,
+    respiratoryRate: 12,
+    temperature: "97.8",
+    temperatureUnit: "f",
+    spo2: 97,
+    painScore: 5,
+  };
+  const withVitals = (recordedVitals: AssemblyContext["recordedVitals"]): AssemblyContext => ({
+    ...CONTEXT,
+    recordedVitals,
+  });
+  const vitalsSection = (n: string): string => n.split("\n\n").find((b) => b.startsWith("Vital"))!;
+
+  it("renders the recorded vitals under Vital Signs Review, ahead of the clinician's own words", () => {
+    const sel = rnRoutineSelection({
+      sections: [{ sectionId: "vitals_review", entries: [], freeText: "Patient resting." }],
+    });
+    const { narrative } = assembleLayer1(template, sel, withVitals(RECORDED));
+    expect(vitalsSection(narrative)).toBe(
+      "Vital Signs Review\nVital signs: blood pressure 128/88 mmHg, heart rate 78 bpm, respiratory rate 12 breaths/min, temperature 97.8 °F, SpO₂ 97%, pain score 5 of 10. Patient resting.",
+    );
+  });
+
+  it("renders the vitals even when the clinician wrote nothing in that section", () => {
+    const sel = rnRoutineSelection({ sections: [] });
+    const out = assembleLayer1(template, sel, withVitals({ heartRate: 78 }));
+    expect(out.sectionsAssembled).toEqual(["vitals_review"]);
+    expect(out.narrative).toBe("Vital Signs Review\nVital signs: heart rate 78 bpm.");
+  });
+
+  it("names a lone blood-pressure reading for what it is", () => {
+    const sel = rnRoutineSelection({ sections: [] });
+    expect(assembleLayer1(template, sel, withVitals({ bpSystolic: 128 })).narrative).toContain(
+      "systolic blood pressure 128 mmHg",
+    );
+  });
+
+  it("states a weight in the unit it was taken in", () => {
+    const sel = rnRoutineSelection({ sections: [] });
+    const ctx = withVitals({ weight: "61.5", weightUnit: "kg" });
+    expect(assembleLayer1(template, sel, ctx).narrative).toContain("weight 61.5 kg");
+  });
+
+  it("adds nothing when no vitals were recorded or every value is empty", () => {
+    const sel = rnRoutineSelection({ sections: [] });
+    for (const ctx of [
+      CONTEXT,
+      withVitals({}),
+      withVitals({ heartRate: null, temperature: " " }),
+    ]) {
+      expect(assembleLayer1(template, sel, ctx).narrative).toBe("");
+    }
+  });
+
+  it("puts vitals in no other section", () => {
+    const { narrative } = assembleLayer1(template, rnRoutineSelection(), withVitals(RECORDED));
+    expect(narrative.match(/Vital signs:/g)).toHaveLength(1);
+    expect(vitalsSection(narrative)).toContain("Vital signs:");
+  });
+
+  it("is byte-identical across repeated runs", () => {
+    const sel = rnRoutineSelection();
+    const a = assembleLayer1(template, sel, withVitals(RECORDED)).narrative;
+    expect(assembleLayer1(template, sel, withVitals(RECORDED)).narrative).toBe(a);
+  });
+});
+
 describe("assemble — resolves + guards", () => {
   it("assembles a valid selection via its own pair", () => {
     expect(assemble(rnRoutineSelection(), CONTEXT).narrative.length).toBeGreaterThan(0);

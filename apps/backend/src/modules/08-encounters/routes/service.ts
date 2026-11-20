@@ -12,6 +12,7 @@
 import {
   type AssemblyContext,
   HearthnoteAssemblyError,
+  type RecordedVitals,
   type SelectionState,
   assemble,
   templateKey as hearthnoteTemplateKey,
@@ -20,9 +21,12 @@ import {
   resolveTemplate,
 } from "@chartwarden/hearthnote";
 import {
+  type SlotSpec,
   VOCAB_VERSION,
   activeNarrativeVocabRelease,
   entriesFor,
+  entrySlots,
+  validateSelectionTree,
 } from "@chartwarden/narrative-vocab";
 import type {
   EncounterDiscipline,
@@ -47,6 +51,7 @@ import {
   planF2fDualWrite,
   planMileageCapture,
   planVitalsCapture,
+  recordedVitalsFrom,
 } from "../authoring/index";
 import {
   type AddendumPromotionInput,
@@ -247,6 +252,10 @@ export interface VocabMenuEntry {
   readonly category: string;
   readonly bodySystem: string | null;
   readonly slots: readonly string[];
+  /** Constraint per slot; a slot absent here is free text. The composer renders its input from this. */
+  readonly slotSpecs: Readonly<Record<string, SlotSpec>>;
+  /** Statements sharing a group contradict each other; `assertSelectionsValid` refuses two in one note. */
+  readonly exclusiveGroup: string | null;
 }
 
 /** One template section with the entries a clinician may pick into it. */
@@ -450,11 +459,15 @@ const ASSEMBLY_ERROR_CODE = {
  * in the other direction: `resolveTemplate` decides which sections exist (and `assembleSelections`
  * refuses a `sectionId` outside them), and `entriesFor` decides which vocabulary entries this pair may
  * use (and `assemble` refuses a code outside the corpus). A section's `allowedCategories` narrows the
- * menu further; a section that declares none accepts any entry the pair is eligible for.
+ * menu further; an empty list is a prose-only section that offers no statements. The scoping is the MENU's:
+ * a write is not refused for naming a statement outside its section, only for the slot and contradiction
+ * rules in `assertSelectionsValid`.
  *
  * Slots are derived from each phrase rather than declared, minus the two the assembly context supplies
  * (`patient`, `serviceDate`) — so the client is asked for exactly the `params` keys interpolation needs,
- * and a corpus edit cannot leave it asking for one the phrase no longer has.
+ * and a corpus edit cannot leave it asking for one the phrase no longer has. Each slot's constraint
+ * (`slotSpecs`) and each statement's `exclusiveGroup` ride along so the client renders the same rules
+ * `assertSelectionsValid` enforces.
  */
 export function buildTemplateMenu(
   encounterType: EncounterType,
@@ -479,29 +492,53 @@ export function buildTemplateMenu(
         sectionId: section.id,
         heading: section.heading,
         required: section.required,
-        allowedCategories: allowed === undefined ? [] : [...allowed],
+        allowedCategories: [...allowed],
         entries: eligible
-          .filter((e) => allowed === undefined || allowed.includes(e.category))
+          .filter((e) => allowed.includes(e.category))
           .map((e) => ({
             code: e.code,
             label: e.label,
             category: e.category,
             bodySystem: e.bodySystem ?? null,
-            slots: phraseSlots(e.phrase),
+            slots: entrySlots(e),
+            slotSpecs: e.slotSpecs ?? {},
+            exclusiveGroup: e.exclusiveGroup ?? null,
           })),
       };
     }),
   };
 }
 
-/** The `${…}` placeholders a phrase interpolates, minus the two the assembly context always supplies. */
-function phraseSlots(phrase: string): string[] {
-  const found = new Set<string>();
-  for (const m of phrase.matchAll(/\$\{([A-Za-z0-9_]+)\}/g)) {
-    const slot = m[1] as string;
-    if (slot !== "patient" && slot !== "serviceDate") found.add(slot);
-  }
-  return [...found];
+/**
+ * Refuse a selection tree whose slot values or statement pairs cannot make a sound note (WF09 step 1).
+ *
+ * Run on every WRITE that stores selections (draft save, addendum save) with `requireComplete: false`, and
+ * again at finalize with `true` — a draft may be half-filled, a finalized note may not (an empty slot
+ * assembles into "has  dependent edema"). Never run on a READ: a signed note must stay readable even if
+ * a rule tightens after it was signed. `details` carries one `{ field: sectionId, code, message }` per
+ * problem so the composer can point at the section to fix.
+ */
+export function assertSelectionsValid(
+  sections: readonly SelectionSectionInput[],
+  options: { readonly requireComplete: boolean },
+): void {
+  const issues = validateSelectionTree(sections, options);
+  const [first] = issues;
+  if (first === undefined) return;
+  const message =
+    issues.length === 1
+      ? first.message
+      : `${issues.length} problems in the note's statements. First: ${first.message}`;
+  throw new EncounterStateError(
+    "INVALID_SELECTION",
+    message,
+    issues.map((i) => ({ field: i.sectionId, code: i.code, message: i.message })),
+  );
+}
+
+/** What a note states about the visit beyond the clinician's own selections: what was recorded on it. */
+export interface NoteFacts {
+  readonly recordedVitals?: RecordedVitals;
 }
 
 export function assembleSelections(
@@ -510,6 +547,7 @@ export function assembleSelections(
   serviceDate: string,
   sections: readonly SelectionSectionInput[],
   vocabVersion: string = VOCAB_VERSION,
+  facts: NoteFacts = {},
 ): string {
   const template = resolveTemplate(encounterType, discipline);
   if (template === undefined) {
@@ -527,7 +565,11 @@ export function assembleSelections(
       );
     }
   }
-  const context: AssemblyContext = { patient: ASSEMBLY_PATIENT_SLOT, serviceDate };
+  const context: AssemblyContext = {
+    patient: ASSEMBLY_PATIENT_SLOT,
+    serviceDate,
+    ...(facts.recordedVitals === undefined ? {} : { recordedVitals: facts.recordedVitals }),
+  };
   try {
     return assemble(toSelectionState(encounterType, discipline, sections, vocabVersion), context)
       .narrative;
@@ -537,6 +579,15 @@ export function assembleSelections(
     }
     throw e;
   }
+}
+
+/** What the in-memory encounter's note states: every vitals set captured (newest first). */
+function noteFacts(r: {
+  readonly vitals: ReadonlyMap<string, { input: VitalsInput }>;
+}): NoteFacts {
+  return {
+    recordedVitals: recordedVitalsFrom([...r.vitals.values()].reverse().map((v) => v.input)),
+  };
 }
 
 /** The route service the §4.1 handlers compose over. Every method is org-scoped (RLS in prod). */
@@ -1163,11 +1214,14 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       checkVersion({ expected: ifVersion, actual: r.version });
       // Assemble BEFORE persisting: an unknown vocabulary code or an illegal pair must reject the write,
       // not be stored and discovered later by whoever tries to render the note.
+      assertSelectionsValid(input.sections, { requireComplete: false });
       const layer1Preview = assembleSelections(
         r.encounterType,
         r.discipline,
         r.serviceDate,
         input.sections,
+        VOCAB_VERSION,
+        noteFacts(r),
       );
       r.selections = input.sections;
       r.selectionsVocabVersion = VOCAB_VERSION;
@@ -1198,16 +1252,19 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
 
     async getSelections(organizationId, encounterId) {
       const r = load(organizationId, encounterId);
+      const layer1Preview = assembleSelections(
+        r.encounterType,
+        r.discipline,
+        r.serviceDate,
+        r.selections,
+        VOCAB_VERSION,
+        noteFacts(r),
+      );
       return {
         templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
         vocabVersion: VOCAB_VERSION,
         sections: r.selections,
-        layer1Preview: assembleSelections(
-          r.encounterType,
-          r.discipline,
-          r.serviceDate,
-          r.selections,
-        ),
+        layer1Preview,
         version: r.version,
       };
     },
@@ -1358,6 +1415,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
           activeVersionId: pin.version,
         });
       }
+      // WF09 — a draft may be half-filled; a finalized note may not (an empty slot reads "has  dependent edema").
+      assertSelectionsValid(r.selections, { requireComplete: true });
       r.status = t.to;
       r.version += 1;
       r.vocabVersionId ??= pin.id; // set at FIRST finalize, immutable thereafter (D11)
@@ -1369,6 +1428,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         r.discipline,
         r.serviceDate,
         r.selections,
+        VOCAB_VERSION,
+        noteFacts(r),
       );
       recordOutbox(r.id, t.effects);
       return { status: "finalized", version: r.version };
@@ -1579,6 +1640,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const r = load(organizationId, encounterId);
       const a = r.addenda.get(addendumId);
       if (!a) throw new NotFoundError("addendum");
+      assertSelectionsValid(input.sections, { requireComplete: false });
       const layer1Preview = assembleSelections(
         r.encounterType,
         r.discipline,
@@ -1616,6 +1678,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         gatePreviewPassed: gateAddendum(a.selections, "finalize"),
         at: now().slice(0, 10),
       });
+      assertSelectionsValid(a.selections, { requireComplete: true });
       a.status = t.to;
       a.pinnedNarrative = assembleSelections(
         r.encounterType,
@@ -1758,7 +1821,14 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       if (r.selections.length === 0) throw new NotFoundError("hearthnote_selection");
       return {
         encounterId: r.id,
-        final: assembleSelections(r.encounterType, r.discipline, r.serviceDate, r.selections),
+        final: assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          r.selections,
+          VOCAB_VERSION,
+          noteFacts(r),
+        ),
         pinned: false,
       };
     },

@@ -6,6 +6,7 @@ import {
   PageHeader,
   PatientBanner,
   PatientWorkspaceLayout,
+  SelectField,
   StatusPill,
   TextAreaField,
   TextField,
@@ -29,17 +30,22 @@ import {
   type DraftSections,
   type EncounterView,
   type MenuEntry,
+  type TemplateSection,
   type TemplateView,
   type WriteResult,
   captureVitals,
+  dropUnofferedEntries,
   finalizeEncounter,
+  isSingleChoice,
   loadSelections,
   loadTemplate,
   saveSelections,
+  sectionHasEmptySlots,
+  sectionsNeedingAttention,
   toDraft,
   toSelectionsBody,
-  unmetRequiredSections,
 } from "./encounters-api";
+import { SlotInput } from "./slot-input";
 
 const humanize = (k: string): string =>
   k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -186,8 +192,17 @@ export function EncounterCompose(): JSX.Element {
       setPatient(pat.data as PatientSummary);
 
       const loadedDraft = toDraft(sel.sections);
-      setDraft(loadedDraft);
+      const { draft: offeredDraft, dropped } = dropUnofferedEntries(tmpl, loadedDraft);
+      setDraft(offeredDraft);
+      // The saved baseline stays the STORED tree, so a removal reads as an unsaved change the author applies.
       setLastSavedDraft(serializedDraft(loadedDraft));
+      if (dropped > 0) {
+        setFeedback({
+          tone: "warning",
+          title: "Statements removed from this draft",
+          message: `${dropped} saved ${dropped === 1 ? "statement is" : "statements are"} no longer offered in ${dropped === 1 ? "its" : "their"} section and ${dropped === 1 ? "was" : "were"} removed here. Save the draft to apply the change.`,
+        });
+      }
       setPreview(sel.layer1Preview);
       setVersion(sel.version);
 
@@ -210,7 +225,7 @@ export function EncounterCompose(): JSX.Element {
   }, [load]);
 
   const unmet = useMemo(
-    () => (template ? unmetRequiredSections(template, draft) : []),
+    () => (template ? sectionsNeedingAttention(template, draft) : []),
     [template, draft],
   );
 
@@ -241,8 +256,10 @@ export function EncounterCompose(): JSX.Element {
       };
     }
 
-    const completed = template.sections.filter((section) =>
-      sectionIsFilled(draft, section.sectionId),
+    const completed = template.sections.filter(
+      (section) =>
+        sectionIsFilled(draft, section.sectionId) &&
+        !sectionHasEmptySlots(template, draft, section.sectionId),
     ).length;
 
     const total = template.sections.length;
@@ -256,20 +273,51 @@ export function EncounterCompose(): JSX.Element {
   }, [draft, template, unmet.length]);
 
   function toggleEntry(sectionId: string, entry: MenuEntry): void {
+    // Statements sharing an exclusive group contradict each other and the server refuses two in one note,
+    // so picking one replaces its sibling wherever in the note that sibling was recorded.
+    const rivals = new Set(
+      entry.exclusiveGroup === null
+        ? []
+        : (template?.sections ?? []).flatMap((s) =>
+            s.entries
+              .filter((e) => e.exclusiveGroup === entry.exclusiveGroup && e.code !== entry.code)
+              .map((e) => e.code),
+          ),
+    );
+
     setDraft((prev) => {
       const current = prev[sectionId] ?? { entries: [], freeText: "" };
-      const has = current.entries.some((e) => e.code === entry.code);
+      if (current.entries.some((e) => e.code === entry.code)) {
+        return {
+          ...prev,
+          [sectionId]: {
+            ...current,
+            entries: current.entries.filter((e) => e.code !== entry.code),
+          },
+        };
+      }
 
+      const cleared: DraftSections = Object.fromEntries(
+        Object.entries(prev).map(([id, section]) => [
+          id,
+          { ...section, entries: section.entries.filter((e) => !rivals.has(e.code)) },
+        ]),
+      );
+      const base = cleared[sectionId] ?? current;
       return {
-        ...prev,
-        [sectionId]: {
-          ...current,
-          entries: has
-            ? current.entries.filter((e) => e.code !== entry.code)
-            : [...current.entries, { code: entry.code, params: {} }],
-        },
+        ...cleared,
+        [sectionId]: { ...base, entries: [...base.entries, { code: entry.code, params: {} }] },
       };
     });
+  }
+
+  /** A single-choice section's select: pick one (replacing any other) or `""` to clear it. */
+  function chooseOne(section: TemplateSection, code: string): void {
+    const held = draft[section.sectionId]?.entries[0]?.code;
+    if (code === held) return;
+    // toggleEntry swaps a rival out and unticks a held one, which is exactly pick-and-clear.
+    const entry = section.entries.find((e) => e.code === (code === "" ? held : code));
+    if (entry !== undefined) toggleEntry(section.sectionId, entry);
   }
 
   function setSlot(sectionId: string, code: string, slot: string, value: string): void {
@@ -296,6 +344,17 @@ export function EncounterCompose(): JSX.Element {
         freeText: value,
       },
     }));
+  }
+
+  /**
+   * Re-read the server-assembled note without touching the author's working draft. Vitals are recorded
+   * apart from the selections and the note states them, so the preview is stale the moment they save. The
+   * preview shows what is stored; unsaved edits still need a save, exactly as before.
+   */
+  async function refreshPreview(): Promise<void> {
+    if (!encounterId) return;
+    const stored = await loadSelections(client, encounterId);
+    if (stored) setPreview(stored.layer1Preview);
   }
 
   async function save(): Promise<void> {
@@ -549,7 +608,7 @@ export function EncounterCompose(): JSX.Element {
 
                 <div style={{ minWidth: 0 }}>
                   <strong style={attentionTitle}>
-                    {unmet.length} required {unmet.length === 1 ? "section needs" : "sections need"}{" "}
+                    {unmet.length} {unmet.length === 1 ? "section needs" : "sections need"}{" "}
                     attention
                   </strong>
                   <p style={attentionText}>
@@ -583,6 +642,7 @@ export function EncounterCompose(): JSX.Element {
                     title: "Vitals recorded",
                     message: "Visit vitals were saved.",
                   });
+                  void refreshPreview();
                 }}
               />
             ) : null}
@@ -603,14 +663,18 @@ export function EncounterCompose(): JSX.Element {
 
                 <nav style={sectionNav}>
                   {template.sections.map((section, index) => {
-                    const filled = sectionIsFilled(draft, section.sectionId);
+                    const needsDetails = sectionHasEmptySlots(template, draft, section.sectionId);
+                    // "Documented" means finalize will take it: a statement with an empty slot is not that.
+                    const filled = sectionIsFilled(draft, section.sectionId) && !needsDetails;
                     const isActive = section.sectionId === active?.sectionId;
-                    const missingRequired = section.required && !filled;
+                    const needsAttention = needsDetails || (section.required && !filled);
                     const sectionState = filled
                       ? "Documented"
-                      : missingRequired
-                        ? "Required"
-                        : "Not started";
+                      : needsDetails
+                        ? "Needs details"
+                        : needsAttention
+                          ? "Required"
+                          : "Not started";
 
                     return (
                       <button
@@ -648,7 +712,7 @@ export function EncounterCompose(): JSX.Element {
                           <span
                             style={{
                               ...sectionNavMeta,
-                              ...(missingRequired ? sectionNavMetaRequired : null),
+                              ...(needsAttention ? sectionNavMetaRequired : null),
                             }}
                           >
                             {sectionState}
@@ -684,8 +748,9 @@ export function EncounterCompose(): JSX.Element {
                           )}
                         </div>
                         <p style={editorDescription}>
-                          Select the statements that describe this visit. Additional free text is
-                          stored verbatim.
+                          {isSingleChoice(active.entries)
+                            ? "Choose one. Anything the choice cannot say goes in the notes below, stored verbatim."
+                            : "Select the statements that describe this visit. Additional free text is stored verbatim."}
                         </p>
                       </div>
 
@@ -711,6 +776,17 @@ export function EncounterCompose(): JSX.Element {
                             free-text field below.
                           </p>
                         </div>
+                      ) : isSingleChoice(active.entries) ? (
+                        <SelectField
+                          label={active.heading}
+                          value={draft[active.sectionId]?.entries[0]?.code ?? ""}
+                          disabled={!editable || busy}
+                          onChange={(e) => chooseOne(active, e.target.value)}
+                          options={[
+                            { value: "", label: "Select…" },
+                            ...active.entries.map((e) => ({ value: e.code, label: e.label })),
+                          ]}
+                        />
                       ) : (
                         <div style={entryGrid}>
                           {active.entries.map((entry) => {
@@ -718,6 +794,15 @@ export function EncounterCompose(): JSX.Element {
                               (e) => e.code === entry.code,
                             );
                             const selected = picked !== undefined;
+                            // One statement, one place: a statement already recorded in another section
+                            // is locked here so the note cannot carry it twice with different values.
+                            const elsewhere = selected
+                              ? undefined
+                              : template?.sections.find(
+                                  (s) =>
+                                    s.sectionId !== active.sectionId &&
+                                    draft[s.sectionId]?.entries.some((e) => e.code === entry.code),
+                                );
 
                             return (
                               <div
@@ -731,7 +816,7 @@ export function EncounterCompose(): JSX.Element {
                                   <input
                                     type="checkbox"
                                     checked={selected}
-                                    disabled={!editable || busy}
+                                    disabled={!editable || busy || elsewhere !== undefined}
                                     onChange={() => toggleEntry(active.sectionId, entry)}
                                     style={entryCheckbox}
                                   />
@@ -747,6 +832,12 @@ export function EncounterCompose(): JSX.Element {
                                         />
                                       </span>
                                     ) : null}
+
+                                    {elsewhere ? (
+                                      <span style={entryMetaRow}>
+                                        Already recorded in {elsewhere.heading}
+                                      </span>
+                                    ) : null}
                                   </span>
                                 </label>
 
@@ -756,17 +847,13 @@ export function EncounterCompose(): JSX.Element {
 
                                     <div style={slotGrid}>
                                       {entry.slots.map((slot) => (
-                                        <TextField
+                                        <SlotInput
                                           key={slot}
-                                          label={humanize(slot)}
+                                          slot={slot}
+                                          spec={entry.slotSpecs[slot]}
                                           value={String(picked.params[slot] ?? "")}
-                                          onChange={(e) =>
-                                            setSlot(
-                                              active.sectionId,
-                                              entry.code,
-                                              slot,
-                                              e.target.value,
-                                            )
+                                          onChange={(value) =>
+                                            setSlot(active.sectionId, entry.code, slot, value)
                                           }
                                           disabled={!editable || busy}
                                         />
@@ -785,8 +872,11 @@ export function EncounterCompose(): JSX.Element {
                           <div>
                             <strong style={freeTextTitle}>Additional clinical notes</strong>
                             <p style={freeTextHint}>
-                              Optional. Enter only information not already represented by the
-                              selected statements.
+                              {active.entries.length > 0
+                                ? "Optional. Enter only information not already represented by the selected statements."
+                                : active.required
+                                  ? "Required. This section has no preset statements; document it here in your own words."
+                                  : "Optional."}
                             </p>
                           </div>
                           <span style={verbatimBadge}>Recorded verbatim</span>
@@ -904,7 +994,7 @@ function VitalsPanel({
     setBusy(true);
     setError(null);
 
-    const body: Record<string, number> = {};
+    const body: Record<string, number | string> = {};
 
     for (const [key] of FIELDS) {
       const raw = values[key];
@@ -913,6 +1003,8 @@ function VitalsPanel({
         body[key] = Number(raw);
       }
     }
+    // The panel labels temperature °F; say so, or the note would state a bare number with no unit.
+    if (body.temperature !== undefined) body.temperatureUnit = "f";
 
     const res = await captureVitals(
       client,

@@ -8,10 +8,46 @@
 // version it resolves. Expanding the corpus is additive and never edits a shipped phrase's bytes (Layer-1
 // determinism depends on phrase stability).
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
-import type { VocabEntry } from "./types";
+import type { SlotSpec, VocabEntry } from "./types";
+
+/**
+ * Slot constraints. They bound what a clinician may type, never the phrase bytes (D11 — see `SlotSpec`).
+ * Each `choice` option must read correctly inside its phrase: "requires moderate assistance with
+ * transfers", "has 2+ dependent edema", "limits ability to ambulate beyond 25 feet".
+ */
+const PAIN_SCORE: SlotSpec = { kind: "integer", min: 0, max: 10, label: "Pain score (0–10)" };
+const EDEMA_GRADE: SlotSpec = {
+  kind: "choice",
+  options: ["trace", "1+", "2+", "3+", "4+"],
+  label: "Edema grade",
+};
+// ponytail: the phrase says "via nasal cannula", whose practical ceiling is 6 L/min. Widen if a mask or
+// high-flow phrase is ever added, as its own entry.
+const O2_FLOW: SlotSpec = {
+  kind: "number",
+  min: 0.5,
+  max: 6,
+  unit: "L/min",
+  label: "Oxygen flow",
+};
+const ASSIST_LEVEL: SlotSpec = {
+  kind: "choice",
+  options: ["minimal", "moderate", "maximal", "total"],
+  label: "Assistance needed",
+};
+const WALK_DISTANCE: SlotSpec = {
+  kind: "choice",
+  options: ["5 feet", "10 feet", "25 feet", "50 feet", "100 feet"],
+  label: "Walking distance",
+};
+const WOUND_STAGE: SlotSpec = {
+  kind: "choice",
+  options: ["1", "2", "3", "4"],
+  label: "Pressure injury stage",
+};
 
 /** Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11). */
-export const VOCAB_VERSION = "narrative-vocab@2026.06.0";
+export const VOCAB_VERSION = "narrative-vocab@2026.11.0";
 
 // ── scoping shorthands (kept local so each entry's tags read 1:1 with the encounter model) ───────────
 const NURSING: readonly EncounterDiscipline[] = ["rn", "lpn"];
@@ -34,6 +70,22 @@ const CLINICAL_TYPES: readonly EncounterType[] = [
   "lpn_visit",
 ];
 
+/** Visits a reason for visit is chosen on: what nurses and providers document, plus their phone visits. */
+const REASON_TYPES: readonly EncounterType[] = [...CLINICAL_TYPES, "telephonic"];
+
+/** One "Reason for Visit" choice. All share a group, so a note carries exactly one primary reason. */
+function reason(code: string, label: string, phrase: string): VocabEntry {
+  return {
+    code,
+    label,
+    phrase,
+    category: "visit_reason",
+    exclusiveGroup: "visit-reason",
+    disciplines: SKILLED,
+    encounterTypes: REASON_TYPES,
+  };
+}
+
 /** The curated corpus (ordering is stable and load-bearing for byte-identical assembly). */
 export const VOCABULARY: readonly VocabEntry[] = [
   // ── per-body-system observations ───────────────────────────────────────────────────────────────
@@ -48,6 +100,7 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.cv.edema",
+    slotSpecs: { edema_grade: EDEMA_GRADE },
     label: "Cardiovascular — dependent edema present",
     phrase: "${patient} has ${edema_grade} dependent edema in the bilateral lower extremities",
     category: "observation",
@@ -57,6 +110,7 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.resp.unlabored",
+    exclusiveGroup: "respiratory-status",
     label: "Respiratory — unlabored, lungs clear",
     phrase: "${patient}'s respirations are unlabored and lung sounds are clear to auscultation",
     category: "observation",
@@ -66,6 +120,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.resp.dyspnea",
+    exclusiveGroup: "respiratory-status",
+    slotSpecs: { o2_lpm: O2_FLOW },
     label: "Respiratory — dyspnea on exertion",
     phrase:
       "${patient} reports dyspnea on exertion and uses oxygen at ${o2_lpm} L/min via nasal cannula",
@@ -76,6 +132,7 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.neuro.alert",
+    exclusiveGroup: "neurological-status",
     label: "Neurological — alert and oriented",
     phrase: "${patient} is alert and oriented to person, place, and time",
     category: "observation",
@@ -85,6 +142,7 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.neuro.decline",
+    exclusiveGroup: "neurological-status",
     label: "Neurological — increased somnolence",
     phrase: "${patient} demonstrates increased somnolence and is oriented to person only",
     category: "observation",
@@ -113,6 +171,7 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.integ.intact",
+    exclusiveGroup: "skin-status",
     label: "Integumentary — skin intact",
     phrase: "${patient}'s skin is intact, warm, and dry with no open areas noted",
     category: "observation",
@@ -122,6 +181,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.integ.wound",
+    exclusiveGroup: "skin-status",
+    slotSpecs: { wound_stage: WOUND_STAGE },
     label: "Integumentary — pressure injury present",
     phrase:
       "${patient} has a stage ${wound_stage} pressure injury at the ${wound_site}, dressed per orders",
@@ -132,6 +193,7 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.msk.limited",
+    slotSpecs: { assist_level: ASSIST_LEVEL },
     label: "Musculoskeletal — limited mobility",
     phrase:
       "${patient} has limited mobility and requires ${assist_level} assistance with transfers",
@@ -144,6 +206,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   // ── HOPE J2051-aligned symptom impact ──────────────────────────────────────────────────────────
   {
     code: "nv.sym.pain_controlled",
+    exclusiveGroup: "pain-status",
+    slotSpecs: { pain_score: PAIN_SCORE },
     label: "Symptom impact — pain controlled on current regimen",
     phrase:
       "${patient}'s pain is well controlled at ${pain_score} of 10 on the current medication regimen",
@@ -153,6 +217,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.sym.pain_uncontrolled",
+    exclusiveGroup: "pain-status",
+    slotSpecs: { pain_score: PAIN_SCORE },
     label: "Symptom impact — pain limiting function",
     phrase:
       "${patient} reports pain at ${pain_score} of 10 that limits participation in daily activities",
@@ -162,6 +228,7 @@ export const VOCABULARY: readonly VocabEntry[] = [
   },
   {
     code: "nv.sym.dyspnea_impact",
+    slotSpecs: { ambulation_distance: WALK_DISTANCE },
     label: "Symptom impact — dyspnea limiting function",
     phrase: "Dyspnea limits ${patient}'s ability to ambulate beyond ${ambulation_distance}",
     category: "symptom_impact",
@@ -256,4 +323,52 @@ export const VOCABULARY: readonly VocabEntry[] = [
     disciplines: PROVIDERS,
     encounterTypes: ["face_to_face"],
   },
+
+  // ── visit reasons (2026.11.0) — the "Reason for Visit" choice; one per note, details go in free text ─
+  reason(
+    "nv.reason.routine",
+    "Routine scheduled visit",
+    "this is a routine scheduled visit per the plan of care",
+  ),
+  reason(
+    "nv.reason.fall_followup",
+    "Follow-up after a fall",
+    "this visit is a follow-up after a recent fall",
+  ),
+  reason(
+    "nv.reason.pain",
+    "Pain assessment and management",
+    "this visit is for pain assessment and management",
+  ),
+  reason(
+    "nv.reason.symptom_change",
+    "New or changing symptom",
+    "this visit is for a new or changing symptom",
+  ),
+  reason(
+    "nv.reason.condition_change",
+    "Decline or change in condition",
+    "this visit is for a decline or change in condition",
+  ),
+  reason(
+    "nv.reason.medication",
+    "Medication review or change",
+    "this visit is for medication review or a medication change",
+  ),
+  reason("nv.reason.wound", "Wound or skin care", "this visit is for wound or skin care"),
+  reason(
+    "nv.reason.post_hospital",
+    "Follow-up after ER visit or hospital stay",
+    "this visit follows an emergency department visit or hospital stay",
+  ),
+  reason(
+    "nv.reason.caregiver",
+    "Caregiver concern",
+    "this visit is to address a caregiver concern",
+  ),
+  reason(
+    "nv.reason.family_request",
+    "Patient or family request",
+    "this visit was requested by the patient or family",
+  ),
 ] as const;

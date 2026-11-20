@@ -56,6 +56,12 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
     id: "81dcb265-d2ef-456b-b029-1bcce25105e7",
     releasedOn: "2026-06-01",
   },
+  // Adds the `visit_reason` entries (the Reason for Visit choice). Additive: no 2026.06.0 phrase changed.
+  {
+    version: "narrative-vocab@2026.11.0",
+    id: "ccc0842e-648d-4174-bf86-50129e9efd8e",
+    releasedOn: "2026-11-19",
+  },
 ];
 
 /** Raised when {@link VOCAB_VERSION} names a release this registry does not carry. */

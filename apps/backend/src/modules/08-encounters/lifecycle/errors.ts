@@ -52,6 +52,9 @@ export const M8_ERROR_STATUS = {
   // (INVALID_ENCOUNTER_DISCIPLINE_PAIR / VOCAB_VERSION_MISMATCH), exactly as the package prescribes.
   UNKNOWN_VOCAB_CODE: 422,
   UNKNOWN_TEMPLATE_SECTION: 422,
+  /** A selected statement carries a slot value outside its constraint, an unfilled slot at finalize, or
+   *  contradicts another statement in the note (WF09). `details` names the section and rule per problem. */
+  INVALID_SELECTION: 422,
   /** No tenant-DEK envelope is bound, so §3.6 free text cannot be sealed — the write refuses. */
   HEARTHNOTE_CIPHER_UNBOUND: 503,
   // §2.3 Layer-3 gate (enforced at sign; preview at finalize)

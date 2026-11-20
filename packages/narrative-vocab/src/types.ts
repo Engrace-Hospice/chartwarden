@@ -29,7 +29,32 @@ export type VocabCategory =
   | "psychosocial" // MSW psychosocial finding
   | "spiritual" // chaplain spiritual finding
   | "adl" // CHHA activities-of-daily-living documentation
-  | "attestation"; // boilerplate regulatory attestation language
+  | "attestation" // boilerplate regulatory attestation language
+  | "visit_reason"; // why the visit happened — one choice per note (the "Reason for Visit" select)
+
+/**
+ * What a `${slot}` may hold. A slot with no spec is free text (non-blank at finalize, ≤ 200 characters).
+ *
+ * Specs constrain VALUES, never phrase bytes: a shipped phrase is D11-pinned, so a note signed years ago
+ * must re-read identically. Tightening what a clinician may type is therefore safe on a live corpus;
+ * rewording the sentence is not.
+ */
+export type SlotSpec =
+  | {
+      readonly kind: "integer" | "number";
+      /** Inclusive bounds. */
+      readonly min: number;
+      readonly max: number;
+      /** Shown beside the input; never interpolated (the phrase already carries its own unit). */
+      readonly unit?: string;
+      readonly label?: string;
+    }
+  | {
+      readonly kind: "choice";
+      /** Interpolated verbatim, so each option must read correctly inside the phrase. */
+      readonly options: readonly string[];
+      readonly label?: string;
+    };
 
 /**
  * One curated vocabulary entry. `phrase` is a narrative phrase template with `${slot}` placeholders the
@@ -52,4 +77,11 @@ export interface VocabEntry {
   readonly disciplines: readonly EncounterDiscipline[];
   /** Encounter types whose templates surface this entry. */
   readonly encounterTypes: readonly EncounterType[];
+  /** Constraints for this phrase's `${slot}`s; a slot absent here is free text. */
+  readonly slotSpecs?: Readonly<Record<string, SlotSpec>>;
+  /**
+   * Entries sharing a group contradict each other ("pain controlled" vs "pain limiting function"): a note
+   * may carry at most one distinct code per group, across every section.
+   */
+  readonly exclusiveGroup?: string;
 }

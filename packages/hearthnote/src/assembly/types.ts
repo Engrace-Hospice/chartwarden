@@ -39,6 +39,23 @@ export interface SelectionState {
   readonly sections: readonly SectionSelection[];
 }
 
+/**
+ * The visit's recorded vitals as stored (numeric-direct: never reworded, never judged). A field the clinician
+ * did not capture is absent or null. Units are the stored `vital_unit` codes (`f`, `c`, `kg`, `lb`).
+ */
+export interface RecordedVitals {
+  readonly bpSystolic?: number | null;
+  readonly bpDiastolic?: number | null;
+  readonly heartRate?: number | null;
+  readonly respiratoryRate?: number | null;
+  readonly temperature?: string | null;
+  readonly temperatureUnit?: string | null;
+  readonly spo2?: number | null;
+  readonly painScore?: number | null;
+  readonly weight?: string | null;
+  readonly weightUnit?: string | null;
+}
+
 /** The resolved patient/visit context interpolated into phrases (the `${slot}` value source of record). */
 export interface AssemblyContext {
   /** How the patient is referred to in the narrative (Layer-1 uses the real name; Layer-2 minimizes). */
@@ -48,6 +65,8 @@ export interface AssemblyContext {
   readonly location?: string;
   /** Numeric-direct vitals/scores exposed as `${slot}`s; never paraphrased by Layer 2 (D7 hard-block). */
   readonly vitals?: Readonly<Record<string, SlotValue>>;
+  /** The vitals captured on this visit. Rendered once, under the template's vitals-summary section. */
+  readonly recordedVitals?: RecordedVitals;
 }
 
 /** The deterministic Layer-1 output. */

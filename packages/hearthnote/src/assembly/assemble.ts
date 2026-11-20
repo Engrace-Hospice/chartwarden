@@ -8,7 +8,7 @@
 // the D11 vocab-version pin + the legal-pair guard, raising typed errors the M8 service maps to HTTP.
 import { VOCAB_VERSION, getVocabEntry } from "@chartwarden/narrative-vocab";
 import { resolveTemplate } from "../templates/registry";
-import type { HearthnoteTemplate } from "../templates/types";
+import type { HearthnoteTemplate, TemplateSection } from "../templates/types";
 import { templateKey } from "../templates/types";
 import { finishSentence, interpolate, joinSentences } from "./grammar";
 import type {
@@ -18,6 +18,7 @@ import type {
   SelectionState,
   SlotValue,
 } from "./types";
+import { describeRecordedVitals } from "./vitals";
 
 /** Machine-readable Layer-1 assembly failures (mapped to HTTP by the M8 service in T09). */
 export type AssemblyErrorCode =
@@ -50,9 +51,19 @@ function slotValues(
   };
 }
 
-/** Render one section's body (assembled sentences + verbatim free-text), or "" when it has no content. */
-function renderSection(section: SectionSelection, context: AssemblyContext): string {
+/**
+ * Render one section's body (recorded vitals, assembled sentences, verbatim free-text), or "" when it has
+ * no content. The vitals sentence leads a `vitalsSummary` section and needs no selection to appear.
+ */
+function renderSection(
+  section: SectionSelection,
+  context: AssemblyContext,
+  tmplSection: TemplateSection,
+): string {
   const sentences: string[] = [];
+  if (tmplSection.vitalsSummary === true) {
+    sentences.push(describeRecordedVitals(context.recordedVitals));
+  }
   for (const entry of section.entries) {
     const vocab = getVocabEntry(entry.code);
     if (vocab === undefined) {
@@ -84,9 +95,8 @@ export function assembleLayer1(
   const blocks: string[] = [];
   const sectionsAssembled: string[] = [];
   for (const tmplSection of template.sections) {
-    const picked = byId.get(tmplSection.id);
-    if (picked === undefined) continue;
-    const body = renderSection(picked, context);
+    const picked = byId.get(tmplSection.id) ?? { sectionId: tmplSection.id, entries: [] };
+    const body = renderSection(picked, context, tmplSection);
     if (body.length === 0) continue;
     blocks.push(`${tmplSection.heading}\n${body}`);
     sectionsAssembled.push(tmplSection.id);

@@ -67793,6 +67793,21 @@ export interface operations {
                                 category: string;
                                 bodySystem: string | null;
                                 slots: string[];
+                                slotSpecs: {
+                                    [key: string]: {
+                                        kind: "integer" | "number";
+                                        min: number;
+                                        max: number;
+                                        unit?: string;
+                                        label?: string;
+                                    } | {
+                                        /** @constant */
+                                        kind: "choice";
+                                        options: string[];
+                                        label?: string;
+                                    };
+                                };
+                                exclusiveGroup: string | null;
                             }[];
                         }[];
                     };

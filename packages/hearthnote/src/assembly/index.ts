@@ -3,11 +3,13 @@ export type {
   AssemblyContext,
   AssemblyResult,
   EntrySelection,
+  RecordedVitals,
   SectionSelection,
   SelectionState,
   SlotValue,
 } from "./types";
 export { finishSentence, interpolate, joinSentences } from "./grammar";
+export { describeRecordedVitals } from "./vitals";
 export {
   HearthnoteAssemblyError,
   assemble,

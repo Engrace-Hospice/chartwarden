@@ -152170,7 +152170,9 @@
                                 "label",
                                 "category",
                                 "bodySystem",
-                                "slots"
+                                "slots",
+                                "slotSpecs",
+                                "exclusiveGroup"
                               ],
                               "properties": {
                                 "code": {
@@ -152197,6 +152199,81 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "slotSpecs": {
+                                  "type": "object",
+                                  "patternProperties": {
+                                    "^(.*)$": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "kind",
+                                            "min",
+                                            "max"
+                                          ],
+                                          "properties": {
+                                            "kind": {
+                                              "anyOf": [
+                                                {
+                                                  "const": "integer",
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "const": "number",
+                                                  "type": "string"
+                                                }
+                                              ]
+                                            },
+                                            "min": {
+                                              "type": "number"
+                                            },
+                                            "max": {
+                                              "type": "number"
+                                            },
+                                            "unit": {
+                                              "type": "string"
+                                            },
+                                            "label": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "object",
+                                          "required": [
+                                            "kind",
+                                            "options"
+                                          ],
+                                          "properties": {
+                                            "kind": {
+                                              "const": "choice",
+                                              "type": "string"
+                                            },
+                                            "options": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "label": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "exclusiveGroup": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               }
                             }

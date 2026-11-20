@@ -17,8 +17,18 @@ export interface TemplateSection {
   readonly heading: string;
   /** A `required` section must have ≥ 1 selection before the Layer-3 gate passes (§2.6 check 1). */
   readonly required: boolean;
-  /** The vocab categories whose entries this section accepts (advisory scoping for the selection UI). */
-  readonly allowedCategories?: readonly VocabCategory[];
+  /**
+   * The vocab categories whose statements this section offers. REQUIRED, and `[]` means "prose only": a
+   * section that left it undeclared used to offer the whole catalog (the Reason for Visit section listed
+   * every cardiovascular finding), so the declaration cannot be omitted. Scoping the selection menu is
+   * all this does — the server still stores whatever statement it is given.
+   */
+  readonly allowedCategories: readonly VocabCategory[];
+  /**
+   * When true the section opens with the visit's recorded vitals, rendered from the stored values (never
+   * typed or ticked), ahead of any statements and the clinician's own words.
+   */
+  readonly vitalsSummary?: boolean;
 }
 
 /** A fully-resolved template for one legal (encounterType × discipline) pair. */

@@ -33,6 +33,8 @@ const template = {
           category: "c",
           bodySystem: null,
           slots: [],
+          slotSpecs: {},
+          exclusiveGroup: null,
         },
       ],
     },

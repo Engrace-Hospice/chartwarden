@@ -22,6 +22,7 @@ import { isStepUpRecent } from "@chartwarden/auth";
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import {
   DEFAULT_HEARTHNOTE_FLAGS,
+  type RecordedVitals,
   enhanceNarrative,
   templateKey as hearthnoteTemplateKey,
   requiredScalesFor,
@@ -68,6 +69,7 @@ import {
   planF2fDualWrite,
   planMileageCapture,
   planVitalsCapture,
+  recordedVitalsFrom,
 } from "./authoring/index";
 import {
   CHART_PROMOTION_DECIDED_EVENT,
@@ -125,7 +127,12 @@ import type {
   EncounterView,
   SelectionSectionInput,
 } from "./routes/service";
-import { assembleSelections, buildTemplateMenu } from "./routes/service";
+import {
+  type NoteFacts,
+  assembleSelections,
+  assertSelectionsValid,
+  buildTemplateMenu,
+} from "./routes/service";
 import {
   getCarePlanReader,
   getCareTeamProvider,
@@ -852,11 +859,20 @@ export function createDbEncounterRouteService(
         ? { encounterId: input.encounterId as string }
         : { addendumId: input.addendumId },
     );
+    // WF09 — the finalize-time completeness rule, on the one path both primary notes and addenda persist
+    // through. It runs inside the finalize transaction, so a refusal rolls the whole transition back.
+    assertSelectionsValid(sections, { requireComplete: true });
+    // The primary note states the visit's vitals as they stand at this moment; the narrative is pinned below,
+    // so a later edit never rewrites a finalized note. An addendum states none: it amends, it does not re-measure.
     const layer1 = assembleSelections(
       input.encounterType,
       input.discipline,
       input.serviceDate,
       sections,
+      VOCAB_VERSION,
+      input.addendumId === null
+        ? await noteFactsFor(t, await loadEnc(t, input.encounterId as string))
+        : undefined,
     );
     // D5's finalize-time reification, through the module's own shipped ladder rather than a literal.
     // Phase 1: the platform flag is off, so this is `kill_switch_active` / `enhanced: false` / final === layer1.
@@ -1098,6 +1114,35 @@ export function createDbEncounterRouteService(
     const [row] = await t.select().from(ENC).where(eq(ENC.id, encounterId)).limit(1);
     if (!row) throw new NotFoundError("encounter");
     return row;
+  }
+
+  /**
+   * The vitals the note states: every set captured on the encounter, newest capture first, merged per
+   * measurement. Read inside the caller's org-scoped transaction, so RLS scopes the rows by tenant.
+   */
+  async function recordedVitalsFor(t: DbClient, encounterId: string): Promise<RecordedVitals> {
+    const rows = await t
+      .select({
+        bpSystolic: VITALS.bpSystolic,
+        bpDiastolic: VITALS.bpDiastolic,
+        heartRate: VITALS.heartRate,
+        respiratoryRate: VITALS.respiratoryRate,
+        temperature: VITALS.temperature,
+        temperatureUnit: VITALS.temperatureUnit,
+        spo2: VITALS.spo2,
+        painScore: VITALS.painScore,
+        weight: VITALS.weight,
+        weightUnit: VITALS.weightUnit,
+      })
+      .from(VITALS)
+      .where(eq(VITALS.encounterId, encounterId))
+      .orderBy(desc(VITALS.capturedAt), desc(VITALS.id));
+    return recordedVitalsFrom(rows);
+  }
+
+  /** What the note states beyond the clinician's selections: the vitals captured on the visit. */
+  async function noteFactsFor(t: DbClient, r: { readonly id: string }): Promise<NoteFacts> {
+    return { recordedVitals: await recordedVitalsFor(t, r.id) };
   }
 
   /** Load an encounter's live cosignature request (the D3 workflow row) or the non-leaking 404. */
@@ -1478,6 +1523,8 @@ export function createDbEncounterRouteService(
             r.discipline,
             r.serviceDate,
             await openProse(organizationId, row),
+            VOCAB_VERSION,
+            await noteFactsFor(t, r),
           ),
           pinned: false,
         };
@@ -1673,11 +1720,14 @@ export function createDbEncounterRouteService(
         await stampDraftOpened(t, organizationId, r, actorMembershipId);
         // Assemble BEFORE the write: an unknown code or section must reject the PATCH, not be stored and
         // discovered by whoever later tries to render the note.
+        assertSelectionsValid(input.sections, { requireComplete: false });
         const layer1Preview = assembleSelections(
           r.encounterType,
           r.discipline,
           r.serviceDate,
           input.sections,
+          VOCAB_VERSION,
+          { recordedVitals: await recordedVitalsFor(t, encounterId) },
         );
         const freeTextCipherValue = await sealProse(organizationId, prose);
         const updated = firstOrThrow(
@@ -1772,7 +1822,14 @@ export function createDbEncounterRouteService(
           templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
           vocabVersion: VOCAB_VERSION,
           sections,
-          layer1Preview: assembleSelections(r.encounterType, r.discipline, r.serviceDate, sections),
+          layer1Preview: assembleSelections(
+            r.encounterType,
+            r.discipline,
+            r.serviceDate,
+            sections,
+            VOCAB_VERSION,
+            await noteFactsFor(t, r),
+          ),
           // The If-Match contract protects the encounter aggregate, not its HearthNote child row.
           // `hearthnote_selection.version` remains internal bookkeeping; returning it here causes a
           // false 412 whenever the child and encounter counters differ.
@@ -2808,6 +2865,7 @@ export function createDbEncounterRouteService(
         // The addendum inherits its parent's template — an addendum to an RN routine visit is written
         // against the RN routine-visit template, not one of its own.
         const parent = await loadEnc(t, encounterId);
+        assertSelectionsValid(input.sections, { requireComplete: false });
         const layer1Preview = assembleSelections(
           parent.encounterType,
           parent.discipline,

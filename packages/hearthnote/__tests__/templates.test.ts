@@ -79,6 +79,45 @@ describe("template registry", () => {
     },
   );
 
+  // WF09 — a section whose content is prose must not offer the statement catalog. `chief_concern` ("Reason
+  // for Visit") listed every cardiovascular and respiratory finding, so a note's stated reason was a
+  // body-system observation, and "Vital Signs Review" offered the same list again. An EMPTY declared list
+  // means "free text only"; an undeclared one used to mean "offer everything", which is how that happened.
+  const PROSE_ONLY = [
+    "vitals_review",
+    "plan",
+    "family_dynamics",
+    "advance_directive",
+    "caregiver_overview",
+    "pps",
+    "esas",
+    "prognosis",
+    "recert_summary",
+    "idg_followup",
+  ];
+
+  it("prose-only sections declare no statement categories", () => {
+    for (const t of TEMPLATES.values()) {
+      for (const s of t.sections) {
+        if (PROSE_ONLY.includes(s.id)) expect(s.allowedCategories, `${t.key}/${s.id}`).toEqual([]);
+      }
+    }
+  });
+
+  it("Reason for Visit offers the visit reasons and nothing else, in every template", () => {
+    for (const t of TEMPLATES.values()) {
+      const s = t.sections.find((x) => x.id === "chief_concern");
+      expect(s?.allowedCategories, t.key).toEqual(["visit_reason"]);
+      expect(s?.required, t.key).toBe(true);
+    }
+  });
+
+  it("every section declares what it offers — none is left to offer the whole catalog", () => {
+    for (const t of TEMPLATES.values()) {
+      for (const s of t.sections) expect(s.allowedCategories, `${t.key}/${s.id}`).toBeDefined();
+    }
+  });
+
   it("section ids within a template are unique and ordered deterministically", () => {
     for (const t of TEMPLATES.values()) {
       const ids = t.sections.map((s) => s.id);

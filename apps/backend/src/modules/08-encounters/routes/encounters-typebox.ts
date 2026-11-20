@@ -510,6 +510,22 @@ export const SelectionsViewResponseSchema = Type.Object({
   version: Type.Integer(),
 });
 
+/** One slot's constraint, mirroring `SlotSpec` in `@chartwarden/narrative-vocab`. */
+const SlotSpecSchema = Type.Union([
+  Type.Object({
+    kind: Type.Union([Type.Literal("integer"), Type.Literal("number")]),
+    min: Type.Number(),
+    max: Type.Number(),
+    unit: Type.Optional(Type.String()),
+    label: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    kind: Type.Literal("choice"),
+    options: Type.Array(Type.String()),
+    label: Type.Optional(Type.String()),
+  }),
+]);
+
 /**
  * Route 3c — the authoring MENU (F-063): the resolved HearthNote template with the vocabulary entries
  * each section accepts for this encounter's (type × discipline) pair.
@@ -530,7 +546,7 @@ export const EncounterTemplateResponseSchema = Type.Object({
       heading: Type.String(),
       /** A required section must carry ≥1 selection before the §2.6 Layer-3 gate lets the note finalize. */
       required: Type.Boolean(),
-      /** Empty when the section accepts any entry the pair is eligible for. */
+      /** The categories this section offers; empty means a prose-only section (`entries` is then empty). */
       allowedCategories: Type.Array(Type.String()),
       entries: Type.Array(
         Type.Object({
@@ -539,6 +555,10 @@ export const EncounterTemplateResponseSchema = Type.Object({
           category: Type.String(),
           bodySystem: Type.Union([Type.String(), Type.Null()]),
           slots: Type.Array(Type.String()),
+          /** Per-slot constraint (a slot absent here is free text) — the composer renders its input from this. */
+          slotSpecs: Type.Record(Type.String(), SlotSpecSchema),
+          /** Statements sharing a group contradict each other; the server refuses two in one note. */
+          exclusiveGroup: Type.Union([Type.String(), Type.Null()]),
         }),
       ),
     }),

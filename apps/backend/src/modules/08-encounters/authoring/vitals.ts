@@ -8,6 +8,7 @@
 // runs the returned §2.8 effects inside the encounter's optimistic-locked transaction. "Clinically not
 // indicated" is a first-class value (§2.2) — a non-empty CNI field list requires a documented reason,
 // never a silent NULL the surveyor can't explain.
+import type { RecordedVitals } from "@chartwarden/hearthnote";
 import type { PainScale, VitalUnit } from "@chartwarden/types";
 import type { EncounterSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
@@ -34,6 +35,43 @@ export interface VitalsInput {
   readonly bloodGlucoseUnit?: VitalUnit | null;
   readonly clinicallyNotIndicatedFields?: readonly string[];
   readonly clinicallyNotIndicatedReason?: string | null;
+}
+
+/** A measurement and, when it has one, the unit column it was captured in (the two travel together). */
+const NOTE_MEASUREMENTS: readonly (readonly [
+  value: keyof VitalsInput,
+  unit?: keyof VitalsInput,
+])[] = [
+  ["bpSystolic"],
+  ["bpDiastolic"],
+  ["heartRate"],
+  ["respiratoryRate"],
+  ["temperature", "temperatureUnit"],
+  ["spo2"],
+  ["painScore"],
+  ["weight", "weightUnit"],
+];
+
+const hasValue = (v: unknown): boolean => isNum(v as number) || isText(v as string);
+
+/**
+ * What the visit note states, from every vitals set captured on the encounter (NEWEST first): per
+ * measurement, the latest value any set carries, with the unit from that same set. A later capture
+ * therefore replaces only what it measured, and an earlier reading is never dropped by a partial retake.
+ */
+export function recordedVitalsFrom(sets: readonly VitalsInput[]): RecordedVitals {
+  const entries = NOTE_MEASUREMENTS.flatMap(([value, unit]) => {
+    const source = sets.find((s) => hasValue(s[value]));
+    if (source === undefined) return [];
+    return unit === undefined
+      ? [[value, source[value]]]
+      : [
+          [value, source[value]],
+          [unit, source[unit]],
+        ];
+  });
+  // Every key is a RecordedVitals field by construction of NOTE_MEASUREMENTS.
+  return Object.fromEntries(entries) as RecordedVitals;
 }
 
 /** The derived vitals facts + the §2.8 effects a capture declares (the service executes them). */

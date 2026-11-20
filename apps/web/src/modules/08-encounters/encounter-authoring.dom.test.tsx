@@ -46,6 +46,8 @@ const template = {
           category: "observation",
           bodySystem: "respiratory",
           slots: [],
+          slotSpecs: {},
+          exclusiveGroup: null,
         },
         {
           code: "nv.pain.score",
@@ -53,6 +55,8 @@ const template = {
           category: "observation",
           bodySystem: null,
           slots: ["pain_score"],
+          slotSpecs: {},
+          exclusiveGroup: null,
         },
       ],
     },
@@ -65,6 +69,11 @@ const template = {
     },
   ],
 };
+
+/** A test may swap the whole menu (typed slots, exclusive groups); reset in `beforeEach`. */
+let templateOverride: Record<string, unknown> | null = null;
+/** What the server's selections READ answers as the assembled note (e.g. once vitals are recorded). */
+let previewOverride: string | null = null;
 
 let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
@@ -91,13 +100,14 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
 
 function bodyFor(method: string, path: string): unknown {
   if (method === "GET") {
-    if (path.endsWith("/template")) return template;
+    if (path.endsWith("/template")) return templateOverride ?? template;
     if (path.endsWith("/selections"))
       return {
         templateKey: template.templateKey,
         vocabVersion: template.vocabVersion,
         sections: storedSections,
-        layer1Preview: storedSections.length > 0 ? "Patient reports dyspnea at rest." : "",
+        layer1Preview:
+          previewOverride ?? (storedSections.length > 0 ? "Patient reports dyspnea at rest." : ""),
         version: storedVersion,
       };
     if (path === `/api/v1/patients/${PATIENT}`)
@@ -285,6 +295,8 @@ beforeEach(() => {
   encounterStatus = "draft";
   storedSections = [];
   storedVersion = 3;
+  templateOverride = null;
+  previewOverride = null;
 });
 afterEach(() => {
   writeFailure = null;
@@ -646,5 +658,335 @@ describe("#91 — My notes (was My Drafts) leads somewhere a draft can be finish
     mount("/work/drafts", <MyDrafts />, "/work/drafts");
     expect(await screen.findByText("Lovelace, Ada")).toBeTruthy();
     expect(screen.queryByText(PATIENT.slice(0, 8))).toBeNull();
+  });
+});
+
+// WF09 step 1 — the composer rendered every slot as a free text box and let contradictory statements sit
+// side by side, which is how a note came to read "oxygen at 79 L/min", "requires 14 assistance" and "pain
+// well controlled" next to "pain limiting function". The server now refuses those writes; the composer
+// renders the same rules so a clinician is stopped before the round trip, not after it.
+describe("WF09 step 1 — typed slots and contradictory statements", () => {
+  const menuEntry = (code: string, label: string, extra: Record<string, unknown> = {}) => ({
+    code,
+    label,
+    category: "observation",
+    bodySystem: null,
+    slots: [],
+    slotSpecs: {},
+    exclusiveGroup: null,
+    ...extra,
+  });
+  const painScore = { kind: "integer", min: 0, max: 10, label: "Pain score (0–10)" };
+  const section = (sectionId: string, heading: string, entries: unknown[], required = false) => ({
+    sectionId,
+    heading,
+    required,
+    allowedCategories: [],
+    entries,
+  });
+  const medrec = menuEntry("nv.cp.medrec", "Medication reconciliation reviewed");
+  const typedTemplate = {
+    ...template,
+    sections: [
+      section(
+        "assessment",
+        "Assessment",
+        [
+          menuEntry("nv.resp.unlabored", "Respiratory — unlabored", {
+            exclusiveGroup: "respiratory-status",
+          }),
+          menuEntry("nv.resp.dyspnea", "Respiratory — dyspnea", {
+            slots: ["o2_lpm"],
+            slotSpecs: {
+              o2_lpm: { kind: "number", min: 0.5, max: 6, unit: "L/min", label: "Oxygen flow" },
+            },
+            exclusiveGroup: "respiratory-status",
+          }),
+          menuEntry("nv.msk.limited", "Musculoskeletal — limited mobility", {
+            slots: ["assist_level"],
+            slotSpecs: {
+              assist_level: {
+                kind: "choice",
+                options: ["minimal", "moderate", "maximal", "total"],
+                label: "Assistance needed",
+              },
+            },
+          }),
+          menuEntry("nv.sym.pain_uncontrolled", "Pain limiting function", {
+            slots: ["pain_score"],
+            slotSpecs: { pain_score: painScore },
+            exclusiveGroup: "pain-status",
+          }),
+        ],
+        true,
+      ),
+      section("symptom_management", "Symptom Management", [
+        menuEntry("nv.sym.pain_controlled", "Pain controlled", {
+          slots: ["pain_score"],
+          slotSpecs: { pain_score: painScore },
+          exclusiveGroup: "pain-status",
+        }),
+      ]),
+      section("interventions", "Interventions", [medrec]),
+      section("med_reconciliation", "Medication Reconciliation", [medrec]),
+    ],
+  };
+  const goTo = (heading: RegExp) => fireEvent.click(screen.getByRole("button", { name: heading }));
+  const checkbox = (name: RegExp) => screen.getByLabelText(name) as HTMLInputElement;
+
+  it("renders a choice slot as a select and sends the chosen option", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/limited mobility/i));
+    const select = (await screen.findByLabelText("Assistance needed")) as HTMLSelectElement;
+    const options = Array.from(select.options).map((o) => o.textContent);
+    expect(options).toEqual(expect.arrayContaining(["minimal", "moderate", "maximal", "total"]));
+    expect(options).not.toContain("14");
+
+    fireEvent.change(select, { target: { value: "moderate" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    const sent = bodies[0] as { sections: { entries: { params?: unknown }[] }[] };
+    expect(sent.sections[0]?.entries[0]?.params).toEqual({ assist_level: "moderate" });
+  });
+
+  it("renders a number slot with its range, so 79 L/min cannot be typed as a valid value", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/dyspnea/i));
+    const flow = (await screen.findByLabelText("Oxygen flow")) as HTMLInputElement;
+    expect(flow.type).toBe("number");
+    expect(flow.min).toBe("0.5");
+    expect(flow.max).toBe("6");
+    expect(screen.getByText(/0\.5.*6.*L\/min/)).toBeTruthy();
+  });
+
+  it("selecting a contradictory statement replaces its sibling", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/dyspnea/i));
+    expect(checkbox(/dyspnea/i).checked).toBe(true);
+
+    fireEvent.click(checkbox(/unlabored/i));
+    expect(checkbox(/unlabored/i).checked).toBe(true);
+    expect(checkbox(/dyspnea/i).checked).toBe(false);
+  });
+
+  it("the replacement works across sections, matching the server's whole-note rule", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/Pain limiting function/i));
+
+    goTo(/Symptom Management/);
+    fireEvent.click(checkbox(/Pain controlled/i));
+
+    goTo(/^Assessment/);
+    expect(checkbox(/Pain limiting function/i).checked).toBe(false);
+  });
+
+  it("disables a statement already recorded in another section and says where", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    await screen.findByLabelText(/limited mobility/i);
+    goTo(/^Interventions/);
+    fireEvent.click(checkbox(/Medication reconciliation reviewed/i));
+
+    goTo(/^Medication Reconciliation/);
+    expect(checkbox(/Medication reconciliation reviewed/i).disabled).toBe(true);
+    expect(screen.getByText(/Already recorded in Interventions/i)).toBeTruthy();
+  });
+
+  it("drops a stored statement the menu no longer offers in its section, and says so", async () => {
+    storedSections = [
+      { sectionId: "assessment", entries: [{ code: "nv.removed.from.menu" }], freeText: "" },
+    ];
+    mountCompose();
+    expect(await screen.findByText(/no longer offered/i)).toBeTruthy();
+    // The removal is a change the author must save, never a silent rewrite of the stored note.
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    expect((bodies[0] as { sections: unknown[] }).sections).toEqual([]);
+  });
+
+  it("shows the server's reason when it refuses a value", async () => {
+    writeFailurePath = "/selections";
+    writeFailure = {
+      status: 422,
+      body: {
+        error: {
+          code: "INVALID_SELECTION",
+          message: "Oxygen flow must be a number from 0.5 to 6 L/min.",
+          details: [
+            {
+              field: "assessment",
+              code: "SLOT_INVALID",
+              message: "Oxygen flow must be a number from 0.5 to 6 L/min.",
+            },
+          ],
+        },
+      },
+    };
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/Dyspnea at rest/i));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    expect(
+      await screen.findByText(/Oxygen flow must be a number from 0\.5 to 6 L\/min\./),
+    ).toBeTruthy();
+  });
+
+  it("a statement with an empty slot leaves its section 'Needs details', not 'Documented'", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/limited mobility/i));
+
+    expect(screen.getByRole("button", { name: "Assessment: Needs details" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Assessment: Documented" })).toBeNull();
+    expect(screen.getByText(/0 of 4 sections documented/i)).toBeTruthy();
+    // The banner names it too, so the author is not told "complete" while finalize would refuse.
+    expect(screen.getByText(/Complete Assessment before finalization/i)).toBeTruthy();
+
+    fireEvent.change(await screen.findByLabelText("Assistance needed"), {
+      target: { value: "moderate" },
+    });
+    expect(screen.getByRole("button", { name: "Assessment: Documented" })).toBeTruthy();
+    expect(screen.getByText(/1 of 4 sections documented/i)).toBeTruthy();
+  });
+
+  it("an optional section with an empty slot is flagged as well, since finalize refuses it too", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    await screen.findByLabelText(/limited mobility/i);
+    goTo(/^Symptom Management/);
+    fireEvent.click(checkbox(/Pain controlled/i));
+    expect(screen.getByRole("button", { name: "Symptom Management: Needs details" })).toBeTruthy();
+  });
+
+  it("recording vitals refreshes the note from the server and keeps the author's unsaved edits", async () => {
+    templateOverride = typedTemplate;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/limited mobility/i));
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Vitals" })));
+    fireEvent.change(await screen.findByLabelText(/BP systolic/i), { target: { value: "118" } });
+    fireEvent.change(screen.getByLabelText(/BP diastolic/i), { target: { value: "72" } });
+    previewOverride = "Vital Signs Review\nVital signs: blood pressure 118/72 mmHg.";
+    fireEvent.click(screen.getByRole("button", { name: "Record vitals" }));
+
+    expect(await screen.findByText(/Vital signs: blood pressure 118\/72 mmHg\./)).toBeTruthy();
+    expect(checkbox(/limited mobility/i).checked).toBe(true);
+  });
+
+  it("sends the unit the vitals panel shows, so the note does not state a bare temperature", async () => {
+    mountCompose();
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Vitals" })));
+    fireEvent.change(await screen.findByLabelText(/Temperature/i), { target: { value: "97.8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Record vitals" }));
+    await waitFor(() => expect(writes()).toContain(`POST /api/v1/encounters/${ENCOUNTER}/vitals`));
+    expect(bodies[0]).toEqual({ temperature: 97.8, temperatureUnit: "f" });
+  });
+});
+
+describe("WF09 step 2 — Reason for Visit is a select", () => {
+  const reasonEntry = (code: string, label: string) => ({
+    code,
+    label,
+    category: "visit_reason",
+    bodySystem: null,
+    slots: [],
+    slotSpecs: {},
+    exclusiveGroup: "visit-reason",
+  });
+  const reasonTemplate = {
+    ...template,
+    sections: [
+      {
+        sectionId: "chief_concern",
+        heading: "Reason for Visit",
+        required: true,
+        allowedCategories: ["visit_reason"],
+        entries: [
+          reasonEntry("nv.reason.routine", "Routine scheduled visit"),
+          reasonEntry("nv.reason.fall_followup", "Follow-up after a fall"),
+          reasonEntry("nv.reason.pain", "Pain assessment and management"),
+        ],
+      },
+      {
+        sectionId: "plan",
+        heading: "Plan and Next Visit",
+        required: false,
+        allowedCategories: [],
+        entries: [],
+      },
+    ],
+  };
+  const reasonSelect = async () =>
+    (await screen.findByLabelText("Reason for Visit")) as HTMLSelectElement;
+  const saved = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+    return (bodies[0] as { sections: { entries: { code: string }[] }[] }).sections;
+  };
+
+  it("offers the reasons as one select, not a list of checkboxes", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    const select = await reasonSelect();
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "Select…",
+      "Routine scheduled visit",
+      "Follow-up after a fall",
+      "Pain assessment and management",
+    ]);
+    expect(select.value).toBe("");
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(screen.getByText(/^Choose one\./)).toBeTruthy();
+  });
+
+  it("records the chosen reason, and choosing another replaces it", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    const select = await reasonSelect();
+    fireEvent.change(select, { target: { value: "nv.reason.fall_followup" } });
+    expect(select.value).toBe("nv.reason.fall_followup");
+    fireEvent.change(select, { target: { value: "nv.reason.pain" } });
+
+    const sections = await saved();
+    expect(sections[0]?.entries.map((e) => e.code)).toEqual(["nv.reason.pain"]);
+  });
+
+  it("choosing 'Select…' again clears the reason", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    const select = await reasonSelect();
+    fireEvent.change(select, { target: { value: "nv.reason.routine" } });
+    fireEvent.change(select, { target: { value: "" } });
+    expect(select.value).toBe("");
+    expect(screen.getByRole("button", { name: "Reason for Visit: Required" })).toBeTruthy();
+  });
+
+  it("a chosen reason documents the section, and free text stays available for the detail", async () => {
+    templateOverride = reasonTemplate;
+    mountCompose();
+    fireEvent.change(await reasonSelect(), { target: { value: "nv.reason.fall_followup" } });
+    expect(screen.getByRole("button", { name: "Reason for Visit: Documented" })).toBeTruthy();
+    expect(screen.getByLabelText("Additional notes")).toBeTruthy();
+    expect(
+      screen.getByText(/Optional\. Enter only information not already represented/),
+    ).toBeTruthy();
+  });
+
+  it("shows the stored reason as the selected option", async () => {
+    templateOverride = reasonTemplate;
+    storedSections = [
+      { sectionId: "chief_concern", entries: [{ code: "nv.reason.pain" }], freeText: "" },
+    ];
+    mountCompose();
+    expect((await reasonSelect()).value).toBe("nv.reason.pain");
   });
 });

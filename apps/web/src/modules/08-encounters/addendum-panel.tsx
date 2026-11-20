@@ -16,7 +16,6 @@ import {
   Modal,
   StatusPill,
   TextAreaField,
-  TextField,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -49,6 +48,7 @@ import {
   unmetRequiredSections,
 } from "./encounters-api";
 import { ProposedFromMessage } from "./proposed-from-message";
+import { SlotInput } from "./slot-input";
 import { authFailureRedirect } from "./write-workflow";
 
 type Failure = Extract<AddendumResult<unknown>, { ok: false }>;
@@ -410,14 +410,14 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
                   </label>
                   {picked
                     ? entry.slots.map((slot) => (
-                        <TextField
+                        <SlotInput
                           key={slot}
-                          label={`${entry.label} — ${slot}`}
+                          slot={slot}
+                          spec={entry.slotSpecs[slot]}
+                          label={`${entry.label} — ${entry.slotSpecs[slot]?.label ?? slot}`}
                           value={String(picked.params[slot] ?? "")}
                           disabled={saving}
-                          onChange={(ev) =>
-                            setSlot(section.sectionId, entry.code, slot, ev.target.value)
-                          }
+                          onChange={(value) => setSlot(section.sectionId, entry.code, slot, value)}
                         />
                       ))
                     : null}
