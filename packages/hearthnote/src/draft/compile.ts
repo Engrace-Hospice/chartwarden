@@ -11,6 +11,7 @@ import {
   resolveSelectionTemplate,
 } from "../assembly/assemble";
 import { joinSentences } from "../assembly/grammar";
+import { describeRecordedBodyMeasures } from "../assembly/vitals";
 import { templateKey } from "../templates/types";
 import { canonicalJson, normalizeText } from "./canonical";
 import { draftedSectionIds } from "./scope";
@@ -94,7 +95,15 @@ export function compileDraft(inputs: DraftInputs, deps: DraftDeps): Draft {
     const sourced = drafted.has(section.id) ? groups.get(section.id) : undefined;
     if (sourced === undefined) return emptySection(section.id);
     const own = selections.get(section.id);
-    const ownText = own === undefined ? "" : renderSection(own, inputs.context);
+    // The vitals source has no weight, height or BMI, and a confirmed section replaces the whole section: state them here, before the
+    // clinician's own words, so a body measurement recorded on the visit is in the note whenever the vitals section is drafted.
+    const measures =
+      section.vitalsSummary === true
+        ? describeRecordedBodyMeasures(inputs.context.recordedVitals)
+        : "";
+    const ownText = [measures, own === undefined ? "" : renderSection(own, inputs.context)]
+      .filter((part) => part.length > 0)
+      .join(" ");
     return draftedSection(section.id, sourced, ownText, deps);
   });
   return { templateKey: template.key, asOf: inputs.asOf, sections };

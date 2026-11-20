@@ -137,12 +137,13 @@ export const EMPTY_SELECTION = {
 type Spied = { readonly [K in keyof DraftPorts]: Mock<DraftPorts[K]> };
 
 /** Every port, as a spy (an override is wrapped too, so a test can still assert on it) over a benign default
- * (no care plan, no readings, no vitals, no changes, no Part 2, no previous visit). */
+ * (no care plan, no readings, no vitals, no changes, no wounds, no Part 2, no previous visit). */
 export function fakePorts(over: Partial<DraftPorts> = {}): Spied {
   const defaults: DraftPorts = {
     carePlanAsOf: async () => null,
     scaleSeries: honestSeries({}),
     medicationChangesBetween: async () => [],
+    recordedWounds: async () => [],
     part2DisclosureAllowed: async () => false,
     organizationTimeZone: async () => NEW_YORK,
     previousSignedVisitAt: async () => null,

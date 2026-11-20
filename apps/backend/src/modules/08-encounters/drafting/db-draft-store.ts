@@ -4,6 +4,7 @@
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { and, desc, eq, inArray, lt, lte } from "drizzle-orm";
 import type { HearthnoteEnvelopeCipher } from "../hearthnote-crypto";
+import { readRecordedFacts } from "../note-facts";
 import { ASSEMBLY_PATIENT_SLOT, toSelectionState } from "../routes/service";
 import { openStoredProse, sectionHasOwnText, storedSections } from "../selection-tree";
 import { linkElements, removeElements, removedCarePlanElementIds } from "./care-plan-links";
@@ -93,7 +94,12 @@ async function latestVitals(tx: DbClient, encounterId: string, asOf: string) {
   return row === undefined ? null : vitalsDraftInput(row);
 }
 
-/** What the existing Layer-1 assembly renders: the stored tree (prose opened) and the patient and service-date slots. */
+/**
+ * What the existing Layer-1 assembly renders: the stored tree (prose opened), the patient and service-date slots and the facts recorded
+ * on the visit (vitals, ADLs, nutrition, the linked fall). A section the draft does not draft is written from these when the note is
+ * signed (`finalNoteOf`), so a context without them would sign a note that omits what the gate counted as documented. The wounds are
+ * M9's, read through the draft's seam (`DraftSeamPorts.recordedWounds`), not here.
+ */
 async function loadSelection(
   tx: DbClient,
   encounter: DraftEncounter,
@@ -110,9 +116,20 @@ async function loadSelection(
         cipher && ((envelope) => cipher.open(encounter.organizationId, envelope)),
       )
     : [];
+  const [visit] = await tx
+    .select({ fallOccurredOn: E.fallOccurredOn })
+    .from(E)
+    .where(eq(E.id, encounter.id))
+    .limit(1);
+  const facts = await readRecordedFacts(
+    tx,
+    encounter.organizationId,
+    { id: encounter.id, fallOccurredOn: visit?.fallOccurredOn ?? null },
+    [],
+  );
   return {
     selection: toSelectionState(encounter.encounterType, encounter.discipline, sections),
-    context: { patient: ASSEMBLY_PATIENT_SLOT, serviceDate: encounter.serviceDate },
+    context: { patient: ASSEMBLY_PATIENT_SLOT, serviceDate: encounter.serviceDate, ...facts },
   };
 }
 

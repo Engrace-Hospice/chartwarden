@@ -49,7 +49,7 @@ export {
   WOUND_TRENDS,
 } from "./types";
 export { finishSentence, interpolate, joinSentences } from "./grammar";
-export { describeRecordedVitals } from "./vitals";
+export { describeRecordedBodyMeasures, describeRecordedVitals } from "./vitals";
 export {
   describeRecordedAdl,
   describeRecordedNutrition,

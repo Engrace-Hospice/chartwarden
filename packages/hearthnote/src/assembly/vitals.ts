@@ -71,12 +71,23 @@ function bloodPressure(v: RecordedVitals): string | undefined {
   return undefined;
 }
 
+/** The weight, height and BMI clauses, in the order the sentences state them. */
+function bodyMeasureParts(v: RecordedVitals): string[] {
+  const height = text(v.height);
+  const bmi = text(v.bmi);
+  return [
+    weightClause(v),
+    height === undefined
+      ? undefined
+      : `height ${measured(height, HEIGHT_UNIT[v.heightUnit ?? ""])}`,
+    bmi === undefined ? undefined : `BMI ${bmi}`,
+  ].filter((p): p is string => p !== undefined);
+}
+
 /** `"Vital signs: …"` for what was recorded, or `""` when nothing was (the caller then adds no sentence). */
 export function describeRecordedVitals(v: RecordedVitals | undefined): string {
   if (v === undefined) return "";
   const temperature = text(v.temperature);
-  const height = text(v.height);
-  const bmi = text(v.bmi);
   const parts = [
     bloodPressure(v),
     isNumber(v.heartRate) ? `heart rate ${v.heartRate} bpm` : undefined,
@@ -86,11 +97,18 @@ export function describeRecordedVitals(v: RecordedVitals | undefined): string {
       : `temperature ${measured(temperature, TEMPERATURE_UNIT[v.temperatureUnit ?? ""])}`,
     isNumber(v.spo2) ? `SpO₂ ${v.spo2}%` : undefined,
     isNumber(v.painScore) ? `pain score ${v.painScore} of 10` : undefined,
-    weightClause(v),
-    height === undefined
-      ? undefined
-      : `height ${measured(height, HEIGHT_UNIT[v.heightUnit ?? ""])}`,
-    bmi === undefined ? undefined : `BMI ${bmi}`,
+    ...bodyMeasureParts(v),
   ].filter((p): p is string => p !== undefined);
   return parts.length === 0 ? "" : `Vital signs: ${parts.join(", ")}.`;
+}
+
+/**
+ * `"Body measurements: weight …, height …, BMI …."` for the weight, height and BMI that were recorded, or `""`. The visit-note draft
+ * states the other vitals from its own source (`draft/sources.ts`), which carries no body measurement, so the draft adds this sentence to
+ * its vitals section: a confirmed section replaces the whole section, and weight recorded on the visit must not drop out with it.
+ */
+export function describeRecordedBodyMeasures(v: RecordedVitals | undefined): string {
+  if (v === undefined) return "";
+  const parts = bodyMeasureParts(v);
+  return parts.length === 0 ? "" : `Body measurements: ${parts.join(", ")}.`;
 }

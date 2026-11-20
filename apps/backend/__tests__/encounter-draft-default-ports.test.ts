@@ -54,6 +54,23 @@ describe("defaultDraftPorts", () => {
     expect(getMedicationChangesBetween).toHaveBeenCalledWith(ORG_ID, PATIENT_ID, "from", "to");
   });
 
+  it("reads the visit's wounds through the registered WoundProvider, and fails closed when none is registered", async () => {
+    const listObservationsForEncounter = vi.fn(async () => [
+      { observationId: "o", woundId: "w", observedAt: "2026-11-18T14:00:00.000Z", site: "sacrum" },
+    ]);
+    register("WoundProvider", { listObservationsForEncounter });
+    const query = { organizationId: ORG_ID, encounterId: "enc", patientId: PATIENT_ID };
+    await expect(defaultDraftPorts().recordedWounds(query)).resolves.toEqual([{ site: "sacrum" }]);
+    expect(listObservationsForEncounter).toHaveBeenCalledWith(
+      ORG_ID,
+      "enc",
+      { userId: "" },
+      { patientId: PATIENT_ID },
+    );
+    __resetSeamsForTest();
+    await expect(defaultDraftPorts().recordedWounds(query)).rejects.toThrow();
+  });
+
   describe("Part 2 verdict (M7's per-actor decision over M39)", () => {
     const verdict = (over: { redact: boolean; basis: string }) =>
       register("ConsentEvaluator", {

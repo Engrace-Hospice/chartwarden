@@ -51,6 +51,54 @@ export interface NoteFactsReader {
   ): Promise<readonly FallChoice[]>;
 }
 
+/** The vitals the note states: every set captured on the encounter, newest capture first, merged per measurement. */
+async function recordedVitalsFor(t: DbClient, encounterId: string): Promise<RecordedVitals> {
+  const rows = await t
+    .select({
+      bpSystolic: VITALS.bpSystolic,
+      bpDiastolic: VITALS.bpDiastolic,
+      heartRate: VITALS.heartRate,
+      respiratoryRate: VITALS.respiratoryRate,
+      temperature: VITALS.temperature,
+      temperatureUnit: VITALS.temperatureUnit,
+      spo2: VITALS.spo2,
+      painScore: VITALS.painScore,
+      weight: VITALS.weight,
+      weightUnit: VITALS.weightUnit,
+      height: VITALS.height,
+      heightUnit: VITALS.heightUnit,
+    })
+    .from(VITALS)
+    .where(eq(VITALS.encounterId, encounterId))
+    .orderBy(desc(VITALS.capturedAt), desc(VITALS.id));
+  return recordedVitalsFrom(rows);
+}
+
+/**
+ * Everything the note states beyond the selections that M8's own tables hold (the vitals with the prior signed weight, the ADLs and
+ * nutrition, the linked fall), plus the `wounds` the caller read through M9's seam. One reader for every path that renders a note: the
+ * selections preview, the finalize pin and the visit-note draft, so none of them can state less than another.
+ */
+export async function readRecordedFacts(
+  t: DbClient,
+  organizationId: string,
+  r: { readonly id: string; readonly fallOccurredOn: string | null },
+  wounds: readonly RecordedWound[],
+): Promise<NoteFacts> {
+  const findings = await loadRecordedFindings(t, { organizationId, encounterId: r.id });
+  const vitals = await recordedVitalsFor(t, r.id);
+  return {
+    recordedVitals:
+      findings.priorWeight === undefined
+        ? vitals
+        : { ...vitals, priorWeight: findings.priorWeight },
+    ...(findings.adl === undefined ? {} : { recordedAdl: findings.adl }),
+    ...(findings.nutrition === undefined ? {} : { recordedNutrition: findings.nutrition }),
+    ...(wounds.length === 0 ? {} : { recordedWounds: wounds }),
+    ...(r.fallOccurredOn === null ? {} : { linkedFall: { occurredOn: r.fallOccurredOn } }),
+  };
+}
+
 export function createNoteFactsReader(deps: {
   readonly db: DbClient;
   readonly woundReader: WoundNoteReader;
@@ -58,44 +106,8 @@ export function createNoteFactsReader(deps: {
 }): NoteFactsReader {
   const { db, woundReader, fallReader } = deps;
 
-  /** The vitals the note states: every set captured on the encounter, newest capture first, merged per measurement. */
-  async function recordedVitalsFor(t: DbClient, encounterId: string): Promise<RecordedVitals> {
-    const rows = await t
-      .select({
-        bpSystolic: VITALS.bpSystolic,
-        bpDiastolic: VITALS.bpDiastolic,
-        heartRate: VITALS.heartRate,
-        respiratoryRate: VITALS.respiratoryRate,
-        temperature: VITALS.temperature,
-        temperatureUnit: VITALS.temperatureUnit,
-        spo2: VITALS.spo2,
-        painScore: VITALS.painScore,
-        weight: VITALS.weight,
-        weightUnit: VITALS.weightUnit,
-        height: VITALS.height,
-        heightUnit: VITALS.heightUnit,
-      })
-      .from(VITALS)
-      .where(eq(VITALS.encounterId, encounterId))
-      .orderBy(desc(VITALS.capturedAt), desc(VITALS.id));
-    return recordedVitalsFrom(rows);
-  }
-
   return {
-    async factsFor(t, organizationId, r, wounds) {
-      const findings = await loadRecordedFindings(t, { organizationId, encounterId: r.id });
-      const vitals = await recordedVitalsFor(t, r.id);
-      return {
-        recordedVitals:
-          findings.priorWeight === undefined
-            ? vitals
-            : { ...vitals, priorWeight: findings.priorWeight },
-        ...(findings.adl === undefined ? {} : { recordedAdl: findings.adl }),
-        ...(findings.nutrition === undefined ? {} : { recordedNutrition: findings.nutrition }),
-        ...(wounds.length === 0 ? {} : { recordedWounds: wounds }),
-        ...(r.fallOccurredOn === null ? {} : { linkedFall: { occurredOn: r.fallOccurredOn } }),
-      };
-    },
+    factsFor: readRecordedFacts,
 
     woundsFor: (args) => woundReader.woundsForEncounter(args),
 

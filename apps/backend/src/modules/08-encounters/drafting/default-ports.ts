@@ -14,6 +14,7 @@ import {
   sudDisclosureAllowedForActor,
 } from "../../07-care-plan/index";
 import { getCarePlanReader } from "../seams/index";
+import { seamWoundReader } from "../wound-reader";
 import type { DraftSeamPorts } from "./ports";
 
 /** The `callerModule` token M8 identifies itself with on M39's evaluation audit (M7's own reads carry "m7"). */
@@ -45,6 +46,7 @@ export function defaultDraftPorts(): DraftSeamPorts {
         from,
         to,
       ),
+    recordedWounds: (query) => seamWoundReader.woundsForEncounter(query),
     part2DisclosureAllowed: ({ organizationId, patientId, viewer }) =>
       sudDisclosureAllowedForActor(
         {

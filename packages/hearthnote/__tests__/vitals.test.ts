@@ -2,7 +2,11 @@
 // The recorded-vitals sentence: the original wording is byte-stable, and height, BMI and the change since the
 // previous visit are stated from stored values only (exact decimal arithmetic, no float noise).
 import { describe, expect, it } from "vitest";
-import { type RecordedVitals, describeRecordedVitals } from "../src/index";
+import {
+  type RecordedVitals,
+  describeRecordedBodyMeasures,
+  describeRecordedVitals,
+} from "../src/index";
 
 const BASE: RecordedVitals = {
   bpSystolic: 128,
@@ -171,5 +175,28 @@ describe("describeRecordedVitals — change since the previous visit", () => {
     ).toBe(
       "Vital signs: weight 61.2 kg, 1.3 kg lower than 62.5 kg on 2026-11-05, height 170 cm, BMI 24.3.",
     );
+  });
+});
+
+describe("describeRecordedBodyMeasures", () => {
+  it("states the weight (with its change), height and BMI, and nothing else", () => {
+    expect(
+      describeRecordedBodyMeasures({
+        heartRate: 72,
+        weight: "61.5",
+        weightUnit: "kg",
+        priorWeight: { value: "62.8", unit: "kg", on: "2026-11-10" },
+        height: "170",
+        heightUnit: "cm",
+        bmi: "21.3",
+      }),
+    ).toBe(
+      "Body measurements: weight 61.5 kg, 1.3 kg lower than 62.8 kg on 2026-11-10, height 170 cm, BMI 21.3.",
+    );
+  });
+
+  it("is empty when no body measurement was recorded", () => {
+    expect(describeRecordedBodyMeasures(undefined)).toBe("");
+    expect(describeRecordedBodyMeasures({ heartRate: 72, height: "  " })).toBe("");
   });
 });

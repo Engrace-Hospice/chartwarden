@@ -625,3 +625,47 @@ describe("the recorded findings of the assembly are not the draft's sources", ()
     expect(hashes(withRecorded)).toEqual(hashes(plain));
   });
 });
+
+describe("the weight, height and BMI recorded on the visit", () => {
+  const recorded = {
+    weight: "61.5",
+    weightUnit: "kg",
+    height: "170",
+    heightUnit: "cm",
+    bmi: "21.3",
+  } as const;
+  const draftWith = (recordedVitals: object | undefined) =>
+    compileDraft(
+      {
+        ...baseInputs(),
+        context: {
+          ...baseInputs().context,
+          ...(recordedVitals === undefined ? {} : { recordedVitals }),
+        },
+      },
+      DEPS,
+    );
+  const textOf = (draft: Draft, id: string): string => {
+    const s = section(draft, id);
+    if (s.state !== "drafted") throw new Error(`section '${id}' is empty`);
+    return s.text;
+  };
+
+  it("are stated in the drafted vitals section, whose confirmed text replaces the whole section", () => {
+    const text = textOf(draftWith(recorded), "vitals_review");
+    expect(text).toContain("Body measurements: weight 61.5 kg, height 170 cm, BMI 21.3.");
+  });
+
+  it("change that section's hash and no other section's", () => {
+    const plain = hashes(draftWith(undefined));
+    const withBody = hashes(draftWith(recorded));
+    expect(withBody.vitals_review).not.toBe(plain.vitals_review);
+    expect({ ...withBody, vitals_review: null }).toEqual({ ...plain, vitals_review: null });
+  });
+
+  it("add nothing to a section when none was recorded", () => {
+    expect(textOf(draftWith({ heartRate: 72 }), "vitals_review")).not.toContain(
+      "Body measurements",
+    );
+  });
+});
