@@ -796,7 +796,7 @@ export function createDbEncounterRouteService(
         ? {}
         : {
             draftSectionActions: draft.actions,
-            // Check 1 (project-lead decision): a section the clinician confirmed drafted text for is populated.
+            // Check 1 (owner-confirmed 2026-11-19): a section the clinician confirmed drafted text for is populated.
             draftConfirmedSectionIds: confirmedSectionIds(draft),
           }),
     });
