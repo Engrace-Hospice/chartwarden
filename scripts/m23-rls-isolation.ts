@@ -30,6 +30,22 @@ export const M23_PGDATA_TMPFS = "/var/lib/postgresql";
 const M23_TEST_LABEL = "com.chartwarden.test-suite";
 const M23_TEST_LABEL_VALUE = "m23-rls-live";
 
+/** Refuses a pre-populated disposable cluster before the live suite can run. */
+export function assertFreshM23DatabaseInventory(
+  databaseNames: readonly string[],
+  expectedDatabaseName: string,
+): void {
+  if (
+    databaseNames.length !== 2 ||
+    !databaseNames.includes("postgres") ||
+    !databaseNames.includes(expectedDatabaseName)
+  ) {
+    throw new Error(
+      `Disposable cluster is not fresh (expected only postgres and the test database; found: ${databaseNames.join(", ") || "none"})`,
+    );
+  }
+}
+
 function hasNoPublishedPorts(
   ports: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null> | null | undefined,
 ): boolean {
