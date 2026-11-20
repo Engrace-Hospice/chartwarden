@@ -55,9 +55,10 @@ describe("DISCIPLINE_PLAN_DEFAULT_GRANTS is pinned to the signer and scope check
     for (const slot of acknowledgmentKinds)
       expect(actorHoldsSignerRole(["chha"], slot.role, slot.kind), slot.kind).toBe(true);
     for (const slot of COSIGNER_SLOTS)
-      expect(actorHoldsSignerRole(["chha"], slot.role, slot.kind), `${slot.kind}/${slot.role}`).toBe(
-        false,
-      );
+      expect(
+        actorHoldsSignerRole(["chha"], slot.role, slot.kind),
+        `${slot.kind}/${slot.role}`,
+      ).toBe(false);
   });
 
   it("every author grantee passes the Aide POC authoring scope (discipline_scope)", () => {
