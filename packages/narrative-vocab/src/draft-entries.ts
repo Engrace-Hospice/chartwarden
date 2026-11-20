@@ -1,15 +1,17 @@
 // packages/narrative-vocab/src/draft-entries.ts — the visit-note draft phrases (S1 PR B, ADR-0114, VN-D15).
 //
-// Appended to the corpus by `vocabulary.ts` as `narrative-vocab@2026.11.0`; the 23 earlier entries are
-// untouched. DRAFT WORDING until `CORPUS_CLINICAL_REVIEW.status` is "approved" (see vocabulary.ts).
+// Appended to the corpus by `vocabulary.ts`: the 25 entries of `narrative-vocab@2026.11.0` below (S1), then the 11 of
+// `narrative-vocab@2026.12.0` (S2, `recert-entries.ts`); the 23 earlier entries are untouched. DRAFT WORDING until the review
+// of the running release is "approved" (see `CORPUS_CLINICAL_REVIEW` in vocabulary.ts).
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
+import { RECERT_VOCABULARY } from "./recert-entries";
 import type { VocabEntry } from "./types";
 
 const RN_ONLY: readonly EncounterDiscipline[] = ["rn"];
 const ROUTINE_ONLY: readonly EncounterType[] = ["routine_visit"];
 
-/** The 25 draft entries, in corpus order (appended after the original 23). */
-export const DRAFT_VOCABULARY: readonly VocabEntry[] = [
+/** The 25 entries of `narrative-vocab@2026.11.0`, in corpus order (appended after the original 23), tagged as S1 shipped them. */
+const ROUTINE_DRAFT_VOCABULARY: readonly VocabEntry[] = [
   // All entries are tagged for the RN routine visit only, so no other template's menu gains an entry.
   // The `scale_reading` and `medication_change` entries are listed in no section menu: they carry values
   // the draft compiler interpolates from structured records, never typed by hand. Wording states numbers
@@ -228,6 +230,48 @@ export const DRAFT_VOCABULARY: readonly VocabEntry[] = [
     encounterTypes: ROUTINE_ONLY,
   },
 ] as const;
+
+/**
+ * The S1 entries the recertification visit also drafts from (S2, design §3.3): its vitals, care-plan, medication and PPS/ESAS-r
+ * phrases. Their wording is untouched (a test pins the text of all 25); `narrative-vocab@2026.12.0` only adds the
+ * `recert_visit` tag, which is what lets that template draft them. `nv.vit.reviewed`, `nv.cc.*` and `nv.plan.*` are the routine
+ * visit's own hand-picked phrases and stay routine-only.
+ */
+const RECERT_SHARED_CODES: ReadonlySet<string> = new Set([
+  "nv.scale.pps_first",
+  "nv.scale.pps_down",
+  "nv.scale.pps_up",
+  "nv.scale.pps_same",
+  "nv.scale.esas_first",
+  "nv.scale.esas_down",
+  "nv.scale.esas_up",
+  "nv.scale.esas_same",
+  "nv.vit.bp",
+  "nv.vit.hr",
+  "nv.vit.rr",
+  "nv.vit.temp",
+  "nv.vit.spo2",
+  "nv.vit.pain",
+  "nv.cp.goal_progress",
+  "nv.cp.goal_listed",
+  "nv.cp.intervention_performed",
+  "nv.med.started",
+  "nv.med.changed",
+  "nv.med.discontinued",
+]);
+
+const ROUTINE_AND_RECERT: readonly EncounterType[] = ["routine_visit", "recert_visit"];
+
+/** Every draft entry, in corpus order: the 25 of 2026.11.0 (the shared ones also tagged for the recertification), then the 11 of 2026.12.0. */
+export const DRAFT_VOCABULARY: readonly VocabEntry[] = [
+  ...ROUTINE_DRAFT_VOCABULARY.map(
+    (entry): VocabEntry =>
+      RECERT_SHARED_CODES.has(entry.code)
+        ? { ...entry, encounterTypes: ROUTINE_AND_RECERT }
+        : entry,
+  ),
+  ...RECERT_VOCABULARY,
+];
 
 /**
  * The codes of the draft entries: the phrases a tenant's authoring menu offers only once that tenant's visit-note draft switch is on,

@@ -12,7 +12,7 @@ import { DRAFT_VOCABULARY } from "./draft-entries";
 import type { VocabEntry } from "./types";
 
 /** Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11). */
-export const VOCAB_VERSION = "narrative-vocab@2026.11.0";
+export const VOCAB_VERSION = "narrative-vocab@2026.12.0";
 
 /** Whether the named clinical reviewer has approved the corpus wording. */
 export type ClinicalReviewStatus = "pending" | "approved";
@@ -20,8 +20,9 @@ export type ClinicalReviewStatus = "pending" | "approved";
 /**
  * CLINICAL REVIEW GATE (VN-D14, ADR-0114). Every phrase added in `narrative-vocab@2026.11.0` (the 25
  * visit-note draft entries after the original 23: scale readings, vitals, care-plan goals and
- * interventions, medication changes, and the RN routine visit's chief-concern and plan phrases) is
- * DRAFT WORDING. It was written to be neutral and factual (numbers and dates, no clinical judgement), but
+ * interventions, medication changes, and the RN routine visit's chief-concern and plan phrases) and in
+ * `narrative-vocab@2026.12.0` (the 11 recertification and face-to-face entries: PPS and weight against
+ * the benefit period, the face-to-face's facts, the benefit period) is DRAFT WORDING. It was written to be neutral and factual (numbers and dates, no clinical judgement), but
  * it has not been read by a clinician. The platform-side reviewer named by the owner on 2026-11-18 is ADA.
  *
  * `status` stays "pending" until ADA approves the wording; the approval is a deliberate edit to this

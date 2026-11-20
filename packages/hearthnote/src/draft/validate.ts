@@ -55,6 +55,42 @@ export function decimalText(value: unknown, field: string): string {
   throw new DraftInputError(`${field} must be a decimal number`);
 }
 
+/** A decimal greater than zero (a weight), as the text the sentence shows and as a number for the comparison. */
+export function positiveDecimal(
+  value: unknown,
+  field: string,
+): { readonly text: string; readonly amount: number } {
+  const text = decimalText(value, field);
+  const amount = Number(text);
+  if (!(amount > 0)) throw new DraftInputError(`${field} must be greater than zero`);
+  return { text, amount };
+}
+
+/** A whole number of at least 1 (a benefit period's number). */
+export function positiveInteger(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new DraftInputError(`${field} must be a whole number of at least 1`);
+  }
+  return value;
+}
+
+/** A value the word table holds; a key it does not (or an inherited one such as "constructor") is a malformed input. */
+export function tableValue<T>(table: Readonly<Record<string, T>>, key: unknown, field: string): T {
+  if (typeof key !== "string" || !Object.hasOwn(table, key)) {
+    throw new DraftInputError(`${field} is not a recognised value`);
+  }
+  return table[key] as T;
+}
+
+/** Whole days from one real `YYYY-MM-DD` date to another (negative when `to` is earlier). Validate both with `isoDate` first. */
+export function daysBetween(from: string, to: string): number {
+  const utc = (day: string): number => {
+    const [year, month, date] = day.split("-").map(Number) as [number, number, number];
+    return Date.UTC(year, month - 1, date);
+  };
+  return Math.round((utc(to) - utc(from)) / 86_400_000);
+}
+
 /** Non-empty text after trimming and dropping trailing periods, so a phrase never ends "..". */
 export function sentenceText(value: unknown, field: string): string {
   const text = typeof value === "string" ? value.trim().replace(/[.\s]+$/u, "") : "";

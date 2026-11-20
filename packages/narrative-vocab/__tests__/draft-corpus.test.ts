@@ -16,17 +16,39 @@ import {
 } from "../src/index";
 
 const LEGACY_ENTRY_COUNT = 23;
+const ROUTINE_ENTRY_COUNT = 25; // narrative-vocab@2026.11.0 (S1)
+const RECERT_ENTRY_COUNT = 11; // narrative-vocab@2026.12.0 (S2)
 const LEGACY_CODES = new Set(VOCABULARY.slice(0, LEGACY_ENTRY_COUNT).map((e) => e.code));
+/** Every draft-wording entry: the 25 of 2026.11.0 and the 11 of 2026.12.0. */
 const NEW_ENTRIES = VOCABULARY.slice(LEGACY_ENTRY_COUNT);
+const ROUTINE_ENTRIES = NEW_ENTRIES.slice(0, ROUTINE_ENTRY_COUNT);
+const RECERT_ENTRIES = NEW_ENTRIES.slice(ROUTINE_ENTRY_COUNT);
+/** The S1 entries the recertification visit drafts from too (S2 tags them for it; their wording is pinned below). */
+const SHARED_WITH_RECERT = new Set([
+  ...["pps_first", "pps_down", "pps_up", "pps_same"].map((s) => `nv.scale.${s}`),
+  ...["esas_first", "esas_down", "esas_up", "esas_same"].map((s) => `nv.scale.${s}`),
+  ...["bp", "hr", "rr", "temp", "spo2", "pain"].map((s) => `nv.vit.${s}`),
+  ...["goal_progress", "goal_listed", "intervention_performed"].map((s) => `nv.cp.${s}`),
+  ...["started", "changed", "discontinued"].map((s) => `nv.med.${s}`),
+]);
 
 describe("corpus release", () => {
   it("is a new release, registered with its own uuid and a date", () => {
-    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.11.0");
+    expect(VOCAB_VERSION).toBe("narrative-vocab@2026.12.0");
     expect(NARRATIVE_VOCAB_RELEASES.map((r) => r.version)).toEqual([
       "narrative-vocab@2026.06.0",
       "narrative-vocab@2026.11.0",
+      "narrative-vocab@2026.12.0",
     ]);
-    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-18");
+    expect(activeNarrativeVocabRelease(VOCAB_VERSION).releasedOn).toBe("2026-11-20");
+  });
+
+  it("keeps the 2026.11.0 release row untouched (a note signed under it pins that id)", () => {
+    expect(NARRATIVE_VOCAB_RELEASES[1]).toEqual({
+      version: "narrative-vocab@2026.11.0",
+      id: "0e92f042-d45f-426c-918a-d3391387dd69",
+      releasedOn: "2026-11-18",
+    });
   });
 
   it("keeps the 2026.06.0 release row untouched (a signed note pins that id)", () => {
@@ -95,46 +117,92 @@ describe("effectiveReviewStatus", () => {
 });
 
 describe("DRAFT_VOCAB_CODES", () => {
-  it("is exactly the codes added in 2026.11.0, none of the 23 earlier ones", () => {
+  it("is exactly the codes added in 2026.11.0 and 2026.12.0, none of the 23 earlier ones", () => {
     expect([...DRAFT_VOCAB_CODES].sort()).toEqual(NEW_ENTRIES.map((e) => e.code).sort());
     for (const code of LEGACY_CODES) expect(DRAFT_VOCAB_CODES.has(code)).toBe(false);
   });
 });
 
 describe("draft entries", () => {
-  it("adds 25 entries after the 23 legacy ones, with unique codes", () => {
-    expect(NEW_ENTRIES).toHaveLength(25);
+  it("adds 25 entries (2026.11.0) then 11 (2026.12.0) after the 23 legacy ones, with unique codes", () => {
+    expect(ROUTINE_ENTRIES).toHaveLength(ROUTINE_ENTRY_COUNT);
+    expect(RECERT_ENTRIES).toHaveLength(RECERT_ENTRY_COUNT);
     expect(new Set(VOCABULARY.map((e) => e.code)).size).toBe(VOCABULARY.length);
     for (const e of NEW_ENTRIES) expect(LEGACY_CODES.has(e.code)).toBe(false);
   });
 
-  it("are tagged only for the RN routine visit", () => {
-    for (const e of NEW_ENTRIES) {
-      expect(e.disciplines).toEqual(["rn"]);
-      expect(e.encounterTypes).toEqual(["routine_visit"]);
+  it("the 25 of 2026.11.0 are tagged for the RN routine visit, and 20 of them also for the recertification visit", () => {
+    for (const e of ROUTINE_ENTRIES) {
+      expect(e.disciplines, e.code).toEqual(["rn"]);
+      expect(e.encounterTypes, e.code).toEqual(
+        SHARED_WITH_RECERT.has(e.code) ? ["routine_visit", "recert_visit"] : ["routine_visit"],
+      );
+    }
+    expect(ROUTINE_ENTRIES.filter((e) => SHARED_WITH_RECERT.has(e.code))).toHaveLength(20);
+  });
+
+  it("the 11 of 2026.12.0 are tagged for the recertification visit, and 7 of them also for the face-to-face visit", () => {
+    const f2fToo = RECERT_ENTRIES.filter((e) => e.encounterTypes.includes("face_to_face"));
+    expect(f2fToo.map((e) => e.code).sort()).toEqual([
+      "nv.rc.pps_baseline_down",
+      "nv.rc.pps_baseline_same",
+      "nv.rc.pps_baseline_up",
+      "nv.rc.weight_down",
+      "nv.rc.weight_first",
+      "nv.rc.weight_same",
+      "nv.rc.weight_up",
+    ]);
+    for (const e of f2fToo) {
+      expect(e.disciplines, e.code).toEqual(["rn", "md", "np"]);
+      expect(e.encounterTypes, e.code).toEqual(["recert_visit", "face_to_face"]);
+    }
+    for (const e of RECERT_ENTRIES.filter((x) => !f2fToo.includes(x))) {
+      expect(e.disciplines, e.code).toEqual(["rn"]);
+      expect(e.encounterTypes, e.code).toEqual(["recert_visit"]);
     }
   });
 
-  it("surface in no other legal (encounter type x discipline) menu", () => {
+  it("surface in no other legal (encounter type x discipline) menu than the three templates that draft", () => {
+    const drafting = new Set([
+      "routine_visit:rn",
+      "recert_visit:rn",
+      "face_to_face:md",
+      "face_to_face:np",
+    ]);
     for (const type of Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]) {
       for (const discipline of ENCOUNTER_DISCIPLINE_RULES[type]) {
-        if (type === "routine_visit" && discipline === "rn") continue;
+        if (drafting.has(`${type}:${discipline}`)) continue;
         const surfaced = entriesFor(type, discipline).filter((e) => !LEGACY_CODES.has(e.code));
         expect(surfaced, `${type}:${discipline}`).toEqual([]);
       }
     }
   });
 
-  it("surface in the RN routine visit menu", () => {
-    const codes = entriesFor("routine_visit", "rn").map((e) => e.code);
-    for (const e of NEW_ENTRIES) expect(codes).toContain(e.code);
+  it("surface in the menus of the templates that draft, and only the entries tagged for each", () => {
+    const codes = (type: EncounterType, discipline: "rn" | "md" | "np"): string[] =>
+      entriesFor(type, discipline)
+        .filter((e) => !LEGACY_CODES.has(e.code))
+        .map((e) => e.code);
+    expect(codes("routine_visit", "rn").sort()).toEqual(ROUTINE_ENTRIES.map((e) => e.code).sort());
+    expect(codes("recert_visit", "rn").sort()).toEqual(
+      [...SHARED_WITH_RECERT, ...RECERT_ENTRIES.map((e) => e.code)].sort(),
+    );
+    for (const discipline of ["md", "np"] as const) {
+      expect(codes("face_to_face", discipline).sort()).toEqual(
+        RECERT_ENTRIES.filter((e) => e.encounterTypes.includes("face_to_face"))
+          .map((e) => e.code)
+          .sort(),
+      );
+    }
   });
 
   it("use only the categories the draft needs", () => {
     const categories = [...new Set(NEW_ENTRIES.map((e) => e.category))].sort();
     expect(categories).toEqual([
+      "benefit_period",
       "care_plan_element",
       "chief_concern",
+      "decline_evidence",
       "medication_change",
       "plan",
       "scale_reading",
@@ -197,8 +265,70 @@ describe("draft wording (neutral, factual, numbers only)", () => {
     ["nv.plan.next_visit", "Next visit is planned for ${next_visit_date}"],
   ];
 
-  it("pins every new phrase byte for byte", () => {
-    expect(wording).toHaveLength(NEW_ENTRIES.length);
+  it("pins every 2026.11.0 phrase byte for byte (S2 only adds a tag to 20 of them)", () => {
+    expect(wording).toHaveLength(ROUTINE_ENTRY_COUNT);
     for (const [code, phrase] of wording) expect(getVocabEntry(code)?.phrase, code).toBe(phrase);
+  });
+
+  // S2 (VN-D32): numbers, dates and the names of recorded facts; no prognosis, eligibility conclusion or life expectancy.
+  const recertWording: ReadonlyArray<readonly [string, string]> = [
+    [
+      "nv.rc.pps_baseline_down",
+      "PPS ${pps_value}%, down from ${pps_baseline_value}% on ${pps_baseline_date}, the first reading of this benefit period",
+    ],
+    [
+      "nv.rc.pps_baseline_up",
+      "PPS ${pps_value}%, up from ${pps_baseline_value}% on ${pps_baseline_date}, the first reading of this benefit period",
+    ],
+    [
+      "nv.rc.pps_baseline_same",
+      "PPS ${pps_value}%, unchanged from ${pps_baseline_value}% on ${pps_baseline_date}, the first reading of this benefit period",
+    ],
+    [
+      "nv.rc.weight_first",
+      "Weight ${weight_value} ${weight_unit} on ${weight_date}, the only weight recorded in this benefit period",
+    ],
+    [
+      "nv.rc.weight_down",
+      "Weight ${weight_value} ${weight_unit} on ${weight_date}, down ${weight_change_percent}% from ${weight_baseline_value} ${weight_unit} on ${weight_baseline_date}",
+    ],
+    [
+      "nv.rc.weight_up",
+      "Weight ${weight_value} ${weight_unit} on ${weight_date}, up ${weight_change_percent}% from ${weight_baseline_value} ${weight_unit} on ${weight_baseline_date}",
+    ],
+    [
+      "nv.rc.weight_same",
+      "Weight ${weight_value} ${weight_unit} on ${weight_date}, unchanged from ${weight_baseline_value} ${weight_unit} on ${weight_baseline_date}",
+    ],
+    [
+      "nv.rc.f2f",
+      "Face-to-face encounter performed by a hospice ${f2f_performer} on ${f2f_performed_on}, attested on ${f2f_attested_on}",
+    ],
+    [
+      "nv.rc.period",
+      "Benefit period ${period_sequence}, ${period_length}-day period from ${period_start} to ${period_end}; day ${period_day} on the date of this visit",
+    ],
+    ["nv.rc.level_of_care", "Level of care on the date of this visit: ${level_of_care}"],
+    [
+      "nv.rc.cti_signed",
+      "Certification of terminal illness for this benefit period signed on ${cti_signed_on}",
+    ],
+  ];
+
+  it("pins every 2026.12.0 phrase byte for byte", () => {
+    expect(recertWording).toHaveLength(RECERT_ENTRY_COUNT);
+    for (const [code, phrase] of recertWording) {
+      expect(getVocabEntry(code)?.phrase, code).toBe(phrase);
+    }
+  });
+
+  it("no 2026.12.0 phrase states a prognosis, an eligibility conclusion or a life expectancy", () => {
+    for (const [code, phrase] of recertWording) {
+      // The certification's own name is the one place the word "terminal" appears: it names a signed document.
+      const text = phrase.toLowerCase().replace("certification of terminal illness", "");
+      for (const word of ["terminal", "eligib", "months", "life expectancy", "qualif", "prognos"]) {
+        expect(text, code).not.toContain(word);
+      }
+    }
   });
 });

@@ -105,6 +105,71 @@ export function baseInputs(): DraftInputs {
   };
 }
 
+/**
+ * S2: the sources the recertification and face-to-face templates read beyond S1's: scale readings (a PPS with the benefit period's first
+ * reading as its baseline), a weight with its baseline, and the benefit period with its attested face-to-face and signed certification.
+ * Day 35 of a 60-day period on the 2026-11-18 service date. A fresh copy every call.
+ */
+export function recertSources(): Pick<DraftInputs, "scaleReadings" | "weight" | "benefitPeriod"> {
+  return {
+    scaleReadings: [
+      {
+        id: "scale-pps-2",
+        scaleType: "pps",
+        value: 50,
+        recordedAt: "2026-11-18T14:10:00Z",
+        previous: { value: 60, recordedOn: "2026-11-10" },
+        baseline: { value: 80, recordedOn: "2026-10-16" },
+        sudRelated: false,
+      },
+      {
+        id: "scale-esas-tiredness",
+        scaleType: "esas_r",
+        label: "tiredness",
+        value: 5,
+        recordedAt: "2026-11-18T14:12:00Z",
+        previous: null,
+        sudRelated: false,
+      },
+      {
+        id: "scale-esas-pain",
+        scaleType: "esas_r",
+        label: "pain",
+        value: 4,
+        recordedAt: "2026-11-18T14:12:00Z",
+        previous: { value: 6, recordedOn: "2026-11-10" },
+        sudRelated: false,
+      },
+    ],
+    weight: {
+      id: "weight-2",
+      recordedAt: "2026-11-18T14:05:00Z",
+      recordedOn: "2026-11-18",
+      value: "118.5",
+      unit: "lb",
+      baseline: { value: "130", recordedOn: "2026-10-16" },
+      sudRelated: false,
+    },
+    benefitPeriod: {
+      id: "period-3",
+      sequence: 3,
+      periodKind: "sixty_day",
+      startDate: "2026-10-15",
+      endDate: "2026-12-13",
+      levelOfCare: "routine_home_care",
+      faceToFace: {
+        id: "f2f-1",
+        performerRole: "hospice_np",
+        performedOn: "2026-10-03",
+        attestedOn: "2026-10-05",
+        sudRelated: false,
+      },
+      certification: { id: "cti-3", signedOn: "2026-10-14", sudRelated: false },
+      sudRelated: false,
+    },
+  };
+}
+
 /** Freeze a value and everything under it. */
 export function deepFreeze<T>(value: T): T {
   if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
