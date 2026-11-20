@@ -150,7 +150,13 @@ describe("the draft service reads its sources one at a time", () => {
     });
 
     const draft = await service.getDraft(
-      { organizationId: "o", userId: "u", roles: ["rn"], membershipId: "m" },
+      {
+        organizationId: "o",
+        userId: "u",
+        roles: ["rn"],
+        membershipId: "m",
+        permissions: new Set(),
+      },
       "00000000-0000-4000-8000-000000000004",
     );
 

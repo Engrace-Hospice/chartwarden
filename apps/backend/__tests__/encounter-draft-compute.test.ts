@@ -440,7 +440,7 @@ describe("snapshotStorePorts: the weights of a recertification or face-to-face d
 
   it("reads nothing for a template that drafts nothing: every store read through it is refused", async () => {
     const store = fakePorts();
-    const ports = await snapshotStorePorts(store, encounter({ discipline: "sw" }), NOW);
+    const ports = await snapshotStorePorts(store, encounter({ discipline: "msw" }), NOW);
     expect(store.organizationTimeZone).not.toHaveBeenCalled();
     expect(store.weightReadings).not.toHaveBeenCalled();
     await expect(ports.latestVitals(encounter().id, AS_OF)).rejects.toThrow(

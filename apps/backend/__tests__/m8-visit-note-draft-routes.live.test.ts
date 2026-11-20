@@ -453,12 +453,7 @@ describe.skipIf(!DB_URL)(
       resetAbacRegistry();
       limitedA = await seedMember(ORG_A, "limited-a");
       // The draft is compiled from the care plan, medication orders and scored scales, so both routes need those domains' read keys too.
-      const DOMAIN_READS = [
-        "care_plan.read",
-        "prescribing.read",
-        "assessment.read_trend",
-        "admission.read",
-      ];
+      const DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
       const grant = (orgId: string, member: Member, permissionKeys: string[]) => ({
         orgId,
         userId: member.userId,
@@ -1301,6 +1296,7 @@ describe.skipIf(!DB_URL)(
           userId: orgs.A.author.userId,
           roles: ["rn"],
           membershipId: orgs.A.author.membershipId,
+          permissions: new Set<string>(), // a routine visit's draft needs none of M6's read keys
         };
         await expect(service.getDraft(caller, theirs.encounterId)).rejects.toMatchObject({
           code: "NOT_FOUND",
@@ -1351,6 +1347,7 @@ describe.skipIf(!DB_URL)(
               userId: orgs.A.author.userId,
               roles: ["rn"],
               membershipId: orgs.B.author.membershipId,
+              permissions: new Set<string>(),
             },
             f.encounterId,
             "plan",
@@ -1479,6 +1476,7 @@ describe.skipIf(!DB_URL)(
         userId: org.author.userId,
         roles,
         membershipId: org.author.membershipId,
+        permissions: new Set<string>(),
       });
       const auditOf = (org: OrgFixture) => ({
         organizationId: org.orgId,
@@ -5772,6 +5770,7 @@ describe.skipIf(!DB_URL)(
                   userId: who.userId,
                   roles: who.roles,
                   membershipId: who.membershipId,
+                  permissions: new Set<string>(),
                 },
                 f.encounterId,
                 addendumId,

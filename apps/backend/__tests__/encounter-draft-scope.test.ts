@@ -139,6 +139,8 @@ describe("the draft routes for a template the corpus does not draft", () => {
     userId: "00000000-0000-4000-8000-0000000000bb",
     roles: ["rn"],
     membershipId: "00000000-0000-4000-8000-0000000000aa",
+    // none of these templates draft anything, so none needs M6's read keys
+    permissions: new Set<string>(),
   };
   const AUDIT = { organizationId: "o", userId: "u", correlationId: "c" } as const;
   const ENCOUNTER_ID = "00000000-0000-4000-8000-000000000004";

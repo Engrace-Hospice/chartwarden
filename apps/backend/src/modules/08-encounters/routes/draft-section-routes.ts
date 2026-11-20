@@ -54,9 +54,11 @@ export interface DraftSectionRouteDeps {
  * The caller as the service sees it: the server-assembled session plus the permissions it resolves to. The service, which knows the template,
  * decides which of the admission's read keys (M6) the draft of that template needs (`assertMayReadAdmissionFacts`).
  */
-async function callerOf(
-  actor: Pick<DraftCaller, "organizationId" | "userId" | "roles" | "membershipId">,
-): Promise<DraftCaller> {
+async function callerOf<Membership extends string | null>(
+  actor: Pick<DraftCaller, "organizationId" | "userId" | "roles"> & {
+    readonly membershipId: Membership;
+  },
+): Promise<DraftCaller & { readonly membershipId: Membership }> {
   return {
     organizationId: actor.organizationId,
     userId: actor.userId,

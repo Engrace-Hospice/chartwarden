@@ -15,6 +15,8 @@ const caller = {
   userId: "00000000-0000-4000-8000-0000000000bb",
   roles: ["rn"],
   membershipId: AUTHOR,
+  // a routine visit's draft needs none of M6's read keys (`assertMayReadAdmissionFacts`)
+  permissions: new Set<string>(),
 };
 const signedNote = draftEncounterRow({ status: "signed" });
 const amending = (over: Partial<Parameters<typeof memoryRunInOrg>[0] & object> = {}) => ({
