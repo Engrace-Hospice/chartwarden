@@ -1,8 +1,8 @@
 # ChartWarden — Workflow 04: Visit-Note Drafting — Redesign
 
 **Repository destination:** `docs/implementation/04-visit-note-drafting-redesign.md`
-**Status:** PROPOSED. The owner locked the decisions below in a design session on 2026-11-18. Nothing here is built, and this change ships no code.
-**Decision record:** [ADR-0114](../adr/ADR-0114-deterministic-visit-note-drafting.md) (Proposed).
+**Status:** ACCEPTED by the owner on 2026-11-19. The owner locked the decisions below in a design session on 2026-11-18. Slice 1 is built behind the per-tenant switch, default off; the later slices are not built.
+**Decision record:** [ADR-0114](../adr/ADR-0114-deterministic-visit-note-drafting.md) (Accepted, 2026-11-19).
 **Vocabulary:** [`CONTEXT.md`](../../CONTEXT.md). Terms in **bold** below are defined there.
 **Parent workflow:** [Workflow 04](./ChartWarden_Workflow_04_Visit_Encounter_Documentation.md), current state in [04-visit-encounter-current-state-audit.md](./04-visit-encounter-current-state-audit.md).
 **Decision IDs:** `VN-D1`…`VN-D30`. The prefix keeps them apart from the M8 spec's own D1-D13, which code comments cite.
