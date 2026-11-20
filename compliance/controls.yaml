@@ -1098,6 +1098,24 @@ controls:
       # (CW-AC-48); packages/auth/src/roles/note-closure-grants.ts is their single source.
       - file: packages/auth/src/roles/note-closure-grants.ts
 
+  - id: CW-AC-53
+    title: The discipline-plan permissions a tenant's RN roles hold by default are least privilege (the RBAC half only; which patient is the care-team scope, caseload_or_scope and discipline_scope, is unchanged) - rn_case_manager and rn hold read, read_summary, author and finalize, and sign only for rn_case_manager, because the version's sealed signer quorum (the Aide POC RN case manager slot, the MSW and chaplain slots) matches the caller's role keys and plain rn fills none - and never the system keys (IDG revise, read internal), a supervisor, the director of nursing or an external role. Coverage is the roles a tenant already has when migration 1526 runs; neither role is a template, so a new tenant gets nothing until an administrator creates the roles, a role created later receives nothing, and a tenant may still remove a key from a role it owns
+    hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.308(a)(4)(ii)(C)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: implemented
+    evidence:
+      # Re-runs migration 1526 over staged roles in a real database: rn and rn_case_manager get exactly their keys (rn no
+      # sign), a supervisor, an external role and a platform template get none, existing grants survive, a second run adds
+      # nothing and each insert is audited under the migration's correlation id.
+      - script: test:m3:role-floor:live
+      # The single source of the grants, the backfill migration (insert-only, idempotent) and the pin tests: the constant
+      # and the migration are identical, only the five keys go to only the two roles, and the sign grant equals the roles a
+      # D11 signer slot accepts through the same actorHoldsSignerRole check signVersion uses (plain rn fills none).
+      - file: packages/auth/src/roles/discipline-plan-grants.ts
+      - file: packages/db/migrations/1526_m15_discipline_plan_default_grants.sql
+      - file: packages/auth/__tests__/discipline-plan-grants.test.ts
+      - file: apps/backend/__tests__/discipline-plan-grants-pin.test.ts
+
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
     hipaa: ["164.312(b)", "164.312(c)(1)"]

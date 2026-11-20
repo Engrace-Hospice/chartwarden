@@ -70,6 +70,10 @@ export {
 } from "./note-closure-grants";
 export { CARE_PLAN_DEFAULT_GRANTS, CARE_PLAN_GRANTEE_ROLE_KEYS } from "./care-plan-grants";
 export {
+  DISCIPLINE_PLAN_DEFAULT_GRANTS,
+  DISCIPLINE_PLAN_GRANTEE_ROLE_KEYS,
+} from "./discipline-plan-grants";
+export {
   PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
   PLATFORM_OPS_ROLE_KEY,
   PLATFORM_GRANTABLE_ROLE_KEYS,
