@@ -24,8 +24,7 @@
 // `LevelOfCareReader.getCurrentLevelOfCare` applies). Sound for the one consumer of the field
 // (`toActiveElectionPeriod`, which M23 only reads for the period containing "now"); an admission with
 // NO LOC row cannot answer it and throws the gap error rather than defaulting to routine home care.
-import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
-import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { type DbClient, schema, serviceDateForOrganization } from "@chartwarden/db";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type {
   AdmissionSummary,
@@ -828,9 +827,10 @@ async function orgLocalDateN(
   at: Date | string | null,
 ): Promise<string | null> {
   if (at === null) return null;
-  return localDateInTimeZone(
-    at instanceof Date ? at : new Date(at),
-    await organizationTimezone(tx, organizationId),
+  return serviceDateForOrganization(
+    tx,
+    organizationId,
+    (at instanceof Date ? at : new Date(at)).toISOString(),
   );
 }
 
