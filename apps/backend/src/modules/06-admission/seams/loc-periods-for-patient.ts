@@ -31,6 +31,8 @@ export interface PatientLevelOfCarePeriod {
   readonly endedAt: Date | null;
   /** M40 facility the period is sited at (IRC/GIP), else null. */
   readonly facilityId: string | null;
+  /** M37-confirmed bed assignment required to attribute an inclusive death-date IRC/GIP period. */
+  readonly ipuBedAssignmentId: string | null;
 }
 
 /**
@@ -69,6 +71,7 @@ export async function levelOfCarePeriodsForPatientInTransaction(
       effectiveAt: LOC.effectiveAt,
       endedAt: LOC.endedAt,
       facilityId: LOC.facilityId,
+      ipuBedAssignmentId: LOC.ipuBedAssignmentId,
     })
     .from(LOC)
     .innerJoin(ADM, eq(ADM.id, LOC.admissionId))
@@ -100,6 +103,7 @@ export function levelOfCarePeriodsForPatientForOrg(
         effectiveAt: LOC.effectiveAt,
         endedAt: LOC.endedAt,
         facilityId: LOC.facilityId,
+        ipuBedAssignmentId: LOC.ipuBedAssignmentId,
       })
       .from(LOC)
       .innerJoin(ADM, eq(ADM.id, LOC.admissionId))

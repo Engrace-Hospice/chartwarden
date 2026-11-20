@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type HospiceClaimLineForSnapshot,
   hospiceClaimLineSnapshotIssue,
+  inclusiveDeathLocPeriodId,
 } from "../src/modules/24-billing-medicaid/claim-hospice-line-snapshot";
 import {
   arrangementIssue,
@@ -598,6 +599,28 @@ describe("M24 hospice claim lines remain aligned with current M6 periods", () =>
         inclusiveEndDate: "2026-02-10",
       }),
     ).toMatchObject({ code: "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE" });
+  });
+
+  it("does not extend an earlier LOC through death when a later period starts that date and remains open", () => {
+    expect(
+      inclusiveDeathLocPeriodId(
+        [
+          {
+            id: LOC_PERIOD,
+            levelOfCare: "routine_home_care",
+            effectiveAt: new Date("2026-02-01T00:00:00.000Z"),
+            endedAt: new Date("2026-02-10T00:00:00.000Z"),
+          },
+          {
+            id: LOC_PERIOD_2,
+            levelOfCare: "continuous_home_care",
+            effectiveAt: new Date("2026-02-10T00:00:00.000Z"),
+            endedAt: null,
+          },
+        ],
+        "2026-02-10",
+      ),
+    ).toBeNull();
   });
 
   it("refuses a LOC correction that makes a stored line's level or revenue code stale", () => {

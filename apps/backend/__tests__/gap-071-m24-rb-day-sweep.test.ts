@@ -57,6 +57,52 @@ describe("deriveRbDays", () => {
     expect(out.every((r) => r.locOfDay === "RHC" && r.locPeriodIdSnapshot === "p1")).toBe(true);
   });
 
+  it("materializes an ended terminal RHC period on the recorded death date only", () => {
+    const terminal = period("terminal", "routine_home_care", "2026-05-01", "2026-05-03");
+    const ordinary = deriveRbDays({
+      arrangement,
+      periods: [terminal],
+      fromDay: d("2026-05-01"),
+      toDay: d("2026-05-03"),
+      existingDays: new Set(),
+    });
+    const atDeath = deriveRbDays({
+      arrangement,
+      periods: [terminal],
+      fromDay: d("2026-05-01"),
+      toDay: d("2026-05-03"),
+      existingDays: new Set(),
+      inclusiveEndDate: "2026-05-03",
+    });
+
+    expect(ordinary.map((r) => r.serviceDate.toISOString().slice(0, 10))).toEqual([
+      "2026-05-01",
+      "2026-05-02",
+    ]);
+    expect(
+      atDeath.map((r) => [r.serviceDate.toISOString().slice(0, 10), r.locPeriodIdSnapshot]),
+    ).toEqual([
+      ["2026-05-01", "terminal"],
+      ["2026-05-02", "terminal"],
+      ["2026-05-03", "terminal"],
+    ]);
+  });
+
+  it("uses a later same-day LOC period instead of extending the earlier period through death", () => {
+    const out = deriveRbDays({
+      arrangement,
+      periods: [
+        period("earlier", "routine_home_care", "2026-05-01", "2026-05-03"),
+        period("current", "continuous_home_care", "2026-05-03", null),
+      ],
+      fromDay: d("2026-05-03"),
+      toDay: d("2026-05-03"),
+      existingDays: new Set(),
+      inclusiveEndDate: "2026-05-03",
+    });
+    expect(out.map((r) => [r.locOfDay, r.locPeriodIdSnapshot])).toEqual([["CHC", "current"]]);
+  });
+
   it("excludes GIP and respite days (mid-month transitions), the new period winning on its start day", () => {
     const out = deriveRbDays({
       arrangement,

@@ -28,6 +28,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { DegradedError } from "@chartwarden/types";
 import type { PatientCoverageReader } from "@chartwarden/types";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { inclusiveDeathLocPeriodId } from "../claim-hospice-line-snapshot";
 import type { EligibilityWatchdogStore, RbDaySweepStore } from "./m24-jobs";
 
 const RB = schema.rbArrangement;
@@ -59,6 +60,7 @@ export interface RbSweepLocPeriod {
   readonly effectiveAt: Date;
   readonly endedAt: Date | null;
   readonly facilityId: string | null;
+  readonly ipuBedAssignmentId?: string | null;
 }
 
 /** M6 LOC periods for a patient overlapping a range (bound at the composition root; org-explicit). */
@@ -135,12 +137,32 @@ export function deriveRbDays(input: {
   readonly fromDay: number;
   readonly toDay: number;
   readonly existingDays: ReadonlySet<number>;
+  /** Death is the sole M6 terminal-date exception; ordinary LOC end dates remain exclusive. */
+  readonly inclusiveEndDate?: string | null;
 }): readonly DerivedRbDay[] {
   const { arrangement, periods, fromDay, toDay, existingDays } = input;
+  const inclusiveEndDate = input.inclusiveEndDate ?? null;
+  const inclusiveEndPeriodId = inclusiveDeathLocPeriodId(
+    periods.map((p) => ({
+      id: p.periodId,
+      levelOfCare: p.levelOfCare,
+      effectiveAt: p.effectiveAt,
+      endedAt: p.endedAt,
+      ipuBedAssignmentId: p.ipuBedAssignmentId,
+    })),
+    inclusiveEndDate,
+  );
+  const inclusiveEndDay = inclusiveEndDate ? Date.parse(`${inclusiveEndDate}T00:00:00.000Z`) : null;
   const out: DerivedRbDay[] = [];
   for (let day = fromDay; day <= toDay; day += MS_PER_DAY) {
     if (existingDays.has(day)) continue;
-    const period = coveringPeriod(periods, day);
+    // Prefer the ordinary half-open owner. If the death date falls exactly on the terminal period's end,
+    // the claim snapshot's shared rule allows that one terminal period to own the date.
+    const period =
+      coveringPeriod(periods, day) ??
+      (day === inclusiveEndDay && inclusiveEndPeriodId
+        ? periods.find((p) => p.periodId === inclusiveEndPeriodId)
+        : undefined);
     if (!period) continue;
     const base = { serviceDate: new Date(day), locPeriodIdSnapshot: period.periodId };
     switch (period.levelOfCare) {
@@ -251,7 +273,12 @@ export function buildDrizzleRbDaySweepStore(deps: RbDaySweepStoreDeps): RbDaySwe
             tx,
             organizationId,
             arr.patientId,
-            { from: new Date(fromDay), to: new Date(safeToDay + MS_PER_DAY - 1) },
+            // Include a terminal LOC row that ends exactly at the first arrangement day. It may own the
+            // M5 death date under the explicit inclusive-death exception below.
+            {
+              from: new Date(Math.max(0, fromDay - MS_PER_DAY)),
+              to: new Date(safeToDay + MS_PER_DAY - 1),
+            },
           );
           if (periods.length === 0) return 0;
           // Serialize materialization with claim assembly and arrangement edits. The initial list/read is
@@ -282,6 +309,7 @@ export function buildDrizzleRbDaySweepStore(deps: RbDaySweepStoreDeps): RbDaySwe
             fromDay,
             toDay: safeToDay,
             existingDays: new Set(existing.map((r) => utcDayStart(r.serviceDate))),
+            inclusiveEndDate: lifecycle.deceasedDate,
           });
           if (derived.length === 0) return 0;
           const inserted = await tx

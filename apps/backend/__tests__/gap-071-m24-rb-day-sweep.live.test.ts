@@ -37,6 +37,7 @@ const PATIENT_B = "55555555-5555-5555-5555-555555555555";
 const NF = "66666666-6666-6666-6666-666666666666";
 const LOCKED_PATIENT = "77777777-7777-7777-7777-777777777777";
 const DECEASED_PATIENT = "88888888-8888-4888-8888-888888888888";
+const DEATH_START_PATIENT = "99999999-9999-4999-8999-999999999999";
 
 describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-071)", () => {
   let admin: Client;
@@ -215,7 +216,7 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
 
   it("caps materialization at the locked M5 date of death, including the date of death", async () => {
     await seedAdmissionWithLoc(ORG_A, DECEASED_PATIENT, [
-      ["routine_home_care", "2026-05-01T08:00:00Z", null],
+      ["routine_home_care", "2026-05-01T08:00:00Z", "2026-05-03T00:00:00Z"],
     ]);
     const arrangement = await seedArrangement(ORG_A, DECEASED_PATIENT, "2026-05-01");
     await admin.query(
@@ -227,6 +228,27 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
     const rows = await dayRows(ORG_A, DECEASED_PATIENT);
     expect(rows.map((r) => r.d)).toEqual(["2026-05-01", "2026-05-02", "2026-05-03"]);
     expect(rows.every((r) => r.arr === arrangement && r.status === "billable")).toBe(true);
+  });
+
+  it("includes an M6 period ending on the first arrangement date when that is the death date", async () => {
+    await seedAdmissionWithLoc(ORG_A, DEATH_START_PATIENT, [
+      ["routine_home_care", "2026-05-01T08:00:00Z", "2026-05-03T00:00:00Z"],
+    ]);
+    const arrangement = await seedArrangement(ORG_A, DEATH_START_PATIENT, "2026-05-03");
+    await admin.query(
+      "UPDATE patient SET status='deceased', deceased_date='2026-05-03' WHERE organization_id=$1 AND id=$2",
+      [ORG_A, DEATH_START_PATIENT],
+    );
+
+    expect(await sweepStore().sweepPendingDays(ORG_A, "2026-05-07")).toBe(1);
+    const rows = await dayRows(ORG_A, DEATH_START_PATIENT);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      d: "2026-05-03",
+      arr: arrangement,
+      status: "billable",
+      loc_of_day: "RHC",
+    });
   });
 
   it("holds the admission lock from the LOC snapshot through R&B day materialization", async () => {
