@@ -2299,7 +2299,7 @@ describe.skipIf(!DB_URL)(
         });
       });
 
-      describe("gate check 1: a confirmed drafted section satisfies its required section (project-lead decision)", () => {
+      describe("gate check 1: a confirmed drafted section satisfies its required section (owner-confirmed 2026-11-19)", () => {
         const withoutPlan = {
           sections: requireSelections.sections.filter((s) => s.sectionId !== "plan"),
         };

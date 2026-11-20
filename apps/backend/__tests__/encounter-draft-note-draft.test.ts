@@ -252,7 +252,7 @@ describe("assertResolved: sign refuses a note whose drafted sections are not all
   });
 });
 
-describe("confirmedSectionIds: what gate check 1 counts as populated (project-lead decision)", () => {
+describe("confirmedSectionIds: what gate check 1 counts as populated (owner-confirmed 2026-11-19)", () => {
   it("is absent when the draft is off, so check 1 is as it was", async () => {
     expect(confirmedSectionIds(null)).toBeUndefined();
     const { result } = await read({ enabled: false });

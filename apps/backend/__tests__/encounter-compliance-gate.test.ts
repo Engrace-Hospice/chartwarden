@@ -519,7 +519,7 @@ describe("§2.6 Layer-3 gate — check 13, every drafted section is resolved (AD
   });
 });
 
-describe("§2.6 Layer-3 gate — check 1 counts a confirmed drafted section as populated (ADR-0114, project-lead decision)", () => {
+describe("§2.6 Layer-3 gate — check 1 counts a confirmed drafted section as populated (ADR-0114, owner-confirmed 2026-11-19)", () => {
   const REQUIRED = ["assessment", "chief_concern", "plan", "vitals_review"] as const;
   const base = {
     encounterType: "routine_visit",
