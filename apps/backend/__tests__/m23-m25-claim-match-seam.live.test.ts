@@ -223,6 +223,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M23->M25 ClaimSubmissionReader seam — LIVE
       interchangeControlNumber: isa,
       transactionSetControlNumber: st,
       paymentMethod: "eft",
+      checkOrEftTraceNumber: "SYNTHETIC-EFT-TRACE-0001",
       totalPaymentAmount: 450,
       productionDate: "2026-02-10",
       claims: [

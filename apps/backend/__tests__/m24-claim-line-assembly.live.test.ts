@@ -1288,7 +1288,7 @@ describe.skipIf(!DB_URL)(
             admissionId: ESC_ADMISSION,
             providerEntityId: peId,
             serviceFrom: "2026-03-01",
-            serviceTo: "2026-03-31",
+            serviceTo: "2026-03-30",
             kind: "hospice_only",
           },
         );
@@ -1296,7 +1296,7 @@ describe.skipIf(!DB_URL)(
           "SELECT level_of_care, units FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
           [claim.id],
         );
-        expect(lines.rows).toEqual([{ level_of_care: "RHC", units: 31 }]);
+        expect(lines.rows).toEqual([{ level_of_care: "RHC", units: 30 }]);
       });
     });
     describe("S11 (#711): submit refused for states without a Medicaid gateway", () => {
