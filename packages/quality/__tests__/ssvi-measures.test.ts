@@ -144,13 +144,13 @@ describe("SSVI binary metrics — the point is earned on the CONCERN side, inclu
     expect(pt(93)).toBe(0);
   });
 
-  it("metric 5: ≥ 33.3% of discharges with LOS > 180 days", () => {
+  it("metric 5: ≥ 33.3% of discharges with LOS of 180 days or more", () => {
     const pt = (n: number) =>
       ssviPointsOf(
         computeSsviMetric05({
           ...BASE,
           totalDischarges: 1000,
-          dischargesWithLosOver180: n,
+          dischargesWithLos180OrMore: n,
           rule: r.metric_05,
         }),
       );

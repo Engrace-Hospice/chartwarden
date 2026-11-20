@@ -31,7 +31,7 @@ const LATE_LIVE_DISCHARGE_DAY_CUTOFF = 180;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/** SSVI metric 5 (CMS-1851-F Table 9) — "length of stay over 180 days": strictly more than this many days. */
+/** SSVI metric 5 (CMS SSVI Overview) — "LOS of 180 days or more": this many days or more. */
 const SSVI_LONG_STAY_DAYS = 180;
 
 /** SSVI metric 8 — a live discharge "returns to the same hospice in seven days": readmitted within this many days. */
@@ -112,12 +112,19 @@ export function createDischargeReader(db: DbClient): DischargeReader {
             ),
           );
 
+        // CMS: a transfer (status 50/51) is not a discharge for metrics 4 and 5, but it IS a live discharge for
+        // metric 8 (so a transfer that returns is caught).
         const live = rows.filter((r) => r.dischargeType !== "death");
-        let dischargesWithLosOver180 = 0;
-        for (const r of rows) {
+        const settled = rows.filter((r) => r.dischargeType !== "transfer");
+        const liveSettled = settled.filter((r) => r.dischargeType !== "death");
+        // ponytail: LOS here is this admission only (admission date to discharge date). CMS counts LIFETIME hospice
+        // days across hospices and one final discharge per beneficiary per year, so a readmitted or prior-agency
+        // patient is under-counted. There is no prior-hospice-days source (it needs the CMS claims feed).
+        let dischargesWithLos180OrMore = 0;
+        for (const r of settled) {
           if (r.admissionAt === null) continue; // never guessed — see liveDischargeTimingCounts
-          if (daysSinceAdmission(r.admissionAt, r.effectiveAt) > SSVI_LONG_STAY_DAYS)
-            dischargesWithLosOver180 += 1;
+          if (daysSinceAdmission(r.admissionAt, r.effectiveAt) >= SSVI_LONG_STAY_DAYS)
+            dischargesWithLos180OrMore += 1;
         }
 
         // Readmissions: the same patient's OTHER admissions to this org, admitted on or after the discharge
@@ -142,9 +149,10 @@ export function createDischargeReader(db: DbClient): DischargeReader {
         }
 
         return {
-          totalDischarges: rows.length,
-          liveDischarges: live.length,
-          dischargesWithLosOver180,
+          totalDischarges: settled.length,
+          liveDischarges: liveSettled.length,
+          dischargesWithLos180OrMore,
+          liveDischargesIncludingTransfers: live.length,
           liveDischargesReadmittedWithin7Days,
         };
       });

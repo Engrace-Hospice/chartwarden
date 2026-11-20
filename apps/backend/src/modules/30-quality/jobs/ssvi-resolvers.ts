@@ -175,12 +175,13 @@ export async function resolveSsviMeasureInput(
         return {
           ...base,
           totalDischarges: c.totalDischarges,
-          dischargesWithLosOver180: c.dischargesWithLosOver180,
+          dischargesWithLos180OrMore: c.dischargesWithLos180OrMore,
           rule: rule("metric_05"),
         };
+      // Metric 8's live population counts transfers (CMS), unlike metric 4's.
       return {
         ...base,
-        liveDischarges: c.liveDischarges,
+        liveDischarges: c.liveDischargesIncludingTransfers,
         liveDischargesReadmittedWithin7Days: c.liveDischargesReadmittedWithin7Days,
         rule: rule("metric_08"),
       };

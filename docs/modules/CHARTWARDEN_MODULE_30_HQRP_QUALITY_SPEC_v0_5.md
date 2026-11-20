@@ -43,7 +43,14 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
   `ssvi-cms-golden.test.ts` reproduces CMS's published point flags and spending scores from a public sample
   (no CCN, no PHI) and pins the web panel's mirrored cut text to the table. See
   `docs/research/FY2027_HOSPICE_COP_RESEARCH.md` §7 for the source and the definition notes (metric 7 denominator,
-  skilled-visit disciplines, metric 5/4/8 discharge handling).
+  skilled-visit disciplines, metric 5/4/8 discharge handling). Inputs aligned to the same CMS definitions:
+  metric 5 counts a length of stay of 180 days or more (was over 180; field `dischargesWithLos180OrMore`);
+  metrics 4 and 5 exclude TRANSFER discharges (CMS status 50/51) from numerator and denominator while metric 8
+  includes them in its live population (`DischargeReader.ssviDischargeCounts` gains
+  `liveDischargesIncludingTransfers`); `skilledVisitDaysForOrg` counts PT/OT/SLP visits as skilled for metrics 3
+  and 7. Known ceiling: metric 5's length of stay is this admission only, whereas CMS counts lifetime hospice
+  days across hospices and one final discharge per beneficiary per year — there is no prior-hospice-days source
+  (it needs the CMS claims feed), so a readmitted or prior-agency patient is under-counted.
 - **Implementation note (SSVI family, FY2027, 2026-10-06)** — new `ssvi` measure family (CMS-1851-F §III.B.2,
   Table 9): nine metrics (`ssvi_metric_01`…`09`) + `ssvi_composite`, catalog `activatesFy: 2027`, calculators in
   `packages/quality/src/measures/ssvi/` (the HCI family layout: per-metric files, `thresholds.ts`,
@@ -55,7 +62,8 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
   the suppressed row records `partialScoreLowerBound` / `maxPossibleScore`. Inputs: M6 `LevelOfCarePeriodReader`
   (1, 3, 6, 7), new `DischargeReader.ssviDischargeCounts` (4, 5, 8), M23 `ClaimLineReader` rollup's new
   `rhcNursingFacilityDays` (Q5003/Q5004 on 0651; metric 2), new M8 `SignedEncountersReader.skilledVisitDaysForOrg`
-  (RN/LPN/MSW; the encounter model has no therapy discipline — metrics 3 and 7 may under-count). Worker routing in
+  (RN/LPN/MSW at first, with PT/OT/SLP added 2026-11-20 — the encounter model always had the therapy disciplines;
+  the reader's filter was the gap). Worker routing in
   `apps/backend/src/modules/30-quality/jobs/ssvi-resolvers.ts`. The SSVI is CMS-calculated and published with no
   hospice submission, preview or reconsideration, is not an HQRP or Care Compare measure, and does NOT replace
   the HCI — everything shown is labelled an INTERNAL ESTIMATE. Quality hub: an SSVI panel (score or range,

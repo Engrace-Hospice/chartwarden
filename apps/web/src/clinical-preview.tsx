@@ -1379,7 +1379,7 @@ const ssviRows = [
   ["ssvi_metric_04", "SSVI 4 — Live-discharge share (internal estimate)", ssviValue(21, 96, true)],
   [
     "ssvi_metric_05",
-    "SSVI 5 — Discharges with length of stay over 180 days (internal estimate)",
+    "SSVI 5 — Discharges with length of stay of 180 days or more (internal estimate)",
     ssviValue(36, 96, false),
   ],
   [

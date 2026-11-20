@@ -220,7 +220,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     periodKind: ROLLING,
     activatesFy: 2027,
     calculatorVersion: "0.1.0",
-    description: "SSVI 5 — Discharges with length of stay over 180 days (internal estimate)",
+    description: "SSVI 5 — Discharges with length of stay of 180 days or more (internal estimate)",
   },
   {
     code: "ssvi_metric_06",

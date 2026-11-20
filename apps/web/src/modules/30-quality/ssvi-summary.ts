@@ -47,7 +47,7 @@ export const SSVI_METRICS: readonly {
   { code: "ssvi_metric_04", name: "Live-discharge share", cut: "≥ 47.0%", maxPoints: 1 },
   {
     code: "ssvi_metric_05",
-    name: "Discharges with LOS over 180 days",
+    name: "Discharges with LOS of 180 days or more",
     cut: "≥ 33.3%",
     maxPoints: 1,
   },

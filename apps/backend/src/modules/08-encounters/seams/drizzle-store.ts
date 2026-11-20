@@ -65,8 +65,8 @@ const EVER_SIGNED_STATUSES = ["signed", "cosign_pending", "cosigned", "voided"] 
 /** The `encounter_discipline` values that are SKILLED NURSING for the CMS HCI indicators (2, 8, 9). */
 const SKILLED_NURSING_DISCIPLINES = ["rn", "lpn"] as const;
 
-/** SSVI "skilled visit" disciplines (nursing + MSW; the encounter model has no therapy discipline). */
-const SSVI_SKILLED_VISIT_DISCIPLINES = ["rn", "lpn", "msw"] as const;
+/** SSVI "skilled visit" disciplines (CMS SSVI Overview: nursing (RN/LPN), medical social services, or therapy). */
+const SSVI_SKILLED_VISIT_DISCIPLINES = ["rn", "lpn", "msw", "pt", "ot", "slp"] as const;
 
 /** Encounter statuses that count as a delivered, attested visit (`draft`/`finalized`/`voided` do not). */
 const SIGNED_ENCOUNTER_STATUSES = ["signed", "cosigned"] as const;

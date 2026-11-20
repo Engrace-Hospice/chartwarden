@@ -8,7 +8,7 @@ import type { SsviPointRule } from "./thresholds";
 
 /** Already-fetched counts for SSVI metric 8. */
 export interface SsviMetric08Input extends ComputeMeasureInput {
-  /** Live discharges in the window (denominator). */
+  /** Live discharges in the window, transfers included as CMS counts them for this metric (denominator). */
   readonly liveDischarges: number;
   /** Of those, readmitted to this hospice within 7 days (numerator). */
   readonly liveDischargesReadmittedWithin7Days: number;
