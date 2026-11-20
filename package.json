@@ -311,6 +311,7 @@
     "test:m9:series-as-of:live": "vitest run apps/backend/__tests__/m9-series-as-of.live.test.ts",
     "test:m8:visit-note-drafting:live": "vitest run apps/backend/__tests__/m8-visit-note-drafting.live.test.ts",
     "test:m8:visit-note-draft-routes:live": "vitest run apps/backend/__tests__/m8-visit-note-draft-routes.live.test.ts",
+    "test:m8:visit-note-drafting-recert:live": "vitest run apps/backend/__tests__/m8-visit-note-drafting-recert.live.test.ts",
     "test:m12:link-summary:live": "vitest run apps/backend/__tests__/m12-link-summary.live.test.ts",
     "test:m2:consent-revoked:live": "vitest run apps/backend/__tests__/m2-consent-revoked.live.test.ts",
     "test:m37:admission-discharged-cascade:live": "vitest run apps/backend/__tests__/m37-admission-discharged-cascade.live.test.ts",
