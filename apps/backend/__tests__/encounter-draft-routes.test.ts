@@ -50,7 +50,12 @@ const SECTION = {
 
 // The draft is computed from the care plan (M7), medication orders (M12) and scored scales (M9) through seams that apply no permission
 // check of their own, so both draft routes ask for each source domain's read key on top of the encounter's (the keys of the sibling routes).
-const DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
+const DOMAIN_READS = [
+  "care_plan.read",
+  "prescribing.read",
+  "assessment.read_trend",
+  "admission.read",
+];
 const without = (key: string) => DOMAIN_READS.filter((k) => k !== key);
 const PERMISSION_SEED = [
   { userId: "author_1", permissions: ["encounter.read", "encounter.author", ...DOMAIN_READS] },

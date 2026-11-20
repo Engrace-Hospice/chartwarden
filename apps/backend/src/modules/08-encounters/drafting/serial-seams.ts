@@ -26,6 +26,11 @@ export function serialSeams(seams: DraftSeamPorts): DraftSeamPorts {
     carePlanAsOf: inTurn(seams.carePlanAsOf.bind(seams)),
     scaleSeries: inTurn(seams.scaleSeries.bind(seams)),
     medicationChangesBetween: inTurn(seams.medicationChangesBetween.bind(seams)),
+    // S2: the four module-6 reads of a recertification draft take their turn too.
+    electionPeriods: inTurn(seams.electionPeriods.bind(seams)),
+    levelOfCareOn: inTurn(seams.levelOfCareOn.bind(seams)),
+    attestedFaceToFace: inTurn(seams.attestedFaceToFace.bind(seams)),
+    activeCertification: inTurn(seams.activeCertification.bind(seams)),
     part2DisclosureAllowed: inTurn(seams.part2DisclosureAllowed.bind(seams)),
   };
 }

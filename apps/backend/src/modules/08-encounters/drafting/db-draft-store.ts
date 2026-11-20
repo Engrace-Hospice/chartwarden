@@ -2,7 +2,7 @@
 // store ports the draft computation reads (design §3.2 "Input rules") plus the confirmation and care-plan-link access. Every query
 // runs on the caller's `withOrgContext` transaction, so RLS scopes each one to the tenant.
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
-import { and, desc, eq, inArray, lt, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, or } from "drizzle-orm";
 import type { HearthnoteEnvelopeCipher } from "../hearthnote-crypto";
 import { ASSEMBLY_PATIENT_SLOT, toSelectionState } from "../routes/service";
 import { openStoredProse, sectionHasOwnText, storedSections } from "../selection-tree";
@@ -10,7 +10,7 @@ import { linkElements, removeElements, removedCarePlanElementIds } from "./care-
 import { carePlanElementsOf } from "./care-plan-refs";
 import { readConfirmations, upsertConfirmation } from "./confirmations";
 import type { DraftStore } from "./draft-store";
-import type { DraftEncounter } from "./ports";
+import type { DraftEncounter, WeightRow } from "./ports";
 import { previousVisitAsOf } from "./visit-time";
 import { vitalsDraftInput } from "./vitals-input";
 
@@ -93,6 +93,40 @@ async function latestVitals(tx: DbClient, encounterId: string, asOf: string) {
   return row === undefined ? null : vitalsDraftInput(row);
 }
 
+/**
+ * S2: the patient's stored weights captured from `from` to `asOf`, oldest first: this encounter's own, and those of the patient's SIGNED
+ * encounters (an unsigned draft of another visit is not yet part of the record, and a voided one never is). The text and unit are returned
+ * as stored; `inputs.ts` decides what parses. Scoped by the caller's transaction (RLS) and by this organization and patient.
+ */
+async function weightReadings(
+  tx: DbClient,
+  encounter: DraftEncounter,
+  from: string,
+  asOf: string,
+): Promise<readonly WeightRow[]> {
+  const rows = await tx
+    .select({ id: V.id, capturedAt: V.capturedAt, weight: V.weight, unit: V.weightUnit })
+    .from(V)
+    .innerJoin(E, eq(E.id, V.encounterId))
+    .where(
+      and(
+        eq(E.organizationId, encounter.organizationId),
+        eq(E.patientId, encounter.patientId),
+        isNotNull(V.weight),
+        gte(V.capturedAt, new Date(from)),
+        lte(V.capturedAt, new Date(asOf)),
+        or(eq(E.id, encounter.id), inArray(E.status, [...SIGNED_STATUSES])),
+      ),
+    )
+    .orderBy(asc(V.capturedAt), asc(V.createdAt), asc(V.id));
+  return rows.map((row) => ({
+    id: row.id,
+    recordedAt: row.capturedAt.toISOString(),
+    weight: row.weight ?? "",
+    unit: row.unit,
+  }));
+}
+
 /** What the existing Layer-1 assembly renders: the stored tree (prose opened) and the patient and service-date slots. */
 async function loadSelection(
   tx: DbClient,
@@ -134,6 +168,7 @@ export function createDbDraftStore(tx: DbClient, deps: DbDraftStoreDeps): DraftS
     organizationTimeZone: (organizationId) => organizationTimezone(tx, organizationId),
     previousSignedVisitAt: (encounter) => previousSignedVisitAt(tx, encounter, deps.now),
     latestVitals: (encounterId, asOf) => latestVitals(tx, encounterId, asOf),
+    weightReadings: (encounter, from, asOf) => weightReadings(tx, encounter, from, asOf),
     removedCarePlanElementIds: (encounterId) => removedCarePlanElementIds(tx, encounterId),
     loadSelection: (encounter) => loadSelection(tx, encounter, deps.freeTextCipher),
     confirmations: (encounterId) => readConfirmations(tx, encounterId),

@@ -108,10 +108,14 @@ const CLOSED_STORE: DraftStorePorts = {
   previousSignedVisitAt: () =>
     Promise.reject(new Error("a store read after its transaction closed")),
   latestVitals: () => Promise.reject(new Error("a store read after its transaction closed")),
+  weightReadings: () => Promise.reject(new Error("a store read after its transaction closed")),
   removedCarePlanElementIds: () =>
     Promise.reject(new Error("a store read after its transaction closed")),
   loadSelection: () => Promise.reject(new Error("a store read after its transaction closed")),
 };
+
+/** The earliest `from` of the weight snapshot: the benefit period's start is not known until module 6 answers, so every weight up to the visit is taken. */
+const WEIGHTS_FROM = "1970-01-01T00:00:00.000Z";
 
 /**
  * Every STORE read the draft makes (the zone, the previous visit, the vitals, the removed care-plan links, the stored selections), taken up
@@ -133,16 +137,27 @@ export async function snapshotStorePorts(
   const asOf = await guarded("the visit time", () =>
     visitAsOf({ serviceDate: encounter.serviceDate, orgTimeZone, now }),
   );
-  const [previous, vitals, removed, stored] = await Promise.all([
+  // S2: only the recertification and face-to-face visits read weights, and only they pay for the read (the routine visit's snapshot is as it was).
+  const readsWeights =
+    encounter.encounterType === "recert_visit" || encounter.encounterType === "face_to_face";
+  const [previous, vitals, removed, stored, weights] = await Promise.all([
     guarded("the previous signed visit", () => store.previousSignedVisitAt(encounter)),
     guarded("the vitals", () => store.latestVitals(encounter.id, asOf)),
     guarded("the removed care-plan links", () => store.removedCarePlanElementIds(encounter.id)),
     guarded("the stored selections", () => store.loadSelection(encounter)),
+    readsWeights
+      ? guarded("the weights", () => store.weightReadings(encounter, WEIGHTS_FROM, asOf))
+      : Promise.resolve(null),
   ]);
   return {
     organizationTimeZone: async () => orgTimeZone,
     previousSignedVisitAt: async () => previous,
     latestVitals: async () => vitals,
+    // The same rows `weightReadings(encounter, from, asOf)` would return, cut to `from` here (the period start is known only later).
+    weightReadings: async (_encounter, from) =>
+      weights === null
+        ? Promise.reject(new Error("a weight read the snapshot did not take"))
+        : weights.filter((row) => Date.parse(row.recordedAt) >= Date.parse(from)),
     removedCarePlanElementIds: async () => removed,
     loadSelection: async () => stored,
   };

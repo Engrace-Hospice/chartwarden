@@ -4,7 +4,7 @@
 //
 // The store-backed half (`DraftStorePorts`: time zone, previous visit, vitals, removed links, stored selections)
 // is supplied by PR C2b over the M8 tables: `{ ...defaultDraftPorts(), ...storePorts }`.
-import type { PatientId } from "@chartwarden/types";
+import type { AdmissionId, ElectionPeriodId, LocalDate, PatientId } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 // M8 `dependsOn` M7: the SAME per-actor Part 2 decision the care-plan reader store applies to its `{ actor }`
 // audience (M39 `evaluateForInternalAccess`, then the §7.6 RN-case-manager carve-out where no release names
@@ -45,6 +45,19 @@ export function defaultDraftPorts(): DraftSeamPorts {
         from,
         to,
       ),
+    // S2 (recertification and face-to-face visits): M6's own readers. Each answers by date or by period, so the as-of cut (VN-D11) is
+    // made in `inputs.ts`; none returns a narrative (VN-D32).
+    electionPeriods: (admissionId) =>
+      getSeam("ElectionPeriodReader").listPeriodsForAdmission(admissionId as AdmissionId),
+    levelOfCareOn: (admissionId, on) =>
+      getSeam("LevelOfCareReader").getLevelOfCareDays(admissionId as AdmissionId, {
+        from: on as LocalDate,
+        to: on as LocalDate,
+      }),
+    attestedFaceToFace: (periodId) =>
+      getSeam("FaceToFaceReader").getAttestedF2fForPeriod(periodId as ElectionPeriodId),
+    activeCertification: (periodId) =>
+      getSeam("CertificationReader").getActiveCertification(periodId as ElectionPeriodId),
     part2DisclosureAllowed: ({ organizationId, patientId, viewer }) =>
       sudDisclosureAllowedForActor(
         {

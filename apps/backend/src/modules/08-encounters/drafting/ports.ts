@@ -4,9 +4,13 @@
 import type { AssemblyContext, SelectionState, VitalsDraftInput } from "@chartwarden/hearthnote";
 import type {
   CarePlanElementsAudience,
+  CertificationSummary,
+  ElectionPeriodSummary,
   EncounterDiscipline,
   EncounterType,
+  FaceToFaceSummary,
   InterventionDiscipline,
+  LevelOfCareDays,
   MedicationOrderChange,
   RelevantCarePlanElements,
   ScaleSeries,
@@ -60,6 +64,14 @@ export interface DraftSeamPorts {
     from: string,
     to: string,
   ): Promise<readonly MedicationOrderChange[]>;
+  /** M6 `ElectionPeriodReader.listPeriodsForAdmission`: the admission's benefit periods (S2, the recertification and face-to-face visits). */
+  electionPeriods(admissionId: string): Promise<readonly ElectionPeriodSummary[]>;
+  /** M6 `LevelOfCareReader.getLevelOfCareDays` over the single day `on` (YYYY-MM-DD): the level that day counted for (S2). */
+  levelOfCareOn(admissionId: string, on: string): Promise<LevelOfCareDays>;
+  /** M6 `FaceToFaceReader.getAttestedF2fForPeriod`: the attested face-to-face's facts, never its narrative (S2, VN-D32). */
+  attestedFaceToFace(electionPeriodId: string): Promise<FaceToFaceSummary | null>;
+  /** M6 `CertificationReader.getActiveCertification`: the period's active certification of terminal illness (S2). */
+  activeCertification(electionPeriodId: string): Promise<CertificationSummary | null>;
   /**
    * Whether this viewer may read this patient's 42 CFR Part 2 content. THROWS on an M39 failure (`onError: "throw"` in `default-ports.ts`): an error
    * is never a `false` and never a `true`. Each caller maps the throw to its own 503 (the draft, the sign gate, the note view, an amendment's naming
@@ -72,8 +84,26 @@ export interface DraftSeamPorts {
   }): Promise<boolean>;
 }
 
+/** One stored weight, as the vitals table holds it: neither the text nor the unit is validated here (S2; `inputs.ts` does that). */
+export interface WeightRow {
+  readonly id: string;
+  /** ISO-8601 instant with a zone. */
+  readonly recordedAt: string;
+  readonly weight: string;
+  readonly unit: string | null;
+}
+
 /** What the M8 tables hold: supplied by PR C2b's store, never by this core. */
 export interface DraftStorePorts {
+  /**
+   * The patient's weights captured from `from` to `asOf` (inclusive), oldest first: this encounter's own and those of the patient's signed
+   * encounters, across encounters (S2: the benefit period's weight change). An unsigned draft of another visit is not yet part of the record.
+   */
+  weightReadings(
+    encounter: DraftEncounter,
+    from: string,
+    asOf: string,
+  ): Promise<readonly WeightRow[]>;
   /** The organization's IANA time zone (`organizationTimezone` in `@chartwarden/db`). */
   organizationTimeZone(organizationId: string): Promise<string>;
   /**

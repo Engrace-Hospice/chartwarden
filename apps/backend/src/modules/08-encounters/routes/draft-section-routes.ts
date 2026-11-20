@@ -8,8 +8,9 @@
 //   PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId   the addendum's author confirms or deselects one   encounter.addendum_author
 //
 // Both also need the read key of each SOURCE domain the draft is compiled from (SOURCE_DOMAIN_READS): the care plan (M7), the medication
-// orders (M12) and the scored scales (M9) reach the draft through seams that apply no permission check of their own, so without them a role
-// holding only `encounter.read` would read goal text, medication names and scores it cannot read through those modules. Requiring them on the
+// orders (M12), the scored scales (M9) and, since S2, the admission's benefit period, level of care, face-to-face and certification (M6) reach
+// the draft through seams that apply no permission check of their own, so without them a role holding only `encounter.read` would read goal
+// text, medication names, scores and certification dates it cannot read through those modules. Requiring them on the
 // route, rather than dropping the sections a caller lacks, keeps ONE draft per patient and visit: a section hash is never computed from fewer
 // sources for one viewer than for another, so a confirmation cannot be matched against a fuller view than the one its author saw. (The sign
 // recomputes the draft for the signer without these keys, which is the same full draft; only Part 2 redaction differs per viewer, by design.)
@@ -46,9 +47,12 @@ export interface DraftSectionRouteDeps {
 }
 
 /** The sibling routes' read keys: M7 `GET /care-plan/...`, M12 `GET /medication-orders`, M9 `GET /patients/:id/scales/:type/series`. */
-const SOURCE_DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"].map(
-  (key) => requirePermission(key) as PreHandler,
-);
+const SOURCE_DOMAIN_READS = [
+  "care_plan.read",
+  "prescribing.read",
+  "assessment.read_trend",
+  "admission.read", // S2: the benefit period, level of care, face-to-face and certification facts of a recertification draft (M6)
+].map((key) => requirePermission(key) as PreHandler);
 const READ = requirePermission("encounter.read") as PreHandler;
 const AUTHOR = requirePermission("encounter.author") as PreHandler;
 const ADDENDUM_AUTHOR = requirePermission("encounter.addendum_author") as PreHandler;

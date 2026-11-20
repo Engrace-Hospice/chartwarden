@@ -453,7 +453,12 @@ describe.skipIf(!DB_URL)(
       resetAbacRegistry();
       limitedA = await seedMember(ORG_A, "limited-a");
       // The draft is compiled from the care plan, medication orders and scored scales, so both routes need those domains' read keys too.
-      const DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
+      const DOMAIN_READS = [
+        "care_plan.read",
+        "prescribing.read",
+        "assessment.read_trend",
+        "admission.read",
+      ];
       const grant = (orgId: string, member: Member, permissionKeys: string[]) => ({
         orgId,
         userId: member.userId,
