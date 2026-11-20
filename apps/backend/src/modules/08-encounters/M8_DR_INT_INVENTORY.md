@@ -68,7 +68,9 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
 - **Three more reads under the sign lock.** An admission draft adds M12's orders as of the visit, M5's roster for the service date and M39's
   acknowledgment evaluation to the draft's reads. They take their turn with the others (`serial-seams.ts`) and are bounded and fail closed like
   the rest; sign, the section PUTs and finalize hold their transaction across them, a few milliseconds longer each. M39's `evaluate` is a pure read
-  (no audit row per call).
+  (no audit row per call). It is asked `historical: true`, so the answer is what was on file at the visit, not the record's status today: a patient's
+  death between the visit and the sign (the M39 cascade expires the row) no longer removes the section and blocks the sign. The end instant of an expired
+  row is the earlier of its `expires_at` and `updated_at`, so an expired row is never read as in force past its own expiry.
 - **The list is the orders in effect, not a reconciliation.** The draft states each order's drug, strength, form and route, and "as needed" where it
   is; no frequency, no dose schedule, no home-medication history. If any order that remains has a blank field or no as-needed flag, no list is
   drafted at all (a list with an order missing from it would read as complete). A SUD-treatment order is left out for a viewer without Part 2
