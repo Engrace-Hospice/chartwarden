@@ -134,6 +134,18 @@ export const EMPTY_SELECTION = {
   context: { patient: "Patient", serviceDate: "2026-11-18" },
 } as const;
 
+/** The empty stored selection of another template than the routine visit's: it names the template it was made for. */
+export const selectionFor = (encounterType: string, discipline: string) =>
+  ({
+    selection: {
+      ...EMPTY_SELECTION.selection,
+      templateKey: `${encounterType}:${discipline}`,
+      encounterType,
+      discipline,
+    },
+    context: EMPTY_SELECTION.context,
+  }) as never;
+
 type Spied = { readonly [K in keyof DraftPorts]: Mock<DraftPorts[K]> };
 
 /** Every port, as a spy (an override is wrapped too, so a test can still assert on it) over a benign default

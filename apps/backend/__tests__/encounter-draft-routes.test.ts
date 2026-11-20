@@ -50,12 +50,7 @@ const SECTION = {
 
 // The draft is computed from the care plan (M7), medication orders (M12) and scored scales (M9) through seams that apply no permission
 // check of their own, so both draft routes ask for each source domain's read key on top of the encounter's (the keys of the sibling routes).
-const DOMAIN_READS = [
-  "care_plan.read",
-  "prescribing.read",
-  "assessment.read_trend",
-  "admission.read",
-];
+const DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
 const without = (key: string) => DOMAIN_READS.filter((k) => k !== key);
 const PERMISSION_SEED = [
   { userId: "author_1", permissions: ["encounter.read", "encounter.author", ...DOMAIN_READS] },
@@ -184,9 +179,20 @@ describe("GET /encounters/:encounterId/draft", () => {
         userId: "author_1",
         roles: ["rn", "rn_case_manager"],
         membershipId: "author_1",
+        permissions: expect.any(Set),
       },
       ENCOUNTER,
     );
+  });
+
+  it("hands the service the permissions the session resolves to, so it can ask for the admission's read keys of the template (S2)", async () => {
+    const { app, service } = makeServer();
+    await app.inject({ method: "GET", url: draftUrl(), headers: as("author_1", "rn") });
+    const caller = service.getDraft.mock.calls[0]?.[0] as { permissions: ReadonlySet<string> };
+    expect(caller.permissions.has("encounter.read")).toBe(true);
+    expect(caller.permissions.has("care_plan.read")).toBe(true);
+    // The seed grants no admission read key, and the route does not ask for one: the service decides by template.
+    expect(caller.permissions.has("cti.read")).toBe(false);
   });
 
   it("lets a read-only reader open it, and passes a session with no membership as null (a read fails closed, it is not refused)", async () => {
@@ -338,7 +344,13 @@ describe("GET /encounters/:encounterId/addenda/:addendumId/draft (VN-D30): the a
     });
     expect(res.statusCode).toBe(200);
     expect(service.getAmendmentDraft).toHaveBeenCalledWith(
-      { organizationId: ORG, userId: "other_rn", roles: ["rn"], membershipId: "other_rn" },
+      {
+        organizationId: ORG,
+        userId: "other_rn",
+        roles: ["rn"],
+        membershipId: "other_rn",
+        permissions: expect.any(Set),
+      },
       ENCOUNTER,
       addendumId,
     );
@@ -394,7 +406,13 @@ describe("PUT /encounters/:encounterId/draft/sections/:sectionId", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(SECTION);
     expect(service.resolveSection).toHaveBeenCalledWith(
-      { organizationId: ORG, userId: "author_1", roles: ["rn"], membershipId: "author_1" },
+      {
+        organizationId: ORG,
+        userId: "author_1",
+        roles: ["rn"],
+        membershipId: "author_1",
+        permissions: expect.any(Set),
+      },
       ENCOUNTER,
       "plan",
       BODY,
@@ -420,6 +438,7 @@ describe("PUT /encounters/:encounterId/draft/sections/:sectionId", () => {
       userId: "author_1",
       roles: ["rn"],
       membershipId: "author_1",
+      permissions: expect.any(Set),
     });
   });
 

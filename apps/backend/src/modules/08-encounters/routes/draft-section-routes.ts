@@ -7,13 +7,17 @@
 //                                                                   author alone (403 for anyone else, an absent addendum included)    encounter.read
 //   PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId   the addendum's author confirms or deselects one   encounter.addendum_author
 //
-// Both also need the read key of each SOURCE domain the draft is compiled from (SOURCE_DOMAIN_READS): the care plan (M7), the medication
-// orders (M12), the scored scales (M9) and, since S2, the admission's benefit period, level of care, face-to-face and certification (M6) reach
-// the draft through seams that apply no permission check of their own, so without them a role holding only `encounter.read` would read goal
-// text, medication names, scores and certification dates it cannot read through those modules. Requiring them on the
+// All four also need the read key of each SOURCE domain every draft is compiled from (SOURCE_DOMAIN_READS): the care plan (M7), the medication
+// orders (M12) and the scored scales (M9) reach the draft through seams that apply no permission check of their own, so without them a role
+// holding only `encounter.read` would read goal text, medication names and scores it cannot read through those modules. Requiring them on the
 // route, rather than dropping the sections a caller lacks, keeps ONE draft per patient and visit: a section hash is never computed from fewer
 // sources for one viewer than for another, so a confirmation cannot be matched against a fuller view than the one its author saw. (The sign
 // recomputes the draft for the signer without these keys, which is the same full draft; only Part 2 redaction differs per viewer, by design.)
+// Since S2 a recertification or face-to-face draft also reads the admission's benefit period, level of care, face-to-face and certification
+// (M6), through seams with no check of their own either. M6 guards each with its own key (`election.read`, `loc.read`, `f2f.read`,
+// `cti.read`), and only the service knows the template, so IT refuses 403 a caller of such an encounter who lacks one
+// (`assertMayReadAdmissionFacts`): the check is by template, the same for every viewer, so the one-draft rule holds and a routine visit's
+// draft needs no key it did not before.
 //
 // Both answer 404 when the tenant has the draft switched off (the service decides, before it reads anything), and for an encounter that is not
 // the caller's tenant. The viewer is the server-assembled session (roles, active membership), never request input: the draft is computed per
@@ -22,7 +26,7 @@
 // minus the `If-Match` version (the section's content hash is the optimistic lock), plus the AI-principal refusal: an AI may not confirm what
 // it drafted a note from. A stale hash or corpus version is 409
 // `DRAFT_SECTION_STALE`; a draft that cannot be computed is 503 `DRAFT_UNAVAILABLE`.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { requireAbac, requirePermission, resolveActorPermissions } from "@chartwarden/auth";
 import {
   type PreHandler,
   actorOf,
@@ -31,7 +35,7 @@ import {
 } from "@chartwarden/shared/route-kit";
 import type { TObject } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { DraftService } from "../drafting/draft-service";
+import type { DraftCaller, DraftService } from "../drafting/draft-service";
 import { auditContextOf } from "./audit-context";
 import {
   AmendmentDraftParamsSchema,
@@ -46,13 +50,26 @@ export interface DraftSectionRouteDeps {
   readonly service: DraftService;
 }
 
+/**
+ * The caller as the service sees it: the server-assembled session plus the permissions it resolves to. The service, which knows the template,
+ * decides which of the admission's read keys (M6) the draft of that template needs (`assertMayReadAdmissionFacts`).
+ */
+async function callerOf(
+  actor: Pick<DraftCaller, "organizationId" | "userId" | "roles" | "membershipId">,
+): Promise<DraftCaller> {
+  return {
+    organizationId: actor.organizationId,
+    userId: actor.userId,
+    roles: actor.roles,
+    membershipId: actor.membershipId,
+    permissions: await resolveActorPermissions(actor),
+  };
+}
+
 /** The sibling routes' read keys: M7 `GET /care-plan/...`, M12 `GET /medication-orders`, M9 `GET /patients/:id/scales/:type/series`. */
-const SOURCE_DOMAIN_READS = [
-  "care_plan.read",
-  "prescribing.read",
-  "assessment.read_trend",
-  "admission.read", // S2: the benefit period, level of care, face-to-face and certification facts of a recertification draft (M6)
-].map((key) => requirePermission(key) as PreHandler);
+const SOURCE_DOMAIN_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"].map(
+  (key) => requirePermission(key) as PreHandler,
+);
 const READ = requirePermission("encounter.read") as PreHandler;
 const AUTHOR = requirePermission("encounter.author") as PreHandler;
 const ADDENDUM_AUTHOR = requirePermission("encounter.addendum_author") as PreHandler;
@@ -125,15 +142,7 @@ export function registerDraftSectionRoutes(
     async (request) => {
       const { encounterId } = parse(DraftParamsSchema, request.params);
       const actor = actorOf(request);
-      return service.getDraft(
-        {
-          organizationId: actor.organizationId,
-          userId: actor.userId,
-          roles: actor.roles,
-          membershipId: actor.membershipId,
-        },
-        encounterId,
-      );
+      return service.getDraft(await callerOf(actor), encounterId);
     },
   );
 
@@ -154,12 +163,7 @@ export function registerDraftSectionRoutes(
       const { encounterId, sectionId } = parse(DraftSectionParamsSchema, request.params);
       const body = parse(ResolveSectionSchema, request.body);
       return service.resolveSection(
-        {
-          organizationId: actor.organizationId,
-          userId: actor.userId,
-          roles: actor.roles,
-          membershipId: actor.membershipId,
-        },
+        await callerOf(actor),
         encounterId,
         sectionId,
         body,
@@ -198,16 +202,7 @@ export function registerDraftSectionRoutes(
     async (request) => {
       const { encounterId, addendumId } = parse(AmendmentDraftParamsSchema, request.params);
       const actor = actorOf(request);
-      return service.getAmendmentDraft(
-        {
-          organizationId: actor.organizationId,
-          userId: actor.userId,
-          roles: actor.roles,
-          membershipId: actor.membershipId,
-        },
-        encounterId,
-        addendumId,
-      );
+      return service.getAmendmentDraft(await callerOf(actor), encounterId, addendumId);
     },
   );
 
@@ -231,12 +226,7 @@ export function registerDraftSectionRoutes(
       );
       const body = parse(ResolveSectionSchema, request.body);
       return service.resolveAmendmentSection(
-        {
-          organizationId: actor.organizationId,
-          userId: actor.userId,
-          roles: actor.roles,
-          membershipId: actor.membershipId,
-        },
+        await callerOf(actor),
         encounterId,
         addendumId,
         sectionId,
