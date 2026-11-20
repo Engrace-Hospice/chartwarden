@@ -54,6 +54,197 @@ export interface RecordedVitals {
   readonly painScore?: number | null;
   readonly weight?: string | null;
   readonly weightUnit?: string | null;
+  /** Height as stored, with its unit (`cm` or `in`); BMI is the server-computed value, quoted, never recomputed here. */
+  readonly height?: string | null;
+  readonly heightUnit?: string | null;
+  readonly bmi?: string | null;
+  /** The weight recorded on the patient's previous visit, so the note can state the change. Absent when there is none. */
+  readonly priorWeight?: {
+    readonly value: string;
+    readonly unit: string;
+    readonly on: string;
+  } | null;
+}
+
+// ─── WF09 recorded findings: ADLs, nutrition, wounds ─────────────────────────────────────────────────────────────────────────────
+// Structured facts a clinician records on a visit, stated in the note by a deterministic sentence (like RecordedVitals), never
+// through the vocabulary corpus. The value sets below are the contract between the capture routes, the screens and the note.
+
+export const ADL_ITEMS = [
+  "bathing",
+  "dressing",
+  "grooming",
+  "toileting",
+  "transferring",
+  "ambulation",
+  "eating",
+] as const;
+export type AdlItem = (typeof ADL_ITEMS)[number];
+
+/** How much help the patient needed on the visit (MDS-style assistance scale). */
+export const ADL_LEVELS = [
+  "independent",
+  "supervision",
+  "limited_assist",
+  "extensive_assist",
+  "total_dependence",
+  "did_not_occur",
+] as const;
+export type AdlLevel = (typeof ADL_LEVELS)[number];
+
+export const CONTINENCE_LEVELS = [
+  "continent",
+  "occasionally_incontinent",
+  "frequently_incontinent",
+  "incontinent",
+  "catheter_or_ostomy",
+] as const;
+export type ContinenceLevel = (typeof CONTINENCE_LEVELS)[number];
+
+export const ADL_DEVICES = [
+  "cane",
+  "walker",
+  "wheelchair",
+  "hospital_bed",
+  "mechanical_lift",
+  "bedside_commode",
+] as const;
+export type AdlDevice = (typeof ADL_DEVICES)[number];
+
+/** The functional status recorded on this visit. An item not assessed is absent. */
+export interface RecordedAdl {
+  readonly items?: Readonly<Partial<Record<AdlItem, AdlLevel>>>;
+  readonly bladder?: ContinenceLevel | null;
+  readonly bowel?: ContinenceLevel | null;
+  readonly devices?: readonly AdlDevice[];
+}
+
+export const APPETITE_LEVELS = ["good", "fair", "poor", "none"] as const;
+export type AppetiteLevel = (typeof APPETITE_LEVELS)[number];
+
+export const FLUID_INTAKE_LEVELS = ["adequate", "decreased", "minimal"] as const;
+export type FluidIntakeLevel = (typeof FLUID_INTAKE_LEVELS)[number];
+
+export const SWALLOWING_LEVELS = [
+  "no_difficulty",
+  "difficulty_solids",
+  "difficulty_liquids",
+  "difficulty_solids_and_liquids",
+  "unable_to_swallow",
+] as const;
+export type SwallowingLevel = (typeof SWALLOWING_LEVELS)[number];
+
+export const NUTRITION_SUPPORTS = [
+  "none",
+  "oral_supplements",
+  "tube_feeding",
+  "parenteral",
+] as const;
+export type NutritionSupport = (typeof NUTRITION_SUPPORTS)[number];
+
+/** The nutrition and hydration status recorded on this visit. A field not assessed is absent. */
+export interface RecordedNutrition {
+  readonly appetite?: AppetiteLevel | null;
+  /** Share of meals eaten, a whole percent 0 to 100. */
+  readonly mealIntakePercent?: number | null;
+  readonly fluidIntake?: FluidIntakeLevel | null;
+  readonly swallowing?: SwallowingLevel | null;
+  readonly support?: NutritionSupport | null;
+}
+
+export const WOUND_ETIOLOGIES = [
+  "pressure_injury",
+  "diabetic_ulcer",
+  "venous_ulcer",
+  "arterial_ulcer",
+  "surgical",
+  "traumatic",
+  "skin_tear",
+  "malignant_fungating",
+  "moisture_associated",
+  "other",
+] as const;
+export type WoundEtiology = (typeof WOUND_ETIOLOGIES)[number];
+
+/** Pressure-injury stages (NPIAP); only a pressure injury carries one. */
+export const PRESSURE_STAGES = [
+  "stage_1",
+  "stage_2",
+  "stage_3",
+  "stage_4",
+  "unstageable",
+  "deep_tissue_injury",
+] as const;
+export type PressureStage = (typeof PRESSURE_STAGES)[number];
+
+export const WOUND_BED_TISSUES = [
+  "granulation",
+  "slough",
+  "eschar",
+  "epithelializing",
+  "necrotic",
+  "hypergranulation",
+  "bone_or_tendon_exposed",
+] as const;
+export type WoundBedTissue = (typeof WOUND_BED_TISSUES)[number];
+
+export const EXUDATE_AMOUNTS = ["none", "scant", "small", "moderate", "large"] as const;
+export type ExudateAmount = (typeof EXUDATE_AMOUNTS)[number];
+
+export const EXUDATE_TYPES = ["serous", "serosanguineous", "sanguineous", "purulent"] as const;
+export type ExudateType = (typeof EXUDATE_TYPES)[number];
+
+export const WOUND_ODORS = ["none", "mild", "moderate", "strong"] as const;
+export type WoundOdor = (typeof WOUND_ODORS)[number];
+
+export const PERIWOUND_CONDITIONS = [
+  "intact",
+  "erythema",
+  "macerated",
+  "indurated",
+  "edematous",
+  "warm",
+  "excoriated",
+] as const;
+export type PeriwoundCondition = (typeof PERIWOUND_CONDITIONS)[number];
+
+export const WOUND_DRESSINGS = [
+  "foam",
+  "hydrocolloid",
+  "alginate",
+  "hydrogel",
+  "gauze",
+  "silver",
+  "transparent_film",
+  "negative_pressure",
+  "other",
+] as const;
+export type WoundDressing = (typeof WOUND_DRESSINGS)[number];
+
+export const WOUND_TRENDS = ["new", "improving", "stable", "worsening"] as const;
+export type WoundTrend = (typeof WOUND_TRENDS)[number];
+
+/** One wound as assessed on this visit. `site` is the display phrase for the location ("sacrum", "left heel"). */
+export interface RecordedWound {
+  readonly site: string;
+  readonly etiology: WoundEtiology;
+  readonly stage?: PressureStage | null;
+  /** Measurements in centimetres, as stored. */
+  readonly lengthCm?: number | null;
+  readonly widthCm?: number | null;
+  readonly depthCm?: number | null;
+  readonly undermining?: boolean | null;
+  readonly woundBed?: readonly WoundBedTissue[];
+  readonly exudateAmount?: ExudateAmount | null;
+  readonly exudateType?: ExudateType | null;
+  readonly odor?: WoundOdor | null;
+  readonly periwound?: readonly PeriwoundCondition[];
+  /** Pain at the wound, 0 to 10. */
+  readonly painScore?: number | null;
+  readonly dressing?: WoundDressing | null;
+  readonly dressingChanged?: boolean | null;
+  readonly infectionSigns?: boolean | null;
+  readonly trend?: WoundTrend | null;
 }
 
 /** The recorded fall a follow-up visit is linked to: the incident's org-local date, copied when the link was made. */
@@ -72,6 +263,12 @@ export interface AssemblyContext {
   readonly vitals?: Readonly<Record<string, SlotValue>>;
   /** The vitals captured on this visit. Rendered once, under the template's vitals-summary section. */
   readonly recordedVitals?: RecordedVitals;
+  /** Functional status recorded on this visit. Rendered under the template's ADL-summary section. */
+  readonly recordedAdl?: RecordedAdl;
+  /** Nutrition and hydration recorded on this visit. Rendered under the template's nutrition-summary section. */
+  readonly recordedNutrition?: RecordedNutrition;
+  /** The wounds assessed on this visit, in the order recorded. Rendered under the template's wound-summary section. */
+  readonly recordedWounds?: readonly RecordedWound[];
   /** The fall this visit follows up, if the clinician linked one. Stated only beside the follow-up-after-a-fall reason. */
   readonly linkedFall?: LinkedFall;
 }
