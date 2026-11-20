@@ -4,7 +4,9 @@ import {
   type M23ContainerInspection,
   type M23NetworkInspection,
   assertFreshM23DatabaseInventory,
+  isCompleteM23Qualification,
   startLoopbackTcpRelay,
+  summarizeVitestFailureMessage,
   validateM23DockerIsolation,
 } from "../m23-rls-isolation";
 
@@ -191,6 +193,60 @@ describe("M23 disposable database inventory", () => {
     expect(() =>
       assertFreshM23DatabaseInventory(["postgres", "other_test"], "chartwarden_test"),
     ).toThrow(/not fresh/);
+  });
+});
+
+describe("M23 Vitest failure diagnostics", () => {
+  it("emits only allowlisted facts from arbitrary failure text", () => {
+    const summary = summarizeVitestFailureMessage(
+      "Error: Hook timed out in 120000ms\ncode: '28031'\nat packages/db/migrations/__tests__/m23-rls-isolation.live.test.ts:547:5\nJane Testpatient, 900-12-3456, 1EG4TE5MK73, postgresql://postgres:private@127.0.0.1/db",
+    );
+    const diagnostic = summary.join("\n");
+
+    expect(summary).toContain("Hook timeout: 120000ms");
+    expect(diagnostic).not.toContain("28031");
+    expect(summary).toContain("Failure class: Error");
+    expect(summary).toContain("M23 suite source line: 547");
+    expect(diagnostic).not.toContain("Jane Testpatient");
+    expect(diagnostic).not.toContain("900-12-3456");
+    expect(diagnostic).not.toContain("1EG4TE5MK73");
+    expect(diagnostic).not.toContain("private");
+    expect(diagnostic).not.toContain("postgresql://");
+  });
+
+  it("reports only that raw failure details were withheld when no safe fact is found", () => {
+    expect(summarizeVitestFailureMessage("sensitive free-form message")).toEqual([
+      "No allowlisted failure detail; raw diagnostic withheld.",
+    ]);
+    expect(summarizeVitestFailureMessage("code: '1EG4T'")).toEqual([
+      "No allowlisted failure detail; raw diagnostic withheld.",
+    ]);
+  });
+});
+
+describe("M23 qualification completeness", () => {
+  const complete = {
+    exitStatus: 0,
+    total: 19,
+    passed: 19,
+    failed: 0,
+    pending: 0,
+    todo: 0,
+  };
+
+  it("accepts only a complete passing run", () => {
+    expect(isCompleteM23Qualification(complete)).toBe(true);
+  });
+
+  it.each([
+    { exitStatus: 1 },
+    { total: 0 },
+    { failed: 1 },
+    { pending: 1 },
+    { todo: 1 },
+    { passed: 18 },
+  ])("rejects incomplete or unsuccessful result %#", (override) => {
+    expect(isCompleteM23Qualification({ ...complete, ...override })).toBe(false);
   });
 });
 
