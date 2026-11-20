@@ -145,7 +145,7 @@ Notes:
   `signature_method`, `signed_at`, `step_up_auth_at`, `attestation_variant`; signing requires a fresh
   step-up session class (D13, > 5 min ⇒ re-auth); the M4 PHI write-audit trigger makes an immutable
   `audit_event` on INSERT. `m8.encounter.signed` records the business attestation. A signed encounter is
-  never UPDATEd or DELETEd — corrections are append-only addenda (§3.6 voided-not-deleted). The pinned
+  never UPDATEd or DELETEd, except by destruction certificate (the eraser's tombstone and deletes) — corrections are append-only addenda (§3.6 voided-not-deleted). The pinned
   narrative (`hearthnote_assembled_output` `layer1_cipher` / `layer2_cipher` / `final_cipher`) is frozen in
   the database once the encounter is `signed`, `cosign_pending` or `cosigned` (migration 1521): only the
   eraser's shred sentinel is accepted, and sign pins it BEFORE the status flips.
@@ -181,5 +181,4 @@ selection/assembled-output/llm-modification, and ADR-0114's `encounter_draft_con
 `encounter_amendment` and `addendum_cosignature_request` rows, children before parents) for the subject patient. It is disjoint
 from M5's `clinical_record` (patient spine), M6's `admission_record` (admission subtree), and M7's `care_plan_record`
 (care-plan subtree). `subjectId` is
-the patient being destroyed. (The spec §3.6 `clinical_record` mention is reconciled to this disjoint
-class so the M5 eraser is never double-registered — architecture's one-eraser-per-data-class rule wins.)
+the patient being destroyed.

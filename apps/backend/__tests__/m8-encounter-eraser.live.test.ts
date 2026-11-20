@@ -5,7 +5,7 @@
  * CHECKs refuse (`encounter_voided_consistency` wants voided_at/voided_by and a 40-character voided_reason; the late-entry,
  * override and EVV-missing reasons carry their own length floors in their tier/state). The unit suite drives an in-memory store
  * that has no CHECKs, so it never saw it: on a real database `eraseEncounterRecord` rolled back and a destruction never
- * completed. This suite runs the whole erase (crypto-erase, delete subtree, tombstone) through the Drizzle store over every
+ * completed. This suite runs the whole erase (shred, tombstone, delete) through the Drizzle store over every
  * kind of root the product can hold, and proves what survives: the shell, never the text. The signed, cosign_pending and cosigned roots
  * each carry a Layer-2-involved and a Layer-2-off output. Migrations 1521/1525 freeze a signed note's ciphers: only the shred sentinel the
  * destruction role writes ("" for layer1/final and for a Layer-2-involved layer2, NULL for a Layer-2-off layer2) may pass.

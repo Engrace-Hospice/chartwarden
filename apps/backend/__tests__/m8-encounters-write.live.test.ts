@@ -806,7 +806,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     // The eraser has always handled `hearthnote_assembled_output` — it ran against a table that had never
-    // held a row. This is the first time the §3.6 DEK-first shred has had one. Only the shred is driven
+    // held a row. This is the first time the §3.6 cipher-column shred has had one. Only the shred is driven
     // here, as the real `chartwarden_destruction` login: the app role (`handle`) holds UPDATE on no sealed
     // table by design (append-only), and the eraser never runs as it.
     const store = createDrizzleEncounterEraseStore(destructionHandle.db);

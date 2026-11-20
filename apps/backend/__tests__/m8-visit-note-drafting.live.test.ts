@@ -1022,8 +1022,8 @@ describe.skipIf(!DB_URL)(
         );
         expect(shredded.rows.map((r) => r.text_cipher)).toEqual(["", "", ""]);
 
-        // The two steps this PR changed. `tombstoneEncounters` is not driven: it flips the root to voided and scrubs voided_reason, which the
-        // root's own CHECK (encounter_voided_consistency) refuses on a real database, whatever the satellites hold.
+        // The two steps this PR changed. `tombstoneEncounters` is not driven here: m8-encounter-eraser.live.test.ts drives it (and the whole
+        // erase) over every kind of root, so this suite stops at the shred and the satellite deletes.
         const counts = await store.eraseEncounterSubtree(ORG_A, target.patientId);
         expect(counts).toMatchObject({
           draftConfirmations: 2,

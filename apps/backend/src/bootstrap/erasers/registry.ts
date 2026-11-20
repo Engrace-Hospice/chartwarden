@@ -57,10 +57,11 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // for FK integrity (D8); the `subjectId` is the patient.
   "care_plan_record",
   // M8-T12: a patient's encounter record (encounter_signature/addendum/care_plan_link/cosignature_request/
-  // vitals/mileage/hearthnote_selection/assembled_output/llm_modification). M8 registers the REAL eraser
-  // via the composition-root hook over this deny-stub — under an M4 destruction certificate it crypto-erases
-  // the HearthNote ciphertext (tenant DEK, §3.6), deletes the encounter satellites, and tombstones the
-  // `encounter` root for FK integrity (D8); the `subjectId` is the patient.
+  // vitals/mileage/hearthnote_selection/assembled_output/llm_modification + ADR-0114's draft confirmations, signed
+  // sections, amendments and addendum cosignature requests). M8 registers the REAL eraser
+  // via the composition-root hook over this deny-stub — under an M4 destruction certificate it shreds
+  // the HearthNote cipher columns (§3.6), tombstones the `encounter` root for FK integrity (D8), then
+  // deletes the encounter satellites, children before parents; the `subjectId` is the patient.
   "encounter_record",
   // M9-T07: a patient's assessment record (assessment_cosignature/significant_change_event + the
   // clinical_assessment rows, both active and superseded). M9 registers the REAL eraser via the
