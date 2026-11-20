@@ -10,6 +10,8 @@ import { useEffect, useState } from "react";
 export interface IpocProblemOption {
   readonly id: string;
   readonly description: string;
+  /** What the picker shows: the description, plus the ICD-10 code or kind when two problems read the same. */
+  readonly label: string;
 }
 
 export interface IpocProblems {
@@ -26,12 +28,29 @@ const LOAD_ERROR = "The IPOC problems could not be loaded.";
 export function activeProblemsOf(body: unknown): readonly IpocProblemOption[] {
   const raw = (body as { problems?: unknown } | null | undefined)?.problems;
   if (!Array.isArray(raw)) return [];
-  return raw.flatMap((p): IpocProblemOption[] => {
-    const row = p as { id?: unknown; description?: unknown; status?: unknown } | null;
+  const active = raw.flatMap((p) => {
+    const row = p as {
+      id?: unknown;
+      description?: unknown;
+      status?: unknown;
+      kind?: unknown;
+      icd10Code?: unknown;
+    } | null;
     if (!row || row.status !== "active") return [];
     if (typeof row.id !== "string" || typeof row.description !== "string") return [];
-    return [{ id: row.id, description: row.description }];
+    const detail = [row.icd10Code, row.kind].find((v) => typeof v === "string" && v !== "");
+    return [{ id: row.id, description: row.description, detail: detail as string | undefined }];
   });
+  const seen = new Map<string, number>();
+  for (const p of active) seen.set(p.description, (seen.get(p.description) ?? 0) + 1);
+  return active.map((p) => ({
+    id: p.id,
+    description: p.description,
+    label:
+      (seen.get(p.description) ?? 0) > 1 && p.detail
+        ? `${p.description} (${p.detail})`
+        : p.description,
+  }));
 }
 
 /** Load the patient's active IPOC problems once (nothing is requested until the patient id is known). */

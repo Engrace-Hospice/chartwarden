@@ -7,8 +7,10 @@ import { Button, localInputToIso, nowLocalInput, t, useApiClient } from "@chartw
 // ABAC on routes 15/16, and a refusal is surfaced verbatim.
 //
 // The aide and the supervising RN are PICKED from the plan's staff roster (`./aide-roster`), never typed: a native
-// dropdown of real people, prefilled from the plan's own binding. When the roster cannot be loaded the modal says
-// so and refuses to submit rather than falling back to free-text membership ids.
+// dropdown of real people, prefilled from the plan's own binding. The server accepts only the plan's own aide and
+// supervising RN (`AIDE_NOT_ON_PLAN` / `NOT_AIDE_SUPERVISOR`), so everyone else on the roster is listed but not
+// selectable. When the roster cannot be loaded the modal says so, offers a retry and refuses to submit rather than
+// falling back to free-text membership ids.
 import { useState } from "react";
 import type { JSX } from "react";
 import type { AideRoster, AideRosterMember } from "./aide-roster";
@@ -26,18 +28,22 @@ const NARRATIVE_MIN = 40;
 
 /**
  * The dropdown choices: the roster, plus the member the plan already binds when the roster does not list them
- * (the server only accepts the plan's own aide / RN, so a bound member must stay selectable).
+ * (a bound member must stay selectable). Anyone else is shown disabled: the server would refuse them.
  */
 function pickerOptions(
   placeholder: string,
   members: readonly AideRosterMember[],
   boundId: string | null,
   rosterReady: boolean,
-): { value: string; label: string }[] {
+): { value: string; label: string; disabled?: boolean }[] {
   const listed = boundId !== null && members.some((m) => m.membershipId === boundId);
   return [
     { value: "", label: placeholder },
-    ...members.map((m) => ({ value: m.membershipId, label: m.displayName })),
+    ...members.map((m) =>
+      m.membershipId === boundId
+        ? { value: m.membershipId, label: m.displayName }
+        : { value: m.membershipId, label: `${m.displayName} — not on this plan`, disabled: true },
+    ),
     ...(rosterReady && boundId !== null && !listed
       ? [{ value: boundId, label: shortId(boundId) }]
       : []),
@@ -85,36 +91,42 @@ export function SupervisoryVisitModal({
     }
     setBusy(true);
     setError(null);
-    const res = await client.POST("/api/v1/discipline-plans/{planId}/aide-supervisory-visits", {
-      params: { path: { planId: plan.planId }, header: writeHeaders() },
-      body: {
-        aideMembershipId,
-        supervisingRnMembershipId,
-        sourceEncounterId: phoneOnly ? null : sourceEncounterId,
-        supervisoryAt: supervisoryAtIso,
-        attestationMode,
-        aidePerformanceSatisfactory: satisfactory,
-        correctiveActions: correctiveActions.trim() === "" ? null : correctiveActions,
-        supervisoryNarrative: narrative,
-      },
-    } as never);
-    setBusy(false);
-    if (res.error) {
-      setError(
-        errorMessage(
-          res.error,
-          "The supervisory attestation was not recorded. Only this plan's supervising RN (or a covering supervisor) may attest.",
-        ),
-      );
-      return;
+    try {
+      const res = await client.POST("/api/v1/discipline-plans/{planId}/aide-supervisory-visits", {
+        params: { path: { planId: plan.planId }, header: writeHeaders() },
+        body: {
+          aideMembershipId,
+          supervisingRnMembershipId,
+          sourceEncounterId: phoneOnly ? null : sourceEncounterId,
+          supervisoryAt: supervisoryAtIso,
+          attestationMode,
+          aidePerformanceSatisfactory: satisfactory,
+          correctiveActions: correctiveActions.trim() === "" ? null : correctiveActions,
+          supervisoryNarrative: narrative,
+        },
+      } as never);
+      if (res.error) {
+        setError(
+          errorMessage(
+            res.error,
+            "The supervisory attestation was not recorded. Only this plan's supervising RN (or a covering supervisor) may attest.",
+          ),
+        );
+        return;
+      }
+      onRecorded();
+    } catch {
+      setError("The supervisory attestation was not recorded. Check the connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    onRecorded();
   }
 
   return (
     <Modal
       title="Record supervisory visit"
       onClose={onClose}
+      closeDisabled={busy}
       footer={
         <Button tone="primary" type="button" onClick={() => void submit()} disabled={!canSubmit}>
           {busy ? "Recording…" : "Record attestation"}
@@ -122,10 +134,14 @@ export function SupervisoryVisitModal({
       }
     >
       {roster.error ? (
-        <p role="alert" className="wx-text-error">
-          {roster.error} The aide and supervising RN cannot be chosen until it loads — close this
-          window and try again.
-        </p>
+        <div role="alert" className="wx-text-error">
+          <p style={{ margin: 0 }}>
+            {roster.error} The aide and supervising RN cannot be chosen until it loads.
+          </p>
+          <Button tone="secondary" type="button" onClick={roster.reload}>
+            Retry
+          </Button>
+        </div>
       ) : null}
       <SelectField
         label="Aide"
@@ -134,8 +150,11 @@ export function SupervisoryVisitModal({
         onChange={setAide}
         disabled={!rosterReady}
       />
-      {rosterReady && roster.aides.length === 0 && !plan.aideMembershipId ? (
-        <span className="wx-text-muted">No active aide is sited at this plan's location.</span>
+      {rosterReady && !plan.aideMembershipId ? (
+        <span className="wx-text-muted">
+          No aide is assigned to this plan yet; a supervisory visit can only be recorded for the
+          plan's assigned aide.
+        </span>
       ) : null}
       <SelectField
         label="Supervising RN"
@@ -149,8 +168,11 @@ export function SupervisoryVisitModal({
         onChange={setRn}
         disabled={!rosterReady}
       />
-      {rosterReady && roster.supervisors.length === 0 && !plan.supervisingRnMembershipId ? (
-        <span className="wx-text-muted">No active RN is sited at this plan's location.</span>
+      {rosterReady && !plan.supervisingRnMembershipId ? (
+        <span className="wx-text-muted">
+          No supervising RN is assigned to this plan yet; a supervisory visit can only be recorded
+          by the plan's supervising RN.
+        </span>
       ) : null}
       <TextField
         label="Source encounter id (leave blank for a phone-only contact)"
@@ -207,7 +229,11 @@ export function SupervisoryVisitModal({
           re-arm the 14-day clock.
         </Notice>
       ) : null}
-      {error ? <p className="wx-text-error">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="wx-text-error">
+          {error}
+        </p>
+      ) : null}
     </Modal>
   );
 }

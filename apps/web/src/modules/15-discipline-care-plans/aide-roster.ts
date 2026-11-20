@@ -24,6 +24,8 @@ export interface AideRoster {
   readonly error: string | null;
   /** A person's name for a bound membership id: "Not assigned" for none, the short id when unknown. */
   readonly nameOf: (membershipId: string | null | undefined) => string;
+  /** Read the roster again (the modal's "Retry"); a no-op while a read is in flight. */
+  readonly reload: () => void;
 }
 
 type RosterState = Pick<AideRoster, "aides" | "supervisors" | "loading" | "error">;
@@ -48,7 +50,10 @@ export function rosterNameOf(
 export function useAideRoster(planId: string | undefined): AideRoster {
   const client = useApiClient();
   const [state, setState] = useState<RosterState>(LOADING);
+  const [attempt, setAttempt] = useState(0);
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` is the retry trigger
   useEffect(() => {
     if (!planId) return;
     let cancelled = false;
@@ -83,7 +88,7 @@ export function useAideRoster(planId: string | undefined): AideRoster {
     return () => {
       cancelled = true;
     };
-  }, [client, planId]);
+  }, [client, planId, attempt]);
 
   const { aides, supervisors } = state;
   const nameOf = useCallback(
@@ -92,5 +97,5 @@ export function useAideRoster(planId: string | undefined): AideRoster {
     [aides, supervisors],
   );
 
-  return { ...state, nameOf };
+  return { ...state, nameOf, reload };
 }

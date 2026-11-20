@@ -9,7 +9,7 @@ import type { ApiClient } from "@chartwarden/ui";
 //   • "IPOC problem" is a select over the patient's ACTIVE M7 problems, never a pasted uuid.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
 import { AidePocEditor } from "../aide-poc-editor";
@@ -83,13 +83,18 @@ const carePlan = (problems: unknown[]) => ({
   redacted: false,
 });
 
-const problem = (id: string, description: string, status: string) => ({
+const problem = (
+  id: string,
+  description: string,
+  status: string,
+  over: { kind?: string; icd10Code?: string | null } = {},
+) => ({
   id,
   planId: "care-plan-1",
-  icd10Code: null,
+  icd10Code: over.icd10Code ?? null,
   snomedCode: null,
   description,
-  kind: "clinical",
+  kind: over.kind ?? "clinical",
   source: "clinical",
   sudRelated: false,
   status,
@@ -107,10 +112,16 @@ const ok = (data: unknown) => ({
 
 type PostCall = [path: string, init: { params: unknown; body: Record<string, unknown> }];
 
-function renderEditor(problems: unknown[] = []) {
+function renderEditor(problems: unknown[] = [], carePlanFails = false) {
   const post = vi.fn(async (_path: string, _init: unknown) => ok({}));
   const client = {
     GET: vi.fn(async (path: string) => {
+      if (path === "/api/v1/patients/{patientId}/care-plan" && carePlanFails)
+        return {
+          data: undefined,
+          error: { status: 500, title: "care plan down" },
+          response: new Response(null, { status: 500 }),
+        };
       if (path === "/api/v1/discipline-plans") return ok({ data: [planDetail], nextCursor: null });
       if (path === "/api/v1/discipline-plans/{planId}") return ok(planDetail);
       if (path === "/api/v1/patients/{patientId}/care-plan") return ok(carePlan(problems));
@@ -245,5 +256,68 @@ describe("Aide POC editor — goal form", () => {
     expect((screen.getByRole("button", { name: "Add goal" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
+  });
+});
+
+describe("Aide POC editor — goal form accessibility", () => {
+  it("links the explanation to the IPOC problem select, so a screen reader hears why it is empty", async () => {
+    renderEditor([problem(RESOLVED_PROBLEM, "Resolved cough", "resolved")]);
+    const picker = await select("IPOC problem");
+    const hint = await screen.findByText(/no active ipoc problems/i);
+    await waitFor(() => {
+      const ids = (picker.getAttribute("aria-describedby") ?? "").split(" ");
+      expect(ids).toContain(hint.id);
+    });
+  });
+
+  it("shows why the problems could not be loaded, on the select itself", async () => {
+    renderEditor([], true);
+    const picker = await select("IPOC problem");
+    expect(await screen.findByText("The IPOC problems could not be loaded.")).toBeTruthy();
+    expect(picker.disabled).toBe(true);
+  });
+
+  it("tells two problems with the same description apart", async () => {
+    renderEditor([
+      problem(ACTIVE_PROBLEM, "Pain", "active", { kind: "terminal" }),
+      problem("55555555-5555-4555-8555-555555555555", "Pain", "active", { kind: "related" }),
+    ]);
+    const picker = await select("IPOC problem");
+    await waitFor(() =>
+      expect(Array.from(picker.options).map((o) => o.textContent)).toEqual([
+        "Select a problem…",
+        "Pain (terminal)",
+        "Pain (related)",
+      ]),
+    );
+  });
+});
+
+describe("Aide POC editor — unsaved changes and links", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("asks before any in-app link, the chart rail and banner included, abandons a draft", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderEditor();
+    fireEvent.change(await screen.findByRole("textbox", { name: "New task" }), {
+      target: { value: "Corporal hygiene" },
+    });
+    fireEvent.click(screen.getByRole("link", { name: "June Rivera" }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    // Declined: still on the editor.
+    expect(screen.getByRole("textbox", { name: "New task" })).toBeTruthy();
+
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("link", { name: "June Rivera" }));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "New task" })).toBeNull());
+  });
+
+  it("does not ask when nothing has been typed", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderEditor();
+    await screen.findByRole("textbox", { name: "New task" });
+    fireEvent.click(screen.getByRole("link", { name: "June Rivera" }));
+    expect(confirm).not.toHaveBeenCalled();
   });
 });

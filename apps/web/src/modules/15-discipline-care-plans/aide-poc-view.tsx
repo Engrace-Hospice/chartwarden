@@ -95,7 +95,14 @@ function SupervisoryLedger({
             }
           />
         </SummaryGrid>
-        {error ? <p className="wx-text-error">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="wx-text-error">
+            {error}
+          </p>
+        ) : null}
+        {roster.error ? (
+          <span className="wx-text-muted">Names could not be loaded; showing short ids.</span>
+        ) : null}
         {visits.length === 0 ? (
           <span className="wx-text-muted">
             No supervisory attestation recorded yet. The first one arms the 14-day cadence.

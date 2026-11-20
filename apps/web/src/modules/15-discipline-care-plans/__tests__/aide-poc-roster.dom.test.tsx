@@ -110,21 +110,35 @@ interface Scenario {
   readonly binding?: { aide: string | null; rn: string | null };
   /** What GET .../aide-supervision-roster answers (default: ROSTER). */
   readonly roster?: ReturnType<typeof ok> | ReturnType<typeof fail>;
+  /** Successive roster answers (the last repeats); overrides `roster`. */
+  readonly rosterSequence?: ReadonlyArray<ReturnType<typeof ok> | ReturnType<typeof fail>>;
+  /** The attestation POST rejects (a lost connection) instead of resolving. */
+  readonly postRejects?: boolean;
+  /** The attestation POST answers a refusal. */
+  readonly postFails?: boolean;
   /** What the plan worklist answers (default: the plan). `null` = no aide plan yet. */
   readonly planList?: "none" | "error";
 }
 
 function makeClient(scenario: Scenario) {
   const detail = planDetail(scenario.binding ?? { aide: null, rn: null });
-  const post = vi.fn(async (_path: string, _init: unknown) => ok({}));
+  const post = vi.fn(async (_path: string, _init: unknown) => {
+    if (scenario.postRejects) throw new TypeError("network down");
+    if (scenario.postFails) return fail(403, "only the supervising RN may attest");
+    return ok({});
+  });
+  let rosterCalls = 0;
   const get = vi.fn(async (path: string) => {
     if (path === "/api/v1/discipline-plans") {
       if (scenario.planList === "error") return fail(500, "worklist exploded");
       return ok({ data: scenario.planList === "none" ? [] : [detail], next_cursor: null });
     }
     if (path === "/api/v1/discipline-plans/{planId}") return ok(detail);
-    if (path === "/api/v1/discipline-plans/{planId}/aide-supervision-roster")
+    if (path === "/api/v1/discipline-plans/{planId}/aide-supervision-roster") {
+      const sequence = scenario.rosterSequence;
+      if (sequence) return sequence[Math.min(rosterCalls++, sequence.length - 1)];
       return scenario.roster ?? ok(ROSTER);
+    }
     if (path === "/api/v1/patients/{id}")
       return ok({
         id: PATIENT,
@@ -241,28 +255,31 @@ const pick = (dialog: HTMLElement, label: string, value: string) =>
   fireEvent.change(within(dialog).getByRole("combobox", { name: label }), { target: { value } });
 
 describe("Supervisory-visit modal — staff pickers", () => {
-  it("offers the aides and RN supervisors from the roster and submits the chosen membership ids", async () => {
-    const { post } = renderAt({}, "view");
+  it("lists the roster, disables everyone but the plan's own aide and RN, and submits the bound ids", async () => {
+    const { post } = renderAt({ binding: { aide: AIDE_2, rn: RN_2 } }, "view");
     const dialog = await openModal();
 
-    // Real people in native dropdowns, not free-text membership ids.
+    // Real people in native dropdowns, not free-text membership ids; the server accepts only the plan's own
+    // aide and supervising RN, so the others are listed but cannot be picked.
+    const aide = within(dialog).getByRole("combobox", { name: "Aide" }) as HTMLSelectElement;
     await waitFor(() =>
-      expect(
-        Array.from(
-          (within(dialog).getByRole("combobox", { name: "Aide" }) as HTMLSelectElement).options,
-        ).map((o) => o.textContent),
-      ).toEqual(["Select an aide", "Avery Aide", "Blake Aide"]),
+      expect(Array.from(aide.options).map((o) => o.textContent)).toEqual([
+        "Select an aide",
+        "Avery Aide — not on this plan",
+        "Blake Aide",
+      ]),
     );
-    expect(
-      Array.from(
-        (within(dialog).getByRole("combobox", { name: "Supervising RN" }) as HTMLSelectElement)
-          .options,
-      ).map((o) => o.textContent),
-    ).toEqual(["Select a supervising RN", "Riley Nurse", "Casey Manager"]);
+    expect(Array.from(aide.options).map((o) => o.disabled)).toEqual([false, true, false]);
+    const rn = within(dialog).getByRole("combobox", {
+      name: "Supervising RN",
+    }) as HTMLSelectElement;
+    expect(Array.from(rn.options).map((o) => o.textContent)).toEqual([
+      "Select a supervising RN",
+      "Riley Nurse — not on this plan",
+      "Casey Manager",
+    ]);
     expect(within(dialog).queryByRole("textbox", { name: /membership id/i })).toBeNull();
 
-    pick(dialog, "Aide", AIDE_2);
-    pick(dialog, "Supervising RN", RN_2);
     fireEvent.change(within(dialog).getByRole("textbox", { name: /Supervisory narrative/ }), {
       target: { value: NARRATIVE },
     });
@@ -279,6 +296,19 @@ describe("Supervisory-visit modal — staff pickers", () => {
       supervisingRnMembershipId: RN_2,
       supervisoryNarrative: NARRATIVE,
     });
+  });
+
+  it("says nobody is assigned, and offers nobody, when the plan binds no aide or RN", async () => {
+    renderAt({ binding: { aide: null, rn: null } }, "view");
+    const dialog = await openModal();
+    expect(await within(dialog).findByText(/No aide is assigned to this plan yet/)).toBeTruthy();
+    expect(within(dialog).getByText(/No supervising RN is assigned to this plan yet/)).toBeTruthy();
+    const aide = within(dialog).getByRole("combobox", { name: "Aide" }) as HTMLSelectElement;
+    expect(
+      Array.from(aide.options)
+        .filter((o) => o.value !== "")
+        .every((o) => o.disabled),
+    ).toBe(true);
   });
 
   it("preselects the aide and RN the plan already binds", async () => {
@@ -322,5 +352,63 @@ describe("Supervisory-visit modal — staff pickers", () => {
     ).toBe(true);
     // No fallback to free-text ids.
     expect(within(dialog).queryByRole("textbox", { name: /membership id/i })).toBeNull();
+  });
+
+  it("retries the roster from the modal without a page reload", async () => {
+    const { get } = renderAt(
+      {
+        binding: { aide: AIDE, rn: RN },
+        rosterSequence: [fail(500, "roster down"), ok(ROSTER)],
+      },
+      "view",
+    );
+    const dialog = await openModal();
+    expect(await within(dialog).findByText(/roster down/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(within(dialog).queryByRole("alert")).toBeNull());
+    expect(rosterReads(get)).toHaveLength(2);
+    expect(
+      Array.from(
+        (within(dialog).getByRole("combobox", { name: "Aide" }) as HTMLSelectElement).options,
+      ).map((o) => o.textContent),
+    ).toContain("Avery Aide");
+  });
+
+  it("shows the error and re-enables the button when the connection drops mid-submit", async () => {
+    const { post } = renderAt({ binding: { aide: AIDE, rn: RN }, postRejects: true }, "view");
+    const dialog = await openModal();
+    await waitFor(() =>
+      expect(
+        (within(dialog).getByRole("combobox", { name: "Aide" }) as HTMLSelectElement).value,
+      ).toBe(AIDE),
+    );
+    fireEvent.change(within(dialog).getByRole("textbox", { name: /Supervisory narrative/ }), {
+      target: { value: NARRATIVE },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record attestation" }));
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toMatch(/not recorded/i);
+    expect(post).toHaveBeenCalledTimes(1);
+    const button = within(dialog).getByRole("button", {
+      name: "Record attestation",
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
+  it("announces a refusal from the server to a screen reader", async () => {
+    const { post } = renderAt({ binding: { aide: AIDE, rn: RN }, postFails: true }, "view");
+    const dialog = await openModal();
+    await waitFor(() =>
+      expect(
+        (within(dialog).getByRole("combobox", { name: "Aide" }) as HTMLSelectElement).value,
+      ).toBe(AIDE),
+    );
+    fireEvent.change(within(dialog).getByRole("textbox", { name: /Supervisory narrative/ }), {
+      target: { value: NARRATIVE },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record attestation" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toMatch(/supervising RN/i);
+    expect(post).toHaveBeenCalledTimes(1);
   });
 });
