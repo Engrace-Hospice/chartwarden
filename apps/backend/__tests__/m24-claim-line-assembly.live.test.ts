@@ -1057,6 +1057,17 @@ describe.skipIf(!DB_URL)(
         [ORG, RB_PATIENT, peId, USER],
       );
       const arrangementId = arrangement.rows[0].id;
+      const location = await admin.query(
+        `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+         VALUES ($1,'Synthetic R&B Site','1 Test Way','Test City','OR','97000','America/Los_Angeles')
+         RETURNING id`,
+        [peId],
+      );
+      const locationId = location.rows[0].id as string;
+      await admin.query("UPDATE rb_arrangement SET location_id=$2 WHERE id=$1", [
+        arrangementId,
+        locationId,
+      ]);
       const rbLocPeriodReader = locPeriodReader([
         {
           id: LOC_1,
@@ -1066,10 +1077,10 @@ describe.skipIf(!DB_URL)(
         },
       ]);
       const rbDay = await admin.query(
-        `INSERT INTO rb_day (organization_id, provider_entity_id, patient_id, rb_arrangement_id, service_date,
+        `INSERT INTO rb_day (organization_id, provider_entity_id, location_id, patient_id, rb_arrangement_id, service_date,
          loc_of_day, loc_period_id_snapshot, per_diem_cents_snapshot, status)
-       VALUES ($1,$2,$3,$4,'2026-05-05','RHC',$5,20000,'billable') RETURNING id`,
-        [ORG, peId, RB_PATIENT, arrangementId, LOC_1],
+       VALUES ($1,$2,$3,$4,$5,'2026-05-05','RHC',$6,20000,'billable') RETURNING id`,
+        [ORG, peId, locationId, RB_PATIENT, arrangementId, LOC_1],
       );
       const rbDayId = rbDay.rows[0].id;
       const m6Reader = createAdmissionLocPeriodsReader(handle.db);
@@ -1097,7 +1108,7 @@ describe.skipIf(!DB_URL)(
         },
       );
       const lines = await admin.query(
-        "SELECT id, revenue_code, q_code, level_of_care, is_rb, rb_day_id, rate_at_assembly_cents, state_rate_schedule_id_snapshot FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
+        "SELECT id, revenue_code, q_code, level_of_care, is_rb, rb_day_id, location_id, rate_at_assembly_cents, state_rate_schedule_id_snapshot FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
         [claim.id],
       );
       expect(lines.rows).toHaveLength(1);
@@ -1107,6 +1118,7 @@ describe.skipIf(!DB_URL)(
         level_of_care: "NF_RB",
         is_rb: true,
         rb_day_id: rbDayId,
+        location_id: locationId,
         rate_at_assembly_cents: 20000,
         state_rate_schedule_id_snapshot: null,
       });

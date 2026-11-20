@@ -73,17 +73,17 @@ export function inclusiveDeathLocPeriodId(
   inclusiveEndDate: string | null | undefined,
 ): string | null {
   if (!inclusiveEndDate) return null;
-  const candidates = periods.filter(
-    (period) =>
-      period.endedAt !== null &&
-      isoDay(period.endedAt) === inclusiveEndDate &&
-      isoDay(period.effectiveAt) <= inclusiveEndDate,
-  );
+  // First resolve which LOC period owns the date, using the same latest-effective rule as the ordinary
+  // half-open interval lookup. Only then consider extending that terminal period through its end date.
+  // Filtering to periods that ended on the death date first would incorrectly extend an older period when
+  // a newer period started that day and remains open (or ends later).
+  const candidates = periods.filter((period) => isoDay(period.effectiveAt) <= inclusiveEndDate);
   if (candidates.length === 0) return null;
   const latestEffectiveAt = Math.max(...candidates.map((period) => instant(period.effectiveAt)));
   const latest = candidates.filter((period) => instant(period.effectiveAt) === latestEffectiveAt);
   if (latest.length !== 1) return null;
   const terminal = latest[0]!;
+  if (terminal.endedAt === null || isoDay(terminal.endedAt) !== inclusiveEndDate) return null;
   if (
     (terminal.levelOfCare === "inpatient_respite_care" ||
       terminal.levelOfCare === "general_inpatient_care") &&

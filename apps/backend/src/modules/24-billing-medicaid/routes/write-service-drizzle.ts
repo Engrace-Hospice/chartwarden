@@ -2161,6 +2161,7 @@ export function buildDrizzleM24WriteService(
                 chargesCents: rbd.perDiemCentsSnapshot,
                 isRb: true,
                 rbDayId: rbd.id,
+                locationId: rbd.locationId,
               })
               .returning({ id: L.id });
             const transitioned = await tx
