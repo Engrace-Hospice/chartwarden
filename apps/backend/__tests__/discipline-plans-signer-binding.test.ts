@@ -20,6 +20,8 @@ const PLAN_ROW = {
   status: "active",
   kind: "msw_plan",
   version: 1,
+  // The assigned aide of an Aide POC: only this membership may fill the CHHA acknowledgment slot.
+  aideMembershipId: "m1",
 };
 const VERSION_ROW = {
   id: VERSION,
@@ -41,10 +43,11 @@ function fakeDb(
   requiredSignerSet: unknown = VERSION_ROW.requiredSignerSet,
   insertError?: unknown,
   planKind: string = PLAN_ROW.kind,
+  planOverrides: Record<string, unknown> = {},
 ) {
   inserted = [];
   const results: unknown[][] = [
-    [{ ...PLAN_ROW, kind: planKind }],
+    [{ ...PLAN_ROW, kind: planKind, ...planOverrides }],
     [{ ...VERSION_ROW, requiredSignerSet }],
     [...signatures],
   ];
@@ -197,6 +200,37 @@ describe("M15 signVersion — the signer role is bound to the authenticated acto
         VERSION,
         sign("chha_acknowledgment"),
       ),
+    ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
+  });
+
+  it("lets only the plan's assigned aide fill the CHHA acknowledgment slot", async () => {
+    const aideSet = [{ role: "chha_acknowledgment", count: 1, isAcknowledgment: true }];
+    // Another aide of the same org holds the chha role but is not the aide this plan names.
+    const err = await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m9", ["chha"]), PLAN, VERSION, sign("chha_acknowledgment"))
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DisciplinePlanStateError);
+    expect((err as DisciplinePlanStateError).code).toBe("SIGNER_ROLE_MISMATCH");
+    expect((err as DisciplinePlanStateError).statusCode).toBe(403);
+    expect(inserted).toHaveLength(0);
+    // The assigned aide ("m1") signs.
+    await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m1", ["chha"]), PLAN, VERSION, sign("chha_acknowledgment"))
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({
+      signerMembershipId: "m1",
+      signerRole: "chha_acknowledgment",
+    });
+  });
+
+  it("refuses the acknowledgment on a plan that names no aide (fail closed)", async () => {
+    const aideSet = [{ role: "chha_acknowledgment", count: 1, isAcknowledgment: true }];
+    const noAide = buildDrizzleM15WriteService(
+      fakeDb([], aideSet, undefined, "aide_poc", { aideMembershipId: null }),
+      { isInCaseload: async () => true },
+    );
+    await expect(
+      noAide.signVersion(actor("m1", ["chha"]), PLAN, VERSION, sign("chha_acknowledgment")),
     ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
   });
 

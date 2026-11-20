@@ -645,6 +645,18 @@ export function buildDrizzleM15WriteService(
           collected.map((s) => s.signerRole as DisciplineSignerRole),
           input.signerRole as DisciplineSignerRole,
         );
+        // The CHHA acknowledgment is the AIDE'S: any member holding the chha role passes the role check above, so
+        // bind the slot to the aide this plan names. A plan that names none refuses it (fail closed).
+        if (
+          actor.kind !== "system" &&
+          decision.isAcknowledgment &&
+          plan.aideMembershipId !== actor.membershipId
+        ) {
+          throw new DisciplinePlanStateError(
+            "SIGNER_ROLE_MISMATCH",
+            "only the aide assigned to this plan may acknowledge it",
+          );
+        }
         const transition = transitionDisciplinePlanVersion(
           version.status as "draft" | "in_review" | "signed" | "superseded",
           {

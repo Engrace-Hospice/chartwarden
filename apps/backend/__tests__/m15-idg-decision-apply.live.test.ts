@@ -1148,10 +1148,11 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
 
     it("a signature row records the role key the signer held: a plain RN fills the Aide POC's RN slot, the CHHA the acknowledgment (migration 1527)", async () => {
       const plan = await seedPlan(ORG_A, { kind: "aide_poc" });
-      // An Aide POC cannot be finalized before it names its aide and supervising RN.
+      // An Aide POC cannot be finalized before it names its aide and supervising RN; only that aide may acknowledge it.
+      const aideMembershipId = randomUUID();
       await admin.query(
         `UPDATE discipline_care_plan SET aide_membership_id=$2, supervising_rn_membership_id=$3 WHERE id=$1`,
-        [plan.planId, randomUUID(), randomUUID()],
+        [plan.planId, aideMembershipId, randomUUID()],
       );
       const versionId = (
         await admin.query(
@@ -1162,21 +1163,29 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
         )
       ).rows[0].id as string;
       await write().finalizeVersion(writeActor(), plan.planId, versionId, { expectedVersion: 0 });
-      const userActor = (roles: readonly string[]) => ({
+      const userActor = (roles: readonly string[], membershipId: string = randomUUID()) => ({
         organizationId: ORG_A,
         userId: USER,
-        membershipId: randomUUID(),
+        membershipId,
         roles,
         sessionClass: "staff",
         actorKind: "user" as const,
         locationIds: [locationOf[ORG_A]],
         stepUpRecent: true,
       });
-      for (const [roles, slot] of [
-        [["rn"], "rn_case_manager"],
-        [["chha"], "chha_acknowledgment"],
+      // Another aide of the same org holds the chha role but is not the aide this plan names: refused, nothing written.
+      await expect(
+        write().signVersion(userActor(["chha"]), plan.planId, versionId, {
+          expectedVersion: null,
+          signerRole: "chha_acknowledgment",
+          attestationText: "Synthetic attestation",
+        }),
+      ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
+      for (const [roles, slot, membershipId] of [
+        [["rn"], "rn_case_manager", undefined],
+        [["chha"], "chha_acknowledgment", aideMembershipId],
       ] as const) {
-        await write().signVersion(userActor(roles), plan.planId, versionId, {
+        await write().signVersion(userActor(roles, membershipId), plan.planId, versionId, {
           expectedVersion: null,
           signerRole: slot,
           attestationText: "Synthetic attestation",
