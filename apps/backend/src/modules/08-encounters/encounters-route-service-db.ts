@@ -94,6 +94,7 @@ import {
   cosignSubjectOf,
   eligibleCosigner,
 } from "./cosignature/index";
+import { readerOf } from "./drafting/admission-reads";
 import { recordSectionsAmended } from "./drafting/amendment-audit";
 import { assertMayAmendSectionsOf } from "./drafting/amendment-author";
 import { cosignerForAmendment } from "./drafting/amendment-cosigner";
@@ -104,7 +105,7 @@ import type { NoteDraft } from "./drafting/note-draft";
 import { createNoteDraftFlow } from "./drafting/note-draft-flow";
 import { readPinnedNote } from "./drafting/pinned-note";
 import { isVisitNoteDraftEnabled } from "./drafting/policy-service";
-import type { DraftReader, DraftSeamPorts, DraftViewer } from "./drafting/ports";
+import type { DraftSeamPorts, DraftViewer } from "./drafting/ports";
 import { createWorkspaceReader } from "./drafting/workspace-read";
 import { deriveEvvAtSign } from "./evv-at-sign";
 import {
@@ -464,15 +465,6 @@ async function admissionSummaryFor(
  */
 /** A caller with no identity of its own: its draft is redacted as for a member with no role and no Part 2 release (fails closed). */
 const ANONYMOUS_VIEWER: DraftViewer = { roles: [], membershipId: null };
-const NO_PERMISSIONS: ReadonlySet<string> = new Set();
-/** The draft's reader from a viewer and the permissions the route resolved for it: absent permissions are none (fails closed for a template that needs keys). */
-const readerOf = (
-  viewer: DraftViewer & { readonly permissions?: ReadonlySet<string> | undefined },
-): DraftReader => ({
-  roles: viewer.roles,
-  membershipId: viewer.membershipId,
-  permissions: viewer.permissions ?? NO_PERMISSIONS,
-});
 
 export function createDbEncounterRouteService(
   db: DbClient,

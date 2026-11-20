@@ -15,7 +15,8 @@
 // recomputes the draft for the signer without these keys, which is the same full draft; only Part 2 redaction differs per viewer, by design.)
 // Since S2 a recertification or face-to-face draft also reads the admission's benefit period, level of care, face-to-face and certification
 // (M6), through seams with no check of their own either. M6 guards each with its own key (`election.read`, `loc.read`, `f2f.read`,
-// `cti.read`), and only the service knows the template, so IT refuses 403 a caller of such an encounter who lacks one
+// `cti.read`), and only the service knows the template, so IT refuses 403 a caller of such an encounter who lacks one (finalize, sign and an
+// addendum's finalize and sign, which recompute the draft, ask the same keys: encounters-routes.ts `permissionsOf`)
 // (`assertMayReadAdmissionFacts`): the check is by template, the same for every viewer, so the one-draft rule holds and a routine visit's
 // draft needs no key it did not before.
 //

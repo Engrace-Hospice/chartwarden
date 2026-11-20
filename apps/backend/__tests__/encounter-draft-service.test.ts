@@ -5,7 +5,11 @@ import { encounterType } from "@chartwarden/db/schema";
 import { readsBenefitPeriod } from "@chartwarden/hearthnote";
 import type { EncounterType } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
-import { admissionReadsFor } from "../src/modules/08-encounters/drafting/admission-reads";
+import {
+  admissionReadsFor,
+  assertMayReadAdmissionFacts,
+  readerOf,
+} from "../src/modules/08-encounters/drafting/admission-reads";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
 import { EncounterStateError } from "../src/modules/08-encounters/lifecycle/errors";
 import { NOW, carePlan, change, fakePorts, selectionFor } from "./_encounter-draft-fixtures";
@@ -411,6 +415,22 @@ describe("the admission's read keys a recertification or face-to-face draft need
     expect(admissionReadsFor("face_to_face")).toEqual(["election.read"]);
     expect(admissionReadsFor("routine_visit")).toEqual([]);
     expect(admissionReadsFor("constructor")).toEqual([]);
+  });
+
+  it("treats a recompute reader with no permissions as holding none: a recertification or face-to-face draft is refused, a routine visit's is not", () => {
+    const viewerOnly = { roles: ["rn"], membershipId: null };
+    expect(readerOf(viewerOnly).permissions.size).toBe(0);
+    expect(() =>
+      assertMayReadAdmissionFacts("recert_visit", readerOf(viewerOnly).permissions),
+    ).toThrow("election.read");
+    expect(() =>
+      assertMayReadAdmissionFacts("face_to_face", readerOf(viewerOnly).permissions),
+    ).toThrow("election.read");
+    expect(() =>
+      assertMayReadAdmissionFacts("routine_visit", readerOf(viewerOnly).permissions),
+    ).not.toThrow();
+    const holding = new Set(["election.read"]);
+    expect(readerOf({ ...viewerOnly, permissions: holding }).permissions).toBe(holding);
   });
 
   it("names at least one key for every visit type whose draft reads the admission's benefit period (the two lists cannot drift apart)", () => {
