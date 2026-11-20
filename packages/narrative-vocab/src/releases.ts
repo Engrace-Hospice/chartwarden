@@ -74,6 +74,12 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
     id: "5ea65aa0-a1c6-4e27-8853-825abfcb5240",
     releasedOn: "2026-11-20",
   },
+  // The RN admission visit's draft phrases (ADR-0114 S2b), and the admission tag on the shared S1 entries. Additive: no earlier phrase changed.
+  {
+    version: "narrative-vocab@2026.12.1",
+    id: "c032c8df-7afa-421b-99a2-86e8ad4b1154",
+    releasedOn: "2026-11-21",
+  },
 ];
 
 /** Raised when {@link VOCAB_VERSION} names a release this registry does not carry. */

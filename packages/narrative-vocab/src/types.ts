@@ -39,6 +39,8 @@ export type VocabCategory =
   // ── recertification and face-to-face draft categories (S2, VN-D31 to VN-D34). DRAFT wording until its release is reviewed.
   | "decline_evidence" // PPS against the benefit period's first reading, weight change, the face-to-face's facts; draft-only
   | "benefit_period" // the benefit period, the level of care on the visit date, the signed certification; draft-only
+  // ── RN admission visit draft category (S2b, VN-D35 to VN-D38). DRAFT wording until its release is reviewed.
+  | "admission_record" // the orders in effect, the caregivers on record, the advance directive acknowledgment on file; draft-only
   | "visit_reason"; // why the visit happened — one choice per note (the "Reason for Visit" select)
 
 /**

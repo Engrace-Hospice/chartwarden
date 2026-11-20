@@ -1,9 +1,11 @@
 // packages/narrative-vocab/src/draft-entries.ts — the visit-note draft phrases (S1 PR B, ADR-0114, VN-D15).
 //
 // Appended to the corpus by `vocabulary.ts`: the 25 entries of `narrative-vocab@2026.11.0` below (S1), then the 11 of
-// `narrative-vocab@2026.12.0` (S2, `recert-entries.ts`); the 23 earlier entries are untouched. DRAFT WORDING until the review
-// of the running release is "approved" (see `CORPUS_CLINICAL_REVIEW` in vocabulary.ts).
+// `narrative-vocab@2026.12.0` (S2, `recert-entries.ts`), then the 5 of `narrative-vocab@2026.12.1` (S2b, `admission-entries.ts`); the
+// 23 earlier entries are untouched. DRAFT WORDING until the review of the running release is "approved" (see
+// `CORPUS_CLINICAL_REVIEW` in vocabulary.ts).
 import type { EncounterDiscipline, EncounterType } from "@chartwarden/types";
+import { ADMISSION_VOCABULARY } from "./admission-entries";
 import { RECERT_VOCABULARY } from "./recert-entries";
 import type { VocabEntry } from "./types";
 
@@ -262,15 +264,39 @@ const RECERT_SHARED_CODES: ReadonlySet<string> = new Set([
 
 const ROUTINE_AND_RECERT: readonly EncounterType[] = ["routine_visit", "recert_visit"];
 
-/** Every draft entry, in corpus order: the 25 of 2026.11.0 (the shared ones also tagged for the recertification), then the 11 of 2026.12.0. */
+/**
+ * Of those, the ones the RN admission visit also drafts from (S2b, VN-D38): its vitals, care-plan, medication-change and ESAS-r phrases
+ * (the PPS phrases are not: `assessment` is not drafted at admission). Same rule as above: wording untouched, only the
+ * `admission_visit` tag added by `narrative-vocab@2026.12.1`.
+ */
+const ADMISSION_SHARED_CODES: ReadonlySet<string> = new Set(
+  [...RECERT_SHARED_CODES].filter((code) => !code.startsWith("nv.scale.pps_")),
+);
+
+const ROUTINE_RECERT_AND_ADMISSION: readonly EncounterType[] = [
+  "routine_visit",
+  "recert_visit",
+  "admission_visit",
+];
+
+const encounterTypesOf = (code: string): readonly EncounterType[] | undefined =>
+  ADMISSION_SHARED_CODES.has(code)
+    ? ROUTINE_RECERT_AND_ADMISSION
+    : RECERT_SHARED_CODES.has(code)
+      ? ROUTINE_AND_RECERT
+      : undefined;
+
+/**
+ * Every draft entry, in corpus order: the 25 of 2026.11.0 (the shared ones also tagged for the recertification, and the admission
+ * visit's), then the 11 of 2026.12.0, then the 5 of 2026.12.1.
+ */
 export const DRAFT_VOCABULARY: readonly VocabEntry[] = [
-  ...ROUTINE_DRAFT_VOCABULARY.map(
-    (entry): VocabEntry =>
-      RECERT_SHARED_CODES.has(entry.code)
-        ? { ...entry, encounterTypes: ROUTINE_AND_RECERT }
-        : entry,
-  ),
+  ...ROUTINE_DRAFT_VOCABULARY.map((entry): VocabEntry => {
+    const encounterTypes = encounterTypesOf(entry.code);
+    return encounterTypes === undefined ? entry : { ...entry, encounterTypes };
+  }),
   ...RECERT_VOCABULARY,
+  ...ADMISSION_VOCABULARY,
 ];
 
 /**
