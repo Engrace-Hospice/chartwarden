@@ -46,6 +46,57 @@ export function assertFreshM23DatabaseInventory(
   }
 }
 
+/** Requires a complete, non-empty Vitest run with no failure, pending, or todo cases. */
+export function isCompleteM23Qualification(input: {
+  exitStatus: number | null;
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+  todo: number;
+}): boolean {
+  return (
+    input.exitStatus === 0 &&
+    input.total > 0 &&
+    input.failed === 0 &&
+    input.pending === 0 &&
+    input.todo === 0 &&
+    input.passed === input.total
+  );
+}
+
+/** Emits only allowlisted diagnostic facts, never arbitrary Vitest error text. */
+export function summarizeVitestFailureMessage(message: string): string[] {
+  const summary = new Set<string>();
+  const timeout = message.match(/Hook timed out (?:in|after) (\d{1,7})ms/i);
+  if (timeout?.[1]) summary.add(`Hook timeout: ${timeout[1]}ms`);
+
+  const errorClass = message.match(
+    /(?:^|\n)\s*(?:Caused by:\s*)?([A-Za-z][A-Za-z0-9]*(?:Error|Exception)|Error):/,
+  );
+  const safeErrorClasses = new Set([
+    "Error",
+    "AssertionError",
+    "TypeError",
+    "RangeError",
+    "ReferenceError",
+    "SyntaxError",
+    "AggregateError",
+    "TimeoutError",
+  ]);
+  if (errorClass?.[1] && safeErrorClasses.has(errorClass[1])) {
+    summary.add(`Failure class: ${errorClass[1]}`);
+  }
+
+  const sourceLines = [...message.matchAll(/m23-rls-isolation\.live\.test\.ts:(\d+)(?::\d+)?/g)];
+  for (const [, line] of sourceLines.slice(0, 3)) {
+    if (line) summary.add(`M23 suite source line: ${line}`);
+  }
+
+  if (summary.size === 0) summary.add("No allowlisted failure detail; raw diagnostic withheld.");
+  return [...summary];
+}
+
 function hasNoPublishedPorts(
   ports: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null> | null | undefined,
 ): boolean {

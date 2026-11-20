@@ -10,7 +10,9 @@ import {
   type M23NetworkInspection,
   M23_PGDATA_TMPFS,
   assertFreshM23DatabaseInventory,
+  isCompleteM23Qualification,
   startLoopbackTcpRelay,
+  summarizeVitestFailureMessage,
   validateM23DockerIsolation,
 } from "./m23-rls-isolation";
 
@@ -23,8 +25,10 @@ type VitestReport = {
   numPassedTests?: number;
   numFailedTests?: number;
   numPendingTests?: number;
+  numTodoTests?: number;
   testResults?: {
     name?: string;
+    message?: string;
     status?: string;
     assertionResults?: { fullName?: string; status?: string }[];
   }[];
@@ -256,8 +260,6 @@ async function main() {
         },
       },
     );
-    if (child.stdout) process.stdout.write(child.stdout);
-    if (child.stderr) process.stderr.write(child.stderr);
     if (child.error) throw child.error;
 
     let report: VitestReport;
@@ -272,23 +274,44 @@ async function main() {
     const passed = report.numPassedTests ?? 0;
     const failed = report.numFailedTests ?? 0;
     const skipped = report.numPendingTests ?? 0;
+    const todo = report.numTodoTests ?? 0;
+    const qualified = isCompleteM23Qualification({
+      exitStatus: child.status,
+      total,
+      passed,
+      failed,
+      pending: skipped,
+      todo,
+    });
+    if (qualified) {
+      if (child.stdout) process.stdout.write(child.stdout);
+      if (child.stderr) process.stderr.write(child.stderr);
+    } else {
+      console.error("Vitest did not qualify; raw stdout/stderr withheld.");
+    }
     console.log(
-      `M23 live result: total=${total}, passed=${passed}, failed=${failed}, skipped=${skipped}.`,
+      `M23 live result: total=${total}, passed=${passed}, failed=${failed}, skipped=${skipped}, todo=${todo}.`,
     );
-    if (failed !== 0 || skipped !== 0 || passed !== total) {
+    if (!qualified) {
       for (const file of report.testResults ?? []) {
         const nonPassed = (file.assertionResults ?? []).filter((test) => test.status !== "passed");
         if (file.status !== "passed" || nonPassed.length > 0) {
           console.error(
             `Vitest file status: ${file.status ?? "unknown"} (${file.name ?? "unnamed"})`,
           );
+          if (file.message) {
+            console.error("  Suite failure diagnostic (allowlisted; raw details withheld):");
+            for (const line of summarizeVitestFailureMessage(file.message)) {
+              console.error(`    ${line}`);
+            }
+          }
           for (const test of nonPassed) {
             console.error(`  ${test.status ?? "unknown"}: ${test.fullName ?? "unnamed test"}`);
           }
         }
       }
     }
-    if (child.status !== 0 || total === 0 || failed !== 0 || skipped !== 0 || passed !== total) {
+    if (!qualified) {
       throw new Error(
         "M23 live qualification failed or skipped tests; see the Vitest summary above",
       );
