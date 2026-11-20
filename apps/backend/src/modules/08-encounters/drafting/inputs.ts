@@ -382,7 +382,8 @@ async function readBenefitPeriod(
  * The patient's latest weight at or before the visit time, with the benefit period's first beside it. A weight that falls before the period
  * start (org-local) or after the visit is not part of the period. Nothing is drafted at all when ANY weight inside the period cannot be used
  * (not a positive decimal, no `kg`/`lb` unit, an unreadable time) or when the weights are in two units: the sentences say "the only weight
- * recorded" and "the first", and a row skipped in silence would make them false. Nothing is converted.
+ * recorded" and "the first", and a row skipped in silence would make them false. A row holding no text at all was never captured and is not
+ * a reading. Nothing is converted.
  */
 async function readWeight(
   ports: DraftPorts,
@@ -399,12 +400,14 @@ async function readWeight(
   const inPeriod: Array<{ id: string; ms: number; on: string; text: string; unit: "kg" | "lb" }> =
     [];
   for (const row of rows) {
+    const text = row.weight.trim();
+    // An empty weight is a vitals set that never captured one (the capture logic reads it the same way): it is not a reading to use or to refuse.
+    if (text === "") continue;
     const ms = Date.parse(row.recordedAt);
     if (Number.isNaN(ms)) return null;
     if (ms > asOfMs) continue;
     const on = localDateInTimeZone(new Date(ms), timeZone);
     if (on < periodStart) continue;
-    const text = row.weight.trim();
     const unit = row.unit;
     const usable = STRICT_DECIMAL.test(text) && Number(text) > 0 && isWeightUnit(unit);
     if (!usable) return null;

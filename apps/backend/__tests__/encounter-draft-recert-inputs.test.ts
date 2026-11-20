@@ -344,6 +344,31 @@ describe("the weight across the benefit period", () => {
     },
   );
 
+  it.each([
+    ["an empty text", ""],
+    ["blanks", "   "],
+  ])(
+    "does not count a weight that holds %s: it was never captured, so it neither silences the period's weights nor is one of them",
+    async (_name, blank) => {
+      const row: WeightRow = {
+        id: "w-x",
+        recordedAt: "2026-11-01T14:00:00.000Z",
+        weight: blank,
+        unit: null,
+      };
+      const inputs = await readDraftInputs(
+        recertPorts({ weightReadings: async () => [W1, row, W2] }),
+        RECERT,
+        viewer(),
+        AS_OF,
+      );
+      expect(inputs.weight).toMatchObject({
+        id: "w-2",
+        baseline: { value: "130", recordedOn: "2026-10-16" },
+      });
+    },
+  );
+
   it("is not drafted when a weight's time cannot be read", async () => {
     const row: WeightRow = { id: "w-x", recordedAt: "yesterday", weight: "120", unit: "lb" };
     const inputs = await readDraftInputs(
