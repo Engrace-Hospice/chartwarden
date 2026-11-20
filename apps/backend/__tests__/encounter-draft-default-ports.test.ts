@@ -76,7 +76,7 @@ describe("defaultDraftPorts", () => {
         asOf: AS_OF,
       });
 
-    it("asks M39 for the acknowledgment type as of the visit instant, as module m8, and answers the record that was active", async () => {
+    it("asks M39 for the acknowledgment type as of the visit instant, historically (was it in force then, not is it now), as module m8, and answers the record that was active", async () => {
       const evaluate = vi.fn(async () => ({ allowed: true, consentRecordId: "consent-ad-1" }));
       register("ConsentEvaluator", { evaluate });
       await expect(ask()).resolves.toEqual({ consentRecordId: "consent-ad-1" });
@@ -85,6 +85,7 @@ describe("defaultDraftPorts", () => {
         patientId: PATIENT_ID,
         consentType: "advance_directive_acknowledgment",
         asOf: AS_OF,
+        historical: true,
         sessionContext: { sessionClass: "staff" },
         callerModule: "m8",
       });

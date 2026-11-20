@@ -106,8 +106,8 @@ export interface DraftSeamPorts {
     on: string,
   ): Promise<readonly PatientCaregiverRosterEntry[]>;
   /**
-   * M39 `ConsentEvaluator.evaluate` for the `advance_directive_acknowledgment` consent type, as of `asOf`: the record that was active then,
-   * or `null` when none was (S2b, `advance_directive`). A fact that a record existed, never what it says. THROWS when M39 cannot answer.
+   * M39 `ConsentEvaluator.evaluate` (`historical: true`) for the `advance_directive_acknowledgment` consent type, as of `asOf`: the record that
+   * was in force then, even if it was revoked, renewed or expired since, or `null` when none was (S2b, `advance_directive`). A fact that a record existed, never what it says. THROWS when M39 cannot answer.
    */
   advanceDirectiveAcknowledgment(query: {
     readonly organizationId: string;

@@ -33,6 +33,8 @@ interface ConsentEvaluationPort {
     readonly patientId: string;
     readonly consentType: string;
     readonly asOf: string;
+    /** Was the record in force at `asOf` (judged from its own end instant), not is it active now; the visit's instant is in the past. */
+    readonly historical: boolean;
     readonly sessionContext: { readonly sessionClass: string };
     readonly callerModule: string;
   }): Promise<{ readonly allowed: boolean; readonly consentRecordId?: string }>;
@@ -89,6 +91,8 @@ export function defaultDraftPorts(): DraftSeamPorts {
         patientId,
         consentType: ADVANCE_DIRECTIVE_CONSENT_TYPE,
         asOf,
+        // A note is signed after the visit: a record revoked, renewed or expired (the patient's death) in between was still on file then.
+        historical: true,
         sessionContext: { sessionClass: "staff" },
         callerModule: CONSENT_CALLER_MODULE,
       });
