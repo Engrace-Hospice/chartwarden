@@ -225,7 +225,7 @@ async function main() {
     const names = databaseNames.rows[0]?.names ?? [];
     if (names.length !== 2 || !names.includes("postgres") || !names.includes(databaseName)) {
       throw new Error(
-        "Disposable cluster is not fresh (unexpected connectable database inventory)",
+        `Disposable cluster is not fresh (expected only postgres and the test database; found: ${names.join(", ") || "none"})`,
       );
     }
 
