@@ -2,7 +2,7 @@
 // Glass scrim + centered floating card, focus-trapped, Escape-to-close. Blocking/ceremony dialogs and
 // ConfirmDialog compose this; it is also exported directly (UI-005) so callers needing a bespoke
 // dialog build on the accessible shell instead of copying a scrim+panel by hand.
-import { useCallback, useEffect, useInsertionEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { JSX, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { t } from "../theme/tokens";
 
@@ -85,27 +85,15 @@ export function Modal({
     [onClose],
   );
 
-  // The control that opened the dialog is whatever has focus as it opens. Captured in an insertion effect: it runs before any child can take
-  // focus (autoFocus fires in the commit, a child's own effect runs before this component's), and StrictMode does not run it twice, so the
-  // second pass of the effect below cannot capture the card's own control instead.
-  useInsertionEffect(() => {
-    if (open) previouslyFocused.current = document.activeElement;
-  }, [open]);
-
   useEffect(() => {
     if (!open) return;
+    previouslyFocused.current = document.activeElement;
     const card = cardRef.current;
     const first = card?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? card)?.focus();
     return () => {
-      // Restore focus to the trigger on close (keyboard users don't lose their place), but only while focus is still lost: this runs as an
-      // effect cleanup, after the screen's own commit, and a screen that has already put focus where it belongs (the row a step was taken
-      // on) must keep it.
-      const active = document.activeElement;
-      if (active && active !== document.body) return;
-      const trigger = previouslyFocused.current as HTMLElement | null;
-      previouslyFocused.current = null;
-      trigger?.focus?.();
+      // Restore focus to the trigger on close (keyboard users don't lose their place).
+      (previouslyFocused.current as HTMLElement | null)?.focus?.();
     };
   }, [open]);
 
