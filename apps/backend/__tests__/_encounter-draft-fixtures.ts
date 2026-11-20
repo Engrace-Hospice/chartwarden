@@ -13,6 +13,7 @@ import { type Mock, vi } from "vitest";
 import type {
   DraftEncounter,
   DraftPorts,
+  DraftReader,
   DraftViewer,
 } from "../src/modules/08-encounters/drafting/ports";
 
@@ -44,6 +45,11 @@ export const viewer = (over: Partial<DraftViewer> = {}): DraftViewer => ({
   membershipId: "00000000-0000-4000-8000-0000000000aa",
   ...over,
 });
+
+/** A viewer with the permissions a draft RECOMPUTE (finalize, sign, an addendum's) asks for: none unless a test gives some. */
+export const reader = (
+  over: Partial<DraftViewer> & { readonly permissions?: ReadonlySet<string> } = {},
+): DraftReader => ({ ...viewer(over), permissions: over.permissions ?? new Set<string>() });
 
 export const point = (id: string, capturedAt: string, score: number | null): ScaleSeriesPoint => ({
   assessmentId: id as never,
@@ -134,6 +140,18 @@ export const EMPTY_SELECTION = {
   context: { patient: "Patient", serviceDate: "2026-11-18" },
 } as const;
 
+/** The empty stored selection of another template than the routine visit's: it names the template it was made for. */
+export const selectionFor = (encounterType: string, discipline: string) =>
+  ({
+    selection: {
+      ...EMPTY_SELECTION.selection,
+      templateKey: `${encounterType}:${discipline}`,
+      encounterType,
+      discipline,
+    },
+    context: EMPTY_SELECTION.context,
+  }) as never;
+
 type Spied = { readonly [K in keyof DraftPorts]: Mock<DraftPorts[K]> };
 
 /** Every port, as a spy (an override is wrapped too, so a test can still assert on it) over a benign default
@@ -143,6 +161,20 @@ export function fakePorts(over: Partial<DraftPorts> = {}): Spied {
     carePlanAsOf: async () => null,
     scaleSeries: honestSeries({}),
     medicationChangesBetween: async () => [],
+    electionPeriods: async () => [],
+    levelOfCareOn: async (admissionId, on) => ({
+      admissionId: admissionId as never,
+      range: { from: on as never, to: on as never },
+      daysByLevel: {
+        routine_home_care: 0,
+        continuous_home_care: 0,
+        inpatient_respite_care: 0,
+        general_inpatient_care: 0,
+      },
+    }),
+    attestedFaceToFace: async () => null,
+    activeCertification: async () => null,
+    weightReadings: async () => [],
     recordedWounds: async () => [],
     part2DisclosureAllowed: async () => false,
     organizationTimeZone: async () => NEW_YORK,

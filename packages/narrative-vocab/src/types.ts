@@ -36,6 +36,9 @@ export type VocabCategory =
   | "plan" // plan / next-visit phrase (RN routine visit `plan` menu)
   | "scale_reading" // scale reading (PPS, ESAS-r) with its change since the previous reading; draft-only
   | "medication_change" // medication or order change since the last visit; draft-only
+  // ── recertification and face-to-face draft categories (S2, VN-D31 to VN-D34). DRAFT wording until its release is reviewed.
+  | "decline_evidence" // PPS against the benefit period's first reading, weight change, the face-to-face's facts; draft-only
+  | "benefit_period" // the benefit period, the level of care on the visit date, the signed certification; draft-only
   | "visit_reason"; // why the visit happened — one choice per note (the "Reason for Visit" select)
 
 /**

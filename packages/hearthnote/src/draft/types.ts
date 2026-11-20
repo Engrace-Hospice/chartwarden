@@ -12,7 +12,12 @@ export type DraftSourceKind =
   | "care_plan_intervention"
   | "scale_reading"
   | "vitals"
-  | "medication_change";
+  | "medication_change"
+  // S2 (recertification and face-to-face visits, design §3.3):
+  | "weight_reading"
+  | "benefit_period"
+  | "face_to_face"
+  | "certification";
 
 // A `type`, not an `interface`: the canonical serializer takes plain data, and only an alias is
 // assignable to its index-signature shape.
@@ -61,6 +66,65 @@ export interface ScaleReadingInput extends DraftSourceBase {
   /** ISO-8601 instant with a zone; a reading after `asOf` is left out. */
   readonly recordedAt: string;
   readonly previous?: PreviousScaleReading | null;
+  /**
+   * S2, `pps` only: the first reading of the benefit period before this one (its value and org-local date), or `null` when this
+   * reading is the first. The recertification and face-to-face `prognosis` sections set it beside this reading; the recertification
+   * `pps` section compares with it when there is no `previous`. Unused by the routine visit.
+   */
+  readonly baseline?: PreviousScaleReading | null;
+}
+
+/** The first weight of the benefit period: its value (a decimal) and org-local date, in the SAME unit as the reading it sits on. */
+export interface WeightBaselineInput {
+  readonly value: number | string;
+  readonly recordedOn: string;
+}
+
+/** The patient's latest weight at or before the visit time (S2). The caller reads it across the benefit period, not only this encounter. */
+export interface WeightDraftInput extends DraftSourceBase {
+  /** ISO-8601 instant with a zone; a weight after `asOf` is left out. */
+  readonly recordedAt: string;
+  /** The org-local date (YYYY-MM-DD) the sentence shows. */
+  readonly recordedOn: string;
+  /** A decimal as a number or a numeric string; greater than zero. */
+  readonly value: number | string;
+  readonly unit: "kg" | "lb";
+  /** The benefit period's first weight in the same unit, or `null` when this is the only one (or the units differ). */
+  readonly baseline?: WeightBaselineInput | null;
+}
+
+/** The attested face-to-face encounter as module 6 reports it for the benefit period: facts only, never its narrative (VN-D32). */
+export interface FaceToFaceDraftInput extends DraftSourceBase {
+  readonly performerRole: "hospice_md" | "hospice_np";
+  /** YYYY-MM-DD. */
+  readonly performedOn: string;
+  /** YYYY-MM-DD; a face-to-face attested after the service date is not drafted (VN-D11). */
+  readonly attestedOn: string;
+}
+
+/** The signed certification of terminal illness for the benefit period; one signed after the service date is not drafted. */
+export interface CertificationDraftInput extends DraftSourceBase {
+  /** YYYY-MM-DD. */
+  readonly signedOn: string;
+}
+
+/** The benefit period in effect on the service date (module 6, as of that date). */
+export interface BenefitPeriodDraftInput extends DraftSourceBase {
+  /** 1-based number of the benefit period within the election. */
+  readonly sequence: number;
+  readonly periodKind: "ninety_day" | "sixty_day";
+  /** YYYY-MM-DD; the period must contain the service date. */
+  readonly startDate: string;
+  readonly endDate: string;
+  /** The level of care on the service date, or `null` when it cannot be determined for that date (its sentence is then left out). */
+  readonly levelOfCare:
+    | "routine_home_care"
+    | "continuous_home_care"
+    | "inpatient_respite_care"
+    | "general_inpatient_care"
+    | null;
+  readonly faceToFace: FaceToFaceDraftInput | null;
+  readonly certification: CertificationDraftInput | null;
 }
 
 /** One captured vitals set. A field that is absent is not drafted; a blood pressure needs both numbers. */
@@ -103,6 +167,10 @@ export interface DraftInputs {
   readonly scaleReadings: readonly ScaleReadingInput[];
   readonly vitals: VitalsDraftInput | null;
   readonly medicationChanges: readonly MedicationChangeInput[];
+  /** S2: the latest weight across the benefit period; absent or `null` for none. Read by the recertification and face-to-face templates only. */
+  readonly weight?: WeightDraftInput | null;
+  /** S2: the benefit period on the service date; absent or `null` for none. Read by the recertification template only. */
+  readonly benefitPeriod?: BenefitPeriodDraftInput | null;
 }
 
 export interface DraftDeps {

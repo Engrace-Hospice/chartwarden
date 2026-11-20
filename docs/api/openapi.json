@@ -153766,6 +153766,22 @@
                                 {
                                   "const": "medication_change",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "weight_reading",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "benefit_period",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "face_to_face",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "certification",
+                                  "type": "string"
                                 }
                               ]
                             }
@@ -153926,6 +153942,22 @@
                           },
                           {
                             "const": "medication_change",
+                            "type": "string"
+                          },
+                          {
+                            "const": "weight_reading",
+                            "type": "string"
+                          },
+                          {
+                            "const": "benefit_period",
+                            "type": "string"
+                          },
+                          {
+                            "const": "face_to_face",
+                            "type": "string"
+                          },
+                          {
+                            "const": "certification",
                             "type": "string"
                           }
                         ]
@@ -156584,6 +156616,22 @@
                                 {
                                   "const": "medication_change",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "weight_reading",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "benefit_period",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "face_to_face",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "certification",
+                                  "type": "string"
                                 }
                               ]
                             }
@@ -156736,6 +156784,22 @@
                           },
                           {
                             "const": "medication_change",
+                            "type": "string"
+                          },
+                          {
+                            "const": "weight_reading",
+                            "type": "string"
+                          },
+                          {
+                            "const": "benefit_period",
+                            "type": "string"
+                          },
+                          {
+                            "const": "face_to_face",
+                            "type": "string"
+                          },
+                          {
+                            "const": "certification",
                             "type": "string"
                           }
                         ]

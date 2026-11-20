@@ -87,7 +87,7 @@ export function DraftSectionPanel({
         <span className="wx-row-sub">
           {amending
             ? amendedSectionOutcome("not_drafted")
-            : "There is nothing in the record to draft this section from. Use the statements and notes below."}
+            : "There is nothing in the record to draft this section from. Document it below."}
         </span>
         {status}
       </section>

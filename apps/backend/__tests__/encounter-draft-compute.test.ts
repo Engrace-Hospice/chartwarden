@@ -3,7 +3,7 @@
 import type { RecordedWound } from "@chartwarden/hearthnote";
 import { VOCAB_VERSION } from "@chartwarden/narrative-vocab";
 import { describe, expect, it } from "vitest";
-import { computeDraft } from "../src/modules/08-encounters/drafting/compute";
+import { computeDraft, snapshotStorePorts } from "../src/modules/08-encounters/drafting/compute";
 import {
   AS_OF,
   NOW,
@@ -441,5 +441,52 @@ describe("computeDraft: failure", () => {
     await expect(
       computeDraft(fakePorts(), encounter({ discipline: "volunteer" }), viewer(), NOW),
     ).rejects.toMatchObject({ code: "INVALID_ENCOUNTER_DISCIPLINE_PAIR", statusCode: 422 });
+  });
+});
+
+describe("snapshotStorePorts: the weights of a recertification or face-to-face draft (S2)", () => {
+  const recert = encounter({ encounterType: "recert_visit", discipline: "rn" });
+  const rows = [
+    { id: "w-1", recordedAt: "2026-09-01T14:00:00.000Z", weight: "140", unit: "lb" },
+    { id: "w-2", recordedAt: "2026-10-14T23:59:59.999Z", weight: "135", unit: "lb" },
+    { id: "w-3", recordedAt: "2026-10-15T00:00:00.000Z", weight: "130", unit: "lb" },
+  ];
+
+  it("takes the weights once, from the epoch to the visit time, and serves them cut at the period start the later read names", async () => {
+    const store = fakePorts({ weightReadings: async () => rows });
+    const ports = await snapshotStorePorts(store, recert, NOW);
+    expect(store.weightReadings).toHaveBeenCalledTimes(1);
+    expect(store.weightReadings).toHaveBeenCalledWith(
+      recert,
+      "1970-01-01T00:00:00.000Z",
+      expect.any(String),
+    );
+    const cut = await ports.weightReadings(recert, "2026-10-15T00:00:00.000Z", AS_OF);
+    expect(cut.map((r) => r.id)).toEqual(["w-3"]);
+    const all = await ports.weightReadings(recert, "2026-09-01T14:00:00.000Z", AS_OF);
+    expect(all.map((r) => r.id)).toEqual(["w-1", "w-2", "w-3"]);
+    expect(store.weightReadings).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes none for a routine visit, and a read of them through its snapshot is a bug, not an empty answer", async () => {
+    const store = fakePorts();
+    const ports = await snapshotStorePorts(store, encounter(), NOW);
+    expect(store.weightReadings).not.toHaveBeenCalled();
+    await expect(
+      ports.weightReadings(encounter(), "1970-01-01T00:00:00.000Z", AS_OF),
+    ).rejects.toThrow("a weight read the snapshot did not take");
+  });
+
+  it("reads nothing for a template that drafts nothing: every store read through it is refused", async () => {
+    const store = fakePorts();
+    const ports = await snapshotStorePorts(store, encounter({ discipline: "msw" }), NOW);
+    expect(store.organizationTimeZone).not.toHaveBeenCalled();
+    expect(store.weightReadings).not.toHaveBeenCalled();
+    await expect(ports.latestVitals(encounter().id, AS_OF)).rejects.toThrow(
+      "a store read after its transaction closed",
+    );
+    await expect(ports.weightReadings(recert, "1970-01-01T00:00:00.000Z", AS_OF)).rejects.toThrow(
+      "a store read after its transaction closed",
+    );
   });
 });

@@ -13,17 +13,26 @@ import { computeDraftOverview } from "../src/modules/08-encounters/drafting/comp
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
 import { assertResolved, readNoteDraft } from "../src/modules/08-encounters/drafting/note-draft";
 import { createNoteDraftFlow } from "../src/modules/08-encounters/drafting/note-draft-flow";
-import { NOW, fakePorts, viewer } from "./_encounter-draft-fixtures";
+import { NOW, fakePorts, reader, viewer } from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
 type Pair = readonly [EncounterType, EncounterDiscipline];
 
-/** S1 drafts the RN routine visit and nothing else; stated here, not derived, so widening the corpus is a deliberate edit of this test. */
+/**
+ * The pairs that draft: S1's RN routine visit and S2's RN recertification visit and face-to-face visit (physician or nurse practitioner).
+ * Stated here, not derived, so widening the corpus is a deliberate edit of this test.
+ */
+const DRAFTED_PAIRS: ReadonlySet<string> = new Set([
+  "routine_visit:rn",
+  "recert_visit:rn",
+  "face_to_face:md",
+  "face_to_face:np",
+]);
 const UNDRAFTED_PAIRS: readonly Pair[] = (
   Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]
 ).flatMap((type) =>
   ENCOUNTER_DISCIPLINE_RULES[type]
-    .filter((discipline) => !(type === "routine_visit" && discipline === "rn"))
+    .filter((discipline) => !DRAFTED_PAIRS.has(`${type}:${discipline}`))
     .map((discipline): Pair => [type, discipline]),
 );
 
@@ -77,7 +86,7 @@ describe("the gate and sign read nothing for a template the corpus does not draf
       const { unit, store, enabled } = brokenUnit();
       const seams = brokenSeams();
       const encounter = draftEncounterRow({ encounterType: pair[0], discipline: pair[1] });
-      const read = await readNoteDraft(unit, seams, encounter, viewer(), NOW);
+      const read = await readNoteDraft(unit, seams, encounter, reader(), NOW);
       expect(read).toBeNull();
       expect(() => assertResolved(read)).not.toThrow();
       expectNoSourceRead(seams, store);
@@ -106,7 +115,7 @@ describe("the gate and sign read nothing for a template the corpus does not draf
       providerEntityId: null,
       locationId: null,
     };
-    const draft = await flow.read(tx, encounter, viewer());
+    const draft = await flow.read(tx, encounter, reader());
     expect(draft).toBeNull();
     expect(flow.narrativeOf(draft)).toBeUndefined();
     await expect(flow.sealSigned(tx, encounter, draft)).resolves.toBeUndefined();
@@ -120,7 +129,7 @@ describe("the gate and sign read nothing for a template the corpus does not draf
       encounterType: "routine_visit",
       discipline: "volunteer",
     });
-    await expect(readNoteDraft(unit, brokenSeams(), encounter, viewer(), NOW)).resolves.toBeNull();
+    await expect(readNoteDraft(unit, brokenSeams(), encounter, reader(), NOW)).resolves.toBeNull();
   });
 });
 
@@ -130,6 +139,8 @@ describe("the draft routes for a template the corpus does not draft", () => {
     userId: "00000000-0000-4000-8000-0000000000bb",
     roles: ["rn"],
     membershipId: "00000000-0000-4000-8000-0000000000aa",
+    // none of these templates draft anything, so none needs M6's read keys
+    permissions: new Set<string>(),
   };
   const AUDIT = { organizationId: "o", userId: "u", correlationId: "c" } as const;
   const ENCOUNTER_ID = "00000000-0000-4000-8000-000000000004";

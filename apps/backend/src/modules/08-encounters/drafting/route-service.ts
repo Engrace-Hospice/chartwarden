@@ -3,7 +3,11 @@
 // corpus's clinical review state, so the settings screen can say why enabling is refused).
 import type { AuditContext } from "@chartwarden/audit";
 import type { DbClient } from "@chartwarden/db";
-import { CORPUS_CLINICAL_REVIEW, type ClinicalReviewStatus } from "@chartwarden/narrative-vocab";
+import {
+  CORPUS_CLINICAL_REVIEW,
+  type ClinicalReviewStatus,
+  effectiveReviewStatus,
+} from "@chartwarden/narrative-vocab";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   type CorpusReview,
@@ -49,7 +53,7 @@ export function createDbDraftRouteService(deps: DraftRouteServiceDeps): DraftRou
   const clock = deps.now ?? (() => new Date());
   const wire = (policy: DraftPolicy): DraftPolicyWire => ({
     enabled: policy.enabled,
-    reviewStatus: review().status,
+    reviewStatus: effectiveReviewStatus(review()),
     reviewer: review().reviewer,
   });
   return {

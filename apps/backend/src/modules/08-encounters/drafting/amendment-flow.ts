@@ -30,7 +30,7 @@ import { createDbDraftStore } from "./db-draft-store";
 import { type NoteDraft, assertResolved, readNoteDraft } from "./note-draft";
 import type { FlowEncounter } from "./note-draft-flow";
 import { isVisitNoteDraftEnabled } from "./policy-service";
-import type { DraftSeamPorts, DraftViewer } from "./ports";
+import type { DraftReader, DraftSeamPorts, DraftViewer } from "./ports";
 import { serialSeams } from "./serial-seams";
 import { draftUnavailable, guarded } from "./unavailable";
 
@@ -67,7 +67,7 @@ export interface AmendmentFlow {
     tx: DbClient,
     parent: FlowEncounter,
     addendumId: string,
-    viewer: DraftViewer,
+    viewer: DraftReader,
   ): Promise<PreparedAmendment | null>;
   /**
    * How many sections the addendum's sign would seal for `viewer` right now (0 when it names none or none is confirmed). The same Part 2 verdict and
@@ -79,7 +79,7 @@ export interface AmendmentFlow {
     tx: DbClient,
     parent: FlowEncounter,
     addendumId: string,
-    viewer: DraftViewer,
+    viewer: DraftReader,
   ): Promise<number>;
   write(tx: DbClient, addendum: AmendingAddendum, prepared: PreparedAmendment): Promise<number>;
 }
@@ -115,7 +115,7 @@ export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
     tx: DbClient,
     parent: FlowEncounter,
     addendumId: string,
-    viewer: DraftViewer,
+    viewer: DraftReader,
   ): Promise<NoteDraft | "off" | null> => {
     const named = await namedSectionIds(tx, addendumId);
     if (named.length === 0) return null;

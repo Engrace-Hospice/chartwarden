@@ -10,7 +10,15 @@ import {
   DRAFT_SOURCE_READ_TIMEOUT_MS,
   guarded,
 } from "../src/modules/08-encounters/drafting/unavailable";
-import { NOW, carePlan, change, fakePorts, viewer } from "./_encounter-draft-fixtures";
+import {
+  NOW,
+  carePlan,
+  change,
+  fakePorts,
+  reader,
+  selectionFor,
+  viewer,
+} from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
 const outage = async (): Promise<never> => {
@@ -41,6 +49,7 @@ const caller = {
   userId: "00000000-0000-4000-8000-0000000000bb",
   roles: ["rn"],
   membershipId: "00000000-0000-4000-8000-0000000000aa",
+  permissions: new Set<string>(),
 };
 const scope = { organizationId: encounter.organizationId, userId: "u", now: NOW };
 
@@ -74,7 +83,7 @@ describe("an RN routine visit whose source fails", () => {
     it(`${source}: the gate and sign read is COMPLIANCE_GATE_UNAVAILABLE (503), never a pass`, async () => {
       const { seams, runInOrg } = harness(source, outage);
       const error = await runInOrg(scope, (unit) =>
-        readNoteDraft(unit, seams, encounter, viewer(), NOW),
+        readNoteDraft(unit, seams, encounter, reader(), NOW),
       ).catch((e: unknown) => e);
       expect(error).toMatchObject({ code: "COMPLIANCE_GATE_UNAVAILABLE", statusCode: 503 });
       expect((error as Error).message).not.toContain("synthetic upstream outage");
@@ -96,7 +105,7 @@ describe("an RN routine visit whose source never answers", () => {
   for (const source of SOURCES) {
     it(`${source}: the gate and sign read gives up after the bound with COMPLIANCE_GATE_UNAVAILABLE`, async () => {
       const { seams, runInOrg } = harness(source, hang);
-      const read = runInOrg(scope, (unit) => readNoteDraft(unit, seams, encounter, viewer(), NOW));
+      const read = runInOrg(scope, (unit) => readNoteDraft(unit, seams, encounter, reader(), NOW));
       expect(await outcomeAfter(read, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
         code: "COMPLIANCE_GATE_UNAVAILABLE",
         statusCode: 503,
@@ -139,4 +148,95 @@ describe("an RN routine visit whose source never answers", () => {
     fail(new Error("answered too late"));
     await vi.advanceTimersByTimeAsync(1);
   });
+});
+
+// ── S2: the recertification visit reads the admission's benefit period, level of care, face-to-face and certification (M6) and the weights ──
+const recertEncounter = draftEncounterRow({ encounterType: "recert_visit", discipline: "rn" });
+/** A reader holding the four M6 read keys a recertification draft needs (`assertMayReadAdmissionFacts`). */
+const ADMISSION_READER = reader({
+  permissions: new Set(["election.read", "cti.read", "f2f.read", "loc.read"]),
+});
+const RECERT_SEAM_SOURCES = [
+  "electionPeriods",
+  "levelOfCareOn",
+  "attestedFaceToFace",
+  "activeCertification",
+] as const;
+type RecertSource = (typeof RECERT_SEAM_SOURCES)[number] | "weightReadings";
+const RECERT_SOURCES: readonly RecertSource[] = [...RECERT_SEAM_SOURCES, "weightReadings"];
+const COVERING_PERIOD = {
+  periodId: "period-3",
+  admissionId: recertEncounter.admissionId,
+  sequence: 3,
+  periodKind: "ninety_day",
+  status: "active",
+  startDate: "2026-10-15",
+  endDate: "2027-01-12",
+  actualEndDate: null,
+} as never;
+
+/** Healthy seams with a period covering the visit, so every M6 read is asked; `broken` replaces one of them by `how`. */
+function recertHarness(broken: RecertSource | null, how: () => Promise<never>) {
+  const seams = fakePorts({
+    carePlanAsOf: async () => carePlan(),
+    electionPeriods: async () => [COVERING_PERIOD],
+    ...(broken !== null && broken !== "weightReadings" ? { [broken]: how } : {}),
+  });
+  const mem = memoryRunInOrg({
+    previous: new Date("2026-11-10T15:00:00.000Z"),
+    encounter: recertEncounter,
+    selection: selectionFor("recert_visit", "rn"),
+  });
+  if (broken === "weightReadings") mem.store.weightReadings.mockImplementation(how);
+  return { seams, ...mem };
+}
+
+describe("an RN recertification visit whose source fails", () => {
+  for (const source of RECERT_SOURCES) {
+    it(`${source}: the gate and sign read is COMPLIANCE_GATE_UNAVAILABLE (503), and the draft read DRAFT_UNAVAILABLE (503)`, async () => {
+      const gate = recertHarness(source, outage);
+      const gateError = await gate
+        .runInOrg(scope, (unit) =>
+          readNoteDraft(unit, gate.seams, recertEncounter, ADMISSION_READER, NOW),
+        )
+        .catch((e: unknown) => e);
+      expect(gateError).toMatchObject({ code: "COMPLIANCE_GATE_UNAVAILABLE", statusCode: 503 });
+      expect((gateError as Error).message).not.toContain("synthetic upstream outage");
+
+      const read = recertHarness(source, outage);
+      const svc = createDraftService({
+        runInOrg: read.runInOrg,
+        seams: () => read.seams,
+        now: () => NOW,
+      });
+      const error = await svc
+        .getDraft(
+          {
+            ...caller,
+            permissions: new Set(["election.read", "cti.read", "f2f.read", "loc.read"]),
+          },
+          recertEncounter.id,
+        )
+        .catch((e: unknown) => e);
+      expect(error).toMatchObject({ code: "DRAFT_UNAVAILABLE", statusCode: 503 });
+    });
+  }
+});
+
+describe("an RN recertification visit whose source never answers", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  for (const source of RECERT_SOURCES) {
+    it(`${source}: the gate and sign read gives up after the bound with COMPLIANCE_GATE_UNAVAILABLE`, async () => {
+      const { seams, runInOrg } = recertHarness(source, hang);
+      const read = runInOrg(scope, (unit) =>
+        readNoteDraft(unit, seams, recertEncounter, ADMISSION_READER, NOW),
+      );
+      expect(await outcomeAfter(read, DRAFT_SOURCE_READ_TIMEOUT_MS + 1)).toMatchObject({
+        code: "COMPLIANCE_GATE_UNAVAILABLE",
+        statusCode: 503,
+      });
+    });
+  }
 });

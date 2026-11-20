@@ -16,7 +16,7 @@ import { createDbDraftStore } from "./db-draft-store";
 import { finalNoteOf } from "./final-note";
 import { type NoteDraft, readNoteDraft } from "./note-draft";
 import { isVisitNoteDraftEnabled } from "./policy-service";
-import type { DraftEncounter, DraftSeamPorts, DraftViewer } from "./ports";
+import type { DraftEncounter, DraftReader, DraftSeamPorts } from "./ports";
 import { serialSeams } from "./serial-seams";
 import { pinAndSealSignedNote, pinCarriesPart2 } from "./signed-sections";
 
@@ -37,7 +37,7 @@ export interface NoteDraftFlowDeps {
 }
 
 export interface NoteDraftFlow {
-  read(tx: DbClient, encounter: FlowEncounter, viewer: DraftViewer): Promise<NoteDraft | null>;
+  read(tx: DbClient, encounter: FlowEncounter, viewer: DraftReader): Promise<NoteDraft | null>;
   narrativeOf(draft: NoteDraft | null): string | undefined;
   part2DerivedOf(draft: NoteDraft | null): boolean;
   /**

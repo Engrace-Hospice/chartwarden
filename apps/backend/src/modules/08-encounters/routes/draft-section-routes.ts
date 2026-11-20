@@ -7,12 +7,18 @@
 //                                                                   author alone (403 for anyone else, an absent addendum included)    encounter.read
 //   PUT /api/v1/encounters/:encounterId/addenda/:addendumId/draft/sections/:sectionId   the addendum's author confirms or deselects one   encounter.addendum_author
 //
-// Both also need the read key of each SOURCE domain the draft is compiled from (SOURCE_DOMAIN_READS): the care plan (M7), the medication
+// All four also need the read key of each SOURCE domain every draft is compiled from (SOURCE_DOMAIN_READS): the care plan (M7), the medication
 // orders (M12) and the scored scales (M9) reach the draft through seams that apply no permission check of their own, so without them a role
 // holding only `encounter.read` would read goal text, medication names and scores it cannot read through those modules. Requiring them on the
 // route, rather than dropping the sections a caller lacks, keeps ONE draft per patient and visit: a section hash is never computed from fewer
 // sources for one viewer than for another, so a confirmation cannot be matched against a fuller view than the one its author saw. (The sign
 // recomputes the draft for the signer without these keys, which is the same full draft; only Part 2 redaction differs per viewer, by design.)
+// Since S2 a recertification or face-to-face draft also reads the admission's benefit period, level of care, face-to-face and certification
+// (M6), through seams with no check of their own either. M6 guards each with its own key (`election.read`, `loc.read`, `f2f.read`,
+// `cti.read`), and only the service knows the template, so IT refuses 403 a caller of such an encounter who lacks one (finalize, sign and an
+// addendum's finalize and sign, which recompute the draft, ask the same keys: encounters-routes.ts `permissionsOf`)
+// (`assertMayReadAdmissionFacts`): the check is by template, the same for every viewer, so the one-draft rule holds and a routine visit's
+// draft needs no key it did not before.
 //
 // Both answer 404 when the tenant has the draft switched off (the service decides, before it reads anything), and for an encounter that is not
 // the caller's tenant. The viewer is the server-assembled session (roles, active membership), never request input: the draft is computed per
@@ -21,16 +27,17 @@
 // minus the `If-Match` version (the section's content hash is the optimistic lock), plus the AI-principal refusal: an AI may not confirm what
 // it drafted a note from. A stale hash or corpus version is 409
 // `DRAFT_SECTION_STALE`; a draft that cannot be computed is 503 `DRAFT_UNAVAILABLE`.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { requireAbac, requirePermission, resolveActorPermissions } from "@chartwarden/auth";
 import {
   type PreHandler,
   actorOf,
   rejectAiActor,
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { TObject } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { DraftService } from "../drafting/draft-service";
+import type { DraftCaller, DraftService } from "../drafting/draft-service";
 import { auditContextOf } from "./audit-context";
 import {
   AmendmentDraftParamsSchema,
@@ -43,6 +50,29 @@ import { parse } from "./encounters-typebox";
 
 export interface DraftSectionRouteDeps {
   readonly service: DraftService;
+}
+
+/**
+ * The caller as the service sees it: the server-assembled session plus the permissions it resolves to. The service, which knows the template,
+ * decides which of the admission's read keys (M6) the draft of that template needs (`assertMayReadAdmissionFacts`).
+ */
+async function callerOf<Membership extends string | null>(
+  request: FastifyRequest,
+  actor: Pick<DraftCaller, "organizationId" | "userId" | "roles"> & {
+    readonly membershipId: Membership;
+  },
+): Promise<DraftCaller & { readonly membershipId: Membership }> {
+  // The whole request context, as `requirePermission` resolves it, so a session class that holds its permissions apart from the membership
+  // (portal, funeral home) is resolved here the same way as at the route guard.
+  const context = request.context;
+  if (!context) throw new UnauthorizedError();
+  return {
+    organizationId: actor.organizationId,
+    userId: actor.userId,
+    roles: actor.roles,
+    membershipId: actor.membershipId,
+    permissions: await resolveActorPermissions(context),
+  };
 }
 
 /** The sibling routes' read keys: M7 `GET /care-plan/...`, M12 `GET /medication-orders`, M9 `GET /patients/:id/scales/:type/series`. */
@@ -121,15 +151,7 @@ export function registerDraftSectionRoutes(
     async (request) => {
       const { encounterId } = parse(DraftParamsSchema, request.params);
       const actor = actorOf(request);
-      return service.getDraft(
-        {
-          organizationId: actor.organizationId,
-          userId: actor.userId,
-          roles: actor.roles,
-          membershipId: actor.membershipId,
-        },
-        encounterId,
-      );
+      return service.getDraft(await callerOf(request, actor), encounterId);
     },
   );
 
@@ -150,12 +172,7 @@ export function registerDraftSectionRoutes(
       const { encounterId, sectionId } = parse(DraftSectionParamsSchema, request.params);
       const body = parse(ResolveSectionSchema, request.body);
       return service.resolveSection(
-        {
-          organizationId: actor.organizationId,
-          userId: actor.userId,
-          roles: actor.roles,
-          membershipId: actor.membershipId,
-        },
+        await callerOf(request, actor),
         encounterId,
         sectionId,
         body,
@@ -194,16 +211,7 @@ export function registerDraftSectionRoutes(
     async (request) => {
       const { encounterId, addendumId } = parse(AmendmentDraftParamsSchema, request.params);
       const actor = actorOf(request);
-      return service.getAmendmentDraft(
-        {
-          organizationId: actor.organizationId,
-          userId: actor.userId,
-          roles: actor.roles,
-          membershipId: actor.membershipId,
-        },
-        encounterId,
-        addendumId,
-      );
+      return service.getAmendmentDraft(await callerOf(request, actor), encounterId, addendumId);
     },
   );
 
@@ -227,12 +235,7 @@ export function registerDraftSectionRoutes(
       );
       const body = parse(ResolveSectionSchema, request.body);
       return service.resolveAmendmentSection(
-        {
-          organizationId: actor.organizationId,
-          userId: actor.userId,
-          roles: actor.roles,
-          membershipId: actor.membershipId,
-        },
+        await callerOf(request, actor),
         encounterId,
         addendumId,
         sectionId,

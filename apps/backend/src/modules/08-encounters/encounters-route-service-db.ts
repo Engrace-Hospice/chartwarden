@@ -99,6 +99,7 @@ import {
   cosignSubjectOf,
   eligibleCosigner,
 } from "./cosignature/index";
+import { readerOf } from "./drafting/admission-reads";
 import { recordSectionsAmended } from "./drafting/amendment-audit";
 import { assertMayAmendSectionsOf } from "./drafting/amendment-author";
 import { cosignerForAmendment } from "./drafting/amendment-cosigner";
@@ -2472,7 +2473,7 @@ export function createDbEncounterRouteService(
         });
         const reifiedTier = reifiableTier(r.lateEntryTier, late.tier);
         // ADR-0114: the author's visit-note draft (null when the tenant has the switch off).
-        const draft = await noteDraft.read(t, r, args?.viewer ?? ANONYMOUS_VIEWER);
+        const draft = await noteDraft.read(t, r, readerOf(args?.viewer ?? ANONYMOUS_VIEWER));
         // §2.3 — the gate runs as a PREVIEW here: a failure raises the 422 + remediation list and the
         // row stays in draft, which is the transition not happening at all.
         const trans = transitionEncounter(r.status, {
@@ -2652,10 +2653,15 @@ export function createDbEncounterRouteService(
         const siting = { providerEntityId: r.providerEntityId, locationId: r.locationId };
         // ADR-0114: the SIGNER's own draft, recomputed now as of the visit time (never the author's: redaction can differ). Any drafted
         // section that is unresolved or no longer matches its confirmation refuses the sign with 409 DRAFT_SECTION_STALE, before any write.
-        const draft = await noteDraft.read(t, r, {
-          roles: actor.roles ?? [],
-          membershipId: actor.membershipId,
-        });
+        const draft = await noteDraft.read(
+          t,
+          r,
+          readerOf({
+            roles: actor.roles ?? [],
+            membershipId: actor.membershipId,
+            permissions: actor.permissions,
+          }),
+        );
         assertResolved(draft);
         // The draft off at sign over a pin it produced that carries Part 2 text: nothing to seal rows from, so refused (LOW-4).
         await noteDraft.assertDraftNotWithdrawn(t, r, draft);
@@ -3208,7 +3214,7 @@ export function createDbEncounterRouteService(
           gatePreviewPassed:
             a.status === "draft" &&
             (await gateAddendum(t, addendumId, "finalize", () =>
-              amendments.sealable(t, parent, addendumId, actor),
+              amendments.sealable(t, parent, addendumId, readerOf(actor)),
             )),
           at: new Date().toISOString().slice(0, 10) as LocalDate,
         });
@@ -3278,10 +3284,16 @@ export function createDbEncounterRouteService(
         };
         // ADR-0114 VN-D30: the SIGNER's draft of the note as of the visit time, every section the addendum names resolved or the sign is refused
         // (409 DRAFT_SECTION_STALE); `null` for an addendum that names nothing, which signs as it always did.
-        const amending = await amendments.prepare(t, enc, addendumId, {
-          roles: actor.roles ?? [],
-          membershipId: actor.membershipId,
-        });
+        const amending = await amendments.prepare(
+          t,
+          enc,
+          addendumId,
+          readerOf({
+            roles: actor.roles ?? [],
+            membershipId: actor.membershipId,
+            permissions: actor.permissions,
+          }),
+        );
         const amendedSections = amending?.sections ?? [];
         const trans = transitionAddendum(a.status as AddendumState, {
           type: "sign",

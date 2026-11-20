@@ -148,6 +148,7 @@
         "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-physician-authority.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-recert.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
@@ -213,6 +214,7 @@
         "apps/backend/__tests__/m8-findings.live.test.ts",
         "apps/backend/__tests__/m8-note-closure.live.test.ts",
         "apps/backend/__tests__/m8-visit-note-draft-routes.live.test.ts",
+        "apps/backend/__tests__/m8-visit-note-drafting-recert.live.test.ts",
         "apps/backend/__tests__/note-closure-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts",
         "apps/backend/__tests__/visit-note-draft-routes.test.ts",

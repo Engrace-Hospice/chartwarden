@@ -68,6 +68,12 @@ export const NARRATIVE_VOCAB_RELEASES: readonly NarrativeVocabRelease[] = [
     id: "ccc0842e-648d-4174-bf86-50129e9efd8e",
     releasedOn: "2026-11-19",
   },
+  // The recertification and face-to-face draft phrases (ADR-0114 S2). Additive: no earlier phrase changed.
+  {
+    version: "narrative-vocab@2026.12.0",
+    id: "5ea65aa0-a1c6-4e27-8853-825abfcb5240",
+    releasedOn: "2026-11-20",
+  },
 ];
 
 /** Raised when {@link VOCAB_VERSION} names a release this registry does not carry. */

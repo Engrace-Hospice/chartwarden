@@ -23,7 +23,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { AuditContext } from "@chartwarden/audit";
 import { type DbClient, createDbClient } from "@chartwarden/db";
-import { CORPUS_CLINICAL_REVIEW } from "@chartwarden/narrative-vocab";
+import { CORPUS_CLINICAL_REVIEW, VOCAB_VERSION } from "@chartwarden/narrative-vocab";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { Client } from "pg";
@@ -47,7 +47,8 @@ import {
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const SERVICE_DATE = "2026-01-15"; // `encounter_service_date_not_future` forbids the future
-const APPROVED = { reviewer: "ADA", status: "approved" } as const;
+const APPROVED = { reviewer: "ADA", status: "approved", reviewedVersion: VOCAB_VERSION } as const;
+const PENDING = { reviewer: "ADA", status: "pending", reviewedVersion: null } as const;
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -862,7 +863,7 @@ describe.skipIf(!DB_URL)(
         await put(true);
         const service = createDbDraftRouteService({
           db: handle.db,
-          corpusReview: { reviewer: "ADA", status: "pending" },
+          corpusReview: PENDING,
         });
         const result = await service.putPolicy(
           { organizationId: ORG_A, userId: actor().userId, membershipId: actor().membershipId },
@@ -949,7 +950,7 @@ describe.skipIf(!DB_URL)(
               enabled: true,
               actorMembershipId: actor().membershipId,
               audit: auditContextOf(ORG_B, actor().userId),
-              corpusReview: { reviewer: "ADA", status: "pending" },
+              corpusReview: PENDING,
             }),
           ),
         ).rejects.toMatchObject({ code: CORPUS_REVIEW_PENDING_CODE });

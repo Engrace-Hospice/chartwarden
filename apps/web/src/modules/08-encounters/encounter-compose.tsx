@@ -1214,7 +1214,9 @@ export function EncounterCompose(): JSX.Element {
                         <p style={editorDescription}>
                           {isSingleChoice(active.entries)
                             ? "Choose one. Anything the choice cannot say goes in the notes below, stored verbatim."
-                            : "Select the statements that describe this visit. Additional free text is stored verbatim."}
+                            : active.entries.length === 0
+                              ? "This section has no preset statements. Write it in the free-text field below; it is stored verbatim."
+                              : "Select the statements that describe this visit. Additional free text is stored verbatim."}
                         </p>
                       </div>
 
@@ -1258,9 +1260,8 @@ export function EncounterCompose(): JSX.Element {
                             No preset statements for this section
                           </strong>
                           <p style={emptyVocabularyText}>
-                            The template has no entries for this {humanize(encounter.discipline)}{" "}
-                            {humanize(encounter.encounterType)}. Add the documentation in the
-                            free-text field below.
+                            Add the documentation for this {humanize(encounter.discipline)}{" "}
+                            {humanize(encounter.encounterType)} in the free-text field below.
                           </p>
                         </div>
                       ) : isSingleChoice(active.entries) ? (

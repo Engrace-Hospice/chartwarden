@@ -39,3 +39,4 @@ Facts read from the repo on 2026-11-18:
 - Amendments must layer on a frozen authoritative text while source-derived sections render per viewer (Part 2). Modelling that on the M8 addendum state machine is the first task of slice 1.
 - The mobile app and any offline path inherit Decision 3: offline confirmations are re-validated at sync and never silently accepted against newer data.
 - Rolling this out is per tenant, default off, because `main` auto-deploys.
+- The clinical review of the phrase corpus is of one release (VN-D34, slice S2): an approval counts only for the corpus version it names, and the switch cannot be enabled on an approval for another release. Slice S2 adds the recertification visit's own wording as a new release, so S1's approval does not carry over to it.

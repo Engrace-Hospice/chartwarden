@@ -146,11 +146,35 @@ const ROUTINE_VISIT_RN_CATEGORIES: Readonly<Record<string, readonly VocabCategor
   plan: ["plan", "care_plan_element"],
 };
 
+/**
+ * S2: the RN recertification visit's wiring. `pps`, `esas`, `prognosis` and `recert_summary` are drafted from structured records
+ * (design §3.3) and take the clinician's own words as free text, so their menus are EMPTY: a phrase that carries a reading, a weight
+ * or a date is never typed by hand. `vitals_review` and `plan` use the routine visit's categories; `chief_concern` stays as it was.
+ */
+const RECERT_VISIT_RN_CATEGORIES: Readonly<Record<string, readonly VocabCategory[]>> = {
+  vitals_review: ["vitals_review"],
+  plan: ["plan", "care_plan_element"],
+  pps: [],
+  esas: [],
+  prognosis: [],
+  recert_summary: [],
+};
+
+/** S2: the face-to-face visit's `prognosis` is drafted too, so its menu is empty for the same reason; its other sections are untouched. */
+const FACE_TO_FACE_CATEGORIES: Readonly<Record<string, readonly VocabCategory[]>> = {
+  prognosis: [],
+};
+
 /** Per-template category wiring, keyed by template key then section id. */
 const CATEGORY_WIRING: ReadonlyMap<
   string,
   Readonly<Record<string, readonly VocabCategory[]>>
-> = new Map([[templateKey("routine_visit", "rn"), ROUTINE_VISIT_RN_CATEGORIES]]);
+> = new Map([
+  [templateKey("routine_visit", "rn"), ROUTINE_VISIT_RN_CATEGORIES],
+  [templateKey("recert_visit", "rn"), RECERT_VISIT_RN_CATEGORIES],
+  [templateKey("face_to_face", "md"), FACE_TO_FACE_CATEGORIES],
+  [templateKey("face_to_face", "np"), FACE_TO_FACE_CATEGORIES],
+]);
 
 /** The base section ids a discipline documents, before encounter-type specialization. */
 function baseSectionIds(discipline: EncounterDiscipline): readonly string[] {

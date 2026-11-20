@@ -15,7 +15,9 @@ export {
   FALL_FOLLOWUP_CODE,
   VOCABULARY,
   VOCAB_VERSION,
+  effectiveReviewStatus,
   type ClinicalReviewStatus,
+  type CorpusReviewState,
 } from "./vocabulary";
 export {
   MAX_TEXT_SLOT_LENGTH,

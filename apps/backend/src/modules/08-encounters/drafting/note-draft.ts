@@ -12,9 +12,10 @@
 // those are the codes the clinician's own save and finalize already answer with, and they stay as they are.
 import { templateHasDraftedSection } from "@chartwarden/hearthnote";
 import { EncounterStateError } from "../lifecycle/errors";
+import { assertMayReadAdmissionFacts } from "./admission-reads";
 import { type ComputedDraft, computeDraft } from "./compute";
 import type { DraftUnit } from "./draft-store";
-import type { DraftEncounter, DraftPorts, DraftSeamPorts, DraftViewer } from "./ports";
+import type { DraftEncounter, DraftPorts, DraftReader, DraftSeamPorts } from "./ports";
 import {
   type SectionAction,
   type SectionState,
@@ -51,7 +52,7 @@ export async function readNoteDraft(
   unit: Pick<DraftUnit, "enabled" | "store">,
   seams: DraftSeamPorts,
   encounter: DraftEncounter,
-  viewer: DraftViewer,
+  viewer: DraftReader,
   now: Date,
 ): Promise<NoteDraft | null> {
   // S1 scope: a template the corpus does not draft has no draft, so nothing is read, not even the switch (the same `null` as a tenant
@@ -64,6 +65,9 @@ export async function readNoteDraft(
     throw unavailable("the tenant's draft switch could not be read", cause);
   }
   if (!enabled) return null;
+  // The same by-template rule the draft routes apply: a recompute (finalize, sign, an addendum's) names the sections it holds back, which says what
+  // the admission holds, so it asks for the same M6 read keys, after the switch and before any source is read.
+  assertMayReadAdmissionFacts(encounter.encounterType, viewer.permissions);
   try {
     const ports: DraftPorts = { ...seams, ...unit.store };
     const computed = await computeDraft(ports, encounter, viewer, now);

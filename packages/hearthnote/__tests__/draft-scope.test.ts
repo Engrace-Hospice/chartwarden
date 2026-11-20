@@ -1,7 +1,7 @@
 // packages/hearthnote/__tests__/draft-scope.test.ts — which templates draft at all (S1 rollout scope, design §3.2).
 // The answer is read off the corpus (the encounter-type and discipline tags of the draft phrases), never a hand-kept list of templates,
 // and the compiler obeys it: a template the corpus does not draft stays empty even when every source is supplied.
-import { VOCABULARY, entriesFor } from "@chartwarden/narrative-vocab";
+import { DRAFT_VOCAB_CODES, VOCABULARY, entriesFor } from "@chartwarden/narrative-vocab";
 import {
   ENCOUNTER_DISCIPLINE_RULES,
   type EncounterDiscipline,
@@ -18,7 +18,7 @@ import {
   templateHasDraftedSection,
   templateKey,
 } from "../src/index";
-import { AS_OF, DEPS, baseInputs } from "./_draft-fixtures";
+import { AS_OF, DEPS, baseInputs, recertSources } from "./_draft-fixtures";
 
 type Pair = readonly [EncounterType, EncounterDiscipline];
 
@@ -31,6 +31,7 @@ function maximalInputs([type, discipline]: Pair): DraftInputs {
   const base = baseInputs();
   return {
     ...base,
+    ...recertSources(),
     encounterType: type,
     discipline,
     selection: {
@@ -49,11 +50,16 @@ const draftedIdsOf = (pair: Pair): readonly string[] =>
     .map((s) => s.sectionId);
 
 describe("the templates the corpus drafts", () => {
-  it("today that is the RN routine visit and no other legal pair", () => {
+  it("today that is the RN routine visit, the RN recertification visit and the face-to-face visit, and no other legal pair", () => {
     const drafted = LEGAL_PAIRS.filter(([type, discipline]) =>
       templateHasDraftedSection(type, discipline),
     ).map(([type, discipline]) => templateKey(type, discipline));
-    expect(drafted).toEqual(["routine_visit:rn"]);
+    expect(drafted).toEqual([
+      "routine_visit:rn",
+      "recert_visit:rn",
+      "face_to_face:md",
+      "face_to_face:np",
+    ]);
   });
 
   it("names the five sections the sources feed in the RN routine visit, and never chief_concern", () => {
@@ -102,7 +108,7 @@ describe("the templates the corpus drafts", () => {
 
   it("the corpus tags the draft phrases for exactly the pairs the predicate accepts", () => {
     const tagged = new Set(
-      VOCABULARY.filter((entry) => entry.category === "scale_reading").flatMap((entry) =>
+      VOCABULARY.filter((entry) => DRAFT_VOCAB_CODES.has(entry.code)).flatMap((entry) =>
         entry.encounterTypes.flatMap((type) =>
           entry.disciplines
             .filter((discipline) => ENCOUNTER_DISCIPLINE_RULES[type].includes(discipline))

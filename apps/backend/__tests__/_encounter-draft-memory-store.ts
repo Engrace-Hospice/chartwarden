@@ -86,6 +86,7 @@ export function memoryDraftStore(options: MemoryStoreOptions = {}) {
     organizationTimeZone: async () => NEW_YORK,
     previousSignedVisitAt: async () => options.previous ?? null,
     latestVitals: async () => options.vitals ?? null,
+    weightReadings: async () => [],
     removedCarePlanElementIds: async () => removedElementIdsOf(links),
     loadSelection: async () => options.selection ?? EMPTY_SELECTION,
     confirmations: async () => {

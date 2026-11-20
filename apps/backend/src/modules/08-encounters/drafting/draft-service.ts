@@ -8,6 +8,7 @@ import type { AuditContext } from "@chartwarden/audit";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { EncounterStateError } from "../lifecycle/errors";
 import { checkMutableForEdit } from "../lifecycle/validation";
+import { assertMayReadAdmissionFacts } from "./admission-reads";
 import { computeDraftOverview, snapshotStorePorts } from "./compute";
 import { defaultDraftPorts } from "./default-ports";
 import type { AmendmentRef, DraftEncounterRow, DraftUnit, RunInOrg } from "./draft-store";
@@ -29,6 +30,8 @@ export interface DraftCaller {
   readonly roles: readonly string[];
   /** The active membership id, or `null` when the session carries none (a read then fails closed against a Part 2 release). */
   readonly membershipId: string | null;
+  /** The permission keys the session resolves to: the draft of a recertification or face-to-face visit needs the admission's read keys too. */
+  readonly permissions: ReadonlySet<string>;
 }
 
 export interface ResolveSectionRequest {
@@ -86,10 +89,13 @@ async function loadOr404(
   unit: DraftUnit,
   encounterId: string,
   forUpdate: boolean,
+  caller: DraftCaller,
 ): Promise<DraftEncounterRow> {
   if (!(await unit.enabled())) throw new NotFoundError("encounter");
   const encounter = await unit.encounter(encounterId, forUpdate);
   if (encounter === null) throw new NotFoundError("encounter");
+  // After the switch and the tenant are known, so the refusal is no oracle for either; before any source is read.
+  assertMayReadAdmissionFacts(encounter.encounterType, caller.permissions);
   return encounter;
 }
 
@@ -138,7 +144,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
       const now = clock();
       const scope = { organizationId: caller.organizationId, userId: caller.userId, now };
       const { encounter, storePorts } = await deps.runInOrg(scope, async (unit) => {
-        const row = await loadOr404(unit, encounterId, false);
+        const row = await loadOr404(unit, encounterId, false, caller);
         return { encounter: row, storePorts: await snapshotStorePorts(unit.store, row, now) };
       });
       const viewer = { roles: caller.roles, membershipId: caller.membershipId };
@@ -159,7 +165,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
         { organizationId: caller.organizationId, userId: caller.userId, now, audit },
         async (unit) => {
           // Locked: two confirmations of one encounter (and a selection save, which bumps the same row) run one after the other.
-          const encounter = await loadOr404(unit, encounterId, true);
+          const encounter = await loadOr404(unit, encounterId, true, caller);
           // Same rule as the selection save: a signed, cosigned or voided note is edited only through an addendum.
           checkMutableForEdit({ status: encounter.status });
           const outcome = await resolveSection(seams(), unit.store, {
@@ -183,7 +189,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
       const now = clock();
       const scope = { organizationId: caller.organizationId, userId: caller.userId, now };
       const { encounter, amendment, storePorts } = await deps.runInOrg(scope, async (unit) => {
-        const row = await loadOr404(unit, encounterId, false);
+        const row = await loadOr404(unit, encounterId, false, caller);
         return {
           encounter: row,
           amendment: await loadAuthoredAmendmentOr404(unit, encounterId, addendumId, caller),
@@ -216,7 +222,7 @@ export function createDraftService(deps: DraftServiceDeps): DraftService {
         { organizationId: caller.organizationId, userId: caller.userId, now, audit },
         async (unit) => {
           // Locked: the resolution, the addendum's sign and every other write of this encounter's draft run one after the other.
-          const encounter = await loadOr404(unit, encounterId, true);
+          const encounter = await loadOr404(unit, encounterId, true, caller);
           const amendment = await loadAmendmentOr404(unit, encounterId, addendumId);
           if (amendment.authoredByMembershipId !== caller.membershipId) {
             throw new ForbiddenError(

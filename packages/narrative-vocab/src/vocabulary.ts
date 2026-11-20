@@ -52,9 +52,10 @@ export const FALL_FOLLOWUP_CODE = "nv.reason.fall_followup";
 
 /**
  * Semantic version of the shipped corpus; pinned onto a selection at first finalize (D11).
- * 2026.11.0 added the visit-note draft phrases (ADR-0114); 2026.11.1 adds the `visit_reason` entries.
+ * 2026.11.0 added the visit-note draft phrases (ADR-0114); 2026.11.1 added the `visit_reason` entries; 2026.12.0 adds the recertification
+ * and face-to-face draft phrases (ADR-0114 S2).
  */
-export const VOCAB_VERSION = "narrative-vocab@2026.11.1";
+export const VOCAB_VERSION = "narrative-vocab@2026.12.0";
 
 /** Whether the named clinical reviewer has approved the corpus wording. */
 export type ClinicalReviewStatus = "pending" | "approved";
@@ -62,18 +63,47 @@ export type ClinicalReviewStatus = "pending" | "approved";
 /**
  * CLINICAL REVIEW GATE (VN-D14, ADR-0114). Every phrase added in `narrative-vocab@2026.11.0` (the 25
  * visit-note draft entries after the original 23: scale readings, vitals, care-plan goals and
- * interventions, medication changes, and the RN routine visit's chief-concern and plan phrases) is
- * DRAFT WORDING. It was written to be neutral and factual (numbers and dates, no clinical judgement), but
+ * interventions, medication changes, and the RN routine visit's chief-concern and plan phrases) and in
+ * `narrative-vocab@2026.12.0` (the 11 recertification and face-to-face entries: PPS and weight against
+ * the benefit period, the face-to-face's facts, the benefit period) is DRAFT WORDING. It was written to be neutral and factual (numbers and dates, no clinical judgement), but
  * it has not been read by a clinician. The platform-side reviewer named by the owner on 2026-11-18 is ADA.
  *
  * `status` stays "pending" until ADA approves the wording; the approval is a deliberate edit to this
  * constant in its own commit. A later PR (the per-tenant switch, VN-D17) REFUSES to enable the draft for
- * any tenant while `status` is not "approved". Nothing in this package reads it: it is data for that gate.
+ * any tenant while the review is not approved FOR THE RUNNING RELEASE (`effectiveReviewStatus`).
+ *
+ * An approval is of one release (S2 design): `reviewedVersion` names the `VOCAB_VERSION` ADA read. A release cut
+ * after the approval carries wording nobody has read, so the approval stops counting for it, and the corpus test
+ * fails until the commit that bumped `VOCAB_VERSION` settles the review (ADA approves the new release, or this goes
+ * back to "pending"). Going back to "pending" refuses new enables only; it does not switch off a tenant already on.
  */
 export const CORPUS_CLINICAL_REVIEW: {
   readonly reviewer: "ADA";
   readonly status: ClinicalReviewStatus;
-} = { reviewer: "ADA", status: "pending" };
+  /** The corpus release the approval covers; `null` while the review is pending. */
+  readonly reviewedVersion: string | null;
+} = { reviewer: "ADA", status: "pending", reviewedVersion: null };
+
+/** A review state as the switch gate reads it (what `CORPUS_CLINICAL_REVIEW` carries; a test injects another). */
+export interface CorpusReviewState {
+  readonly reviewer: string;
+  readonly status: ClinicalReviewStatus;
+  readonly reviewedVersion: string | null;
+}
+
+/**
+ * The review state that counts for `version` (default: the running release). "approved" only when the review is
+ * approved AND names exactly that release; a pending review, or an approval that names no release or another one,
+ * is "pending". Fails closed.
+ */
+export function effectiveReviewStatus(
+  review: CorpusReviewState,
+  version: string = VOCAB_VERSION,
+): ClinicalReviewStatus {
+  return review.status === "approved" && review.reviewedVersion === version
+    ? "approved"
+    : "pending";
+}
 
 // ── scoping shorthands (kept local so each entry's tags read 1:1 with the encounter model) ───────────
 const NURSING: readonly EncounterDiscipline[] = ["rn", "lpn"];

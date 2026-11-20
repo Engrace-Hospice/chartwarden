@@ -1,10 +1,18 @@
 // S1 PR C2b1 — the draft service (ADR-0114): the per-tenant switch answers 404 before anything is read, the draft is computed for the
 // SESSION viewer, a signed note refuses a resolution, and a write records its explicit audit event. Fakes only; the live suite
 // proves the Drizzle unit.
+import { encounterType } from "@chartwarden/db/schema";
+import { readsBenefitPeriod } from "@chartwarden/hearthnote";
+import type { EncounterType } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
+import {
+  admissionReadsFor,
+  assertMayReadAdmissionFacts,
+  readerOf,
+} from "../src/modules/08-encounters/drafting/admission-reads";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
 import { EncounterStateError } from "../src/modules/08-encounters/lifecycle/errors";
-import { NOW, carePlan, change, fakePorts } from "./_encounter-draft-fixtures";
+import { NOW, carePlan, change, fakePorts, selectionFor } from "./_encounter-draft-fixtures";
 import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-store";
 
 const MEMBER = "00000000-0000-4000-8000-0000000000aa";
@@ -14,6 +22,7 @@ const caller = {
   userId: "00000000-0000-4000-8000-0000000000bb",
   roles: ["rn"],
   membershipId: MEMBER,
+  permissions: new Set<string>(),
 };
 const withPrevious = { previous: new Date("2026-11-10T15:00:00.000Z") };
 
@@ -384,5 +393,114 @@ describe("resolving a section", () => {
       )
       .catch((e: unknown) => e instanceof EncounterStateError);
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("the admission's read keys a recertification or face-to-face draft needs (ADR-0114 S2)", () => {
+  const ID = "00000000-0000-4000-8000-000000000004";
+  const RECERT_KEYS = ["election.read", "cti.read", "f2f.read", "loc.read"];
+  const recert = draftEncounterRow({ encounterType: "recert_visit", discipline: "rn" });
+  const faceToFace = draftEncounterRow({ encounterType: "face_to_face", discipline: "md" });
+  const holding = (keys: readonly string[]) => ({ ...caller, permissions: new Set(keys) });
+
+  function serviceFor(encounter: ReturnType<typeof draftEncounterRow>, enabled = true) {
+    const selection = selectionFor(encounter.encounterType, encounter.discipline);
+    const mem = memoryRunInOrg({ ...withPrevious, encounter, enabled, selection });
+    const seams = seamPorts();
+    return {
+      ...mem,
+      seams,
+      svc: createDraftService({ runInOrg: mem.runInOrg, seams: () => seams, now: () => NOW }),
+    };
+  }
+
+  it("names the keys by template: four for a recertification, the benefit period's for a face-to-face, none for any other", () => {
+    expect(admissionReadsFor("recert_visit")).toEqual(RECERT_KEYS);
+    expect(admissionReadsFor("face_to_face")).toEqual(["election.read"]);
+    expect(admissionReadsFor("routine_visit")).toEqual([]);
+    expect(admissionReadsFor("constructor")).toEqual([]);
+  });
+
+  it("treats a recompute reader with no permissions as holding none: a recertification or face-to-face draft is refused, a routine visit's is not", () => {
+    const viewerOnly = { roles: ["rn"], membershipId: null };
+    expect(readerOf(viewerOnly).permissions.size).toBe(0);
+    expect(() =>
+      assertMayReadAdmissionFacts("recert_visit", readerOf(viewerOnly).permissions),
+    ).toThrow("election.read");
+    expect(() =>
+      assertMayReadAdmissionFacts("face_to_face", readerOf(viewerOnly).permissions),
+    ).toThrow("election.read");
+    expect(() =>
+      assertMayReadAdmissionFacts("routine_visit", readerOf(viewerOnly).permissions),
+    ).not.toThrow();
+    const holding = new Set(["election.read"]);
+    expect(readerOf({ ...viewerOnly, permissions: holding }).permissions).toBe(holding);
+  });
+
+  it("names at least one key for every visit type whose draft reads the admission's benefit period (the two lists cannot drift apart)", () => {
+    const types = encounterType.enumValues as readonly EncounterType[];
+    const readers = types.filter((type) => readsBenefitPeriod(type));
+    expect(readers.length).toBeGreaterThan(0);
+    for (const type of readers) expect(admissionReadsFor(type), type).not.toEqual([]);
+  });
+
+  it.each(RECERT_KEYS)(
+    "refuses a recertification draft to a caller who lacks %s, naming it, before any source is read",
+    async (missing) => {
+      const { svc, seams } = serviceFor(recert);
+      const error = await svc.getDraft(holding(RECERT_KEYS.filter((k) => k !== missing)), ID).then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+      expect(error).toMatchObject({ statusCode: 403 });
+      expect((error as Error).message).toContain(missing);
+      expect(seams.electionPeriods).not.toHaveBeenCalled();
+      expect(seams.carePlanAsOf).not.toHaveBeenCalled();
+    },
+  );
+
+  it("gives a caller who holds all four the recertification draft", async () => {
+    const { svc } = serviceFor(recert);
+    const view = await svc.getDraft(holding(RECERT_KEYS), ID);
+    expect(view.templateKey).toBe("recert_visit:rn");
+  });
+
+  it("refuses the section PUT the same way, before anything is written", async () => {
+    const { svc, unit } = serviceFor(recert);
+    const spy = vi.spyOn(unit, "recordResolved");
+    await expectCode(
+      svc.resolveSection(
+        holding(["election.read", "cti.read", "f2f.read"]),
+        ID,
+        "pps",
+        { resolution: "confirmed", contentHash: "a".repeat(64), corpusVersion: "x" },
+        AUDIT,
+      ),
+      "FORBIDDEN",
+      403,
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("needs only the benefit period's key for a face-to-face draft, and none of the other three", async () => {
+    const { svc } = serviceFor(faceToFace);
+    expect((await svc.getDraft(holding(["election.read"]), ID)).templateKey).toBe(
+      "face_to_face:md",
+    );
+    await expectCode(
+      svc.getDraft(holding(["cti.read", "f2f.read", "loc.read"]), ID),
+      "FORBIDDEN",
+      403,
+    );
+  });
+
+  it("asks a routine visit's draft for none of them", async () => {
+    const { svc } = serviceFor(draftEncounterRow());
+    expect((await svc.getDraft(holding([]), ID)).templateKey).toBe("routine_visit:rn");
+  });
+
+  it("answers 404 while the switch is off even to a caller who lacks the keys: the refusal is no oracle for the switch", async () => {
+    const { svc } = serviceFor(recert, false);
+    await expectCode(svc.getDraft(holding([]), ID), "NOT_FOUND", 404);
   });
 });

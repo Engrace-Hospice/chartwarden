@@ -6,6 +6,18 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-20 — Visit-note drafting slice 2 (M8, ADR-0114): the recertification and face-to-face visits, corpus release `narrative-vocab@2026.12.0`
+
+**No new route. One response enum grows; nothing changes for a tenant with the draft switched off.**
+
+- **`narrative-vocab@2026.12.0` is the active corpus for every tenant at deploy**, as 2026.11.0 was: a draft encounter whose selections were saved before it carries the earlier version, so `POST /encounters/{encounterId}/finalize` answers `409 VOCAB_VERSION_MISMATCH` for it until the selections are saved again (`PATCH /encounters/{encounterId}/selections`; the web composer saves before it finalizes).
+- **`GET /encounters/{encounterId}/draft` and the amendment draft** (`.../addenda/{addendumId}/draft`): `origins[]` of a drafted section can now also be `weight_reading`, `benefit_period`, `face_to_face` and `certification` (kinds only, never ids). A client that decodes `origins` strictly must accept them. They appear only for the RN recertification visit (`recert_visit`, `rn`) and the `prognosis` section of the face-to-face visit (`face_to_face`, `md` or `np`), and only for a tenant whose draft switch is on.
+- **`GET /encounters/{encounterId}/template`** (the authoring menu), switch on: the recertification's `pps`, `esas`, `prognosis` and `recert_summary` sections, and the face-to-face's `prognosis`, carry an empty menu (`allowedCategories` `[]`, no entries): they are drafted from structured records and take the clinician's own words as free text. A section with no category wiring offers no draft phrase, so the sections not named here keep the menu they had. Switch off: the menu is what it was before.
+- **The draft switch cannot be enabled** (`409 CORPUS_REVIEW_PENDING`) on a clinical review of an earlier corpus release; the review names the release it covers.
+- **Permission.** The draft of a recertification visit (`GET .../draft`, `PUT .../draft/sections/{sectionId}` and the two amendment-draft routes) needs the read keys of the admission facts it states, on top of the care plan, prescribing and assessment keys every draft needs: `election.read`, `cti.read`, `f2f.read` and `loc.read`; the face-to-face visit's draft needs `election.read`. A caller who lacks one gets `403` naming it, after the switch check (`404` while the switch is off) and before anything is read. `POST .../finalize`, `POST .../sign` and the addendum `finalize` and `sign` of a recertification or face-to-face visit ask the same keys, since they recompute the draft: `403` naming the missing key, only while the switch is on. A routine visit's draft needs no key it did not before. Nothing changes for a tenant with the switch off.
+
+---
+
 ## 2026-11-19 — Visit-note drafting (M8, ADR-0114): second review of slice 1 (one Part 2 decision, author-only amendment draft, audit)
 
 **No new route and no new field. Behaviour changes on routes that are not released yet; nothing changes for a tenant with the draft off, for an addendum that names no section, or for a reader with Part 2 disclosure.**

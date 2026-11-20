@@ -479,6 +479,10 @@ jobs:
           # ADR-0114 PR C2b1 — the draft's store ports over the real tables, the draft read and section resolution through the real middleware chain
           # (switch off = 404, stale hash = 409, care-plan link rules, read-audit event landed), as the NOBYPASSRLS app role.
           - { name: "M8 visit-note draft routes", scripts: "test:m8:visit-note-draft-routes:live" }
+          # ADR-0114 S2 (VN-D31 to VN-D34) — the recertification and face-to-face draft: the weight store port over the real tables, the draft through
+          # the real routes with the M6 readers faked in the registry, as-of-the-visit, confirm/finalize/sign with sealed rows, the switch, admission.read,
+          # and a failing M6 reader (503), as the NOBYPASSRLS app role.
+          - { name: "M8 visit-note drafting recert", scripts: "test:m8:visit-note-drafting-recert:live" }
           # M36 WP 3.2 — OrderProvider.linkSummary, as the NOBYPASSRLS app role.
           - { name: "M11 link summary seam", scripts: "test:m11:link-summary:live" }
           # M36 WP 3.2 — MedicationOrderProvider.linkSummary (ids + status only), as the NOBYPASSRLS app role.

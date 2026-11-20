@@ -137,6 +137,11 @@ export interface SigningActor {
    * for THIS member (ADR-0114), whose Part 2 redaction depends on them; absent, the draft is redacted as for a member with no role.
    */
   readonly roles?: readonly string[];
+  /**
+   * The permission keys the signer holds, resolved from the server-assembled session. A primary sign and an addendum's sign recompute the draft,
+   * which asks the template's admission read keys (`assertMayReadAdmissionFacts`); absent, the signer holds none.
+   */
+  readonly permissions?: ReadonlySet<string>;
 }
 
 /** The §4.6 owner facts the `m8.cosigner_role_match` predicate resolves for one encounter (RLS-backstopped). */
@@ -537,7 +542,12 @@ export interface EncounterRouteService {
        * The finalizing member (the author), from the server-assembled session. The visit-note draft's gate preview (ADR-0114) reads the
        * draft for this member; absent, it is redacted as for a member with no role and no Part 2 release.
        */
-      viewer?: { readonly roles: readonly string[]; readonly membershipId: string | null };
+      viewer?: {
+        readonly roles: readonly string[];
+        readonly membershipId: string | null;
+        /** The finalizing member's permission keys (the draft asks the template's admission read keys); absent, none. */
+        readonly permissions?: ReadonlySet<string>;
+      };
     },
   ): Promise<{ status: "finalized"; version: number }>;
   /** §2.6 D5 — invoke Layer-2. Returns the ladder's verdict; see {@link Layer2EnhanceOutcome} for why
@@ -677,7 +687,13 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     addendumId: string,
-    actor: { userId?: string | undefined; roles: readonly string[]; membershipId: string | null },
+    actor: {
+      userId?: string | undefined;
+      roles: readonly string[];
+      membershipId: string | null;
+      /** The finalizing author's permission keys (the draft asks the template's admission read keys); absent, none. */
+      permissions?: ReadonlySet<string>;
+    },
   ): Promise<{ status: "finalized" }>;
   signAddendum(
     organizationId: string,
