@@ -21,8 +21,9 @@ import { ALREADY_PROCESSED, type AlreadyProcessedResult, type ProcessingLogPort 
 // ── the job + the port bundle ───────────────────────────────────────────────────────────────────────────
 
 /**
- * One `m30.measure_recompute` job: recompute a single `(measure, provider_entity, period)` value. The
- * `computeVersion` rides the §2.6 idempotency key so a calculator-version bump forces a fresh recompute.
+ * One `m30.measure_recompute` job: recompute a single `(measure, provider_entity, period)` value. A calculator-version
+ * bump is made visible by the V-8 check in `handleMeasureRecompute` (a current row with an older version is
+ * rewritten even when its content is unchanged); the nightly job key does not carry the version.
  */
 export interface MeasureRecomputeJob {
   /** The BullMQ job id (the `processing_log` idempotency key). */
@@ -230,14 +231,20 @@ export async function handleMeasureRecompute(
   const result = registration.calculator(input as never);
   const snapshotContentHash = ports.hashSnapshot(result.computationSnapshot);
 
-  // V-8 idempotency: a re-run whose snapshot hash matches the current row is a no-op (no duplicate row).
+  // V-8 idempotency: a re-run whose snapshot hash matches the current row is a no-op (no duplicate row) — unless
+  // that row carries an OLDER calculator version. The snapshot hash does not cover the version, so without this a
+  // measure whose value did not move would keep its pre-bump stamp forever; the rewrite makes a bump visible.
   const current = await ports.values.findCurrent(
     job.measureCode,
     job.providerEntityId,
     periodStart,
     periodEnd,
   );
-  if (current !== null && current.snapshotContentHash === snapshotContentHash) {
+  if (
+    current !== null &&
+    current.snapshotContentHash === snapshotContentHash &&
+    current.calculatorVersion === registration.calculatorVersion
+  ) {
     await ports.processingLog.markProcessed(job.jobId, {
       outcome: "unchanged",
       valueId: current.id,

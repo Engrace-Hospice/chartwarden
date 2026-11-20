@@ -17,6 +17,7 @@
 // Every value is an INTERNAL ESTIMATE; CMS computes and publishes the official SSVI. Thresholds: the latest
 // published SSVI cut table at or before the reporting period's fiscal year (`ssviThresholdsFor`).
 import {
+  MEASURE_CATALOG,
   type MeasureRegistration,
   type QualityBillingConsumer,
   SSVI_METRIC_MEASURE_CODES,
@@ -65,9 +66,15 @@ export interface SsviResolveSeams {
       ratio: string | null;
       thresholdMet: boolean | null;
       computationSnapshot: Record<string, unknown> | null;
+      calculatorVersion: string;
     } | null>;
   };
 }
+
+/** The calculator version the catalog says each measure's CURRENT rows carry (the composite's staleness check). */
+const CURRENT_CALCULATOR_VERSION: ReadonlyMap<string, string> = new Map(
+  MEASURE_CATALOG.map((entry) => [entry.code, entry.calculatorVersion]),
+);
 
 const MS_PER_DAY = 86_400_000;
 
@@ -228,8 +235,10 @@ async function resolveSsviCompositeInput(
   const metrics = {} as Record<SsviMetricKey, unknown>;
   for (const [key, measureCode] of SSVI_METRIC_MEASURE_CODES) {
     const row = await values.findCurrent(measureCode, request.providerEntityId, start, end);
+    // A row stamped with an OLDER calculator version predates a definition change (its points were scored under
+    // the old cut): it is "not yet computed" until the recompute rewrites it, never stale points in the total.
     metrics[key] =
-      row === null
+      row === null || row.calculatorVersion !== CURRENT_CALCULATOR_VERSION.get(measureCode)
         ? null
         : {
             numerator: row.numerator,

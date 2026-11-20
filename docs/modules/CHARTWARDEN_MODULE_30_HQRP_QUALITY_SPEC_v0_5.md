@@ -50,7 +50,11 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
   `liveDischargesIncludingTransfers`); `skilledVisitDaysForOrg` counts PT/OT/SLP visits as skilled for metrics 3
   and 7. Known ceiling: metric 5's length of stay is this admission only, whereas CMS counts lifetime hospice
   days across hospices and one final discharge per beneficiary per year — there is no prior-hospice-days source
-  (it needs the CMS claims feed), so a readmitted or prior-agency patient is under-counted.
+  (it needs the CMS claims feed), so a readmitted or prior-agency patient is under-counted. `calculatorVersion`
+  is bumped to 0.2.0 on `ssvi_metric_03` to `08`; because the snapshot hash does not cover the version, the
+  recompute worker now also rewrites a current row stamped with an OLDER version (so an unchanged value is
+  restamped), and `ssvi_composite` treats a metric row stamped with an older version as not yet computed rather
+  than summing points scored under the old cut.
 - **Implementation note (SSVI family, FY2027, 2026-10-06)** — new `ssvi` measure family (CMS-1851-F §III.B.2,
   Table 9): nine metrics (`ssvi_metric_01`…`09`) + `ssvi_composite`, catalog `activatesFy: 2027`, calculators in
   `packages/quality/src/measures/ssvi/` (the HCI family layout: per-metric files, `thresholds.ts`,

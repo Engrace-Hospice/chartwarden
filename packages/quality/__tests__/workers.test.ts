@@ -145,6 +145,7 @@ describe("measureRecomputeProcessor", () => {
     const prior = {
       id: "value-OLD",
       snapshotContentHash: "hash-A",
+      calculatorVersion: "0.1.0", // the registration's version: only a row at the current version is a no-op
       ratio: "0.5",
       thresholdMet: true,
     } as schema.QualityMeasureValue;

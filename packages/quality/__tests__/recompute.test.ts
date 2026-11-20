@@ -234,6 +234,29 @@ describe("handleMeasureRecompute — END-TO-END over buildMeasureRegistry()", ()
     expect(rows[0]!.supersededBy).toBeNull(); // the original stays current
   });
 
+  it("a calculator-version bump forces a fresh row even when the snapshot is unchanged (no stale stamp is kept)", async () => {
+    const input = {
+      organizationId: "org-1",
+      providerEntityId: "pe-1",
+      periodStart: "2025-04-01",
+      periodEnd: "2026-04-01",
+      scheduledVisits: 10,
+      onTimeVisits: 9,
+      threshold: gteTarget,
+    };
+    const { ports, rows } = makeRecomputeHarness(() => input);
+    await handleMeasureRecompute(makeJob({ jobId: "job-A" }), ports);
+    // The persisted row predates a calculator-version bump: same content, older version stamp.
+    (rows[0] as unknown as { calculatorVersion: string }).calculatorVersion = "0.0.9";
+
+    const rerun = await handleMeasureRecompute(makeJob({ jobId: "job-B" }), ports);
+
+    expect(rerun).toMatchObject({ outcome: "recomputed" });
+    expect(rows).toHaveLength(2);
+    const current = rows.find((r) => r.supersededBy === null);
+    expect(current?.calculatorVersion).toBe("0.1.0");
+  });
+
   it("appends + supersedes when the recomputed input changes the snapshot", async () => {
     let onTime = 9;
     const { ports, rows } = makeRecomputeHarness(() => ({

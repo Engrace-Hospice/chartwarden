@@ -203,7 +203,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "ssvi",
     periodKind: ROLLING,
     activatesFy: 2027,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description: "SSVI 3 — Last two RHC days of life with a skilled visit (internal estimate)",
   },
   {
@@ -211,7 +211,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "ssvi",
     periodKind: ROLLING,
     activatesFy: 2027,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description: "SSVI 4 — Live-discharge share (internal estimate)",
   },
   {
@@ -219,7 +219,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "ssvi",
     periodKind: ROLLING,
     activatesFy: 2027,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description: "SSVI 5 — Discharges with length of stay of 180 days or more (internal estimate)",
   },
   {
@@ -227,7 +227,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "ssvi",
     periodKind: ROLLING,
     activatesFy: 2027,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description: "SSVI 6 — Skilled-nursing minutes per RHC day (internal estimate)",
   },
   {
@@ -235,7 +235,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "ssvi",
     periodKind: ROLLING,
     activatesFy: 2027,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description: "SSVI 7 — Weekend RHC days with a skilled visit (internal estimate)",
   },
   {
@@ -243,7 +243,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "ssvi",
     periodKind: ROLLING,
     activatesFy: 2027,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description:
       "SSVI 8 — Live discharges back to the same hospice within 7 days (internal estimate)",
   },

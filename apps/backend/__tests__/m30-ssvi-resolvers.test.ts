@@ -26,6 +26,9 @@ import {
 } from "../src/modules/30-quality/jobs/ssvi-resolvers";
 
 const REG = buildMeasureRegistry();
+/** The calculator version the catalog says a measure's CURRENT rows carry. */
+const currentVersion = (code: string): string =>
+  (REG.get(code) as MeasureRegistration).calculatorVersion;
 const REQUEST = (code: string) => ({
   registration: REG.get(code) as MeasureRegistration,
   organizationId: "org-1",
@@ -177,6 +180,7 @@ describe("SSVI resolvers → calculators", () => {
       (await resolveSsviMeasureInput(REQUEST("ssvi_metric_09"), seams())) as never,
     );
     const metricRow = (code: string) => {
+      const calculatorVersion = currentVersion(code);
       if (code === "ssvi_metric_09")
         return {
           numerator: 0,
@@ -184,6 +188,7 @@ describe("SSVI resolvers → calculators", () => {
           ratio: null,
           thresholdMet: null,
           computationSnapshot: m9Unavailable.computationSnapshot,
+          calculatorVersion,
         };
       return {
         numerator: 1,
@@ -191,6 +196,7 @@ describe("SSVI resolvers → calculators", () => {
         ratio: "0.5000",
         thresholdMet: false,
         computationSnapshot: { ssviPoints: 1 },
+        calculatorVersion,
       };
     };
     const input = await resolveSsviMeasureInput(
@@ -201,6 +207,26 @@ describe("SSVI resolvers → calculators", () => {
     expect(isDataUnavailable(total)).toBe(true);
     expect(total.computationSnapshot.partialScoreLowerBound).toBe(8);
     expect(total.computationSnapshot.maxPossibleScore).toBe(16);
+  });
+
+  it("the composite treats a metric row stamped with an OLDER calculator version as not yet computed, never as stale points", async () => {
+    const row = (code: string) => ({
+      numerator: 1,
+      denominator: 2,
+      ratio: "0.5000",
+      thresholdMet: false,
+      computationSnapshot: { ssviPoints: 1 },
+      // metric 3's current row predates its definition fix (0.1.0 → 0.2.0); the others are current
+      calculatorVersion: code === "ssvi_metric_03" ? "0.1.0" : currentVersion(code),
+    });
+    const input = (await resolveSsviMeasureInput(
+      REQUEST("ssvi_composite"),
+      seams({ values: { findCurrent: async (code: string) => row(code) } }),
+    )) as { metrics: Record<string, unknown> };
+    expect(input.metrics.metric_03).toBeNull();
+    expect(input.metrics.metric_04).not.toBeNull();
+    const total = computeSsviScore(input as never);
+    expect(total.computationSnapshot.notYetComputedMetrics).toEqual(["metric_03"]);
   });
 });
 
