@@ -5782,6 +5782,7 @@ describe.skipIf(!DB_URL)(
                 userId: who.userId,
                 roles: who.roles,
                 membershipId: who.membershipId,
+                permissions: new Set<string>(),
               },
               f.encounterId,
               addendumId,
