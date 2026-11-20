@@ -45,6 +45,7 @@ import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-po
 import {
   type CurrentLocPeriodForClaim,
   hospiceClaimLineSnapshotIssue,
+  inclusiveDeathLocPeriodId,
   m6LocClaimEndDate,
 } from "../claim-hospice-line-snapshot";
 import {
@@ -2034,13 +2035,17 @@ export function buildDrizzleM24WriteService(
           const facilityKinds = facilityKindReader
             ? await facilityKindReader.kindsFor([...facilityIdsToResolve])
             : new Map<string, PlaceOfServiceFacilityKind>();
+          const inclusiveDeathPeriodId = inclusiveDeathLocPeriodId(rawPeriods, inclusiveLocEndDate);
           const locPeriods = rawPeriods.map((p) => {
             const residence = residenceByPeriod.get(p.id) ?? null;
             return {
               levelOfCarePeriodId: p.id,
               levelOfCare: LOC_BY_M6_ENUM[p.levelOfCare],
               from: day(p.effectiveAt),
-              to: m6LocClaimEndDate(p.endedAt, inclusiveLocEndDate),
+              to: m6LocClaimEndDate(
+                p.endedAt,
+                p.id === inclusiveDeathPeriodId ? inclusiveLocEndDate : null,
+              ),
               placeOfService: {
                 ownIpuBed: p.ipuBedAssignmentId !== null,
                 locPeriodFacilityKind: p.facilityId
