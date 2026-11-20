@@ -15,8 +15,8 @@
 // The AAD binds the ciphertext to (module, table, column, tenant), so a blob lifted from another column or
 // another org fails to open rather than decrypting into the wrong chart. That is why there are TWO ciphers
 // over one key rather than one cipher used twice: the selection tree's free text and the assembled
-// narrative are different columns with different lifetimes (the eraser NULLs the first and crypto-shreds
-// the second), and an envelope moved between them must fail rather than open. The DEK version travels in
+// narrative are different columns with different lifetimes (the eraser NULLs the first and shreds
+// the second to its empty sentinel), and an envelope moved between them must fail rather than open. The DEK version travels in
 // the envelope, and `open` resolves THAT version rather than the current one, so a key rotation leaves
 // every historical note readable.
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";

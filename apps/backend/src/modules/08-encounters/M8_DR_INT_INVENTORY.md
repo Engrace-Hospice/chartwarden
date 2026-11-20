@@ -74,7 +74,7 @@ Notes:
   `signature_method`, `signed_at`, `step_up_auth_at`, `attestation_variant`; signing requires a fresh
   step-up session class (D13, > 5 min ⇒ re-auth); the M4 PHI write-audit trigger makes an immutable
   `audit_event` on INSERT. `m8.encounter.signed` records the business attestation. A signed encounter is
-  never UPDATEd or DELETEd — corrections are append-only addenda (§3.6 voided-not-deleted).
+  never UPDATEd or DELETEd, except by destruction certificate (the eraser's tombstone and deletes) — corrections are append-only addenda (§3.6 voided-not-deleted).
 - **Elevation (T2):** cosignature is RBAC-gated (`encounter.cosign` ∈ {RN, Clinical Supervisor, DON}) +
   ABAC `cosigner_role_match` (the cosigner must be an RN and NOT the primary author) ∧
   `caseload_membership` ∧ `step_up_fresh`. The administrative >14d override emits
@@ -94,12 +94,21 @@ Notes:
 ## Destruction (`encounter_record`, §3.6 / D9)
 
 The `encounter_record` data class is erased ONLY through the M4 destruction-cert workflow (M8-T12
-eraser). The eraser (1) cryptographically erases the HearthNote ciphertext by destroying the tenant DEK
-(`hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.layer1_cipher`/`layer2_cipher`/
-`final_cipher`) FIRST so the PHI is irrecoverable the instant the key is gone, (2) deletes the encounter
-subtree (signatures, addenda, care-plan links, cosignature requests, vitals, mileage, HearthNote
-selection/assembled-output/llm-modification) for the subject patient, and (3) tombstones the `encounter`
-root (the PK survives for FK integrity) — disjoint from M5's `clinical_record` (patient spine), M6's
-`admission_record` (admission subtree), and M7's `care_plan_record` (care-plan subtree). `subjectId` is
-the patient being destroyed. (The spec §3.6 `clinical_record` mention is reconciled to this disjoint
-class so the M5 eraser is never double-registered — architecture's one-eraser-per-data-class rule wins.)
+eraser; today the only caller is M34's tenant shred). `subjectId` is the patient being destroyed. The eraser
+first REFUSES, before any write, unless its connection is a member of `chartwarden_destruction`
+(`DATABASE_DESTRUCTION_URL`; the composition root falls back to the app pool when it is unset, which can shred and
+tombstone but not delete). Then, as three transactions: (1) it SHREDS the HearthNote ciphertext itself
+(`hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.layer1_cipher`/`layer2_cipher`/`final_cipher`; the
+store holds a `DbClient`, not the key custodian, so it destroys the bytes, not the DEK); (2) it TOMBSTONES the `encounter`
+root (voided, every reason text replaced by one placeholder, PK kept for FK integrity; `voided_by` is the note's author because
+no system membership exists, and the audit actor is NULL); (3) it DELETES the satellites (signatures, addenda, care-plan links,
+cosignature requests, vitals, mileage, HearthNote selection/assembled-output/llm-modification). A failure between the
+transactions must be retried (re-post the shred with the same certificate id); every step is idempotent. `erased` counts the
+satellite rows plus the roots tombstoned in that run. Disjoint from M5's `clinical_record` (patient spine), M6's
+`admission_record` (admission subtree), and M7's `care_plan_record` (care-plan subtree).
+
+What destruction does NOT reach (spec §3.6 "What survives"): the `audit_event` before/after images the 0031 write-audit
+triggers recorded keep clinical values their denylists do not name (vitals numbers, `hearthnote_selection.selections`,
+`encounter_signature.attestation_text`, mileage figures), and the destruction's own satellite DELETEs add more; M8
+outbox payloads carry reason text, and `failed` dead letters are never auto-purged. M8 reads no legal hold: the M34 shred
+preflight refuses the whole tenant while any hold is active, before any eraser runs.

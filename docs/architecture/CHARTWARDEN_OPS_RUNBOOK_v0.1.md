@@ -2487,6 +2487,7 @@ A tenant is shred-eligible only when **all three** conditions hold. Confirm each
 
 - Never approve while a legal hold is present anywhere in scope.
 - Never bypass the M4 second approver — a single-approver shred is not permitted.
+- A Phase 1 that throws is not a refusal; re-post the shred with the SAME certificate id. The M8 `encounter_record` eraser throws `DegradedError` before any write when `DATABASE_DESTRUCTION_URL` is unset or names a role outside `chartwarden_destruction`; set it and re-post. Its three transactions (shred, tombstone, delete) are each idempotent, and a retry's certificate counts cover only what the retry changed. Destruction does not purge `audit_event` before/after images (they keep clinical values the write-audit denylists do not name) or `failed` outbox dead letters (reason text); see M8 spec §3.6 "What survives".
 - If the **eraser-refusal gate** aborts the shred (any eraseFn returned `refused_part_two_retention`), the tenant correctly returns to `retained` with refused-row counts on the certificate. **This is the intended outcome — do not force the DEK destruction.** The DEK is the only key for legally-retained 42 CFR Part 2 ciphertext; `tenant.shred_eligibility_check` re-fires when the Part 2 obligation lapses.
 
 ### 18.3 Support-Session Escalation (M34 §7.4)
