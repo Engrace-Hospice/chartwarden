@@ -330,16 +330,19 @@ describe("the weight across the benefit period", () => {
     ["a number with its unit in the text", { weight: "150 lb", unit: "lb" }],
     ["no unit", { weight: "120", unit: null }],
     ["a unit that is not kg or lb", { weight: "120", unit: "stone" }],
-  ] as const)("is not drafted when one weight inside the period cannot be used (%s): the sentences say 'first' and 'only', and a skipped row would make them false", async (_name, bad) => {
-    const row: WeightRow = { id: "w-x", recordedAt: "2026-11-01T14:00:00.000Z", ...bad };
-    const inputs = await readDraftInputs(
-      recertPorts({ weightReadings: async () => [W1, row, W2] }),
-      RECERT,
-      viewer(),
-      AS_OF,
-    );
-    expect(inputs.weight).toBeNull();
-  });
+  ] as const)(
+    "is not drafted when one weight inside the period cannot be used (%s): the sentences say 'first' and 'only', and a skipped row would make them false",
+    async (_name, bad) => {
+      const row: WeightRow = { id: "w-x", recordedAt: "2026-11-01T14:00:00.000Z", ...bad };
+      const inputs = await readDraftInputs(
+        recertPorts({ weightReadings: async () => [W1, row, W2] }),
+        RECERT,
+        viewer(),
+        AS_OF,
+      );
+      expect(inputs.weight).toBeNull();
+    },
+  );
 
   it("is not drafted when a weight's time cannot be read", async () => {
     const row: WeightRow = { id: "w-x", recordedAt: "yesterday", weight: "120", unit: "lb" };
