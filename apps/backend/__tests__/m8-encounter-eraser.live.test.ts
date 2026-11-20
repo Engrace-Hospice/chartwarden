@@ -42,6 +42,7 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** The distinctive synthetic string every seeded reason carries; it must not survive an erase. */
 const MARKER = "ERASE-MARKER-7Q3X";
 const KEPT_MARKER = "KEPT-MARKER-4Z8K";
+const ATTESTATION = "Synthetic attestation text for the eraser suite fixture row.";
 const SEALED = "v1.dek-1.bm9uY2U.dGFn.U0VZTlRIRVRJQy1DSVBIRVI"; // envelope-shaped, not real ciphertext
 const PIN = activeNarrativeVocabRelease(VOCAB_VERSION).id;
 
@@ -358,13 +359,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       `INSERT INTO encounter_signature (organization_id, provider_entity_id, location_id, encounter_id, kind, signed_by_membership_id,
          signed_by_discipline, method, session_id, step_up_auth_at, attestation_text, layer2_involved_at_signing)
        VALUES ($1,$2,$3,$4,'primary',$5,'rn','passkey',$6,now(),$7,false)`,
-      [
-        ...site,
-        encounterId,
-        member,
-        randomUUID(),
-        "Synthetic attestation text for the eraser suite fixture row.",
-      ],
+      [...site, encounterId, member, randomUUID(), ATTESTATION],
     );
     await admin.query(
       `INSERT INTO encounter_care_plan_link (organization_id, provider_entity_id, location_id, encounter_id, problem_id)
@@ -801,6 +796,30 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
       );
       expect(one(updates.rows).n).toBe(TARGET_ROOTS);
     });
+  });
+
+  it("the write-audit images outlive the destruction: they keep the clinical values the 0031 denylists do not name, and never a reason text", async () => {
+    // By retention design (class 'compliance'), not a fix: the eraser does not touch audit_event, and each satellite DELETE the destruction
+    // issues records the row's before-image. Vitals numbers and the signature's attestation text are not on the denylist; reasons are.
+    const images = async (eventType: string, column: string, value: string): Promise<number> =>
+      one(
+        (
+          await admin.query<{ n: number }>(
+            `SELECT count(*)::int AS n FROM audit_event
+              WHERE event_type = $1 AND organization_id = $2 AND before ->> $3 = $4`,
+            [eventType, ORG_A, column, value],
+          )
+        ).rows,
+      ).n;
+    expect(await images("vitals.delete", "heart_rate", "72")).toBe(TARGET_COUNTS.vitals);
+    expect(await images("encounter_signature.delete", "attestation_text", ATTESTATION)).toBe(
+      TARGET_COUNTS.signatures,
+    );
+    const reasons = await admin.query(
+      "SELECT 1 FROM audit_event WHERE to_jsonb(audit_event)::text LIKE $1",
+      [`%${MARKER}%`],
+    );
+    expect(reasons.rowCount).toBe(0);
   });
 
   it("counts the root of a patient who has no satellites, so the certificate never reports 0 for a voided record", async () => {
