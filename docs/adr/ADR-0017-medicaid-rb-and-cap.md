@@ -100,7 +100,29 @@ requires. This ADR does not establish a universal requirement for Medicare adjud
 
 D7 is an internal evidence and safety boundary, not a legal determination, Oregon billing-format approval,
 or electronic submission authorization. Secondary Medicaid R&B-only and combined assembly remain blocked;
-M24 electronic submission remains independently fail-closed.
+M24 electronic submission remains independently fail-closed. Assembly, manual validation, and asynchronous
+revalidation also recheck M5 patient lifecycle and M6 admission identity/effective stay-end facts in their
+transaction boundary. The death day remains eligible; service after a recorded death is refused, including
+while the asynchronous M5 death cascade is pending.
+
+### D8 — Initial product scope: ordinary Oregon hospice billing (#876 finalization)
+
+The maintainer reports that Engrace currently outsources Medicaid billing and does not currently bill
+Medicaid Room & Board. The initial product priority is ordinary hospice billing within ChartWarden, with
+Oregon's Eastern Oregon Coordinated Care Organization (EOCCO) as the first Medicaid payer target. Each
+hospice is expected to obtain its applicable payer/provider enrollment. Medicaid claims must use the
+existing tenant-selected Stedi or Claim.MD clearinghouse architecture; M24 does not create a shared
+submission account or automatically replace a tenant's Medicare/claim clearinghouse.
+
+This is a product-scope decision, not payer confirmation. It does not establish EOCCO participation,
+provider enrollment, payer identifiers, an accepted institutional claim format, rates, or transmission
+authorization. Ordinary Oregon/EOCCO claim and clearinghouse qualification is tracked separately under
+[#1075](https://github.com/Engrace-Hospice/chartwarden/issues/1075). Dual-eligible secondary Room & Board,
+COB and its day-ownership lifecycle remain deferred under
+[#1073](https://github.com/Engrace-Hospice/chartwarden/issues/1073) and
+[#1072](https://github.com/Engrace-Hospice/chartwarden/issues/1072). The existing primary-Medicaid R&B
+assembly safeguards remain in place; this deferral neither removes R&B capability nor determines that
+secondary Medicaid R&B is ineligible.
 
 ## Consequences
 

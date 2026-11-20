@@ -7,8 +7,32 @@ import type {
 import type { DbClient } from "@chartwarden/db";
 import * as schema from "@chartwarden/db/schema";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotImplementedError } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, isNotNull, lte } from "drizzle-orm";
+import { NotImplementedError } from "../../../bootstrap/seams/providers";
+
+const CLAIM_STATES = [
+  "draft",
+  "validating",
+  "ready",
+  "submitted",
+  "ack_pending",
+  "ack_accepted",
+  "ack_partial",
+  "ack_rejected",
+  "paid",
+  "partial_paid",
+  "denied",
+  "replaced",
+  "voided",
+] as const satisfies readonly ClaimSummaryDto["state"][];
+
+function claimState(value: string): ClaimSummaryDto["state"] {
+  const normalized = value.toLowerCase();
+  if ((CLAIM_STATES as readonly string[]).includes(normalized)) {
+    return normalized as ClaimSummaryDto["state"];
+  }
+  throw new Error("M23 claim has an unsupported lifecycle state");
+}
 
 const dateOnly = (value: Date | string): string =>
   value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
@@ -97,7 +121,7 @@ export function buildDrizzleM23ClaimReader(db: DbClient): ClaimReader {
               patientId: row.patientId,
               admissionId: row.admissionId,
               tob: row.tob,
-              state: String(row.state).toLowerCase(),
+              state: claimState(String(row.state)),
               serviceFrom: dateOnly(row.serviceFrom),
               serviceTo: dateOnly(row.serviceTo),
               claimControlNumber: row.claimControlNumber,
@@ -126,7 +150,7 @@ export function buildDrizzleM23ClaimReader(db: DbClient): ClaimReader {
               patientId: row.patientId,
               admissionId: row.admissionId,
               tob: row.tob,
-              state: String(row.state).toLowerCase(),
+              state: claimState(String(row.state)),
               serviceFrom: dateOnly(row.serviceFrom),
               serviceTo: dateOnly(row.serviceTo),
               claimControlNumber: row.claimControlNumber,
@@ -157,8 +181,8 @@ export function buildDrizzleM23ClaimReader(db: DbClient): ClaimReader {
               eq(schema.claim.providerEntityId, scope.providerEntityId),
               eq(schema.claim.admissionId, scope.admissionId),
               eq(schema.claim.patientPayerId, scope.primaryCoverageId),
-              lte(schema.claim.serviceFrom, new Date(`${range.to}T00:00:00.000Z`)),
-              gte(schema.claim.serviceTo, new Date(`${range.from}T00:00:00.000Z`)),
+              lte(schema.claim.serviceFrom, range.to),
+              gte(schema.claim.serviceTo, range.from),
             ),
           )
           .orderBy(schema.claim.serviceFrom, schema.claim.id)
@@ -197,7 +221,7 @@ export function buildDrizzleM23ClaimReader(db: DbClient): ClaimReader {
           const serviceTo = dateOnly(candidate.serviceTo);
           const latestRemittance = latestRemittanceByClaim.get(candidate.claimId) ?? null;
           const remittanceAdviceRecorded = latestRemittance !== null;
-          const state = String(candidate.state).toLowerCase();
+          const state = claimState(String(candidate.state));
           return {
             organizationId: candidate.organizationId,
             claimId: candidate.claimId,
@@ -207,14 +231,13 @@ export function buildDrizzleM23ClaimReader(db: DbClient): ClaimReader {
             patientPayerId: candidate.patientPayerId,
             serviceFrom,
             serviceTo,
-            claimState: state as ClaimSummaryDto["state"],
+            claimState: state,
             rangeRelation: rangeRelation(serviceFrom, serviceTo, range),
             evidenceStatus: classifyMedicareClaimEvidence(
               state,
               remittanceAdviceRecorded,
               latestRemittance?.targetState,
             ),
-            medicareClaimState: state as ClaimSummaryDto["state"],
             remittanceAdviceRecorded,
             paidAmountCents: null,
             patientResponsibilityCents: null,

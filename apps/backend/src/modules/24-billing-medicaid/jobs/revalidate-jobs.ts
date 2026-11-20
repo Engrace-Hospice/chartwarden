@@ -46,6 +46,16 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { PatientCoverageReader } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray } from "drizzle-orm";
+import {
+  type CurrentLocPeriodForClaim,
+  hospiceClaimLineSnapshotIssue,
+} from "../claim-hospice-line-snapshot";
+import {
+  type AdmissionStayForClaim,
+  admissionServiceRangeIssue,
+  inclusiveLocEndDateForAdmission,
+  patientLifecycleServiceRangeIssue,
+} from "../claim-range-guards";
 import { M24_QUEUES, M24_QUEUE_PARAMS } from "./queues";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -93,6 +103,25 @@ export interface RevalidateWorkerDeps {
   readonly db: DbClient;
   /** M5's transaction-bound resolver. Missing or failed reads block READY. */
   readonly coverages?: Pick<PatientCoverageReader, "coverageSnapshotForRangeInTransaction">;
+  /** M6 transaction-bound admission identity/stay-end snapshot; absent means READY is blocked. */
+  readonly admissions?: {
+    cadenceSnapshotInTransaction(
+      transaction: unknown,
+      organizationId: string,
+      admissionId: string,
+    ): Promise<
+      | (AdmissionStayForClaim & {
+          readonly patientId: string;
+          readonly providerEntityId: string | null;
+        })
+      | null
+    >;
+    periodsForAdmissionInTransaction?(
+      transaction: unknown,
+      organizationId: string,
+      admissionId: string,
+    ): Promise<ReadonlyArray<CurrentLocPeriodForClaim>>;
+  };
   now?: () => Date;
   readonly outbox: RevalidateWorkerOutboxPort;
 }
@@ -105,6 +134,8 @@ async function resolvePayerContext(
   payerResponsibility: MedicaidValidationContext["payerResponsibility"];
   hasConcurrentMedicareAndMedicaidCoverage: boolean;
   primaryPayerCoverageId: string | null;
+  /** Set only from the transaction-bound M6 snapshot for a matching death discharge. */
+  inclusiveEndDate?: string | null;
 }> {
   if (!deps.coverages) {
     return {
@@ -126,6 +157,21 @@ async function resolvePayerContext(
   } catch {
     return {
       payerResponsibility: { status: "unresolved", reasonCode: "coverage_snapshot_unavailable" },
+      hasConcurrentMedicareAndMedicaidCoverage: false,
+      primaryPayerCoverageId: null,
+    };
+  }
+
+  const patientLifecycleIssue = patientLifecycleServiceRangeIssue(
+    snapshot.patientLifecycle,
+    day(claim.serviceTo),
+  );
+  if (patientLifecycleIssue) {
+    return {
+      payerResponsibility: {
+        status: "blocked",
+        reasonCode: patientLifecycleIssue.code,
+      },
       hasConcurrentMedicareAndMedicaidCoverage: false,
       primaryPayerCoverageId: null,
     };
@@ -154,6 +200,49 @@ async function resolvePayerContext(
     };
   }
 
+  if (!deps.admissions) {
+    return {
+      payerResponsibility: { status: "unresolved", reasonCode: "admission_reader_unbound" },
+      hasConcurrentMedicareAndMedicaidCoverage,
+      primaryPayerCoverageId: primary.coverage.id,
+    };
+  }
+  let admission: Awaited<
+    ReturnType<NonNullable<RevalidateWorkerDeps["admissions"]>["cadenceSnapshotInTransaction"]>
+  >;
+  try {
+    admission = await deps.admissions.cadenceSnapshotInTransaction(
+      tx,
+      claim.organizationId,
+      claim.admissionId,
+    );
+  } catch {
+    return {
+      payerResponsibility: { status: "unresolved", reasonCode: "admission_snapshot_unavailable" },
+      hasConcurrentMedicareAndMedicaidCoverage,
+      primaryPayerCoverageId: primary.coverage.id,
+    };
+  }
+  if (
+    !admission ||
+    admission.patientId !== claim.patientId ||
+    admission.providerEntityId !== claim.providerEntityId
+  ) {
+    return {
+      payerResponsibility: { status: "blocked", reasonCode: "admission_identity_unverified" },
+      hasConcurrentMedicareAndMedicaidCoverage,
+      primaryPayerCoverageId: primary.coverage.id,
+    };
+  }
+  const admissionIssue = admissionServiceRangeIssue(admission, day(claim.serviceTo));
+  if (admissionIssue) {
+    return {
+      payerResponsibility: { status: "blocked", reasonCode: admissionIssue.code },
+      hasConcurrentMedicareAndMedicaidCoverage,
+      primaryPayerCoverageId: primary.coverage.id,
+    };
+  }
+
   const decision = evaluateMedicaidPayerResponsibility({
     claimKind: claim.kind,
     medicaidCoverageId: medicaid.coverage.id,
@@ -168,7 +257,37 @@ async function resolvePayerContext(
       : { status: "blocked", reasonCode: decision.reason },
     hasConcurrentMedicareAndMedicaidCoverage,
     primaryPayerCoverageId: primary.coverage.id,
+    inclusiveEndDate: inclusiveLocEndDateForAdmission(admission),
   };
+}
+
+async function verifyHospiceClaimSnapshot(
+  tx: Tx,
+  deps: RevalidateWorkerDeps,
+  claim: typeof schema.medicaidClaim.$inferSelect,
+  lines: readonly (typeof schema.medicaidClaimLine.$inferSelect)[],
+  inclusiveEndDate: string | null,
+): Promise<boolean> {
+  if (claim.kind === "rb_only") return true;
+  const readPeriods = deps.admissions?.periodsForAdmissionInTransaction;
+  if (!readPeriods) return false;
+  try {
+    const periods = await readPeriods(tx, claim.organizationId, claim.admissionId);
+    return (
+      hospiceClaimLineSnapshotIssue({
+        lines,
+        periods,
+        organizationId: claim.organizationId,
+        providerEntityId: claim.providerEntityId,
+        claimId: claim.id,
+        serviceFrom: day(claim.serviceFrom),
+        serviceTo: day(claim.serviceTo),
+        inclusiveEndDate,
+      }) === null
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -217,6 +336,13 @@ export async function runMedicaidRevalidate(
     // Other optional readers remain unbound in this worker, but payer responsibility is mandatory and
     // comes from the same transaction-bound M5 interval snapshot used by claim assembly.
     const resolvedPayer = await resolvePayerContext(tx, deps, claim);
+    const hospiceClaimSnapshotVerified = await verifyHospiceClaimSnapshot(
+      tx,
+      deps,
+      claim,
+      lineRows,
+      resolvedPayer.inclusiveEndDate ?? null,
+    );
     const ctx: MedicaidValidationContext = {
       orgId: job.organizationId,
       asOfDate: day(claim.serviceFrom),
@@ -257,6 +383,11 @@ export async function runMedicaidRevalidate(
       nfResidentDays: [],
       rbArrangement: null,
       rbDays: [],
+      // The asynchronous revalidation worker does not load billed R&B day ownership and current M6 LOC facts.
+      // The platform-required rule therefore keeps R&B claims out of READY until an authorized validation route
+      // performs those transaction-bound checks.
+      rbClaimSnapshotVerified: false,
+      hospiceClaimSnapshotVerified,
       rateLookups: [],
       payerResponsibility: resolvedPayer.payerResponsibility,
       evvBrackets: [],

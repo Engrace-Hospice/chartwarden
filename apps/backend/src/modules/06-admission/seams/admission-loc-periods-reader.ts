@@ -9,6 +9,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, ne } from "drizzle-orm";
+import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import { claimStayEndFactsForAdmissionInTransaction } from "./claim-stay-end-store";
 
 const LOC = schema.levelOfCarePeriods;
@@ -70,6 +71,12 @@ export interface AdmissionLocPeriodsReader {
       revocationDate: string | null;
     };
   } | null>;
+  /** Read the current LOC evidence on the same transaction after cadenceSnapshotInTransaction locks M6. */
+  periodsForAdmissionInTransaction(
+    transaction: unknown,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<AdmissionLocPeriod[]>;
 }
 
 /**
@@ -115,7 +122,9 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
       };
     },
     async cadenceSnapshotInTransaction(transaction, organizationId, admissionId) {
-      const rows = await (transaction as DbClient)
+      const tx = transaction as DbClient;
+      await assertTxScopedToOrg(tx, organizationId);
+      const rows = await tx
         .select({
           patientId: ADM.patientId,
           providerEntityId: ADM.providerEntityId,
@@ -129,7 +138,7 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
       const admission = rows[0];
       if (!admission) return null;
       const stayEndFacts = await claimStayEndFactsForAdmissionInTransaction(
-        transaction,
+        tx,
         organizationId,
         admissionId,
       );
@@ -146,6 +155,28 @@ export function createAdmissionLocPeriodsReader(db: DbClient): AdmissionLocPerio
           revocationDate: stayEndFacts?.revocationDate ?? null,
         },
       };
+    },
+    async periodsForAdmissionInTransaction(transaction, organizationId, admissionId) {
+      const tx = transaction as DbClient;
+      await assertTxScopedToOrg(tx, organizationId);
+      return tx
+        .select({
+          id: LOC.id,
+          levelOfCare: LOC.levelOfCare,
+          effectiveAt: LOC.effectiveAt,
+          endedAt: LOC.endedAt,
+          facilityId: LOC.facilityId,
+          ipuBedAssignmentId: LOC.ipuBedAssignmentId,
+        })
+        .from(LOC)
+        .where(
+          and(
+            eq(LOC.organizationId, organizationId),
+            eq(LOC.admissionId, admissionId),
+            ne(LOC.status, "assigning"),
+          ),
+        )
+        .orderBy(LOC.effectiveAt);
     },
     periodsForAdmission(organizationId, admissionId) {
       return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, (tx) =>

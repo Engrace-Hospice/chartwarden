@@ -85,20 +85,25 @@ export function buildPatientCoverageReader(db: DbClient): PatientCoverageReader 
       transaction,
       { organizationId, patientId, from, to, coverageKind },
     ) {
-      // #877 — the payer rows alone are not a complete concurrency fence: when a higher-priority
-      // rank does not exist yet, FOR SHARE cannot predicate-lock that absent row under READ COMMITTED.
-      // The stable patient row is the per-patient namespace lock. M5's payer writer takes FOR UPDATE
-      // on this same row before replacing/inserting coverage, so no payer INSERT can become a phantom
-      // between this snapshot and the consuming claim write.
-      await (transaction as DbClient)
-        .select({ id: PATIENT.id })
+      // #877 / M24 lifecycle safety — the payer rows alone are not a complete concurrency fence: when a
+      // higher-priority rank does not exist yet, FOR SHARE cannot predicate-lock that absent row under
+      // READ COMMITTED. The stable patient row is the per-patient namespace lock. Coverage writers and
+      // the death transition take FOR UPDATE on this row, so neither a new payer row nor a patient-death
+      // update can commit between this snapshot and the consuming claim write.
+      const [patient] = await (transaction as DbClient)
+        .select({ status: PATIENT.status, deceasedDate: PATIENT.deceasedDate })
         .from(PATIENT)
         .where(and(eq(PATIENT.organizationId, organizationId), eq(PATIENT.id, patientId)))
+        .limit(1)
         .for("share");
+      const patientLifecycle = patient
+        ? { status: patient.status, deceasedDate: day(patient.deceasedDate) }
+        : null;
       const coverages = await loadFrom(transaction as DbClient, organizationId, patientId, true);
       const range = { from, to };
       return {
         coverages: [...coverages].sort((a, b) => a.rank - b.rank),
+        patientLifecycle,
         primaryResolution: coverageForRange(coverages, range),
         resolution: coverageForRange(coverages, range, coverageKind),
       };

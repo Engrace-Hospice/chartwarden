@@ -190,6 +190,10 @@ export interface MedicaidValidationContext {
   readonly nfResidentDays: readonly NfResidentDaySnapshot[];
   readonly rbArrangement: RbArrangementFactSnapshot | null;
   readonly rbDays: readonly RbDayFactSnapshot[];
+  /** True only when the current service has verified all persisted R&B lines against their billed-day, arrangement and M6 LOC snapshots. */
+  readonly rbClaimSnapshotVerified: boolean;
+  /** True only when stored hospice lines match the complete current M6 LOC partition for the service range. */
+  readonly hospiceClaimSnapshotVerified: boolean;
   readonly rateLookups: readonly RateLookupSnapshot[];
   readonly payerResponsibility: MedicaidPayerResponsibilitySnapshot;
   readonly evvBrackets: readonly EvvBracketSnapshot[];

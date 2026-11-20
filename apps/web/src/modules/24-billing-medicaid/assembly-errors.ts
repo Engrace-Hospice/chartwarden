@@ -65,6 +65,20 @@ export function assembleErrorMessage(status: number | undefined, payload: unknow
       return "The admission's effective end date is missing or conflicting. Reconcile the M6 stay before assembling Room & Board days.";
     case "MEDICAID_RB_ADMISSION_END_PENDING":
       return "A discharge is awaiting required approval. Reconcile it before assembling Room & Board days on or after its effective date.";
+    case "MEDICAID_ADMISSION_END_PENDING":
+      return "A discharge is awaiting approval within this service range. Resolve the discharge workflow, then adjust or split the service range before assembling.";
+    case "MEDICAID_CLAIM_AFTER_PATIENT_DEATH":
+      return "The claim range extends past the recorded date of death. Correct the patient record or shorten the service range before assembly.";
+    case "MEDICAID_CLAIM_AFTER_ADMISSION_END":
+      return "The claim range extends past the effective end of the hospice stay. Correct or split the service range to match the verified admission dates.";
+    case "MEDICAID_PATIENT_LIFECYCLE_UNAVAILABLE":
+    case "MEDICAID_PATIENT_LIFECYCLE_INCONSISTENT":
+    case "MEDICAID_PATIENT_DEATH_DATE_UNAVAILABLE":
+    case "MEDICAID_ADMISSION_LIFECYCLE_UNAVAILABLE":
+    case "MEDICAID_ADMISSION_LIFECYCLE_INCONSISTENT":
+      return "Patient or admission lifecycle facts could not be verified consistently. Reconcile the clinical record before assembly.";
+    case "MEDICAID_CLAIM_LINE_LOC_SNAPSHOT_STALE":
+      return "Stored hospice lines no longer match current level-of-care periods. Reconcile the service dates and assemble a corrected draft before validation.";
     case "MEDICAID_RB_DAY_OUTSIDE_ADMISSION":
       return "A Room & Board day falls on or after the effective admission end date and cannot be billed.";
     case "MEDICAID_RB_DAY_CONSUMPTION_CONFLICT":

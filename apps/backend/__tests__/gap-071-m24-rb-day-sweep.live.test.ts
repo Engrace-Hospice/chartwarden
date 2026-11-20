@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import {
   levelOfCarePeriodsForPatientForOrg,
   levelOfCarePeriodsForPatientInTransaction,
@@ -35,6 +36,7 @@ const PATIENT_A = "44444444-4444-4444-4444-444444444444";
 const PATIENT_B = "55555555-5555-5555-5555-555555555555";
 const NF = "66666666-6666-6666-6666-666666666666";
 const LOCKED_PATIENT = "77777777-7777-7777-7777-777777777777";
+const DECEASED_PATIENT = "88888888-8888-4888-8888-888888888888";
 
 describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-071)", () => {
   let admin: Client;
@@ -85,7 +87,12 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
     ) => levelOfCarePeriodsForPatientInTransaction(transaction, organizationId, patientId, range),
     lockPatientAdmissionsInTransaction,
   };
-  const sweepStore = () => buildDrizzleRbDaySweepStore({ db: handle.db, locPeriods });
+  const sweepStore = () =>
+    buildDrizzleRbDaySweepStore({
+      db: handle.db,
+      locPeriods,
+      coverages: buildPatientCoverageReader(handle.db),
+    });
   const dayRows = async (orgId: string, patientId: string) =>
     (
       await admin.query(
@@ -126,6 +133,19 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
         [orgId, ccn, npi],
       );
       peByOrg.set(orgId, pe.rows[0].id);
+    }
+    for (const [orgId, patientId, mrn] of [
+      [ORG_A, PATIENT_A, "G071-A"],
+      [ORG_B, PATIENT_B, "G071-B"],
+      [ORG_A, LOCKED_PATIENT, "G071-L"],
+      [ORG_A, DECEASED_PATIENT, "G071-D"],
+    ] as const) {
+      await admin.query(
+        `INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob,
+           sex_assigned_at_birth, status)
+         VALUES ($1,$2,$3,'Synthetic','Patient','1940-01-01','F','active')`,
+        [patientId, orgId, mrn],
+      );
     }
     // Org A: RHC 05-01..05-03, GIP 05-03..05-05, RHC from 05-05 (open). Arrangement from 05-01.
     await seedAdmissionWithLoc(ORG_A, PATIENT_A, [
@@ -191,6 +211,22 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
   it("does not sweep a non-ACTIVE arrangement", async () => {
     await admin.query("UPDATE rb_arrangement SET state='TERMINATED' WHERE id=$1", [arrangementB]);
     expect(await sweepStore().sweepPendingDays(ORG_B, "2026-05-20")).toBe(0);
+  });
+
+  it("caps materialization at the locked M5 date of death, including the date of death", async () => {
+    await seedAdmissionWithLoc(ORG_A, DECEASED_PATIENT, [
+      ["routine_home_care", "2026-05-01T08:00:00Z", null],
+    ]);
+    const arrangement = await seedArrangement(ORG_A, DECEASED_PATIENT, "2026-05-01");
+    await admin.query(
+      "UPDATE patient SET status='deceased', deceased_date='2026-05-03' WHERE organization_id=$1 AND id=$2",
+      [ORG_A, DECEASED_PATIENT],
+    );
+
+    expect(await sweepStore().sweepPendingDays(ORG_A, "2026-05-07")).toBe(3);
+    const rows = await dayRows(ORG_A, DECEASED_PATIENT);
+    expect(rows.map((r) => r.d)).toEqual(["2026-05-01", "2026-05-02", "2026-05-03"]);
+    expect(rows.every((r) => r.arr === arrangement && r.status === "billable")).toBe(true);
   });
 
   it("holds the admission lock from the LOC snapshot through R&B day materialization", async () => {
@@ -277,11 +313,18 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
 
   describe("lifecycle consumers (m6.loc.changed re-evaluation, discharge/death void)", () => {
     const ADMISSION_OF = new Map<string, string>();
+    const revalidationJobs: Array<Record<string, unknown>> = [];
     const consumers = () =>
       buildM24RbDayConsumers({
         db: handle.db,
         locPeriods,
         admissions: { patientIdForAdmission: async (_o, a) => ADMISSION_OF.get(a) ?? null },
+        revalidate: {
+          async enqueue(job) {
+            revalidationJobs.push(job);
+            return { jobId: job.eventId };
+          },
+        },
       });
     const handler = (eventType: string) => {
       const c = consumers().find((x) => x.eventTypes.includes(eventType));
@@ -341,6 +384,20 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
       expect(rows.find((r) => r.d === "2026-05-06")?.status).toBe("voided");
       expect(rows.find((r) => r.d === "2026-05-07")?.status).toBe("voided");
       expect(await sweepStore().sweepPendingDays(ORG_A, "2026-05-07")).toBe(0);
+      expect(revalidationJobs.slice(-2)).toEqual([
+        {
+          organizationId: ORG_A,
+          eventId: "00000000-0000-4000-8000-000000000001",
+          eventName: "m5.patient.deceased",
+          patientId: PATIENT_A,
+        },
+        {
+          organizationId: ORG_A,
+          eventId: "00000000-0000-4000-8000-000000000001",
+          eventName: "m5.patient.deceased",
+          patientId: PATIENT_A,
+        },
+      ]);
     });
 
     it("m6.admission.discharged voids open days from the discharge date; tenant comes from the envelope", async () => {
@@ -359,6 +416,11 @@ describe.skipIf(!DB_URL)("M24 rb-day-daily-sweep store — LIVE Postgres (GAP-07
       expect((await dayRows(ORG_A, PATIENT_A)).find((r) => r.d === "2026-05-05")?.status).toBe(
         "voided",
       );
+      expect(revalidationJobs.at(-1)).toMatchObject({
+        organizationId: ORG_A,
+        eventName: "m6.admission.discharged",
+        patientId: PATIENT_A,
+      });
     });
   });
 });

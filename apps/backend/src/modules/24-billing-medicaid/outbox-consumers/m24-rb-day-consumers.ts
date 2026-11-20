@@ -18,6 +18,7 @@ import type {
 } from "../../../bootstrap/outbox-dispatcher";
 import { reevaluateRbDaysFrom, voidRbDaysFrom } from "../jobs/rb-day-lifecycle";
 import { MS_PER_DAY, type RbLocPeriodsPort } from "../jobs/rb-day-sweep";
+import type { RevalidateEnqueuePort } from "./m24-revalidate-triggers";
 
 export interface RbAdmissionPatientPort {
   /** The admission's patient, org-explicit; null when unknown in the org. */
@@ -28,6 +29,7 @@ export interface M24RbDayConsumerDeps {
   readonly db: DbClient;
   readonly locPeriods: RbLocPeriodsPort;
   readonly admissions: RbAdmissionPatientPort;
+  readonly revalidate: RevalidateEnqueuePort;
 }
 
 function str(payload: unknown, key: string, consumer: string): string {
@@ -72,6 +74,12 @@ export function buildM24RbDayConsumers(deps: M24RbDayConsumerDeps): OutboxConsum
           patientId,
           str(event.payload, "effectiveStart", locName),
         );
+        await deps.revalidate.enqueue({
+          organizationId: event.organizationId,
+          eventId: event.id,
+          eventName: event.eventType,
+          patientId,
+        });
       },
     },
     {
@@ -81,15 +89,22 @@ export function buildM24RbDayConsumers(deps: M24RbDayConsumerDeps): OutboxConsum
       async handle(event) {
         // A death discharge is owned by the m5.patient.deceased consumer: the day of death stays billable, and
         // voiding from the discharge date (= date of death) would drop it.
-        if (((event.payload ?? {}) as Record<string, unknown>).reason === "death") return;
         const patientId = await patientOfAdmission(deps, event, dischargeName);
         if (!patientId) return;
-        await voidRbDaysFrom(
-          deps.db,
-          event.organizationId,
+        if (((event.payload ?? {}) as Record<string, unknown>).reason !== "death") {
+          await voidRbDaysFrom(
+            deps.db,
+            event.organizationId,
+            patientId,
+            str(event.payload, "dischargeDate", dischargeName),
+          );
+        }
+        await deps.revalidate.enqueue({
+          organizationId: event.organizationId,
+          eventId: event.id,
+          eventName: event.eventType,
           patientId,
-          str(event.payload, "dischargeDate", dischargeName),
-        );
+        });
       },
     },
     {
@@ -97,12 +112,19 @@ export function buildM24RbDayConsumers(deps: M24RbDayConsumerDeps): OutboxConsum
       consumerModule: "m24",
       eventTypes: ["m5.patient.deceased"],
       async handle(event) {
+        const patientId = str(event.payload, "patientId", deceasedName);
         await voidRbDaysFrom(
           deps.db,
           event.organizationId,
-          str(event.payload, "patientId", deceasedName),
+          patientId,
           nextDay(str(event.payload, "deceasedDate", deceasedName)),
         );
+        await deps.revalidate.enqueue({
+          organizationId: event.organizationId,
+          eventId: event.id,
+          eventName: event.eventType,
+          patientId,
+        });
       },
     },
   ];
