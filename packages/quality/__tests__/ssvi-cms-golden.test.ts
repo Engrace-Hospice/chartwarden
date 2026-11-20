@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  SSVI_THRESHOLDS_FY2025_DATA,
+  MEASURE_CATALOG,
   type SsviBinaryMetricKey,
   ssviPointAwarded,
   ssviSpendingPoints,
@@ -138,16 +138,20 @@ describe("the golden fixture rejects the FY2025 cuts this table used to carry", 
   });
 });
 
-// The web panel cannot import this package (it pulls in the DB layer), so it mirrors the cut text. This pins the
-// mirror to the table: a cut changed here without the panel fails this test instead of drifting silently.
-describe("the web SSVI panel's cut text mirrors the FY2025 table", () => {
+// The web panel cannot import this package (it pulls in the DB layer), so it mirrors the cut text, the data year
+// and each metric's calculator version. This pins the mirror to the source of truth: a cut, a year or a version
+// changed here without the panel fails this test instead of drifting silently. The server scores a period with
+// the latest table at or before its fiscal year, so the panel mirrors the LATEST published table: publishing
+// the next year's table fails this test until the panel follows.
+describe("the web SSVI panel mirrors the latest cut table and the measure catalog", () => {
   const source = readFileSync(
     join(__dirname, "../../../apps/web/src/modules/30-quality/ssvi-summary.ts"),
     "utf8",
   );
+  const latest = ssviThresholdsFor(Number.MAX_SAFE_INTEGER);
 
   function webCutText(metric: SsviBinaryMetricKey): string {
-    const rule = SSVI_THRESHOLDS_FY2025_DATA.metrics[metric];
+    const rule = latest.metrics[metric];
     const sign = rule.direction === "gte" ? "≥" : "≤";
     if (metric === "metric_01") return "None provided";
     if (metric === "metric_06") return `${sign} ${rule.value} min`;
@@ -158,9 +162,22 @@ describe("the web SSVI panel's cut text mirrors the FY2025 table", () => {
 
   const metrics: SsviBinaryMetricKey[] = ["metric_01", ...GOLDEN_METRICS];
 
+  it("prints the data year of the latest table in its column header", () => {
+    expect(Number(/export const SSVI_CUT_DATA_FY = (\d+)/.exec(source)?.[1])).toBe(
+      latest.dataFiscalYear,
+    );
+  });
+
   // Matched by the metric's own `code:` inside the same object literal, so a swap between rows cannot pass.
-  it.each(metrics)("%s", (metric) => {
+  it.each(metrics)("%s cut text", (metric) => {
     const entry = new RegExp(`code: "ssvi_${metric}"[^}]*?cut: "([^"]*)"`).exec(source);
     expect(entry?.[1]).toBe(webCutText(metric));
+  });
+
+  it.each([...metrics, "metric_09"])("%s expected calculator version", (metric) => {
+    const entry = new RegExp(`code: "ssvi_${metric}"[^}]*?version: "([^"]*)"`).exec(source);
+    const catalog = MEASURE_CATALOG.find((e) => e.code === `ssvi_${metric}`);
+    expect(catalog).toBeDefined();
+    expect(entry?.[1]).toBe(catalog?.calculatorVersion);
   });
 });

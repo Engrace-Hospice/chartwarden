@@ -2,7 +2,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SSVI_NOT_YET_COMPUTED, SsviPanel } from "./ssvi-panel";
-import type { SsviMeasureRow } from "./ssvi-summary";
+import { SSVI_METRICS, type SsviMeasureRow } from "./ssvi-summary";
 
 type V = NonNullable<SsviMeasureRow["latestValue"]>;
 const v = (over: Partial<V>): V => ({
@@ -12,14 +12,23 @@ const v = (over: Partial<V>): V => ({
   thresholdMet: true,
   bandColor: "green",
   unavailableReason: null,
+  computeVersion: "0.1.0",
   ...over,
 });
+const versionOf = (code: string) => SSVI_METRICS.find((m) => m.code === code)?.version ?? "0.1.0";
 const rows = (m9: V, composite: V | null): SsviMeasureRow[] => [
-  ...Array.from({ length: 8 }, (_, i) => ({
-    measureId: `ssvi_metric_0${i + 1}`,
-    displayName: "",
-    latestValue: i < 5 ? v({ thresholdMet: false, bandColor: "red" }) : v({}),
-  })),
+  ...Array.from({ length: 8 }, (_, i) => {
+    const measureId = `ssvi_metric_0${i + 1}`;
+    const computeVersion = versionOf(measureId);
+    return {
+      measureId,
+      displayName: "",
+      latestValue:
+        i < 5
+          ? v({ thresholdMet: false, bandColor: "red", computeVersion })
+          : v({ computeVersion }),
+    };
+  }),
   { measureId: "ssvi_metric_09", displayName: "", latestValue: m9 },
   { measureId: "ssvi_composite", displayName: "", latestValue: composite },
 ];
@@ -58,6 +67,7 @@ describe("SsviPanel", () => {
       within(panel).getByText(/Internal estimate — CMS publishes the official SSVI/),
     ).toBeTruthy();
     expect(within(panel).getByText("5–13")).toBeTruthy();
+    expect(within(panel).getByText("5 to 13")).toBeTruthy(); // what a screen reader reads
     expect(within(panel).getByText("Outlier status undetermined")).toBeTruthy();
     expect(within(panel).getByText("5 / 8")).toBeTruthy();
     expect(within(panel).getAllByText("Not computable here").length).toBeGreaterThan(0);
@@ -74,5 +84,38 @@ describe("SsviPanel", () => {
     );
     expect(screen.getByText("13 / 16")).toBeTruthy();
     expect(screen.getByText("Outlier (≥ 13)")).toBeTruthy();
+  });
+  it("is a level-2 heading, with each metric name as its row header and a rounding footnote", () => {
+    const unavailable = v({
+      numerator: 0,
+      denominator: 0,
+      rate: null,
+      bandColor: "insufficient_n",
+    });
+    render(<SsviPanel rows={rows(unavailable, unavailable)} />);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Service and Spending Variation Index" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("rowheader", { name: /Last two RHC days of life with a skilled visit/ }),
+    ).toBeTruthy();
+    expect(screen.getByText(/decided on the unrounded rate/)).toBeTruthy();
+  });
+
+  it("shows a row stamped with an older calculator version as not computed", () => {
+    const unavailable = v({
+      numerator: 0,
+      denominator: 0,
+      rate: null,
+      bandColor: "insufficient_n",
+    });
+    const all = rows(unavailable, unavailable).map((r) =>
+      r.measureId === "ssvi_metric_03" && r.latestValue
+        ? { ...r, latestValue: { ...r.latestValue, computeVersion: "0.1.0" } }
+        : r,
+    );
+    render(<SsviPanel rows={all} />);
+    expect(screen.getByText("Not computed")).toBeTruthy();
+    expect(screen.getByText("unknown")).toBeTruthy();
   });
 });

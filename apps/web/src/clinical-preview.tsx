@@ -1342,7 +1342,13 @@ const ratesGet = (p: string): unknown => {
     return { rateTables: [rateVersion("rt2", false, 123151), rateVersion("rt1", true, 123163)] };
   return undefined;
 };
-const ssviValue = (numerator: number, denominator: number, met: boolean | null, why?: string) => ({
+const ssviValue = (
+  numerator: number,
+  denominator: number,
+  met: boolean | null,
+  why?: string,
+  computeVersion = "0.1.0",
+) => ({
   valueId: `v${numerator}${denominator}`,
   organizationId: "o",
   measureId: "",
@@ -1354,7 +1360,7 @@ const ssviValue = (numerator: number, denominator: number, met: boolean | null, 
   bandColor: why ? "insufficient_n" : met === false ? "red" : "green",
   unavailableReason: why ?? null,
   computedAt: d(0),
-  computeVersion: "0.1.0",
+  computeVersion,
   snapshotContentHash: "h",
   supersededByValueId: null,
 });
@@ -1374,28 +1380,32 @@ const ssviRows = [
   [
     "ssvi_metric_03",
     "SSVI 3 — Last two RHC days of life with a skilled visit (internal estimate)",
-    ssviValue(65, 70, true), // 92.9% > the 87.5% cut: no point (the harness does not run the calculators)
+    ssviValue(65, 70, true, undefined, "0.2.0"), // 92.9% > the 87.5% cut: no point (the harness does not run the calculators)
   ],
-  ["ssvi_metric_04", "SSVI 4 — Live-discharge share (internal estimate)", ssviValue(21, 96, true)],
+  [
+    "ssvi_metric_04",
+    "SSVI 4 — Live-discharge share (internal estimate)",
+    ssviValue(21, 96, true, undefined, "0.2.0"),
+  ],
   [
     "ssvi_metric_05",
     "SSVI 5 — Discharges with length of stay of 180 days or more (internal estimate)",
-    ssviValue(36, 96, false),
+    ssviValue(36, 96, false, undefined, "0.2.0"),
   ],
   [
     "ssvi_metric_06",
     "SSVI 6 — Skilled-nursing minutes per RHC day (internal estimate)",
-    ssviValue(118560, 9120, true),
+    ssviValue(118560, 9120, true, undefined, "0.2.0"),
   ],
   [
     "ssvi_metric_07",
     "SSVI 7 — Weekend RHC days with a skilled visit (internal estimate)",
-    ssviValue(301, 9120, false),
+    ssviValue(301, 9120, false, undefined, "0.2.0"),
   ],
   [
     "ssvi_metric_08",
     "SSVI 8 — Live discharges back to the same hospice within 7 days (internal estimate)",
-    ssviValue(1, 21, true),
+    ssviValue(1, 21, true, undefined, "0.2.0"),
   ],
   [
     "ssvi_metric_09",

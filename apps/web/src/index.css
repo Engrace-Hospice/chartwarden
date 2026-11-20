@@ -1664,7 +1664,8 @@
     color: var(--color-primary);
     margin-top: 0.125rem;
   }
-  .wx-clinical-section h3 {
+  .wx-clinical-section h3,
+  .wx-ssvi > header h2 {
     margin: 0;
     font-size: 1rem;
     font-weight: 700;
@@ -3268,6 +3269,15 @@
   }
   .wx-ssvi-metrics {
     margin-top: 1rem;
+  }
+  /* The metric name is the row header (a11y); keep it looking like a body cell. */
+  .wx-ssvi-metrics th[scope="row"] {
+    padding: 0.6rem 1rem 0.6rem 1.25rem;
+    border-top: 1px solid var(--color-card-border);
+    background: transparent;
+    font-weight: inherit;
+    white-space: normal;
+    vertical-align: middle;
   }
   .wx-ssvi-points {
     font-weight: 700;
