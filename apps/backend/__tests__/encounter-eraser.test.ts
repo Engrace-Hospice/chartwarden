@@ -1,7 +1,7 @@
 // apps/backend/__tests__/encounter-eraser.test.ts — M8-T12 the `encounter_record` eraser (§3.6, D7/D8)
 // + the m8 audit-catalog actions (§8.1). Proves M8 registers the REAL encounter_record eraser over the
 // Phase-0 deny-stub (validateErasers passes at boot), the eraser crypto-erases the HearthNote ciphertext
-// FIRST then deletes the encounter subtree + tombstones the encounter root, and the m8 action catalog is
+// FIRST then tombstones the encounter root + deletes the encounter subtree, and the m8 action catalog is
 // well-formed (namespace + uniqueness) — and disjoint from M5/M6/M7's data classes.
 import { ACTION_CATALOG, M8_ACTION_CATALOG, validateActionCatalog } from "@chartwarden/audit";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -12,6 +12,7 @@ import {
 } from "../src/bootstrap/erasers/registry";
 import { buildServer } from "../src/bootstrap/index";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import { ENCOUNTER_ERASED_REASON } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
   eraseEncounterRecord,
   createInMemoryEncounterEraseStore as makeEraseStore,
@@ -54,6 +55,37 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
     const { store } = makeEraseStore({ signatures: 2, vitals: 1 });
     expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(3);
     expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(0);
+  });
+
+  it("shreds, then scrubs the root's text, then deletes the satellites — a failed tombstone leaves the satellites for a retry", async () => {
+    const calls: string[] = [];
+    const none = {
+      signatures: 0,
+      addenda: 0,
+      carePlanLinks: 0,
+      cosignatureRequests: 0,
+      vitals: 0,
+      mileage: 0,
+      hearthnoteSelections: 0,
+      hearthnoteAssembledOutputs: 0,
+      hearthnoteLlmModifications: 0,
+    };
+    const store = {
+      cryptoEraseHearthnote: async () => void calls.push("shred"),
+      tombstoneEncounters: async () => void calls.push("tombstone"),
+      eraseEncounterSubtree: async () => {
+        calls.push("delete");
+        return none;
+      },
+    };
+    await eraseEncounterRecord("org_a", "pat_1", store);
+    expect(calls).toEqual(["shred", "tombstone", "delete"]);
+  });
+
+  it("the tombstone placeholder clears the longest reason-length CHECK floor (the live suite proves the CHECKs themselves)", () => {
+    // encounter_administrative_override_consistency wants 100 characters; a shorter placeholder would make every
+    // destruction of a root with that tier roll back on a real database (the in-memory store has no CHECKs).
+    expect(ENCOUNTER_ERASED_REASON.length).toBeGreaterThanOrEqual(100);
   });
 
   it("registers over the deny-stub; the boot hook makes validateErasers() pass for the data class", async () => {
