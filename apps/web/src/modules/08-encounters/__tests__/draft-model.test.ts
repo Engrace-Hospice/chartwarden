@@ -121,7 +121,7 @@ describe("isDraftSectionView", () => {
     expect(isDraftSectionView(EMPTY)).toBe(true);
   });
 
-  it("accepts every kind of source the API can send, the recertification and face-to-face kinds included (S2)", () => {
+  it("accepts every kind of source the API can send, the recertification, face-to-face (S2) and admission (S2b) kinds included", () => {
     const kinds = [
       "care_plan_goal",
       "care_plan_intervention",
@@ -132,6 +132,9 @@ describe("isDraftSectionView", () => {
       "benefit_period",
       "face_to_face",
       "certification",
+      "medication_order",
+      "caregiver",
+      "advance_directive_acknowledgment",
     ] as const;
     for (const kind of kinds)
       expect(isDraftSectionView(section({ origins: [kind] })), kind).toBe(true);
