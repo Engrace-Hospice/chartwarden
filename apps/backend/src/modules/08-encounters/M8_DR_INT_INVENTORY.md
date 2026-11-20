@@ -74,10 +74,29 @@ deadlock the pool: ten concurrent ones would hold ten connections and each wait 
   certification signed, after the service date is not drafted; a certification that is not `signed` now, or was voided or superseded since, is not
   drafted (the safe direction: silence, never a stale claim). The level of care is named only when exactly one level counted for that day.
 - **Weights across encounters.** The patient's weights come from this encounter and from the patient's signed encounters (an unsigned draft of another visit
-  is not yet part of the record), cut to the benefit period by the organization's local date. A weight that is not a positive decimal in `kg` or `lb` is
-  not drafted, and weights in two units are not drafted at all: nothing is converted.
-- **Who may read it.** The four draft routes also require `admission.read` (the seams apply no permission check of their own). Production role
-  templates need it for every author of a drafted note, routine visits included, because the key list is static.
+  is not yet part of the record), cut to the benefit period by the organization's local date. When ANY weight inside the period cannot be used (not a
+  positive decimal, no `kg`/`lb` unit, an unreadable time) or the weights are in two units, no weight is drafted at all: the sentences say "the first" and
+  "the only weight recorded", and a row skipped in silence would make them false. Nothing is converted. There is no plausibility bound: a typed `1500` for
+  `150` drafts a large percentage, and the clinician's confirmation of the section is the check. The snapshot reads every weight of the patient up to the
+  visit (a look-back cut would make "the first weight of the period" wrong for a period that began earlier); a patient's weights are few.
+- **Dates from M6.** A face-to-face's attested date and a certification's signing date are the organization's own calendar day (M6's store converts the
+  instant in the organization's zone). The level of care on the visit date is M6's own day count (`getLevelOfCareDays`, also what billing counts), whose
+  day is the UTC day of the change's instant: a level-of-care change made in the evening, US time, counts on the next day, here as in M6.
+- **Who may read it.** The draft of a recertification visit needs `election.read`, `cti.read`, `f2f.read` and `loc.read` (M6's own read keys for the four
+  facts, which its seams do not check), and the face-to-face visit's draft needs `election.read`. The service refuses 403 a caller of such an encounter who
+  lacks one, after the switch and tenant checks and before any source is read (`drafting/admission-reads.ts`). The check is by template, so it is the same
+  for every viewer (one draft per patient and visit); a routine visit's draft needs no key it did not before. **Before a tenant's switch is turned on,
+  every role that authors a recertification or face-to-face note holds these keys**: they are per-tenant grants, and a role without them cannot read or
+  confirm the draft, so cannot sign once the switch is on.
+- **The corpus review is checked when the switch is enabled.** A tenant already on keeps the switch on after a later corpus release moves the wording
+  (CW-AC-49's gap). If a review of `narrative-vocab@2026.11.0` is approved before this release deploys, tenants enabled on it would get the recertification
+  wording unreviewed; a release that adds drafted templates is held until its own review is approved.
+- **Deploy side effect.** `narrative-vocab@2026.12.0` becomes the running corpus for every tenant at deploy, the switch on or off: a draft encounter whose
+  selections were saved under `2026.11.0` or `2026.06.0` answers `409 VOCAB_VERSION_MISMATCH` at finalize until `PATCH /encounters/{id}/selections` saves
+  them again (the web composer saves before it finalizes; another client must too).
+- **Selections are not checked against the menu.** `PATCH .../selections` accepts any code of the corpus (S1's design): the menu's rules decide what the
+  composer offers, not what the API takes, so an author can store a recertification phrase in any section with parameters they invent. They could type the
+  same words as free text, and a section's drafted text is what the clinician confirms.
 - **Not drafted, by decision.** The physician's face-to-face attestation and the certification narrative (module 6's, never quoted: VN-D32), and any
   statement of prognosis, eligibility or life expectancy; FAST, NYHA, laboratory values and hospitalisations (VN-D33). The admission visit's own
   sections follow in a later slice (VN-D31).
