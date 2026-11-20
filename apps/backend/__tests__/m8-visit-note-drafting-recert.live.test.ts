@@ -17,7 +17,14 @@
  *   4. PUT confirm, finalize and sign: each drafted section is confirmed against its content hash and corpus version, a confirmed `prognosis`
  *      satisfies its required section (gate check 1), one `hearthnote_signed_section` row per section is sealed with the sign, and a weight
  *      recorded between confirm and sign makes `prognosis` needs_reconfirmation and the sign 409 DRAFT_SECTION_STALE.
- *   5. The tenant switch (404), the `admission.read` key (403) and a failing M6 reader (503 DRAFT_UNAVAILABLE, no partial draft).
+ *   5. The tenant switch (404), the M6 read keys the draft's own template needs (`election.read`, `cti.read`, `f2f.read` and `loc.read` for a
+ *      recertification, `election.read` for a face-to-face visit, none for a routine visit: 403 naming the missing key, nothing read) and a
+ *      failing M6 reader (503 DRAFT_UNAVAILABLE, no partial draft).
+ *   6. The face-to-face visit by a nurse practitioner end to end through the encounter service's dual-write branch: confirm the drafted
+ *      prognosis, finalize, sign (sealed rows equal `final_cipher`), and a stale prognosis refused there too.
+ *   7. The audit trail: the read event of a draft GET and the explicit event of a confirmed section (ids, enums and counts, never content).
+ *   8. The REAL M6 readers over the real admission store (not the registry fakes): a scheduled face-to-face without a date answers null, an
+ *      attested one without a date is a data gap, and the attested and signed dates are the organization's calendar day.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m8:visit-note-drafting-recert:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1. Never point this at the shared Docker cluster.
@@ -39,7 +46,7 @@ import {
 } from "@chartwarden/auth";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { VOCAB_VERSION } from "@chartwarden/narrative-vocab";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   CertificationSummary,
   ElectionPeriodSummary,
@@ -53,6 +60,12 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { registerSeam } from "../src/bootstrap/seams/registry";
+import {
+  AdmissionSeamDataGapError,
+  createCertificationReader,
+  createDrizzleAdmissionReaderStore,
+  createFaceToFaceReader,
+} from "../src/modules/06-admission/index";
 import { createDbDraftStore } from "../src/modules/08-encounters/drafting/db-draft-store";
 import { createDbRunInOrg } from "../src/modules/08-encounters/drafting/db-draft-unit";
 import { createDraftService } from "../src/modules/08-encounters/drafting/draft-service";
@@ -66,7 +79,7 @@ import {
 } from "../src/modules/08-encounters/index";
 import { registerDraftSectionRoutes } from "../src/modules/08-encounters/routes/draft-section-routes";
 import { carePlan, change, honestSeries, point } from "./_encounter-draft-fixtures";
-import { FIXTURE_VOCAB_CODE } from "./_hearthnote-fixtures";
+import { FIXTURE_VOCAB_CODE, requiredSectionSelections } from "./_hearthnote-fixtures";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -139,6 +152,8 @@ interface Scenario {
   readonly changes: readonly MedicationOrderChange[];
   readonly failing: FailingReader | null;
   readonly calls: Calls;
+  /** The other sources' seam reads (M9 series, M12 changes, M7 care plan): a refused draft must have asked none of them. */
+  readonly sourceReads: { scale: number; medication: number; carePlan: number };
 }
 type ScenarioOverrides = Partial<
   Pick<
@@ -205,8 +220,15 @@ function baseScenario(patientId: string, admissionId: string): Scenario {
     changes: [change("started", iso("2026-01-12", "16:00:00.000"), { id: "order-s2-a" })],
     failing: null,
     calls: { periods: 0, levelOfCare: [], faceToFace: [], certification: [] },
+    sourceReads: { scale: 0, medication: 0, carePlan: 0 },
   };
 }
+
+const NO_M6_CALLS: Calls = { periods: 0, levelOfCare: [], faceToFace: [], certification: [] };
+const NO_SOURCE_READS = { scale: 0, medication: 0, carePlan: 0 };
+/** The M6 keys whose facts a recertification draft states (the keys of M6's own GET routes for them). */
+const M6_READS = ["election.read", "cti.read", "f2f.read", "loc.read"] as const;
+type M6Read = (typeof M6_READS)[number];
 
 interface Member {
   readonly userId: string;
@@ -241,7 +263,10 @@ describe.skipIf(!DB_URL)(
     let handle: ReturnType<typeof createDbClient>;
     let app: FastifyInstance;
     const orgs = {} as Record<"A" | "B", OrgFixture>;
-    let limitedA: Member;
+    /** Org-A authors that hold every read key but the one named (`lacking`), every source key and one M6 key (`f2fOnlyReader`), or no M6 key. */
+    const lacking = {} as Record<M6Read, Member>;
+    let f2fOnlyReader: Member;
+    let noM6Reader: Member;
     let counter = 0;
     const scenarios: Scenario[] = [];
     const consentAsked: string[] = [];
@@ -308,6 +333,10 @@ describe.skipIf(!DB_URL)(
       readonly type?: string;
       readonly discipline?: string;
       readonly signedAt?: string;
+      /** The membership that authored it (the org's author when absent). */
+      readonly authorMembershipId?: string;
+      /** M6's `face_to_face_encounter` id a face-to-face note signs with (the §7.4 dual-write needs one). */
+      readonly faceToFaceEncounterId?: string;
     }
     async function seedEncounter(
       org: OrgFixture,
@@ -319,8 +348,9 @@ describe.skipIf(!DB_URL)(
       const voided = status === "voided";
       const result = await admin.query<{ id: string }>(
         `INSERT INTO encounter (organization_id, provider_entity_id, location_id, patient_id, admission_id, encounter_type, discipline,
-           authored_by_membership_id, service_date, status, vocab_version_id, signed_at, voided_at, voided_by, voided_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$15,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+           authored_by_membership_id, service_date, status, vocab_version_id, signed_at, voided_at, voided_by, voided_reason,
+           face_to_face_encounter_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$15,$7,$8,$9,$10,$11,$12,$13,$14,$16) RETURNING id`,
         [
           org.orgId,
           org.providerEntityId,
@@ -328,7 +358,7 @@ describe.skipIf(!DB_URL)(
           patientId,
           over.admissionId ?? randomUUID(),
           over.type ?? "routine_visit",
-          org.author.membershipId,
+          over.authorMembershipId ?? org.author.membershipId,
           over.serviceDate ?? SERVICE_DATE,
           status,
           status === "draft" ? null : randomUUID(),
@@ -339,6 +369,7 @@ describe.skipIf(!DB_URL)(
             ? "synthetic reason for a voided encounter that is at least forty characters"
             : null,
           over.discipline ?? "rn",
+          over.faceToFaceEncounterId ?? null,
         ],
       );
       return { encounterId: one(result.rows).id, patientId };
@@ -399,6 +430,8 @@ describe.skipIf(!DB_URL)(
         readonly type?: string;
         readonly discipline?: string;
         readonly previousVisit?: boolean;
+        /** Who authored the visit under test (the org's author when absent). */
+        readonly author?: Member;
         readonly scenario?: ScenarioOverrides;
       } = {},
     ): Promise<SeededRecert> {
@@ -444,11 +477,14 @@ describe.skipIf(!DB_URL)(
           unit: "lb",
         });
       }
+      const type = over.type ?? "recert_visit";
       const f = await seedEncounter(org, {
-        type: over.type ?? "recert_visit",
+        type,
         discipline: over.discipline ?? "rn",
         patientId,
         admissionId,
+        ...(over.author ? { authorMembershipId: over.author.membershipId } : {}),
+        ...(type === "face_to_face" ? { faceToFaceEncounterId: randomUUID() } : {}),
       });
       await addVitals(org, f.encounterId, {
         capturedAt: "2026-01-15T14:05:00Z",
@@ -464,7 +500,7 @@ describe.skipIf(!DB_URL)(
       f: EncounterFixture,
       capturedAt: string,
       weight: string,
-      unit = "lb",
+      unit: string | null = "lb",
     ): Promise<void> {
       const other = await seedEncounter(orgs.A, {
         status: "signed",
@@ -546,6 +582,9 @@ describe.skipIf(!DB_URL)(
         body: res.json() as { sections: SectionJson[]; patientId: string; asOf: string },
       };
     }
+    /** The raw GET of the draft as a member of org A (for a refusal: the response is not a draft). */
+    const getAs = (f: EncounterFixture, member: Member) =>
+      app.inject({ method: "GET", url: draftUrl(f.encounterId), headers: as(orgs.A, member) });
     const sectionOf = (body: { sections: SectionJson[] }, id: string): SectionJson => {
       const found = body.sections.find((s) => s.sectionId === id);
       if (!found) throw new Error(`no section ${id}`);
@@ -615,10 +654,11 @@ describe.skipIf(!DB_URL)(
         orgs.A.author.membershipId,
       );
     }
-    const viewerA = () => ({ roles: ["rn"], membershipId: orgs.A.author.membershipId });
-    const finalize = (f: EncounterFixture) =>
-      svc.finalize(ORG_A, f.encounterId, SERVICE_DATE as never, { viewer: viewerA() });
-    const sign = (f: EncounterFixture) =>
+    const finalize = (f: EncounterFixture, roles: readonly string[] = ["rn"]) =>
+      svc.finalize(ORG_A, f.encounterId, SERVICE_DATE as never, {
+        viewer: { roles, membershipId: orgs.A.author.membershipId },
+      });
+    const sign = (f: EncounterFixture, roles: readonly string[] = ["rn"]) =>
       svc.sign(
         ORG_A,
         f.encounterId,
@@ -626,7 +666,7 @@ describe.skipIf(!DB_URL)(
           membershipId: orgs.A.author.membershipId,
           sessionId: SESSION_A,
           userId: orgs.A.author.userId,
-          roles: ["rn"],
+          roles,
         },
         SIGN_ARGS,
       );
@@ -689,7 +729,9 @@ describe.skipIf(!DB_URL)(
       }
       orgs.A = await seedOrg(ORG_A, "a");
       orgs.B = await seedOrg(ORG_B, "b");
-      limitedA = await seedMember(ORG_A, "limited-a");
+      for (const key of M6_READS) lacking[key] = await seedMember(ORG_A, `lacking-${key}`);
+      f2fOnlyReader = await seedMember(ORG_A, "f2f-only");
+      noM6Reader = await seedMember(ORG_A, "no-m6");
       handle = createDbClient({
         connectionString: await appRoleConnectionString(admin, DB_URL as string),
       });
@@ -756,6 +798,7 @@ describe.skipIf(!DB_URL)(
       registerSeam("ScaleSeriesProvider", {
         series: (patientId: string, scale: "pps" | "esas_r", from: string, to: string) => {
           const s = scenarioBy("patientId", patientId);
+          s.sourceReads.scale += 1;
           return honestSeries({ pps: s.pps, esas_r: s.esasR })(patientId, scale, from, to);
         },
       } as never);
@@ -766,12 +809,17 @@ describe.skipIf(!DB_URL)(
           patientId: string,
           from: string,
           to: string,
-        ) => scenarioBy("patientId", patientId).changes.filter((c) => c.at > from && c.at <= to),
+        ) => {
+          const s = scenarioBy("patientId", patientId);
+          s.sourceReads.medication += 1;
+          return s.changes.filter((c) => c.at > from && c.at <= to);
+        },
       } as never);
       registerSeam("CarePlanReader", {
         isReviewOverdue: async () => null,
-        relevantElementsAsOf: async (patientId: string) =>
-          carePlan({
+        relevantElementsAsOf: async (patientId: string) => {
+          scenarioBy("patientId", patientId).sourceReads.carePlan += 1;
+          return carePlan({
             patientId: patientId as never,
             goals: [
               {
@@ -792,7 +840,8 @@ describe.skipIf(!DB_URL)(
                 status: "active",
               } as never,
             ],
-          }),
+          });
+        },
       } as never);
       // The recertification asks M39 nothing: no source it reads is SUD-related. A call here would be a draft that withholds content.
       registerSeam("ConsentEvaluator", {
@@ -849,13 +898,10 @@ describe.skipIf(!DB_URL)(
       resetAuthorizationContract();
       resetRbacEngine();
       resetAbacRegistry();
-      // The draft is compiled from the care plan, medication orders, scored scales and, since S2, the benefit period (M6): each read key is needed.
-      const SOURCE_READS = [
-        "care_plan.read",
-        "prescribing.read",
-        "assessment.read_trend",
-        "admission.read",
-      ];
+      // Every draft is compiled from the care plan, medication orders and scored scales: the routes need those read keys. A recertification
+      // (and, for the benefit period alone, a face-to-face) draft also needs M6's own keys: the service checks those by template.
+      const SOURCE_READS = ["care_plan.read", "prescribing.read", "assessment.read_trend"];
+      const BASE_KEYS = ["encounter.read", "encounter.author", ...SOURCE_READS];
       const grant = (orgId: string, member: Member, permissionKeys: string[]) => ({
         orgId,
         userId: member.userId,
@@ -863,14 +909,17 @@ describe.skipIf(!DB_URL)(
       });
       registerEffectivePermissionResolver(
         createInMemoryEffectivePermissionStore([
-          grant(ORG_A, orgs.A.author, ["encounter.read", "encounter.author", ...SOURCE_READS]),
-          grant(ORG_B, orgs.B.author, ["encounter.read", "encounter.author", ...SOURCE_READS]),
-          // every key but `admission.read`
-          grant(ORG_A, limitedA, [
-            "encounter.read",
-            "encounter.author",
-            ...SOURCE_READS.filter((key) => key !== "admission.read"),
-          ]),
+          grant(ORG_A, orgs.A.author, [...BASE_KEYS, ...M6_READS]),
+          grant(ORG_B, orgs.B.author, [...BASE_KEYS, ...M6_READS]),
+          // every key but one of M6's
+          ...M6_READS.map((key) =>
+            grant(ORG_A, lacking[key], [
+              ...BASE_KEYS,
+              ...M6_READS.filter((other) => other !== key),
+            ]),
+          ),
+          grant(ORG_A, f2fOnlyReader, [...BASE_KEYS, "election.read"]),
+          grant(ORG_A, noM6Reader, BASE_KEYS),
         ]).store,
       );
       const registry = createPredicateRegistry({ ...M3_INTRINSIC_PREDICATES });
@@ -1266,12 +1315,26 @@ describe.skipIf(!DB_URL)(
         expect(mixed.origins).toEqual(["scale_reading", "face_to_face"]);
       });
 
-      it("a weight that does not parse is not drafted, and the latest one that does stands in", async () => {
+      it.each([
+        ["text that is not a decimal", "about 117", "lb"],
+        ["a zero weight", "0", "lb"],
+        ["no unit", "117", null],
+        ["a unit that is not kg or lb", "117", "mmHg"],
+      ] as const)(
+        "an unusable weight inside the benefit period (%s) means no weight is drafted at all: no row is skipped in silence",
+        async (_label, weight, unit) => {
+          const { f } = await seedRecert();
+          await addSignedWeight(f, "2026-01-15T20:00:00Z", weight, unit);
+          const prognosis = sectionOf((await getDraft(f)).body, "prognosis");
+          expect(prognosis.text).toBe(`${EXPECTED.prognosisPps} ${EXPECTED.prognosisF2f}`);
+          expect(prognosis.origins).toEqual(["scale_reading", "face_to_face"]);
+        },
+      );
+
+      it("an unusable weight from before the benefit period started is not part of it: the period's weights are still drafted", async () => {
         const { f } = await seedRecert();
-        await addSignedWeight(f, "2026-01-15T20:00:00Z", "about 117");
-        expect(sectionOf((await getDraft(f)).body, "prognosis").text).toContain(
-          EXPECTED.prognosisWeight,
-        );
+        await addSignedWeight(f, "2025-12-12T15:00:00Z", "about 150");
+        expect(sectionOf((await getDraft(f)).body, "prognosis").text).toBe(EXPECTED_PROGNOSIS);
       });
 
       it("a patient with no weight and only one PPS reading drafts no decline evidence from them: prognosis keeps the face-to-face fact alone", async () => {
@@ -1596,7 +1659,7 @@ describe.skipIf(!DB_URL)(
     // ===============================================================================================================
     // 5. the switch, the read keys and a failing source
     // ===============================================================================================================
-    describe("5. the tenant switch, admission.read and a failing M6 reader", () => {
+    describe("5. the tenant switch, the M6 read keys and a failing M6 reader", () => {
       it("with the switch off both draft routes answer 404 and no source is read", async () => {
         const { f, scenario } = await seedRecert({ org: orgs.B });
         const headers = as(orgs.B, orgs.B.author);
@@ -1633,25 +1696,89 @@ describe.skipIf(!DB_URL)(
         expect(put.statusCode).toBe(404);
       });
 
-      it("a caller holding the other source keys but not admission.read is refused 403 on GET and PUT, and nothing is read or written", async () => {
-        const { f, scenario } = await seedRecert();
-        const seen = sectionOf((await getDraft(f)).body, "prognosis");
-        const viewsBefore = (await viewEventsOf(f.encounterId)).length;
-        const callsBefore = scenario.calls.periods;
-        const limited = as(orgs.A, limitedA);
-        const get = await app.inject({
-          method: "GET",
-          url: draftUrl(f.encounterId),
-          headers: limited,
+      const STALE_SEEN = { contentHash: "0".repeat(64), corpusVersion: VOCAB_VERSION };
+      const requiresKey = (key: string) => `requires permission '${key}'`;
+      it.each(M6_READS)(
+        "an author holding every other key but %s is refused 403 naming it on GET and PUT of a recertification draft, with nothing read and nothing written",
+        async (key) => {
+          const member = lacking[key];
+          const { f, scenario } = await seedRecert({ author: member });
+          const get = await getAs(f, member);
+          expect(get.statusCode).toBe(403);
+          expect(get.json().error.message).toContain(requiresKey(key));
+          const put = await putSection(f, "pps", "confirmed", STALE_SEEN, as(orgs.A, member));
+          expect(put.statusCode).toBe(403);
+          expect(put.json().error.message).toContain(requiresKey(key));
+          // the refusal is the service's, before any source: no M6 reader, no other source seam, no read event, no confirmation row
+          expect(scenario.calls).toEqual(NO_M6_CALLS);
+          expect(scenario.sourceReads).toEqual(NO_SOURCE_READS);
+          expect(await viewEventsOf(f.encounterId)).toEqual([]);
+          expect(await confirmationsOf(f.encounterId)).toEqual([]);
+          expect(get.body).not.toContain("sections");
+        },
+      );
+
+      it("the refusal is the key's: the same author reads the same patient's routine visit, which needs none of M6's keys", async () => {
+        const member = lacking["cti.read"];
+        const { f, scenario } = await seedRecert({ author: member, type: "routine_visit" });
+        const get = await getAs(f, member);
+        expect(get.statusCode).toBe(200);
+        expect(scenario.calls).toEqual(NO_M6_CALLS);
+      });
+
+      it("a routine visit's draft works for a caller with none of M6's keys, on GET and on PUT", async () => {
+        const { f } = await seedRecert({ author: noM6Reader, type: "routine_visit" });
+        const headers = as(orgs.A, noM6Reader);
+        const { res, body } = await getDraft(f, headers);
+        expect(res.statusCode).toBe(200);
+        const plan = sectionOf(body, "plan");
+        expect(plan.state).toBe("unresolved");
+        expect((await putSection(f, "plan", "confirmed", plan, headers)).statusCode).toBe(200);
+      });
+
+      it("the face-to-face draft needs only election.read: a caller with the source keys and that key reads and confirms it", async () => {
+        const { f, scenario } = await seedRecert({
+          author: f2fOnlyReader,
+          type: "face_to_face",
+          discipline: "np",
         });
-        expect(get.statusCode).toBe(403);
-        expect(get.json().error.message).toContain("admission.read");
-        const put = await putSection(f, "prognosis", "confirmed", seen, limited);
-        expect(put.statusCode).toBe(403);
-        expect(put.json().error.message).toContain("admission.read");
-        expect(await confirmationsOf(f.encounterId)).toEqual([]);
-        expect((await viewEventsOf(f.encounterId)).length).toBe(viewsBefore);
-        expect(scenario.calls.periods).toBe(callsBefore);
+        const headers = as(orgs.A, f2fOnlyReader);
+        const { res, body } = await getDraft(f, headers);
+        expect(res.statusCode).toBe(200);
+        const prognosis = sectionOf(body, "prognosis");
+        expect(prognosis.text).toBe(`${EXPECTED.prognosisPps} ${EXPECTED.prognosisWeight}`);
+        expect((await putSection(f, "prognosis", "confirmed", prognosis, headers)).statusCode).toBe(
+          200,
+        );
+        expect(scenario.calls.periods).toBeGreaterThan(0);
+      });
+
+      it("a face-to-face draft is refused 403 naming election.read to a caller without it, whatever other M6 keys it holds, and nothing is read", async () => {
+        for (const member of [lacking["election.read"], noM6Reader]) {
+          const { f, scenario } = await seedRecert({
+            author: member,
+            type: "face_to_face",
+            discipline: "np",
+          });
+          const get = await getAs(f, member);
+          expect(get.statusCode).toBe(403);
+          expect(get.json().error.message).toContain(requiresKey("election.read"));
+          const put = await putSection(f, "prognosis", "confirmed", STALE_SEEN, as(orgs.A, member));
+          expect(put.statusCode).toBe(403);
+          expect(put.json().error.message).toContain(requiresKey("election.read"));
+          expect(scenario.calls).toEqual(NO_M6_CALLS);
+          expect(scenario.sourceReads).toEqual(NO_SOURCE_READS);
+          expect(await confirmationsOf(f.encounterId)).toEqual([]);
+        }
+      });
+
+      it("the key check is no oracle: a caller lacking a key still gets 404 for another tenant's encounter", async () => {
+        const member = lacking["cti.read"];
+        const theirs = await seedRecert({ org: orgs.B });
+        expect((await getAs(theirs.f, member)).statusCode).toBe(404);
+        const put = await putSection(theirs.f, "pps", "confirmed", STALE_SEEN, as(orgs.A, member));
+        expect(put.statusCode).toBe(404);
+        expect(theirs.scenario.calls).toEqual(NO_M6_CALLS);
       });
 
       it.each([
@@ -1704,6 +1831,350 @@ describe.skipIf(!DB_URL)(
         const refused = await finalize(f).catch((e: unknown) => e);
         expect(refused).toMatchObject({ code: "COMPLIANCE_GATE_UNAVAILABLE", statusCode: 503 });
         expect(await statusOf(f)).toBe("draft");
+      });
+    });
+
+    // ===============================================================================================================
+    // 6. a face-to-face note by a nurse practitioner, through the encounter service's dual-write branch
+    // ===============================================================================================================
+    describe("6. a face-to-face note by np: confirm, finalize and sign", () => {
+      const NP = ["np"];
+      const PROGNOSIS = `${EXPECTED.prognosisPps} ${EXPECTED.prognosisWeight}`;
+      const seedF2f = () => seedRecert({ type: "face_to_face", discipline: "np" });
+      /** Every required section but `prognosis`, which is drafted: the clinician's own words, as the gate requires. */
+      const documentOwnSectionsOfF2f = (f: EncounterFixture) =>
+        svc.updateSelections(
+          ORG_A,
+          f.encounterId,
+          0,
+          {
+            sections: requiredSectionSelections("face_to_face", "np").sections.filter(
+              (section) => section.sectionId !== "prognosis",
+            ),
+          },
+          orgs.A.author.membershipId,
+        );
+
+      it("a confirmed prognosis satisfies its required section on this branch too: finalize is refused for it alone until it is confirmed", async () => {
+        const { f } = await seedF2f();
+        await documentOwnSectionsOfF2f(f);
+        const refused = await finalize(f, NP).catch((e: unknown) => e);
+        expect(refused).toMatchObject({ code: "COMPLIANCE_GATE_FAILED", statusCode: 422 });
+        expect(detailsOf(refused)).toEqual(
+          expect.arrayContaining([
+            ["prognosis", "MISSING_SECTION"],
+            ["prognosis", "DRAFT_SECTION_UNRESOLVED"],
+          ]),
+        );
+        expect(await statusOf(f)).toBe("draft");
+        await confirmDrafted(f);
+        expect((await finalize(f, NP)).status).toBe("finalized");
+      });
+
+      it("signs the confirmed note: one sealed row per section, equal to final_cipher, the prognosis as drafted", async () => {
+        const { f } = await seedF2f();
+        await documentOwnSectionsOfF2f(f);
+        await confirmDrafted(f);
+        await finalize(f, NP);
+        expect((await sign(f, NP)).status).toBe("signed");
+        expect(await statusOf(f)).toBe("signed");
+
+        const sealed = await signedRowsOf(f);
+        const texts = await Promise.all(sealed.map((r) => open(r.text_cipher)));
+        expect(sealed.map((r) => r.section_id)).toEqual([
+          "chief_concern",
+          "vitals_review",
+          "assessment",
+          "plan",
+          "med_reconciliation",
+          "prognosis",
+          "f2f_attestation",
+        ]);
+        expect(sealed.map((r) => r.position)).toEqual(sealed.map((_, i) => i));
+        expect(texts.join("\n\n")).toBe(await open(await finalCipherOf(f)));
+        const prognosis = sealed.findIndex((r) => r.section_id === "prognosis");
+        expect(texts[prognosis]).toBe(`Prognostic Indicators\n${PROGNOSIS}`);
+        expect(sealed[prognosis]?.source_refs.map((ref) => ref.kind)).toEqual([
+          "scale_reading",
+          "weight_reading",
+        ]);
+        for (const [i, row] of sealed.entries()) {
+          expect(row.content_hash).toBe(sha256(texts[i] as string));
+          expect(row.part2_derived).toBe(false);
+        }
+        // the clinician's own sections carry no source
+        expect(sealed.find((r) => r.section_id === "chief_concern")?.source_refs).toEqual([]);
+      });
+
+      it("a weight recorded between confirm and sign makes prognosis stale: sign is 409 DRAFT_SECTION_STALE naming it alone, and nothing is sealed", async () => {
+        const { f } = await seedF2f();
+        await documentOwnSectionsOfF2f(f);
+        await confirmDrafted(f);
+        await finalize(f, NP);
+        await addSignedWeight(f, "2026-01-15T18:30:00Z", "117");
+
+        const refused = await sign(f, NP).catch((e: unknown) => e);
+        expect(refused).toMatchObject({ code: "DRAFT_SECTION_STALE", statusCode: 409 });
+        expect(detailsOf(refused)).toEqual([["prognosis", "DRAFT_SECTION_STALE"]]);
+        expect(await statusOf(f)).toBe("finalized");
+        expect(await signedRowsOf(f)).toEqual([]);
+
+        const { body } = await getDraft(f);
+        expect(sectionOf(body, "prognosis").state).toBe("needs_reconfirmation");
+        expect(
+          (await putSection(f, "prognosis", "confirmed", sectionOf(body, "prognosis"))).statusCode,
+        ).toBe(200);
+        expect((await sign(f, NP)).status).toBe("signed");
+        const row = (await signedRowsOf(f)).find((r) => r.section_id === "prognosis");
+        expect(await open(row?.text_cipher ?? "")).toContain(
+          "Weight 117 lb on 2026-01-15, down 10.0% from 130 lb on 2025-12-18.",
+        );
+      });
+    });
+
+    // ===============================================================================================================
+    // 7. the audit trail
+    // ===============================================================================================================
+    describe("7. the audit trail of the recertification draft", () => {
+      const auditEvents = (eventType: string, resourceId: string) =>
+        rows<{
+          event_type: string;
+          resource_kind: string;
+          actor_user_id: string | null;
+          severity: string;
+          after: Record<string, unknown> | null;
+          context: { patientId?: string; fields?: string[] } | null;
+        }>(
+          `SELECT event_type, resource_kind, actor_user_id::text, severity::text, after, context
+           FROM audit_event WHERE organization_id = $1 AND event_type = $2 AND resource_id::text = $3 ORDER BY created_at`,
+          [ORG_A, eventType, resourceId],
+        );
+
+      it("the read event of a draft GET lands: encounter_draft.viewed on the encounter, attributed to the patient, field names only", async () => {
+        const { f } = await seedRecert();
+        const { res } = await getDraft(f);
+        expect(res.statusCode).toBe(200);
+        const events = await auditEvents("encounter_draft.viewed", f.encounterId);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          resource_kind: "encounter_draft",
+          actor_user_id: orgs.A.author.userId,
+          context: { patientId: f.patientId },
+        });
+        expect(events[0]?.context?.fields).toEqual(
+          expect.arrayContaining(["text", "contentHash", "state", "origins"]),
+        );
+        // a trail of WHO read WHAT, never a second copy of the note
+        const trail = JSON.stringify(events[0]);
+        for (const text of [EXPECTED.pps, EXPECTED_PROGNOSIS, "118.5", "Weight"])
+          expect(trail).not.toContain(text);
+      });
+
+      it("a refused read writes no read event", async () => {
+        const { f } = await seedRecert({ author: lacking["loc.read"] });
+        expect((await getAs(f, lacking["loc.read"])).statusCode).toBe(403);
+        expect(await auditEvents("encounter_draft.viewed", f.encounterId)).toEqual([]);
+      });
+
+      it("a confirmed pps section records m8.encounter.draft_section_resolved with ids, enums and counts, and no content hash or text", async () => {
+        const { f, scenario } = await seedRecert();
+        const seen = sectionOf((await getDraft(f)).body, "pps");
+        expect((await putSection(f, "pps", "confirmed", seen)).statusCode).toBe(200);
+
+        const events = await auditEvents("m8.encounter.draft_section_resolved", f.encounterId);
+        expect(events).toHaveLength(1);
+        const ppsId = String(scenario.pps.at(-1)?.assessmentId);
+        expect(events[0]).toMatchObject({
+          severity: "info",
+          actor_user_id: orgs.A.author.userId,
+          after: {
+            sectionId: "pps",
+            resolution: "confirmed",
+            edited: false,
+            part2Derived: false,
+            sourceRefs: [{ kind: "scale_reading", id: ppsId }],
+            carePlanElementsLinked: 0,
+            carePlanElementsRemoved: 0,
+          },
+        });
+        // the row's own trigger record carries the same ids
+        const rowEvents = await rows<{ after: { source_refs: unknown[] } }>(
+          `SELECT after FROM audit_event WHERE organization_id = $1 AND resource_kind = 'encounter_draft_confirmation' AND after->>'encounter_id' = $2`,
+          [ORG_A, f.encounterId],
+        );
+        expect(rowEvents).toHaveLength(1);
+        expect(rowEvents[0]?.after.source_refs).toEqual([{ kind: "scale_reading", id: ppsId }]);
+        // never the content hash (an unsalted hash of low-entropy text is a guessing oracle) and never the sentences
+        const trail = JSON.stringify([events, rowEvents]);
+        expect(trail).not.toContain(String(seen.contentHash));
+        expect(trail).not.toContain("down from 60%");
+        expect(trail).not.toContain(EXPECTED.pps);
+      });
+    });
+
+    // ===============================================================================================================
+    // 8. the REAL M6 readers over the real admission store
+    // ===============================================================================================================
+    describe("8. the real M6 face-to-face and certification readers (not the registry fakes)", () => {
+      const ORG_NY = "33333333-3333-3333-3333-333333333333";
+      const ORG_AKL = "44444444-4444-4444-4444-444444444444";
+      const m6 = {} as Record<"ny" | "akl", OrgFixture>;
+      const store = () => createDrizzleAdmissionReaderStore(handle.db);
+      /** The readers run under the request's tenant scope, as they do behind the draft routes. */
+      const asOrg = <T>(org: OrgFixture, fn: () => Promise<T>): Promise<T> =>
+        runWithRequestContext(
+          { organizationId: org.orgId, userId: org.author.userId } as never,
+          fn,
+        );
+      const attestedF2f = (org: OrgFixture, periodId: string) =>
+        asOrg(org, () =>
+          createFaceToFaceReader(store()).getAttestedF2fForPeriod(periodId as never),
+        );
+      const activeCti = (org: OrgFixture, periodId: string) =>
+        asOrg(org, () =>
+          createCertificationReader(store()).getActiveCertification(periodId as never),
+        );
+
+      beforeAll(async () => {
+        m6.ny = await seedOrg(ORG_NY, "ny");
+        m6.akl = await seedOrg(ORG_AKL, "akl");
+        for (const [org, zone] of [
+          [m6.ny, "America/New_York"],
+          [m6.akl, "Pacific/Auckland"],
+        ] as const) {
+          await admin.query(
+            "UPDATE organization SET settings = jsonb_build_object('org_timezone', $2::text) WHERE id = $1",
+            [org.orgId, zone],
+          );
+        }
+      });
+
+      /** One admission with one election period; the facts under test are added to it. */
+      async function seedPeriod(org: OrgFixture): Promise<string> {
+        const admission = await admin.query<{ id: string }>(
+          `INSERT INTO admission (organization_id, provider_entity_id, location_id, patient_id,
+             admitted_by_physician_id, status, admission_at, activated_at)
+           VALUES ($1,$2,$3,$4,$5,'active', now() - interval '1 day', now() - interval '1 day') RETURNING id`,
+          [org.orgId, org.providerEntityId, org.locationId, randomUUID(), org.author.userId],
+        );
+        const period = await admin.query<{ id: string }>(
+          `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind, status)
+           VALUES ($1,$2,1,'ninety_day','active') RETURNING id`,
+          [org.orgId, one(admission.rows).id],
+        );
+        return one(period.rows).id;
+      }
+      const addF2f = (
+        org: OrgFixture,
+        periodId: string,
+        row: { status: string; encounterDate: string | null; attestedAt: string | null },
+      ) =>
+        admin.query(
+          `INSERT INTO face_to_face_encounter (organization_id, election_period_id, performed_by_user_id,
+             performer_role, encounter_date, status, attestation_signed_at)
+           VALUES ($1,$2,$3,'hospice_np',$4,$5::f2f_encounter_status,$6)`,
+          [org.orgId, periodId, org.author.userId, row.encounterDate, row.status, row.attestedAt],
+        );
+      const addSignedCti = (org: OrgFixture, periodId: string, signedAt: string) =>
+        admin.query(
+          `INSERT INTO certification_of_terminal_illness (organization_id, election_period_id, hospice_md_id,
+             terminal_diagnosis_icd10, narrative, period_start, period_end, hospice_md_signed_at, status)
+           VALUES ($1,$2,$3,'C34.90','Terminal','2026-11-01','2026-12-30',$4,'signed')`,
+          [org.orgId, periodId, org.author.userId, signedAt],
+        );
+
+      it("an election period whose only face-to-face is scheduled, with no encounter date, answers null and does not throw", async () => {
+        const periodId = await seedPeriod(m6.ny);
+        await addF2f(m6.ny, periodId, {
+          status: "scheduled",
+          encounterDate: null,
+          attestedAt: null,
+        });
+        await expect(attestedF2f(m6.ny, periodId)).resolves.toBeNull();
+      });
+
+      it("an ATTESTED face-to-face with no encounter date is still a data gap", async () => {
+        const periodId = await seedPeriod(m6.ny);
+        await addF2f(m6.ny, periodId, {
+          status: "attested",
+          encounterDate: null,
+          attestedAt: "2026-11-19T01:30:00Z",
+        });
+        await expect(attestedF2f(m6.ny, periodId)).rejects.toBeInstanceOf(
+          AdmissionSeamDataGapError,
+        );
+      });
+
+      it("a period with no face-to-face at all answers null", async () => {
+        await expect(attestedF2f(m6.ny, await seedPeriod(m6.ny))).resolves.toBeNull();
+      });
+
+      it("the attestation date is the organization's day, not the UTC day: 01:30Z on the 19th is the 18th in New York", async () => {
+        const periodId = await seedPeriod(m6.ny);
+        await addF2f(m6.ny, periodId, {
+          status: "attested",
+          encounterDate: "2026-11-10",
+          attestedAt: "2026-11-19T01:30:00Z",
+        });
+        await expect(attestedF2f(m6.ny, periodId)).resolves.toMatchObject({
+          status: "attested",
+          performerRole: "hospice_np",
+          encounterDate: "2026-11-10",
+          attestedAt: "2026-11-18",
+        });
+      });
+
+      it.each([
+        ["the last instant of the 18th (23:59:59 EST)", "2026-11-19T04:59:59Z", "2026-11-18"],
+        ["the first instant of the 19th (00:00:00 EST)", "2026-11-19T05:00:00Z", "2026-11-19"],
+      ] as const)(
+        "the New York day turns over at midnight there: %s",
+        async (_label, instant, day) => {
+          const periodId = await seedPeriod(m6.ny);
+          await addF2f(m6.ny, periodId, {
+            status: "attested",
+            encounterDate: "2026-11-10",
+            attestedAt: instant,
+          });
+          await expect(attestedF2f(m6.ny, periodId)).resolves.toMatchObject({ attestedAt: day });
+        },
+      );
+
+      it("the hospice physician's certification signature date is the organization's day too: 01:30Z on the 19th is the 18th in New York", async () => {
+        const periodId = await seedPeriod(m6.ny);
+        await addSignedCti(m6.ny, periodId, "2026-11-19T01:30:00Z");
+        await expect(activeCti(m6.ny, periodId)).resolves.toMatchObject({
+          status: "signed",
+          hospiceMdSignedAt: "2026-11-18",
+        });
+      });
+
+      it("an organization east of UTC reads the next day: 22:00Z on the 18th is the 19th in Auckland, for the face-to-face and the certification", async () => {
+        const periodId = await seedPeriod(m6.akl);
+        await addF2f(m6.akl, periodId, {
+          status: "attested",
+          encounterDate: "2026-11-10",
+          attestedAt: "2026-11-18T22:00:00Z",
+        });
+        await addSignedCti(m6.akl, periodId, "2026-11-18T22:00:00Z");
+        await expect(attestedF2f(m6.akl, periodId)).resolves.toMatchObject({
+          attestedAt: "2026-11-19",
+        });
+        await expect(activeCti(m6.akl, periodId)).resolves.toMatchObject({
+          hospiceMdSignedAt: "2026-11-19",
+        });
+      });
+
+      it("another tenant's period is invisible to the reader: RLS answers null", async () => {
+        const periodId = await seedPeriod(m6.ny);
+        await addF2f(m6.ny, periodId, {
+          status: "attested",
+          encounterDate: "2026-11-10",
+          attestedAt: "2026-11-19T01:30:00Z",
+        });
+        await addSignedCti(m6.ny, periodId, "2026-11-19T01:30:00Z");
+        await expect(attestedF2f(m6.akl, periodId)).resolves.toBeNull();
+        await expect(activeCti(m6.akl, periodId)).resolves.toBeNull();
       });
     });
   },
