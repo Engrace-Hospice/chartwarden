@@ -66,6 +66,13 @@ import {
   deriveGateStatus,
 } from "../volunteer/index";
 import type { M15ReadActor, M15WriteActor } from "./actor";
+import {
+  AIDE_ROLE_KEYS,
+  AIDE_SUPERVISOR_ROLE_KEYS,
+  type AideRosterPort,
+  assembleAideSupervisionRoster,
+  emptyAideRosterPort,
+} from "./aide-supervision-roster";
 import type {
   AideSupervisoryVisitView,
   DisciplineAssessmentView,
@@ -77,7 +84,9 @@ import type {
 } from "./read-service";
 import { isSudAnchored, redactDisciplineSnapshot } from "./snapshot-redaction";
 import type {
+  AideAssignmentView,
   AmendAssessmentInput,
+  AssignAideTeamInput,
   CreateAssessmentInput,
   CreateGoalInput,
   CreateHourEntryInput,
@@ -164,6 +173,11 @@ export interface M15WriteDeps {
     userId: string;
     patientId: string;
   }) => Promise<boolean>;
+  /**
+   * The staff read `assignAideTeam` checks the picked aide and supervising RN against (the same port the roster route
+   * reads through). Unbound, nobody is assignable: an unwired port reveals and accepts no staff.
+   */
+  readonly aideRoster?: AideRosterPort;
   /** §2.3 — is an active `dpoa_healthcare` consent on file for this patient (the agent-stated goal gate)? */
   readonly dpoaConsentActive?: (input: {
     organizationId: string;
@@ -194,6 +208,7 @@ export function buildDrizzleM15WriteService(
   // per call, and fail-CLOSED (an unbound or erroring evaluator refuses the goal rather than attributing
   // it to an agent nobody authorized).
   const dpoaActive = deps.dpoaConsentActive ?? dpoaViaSeam;
+  const aideRoster = deps.aideRoster ?? emptyAideRosterPort;
 
   const scope = (actor: M15ReadActor) => ({
     organizationId: actor.organizationId,
@@ -770,6 +785,68 @@ export function buildDrizzleM15WriteService(
             });
         }
         return toVersionDetail(updated, signatures);
+      });
+    },
+
+    // ── 29 — bind the aide and the supervising RN to an Aide POC (§2.3) ──────────────────────────────
+    async assignAideTeam(actor, planId, input: AssignAideTeamInput): Promise<AideAssignmentView> {
+      return withOrgContext(db, scope(actor), async (tx) => {
+        // The root is the per-plan serialization point (as in openVersion).
+        await tx.execute(
+          sql`select id from discipline_care_plan where id = ${planId} and organization_id = ${actor.organizationId} for update`,
+        );
+        const plan = await planOr404(tx, actor, planId);
+        if (plan.kind !== "aide_poc") {
+          throw new DisciplinePlanStateError(
+            "NOT_AN_AIDE_POC",
+            "only an Aide POC has an assigned aide and supervising RN",
+          );
+        }
+        requireAuthoringScope(actor, plan);
+        checkPlanWritable(plan.status);
+        checkOptimisticConcurrency(input.expectedVersion, plan.version);
+
+        // Both people must be active staff at THIS plan's location holding the right role right now; the roster port
+        // (M3) decides, so a member who left, was suspended, lost the role or works elsewhere is refused.
+        const roster = assembleAideSupervisionRoster(
+          await aideRoster.listStaffAtLocation({
+            organizationId: actor.organizationId,
+            locationId: plan.locationId,
+            roleKeys: [...AIDE_ROLE_KEYS, ...AIDE_SUPERVISOR_ROLE_KEYS],
+          }),
+        );
+        if (!roster.aides.some((m) => m.membershipId === input.aideMembershipId)) {
+          throw new DisciplinePlanStateError(
+            "AIDE_NOT_ELIGIBLE",
+            "the chosen aide is not an active aide at this plan's location",
+          );
+        }
+        if (!roster.supervisors.some((m) => m.membershipId === input.supervisingRnMembershipId)) {
+          throw new DisciplinePlanStateError(
+            "SUPERVISING_RN_NOT_ELIGIBLE",
+            "the chosen supervising RN is not an active RN at this plan's location",
+          );
+        }
+
+        const [updated] = await tx
+          .update(P)
+          .set({
+            aideMembershipId: input.aideMembershipId,
+            supervisingRnMembershipId: input.supervisingRnMembershipId,
+            updatedAt: new Date(now()),
+            version: nextVersion(plan.version),
+          })
+          .where(and(eq(P.id, planId), eq(P.version, plan.version)))
+          .returning();
+        if (!updated) {
+          throw new DisciplinePlanStateError("STALE_VERSION", "the plan changed concurrently");
+        }
+        return {
+          planId,
+          aideMembershipId: input.aideMembershipId,
+          supervisingRnMembershipId: input.supervisingRnMembershipId,
+          version: updated.version,
+        };
       });
     },
 

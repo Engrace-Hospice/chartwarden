@@ -278,6 +278,20 @@ export async function openPlanVersion(
   return { version: res.data as OpenVersionResult, error: null };
 }
 
+/** Route 29 — bind the aide and the supervising RN to the Aide POC; `planVersion` rides as `If-Match`. */
+export async function assignAideTeam(
+  client: ApiClient,
+  planId: string,
+  planVersion: number,
+  body: { aideMembershipId: string; supervisingRnMembershipId: string },
+): Promise<{ error: unknown }> {
+  const res = await client.PUT("/api/v1/discipline-plans/{planId}/aide-assignment", {
+    params: { path: { planId }, header: writeHeaders(planVersion) },
+    body,
+  } as never);
+  return { error: res.error ?? null };
+}
+
 /** Route 2 — the full plan, already SQL-filtered by the §7.8/§7.9 gates. */
 export async function getPlan(
   client: ApiClient,

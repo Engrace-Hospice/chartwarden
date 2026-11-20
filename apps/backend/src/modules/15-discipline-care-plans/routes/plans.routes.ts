@@ -25,6 +25,7 @@ import { P, STEP_UP, planCaseloadScope } from "./guards";
 import {
   AmendAssessmentBody,
   AssessmentParams,
+  AssignAideTeamBody,
   CreateAssessmentBody,
   CreateGoalBody,
   CreateInterventionBody,
@@ -243,6 +244,30 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
         isAcknowledgment: body.isAcknowledgment,
       });
       return redactVersionForCaller(signed, await sudAllowedFor(request, planId));
+    },
+  );
+
+  // 29 — bind the aide and the supervising RN to an Aide POC (§2.3). An author of the Aide POC (`discipline_plan.author`,
+  // the plan's caseload scope and, in the service, `discipline_scope`) picks two people the plan location's roster lists;
+  // version-checked (`If-Match`) like every plan-level write. Row-audit trigger on `discipline_care_plan` records the change.
+  app.put(
+    "/api/v1/discipline-plans/:planId/aide-assignment",
+    {
+      preHandler: [
+        P("discipline_plan.author"),
+        ...scope("discipline_plan.author"),
+        IF_MATCH,
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const { planId } = parse(PlanParams, request.params);
+      const body = parse(AssignAideTeamBody, request.body);
+      return writeService.assignAideTeam(writeActorOf(request), planId, {
+        expectedVersion: ifMatchVersionOf(request),
+        aideMembershipId: body.aideMembershipId,
+        supervisingRnMembershipId: body.supervisingRnMembershipId,
+      });
     },
   );
 

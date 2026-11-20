@@ -8,7 +8,12 @@
  * `rn_case_manager`) whose effective reach covers the plan's location, (c) never cross a tenant — an unknown or
  * another tenant's plan is one 404 — and (d) return nothing but `{ membershipId, displayName, roleKey }`.
  *
- * The real Drizzle read service and the real M3 staff reader run over the real RLS policies; only the caseload
+ * The same suite proves `PUT .../aide-assignment`: the RN picks the plan's aide and supervising RN from that roster and the
+ * write service re-checks both against it (an off-site, suspended, expired, narrowed, wrong-role or other-tenant member is
+ * refused 422 and nothing is written), is version-checked, kind-checked and caseload-scoped, and the plan row change lands in
+ * the row audit trail.
+ *
+ * The real Drizzle read and write services and the real M3 staff reader run over the real RLS policies; only the caseload
  * seam (M5) and the permission store are in-memory, as in every route-level live suite.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m15:aide-roster:live
@@ -17,7 +22,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   createInMemoryEffectivePermissionStore,
+  registerAbacRegistry,
   registerEffectivePermissionResolver,
+  registerPredicateIdempotent,
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
@@ -30,11 +37,12 @@ import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { staffAtLocationForOrg } from "../src/modules/03-authorization/staff-at-location-for-org";
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/index";
 import {
   buildDrizzleM15ReadService,
+  buildDrizzleM15WriteService,
   mountM15Routes,
 } from "../src/modules/15-discipline-care-plans/index";
-import type { M15WriteService } from "../src/modules/15-discipline-care-plans/routes/index";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -267,13 +275,32 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
                 roleKey: "seed",
                 enabled: true,
                 expiresAt: null,
-                // ONLY the read key: no org-admin, no member-list permission.
-                permissionKeys: ["discipline_plan.read"],
+                // Read and author only: no org-admin, no member-list permission.
+                permissionKeys: ["discipline_plan.read", "discipline_plan.author"],
               },
             ],
           }))
           .concat([{ orgId: ORG_A, userId: U_NO_PERMISSION, grants: [] }]),
       ).store,
+    );
+    const isInCaseload = async ({ userId, patientId }: { userId: string; patientId: string }) =>
+      (CASELOAD[userId] ?? []).includes(patientId);
+    const aideRoster = {
+      listStaffAtLocation: (query: Parameters<typeof staffAtLocationForOrg>[1]) =>
+        staffAtLocationForOrg(handle.db, query),
+    };
+    // The shared patient-scope guard the write routes bind by name, over the in-memory caseload.
+    registerAbacRegistry();
+    registerPredicateIdempotent(
+      "caseload_or_scope",
+      buildCarePlanAbacPredicates({
+        resolver: {
+          loadPlan: async () => null,
+          loadProblem: async () => null,
+          loadVersion: async () => null,
+        },
+        isInCaseload,
+      }).caseload_or_scope,
     );
     app = buildServer({
       db: handle.db,
@@ -282,13 +309,10 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
     });
     mountM15Routes(app, {
       readService: buildDrizzleM15ReadService(handle.db, {
-        caseload: {
-          isInCaseload: async ({ userId, patientId }) =>
-            (CASELOAD[userId] ?? []).includes(patientId),
-        },
-        aideRoster: { listStaffAtLocation: (query) => staffAtLocationForOrg(handle.db, query) },
+        caseload: { isInCaseload },
+        aideRoster,
       }),
-      writeService: {} as M15WriteService,
+      writeService: buildDrizzleM15WriteService(handle.db, { isInCaseload, aideRoster }),
     });
     await admin.query("DELETE FROM audit_event WHERE organization_id = $1", [ORG_A]);
   });
@@ -398,5 +422,117 @@ describe.skipIf(!DB_URL)("aide-supervision roster — LIVE Postgres, NOBYPASSRLS
       [ORG_A],
     );
     expect(rows).toEqual([]);
+  });
+  describe("PUT .../aide-assignment", () => {
+    let keySeq = 0;
+    const planRow = async (planId: string) => {
+      const row = (
+        await admin.query(
+          `SELECT aide_membership_id, supervising_rn_membership_id, version FROM discipline_care_plan WHERE id=$1`,
+          [planId],
+        )
+      ).rows[0] as {
+        aide_membership_id: string | null;
+        supervising_rn_membership_id: string | null;
+        version: string | number;
+      };
+      return { ...row, version: Number(row.version) };
+    };
+    const put = async (planId: string, asUser: string, body: object, ifMatch?: number) => {
+      const version = ifMatch ?? (await planRow(planId)).version;
+      keySeq += 1;
+      return app.inject({
+        method: "PUT",
+        url: `/api/v1/discipline-plans/${planId}/aide-assignment`,
+        headers: {
+          "x-test-user": asUser,
+          "if-match": String(version),
+          "idempotency-key": `assign-${keySeq}`,
+        },
+        payload: body,
+      });
+    };
+    const pick = (aide: string, rn: string) => ({
+      aideMembershipId: memberOf[aide],
+      supervisingRnMembershipId: memberOf[rn],
+    });
+
+    afterEach(async () => {
+      await admin.query(
+        `UPDATE discipline_care_plan SET aide_membership_id=NULL, supervising_rn_membership_id=NULL WHERE id=$1`,
+        [planA],
+      );
+    });
+
+    it("binds the picked aide and RN from the roster, bumps the version and leaves a row-audit entry", async () => {
+      const before = (await planRow(planA)).version;
+      const res = await put(planA, U_CALLER, pick(U_AIDE, U_CASE_MANAGER));
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        planId: planA,
+        aideMembershipId: memberOf[U_AIDE],
+        supervisingRnMembershipId: memberOf[U_CASE_MANAGER],
+        version: before + 1,
+      });
+      expect(await planRow(planA)).toEqual({
+        aide_membership_id: memberOf[U_AIDE],
+        supervising_rn_membership_id: memberOf[U_CASE_MANAGER],
+        version: before + 1,
+      });
+      const { rows } = await admin.query(
+        `SELECT event_type FROM audit_event WHERE organization_id=$1 AND resource_id::text=$2`,
+        [ORG_A, planA],
+      );
+      expect(rows.length).toBeGreaterThan(0);
+    });
+
+    it("refuses an aide who is off-site, suspended, expired, narrowed, the wrong role or in another tenant (422, nothing written)", async () => {
+      for (const aide of [
+        U_AIDE_OFFSITE,
+        U_AIDE_SUSPENDED_MEMBER,
+        U_AIDE_SUSPENDED_USER,
+        U_AIDE_EXPIRED_GRANT,
+        U_AIDE_NARROWED,
+        U_LPN,
+        U_CASE_MANAGER,
+        U_B_AIDE,
+      ]) {
+        const res = await put(planA, U_CALLER, pick(aide, U_CASE_MANAGER));
+        expect(res.statusCode, aide).toBe(422);
+        expect(res.json().error?.code ?? res.json().code, aide).toBe("AIDE_NOT_ELIGIBLE");
+      }
+      expect(await planRow(planA)).toMatchObject({
+        aide_membership_id: null,
+        supervising_rn_membership_id: null,
+      });
+    });
+
+    it("refuses a supervising RN who is an aide, an LPN or in another tenant (422)", async () => {
+      for (const rn of [U_AIDE, U_LPN, U_B_AIDE]) {
+        const res = await put(planA, U_CALLER, pick(U_AIDE, rn));
+        expect(res.statusCode, rn).toBe(422);
+        expect(res.json().error?.code ?? res.json().code, rn).toBe("SUPERVISING_RN_NOT_ELIGIBLE");
+      }
+      expect(await planRow(planA)).toMatchObject({ aide_membership_id: null });
+    });
+
+    it("is version-checked, aide-plan-only and caseload-scoped, and answers another tenant's plan with a 404", async () => {
+      const { version } = await planRow(planA);
+      expect(
+        (await put(planA, U_CALLER, pick(U_AIDE, U_CASE_MANAGER), version + 5)).statusCode,
+      ).toBe(409);
+      const msw = await put(mswPlanA, U_CALLER, pick(U_AIDE, U_CASE_MANAGER));
+      expect(msw.statusCode).toBe(422);
+      expect(msw.json().error?.code ?? msw.json().code).toBe("NOT_AN_AIDE_POC");
+      expect((await put(planA, U_OFF_CASELOAD, pick(U_AIDE, U_CASE_MANAGER))).statusCode).toBe(404);
+      expect((await put(planB, U_CALLER, pick(U_AIDE, U_CASE_MANAGER), 0)).statusCode).toBe(404);
+      expect((await put(UNKNOWN_PLAN, U_CALLER, pick(U_AIDE, U_CASE_MANAGER), 0)).statusCode).toBe(
+        404,
+      );
+      expect((await put(planA, U_NO_PERMISSION, pick(U_AIDE, U_CASE_MANAGER))).statusCode).toBe(
+        403,
+      );
+      expect(await planRow(planA)).toMatchObject({ aide_membership_id: null });
+    });
   });
 });

@@ -32,8 +32,11 @@ import type {
   VolunteerComplianceGateView,
   VolunteerEffectiveStatusView,
 } from "./read-service";
-import type { VolunteerHourEntryView } from "./write-service";
-import type { OpenDisciplinePlanVersionView } from "./write-service";
+import type {
+  AideAssignmentView,
+  OpenDisciplinePlanVersionView,
+  VolunteerHourEntryView,
+} from "./write-service";
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -176,6 +179,12 @@ export const SupervisoryCadenceQuerySchema = Type.Object({
 export const OpenVersionBody = Type.Object({
   kind: OpenVersionKind,
   reason: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+});
+
+/** Route 29 — name the aide an Aide POC directs and the RN who supervises them (both required, both must be on the roster). */
+export const AssignAideTeamBody = Type.Object({
+  aideMembershipId: Uuid,
+  supervisingRnMembershipId: Uuid,
 });
 
 /** Route 6 — the tenant may TIGHTEN the D11 quorum; the pure resolver refuses a loosening set. */
@@ -627,6 +636,14 @@ export const AideSupervisionRosterResponseSchema = Type.Object({
   supervisors: Type.Array(AideSupervisionRosterMemberSchema),
 });
 
+/** Route 29 — the plan's care-team binding after the write: ids and the new plan row version, nothing else. */
+export const AideAssignmentResponseSchema = Type.Object({
+  planId: Str,
+  aideMembershipId: Str,
+  supervisingRnMembershipId: Str,
+  version: Type.Integer(),
+});
+
 /** Route 19/20/21/22 — a `volunteer_compliance_gate` row (status re-derived over the validity window). */
 export const VolunteerComplianceGateViewResponseSchema = Type.Object({
   gateId: Str,
@@ -740,6 +757,7 @@ type _PlanDetail = Conforms<
   Static<typeof DisciplinePlanDetailResponseSchema>,
   DisciplinePlanDetail
 >;
+type _AideAssignment = Conforms<Static<typeof AideAssignmentResponseSchema>, AideAssignmentView>;
 type _AideSupervisionRoster = Conforms<
   Static<typeof AideSupervisionRosterResponseSchema>,
   AideSupervisionRosterView

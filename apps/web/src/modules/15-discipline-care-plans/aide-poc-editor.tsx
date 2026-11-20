@@ -20,10 +20,9 @@ import {
 //     the revised text alongside the original, never by overwriting it. The form reflects that split.
 //   • every edit is version-checked (§2.5): the row `version` read is sent as `If-Match`, so a concurrent
 //     editor loses with a 409 instead of silently clobbering (the §7.10 acceptance).
-//   • the AIDE ASSIGNMENT itself is not editable here. M15 publishes no route that re-points a plan's
-//     aide/supervising RN — that binding is set by the bootstrap worker and moved by an IDG decision — so
-//     it is shown read-only (by name, from the plan's staff roster) rather than faked with a control that
-//     cannot save.
+//   • the plan's AIDE and SUPERVISING RN are chosen here (`./aide-assignment-panel`), by name from the plan
+//     location's staff roster; nothing else sets them, and the plan cannot be finalized, nor a supervisory
+//     visit recorded, until both are named.
 //
 // The screen wears the same chart shell as every sibling M15 screen (patient banner, Patient Summary rail,
 // chart module rail), in its loading / error / empty states too.
@@ -41,6 +40,7 @@ import {
   FREQUENCY_WORD_OPTIONS,
   frequencyPresetFor,
 } from "./aide-frequency";
+import { AideAssignmentForm } from "./aide-assignment-panel";
 import { useAideRoster } from "./aide-roster";
 import {
   type GoalView,
@@ -348,10 +348,7 @@ export function AidePocEditor(): JSX.Element {
               {roster.error ? (
                 <span className="wx-text-muted">Names could not be loaded; showing short ids.</span>
               ) : null}
-              <span className="wx-text-muted">
-                The aide and supervising RN bindings are set at bootstrap and moved by an IDG
-                decision; they are not editable from this screen.
-              </span>
+              <AideAssignmentForm plan={plan} roster={roster} onSaved={load} />
             </Panel>
 
             <Panel stack headingLevel={3} title="Aide tasks">

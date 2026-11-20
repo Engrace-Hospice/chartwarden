@@ -190,6 +190,14 @@ const rosterReads = (get: ReturnType<typeof vi.fn>) =>
     (c) => c[0] === "/api/v1/discipline-plans/{planId}/aide-supervision-roster",
   );
 
+/** The name as the summary shows it: the picker's `<option>` carries the same text and must not count. */
+const shownName = async (name: string) =>
+  waitFor(() => {
+    const shown = screen.queryAllByText(name).filter((el) => el.tagName !== "OPTION");
+    expect(shown).toHaveLength(1);
+    return shown[0];
+  });
+
 describe("Aide POC editor — chart shell", () => {
   it("shows the patient banner and the Patient Summary rail like every other chart tab", async () => {
     renderAt({}, "editor");
@@ -214,8 +222,8 @@ describe("Aide POC editor — chart shell", () => {
 describe("Aide POC — names instead of ids", () => {
   it("names the bound aide and supervising RN in the editor's Assignment panel", async () => {
     const { get } = renderAt({ binding: { aide: AIDE, rn: RN } }, "editor");
-    expect(await screen.findByText("Avery Aide")).toBeTruthy();
-    expect(screen.getByText("Riley Nurse")).toBeTruthy();
+    expect(await shownName("Avery Aide")).toBeTruthy();
+    expect(await shownName("Riley Nurse")).toBeTruthy();
     await waitFor(() => expect(rosterReads(get)).toHaveLength(1));
   });
 
@@ -226,7 +234,7 @@ describe("Aide POC — names instead of ids", () => {
 
   it("falls back to the short id for a member the roster does not list", async () => {
     renderAt({ binding: { aide: ABSENT, rn: RN } }, "editor");
-    expect(await screen.findByText("Riley Nurse")).toBeTruthy();
+    expect(await shownName("Riley Nurse")).toBeTruthy();
     expect(screen.getByText("dddddddd")).toBeTruthy();
   });
 

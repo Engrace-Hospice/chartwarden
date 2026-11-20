@@ -152,8 +152,8 @@ export function SupervisoryVisitModal({
       />
       {rosterReady && !plan.aideMembershipId ? (
         <span className="wx-text-muted">
-          No aide is assigned to this plan yet; a supervisory visit can only be recorded for the
-          plan's assigned aide.
+          No aide is assigned to this plan yet; assign one on the Aide Plan of Care editor, then
+          record the visit for them.
         </span>
       ) : null}
       <SelectField
@@ -170,8 +170,8 @@ export function SupervisoryVisitModal({
       />
       {rosterReady && !plan.supervisingRnMembershipId ? (
         <span className="wx-text-muted">
-          No supervising RN is assigned to this plan yet; a supervisory visit can only be recorded
-          by the plan's supervising RN.
+          No supervising RN is assigned to this plan yet; assign one on the Aide Plan of Care
+          editor.
         </span>
       ) : null}
       <TextField

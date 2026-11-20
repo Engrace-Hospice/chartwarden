@@ -10947,6 +10947,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discipline-plans/{planId}/aide-assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Bind the aide and the supervising RN to an Aide POC — both must be active staff at the plan's location; If-Match carries the plan version (§2.3) */
+        put: operations["putApiV1DisciplineplansByPlanIdAideassignment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discipline-plans/{planId}/aide-supervision-roster": {
         parameters: {
             query?: never;
@@ -64856,6 +64873,44 @@ export interface operations {
                             hoursOverdue: number;
                         } | null;
                         redacted_categories: ("sud" | "family_violence")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1DisciplineplansByPlanIdAideassignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    aideMembershipId: string;
+                    /** Format: uuid */
+                    supervisingRnMembershipId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        planId: string;
+                        aideMembershipId: string;
+                        supervisingRnMembershipId: string;
+                        version: number;
                     };
                 };
             };

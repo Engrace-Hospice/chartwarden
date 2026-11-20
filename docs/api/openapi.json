@@ -140915,6 +140915,87 @@
         }
       }
     },
+    "/api/v1/discipline-plans/{planId}/aide-assignment": {
+      "put": {
+        "operationId": "putApiV1DisciplineplansByPlanIdAideassignment",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "summary": "Bind the aide and the supervising RN to an Aide POC — both must be active staff at the plan's location; If-Match carries the plan version (§2.3)",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "planId",
+                    "aideMembershipId",
+                    "supervisingRnMembershipId",
+                    "version"
+                  ],
+                  "properties": {
+                    "planId": {
+                      "type": "string"
+                    },
+                    "aideMembershipId": {
+                      "type": "string"
+                    },
+                    "supervisingRnMembershipId": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "aideMembershipId",
+                  "supervisingRnMembershipId"
+                ],
+                "properties": {
+                  "aideMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "supervisingRnMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/discipline-plans/{planId}/aide-supervision-roster": {
       "get": {
         "operationId": "getApiV1DisciplineplansByPlanIdAidesupervisionroster",

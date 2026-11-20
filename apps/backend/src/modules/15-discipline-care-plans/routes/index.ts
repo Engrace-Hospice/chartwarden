@@ -22,6 +22,8 @@ export type {
   VolunteerEffectiveStatusView,
 } from "./read-service";
 export type {
+  AideAssignmentView,
+  AssignAideTeamInput,
   M15WriteService,
   OpenDisciplinePlanVersionView,
   OpenDisciplinePlanVersionKind,
