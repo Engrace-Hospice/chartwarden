@@ -1,7 +1,7 @@
 // apps/backend/__tests__/encounter-eraser.test.ts — M8-T12 the `encounter_record` eraser (§3.6, D7/D8)
 // + the m8 audit-catalog actions (§8.1). Proves M8 registers the REAL encounter_record eraser over the
-// Phase-0 deny-stub (validateErasers passes at boot), the eraser crypto-erases the HearthNote ciphertext
-// FIRST then tombstones the encounter root + deletes the encounter subtree, and the m8 action catalog is
+// Phase-0 deny-stub (validateErasers passes at boot), the eraser shreds the HearthNote cipher columns
+// FIRST, then tombstones the encounter root, then deletes the encounter subtree, and the m8 action catalog is
 // well-formed (namespace + uniqueness) — and disjoint from M5/M6/M7's data classes.
 import { ACTION_CATALOG, M8_ACTION_CATALOG, validateActionCatalog } from "@chartwarden/audit";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -22,7 +22,7 @@ import {
 describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
   beforeEach(() => __resetErasersForTest());
 
-  it("crypto-erases HearthNote first, deletes the encounter subtree, tombstones the root, reports the total", async () => {
+  it("shreds the HearthNote cipher columns first, tombstones the root, deletes the encounter subtree, reports the total", async () => {
     const { store, tombstoned, cryptoErased } = makeEraseStore({
       tombstonedRoots: 2,
       signatures: 2,
@@ -39,7 +39,7 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
     expect(erased).toBe(22); // 20 satellites + 2 tombstoned roots
     expect(counts.vitals).toBe(4);
     expect(counts.tombstonedRoots).toBe(2);
-    expect(cryptoErased).toEqual(["pat_1"]); // DEK destroyed before structural delete
+    expect(cryptoErased).toEqual(["pat_1"]); // cipher columns shredded before the tombstone and the deletes
     expect(tombstoned).toEqual(["pat_1"]);
   });
 

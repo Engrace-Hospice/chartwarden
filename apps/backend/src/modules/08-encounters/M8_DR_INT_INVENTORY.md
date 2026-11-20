@@ -74,7 +74,7 @@ Notes:
   `signature_method`, `signed_at`, `step_up_auth_at`, `attestation_variant`; signing requires a fresh
   step-up session class (D13, > 5 min ⇒ re-auth); the M4 PHI write-audit trigger makes an immutable
   `audit_event` on INSERT. `m8.encounter.signed` records the business attestation. A signed encounter is
-  never UPDATEd or DELETEd — corrections are append-only addenda (§3.6 voided-not-deleted).
+  never UPDATEd or DELETEd, except by destruction certificate (the eraser's tombstone and deletes) — corrections are append-only addenda (§3.6 voided-not-deleted).
 - **Elevation (T2):** cosignature is RBAC-gated (`encounter.cosign` ∈ {RN, Clinical Supervisor, DON}) +
   ABAC `cosigner_role_match` (the cosigner must be an RN and NOT the primary author) ∧
   `caseload_membership` ∧ `step_up_fresh`. The administrative >14d override emits
@@ -105,9 +105,7 @@ no system membership exists, and the audit actor is NULL); (3) it DELETES the sa
 cosignature requests, vitals, mileage, HearthNote selection/assembled-output/llm-modification). A failure between the
 transactions must be retried (re-post the shred with the same certificate id); every step is idempotent. `erased` counts the
 satellite rows plus the roots tombstoned in that run. Disjoint from M5's `clinical_record` (patient spine), M6's
-`admission_record` (admission subtree), and M7's `care_plan_record` (care-plan subtree). (The spec §3.6 `clinical_record`
-mention is reconciled to this disjoint class so the M5 eraser is never double-registered — architecture's
-one-eraser-per-data-class rule wins.)
+`admission_record` (admission subtree), and M7's `care_plan_record` (care-plan subtree).
 
 What destruction does NOT reach (spec §3.6 "What survives"): the `audit_event` before/after images the 0031 write-audit
 triggers recorded keep clinical values their denylists do not name (vitals numbers, `hearthnote_selection.selections`,

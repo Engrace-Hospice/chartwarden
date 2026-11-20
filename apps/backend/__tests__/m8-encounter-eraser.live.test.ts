@@ -5,7 +5,7 @@
  * CHECKs refuse (`encounter_voided_consistency` wants voided_at/voided_by and a 40-character voided_reason; the late-entry,
  * override and EVV-missing reasons carry their own length floors in their tier/state). The unit suite drives an in-memory store
  * that has no CHECKs, so it never saw it: on a real database `eraseEncounterRecord` rolled back and a destruction never
- * completed. This suite runs the whole erase (crypto-erase, delete subtree, tombstone) through the Drizzle store over every
+ * completed. This suite runs the whole erase (shred, tombstone, delete) through the Drizzle store over every
  * kind of root the product can hold, and proves what survives: the shell, never the text. It also proves the destruction credential is
  * required: handed the app pool (what wireModuleErasers does when DATABASE_DESTRUCTION_URL is unset), the eraser refuses before any write. The signed, cosign_pending and cosigned roots
  * each carry a Layer-2-involved and a Layer-2-off output. On a database that carries migrations 1521/1525 (the visit-note-drafting branch) a

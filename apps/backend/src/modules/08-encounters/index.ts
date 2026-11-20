@@ -160,9 +160,9 @@ export {
   runEncounterAttentionCron,
   scheduleM8Jobs,
 } from "./jobs/cron-workers";
-// M8-T12 — the `encounter_record` destruction-cert eraser (§3.6 / D9): crypto-erase the HearthNote
-// ciphertext (tenant DEK), delete the encounter satellites, tombstone the `encounter` root (D8). The
-// composition root calls registerEncounterErasers() over the Phase-0 deny-stub.
+// M8-T12 — the `encounter_record` destruction-cert eraser (§3.6 / D9): shred the HearthNote cipher
+// columns, tombstone the `encounter` root (D8), then delete the encounter satellites, children before
+// parents. The composition root calls registerEncounterErasers() over the Phase-0 deny-stub.
 export {
   type EncounterEraseCounts,
   type EncounterEraseStore,

@@ -4,11 +4,10 @@
 // M8 owns the destruction callback for a patient's ENCOUNTER record — the visit-note satellites M8
 // creates around the M5 patient spine: encounter signatures, addenda, care-plan links, cosignature
 // requests, vitals, mileage, and the HearthNote selection / assembled-output / llm-modification rows.
-// Under an M4 destruction certificate it (1) cryptographically erases the HearthNote ciphertext via the
-// tenant DEK (§3.6 — `hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.*_cipher`),
-// then (2) deletes that subtree for the subject patient while leaving the `encounter` root as a
-// TOMBSTONE (status `voided`, every reason text replaced with one placeholder; the PK survives for FK
-// referential integrity) — the same D8 resolver pattern
+// Under an M4 destruction certificate it (1) shreds the HearthNote cipher columns (§3.6 —
+// `hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.*_cipher`), then (2) tombstones the `encounter`
+// root (status `voided`, every reason text replaced with one placeholder; the PK survives for FK referential integrity),
+// then (3) deletes the satellite subtree for the subject patient, children before parents — the same D8 resolver pattern
 // M5's `clinical_record`, M6's `admission_record`, and M7's `care_plan_record` erasers use. The four
 // erasers are disjoint by table ownership: M5 destroys the patient demographics subtree, M6 the
 // admission subtree, M7 the care-plan subtree, M8 the encounter subtree it owns.
@@ -44,7 +43,10 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 export const ENCOUNTER_ERASED_REASON =
   "Free text erased under a destruction certificate; the original text is not recoverable and this placeholder keeps the record valid.";
 
-/** The per-table counts an encounter-record destruction removed (recorded on the destruction cert). */
+/**
+ * The per-table counts an encounter-record destruction removed. They stay in `eraseEncounterRecord`'s return: the registered
+ * `DataEraser` (`createEncounterEraser`) hands M4 only their total, `erased`.
+ */
 export interface EncounterEraseCounts {
   /** `encounter` roots this run tombstoned; a root already tombstoned by an earlier run is not counted again. */
   readonly tombstonedRoots: number;
@@ -78,9 +80,10 @@ export interface EncounterEraseStore {
   /** Refuse (throw) unless the connection is the destruction role; called BEFORE any write, so a refusal changes nothing. */
   assertDestructionRole(organizationId: string): Promise<void>;
   /**
-   * Cryptographically erase the HearthNote ciphertext for the patient's encounters by destroying the
-   * decrypting tenant DEK material (§3.6) — the ciphertext stays in the rows but is irrecoverable. Runs
-   * FIRST so a crash mid-erase still leaves the PHI unreadable (same ordering as M36's DEK-first erase).
+   * Shred the HearthNote cipher columns for the patient's encounters (§3.6): the ciphertext bytes are overwritten with a
+   * sentinel, so the PHI is unreadable under any key. The Drizzle store holds a `DbClient`, not the M36 key custodian, so it
+   * does not destroy the tenant DEK. Runs FIRST so a crash mid-erase still leaves the PHI unreadable (shred before tombstone
+   * and delete, the M16/M31 ordering).
    */
   cryptoEraseHearthnote(organizationId: string, patientId: string): Promise<void>;
   /** Delete the patient's encounter satellites; return per-table counts. The `encounter` root is NOT deleted. */
@@ -93,14 +96,14 @@ export interface EncounterEraseStore {
 }
 
 /**
- * Erase a patient's encounter-record subtree under a destruction certificate (D7/D8): crypto-erase the
- * HearthNote ciphertext, tombstone the `encounter` root(s), delete the satellite rows, and report the
- * total (satellite rows deleted plus roots tombstoned). The role check runs first and writes nothing. A failed run (three
- * transactions: shred, tombstone, delete) is retried whole; every step is idempotent, and the retry reports only what IT changed.
- * Pure orchestration over the store — no I/O of its own. DEK-first so the PHI is
- * unreadable the instant the key is gone, even if a later step fails; the root's free text is scrubbed
- * before the deletes so a tombstone that fails leaves the satellites in place for a retry, never a
- * root with its text and no satellites.
+ * Erase a patient's encounter-record subtree under a destruction certificate (D7/D8): check the connection is the
+ * destruction role (writes nothing), shred the HearthNote cipher columns, tombstone the `encounter` root(s), delete the
+ * satellite rows (children before parents), and report the per-table counts and their total (satellite rows deleted plus
+ * roots tombstoned). A failed run (three transactions: shred, tombstone, delete) is retried whole; every step is
+ * idempotent, and the retry reports only what IT changed. Pure orchestration over the store — no I/O of its own. The
+ * shred runs first so the PHI is unreadable the instant it commits, even if a later step fails; the root's free text is
+ * scrubbed before the deletes so a tombstone that fails leaves the satellites in place for a retry, never a root with its
+ * text and no satellites.
  */
 export async function eraseEncounterRecord(
   organizationId: string,
