@@ -29,7 +29,22 @@ export interface DbDraftStoreDeps {
 }
 
 /**
- * The patient's most recent SIGNED encounter on an EARLIER service date (all seventeen encounter types are visit types), as the instant
+ * The candidates for the previous visit: the patient's SIGNED encounters of the SAME DISCIPLINE on an earlier service date (exported so a
+ * test can render it). Any encounter type counts, but not any discipline: an intervening chaplain or aide visit must not become the last
+ * visit of an RN note, or a medication change made between two RN visits falls into the window of a note that never described medications.
+ * `encounter.discipline` is NOT NULL on the row and on `DraftEncounter`, so there is no null case: the comparison is plain equality.
+ */
+export const previousVisitWhere = (encounter: DraftEncounter) =>
+  and(
+    eq(E.organizationId, encounter.organizationId),
+    eq(E.patientId, encounter.patientId),
+    eq(E.discipline, encounter.discipline),
+    inArray(E.status, [...SIGNED_STATUSES]),
+    lt(E.serviceDate, encounter.serviceDate),
+  );
+
+/**
+ * The patient's most recent SIGNED encounter of the same discipline on an EARLIER service date (any encounter type), as the instant
  * that encounter's own note described the patient at (`previousVisitAsOf`: its visit time, never later than its signing). Same-day
  * signed encounters are not "earlier", and a later-signed one wins a tie on the date.
  */
@@ -41,14 +56,7 @@ async function previousSignedVisitAt(
   const [previous] = await tx
     .select({ serviceDate: E.serviceDate, signedAt: E.signedAt })
     .from(E)
-    .where(
-      and(
-        eq(E.organizationId, encounter.organizationId),
-        eq(E.patientId, encounter.patientId),
-        inArray(E.status, [...SIGNED_STATUSES]),
-        lt(E.serviceDate, encounter.serviceDate),
-      ),
-    )
+    .where(previousVisitWhere(encounter))
     .orderBy(desc(E.serviceDate), desc(E.signedAt))
     .limit(1);
   if (previous === undefined) return null;

@@ -77,8 +77,8 @@ export interface DraftStorePorts {
   /** The organization's IANA time zone (`organizationTimezone` in `@chartwarden/db`). */
   organizationTimeZone(organizationId: string): Promise<string>;
   /**
-   * The visit time of the patient's most recent signed visit-type encounter on an EARLIER service date, or
-   * `null` when there is none. Its visit time is `previousVisitAsOf` of that encounter (its own service date, the
+   * The visit time of the patient's most recent signed encounter of the SAME DISCIPLINE as `encounter` (any encounter type) on an
+   * EARLIER service date, or `null` when there is none (a visit of another discipline is never the previous visit). Its visit time is `previousVisitAsOf` of that encounter (its own service date, the
    * same zone and `now`, never later than its signing), so "the picture at the previous visit plus the changes
    * since" is exactly the picture now: a change made after that signing is in this note's window.
    */

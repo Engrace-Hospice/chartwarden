@@ -95,7 +95,7 @@ selection or an annotation, or with no confirmed section, reads nothing at final
   included), whether the addendum is free, amending or absent, so the refusal cannot be probed for which addenda name sections; the author of a free addendum
   still gets `404`. The writes before a sign (the addendum's creation and finalize, a note's finalize, a vitals capture and edit) are filed under the acting user.
   Recorded: the selections saves, the mileage writes and the EVV reconciliation are still filed under the system actor.
-- Only a section the draft can redraft can be amended; the previous-visit and discipline question, the web, the mobile app and other note types
+- Only a section the draft can redraft can be amended; the web, the mobile app and other note types
   are out of scope.
 
 ### Cosignature SLA clock during outages (§2.4)

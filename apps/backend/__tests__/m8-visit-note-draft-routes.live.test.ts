@@ -195,6 +195,7 @@ describe.skipIf(!DB_URL)(
         serviceDate?: string;
         patientId?: string;
         type?: string;
+        discipline?: string;
         signedAt?: string;
       } = {},
     ): Promise<EncounterFixture> {
@@ -205,7 +206,7 @@ describe.skipIf(!DB_URL)(
       const result = await admin.query<{ id: string }>(
         `INSERT INTO encounter (organization_id, provider_entity_id, location_id, patient_id, admission_id, encounter_type, discipline,
          authored_by_membership_id, service_date, status, vocab_version_id, signed_at, voided_at, voided_by, voided_reason)
-       VALUES ($1,$2,$3,$4,$5,$6,'rn',$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+       VALUES ($1,$2,$3,$4,$5,$6,$15,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
         [
           org.orgId,
           org.providerEntityId,
@@ -223,18 +224,23 @@ describe.skipIf(!DB_URL)(
           voided
             ? "synthetic reason for a voided encounter that is at least forty characters"
             : null,
+          over.discipline ?? "rn",
         ],
       );
       return { encounterId: one(result.rows).id, patientId };
     }
 
-    const draftEncounter = (org: OrgFixture, f: EncounterFixture): DraftEncounter => ({
+    const draftEncounter = (
+      org: OrgFixture,
+      f: EncounterFixture,
+      discipline: DraftEncounter["discipline"] = "rn",
+    ): DraftEncounter => ({
       id: f.encounterId,
       organizationId: org.orgId,
       patientId: f.patientId,
       admissionId: randomUUID(),
       encounterType: "routine_visit",
-      discipline: "rn",
+      discipline,
       serviceDate: SERVICE_DATE,
     });
 
@@ -290,7 +296,12 @@ describe.skipIf(!DB_URL)(
 
     // The seams: the care plan has one goal (-> `plan`) and one intervention (-> `interventions`); one medication change since the
     // previous visit (-> `interventions`). Fakes keep their own contracts out of this suite.
-    const seamsFor = (patientId: string) =>
+    const seamsFor = (
+      patientId: string,
+      changes: readonly ReturnType<typeof change>[] = [
+        change("started", "2026-01-12T16:00:00.000Z", { id: "order-a" }),
+      ],
+    ) =>
       fakePorts({
         carePlanAsOf: async () =>
           carePlan({
@@ -315,9 +326,9 @@ describe.skipIf(!DB_URL)(
               } as never,
             ],
           }),
-        medicationChangesBetween: async () => [
-          change("started", "2026-01-12T16:00:00.000Z", { id: "order-a" }),
-        ],
+        // M12's contract: the window is (from, to]
+        medicationChangesBetween: async (_organizationId, _patientId, from, to) =>
+          changes.filter((c) => c.at > from && c.at <= to),
       });
 
     const patientsSeams = new Map<string, ReturnType<typeof seamsFor>>();
@@ -602,6 +613,35 @@ describe.skipIf(!DB_URL)(
         ).toBe("2026-01-08T20:00:00.000Z");
       });
 
+      it("previousSignedVisitAt: only a visit of the SAME discipline is previous (any encounter type), so a visit of another discipline in between is skipped", async () => {
+        const current = await seedEncounter(orgs.A);
+        const signed = { status: "signed", patientId: current.patientId };
+        const rn = draftEncounter(orgs.A, current);
+        const chaplain = draftEncounter(orgs.A, current, "chaplain");
+        await seedEncounter(orgs.A, {
+          ...signed,
+          serviceDate: "2026-01-12",
+          discipline: "chaplain",
+        });
+        await seedEncounter(orgs.A, { ...signed, serviceDate: "2026-01-10", discipline: "chha" });
+        // only other disciplines before this RN visit: there is no previous RN visit
+        expect(await storeIn(orgs.A, (s) => s.previousSignedVisitAt(rn))).toBeNull();
+
+        // an earlier RN visit of ANOTHER encounter type is the previous RN visit, though the chaplain's is more recent
+        await seedEncounter(orgs.A, {
+          ...signed,
+          serviceDate: PREVIOUS_DATE,
+          type: "admission_visit",
+        });
+        expect((await storeIn(orgs.A, (s) => s.previousSignedVisitAt(rn)))?.toISOString()).toBe(
+          PREVIOUS_VISIT_AT,
+        );
+        // and a chaplain draft's previous visit is the chaplain's, not the RN one
+        expect(
+          (await storeIn(orgs.A, (s) => s.previousSignedVisitAt(chaplain)))?.toISOString(),
+        ).toBe("2026-01-13T04:59:59.999Z");
+      });
+
       it("previousSignedVisitAt never reads another tenant's encounters", async () => {
         const current = await seedEncounter(orgs.A);
         const theirs = await seedEncounter(orgs.B, {
@@ -767,6 +807,32 @@ describe.skipIf(!DB_URL)(
         expect(seamsOfAny().medicationChangesBetween.mock.calls.at(-1)?.[2]).toBe(
           PREVIOUS_VISIT_AT,
         );
+      });
+
+      it("the previous visit is the patient's last signed visit of the SAME discipline: a medication change between two RN visits is drafted although a chaplain visit came after it", async () => {
+        const current = await seedEncounter(orgs.A);
+        const signed = { status: "signed", patientId: current.patientId };
+        await seedEncounter(orgs.A, { ...signed, serviceDate: PREVIOUS_DATE }); // the previous RN visit, 2026-01-08
+        await seedEncounter(orgs.A, {
+          ...signed,
+          serviceDate: "2026-01-12",
+          discipline: "chaplain",
+        });
+        patientsSeams.set(
+          current.encounterId,
+          seamsFor(current.patientId, [
+            // after the RN visit, before the chaplain's: in the window of the next RN note, not of a note anchored on the chaplain
+            change("started", "2026-01-10T16:00:00.000Z", { id: "order-between" }),
+          ]),
+        );
+        const { res, body } = await getDraft(current);
+        expect(res.statusCode).toBe(200);
+        expect(seamsOfAny().medicationChangesBetween.mock.calls.at(-1)?.[2]).toBe(
+          PREVIOUS_VISIT_AT,
+        );
+        const interventions = sectionOf(body, "interventions");
+        expect(interventions.origins).toContain("medication_change");
+        expect(interventions.text).toContain("Morphine sulfate was started on 2026-01-10");
       });
 
       it("drafts the encounter's own latest vitals into vitals_review", async () => {
