@@ -426,11 +426,11 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
     expect(audited[0]).toEqual({ n: inserted, distinct_rows: inserted });
   });
 
-  // M15 (CW-AC-53) — migration 1526 gives rn and rn_case_manager their default discipline_plan.* keys, the same shape as 1494:
-  // each of the two roles gets exactly its five keys, a supervisor, an external role and a platform template (no
+  // M15 (CW-AC-53) — migration 1526 gives rn, rn_case_manager and chha their default discipline_plan.* keys, the same shape as
+  // 1494: each RN role gets exactly its five keys and the aide only `sign`, a supervisor, an external role and a platform template (no
   // organization) get none, existing grants survive, a second run adds nothing, and each insert is audited under the
   // migration's correlation id.
-  it("M15 migration 1526 grants rn and rn_case_manager exactly their discipline_plan keys, idempotently", async () => {
+  it("M15 migration 1526 grants rn, rn_case_manager and chha exactly their discipline_plan keys, idempotently", async () => {
     const sql = readFileSync(
       join(MIGRATIONS_DIR, "1526_m15_discipline_plan_default_grants.sql"),
       "utf8",

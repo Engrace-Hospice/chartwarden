@@ -1,5 +1,6 @@
-// M15 (CW-AC-44 neighbour): the default discipline_plan.* grants for the two RN role keys. The constant and migration
-// 1526 cannot drift apart, only the five keys go to only those two roles, and `sign` goes only to roles that fill a signer slot.
+// M15 (CW-AC-44 neighbour): the default discipline_plan.* grants for the two RN role keys and the aide's acknowledgment key.
+// The constant and migration 1526 cannot drift apart, the five keys go to only the two RN roles, the aide (chha) gets `sign`
+// alone, and `sign` goes only to roles that fill a signer slot.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -35,13 +36,17 @@ describe("DISCIPLINE_PLAN_DEFAULT_GRANTS", () => {
     expect(inMigration).toEqual(pairs());
   });
 
-  it("goes to exactly rn and rn_case_manager", () => {
-    expect([...DISCIPLINE_PLAN_GRANTEE_ROLE_KEYS].sort()).toEqual(["rn", "rn_case_manager"]);
+  it("goes to exactly rn, rn_case_manager and chha", () => {
+    expect([...DISCIPLINE_PLAN_GRANTEE_ROLE_KEYS].sort()).toEqual(["chha", "rn", "rn_case_manager"]);
   });
 
   it("grants only the five read / read_summary / author / finalize / sign keys", () => {
     for (const keys of Object.values(DISCIPLINE_PLAN_DEFAULT_GRANTS))
       for (const key of keys) expect(FIVE_KEYS, key).toContain(key);
+  });
+
+  it("gives the aide the acknowledgment key and nothing else: it signs, it does not read other plans or author", () => {
+    expect(DISCIPLINE_PLAN_DEFAULT_GRANTS.chha).toEqual(["discipline_plan.sign"]);
   });
 
   it("gives both roles all five keys", () => {
