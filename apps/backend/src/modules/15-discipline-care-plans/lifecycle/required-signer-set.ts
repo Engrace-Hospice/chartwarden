@@ -125,11 +125,22 @@ const SIGNER_ROLE_KEY_ALIASES: Readonly<Record<string, string>> = {
   chha_acknowledgment: "chha",
 };
 
-/** GAP-045 — whether the authenticated actor's `roles` include the role the claimed signer slot needs. */
+/** The M3 role keys that fill an Aide POC's RN slot: the RN case manager, or any RN of the care team (product decision;
+ *  `caseload_or_scope` still limits WHICH patients). Every other kind's `rn_case_manager` slot stays the case manager's. */
+const AIDE_POC_RN_SLOT_ROLE_KEYS: ReadonlyArray<string> = ["rn_case_manager", "rn"];
+
+/**
+ * GAP-045 — whether the authenticated actor's `roles` include the role the claimed signer slot needs. The plan kind
+ * matters because the RN slot is wider on an Aide POC than on the MSW and volunteer plans.
+ */
 export function actorHoldsSignerRole(
   actorRoles: ReadonlyArray<string>,
   signerRole: string,
+  planKind: DisciplinePlanKind,
 ): boolean {
-  const key = SIGNER_ROLE_KEY_ALIASES[signerRole] ?? signerRole;
-  return actorRoles.includes(key);
+  const keys =
+    signerRole === "rn_case_manager" && planKind === "aide_poc"
+      ? AIDE_POC_RN_SLOT_ROLE_KEYS
+      : [SIGNER_ROLE_KEY_ALIASES[signerRole] ?? signerRole];
+  return keys.some((key) => actorRoles.includes(key));
 }

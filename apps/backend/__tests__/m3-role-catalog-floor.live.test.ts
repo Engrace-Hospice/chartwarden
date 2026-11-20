@@ -427,7 +427,7 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
   });
 
   // M15 (CW-AC-53) — migration 1526 gives rn and rn_case_manager their default discipline_plan.* keys, the same shape as 1494:
-  // each of the two roles gets exactly its keys (rn no sign), a supervisor, an external role and a platform template (no
+  // each of the two roles gets exactly its five keys, a supervisor, an external role and a platform template (no
   // organization) get none, existing grants survive, a second run adds nothing, and each insert is audited under the
   // migration's correlation id.
   it("M15 migration 1526 grants rn and rn_case_manager exactly their discipline_plan keys, idempotently", async () => {

@@ -610,7 +610,10 @@ export function buildDrizzleM15WriteService(
         // GAP-045 — the claimed slot is a BODY field; bind it to the AUTHENTICATED actor. The role must be
         // one the actor holds (the system actor, which holds none by design, is exempt) and one membership
         // fills at most ONE slot per version, so a single person can never satisfy a multi-signer quorum.
-        if (actor.kind !== "system" && !actorHoldsSignerRole(actor.roles, input.signerRole)) {
+        if (
+          actor.kind !== "system" &&
+          !actorHoldsSignerRole(actor.roles, input.signerRole, plan.kind as DisciplinePlanKind)
+        ) {
           throw new DisciplinePlanStateError(
             "SIGNER_ROLE_MISMATCH",
             "the caller does not hold the requested signer role",

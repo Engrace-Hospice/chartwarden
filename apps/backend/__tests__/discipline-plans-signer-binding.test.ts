@@ -40,10 +40,11 @@ function fakeDb(
   signatures: readonly Record<string, unknown>[],
   requiredSignerSet: unknown = VERSION_ROW.requiredSignerSet,
   insertError?: unknown,
+  planKind: string = PLAN_ROW.kind,
 ) {
   inserted = [];
   const results: unknown[][] = [
-    [PLAN_ROW],
+    [{ ...PLAN_ROW, kind: planKind }],
     [{ ...VERSION_ROW, requiredSignerSet }],
     [...signatures],
   ];
@@ -75,8 +76,9 @@ const service = (
   signatures: readonly Record<string, unknown>[] = [],
   requiredSignerSet?: unknown,
   insertError?: unknown,
+  planKind?: string,
 ) =>
-  buildDrizzleM15WriteService(fakeDb(signatures, requiredSignerSet, insertError), {
+  buildDrizzleM15WriteService(fakeDb(signatures, requiredSignerSet, insertError, planKind), {
     isInCaseload: async () => true,
   });
 
@@ -194,6 +196,42 @@ describe("M15 signVersion — the signer role is bound to the authenticated acto
         PLAN,
         VERSION,
         sign("chha_acknowledgment"),
+      ),
+    ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
+  });
+
+  it("lets a plain RN fill the RN slot of an Aide POC, and of no other plan kind", async () => {
+    const aideSet = [
+      { role: "rn_case_manager", count: 1, isAcknowledgment: false },
+      { role: "chha_acknowledgment", count: 1, isAcknowledgment: true },
+    ];
+    await service([], aideSet, undefined, "aide_poc")
+      .signVersion(actor("m1", ["rn"]), PLAN, VERSION, sign("rn_case_manager"))
+      .catch(() => undefined);
+    expect(inserted[0]).toMatchObject({ signerMembershipId: "m1", signerRole: "rn_case_manager" });
+
+    for (const kind of ["msw_plan", "volunteer_plan"]) {
+      inserted = [];
+      await expect(
+        service([], undefined, undefined, kind).signVersion(
+          actor("m2", ["rn"]),
+          PLAN,
+          VERSION,
+          sign("rn_case_manager"),
+        ),
+        kind,
+      ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
+      expect(inserted, kind).toHaveLength(0);
+    }
+  });
+
+  it("still refuses an actor with neither rn nor rn_case_manager the Aide POC RN slot", async () => {
+    await expect(
+      service([], undefined, undefined, "aide_poc").signVersion(
+        actor("m3", ["lpn"]),
+        PLAN,
+        VERSION,
+        sign("rn_case_manager"),
       ),
     ).rejects.toMatchObject({ code: "SIGNER_ROLE_MISMATCH" });
   });

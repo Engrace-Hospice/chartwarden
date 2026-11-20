@@ -1,5 +1,5 @@
 // M15 (CW-AC-44 neighbour): the default discipline_plan.* grants for the two RN role keys. The constant and migration
-// 1526 cannot drift apart, only the five keys go to only those two roles, and `sign` goes only to the role that can use it.
+// 1526 cannot drift apart, only the five keys go to only those two roles, and `sign` goes only to roles that fill a signer slot.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -44,14 +44,10 @@ describe("DISCIPLINE_PLAN_DEFAULT_GRANTS", () => {
       for (const key of keys) expect(FIVE_KEYS, key).toContain(key);
   });
 
-  it("gives both roles read, read_summary, author and finalize, and sign only to rn_case_manager", () => {
+  it("gives both roles all five keys", () => {
+    // plain `rn` signs the Aide POC's RN slot (apps/backend/__tests__/discipline-plan-grants-pin.test.ts)
     for (const role of ["rn", "rn_case_manager"])
-      expect(DISCIPLINE_PLAN_DEFAULT_GRANTS[role], role).toEqual(
-        expect.arrayContaining(FIVE_KEYS.filter((k) => k !== "discipline_plan.sign")),
-      );
-    // plain `rn` is not a signer role of any discipline-plan kind (apps/backend/__tests__/discipline-plan-grants-pin.test.ts)
-    expect(DISCIPLINE_PLAN_DEFAULT_GRANTS.rn).not.toContain("discipline_plan.sign");
-    expect(DISCIPLINE_PLAN_DEFAULT_GRANTS.rn_case_manager).toContain("discipline_plan.sign");
+      expect(DISCIPLINE_PLAN_DEFAULT_GRANTS[role], role).toEqual(expect.arrayContaining(FIVE_KEYS));
   });
 
   it("never grants the system keys", () => {

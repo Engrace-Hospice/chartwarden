@@ -4,8 +4,8 @@
 -- (packages/auth/src/roles/discipline-plan-grants.ts) by packages/auth/__tests__/discipline-plan-grants.test.ts.
 -- Insert-only and idempotent; a role created later is not touched.
 --   rn_case_manager  read, read_summary, author, finalize, sign
---   rn               read, read_summary, author, finalize (NOT sign: `rn` is a signer role of no discipline-plan kind, so the
---                    sign ceremony would refuse it with SIGNER_ROLE_MISMATCH)
+--   rn               read, read_summary, author, finalize, sign (signVersion accepts any RN in the Aide POC's RN slot; on the
+--                    MSW and volunteer plans that slot stays the RN case manager's, so the key alone signs nothing else)
 -- RBAC only: which patient is the care-team scope (caseload_or_scope / discipline_scope / signer role match), unchanged.
 -- Not granted: discipline_plan.idg_revise and discipline_plan.read_internal (system paths).
 -- A disabled role is included on purpose: every effective-permission path joins `role.enabled`, so its keys are inert
@@ -20,6 +20,7 @@ SELECT r."organization_id", r."id", g.permission_key
     ('rn', 'discipline_plan.read_summary'),
     ('rn', 'discipline_plan.author'),
     ('rn', 'discipline_plan.finalize'),
+    ('rn', 'discipline_plan.sign'),
     ('rn_case_manager', 'discipline_plan.read'),
     ('rn_case_manager', 'discipline_plan.read_summary'),
     ('rn_case_manager', 'discipline_plan.author'),
