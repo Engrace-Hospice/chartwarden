@@ -1100,14 +1100,14 @@ Critical hot paths and their indexes (recap):
 
 ### 3.6 Destruction `eraseFn` (D9 from Module 4)
 
-The M8 `clinical_record` eraser is registered in `boot.ts` (per the existing `clinicalRecordEraser` stub) and, when invoked for a tenant offboarding under M34, performs:
+The M8 `encounter_record` eraser is registered by `registerEncounterErasers()` (over the Phase-0 deny-stub) and, when invoked under an M4 destruction certificate for one patient (the subject), scoped to the acting tenant, performs:
 
-1. For each encounter in the patient: shred the HearthNote cipher columns themselves (`hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.layer1_cipher`/`layer2_cipher`/`final_cipher`) before anything is deleted, so the text is unreadable under any key. The store holds a `DbClient`, not the M36 key custodian, so it destroys the ciphertext bytes rather than the DEK.
+1. For each encounter in the patient: shred the HearthNote cipher columns themselves (`hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.layer1_cipher`/`layer2_cipher`/`final_cipher`) before anything is deleted, so the text is unreadable under any key (a Layer-2-involved output keeps an empty, non-null `layer2_cipher`, which `hearthnote_output_layer2_consistency` requires). The store holds a `DbClient`, not the M36 key custodian, so it destroys the ciphertext bytes rather than the DEK.
 2. Tombstone the structural shell, delete the satellites. Each `encounter` root survives (its PK stays for FK integrity, so `service_date` and the other structural columns are kept) with `status = 'voided'`; the satellite rows (`vitals`, `mileage`, signatures, addenda, care-plan links, cosignature requests, the HearthNote rows) are deleted, not redacted. Every free-text reason column that holds text (`evv_missing_reason`, `late_entry_reason`, `significant_late_override_reason`, `administrative_override_reason`, `voided_reason`) becomes ONE fixed, PHI-free placeholder of at least 100 characters, so the root's CHECK constraints still hold; a column that is null stays null, and a root a human had already voided has its `voided_reason` scrubbed too. A voided root needs `voided_at`, `voided_by` and a `vocab_version_id`: the first two are kept when set, otherwise now and the root's author (there is no system membership); a draft root, which has no `vocab_version_id`, is pinned to the running build's narrative-vocab release (§2.7 D11). (Audit retention for the structural shell is policy-driven; the eraser preserves the audit chain while making PHI inaccessible.)
 3. Emit a destruction-certificate event consumed by M4's `audit_export` job.
-4. Idempotent on tenant-id; rerunning changes no data (the tombstone UPDATE is re-issued with the same values, so the audit trail records it again).
+4. Idempotent per patient and tenant; rerunning changes no data (the tombstone UPDATE is re-issued with the same values, so the audit trail records it again).
 
-The `clinicalRecordEraser` interface is defined in `apps/backend/src/bootstrap/interfaces.ts` (M1) and registered via the seam registry; boot fails if missing.
+`encounter_record` is one of the `REQUIRED_ERASERS` data classes (`apps/backend/src/bootstrap/erasers/registry.ts`, M1); the deny-stub holds it until M8 registers the real eraser, and boot fails (`validateErasers`) if it is missing.
 
 ---
 
@@ -1433,8 +1433,8 @@ export function initM8(reg: SeamRegistry): void {
   // Register new ABAC predicate with M3
   m3.predicateRegistry.register(cosignerRoleMatch)
 
-  // Register clinical_record eraser with M4 (D9)
-  m4.eraserRegistry.register('clinical_record', clinicalRecordEraser)
+  // Register encounter_record eraser with M4 (D9)
+  m4.eraserRegistry.register('encounter_record', encounterRecordEraser)
 }
 ```
 
