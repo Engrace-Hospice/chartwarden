@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   type M23ContainerInspection,
   type M23NetworkInspection,
+  assertFreshM23DatabaseInventory,
   startLoopbackTcpRelay,
   validateM23DockerIsolation,
 } from "../m23-rls-isolation";
@@ -164,6 +165,32 @@ describe("M23 isolated RLS Docker preflight", () => {
     container.NetworkSettings!.Networks![networkName]!.IPAddress = "203.0.113.7";
     network.Containers!["container-test-id"]!.IPv4Address = "203.0.113.7/24";
     expect(() => validate(container, network)).toThrow(/Docker isolation preflight failed/);
+  });
+});
+
+describe("M23 disposable database inventory", () => {
+  it("accepts only the default database and the expected test database", () => {
+    expect(() =>
+      assertFreshM23DatabaseInventory(["chartwarden_test", "postgres"], "chartwarden_test"),
+    ).not.toThrow();
+  });
+
+  it("rejects unexpected databases and reports their names", () => {
+    expect(() =>
+      assertFreshM23DatabaseInventory(
+        ["chartwarden_test", "postgres", "unexpected_db"],
+        "chartwarden_test",
+      ),
+    ).toThrow(/unexpected_db/);
+  });
+
+  it("rejects an inventory missing either required database", () => {
+    expect(() => assertFreshM23DatabaseInventory(["chartwarden_test"], "chartwarden_test")).toThrow(
+      /not fresh/,
+    );
+    expect(() =>
+      assertFreshM23DatabaseInventory(["postgres", "other_test"], "chartwarden_test"),
+    ).toThrow(/not fresh/);
   });
 });
 

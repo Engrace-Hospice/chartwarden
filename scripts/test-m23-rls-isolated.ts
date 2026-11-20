@@ -9,6 +9,7 @@ import {
   type M23ContainerInspection,
   type M23NetworkInspection,
   M23_PGDATA_TMPFS,
+  assertFreshM23DatabaseInventory,
   startLoopbackTcpRelay,
   validateM23DockerIsolation,
 } from "./m23-rls-isolation";
@@ -219,15 +220,13 @@ async function main() {
     }
     db = new Client({ connectionString: databaseUrl.toString() });
     await db.connect();
-    const databaseNames = await db.query<{ names: string[] }>(
-      "SELECT array_agg(datname ORDER BY datname) AS names FROM pg_database WHERE datallowconn AND NOT datistemplate",
+    const databaseNames = await db.query<{ database_name: string }>(
+      "SELECT datname AS database_name FROM pg_database WHERE datallowconn AND NOT datistemplate ORDER BY datname",
     );
-    const names = databaseNames.rows[0]?.names ?? [];
-    if (names.length !== 2 || !names.includes("postgres") || !names.includes(databaseName)) {
-      throw new Error(
-        `Disposable cluster is not fresh (expected only postgres and the test database; found: ${names.join(", ") || "none"})`,
-      );
-    }
+    assertFreshM23DatabaseInventory(
+      databaseNames.rows.map(({ database_name }) => database_name),
+      databaseName,
+    );
 
     console.log(
       `Isolated PostgreSQL preflight passed: PostgreSQL ${Math.floor(identity.version / 10_000)}.${identity.version % 10_000}, cluster ${clusterName}, ` +
