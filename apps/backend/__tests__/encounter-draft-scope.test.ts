@@ -18,12 +18,21 @@ import { draftEncounterRow, memoryRunInOrg } from "./_encounter-draft-memory-sto
 
 type Pair = readonly [EncounterType, EncounterDiscipline];
 
-/** S1 drafts the RN routine visit and nothing else; stated here, not derived, so widening the corpus is a deliberate edit of this test. */
+/**
+ * The pairs that draft: S1's RN routine visit and S2's RN recertification visit and face-to-face visit (physician or nurse practitioner).
+ * Stated here, not derived, so widening the corpus is a deliberate edit of this test.
+ */
+const DRAFTED_PAIRS: ReadonlySet<string> = new Set([
+  "routine_visit:rn",
+  "recert_visit:rn",
+  "face_to_face:md",
+  "face_to_face:np",
+]);
 const UNDRAFTED_PAIRS: readonly Pair[] = (
   Object.keys(ENCOUNTER_DISCIPLINE_RULES) as EncounterType[]
 ).flatMap((type) =>
   ENCOUNTER_DISCIPLINE_RULES[type]
-    .filter((discipline) => !(type === "routine_visit" && discipline === "rn"))
+    .filter((discipline) => !DRAFTED_PAIRS.has(`${type}:${discipline}`))
     .map((discipline): Pair => [type, discipline]),
 );
 

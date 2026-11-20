@@ -48,6 +48,11 @@ const Origin = Type.Union([
   Type.Literal("scale_reading"),
   Type.Literal("vitals"),
   Type.Literal("medication_change"),
+  // S2 (recertification and face-to-face visits): the kinds of the new sources. Kinds only, never ids (VN-D7).
+  Type.Literal("weight_reading"),
+  Type.Literal("benefit_period"),
+  Type.Literal("face_to_face"),
+  Type.Literal("certification"),
 ]);
 
 export const DraftSectionResponseSchema = Type.Object({

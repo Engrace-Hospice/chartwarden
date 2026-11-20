@@ -518,8 +518,12 @@ export function buildTemplateMenu(
         heading: section.heading,
         required: section.required,
         allowedCategories: allowed === undefined ? [] : [...allowed],
+        // A section with no category wiring is OPEN to every legacy phrase and to NO draft phrase: draft wording carries readings,
+        // weights and dates the compiler fills from records, so it is offered only where a section is wired to its category.
         entries: eligible
-          .filter((e) => allowed === undefined || allowed.includes(e.category))
+          .filter((e) =>
+            allowed === undefined ? !DRAFT_VOCAB_CODES.has(e.code) : allowed.includes(e.category),
+          )
           .map((e) => ({
             code: e.code,
             label: e.label,

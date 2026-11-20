@@ -121,6 +121,25 @@ describe("isDraftSectionView", () => {
     expect(isDraftSectionView(EMPTY)).toBe(true);
   });
 
+  it("accepts every kind of source the API can send, the recertification and face-to-face kinds included (S2)", () => {
+    const kinds = [
+      "care_plan_goal",
+      "care_plan_intervention",
+      "scale_reading",
+      "vitals",
+      "medication_change",
+      "weight_reading",
+      "benefit_period",
+      "face_to_face",
+      "certification",
+    ] as const;
+    for (const kind of kinds)
+      expect(isDraftSectionView(section({ origins: [kind] })), kind).toBe(true);
+    expect(
+      isDraftSectionView(section({ origins: ["scale_reading", "weight_reading", "face_to_face"] })),
+    ).toBe(true);
+  });
+
   it("refuses a section the screens could not read: unknown state, unknown or missing origins, not an object", () => {
     expect(isDraftSectionView({ ...section(), state: "approved" })).toBe(false);
     expect(isDraftSectionView({ ...section(), state: "toString" })).toBe(false);
