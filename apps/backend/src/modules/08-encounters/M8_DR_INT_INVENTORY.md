@@ -168,15 +168,18 @@ Notes:
 ## Destruction (`encounter_record`, §3.6 / D9)
 
 The `encounter_record` data class is erased ONLY through the M4 destruction-cert workflow (M8-T12
-eraser). The eraser (1) cryptographically erases the HearthNote ciphertext by destroying the tenant DEK
-(`hearthnote_selection.free_text_cipher`, `hearthnote_assembled_output.layer1_cipher`/`layer2_cipher`/
-`final_cipher`, and the sealed `hearthnote_signed_section.text_cipher` of ADR-0114) FIRST so the PHI is
-irrecoverable the instant the key is gone, (2) deletes the encounter
-subtree (signatures, addenda, care-plan links, cosignature requests, vitals, mileage, HearthNote
+eraser, run as the `chartwarden_destruction` login). The eraser (1) cryptographically erases the HearthNote ciphertext FIRST so the
+PHI is irrecoverable before anything is deleted: the Drizzle store holds a `DbClient`, not the M36 key custodian, so it shreds the
+cipher columns themselves rather than destroying the tenant DEK (`hearthnote_selection.free_text_cipher` to NULL;
+`hearthnote_assembled_output.layer1_cipher`/`final_cipher` and the sealed `hearthnote_signed_section.text_cipher` of ADR-0114
+to `""`; `layer2_cipher` to `""` on a Layer-2-involved output, which `hearthnote_output_layer2_consistency` requires non-null, and
+left NULL on a Layer-2-off one; migrations 1521/1525 let only that sentinel through on a signed note), (2) tombstones the
+`encounter` root (the PK survives for FK integrity; `status = 'voided'`, every reason text replaced with one placeholder), and
+(3) deletes the encounter subtree (signatures, addenda, care-plan links, cosignature requests, vitals, mileage, HearthNote
 selection/assembled-output/llm-modification, and ADR-0114's `encounter_draft_confirmation`,
 `hearthnote_signed_section` (an amendment's rows included: they carry the encounter id, so the same shred and delete cover them),
-`encounter_amendment` and `addendum_cosignature_request` rows) for the subject patient, and (3) tombstones the `encounter`
-root (the PK survives for FK integrity) — disjoint from M5's `clinical_record` (patient spine), M6's
-`admission_record` (admission subtree), and M7's `care_plan_record` (care-plan subtree). `subjectId` is
+`encounter_amendment` and `addendum_cosignature_request` rows, children before parents) for the subject patient. It is disjoint
+from M5's `clinical_record` (patient spine), M6's `admission_record` (admission subtree), and M7's `care_plan_record`
+(care-plan subtree). `subjectId` is
 the patient being destroyed. (The spec §3.6 `clinical_record` mention is reconciled to this disjoint
 class so the M5 eraser is never double-registered — architecture's one-eraser-per-data-class rule wins.)
