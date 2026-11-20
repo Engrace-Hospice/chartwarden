@@ -3459,6 +3459,133 @@ describe.skipIf(!DB_URL)(
             expect(await amendmentRowsOf(f)).toEqual([]);
           });
 
+          const NO_GOALS = () =>
+            liveSeams({
+              carePlanAsOf: async (patientId) =>
+                carePlan({ patientId: patientId as never, goals: [], interventions: [] }),
+            });
+
+          it("finalize counts what sign would seal too: confirmed, then the sources are gone, the addendum is refused at FINALIZE (422 ADDENDUM_EMPTY) and stays a draft", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            await putResolution(f, id, "plan", "confirmed");
+            currentSeams = NO_GOALS();
+            const res = await finalizeOver(f, id);
+            expect(res.statusCode, res.body).toBe(422);
+            const error = remediationOf(res);
+            expect(error.code).toBe("COMPLIANCE_GATE_FAILED");
+            expect(error.details?.map((d) => d.code)).toEqual(["ADDENDUM_EMPTY"]);
+            expect(await addendumStatus(id)).toBe("draft");
+            // the way out is still open: sources back, the confirmation holds, finalize and sign go through
+            currentSeams = goalSeams(GOAL_V2);
+            expect((await finalizeOver(f, id)).statusCode).toBe(200);
+            expect((await signOver(f, id)).statusCode).toBe(200);
+          });
+
+          it("finalize reads no draft when a selection already decides it, nor when no section is confirmed", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const withSelection = await openOnly(f, ["plan"]);
+            await putResolution(f, withSelection, "plan", "confirmed");
+            await a.updateAddendumSelections(
+              ORG_A,
+              f.encounterId,
+              withSelection,
+              requireSelections,
+            );
+            const none = await openOnly(f, ["plan"]);
+            await putResolution(f, none, "plan", "deselected");
+            currentSeams.carePlanAsOf.mockClear();
+            expect((await finalizeOver(f, withSelection)).statusCode).toBe(200);
+            expect((await finalizeOver(f, none)).statusCode).toBe(422);
+            expect(currentSeams.carePlanAsOf).not.toHaveBeenCalled();
+          });
+
+          it("a second finalize is 409 ILLEGAL_TRANSITION before anything is judged or read", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            await putResolution(f, id, "plan", "confirmed");
+            expect((await finalizeOver(f, id)).statusCode).toBe(200);
+            currentSeams.carePlanAsOf.mockClear();
+            const again = await finalizeOver(f, id);
+            expect(again.statusCode).toBe(409);
+            expect(remediationOf(again).code).toBe("ILLEGAL_TRANSITION");
+            expect(currentSeams.carePlanAsOf).not.toHaveBeenCalled();
+          });
+
+          it("finalize does not ask for the other named sections to be resolved: one confirmed, one untouched, nothing else, finalizes (sign still waits for the rest)", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan", "interventions"]);
+            await putResolution(f, id, "plan", "confirmed");
+            expect((await finalizeOver(f, id)).statusCode).toBe(200);
+            const refused = await signOver(f, id);
+            expect(refused.statusCode).toBe(409);
+            expect(remediationOf(refused).code).toBe("DRAFT_SECTION_STALE");
+          });
+
+          it("finalize fails closed when the sources cannot be read: 503 COMPLIANCE_GATE_UNAVAILABLE for an addendum whose only content is a confirmed section, still a draft", async () => {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["plan"]);
+            await putResolution(f, id, "plan", "confirmed");
+            currentSeams = goalSeams(GOAL_V2, {
+              carePlanAsOf: async () => {
+                throw new Error("synthetic upstream outage");
+              },
+            });
+            const res = await finalizeOver(f, id);
+            expect(res.statusCode, res.body).toBe(503);
+            expect(remediationOf(res).code).toBe("COMPLIANCE_GATE_UNAVAILABLE");
+            expect(await addendumStatus(id)).toBe("draft");
+          });
+
+          /** A selection-less addendum on `interventions` is confirmed while the note holds no Part 2; then an entitled amendment makes the note Part 2. */
+          async function confirmedThenNoteBecomesPart2(): Promise<{
+            f: EncounterFixture;
+            id: string;
+          }> {
+            const f = await signedNote();
+            currentSeams = goalSeams(GOAL_V2);
+            const id = await openOnly(f, ["interventions"]);
+            await putResolution(f, id, "interventions", "confirmed");
+            return { f, id };
+          }
+          async function makeNotePart2(f: EncounterFixture): Promise<void> {
+            currentSeams = goalSeams(GOAL_V2, {
+              medicationChangesBetween: async () => sudChange(),
+            });
+            const entitled = await finalizedAddendum(f, ["interventions"], ["rn", "part2"]);
+            await resolveAmendment(f, entitled, "interventions", "confirmed", ["rn", "part2"]);
+            await signAddendum(f, entitled, ["rn", "part2"]);
+            expect(one(await amendmentRowsOf(f)).part2_derived).toBe(true);
+          }
+
+          it("Part 2 is decided before the empty gate at sign: a selection-less addendum whose only section was deselected, on a note that became Part 2, is AMENDMENT_PART2_NOT_ENTITLED, not ADDENDUM_EMPTY", async () => {
+            const { f, id } = await confirmedThenNoteBecomesPart2();
+            expect((await finalizeOver(f, id)).statusCode).toBe(200);
+            await makeNotePart2(f);
+            await putResolution(f, id, "interventions", "deselected");
+            const res = await signOver(f, id);
+            expect(res.statusCode, res.body).toBe(422);
+            expect(remediationOf(res).code).toBe("AMENDMENT_PART2_NOT_ENTITLED");
+            expect(await addendumStatus(id)).toBe("finalized");
+          });
+
+          it("Part 2 at finalize: for the same selection-less addendum finalize answers the same generic AMENDMENT_PART2_NOT_ENTITLED (the note holds Part 2 now), and writes nothing", async () => {
+            const { f, id } = await confirmedThenNoteBecomesPart2();
+            await makeNotePart2(f);
+            const res = await finalizeOver(f, id);
+            expect(res.statusCode, res.body).toBe(422);
+            const error = remediationOf(res);
+            expect(error.code).toBe("AMENDMENT_PART2_NOT_ENTITLED");
+            const { message } = (res.json() as { error: { message: string } }).error;
+            expect(message).not.toMatch(/interventions|Morphine|part\s*2|42\s*cfr/i);
+            expect(await addendumStatus(id)).toBe("draft");
+          });
+
           it("a free addendum with nothing in it keeps the old rule: finalize is 422 ADDENDUM_EMPTY", async () => {
             const f = await signedNote();
             const created = await createAmendment(f, undefined);

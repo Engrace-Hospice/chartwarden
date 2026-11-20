@@ -859,6 +859,7 @@ export interface EncounterRouteService {
     encounterId: string,
     addendumId: string,
     actorUserId?: string,
+    viewer?: { roles: readonly string[]; membershipId: string | null },
   ): Promise<{ status: "finalized" }>;
   signAddendum(
     organizationId: string,
@@ -1183,9 +1184,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     sections: readonly SelectionSectionInput[],
     at: "finalize" | "sign",
   ): boolean => {
-    const verdict = runAddendumComplianceGate(toGateSections(sections), 0); // no amendments here
-    assertGatePassed(verdict, at);
-    return verdict.pass;
+    assertGatePassed(runAddendumComplianceGate(toGateSections(sections), 0), at); // no amendments here
+    return true;
   };
 
   const service: EncounterRouteService = {

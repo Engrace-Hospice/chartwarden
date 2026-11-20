@@ -1051,6 +1051,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
         encounterId,
         addendumId,
         actorUserIdOf(request),
+        draftViewerOf(request),
       );
     },
   );

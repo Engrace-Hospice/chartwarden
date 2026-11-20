@@ -98,7 +98,6 @@ import { recordSectionsAmended } from "./drafting/amendment-audit";
 import { assertMayAmendSectionsOf } from "./drafting/amendment-author";
 import { cosignerForAmendment } from "./drafting/amendment-cosigner";
 import { createAmendmentFlow } from "./drafting/amendment-flow";
-import { confirmedAmendmentCount } from "./drafting/amendment-store";
 import { defaultDraftPorts } from "./drafting/default-ports";
 import { assertResolved, confirmedSectionIds } from "./drafting/note-draft";
 import type { NoteDraft } from "./drafting/note-draft";
@@ -947,27 +946,29 @@ export function createDbEncounterRouteService(
   }
 
   /**
-   * Run the §2.6 gate for one addendum (the narrower form — see runAddendumComplianceGate). `amendedSections` is how many sections the sign is
-   * about to seal (the confirmed ones that are still drafted); finalize passes none and counts the author's confirmations, as a preview: sign
-   * decides again, under the encounter row lock every resolution also takes.
+   * Run the §2.6 gate for one addendum (the narrower form — see runAddendumComplianceGate). Finalize and sign judge emptiness by the SAME number:
+   * how many sections sign would seal (`amendedSections`, only asked when a selection or an annotation does not already decide it). Sign has it
+   * from the draft it just read, under the encounter row lock; finalize asks `amendments.sealable`, so an addendum sign would refuse as empty
+   * does not get past finalize into a state the editor cannot leave.
    */
   async function gateAddendum(
     t: DbClient,
     addendumId: string,
     at: "finalize" | "sign",
-    amendedSections?: number,
+    amendedSections: () => Promise<number>,
   ): Promise<boolean> {
     const [sel] = await t
       .select({ selections: SEL.selections })
       .from(SEL)
       .where(eq(SEL.addendumId, addendumId))
       .limit(1);
-    const verdict = runAddendumComplianceGate(
-      gateSections(sel?.selections ?? null),
-      amendedSections ?? (await confirmedAmendmentCount(t, addendumId)),
-    );
-    assertGatePassed(verdict, at);
-    return verdict.pass;
+    const sections = gateSections(sel?.selections ?? null);
+    const verdict = runAddendumComplianceGate(sections, 0);
+    const final = verdict.pass
+      ? verdict
+      : runAddendumComplianceGate(sections, await amendedSections());
+    assertGatePassed(final, at);
+    return final.pass;
   }
   /** Load one org-scoped encounter row → the shared projection, or `null` when absent/cross-tenant. */
   async function loadRow(
@@ -2953,13 +2954,21 @@ export function createDbEncounterRouteService(
         };
       });
     },
-    async finalizeAddendum(organizationId, encounterId, addendumId, actorUserId) {
+    async finalizeAddendum(organizationId, encounterId, addendumId, actorUserId, viewer) {
       return withOrgContext(db, { organizationId, userId: actorUserId ?? "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const a = await loadAddendum(t, encounterId, addendumId);
+        const parent = await loadEnc(t, encounterId);
+        // The author is the caller (the route's `is_addendum_author`): without a session's roles (a service call) they are the addendum's author with none.
+        const author = viewer ?? { roles: [], membershipId: a.authoredByMembershipId };
         const trans = transitionAddendum(a.status as "draft" | "finalized" | "signed", {
           type: "finalize",
-          gatePreviewPassed: await gateAddendum(t, addendumId, "finalize"),
+          // Not judged (nor a draft read) for an addendum that cannot finalize anyway: the transition answers 409 first.
+          gatePreviewPassed:
+            a.status === "draft" &&
+            (await gateAddendum(t, addendumId, "finalize", () =>
+              amendments.sealable(t, parent, addendumId, author),
+            )),
           at: new Date().toISOString().slice(0, 10) as LocalDate,
         });
         await t
@@ -2969,7 +2978,6 @@ export function createDbEncounterRouteService(
         // The addendum's own assembled output (`addendum_finalize`), pinned the same way and against the
         // PARENT's template and pinned vocab version — an addendum to an RN routine visit is written
         // against the RN routine-visit template, so it must be pinned against it too.
-        const parent = await loadEnc(t, encounterId);
         await pinAssembledOutput(t, organizationId, {
           kind: "addendum_finalize",
           encounterId: null,
@@ -3031,7 +3039,7 @@ export function createDbEncounterRouteService(
         const amendedSections = amending?.sections ?? [];
         const trans = transitionAddendum(a.status as AddendumState, {
           type: "sign",
-          gatePassed: await gateAddendum(t, addendumId, "sign", amendedSections.length),
+          gatePassed: await gateAddendum(t, addendumId, "sign", async () => amendedSections.length),
           stepUpFresh: provenance.stepUpFresh,
           at: args.at,
         });

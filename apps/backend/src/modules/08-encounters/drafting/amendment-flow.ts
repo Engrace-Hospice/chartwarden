@@ -6,6 +6,8 @@
 //   prepare  at sign: the SIGNER's draft of the parent as of the visit time, against the addendum's resolutions, restricted to the named
 //            sections; every one resolved (else 409 DRAFT_SECTION_STALE, the note's own refusal), then the confirmed ones as sealed blocks.
 //            Fails closed exactly as a note's sign does: a source that cannot be read is 503 COMPLIANCE_GATE_UNAVAILABLE within the same 5 s.
+//   sealable at finalize, the one number the empty-addendum gate needs: how many sections sign would seal for this author right now. Only asked
+//            when a confirmed amended section is the addendum's sole content, and it never asks for the other named sections to be resolved.
 //   write    the sealed amendment rows, in the sign transaction, before the addendum flips.
 // An addendum that names nothing is untouched by all of it: `prepare` is `null` and it signs as a free addendum always did.
 import type { DbClient } from "@chartwarden/db";
@@ -16,6 +18,7 @@ import { type AmendedSection, amendedSectionsOf, restrictToNamed } from "./amend
 import { assertMayAmendPart2 } from "./amendment-part2";
 import {
   type AmendingAddendum,
+  confirmedAmendmentCount,
   createAmendmentDraftStore,
   nameSections,
   namedSectionIds,
@@ -66,6 +69,17 @@ export interface AmendmentFlow {
     addendumId: string,
     viewer: DraftViewer,
   ): Promise<PreparedAmendment | null>;
+  /**
+   * How many sections the addendum's sign would seal for `viewer` right now (0 when it names none, none is confirmed, or the draft is off). The same
+   * Part 2 verdict and draft read as `prepare`, in that order, but without asking every named section to be resolved: finalize does not.
+   * Refuses as `prepare` does (422 AMENDMENT_PART2_NOT_ENTITLED, 503 COMPLIANCE_GATE_UNAVAILABLE); no confirmed section reads nothing at all.
+   */
+  sealable(
+    tx: DbClient,
+    parent: FlowEncounter,
+    addendumId: string,
+    viewer: DraftViewer,
+  ): Promise<number>;
   write(tx: DbClient, addendum: AmendingAddendum, prepared: PreparedAmendment): Promise<number>;
 }
 
@@ -84,6 +98,46 @@ const part2Entitled = (
   );
 
 export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
+  /**
+   * The addendum's named sections seen through `viewer`'s draft as of the visit time: `null` when it names none, `"off"` when the draft is switched
+   * off. Again at sign (and at finalize, when a confirmed section is all the addendum holds): the Part 2 verdict can change between naming and
+   * then, and it is decided before any source is read.
+   */
+  const readNamedDraft = async (
+    tx: DbClient,
+    parent: FlowEncounter,
+    addendumId: string,
+    viewer: DraftViewer,
+  ): Promise<NoteDraft | "off" | null> => {
+    const named = await namedSectionIds(tx, addendumId);
+    if (named.length === 0) return null;
+    await assertMayAmendPart2({
+      noteHasPart2: await noteHasPart2Version(tx, parent.id),
+      entitled: () => part2Entitled(deps, parent, viewer),
+      unavailable: (cause) =>
+        new EncounterStateError(
+          "COMPLIANCE_GATE_UNAVAILABLE",
+          "the visit-note draft check could not be decided: the Part 2 disclosure check is unavailable",
+          undefined,
+          { cause },
+        ),
+    });
+    const now = deps.clock();
+    const store = createAmendmentDraftStore(
+      tx,
+      createDbDraftStore(tx, { now, freeTextCipher: deps.freeTextCipher }),
+      addendumId,
+    );
+    const draft = await readNoteDraft(
+      { enabled: () => isVisitNoteDraftEnabled(tx, parent.organizationId), store },
+      serialSeams(deps.seams()),
+      parent,
+      viewer,
+      now,
+    );
+    return draft === null ? "off" : restrictToNamed(draft, named);
+  };
+
   return {
     async name(tx, addendum, sectionIds, author) {
       if (sectionIds.length === 0) return;
@@ -111,43 +165,23 @@ export function createAmendmentFlow(deps: AmendmentFlowDeps): AmendmentFlow {
     },
 
     async prepare(tx, parent, addendumId, viewer) {
-      const named = await namedSectionIds(tx, addendumId);
-      if (named.length === 0) return null;
-      // Again at sign: the verdict can change between naming and sign, and the signer is who confirmed the redraft.
-      await assertMayAmendPart2({
-        noteHasPart2: await noteHasPart2Version(tx, parent.id),
-        entitled: () => part2Entitled(deps, parent, viewer),
-        unavailable: (cause) =>
-          new EncounterStateError(
-            "COMPLIANCE_GATE_UNAVAILABLE",
-            "the visit-note draft check could not be decided: the Part 2 disclosure check is unavailable",
-            undefined,
-            { cause },
-          ),
-      });
-      const now = deps.clock();
-      const store = createAmendmentDraftStore(
-        tx,
-        createDbDraftStore(tx, { now, freeTextCipher: deps.freeTextCipher }),
-        addendumId,
-      );
-      const draft = await readNoteDraft(
-        { enabled: () => isVisitNoteDraftEnabled(tx, parent.organizationId), store },
-        serialSeams(deps.seams()),
-        parent,
-        viewer,
-        now,
-      );
-      if (draft === null) {
+      const restricted = await readNamedDraft(tx, parent, addendumId, viewer);
+      if (restricted === null) return null;
+      if (restricted === "off") {
         // Named sections are never signed away: the draft being off (the switch, or a template the corpus does not draft) is not "nothing to amend".
         throw new EncounterStateError(
           "DRAFT_OFF_AFTER_FINALIZE",
           "this addendum amends sections of the signed note, and the visit-note draft is now switched off for this organization, so the amendments cannot be confirmed: switch the draft back on for the organization, then sign again",
         );
       }
-      const restricted = restrictToNamed(draft, named);
       assertResolved(restricted);
       return { draft: restricted, sections: amendedSectionsOf(restricted) };
+    },
+
+    async sealable(tx, parent, addendumId, viewer) {
+      if ((await confirmedAmendmentCount(tx, addendumId)) === 0) return 0;
+      const restricted = await readNamedDraft(tx, parent, addendumId, viewer);
+      return restricted === null || restricted === "off" ? 0 : amendedSectionsOf(restricted).length;
     },
 
     write(tx, addendum, prepared) {
