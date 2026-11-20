@@ -1,7 +1,7 @@
 # ChartWarden — Workflow 04: Visit-Note Drafting — Redesign
 
 **Repository destination:** `docs/implementation/04-visit-note-drafting-redesign.md`
-**Status:** ACCEPTED by the owner on 2026-11-19. The owner locked the decisions below in a design session on 2026-11-18. Slice 1 is built behind the per-tenant switch, default off; the later slices are not built.
+**Status:** ACCEPTED by the owner on 2026-11-19. The owner locked the decisions below in a design session on 2026-11-18. Slice 1 is built behind the per-tenant switch, default off. Slice 2 (the recertification visit) is designed in §3.3 (decisions VN-D31 to VN-D34, owner, 2026-11-20) and in build; the later slices are not built.
 **Decision record:** [ADR-0114](../adr/ADR-0114-deterministic-visit-note-drafting.md) (Accepted, 2026-11-19).
 **Vocabulary:** [`CONTEXT.md`](../../CONTEXT.md). Terms in **bold** below are defined there.
 **Parent workflow:** [Workflow 04](./ChartWarden_Workflow_04_Visit_Encounter_Documentation.md), current state in [04-visit-encounter-current-state-audit.md](./04-visit-encounter-current-state-audit.md).
@@ -112,6 +112,17 @@ All DECIDED, 2026-11-18. IDs are stable; later slices cite them.
 | VN-D28 | The FireNote, WellSky/Axxess and DocLens claims in the architecture, M8 spec and M32 spec that the corpus check found wrong or unsupported are corrected in this change (§7). |
 | VN-D29 | The vocabulary lives in `CONTEXT.md`. |
 
+### 2.6 Slice 2 decisions
+
+All DECIDED by the owner, 2026-11-20 (the S2 plan, accepted with its recommendations).
+
+| ID | Decision |
+|---|---|
+| VN-D31 | S2's scope is the RN recertification visit (`recert_visit`, `rn`: sections `pps`, `esas`, `prognosis`, `recert_summary`) and the `prognosis` section of the face-to-face visit (`face_to_face`, `md`/`np`). The admission template's four sections (`med_reconciliation`, `advance_directive`, `caregiver_overview`, `baseline_symptoms`) belong to the next slice: their sources (the active medication list, the advance directive, the caregivers) differ from the recertification's. |
+| VN-D32 | The draft states face-to-face facts only as structured data from module 6 (performer role, date, attested, inside the window, override flag). It never quotes the physician's F2F attestation or the CTI narrative (VN-D6), and it never states a prognosis, an eligibility conclusion or a life expectancy. The physician's certification narrative stays module 6's and is not drafted. |
+| VN-D33 | v1 decline evidence is the PPS and ESAS-r readings with their baseline and change, the weight change from vitals, and the benefit-period, level-of-care, F2F and CTI facts. FAST, NYHA and the other diagnosis-specific scales, labs and hospitalisations are out: no structured source exists, or the choice of scale is a clinical rule by diagnosis. |
+| VN-D34 | The clinical review of the corpus (VN-D14) is of one release. An approval counts only for the corpus version it names, and the switch cannot be enabled on an approval for another release. |
+
 ## 3. How a draft works
 
 1. The visit is published (`m17.visit.published`) and seeds an encounter as today.
@@ -218,6 +229,29 @@ Within VN-D30; the decisions of the owner are not re-opened. An amendment is the
 - **Eraser.** An amendment row carries the encounter id, so the existing shred (`text_cipher` to the empty sentinel, by encounter) and delete already cover it; `encounter_amendment` and `addendum_cosignature_request` are deleted before the addenda they reference (`EncounterEraseCounts.amendments`, `.addendumCosignatureRequests`). A live assertion proves the shred and the delete.
 - **Limits, recorded.** (1) Any amendment of a note that holds Part 2 content by a viewer without Part 2 disclosure is REFUSED (naming and sign, above); an amendment by an author WITH disclosure can still carry no Part 2 content when its sources no longer hold any (a corrected order), and a viewer without disclosure still gets the section withheld whole, because it had a Part 2 version. The amendment draft (`GET .../addenda/{addendumId}/draft`) is the addendum author's view alone (`403` for anyone else, whether the addendum is free, amending or absent). The writes the S1 review did not list stay filed under the system actor: the selections saves (a note's and an addendum's), the mileage writes and the EVV reconciliation. (2) Only a section the draft can redraft (one with a drafted source, as recomputed now) can be amended; a section of the clinician's own words cannot, and naming one is accepted but amends nothing. (3) No billing re-open, no M22 Part 2 document path (a rendered document shows markers where Part 2 text is), the web, the mobile app and other note types stay out of scope. (4) The amendment's own text is never free text: correcting something the draft does not carry is the free addendum, as before. (5) The web works the amendment's cosignature (S1 PR E4: the addendum panel, the shared ceremony, the queue entry and the `cosignStatus` fields); the mobile app does not.
 
+### 3.3 S2 design: the recertification visit (VN-D31 to VN-D34)
+
+Designed 2026-11-20 against `main` at `6a527be45`; built in the PRs of the S2 plan. Within the decisions above; the S1 pipeline (confirmation, gate checks 1 and 13, sign, sealed rows, per-viewer Part 2, amendments, the switch, the eraser) is reused unchanged and adds no table.
+
+- **Which templates draft.** Still read off the corpus tags (`draft/scope.ts`). `recert_visit:rn` drafts `pps`, `esas`, `prognosis` and `recert_summary`, and its base sections from S1's sources (S1's vitals, care-plan and medication phrases are tagged for it too). `face_to_face:md|np` drafts `prognosis` only.
+- **A source map per template.** `draft/sources.ts` maps each section to its sources once for all templates today (PPS to `assessment`, ESAS-r to `symptom_management`). S2 makes the map per template. In a recertification PPS feeds `pps` and ESAS-r feeds `esas`; S1's PPS and ESAS-r phrases are not tagged for it, so `assessment` and `symptom_management` draft nothing from them and no reading is stated twice. The routine visit is unchanged.
+- **Sections and their sources.**
+
+| Section | Fed by | Rule |
+|---|---|---|
+| `pps` | PPS readings | the latest reading at or before the visit time and new since the previous visit (the S1 rule), with the change from the benefit period's first reading |
+| `esas` | ESAS-r readings | as `pps`, per symptom |
+| `prognosis` | decline evidence | PPS change from the benefit period's first reading; weight change over the period; the attested F2F's facts when it was attested at or before the visit. Numbers and dates only (VN-D32) |
+| `recert_summary` | benefit period | sequence, kind, start and end, the day of the period at the visit, the level of care on the visit date, the CTI's status and signing date when signed by then |
+
+- **Module 6 facts, as of the visit (VN-D11).** One new seam read, `RecertContextProvider`, returns the period, the level of care, the attested F2F and the CTI status as of an org-local date; a F2F attested or a CTI signed after the visit is not drafted, so a late-finalized note never describes today. The existing M6 readers are now-reads, and four in a row would hold the sign transaction open longer. The F2F fields are structured facts only (VN-D32).
+- **Baseline.** `series(from = period start, to = visit time)` through the existing M9 seam; no new seam. A latest reading at or before the previous visit is still not drafted (S1), so a recertification with no new PPS reads "nothing to draft from" and prompts the RN to record one.
+- **Weight.** A store port over M8's own `vitals`: the patient's weight rows at or before the visit across the benefit period, not only this encounter's. The weight parses strictly as a decimal with a unit of `kg` or `lb`, and the first and latest rows must use the same unit; a row that does not parse is not drafted.
+- **Part 2.** Every S2 source carries `sudRelated: false`, as S1's PPS and vitals do. M9 still redacts only an AIMS taken in a SUD context.
+- **The corpus.** A new release, `narrative-vocab@2026.12.0`, carries the recertification wording. Its wording is draft until ADA reviews it, and the approval names the release (VN-D34). The deploy moves `VOCAB_VERSION` for every tenant, so a draft whose selections were saved before it answers `409 VOCAB_VERSION_MISMATCH` at finalize until the selections are saved again (S1 §3.2).
+- **No migration** is planned and the eraser is unchanged. If the weight read needs an index, it is one `-- compat: expand` migration.
+- **Not in S2.** The admission sections (VN-D31), the CTI narrative, FAST, NYHA, labs and hospitalisations (VN-D33), mobile, offline, dictation and AI.
+
 ## 4. Constraints found
 
 ### 4.1 Backend and tenancy
@@ -252,7 +286,7 @@ Two tracks. Each slice is its own PR; pushes are batched (Actions minutes are me
 |---|---|---|---|---|
 | S1 | Docs | RN routine visit: draft from the four sources, per-section confirmation, the two gates, composer picker and trend, phrase slots and categories (VN-D15), amendments of signed drafted notes (VN-D30), per-tenant switch default off, as-of seam variants | VN-D1 to VN-D18, VN-D30; ADR-0114 | Live suite proves the draft per author, as of visit time, Part 2 redaction, stale-confirmation rejection, sign blocked until resolved, amendment preserving the signed text; baseline metric collecting |
 | M1 | Mobile | Online parity: draft sections, confirmation, online signing, contract-version header, minimum build, generated contract, minimal CI | S1 contract | An old build gets "update required"; a current build signs a drafted note |
-| S2 | Docs | RN admission, recertification and F2F narrative (the `pps`, `esas`, `prognosis` and `recert_summary` sections; decline and prognosis evidence, the top CGS denial reason) | S1 | Recert narrative draft ties F2F findings to the prognosis |
+| S2 | Docs | RN recertification and the F2F visit's `prognosis` (the `pps`, `esas`, `prognosis` and `recert_summary` sections; decline evidence, the top CGS denial reason; VN-D31 to VN-D34, §3.3). The admission sections follow in the next slice | S1 | Recert narrative draft sets the F2F's facts beside the decline evidence |
 | M2 | Mobile | On-device dictation into a section's free text, after its spike | M1 | Spike report; no audio retained; transcript is an unsent draft |
 | S3 | Docs | Aide and LPN notes, with cosign | S1 | Care-plan interventions drafted; cosigner sees per-viewer redaction (VN-D13) |
 | S4 | Docs | Social work and chaplain notes | M15 goal link built | Discipline goals draft into the note |

@@ -53,3 +53,19 @@ _Avoid_: edit (of a signed note), revision
 **Time-to-sign**:
 The elapsed time from the clinician's arrival at a visit to the visit note being signed (from draft creation where arrival is not recorded).
 _Avoid_: documentation time
+
+**Benefit period**:
+One certification period of a hospice election: two of 90 days, then 60 days each. Code and API call it an election period (module 6).
+_Avoid_: election period (in prose), certification period
+
+**Recertification visit**:
+The RN's visit that reassesses the patient at the start of a new benefit period. Its note documents the patient's current status for the physician's recertification; it is not the certification itself.
+_Avoid_: recert note (for the physician's certification of terminal illness)
+
+**Face-to-face encounter (F2F)**:
+The physician's or nurse practitioner's own visit that precedes the third and every later benefit period. Module 6 holds its attestation; the visit note of an F2F is a separate document.
+_Avoid_: F2F visit note (for the attestation)
+
+**Decline evidence**:
+The recorded, structured facts a recertification visit note sets beside each other: scale readings and their change over the benefit period, weight change, level of care, and the F2F's date. A fact, never a conclusion about prognosis or eligibility.
+_Avoid_: prognosis, terminal indicators
