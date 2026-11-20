@@ -87,7 +87,11 @@ function LocationProbe() {
 
 function NavigateProbe() {
   const navigate = useNavigate();
-  return <button onClick={() => navigate(`/evv/events/${REPLACEMENT}`)}>Open replacement</button>;
+  return (
+    <button type="button" onClick={() => navigate(`/evv/events/${REPLACEMENT}`)}>
+      Open replacement
+    </button>
+  );
 }
 
 function mount(path = PATH, permissions = SESSION.permissions) {

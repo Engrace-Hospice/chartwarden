@@ -67,67 +67,70 @@ export function EvvEventDetail(): JSX.Element {
     [client],
   );
 
-  const load = useCallback(async (generation: number) => {
-    if (!eventId) return;
-    const isCurrent = () => loadGeneration.current === generation;
-    setLoading(true);
-    setError(null);
-    const selected = await loadOne(eventId);
-    if (!isCurrent()) return;
-    if (!selected) {
-      setEvent(null);
-      setEvidence({ events: [], incomplete: false });
-      setError("This event is unavailable or outside your scope.");
+  const load = useCallback(
+    async (generation: number) => {
+      if (!eventId) return;
+      const isCurrent = () => loadGeneration.current === generation;
+      setLoading(true);
+      setError(null);
+      const selected = await loadOne(eventId);
+      if (!isCurrent()) return;
+      if (!selected) {
+        setEvent(null);
+        setEvidence({ events: [], incomplete: false });
+        setError("This event is unavailable or outside your scope.");
+        setLoading(false);
+        return;
+      }
+
+      const seen = new Set([selected.id]);
+      const before: EvvEventView[] = [];
+      const after: EvvEventView[] = [];
+      let incomplete = false;
+      let cursor: EvvEventView = selected;
+
+      while (cursor.replacesEventId && seen.size < MAX_CHAIN_LENGTH) {
+        if (seen.has(cursor.replacesEventId)) {
+          incomplete = true;
+          break;
+        }
+        const previous = await loadOne(cursor.replacesEventId);
+        if (!isCurrent()) return;
+        if (!previous) {
+          incomplete = true;
+          break;
+        }
+        seen.add(previous.id);
+        before.unshift(previous);
+        cursor = previous;
+      }
+
+      cursor = selected;
+      while (cursor.supersededByEventId && seen.size < MAX_CHAIN_LENGTH) {
+        if (seen.has(cursor.supersededByEventId)) {
+          incomplete = true;
+          break;
+        }
+        const next = await loadOne(cursor.supersededByEventId);
+        if (!isCurrent()) return;
+        if (!next) {
+          incomplete = true;
+          break;
+        }
+        seen.add(next.id);
+        after.push(next);
+        cursor = next;
+      }
+      if (seen.size >= MAX_CHAIN_LENGTH && (cursor.replacesEventId || cursor.supersededByEventId)) {
+        incomplete = true;
+      }
+
+      setEvent(selected);
+      setEvidence({ events: [...before, selected, ...after], incomplete });
       setLoading(false);
-      return;
-    }
-
-    const seen = new Set([selected.id]);
-    const before: EvvEventView[] = [];
-    const after: EvvEventView[] = [];
-    let incomplete = false;
-    let cursor: EvvEventView = selected;
-
-    while (cursor.replacesEventId && seen.size < MAX_CHAIN_LENGTH) {
-      if (seen.has(cursor.replacesEventId)) {
-        incomplete = true;
-        break;
-      }
-      const previous = await loadOne(cursor.replacesEventId);
-      if (!isCurrent()) return;
-      if (!previous) {
-        incomplete = true;
-        break;
-      }
-      seen.add(previous.id);
-      before.unshift(previous);
-      cursor = previous;
-    }
-
-    cursor = selected;
-    while (cursor.supersededByEventId && seen.size < MAX_CHAIN_LENGTH) {
-      if (seen.has(cursor.supersededByEventId)) {
-        incomplete = true;
-        break;
-      }
-      const next = await loadOne(cursor.supersededByEventId);
-      if (!isCurrent()) return;
-      if (!next) {
-        incomplete = true;
-        break;
-      }
-      seen.add(next.id);
-      after.push(next);
-      cursor = next;
-    }
-    if (seen.size >= MAX_CHAIN_LENGTH && (cursor.replacesEventId || cursor.supersededByEventId)) {
-      incomplete = true;
-    }
-
-    setEvent(selected);
-    setEvidence({ events: [...before, selected, ...after], incomplete });
-    setLoading(false);
-  }, [eventId, loadOne]);
+    },
+    [eventId, loadOne],
+  );
 
   useEffect(() => {
     const generation = ++loadGeneration.current;
