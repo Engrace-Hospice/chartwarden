@@ -822,7 +822,7 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     expect(reasons.rowCount).toBe(0);
   });
 
-  it("counts the root of a patient who has no satellites, so the certificate never reports 0 for a voided record", async () => {
+  it("counts the root of a patient who has no satellites, so the first run's certificate never reports 0 for a voided record", async () => {
     const bare = randomUUID();
     const rootId = await seedEncounter("A", bare, { status: "finalized", vocab_version_id: PIN });
     const result = await eraseEncounterRecord(ORG_A, bare, store);

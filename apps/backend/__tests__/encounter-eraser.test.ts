@@ -49,7 +49,7 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
     expect((await eraseEncounterRecord("org_a", "pat_1", store)).erased).toBe(0);
   });
 
-  it("counts a tombstoned root even when it had no satellites, so the certificate never reports 0 for a voided record", async () => {
+  it("counts a tombstoned root even when it had no satellites, so the first run's certificate never reports 0 for a voided record", async () => {
     const { store } = makeEraseStore({ tombstonedRoots: 3 });
     const { erased, counts } = await eraseEncounterRecord("org_a", "pat_1", store);
     expect(counts.tombstonedRoots).toBe(3);
