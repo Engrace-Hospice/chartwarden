@@ -5,6 +5,7 @@ import {
   type M23NetworkInspection,
   assertFreshM23DatabaseInventory,
   isCompleteM23Qualification,
+  isM23SuiteEntirelySkipped,
   startLoopbackTcpRelay,
   summarizeVitestFailureMessage,
   validateM23DockerIsolation,
@@ -258,6 +259,18 @@ describe("M23 qualification completeness", () => {
     { passed: 18 },
   ])("rejects incomplete or unsuccessful result %#", (override) => {
     expect(isCompleteM23Qualification({ ...complete, ...override })).toBe(false);
+  });
+
+  it("detects a suite skipped before any live assertion runs", () => {
+    expect(
+      isM23SuiteEntirelySkipped({ total: 19, passed: 0, failed: 0, pending: 19, todo: 0 }),
+    ).toBe(true);
+    expect(
+      isM23SuiteEntirelySkipped({ total: 19, passed: 0, failed: 0, pending: 18, todo: 1 }),
+    ).toBe(false);
+    expect(isM23SuiteEntirelySkipped({ total: 0, passed: 0, failed: 0, pending: 0, todo: 0 })).toBe(
+      false,
+    );
   });
 });
 

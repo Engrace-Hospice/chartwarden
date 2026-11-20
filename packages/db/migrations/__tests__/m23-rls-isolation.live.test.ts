@@ -26,7 +26,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dropLiveRoles } from "./_live-roles";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
-if (process.env.CHARTWARDEN_M23_RLS_ISOLATED_RUN === "true" && !DB_URL) {
+const ISOLATED_RUN = process.env.CHARTWARDEN_M23_RLS_ISOLATED_RUN === "true";
+if (ISOLATED_RUN && !DB_URL) {
   throw new Error("M23 isolated runner did not provide CHARTWARDEN_TEST_DATABASE_URL");
 }
 const MIGRATIONS_DIR = join(__dirname, "..");
@@ -117,7 +118,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "claimmd_tenant_response_item_outcome", key: "tenantResponseOutcome" },
 ];
 
-describe.skipIf(!DB_URL)(
+describe.skipIf(!ISOLATED_RUN)(
   "M23 Billing — Medicare — RLS cross-tenant denial — LIVE Postgres (§3.5)",
   () => {
     let db: Client;

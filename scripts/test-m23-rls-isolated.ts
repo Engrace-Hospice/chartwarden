@@ -11,6 +11,7 @@ import {
   M23_PGDATA_TMPFS,
   assertFreshM23DatabaseInventory,
   isCompleteM23Qualification,
+  isM23SuiteEntirelySkipped,
   startLoopbackTcpRelay,
   summarizeVitestFailureMessage,
   validateM23DockerIsolation,
@@ -294,6 +295,11 @@ async function main() {
       `M23 live result: total=${total}, passed=${passed}, failed=${failed}, skipped=${skipped}, todo=${todo}.`,
     );
     if (!qualified) {
+      if (isM23SuiteEntirelySkipped({ total, passed, failed, pending: skipped, todo })) {
+        console.error(
+          "All M23 RLS tests were skipped; the isolated-run marker was not visible inside Vitest.",
+        );
+      }
       for (const file of report.testResults ?? []) {
         const nonPassed = (file.assertionResults ?? []).filter((test) => test.status !== "passed");
         if (file.status !== "passed" || nonPassed.length > 0) {
