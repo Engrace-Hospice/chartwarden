@@ -111,6 +111,20 @@ function iso(d: Date | null): string | null {
 }
 
 /**
+ * When the row stopped being `active`, from the row's own columns, for a `historical` evaluation (what was on file at a past instant).
+ * `null` while it is active or when no column says: a revoked or superseded row has its own instant; an expired one is cut at the
+ * earlier of its `expires_at` and its last update (a time-based expiry is swept at or after `expires_at`; the patient-death cascade,
+ * `m5-patient-deceased-consumer`, stamps `updated_at` when it expires a row that has a later `expires_at`).
+ */
+function endedAtMsOf(r: typeof CR.$inferSelect): number | null {
+  if (r.status === "revoked") return ms(r.revokedAt);
+  if (r.status === "superseded") return ms(r.supersededAt);
+  if (r.status !== "expired") return null;
+  const candidates = [ms(r.expiresAt), ms(r.updatedAt)].filter((t): t is number => t !== null);
+  return candidates.length === 0 ? null : Math.min(...candidates);
+}
+
+/**
  * Build the production {@link ConsentStore} the {@link ConsentEvaluator} composes over. `consentsFor`
  * reads the patient's consent records (of the type) + their recipients under `withOrgContext`; the
  * evaluator applies status/expiry/post-death itself, so the store returns active-or-historical rows.
@@ -158,6 +172,7 @@ export function createDbConsentStore(db: DbClient): ConsentStore {
             version: r.version,
             effectiveAtMs: r.effectiveAt.getTime(),
             expiresAtMs: ms(r.expiresAt),
+            endedAtMs: endedAtMsOf(r),
             survivesDeath: r.survivesDeath,
             scopeDescriptor: r.scopeDescriptor,
             recipients: byConsent.get(r.id) ?? [],

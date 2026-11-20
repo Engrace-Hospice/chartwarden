@@ -110,6 +110,13 @@ export interface ConsentEvaluator {
      */
     consentRecordId?: string;
     asOf?: string;
+    /**
+     * Ask whether the record WAS in force at `asOf`, judged from the row's own end instant, instead of from its status now. A
+     * record revoked, superseded or expired (a patient's death expires it) after `asOf` still answers `allowed` for an `asOf`
+     * before that. For READING what was on file at a past instant (visit-note drafting, VN-D11); never for authorizing a
+     * disclosure or any access happening now, which is why it is opt-in and every existing caller keeps the current-status answer.
+     */
+    historical?: boolean;
     sessionContext: ConsentSessionContext;
     callerModule: CallerModule;
     callerRoute?: string;
@@ -248,6 +255,11 @@ export interface StoredConsent {
   readonly version: number;
   readonly effectiveAtMs: number;
   readonly expiresAtMs: number | null;
+  /**
+   * When the row stopped being `active` (revoked, superseded or expired); absent or null while it is active or when the store does
+   * not know. Read only by a `historical` evaluation, which treats an ended record with no end instant as ended before any `asOf`.
+   */
+  readonly endedAtMs?: number | null;
   readonly survivesDeath: boolean;
   readonly scopeDescriptor: unknown;
   readonly recipients: readonly StoredRecipient[];
@@ -285,17 +297,28 @@ function toMs(asOf?: string): number {
   return Number.isNaN(t) ? Date.now() : t;
 }
 
+/** Whether the record counts as `active` at `asOfMs`. Normally that is its status now. A `historical` evaluation also counts a
+ *  revoked, superseded or expired record that ended AFTER `asOfMs`: it was in force then. An end instant that is unknown, or at or
+ *  before `asOfMs`, never counts; neither does a draft. The record's own expiry is applied either way. */
+function inForceAt(r: StoredConsent, asOfMs: number, historical: boolean): boolean {
+  if (r.expiresAtMs !== null && r.expiresAtMs <= asOfMs) return false;
+  if (r.status === "active") return true;
+  if (!historical || r.status === "draft") return false;
+  return r.endedAtMs !== undefined && r.endedAtMs !== null && r.endedAtMs > asOfMs;
+}
+
 /** Pick the governing record: the highest-version `active` record effective at `asOfMs` and not
  *  expired. Returns the reason a record is unusable when none governs. */
 function pickGoverning(
   records: readonly StoredConsent[],
   asOfMs: number,
+  historical = false,
 ): { record: StoredConsent } | { denyReason: ConsentDenyReason } {
   if (records.length === 0) return { denyReason: "no_active_consent_on_file" };
   const effective = records.filter((r) => r.effectiveAtMs <= asOfMs);
   if (effective.length === 0) return { denyReason: "no_active_consent_on_file" };
   const active = effective
-    .filter((r) => r.status === "active" && (r.expiresAtMs === null || r.expiresAtMs > asOfMs))
+    .filter((r) => inForceAt(r, asOfMs, historical))
     .sort((a, b) => b.version - a.version);
   if (active.length > 0) return { record: active[0]! };
   // Nothing active — surface the most informative reason from the newest effective record.
@@ -313,6 +336,7 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
     consentType: ConsentTypeKey;
     consentRecordId?: string;
     asOfMs: number;
+    historical?: boolean;
   }): Promise<{
     allowed: boolean;
     consentRecordId?: string;
@@ -329,7 +353,7 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
     });
     const records =
       args.consentRecordId === undefined ? all : all.filter((r) => r.id === args.consentRecordId);
-    const governing = pickGoverning(records, args.asOfMs);
+    const governing = pickGoverning(records, args.asOfMs, args.historical === true);
     if ("denyReason" in governing) return { allowed: false, denyReason: governing.denyReason };
     const record = governing.record;
 
@@ -398,6 +422,7 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
         consentType: args.consentType,
         ...(args.consentRecordId === undefined ? {} : { consentRecordId: args.consentRecordId }),
         asOfMs: toMs(args.asOf),
+        ...(args.historical === true ? { historical: true } : {}),
       });
     },
 
