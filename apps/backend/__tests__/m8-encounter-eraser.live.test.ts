@@ -7,8 +7,9 @@
  * that has no CHECKs, so it never saw it: on a real database `eraseEncounterRecord` rolled back and a destruction never
  * completed. This suite runs the whole erase (crypto-erase, delete subtree, tombstone) through the Drizzle store over every
  * kind of root the product can hold, and proves what survives: the shell, never the text. The signed, cosign_pending and cosigned roots
- * each carry a Layer-2-involved and a Layer-2-off output: a signed note's ciphers are frozen by the database (migration 1521), and only the
- * shred sentinel the destruction role writes ("" for layer1/final and for a Layer-2-involved layer2, NULL for a Layer-2-off layer2) may pass.
+ * each carry a Layer-2-involved and a Layer-2-off output. On a database that carries migrations 1521/1525 (the visit-note-drafting branch) a
+ * signed note's ciphers are frozen, and only the shred sentinel the destruction role writes ("" for layer1/final and for a Layer-2-involved
+ * layer2, NULL for a Layer-2-off layer2) may pass; without them these cases still prove the shred is status-agnostic.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m8:eraser:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -124,8 +125,8 @@ const NO_ROWS = Object.fromEntries(OWNED_KEYS.map((key) => [key, 0])) as Record<
 
 /**
  * The reported counts for the tables this suite seeds. A branch that gives the eraser more tables to delete from (signed sections, draft
- * confirmations, amendments) reports more keys; this suite seeds none of them, and `erased` (the sum of every key) is asserted too, so an
- * unseeded table that reported a row would still fail.
+ * confirmations, amendments, amendment cosignature requests) reports more keys. This suite seeds none of them, so it does NOT cover those
+ * tables: when that branch lands, seed them here (FK delete order included) and drop this helper.
  */
 const seededCounts = (counts: Record<OwnedKey, number>): Record<OwnedKey, number> =>
   Object.fromEntries(OWNED_KEYS.map((key) => [key, counts[key]])) as Record<OwnedKey, number>;
@@ -307,6 +308,12 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     await seedOutput(org, encounterId, null, "primary_finalize", true);
     await seedOutput(org, encounterId, null, "primary_finalize", false);
     await admin.query("UPDATE encounter SET status = $2 WHERE id = $1", [encounterId, status]);
+    // A cosigned note carries its cosignature time; the tombstone must leave it as it found it.
+    if (status === "cosigned")
+      await admin.query("UPDATE encounter SET cosigned_at = $2 WHERE id = $1", [
+        encounterId,
+        "2026-01-16T18:00:00Z",
+      ]);
     return encounterId;
   }
 
@@ -607,8 +614,9 @@ describe.skipIf(!DB_URL)("M8 encounter eraser — LIVE Postgres, destruction rol
     expect(countsOf(target)).toEqual(TARGET_COUNTS);
     expect(await ownedRows(everyoneElse())).toEqual(othersBefore);
 
-    // Under a signed, cosign_pending and cosigned note the database freezes the ciphers (migration 1521) and lets only the destruction
-    // role's sentinel through: "" for layer1/final, NULL or "" for layer2. The roots are still in that status here, so the guard was in force.
+    // Under a signed, cosign_pending and cosigned note a database carrying migrations 1521/1525 freezes the ciphers and lets only the
+    // destruction role's sentinel through: "" for layer1/final, NULL or "" for layer2. The roots are still in that status here, so on such
+    // a database the guard was in force; on this branch alone the same assertions prove the shred does not depend on the status.
     for (const status of SIGNED_STATUSES) {
       const encounterId = targets.get(status) as string;
       const root = await admin.query<{ status: string }>(
